@@ -332,31 +332,36 @@ describe("native Core launcher", () => {
     const pidPath = path.join(directory, "candidate.pid");
     writeFileSync(
       executable,
-      '#!/bin/sh\nprintf \'%s\' "$$" > "$NODEX_TEST_CANDIDATE_PID_PATH"\nwhile :; do sleep 1; done\n',
+      [
+        "#!/bin/sh",
+        'printf \'%s\' "$$" > "$NODEX_TEST_CANDIDATE_PID_PATH"',
+        'printf \'%s\\n\' \'{"startup_event_version":1,"event":{"kind":"migration_heartbeat"}}\'',
+        "while :; do sleep 1; done",
+      ].join("\n"),
     );
     chmodSync(executable, 0o700);
     const controller = new AbortController();
-    const outcome = connectOrStartCore({
-      buildId: "core-launcher-abort-test",
-      environment: {
-        NODEX_CORE_EXECUTABLE: executable,
-        NODEX_TEST_CANDIDATE_PID_PATH: pidPath,
-      },
-      isPackaged: false,
-      nodexHome: directory,
-      signal: controller.signal,
-      startupTimeoutMs: 2_000,
-    }).catch((error: unknown) => error);
 
     try {
-      await waitUntil(() => existsSync(pidPath), "candidate did not publish its PID");
-      controller.abort();
-      await expect(outcome).resolves.toMatchObject({ name: "AbortError" });
+      await expect(
+        connectOrStartCore({
+          buildId: "core-launcher-abort-test",
+          environment: {
+            NODEX_CORE_EXECUTABLE: executable,
+            NODEX_TEST_CANDIDATE_PID_PATH: pidPath,
+          },
+          isPackaged: false,
+          nodexHome: directory,
+          signal: controller.signal,
+          startupTimeoutMs: 2_000,
+          onStartupEvent: (event) => {
+            if (event.kind === "migration_heartbeat") controller.abort();
+          },
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
       const pid = Number.parseInt(readFileSync(pidPath, "utf8"), 10);
       expect(processExists(pid)).toBe(false);
     } finally {
-      controller.abort();
-      await outcome;
       rmSync(directory, { recursive: true, force: true });
     }
   });
@@ -403,9 +408,18 @@ describe("native Core launcher", () => {
       const descendantPidPath = path.join(directory, "descendant.pid");
       writeFileSync(
         executable,
-        '#!/bin/sh\ntrap \'\' TERM\nprintf \'%s\' "$$" > "$NODEX_TEST_CANDIDATE_PID_PATH"\nsh -c \'trap "" TERM; printf "%s" "$$" > "$NODEX_TEST_DESCENDANT_PID_PATH"; while :; do sleep 1; done\' &\nwait\n',
+        [
+          "#!/bin/sh",
+          "trap '' TERM",
+          'printf \'%s\' "$$" > "$NODEX_TEST_CANDIDATE_PID_PATH"',
+          'sh -c \'trap "" TERM; printf "%s" "$$" > "$NODEX_TEST_DESCENDANT_PID_PATH"; while :; do sleep 1; done\' &',
+          'while [ ! -s "$NODEX_TEST_DESCENDANT_PID_PATH" ]; do sleep 0.01; done',
+          'printf \'%s\\n\' \'{"startup_event_version":1,"event":{"kind":"migration_heartbeat"}}\'',
+          "wait",
+        ].join("\n"),
       );
       chmodSync(executable, 0o700);
+      const startupEvents: string[] = [];
 
       try {
         await expect(
@@ -418,9 +432,12 @@ describe("native Core launcher", () => {
             },
             isPackaged: false,
             nodexHome: directory,
-            startupTimeoutMs: 100,
+            // Both processes publish their PIDs before restarting this bounded inactivity window.
+            startupTimeoutMs: 2_000,
+            onStartupEvent: (event) => startupEvents.push(event.kind),
           }),
         ).rejects.toThrow("Native Rust Core selection timed out");
+        expect(startupEvents).toEqual(["migration_heartbeat"]);
         const pid = Number.parseInt(readFileSync(pidPath, "utf8"), 10);
         const descendantPid = Number.parseInt(readFileSync(descendantPidPath, "utf8"), 10);
         expect(Number.isSafeInteger(pid)).toBe(true);

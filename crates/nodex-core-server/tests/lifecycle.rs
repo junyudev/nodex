@@ -572,8 +572,10 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     let properties = database_read["payload"]["value"]["properties"]["items"]
         .as_array()
         .expect("Database properties");
+    assert_eq!(properties.len(), 9);
     assert!(properties.iter().any(|property| {
         property["property_id"] == "blocked_by"
+            && property["name"] == "Waits for"
             && property["schema"]["kind"] == "relation"
     }));
 

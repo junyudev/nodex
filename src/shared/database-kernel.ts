@@ -1,3 +1,4 @@
+import { parsePageAssignee, pageAssigneeGroupKey, pageAssigneeFromGroupKey } from "./work-graph";
 import {
   stableStringifyBlockPropertyJson,
   type BlockPropertyJsonValue,
@@ -25,6 +26,7 @@ const UTF8_ENCODER = new TextEncoder();
 
 export type DatabaseJsonValue = BlockPropertyJsonValue;
 export type DatabasePropertyValueType =
+  | "assignment"
   | "text"
   | "number"
   | "checkbox"
@@ -52,6 +54,7 @@ export function databaseGroupValueFromKey(
   groupKey: string | null,
 ): DatabaseJsonValue {
   if (groupKey === null) return null;
+  if (valueType === "assignment") return pageAssigneeFromGroupKey(groupKey);
   if (valueType !== "number" && valueType !== "checkbox" && valueType !== "multi_select") {
     return groupKey;
   }
@@ -72,6 +75,15 @@ export function databaseGroupKeyForValue(value: DatabaseJsonValue | undefined): 
     return null;
   }
   if (typeof value === "string") return value;
+  if (
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    "kind" in value &&
+    (value.kind === "member" || value.kind === "agent")
+  ) {
+    const assignee = parsePageAssignee(value);
+    if (assignee) return pageAssigneeGroupKey(assignee);
+  }
   return stableStringifyBlockPropertyJson(value);
 }
 
@@ -126,6 +138,7 @@ export type DatabaseViewFilterOperator =
  * Property-record boundary or appear in new authoring UI.
  */
 export const DATABASE_VIEW_FILTER_OPERATORS_BY_VALUE_TYPE = {
+  assignment: ["equals", "not_equals", "is_empty", "is_not_empty"],
   text: [
     "text_is",
     "text_is_not",
@@ -732,6 +745,8 @@ export const normalizeDatabasePropertyValue = (
   const config = parseDatabasePropertyConfig(definition.valueType, definition.config);
   if (value === null) return null;
   switch (definition.valueType) {
+    case "assignment":
+      return invalid("Assignment belongs to Page work");
     case "text":
       if (typeof value === "string") return value;
       return invalid(`${definition.valueType} requires a string or null value`);

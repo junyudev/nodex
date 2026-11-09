@@ -299,7 +299,13 @@ export const make = Effect.fn("OpenCodeServerLedger.make")(function* (input: {
         yield* Effect.sleep(STOP_POLL_INTERVAL);
       }
       // The group never emptied, so its pgid cannot have been reused.
-      if (groupExists(entry.pgid)) signalGroup(entry.pgid, "SIGKILL");
+      if (!groupExists(entry.pgid)) return;
+      signalGroup(entry.pgid, "SIGKILL");
+      // Signalling is asynchronous. Drain physical exit before a replacement Runtime
+      // can reuse the provider port, just as after the graceful stop above.
+      for (let attempt = 0; attempt < STOP_POLL_ATTEMPTS && groupExists(entry.pgid); attempt++) {
+        yield* Effect.sleep(STOP_POLL_INTERVAL);
+      }
     });
 
   const reapEntry = (entryPath: string, ownerPid?: number) =>

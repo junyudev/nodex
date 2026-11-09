@@ -88,17 +88,35 @@ test("legacy workspace without transition merges new durable roots", () => {
 });
 
 test("projectless workspace detection mirrors owner-time generated-root reuse", () => {
+  const projectsDirectory = "/Users/test/Documents/Nodex";
   expect(
     codexProjectlessWorkspaceRootFromCwd(
       "/Users/test/Documents/Nodex/2026-09-17/explain-permission-flow",
+      projectsDirectory,
     ),
-  ).toBe("/Users/test/Documents/Nodex");
+  ).toBe(projectsDirectory);
+  // Only a directory Nodex generated under this Profile's projects directory is projectless.
+  for (const cwd of [
+    "/Users/test/Documents/Nodex/Default",
+    "/Users/test/Documents/Nodex-old/2026-09-17/explain",
+    "/Users/other/Documents/Nodex/2026-09-17/explain",
+  ])
+    expect(codexProjectlessWorkspaceRootFromCwd(cwd, projectsDirectory)).toBeNull();
   expect(
-    findCodexProjectlessWorkspaceInRoots([
-      "/repo",
-      "/Users/test/Documents/Nodex/2026-09-16/older",
-      "/Users/test/Documents/Nodex/2026-09-17/newer",
-    ]),
+    codexProjectlessWorkspaceRootFromCwd(
+      "/dev/home/workspace/2026-09-17/explain",
+      "/dev/home/workspace/",
+    ),
+  ).toBe("/dev/home/workspace");
+  expect(
+    findCodexProjectlessWorkspaceInRoots(
+      [
+        "/repo",
+        "/Users/test/Documents/Nodex/2026-09-16/older",
+        "/Users/test/Documents/Nodex/2026-09-17/newer",
+      ],
+      projectsDirectory,
+    ),
   ).toEqual({
     cwd: "/Users/test/Documents/Nodex/2026-09-17/newer",
     workspaceRoot: "/Users/test/Documents/Nodex",
@@ -109,6 +127,7 @@ test("projectless preparation prefers cwd, retained roots, then browser-root rep
   expect(
     resolveExistingCodexProjectlessWorkspace({
       cwd: "/Users/test/Documents/Nodex/2026-09-17/direct",
+      projectsDirectory: "/Users/test/Documents/Nodex",
       retainedWritableRoots: ["/Users/test/Documents/Nodex/2026-09-16/retained"],
       workspaceKind: "projectless",
       workspaceBrowserRoot: "/Users/test/Documents/Nodex",
@@ -120,6 +139,7 @@ test("projectless preparation prefers cwd, retained roots, then browser-root rep
   expect(
     resolveExistingCodexProjectlessWorkspace({
       cwd: "/outside",
+      projectsDirectory: "/Users/test/Documents/Nodex",
       retainedWritableRoots: [],
       workspaceKind: "projectless",
       workspaceBrowserRoot: "/Users/test/Documents/Nodex",

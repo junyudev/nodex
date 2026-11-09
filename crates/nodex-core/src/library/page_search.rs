@@ -85,7 +85,8 @@ struct IndexedPage {
     status: Option<LibraryPageWorkflowStatusValue>,
     priority: Option<String>,
     tags: Vec<LibraryPageSearchOption>,
-    assignee: Option<String>,
+    assignee: Option<nodex_core_contracts::library::PageAssignee>,
+    owner: Option<String>,
     project_ids: BTreeSet<String>,
     page_key: Option<String>,
     location_label: String,
@@ -153,6 +154,7 @@ fn build_index(connection: &Connection, library_id: &str) -> Result<PageSearchIn
                 priority: None,
                 tags: Vec::new(),
                 assignee: None,
+                owner: None,
                 project_ids: BTreeSet::new(),
                 page_key: None,
                 location_label: String::new(),
@@ -229,8 +231,6 @@ fn build_index(connection: &Connection, library_id: &str) -> Result<PageSearchIn
             page.priority = value.as_str().map(ToOwned::to_owned);
         } else if owns_membership && property_id == "tags" {
             page.tags = options.clone();
-        } else if owns_membership && property_id == "assignee" {
-            page.assignee = value.as_str().map(ToOwned::to_owned);
         }
         page.properties.push(IndexedProperty {
             property_id,
@@ -239,6 +239,54 @@ fn build_index(connection: &Connection, library_id: &str) -> Result<PageSearchIn
         });
     }
 
+    let members = super::members::list(connection, library_id)?;
+    let mut statement = connection.prepare(
+        "SELECT block_id,value_json FROM block_properties WHERE library_id=?1 AND property_key='work'",
+    )?;
+    let rows = statement.query_map([library_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    for row in rows {
+        let (id, encoded) = row?;
+        let Some(page) = pages.get_mut(&id) else {
+            continue;
+        };
+        let work = super::parse_page_work(
+            &serde_json::from_str::<Value>(&encoded)
+                .map_err(|_| corrupt("Page work JSON is invalid"))?,
+        )?;
+        page.owner = Some(work.owner.clone());
+        page.assignee = work.assignee.clone();
+        let label = |assignment: &nodex_core_contracts::library::PageAssignee| match assignment {
+            nodex_core_contracts::library::PageAssignee::Member { member_id } => members
+                .iter()
+                .find(|member| &member.id == member_id)
+                .map(|member| member.display_name.clone())
+                .unwrap_or_default(),
+            nodex_core_contracts::library::PageAssignee::Agent {
+                instance_id, model, ..
+            } => format!("{instance_id} {model}"),
+        };
+        for (id, name, assignment) in [
+            (
+                "owner",
+                "Owner",
+                Some(nodex_core_contracts::library::PageAssignee::Member {
+                    member_id: work.owner,
+                }),
+            ),
+            ("assignee", "Assignee", work.assignee),
+        ] {
+            let Some(assignment) = assignment else {
+                continue;
+            };
+            page.properties.push(IndexedProperty {
+                property_id: id.into(),
+                property_name: name.into(),
+                text: label(&assignment),
+            });
+        }
+    }
     let data_source_databases = connection
         .prepare("SELECT id, home_database_block_id FROM data_sources WHERE library_id = ?1")?
         .query_map([library_id], |row| Ok((row.get(0)?, row.get(1)?)))?
@@ -287,6 +335,7 @@ fn build_index(connection: &Connection, library_id: &str) -> Result<PageSearchIn
             priority: page.priority.clone(),
             tags: page.tags.iter().map(kernel_option).collect(),
             assignee: page.assignee.clone(),
+            owner: page.owner.clone(),
             location_label: page.location_label.clone(),
             updated_at: page.updated_at.clone(),
             properties: page
@@ -361,6 +410,7 @@ fn kernel_workflow_status(status: LibraryPageWorkflowStatus) -> KernelWorkflowSt
         LibraryPageWorkflowStatus::Doing => KernelWorkflowStatus::Doing,
         LibraryPageWorkflowStatus::Review => KernelWorkflowStatus::Review,
         LibraryPageWorkflowStatus::Done => KernelWorkflowStatus::Done,
+        LibraryPageWorkflowStatus::Canceled => KernelWorkflowStatus::Canceled,
     }
 }
 
@@ -535,6 +585,7 @@ fn workflow_status(value: Option<&str>) -> Option<LibraryPageWorkflowStatus> {
         Some("doing") => Some(LibraryPageWorkflowStatus::Doing),
         Some("review") => Some(LibraryPageWorkflowStatus::Review),
         Some("done") => Some(LibraryPageWorkflowStatus::Done),
+        Some("canceled") => Some(LibraryPageWorkflowStatus::Canceled),
         _ => None,
     }
 }
@@ -669,6 +720,7 @@ pub(super) fn project_facets(
     validate_project_ids(project_ids)?;
     let mut tags = BTreeMap::<(String, String, String), LibraryPageSearchOption>::new();
     let mut assignees = BTreeSet::new();
+    let mut owners = BTreeSet::new();
     for page in index
         .pages
         .values()
@@ -690,11 +742,10 @@ pub(super) fn project_facets(
                 tag.clone(),
             );
         }
-        if let Some(assignee) = page
-            .assignee
-            .as_ref()
-            .filter(|value| !value.trim().is_empty())
-        {
+        if let Some(owner) = &page.owner {
+            owners.insert(owner.clone());
+        }
+        if let Some(assignee) = page.assignee.as_ref() {
             assignees.insert(assignee.clone());
         }
     }
@@ -707,6 +758,7 @@ pub(super) fn project_facets(
     Ok(LibraryProjectPageSearchFacets {
         tags,
         assignees: assignees.into_iter().collect(),
+        owners: owners.into_iter().collect(),
     })
 }
 
@@ -751,6 +803,7 @@ pub(super) fn project_metadata(
                 priority: page.priority.clone(),
                 tags: page.tags.clone(),
                 assignee: page.assignee.clone(),
+                owner: page.owner.clone(),
                 location_label: page.location_label.clone(),
                 updated_at: page.updated_at.clone(),
                 properties: page
@@ -1224,6 +1277,14 @@ fn matches_filters(page: &IndexedPage, filters: Option<&LibraryProjectPageSearch
             _ => return false,
         }
     }
+    if !filters.owners.is_empty()
+        && !page
+            .owner
+            .as_ref()
+            .is_some_and(|id| filters.owners.contains(id))
+    {
+        return false;
+    }
     if !filters.assignees.is_empty()
         && !page
             .assignee
@@ -1396,6 +1457,7 @@ fn project_hit(
         priority: page.priority.clone(),
         tags: page.tags.clone(),
         assignee: page.assignee.clone(),
+        owner: page.owner.clone(),
         location_label: page.location_label.clone(),
         title_parts,
         excerpt,
@@ -1918,7 +1980,12 @@ fn validate_filters(filters: Option<&LibraryProjectPageSearchFilters>) -> Result
             return Err(invalid("Page search repeats a tag filter"));
         }
     }
-    validate_unique_identities(&filters.assignees, "Page search assignee")?;
+    validate_unique_identities(&filters.owners, "Page search Owner")?;
+    for assignment in &filters.assignees {
+        if let Some(agent) = assignment.agent_selection() {
+            super::validate_agent_selection(&agent)?;
+        }
+    }
     Ok(())
 }
 
@@ -2133,6 +2200,7 @@ mod tests {
             priority: None,
             tags: Vec::new(),
             assignee: None,
+            owner: None,
             page_key: None,
             location_label: "Pages".to_owned(),
             data_source_ids: BTreeSet::new(),
@@ -2422,6 +2490,7 @@ mod tests {
                     priority: None,
                     tags: Vec::new(),
                     assignee: None,
+                    owner: None,
                     page_key: None,
                     location_label: "Pages".to_owned(),
                     data_source_ids: BTreeSet::new(),
@@ -2459,6 +2528,7 @@ mod tests {
             tags: Vec::new(),
             tag_mode: LibraryPageSearchTagMode::Any,
             assignees: Vec::new(),
+            owners: Vec::new(),
         };
         let outcomes = rank_project_outcomes(
             &index,

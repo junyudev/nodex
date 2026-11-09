@@ -1,3 +1,4 @@
+import { make as makeMessageHandback } from "./MessageHandbackAppTools";
 import { sessionControlSchemas } from "../../shared/nodex-app-tools/session-control-schemas";
 import { make as makeSessionControls } from "./SessionControlAppTools";
 import { make as makeHandoffStatusTools } from "./HandoffStatusAppTools";
@@ -59,6 +60,7 @@ export const make = Effect.gen(function* () {
   const sessionTools = yield* makeSessionTools;
   const inboxTools = yield* makeInboxTools;
   const workTools = yield* makeWorkTools;
+  const messageHandback = yield* makeMessageHandback;
   const coordinatorTools = yield* makeCoordinatorTools;
   const sessionCommands = yield* makeSessionCommands;
   const sessionHandoffTools = yield* makeSessionHandoffTools;
@@ -97,7 +99,10 @@ export const make = Effect.gen(function* () {
       input.name !== "session_question" &&
       input.name !== "send_to_inbox" &&
       input.name !== "report_work" &&
+      input.name !== "hand_back_message" &&
       input.name !== "inbox_suggest" &&
+      input.name !== "write_turn_note" &&
+      input.name !== "answer_inbox_question" &&
       input.name !== "start_work" &&
       input.name !== "fork_session" &&
       input.name !== "merge_session_back" &&
@@ -129,7 +134,13 @@ export const make = Effect.gen(function* () {
     if (input.name === "automation_update") return yield* automationTools(input);
     if (input.name === "handoff_session") return yield* sessionHandoffTools(input);
     if (input.name === "get_handoff_status") return yield* handoffStatusTools(input);
+    if (
+      input.name === "inbox_suggest" ||
+      input.name === "write_turn_note" ||
+      input.name === "answer_inbox_question"
+    )
       return yield* coordinatorTools(input);
+    if (input.name === "hand_back_message") return yield* messageHandback(input);
     if (input.name === "report_work" || input.name === "start_work") return yield* workTools(input);
     if (input.name === "send_to_inbox") return yield* inboxTools(input);
     if (

@@ -674,6 +674,7 @@ mod tests {
             &workspace.module,
             "runtime",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                agent_selection: None,
                 coordinator: false,
                 side_chat_source_session_id: None,
                 session_id: "session:runtime".into(),

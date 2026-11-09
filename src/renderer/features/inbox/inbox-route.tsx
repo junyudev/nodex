@@ -1,6 +1,12 @@
+import { SpaceExecutionHoldControl } from "@/components/workbench/execution-hold-controls";
 import { useInboxClock } from "./use-inbox-clock";
 import { consumeInboxEntryOpen, useInboxEntryOpen } from "../../lib/inbox-entry-navigation";
 import { openNodex } from "../../lib/inbox-runtime";
+import { InboxTurnRow } from "./inbox-turn-row";
+import { createBoundedOperationId } from "../../../shared/operation-identity";
+import { createUuidV7 } from "../../../shared/uuid-v7";
+import { acceptPageWork } from "@/lib/page-turn-runtime";
+import { openExternalUrl } from "@/lib/file-system-operations";
 import { startWork } from "../../lib/work-graph-runtime";
 import { readableIpcError } from "@/lib/ipc-error-message";
 import { toast } from "@/components/ui/toast";
@@ -350,7 +356,9 @@ export function InboxRoute({
   const keysByPage = new Map(
     inboxItems.map((item) => [item.pageId, item.pageKey ?? "another message"]),
   );
-  const selectedItems = inboxItems.filter((item) => selected.has(item.pageId));
+  const selectedItems = inboxItems.filter(
+    (item) => item.rowKind === "intake" && selected.has(item.pageId),
+  );
 
   const viewport = useInboxViewport({
     scopeKey,
@@ -426,7 +434,7 @@ export function InboxRoute({
     if (view !== "inbox") changeView("inbox");
     return await actions.send(intent);
   };
-  const imageAccess = useInboxImageAccess(scope);
+  const imageAccess = useInboxImageAccess(scope.kind === "project" ? scope : { kind: "library" });
   const capture = useInboxCapture({
     windowSessionId,
     scope,
@@ -438,6 +446,11 @@ export function InboxRoute({
   const replyTo = (item: InboxItem) => {
     capture.changeDraft((draft) => ({
       ...draft,
+      replyTo: {
+        pageId: item.pageId,
+        label: item.title,
+        ...(item.turn ? { turnEpisode: item.turn.turn.episode } : {}),
+      },
     }));
     setReplyFocusToken((token) => token + 1);
   };
@@ -457,6 +470,39 @@ export function InboxRoute({
     target.kind === "session" ? onOpenSession(target.sessionId) : onOpenDatabase(target.databaseId);
 
   const renderMessage = (item: InboxItem) => {
+    if (item.rowKind === "turn" && item.turn) {
+      const data = item.turn;
+      const reply = (body: string) =>
+        actions.send({
+          operationId: createBoundedOperationId("inbox.turn-reply"),
+          pageId: createUuidV7(),
+          documentId: createUuidV7(),
+          issuedAt: Date.now(),
+          storeEpoch: summary.data?.storeEpoch ?? "",
+          scope,
+          replyToPageId: item.pageId,
+          turnEpisode: data.turn.episode,
+          body,
+        });
+      return (
+        <InboxTurnRow
+          item={item}
+          onOpenPage={() => onOpenPage(item.pageId)}
+          onOpenChat={() =>
+            data.active_chat ? onOpenSession(data.active_chat.session_id) : onOpenPage(item.pageId)
+          }
+          onReply={() => replyTo(item)}
+          onAnswer={reply}
+          onAccept={() => acceptPageWork(item.pageId, data.turn.episode)}
+          onStart={() =>
+            startWork({ pageId: item.pageId, again: false, turnEpisode: data.turn.episode })
+          }
+          onOpenPR={() => {
+            if (data.pull_request_url) void openExternalUrl(data.pull_request_url);
+          }}
+        />
+      );
+    }
     const proposal = item.proposal;
     const anchor = proposal ? anchors.get(proposal.proposalId) : undefined;
     const menu = (rowOffers: InboxRowOffers, handleManually: () => void) => (
@@ -646,7 +692,7 @@ export function InboxRoute({
             <div
               ref={contentRef}
               // Like a conversation, a short Inbox rests against the composer.
-              className="mx-auto mt-auto flex w-full max-w-(--thread-content-max-width) flex-col px-toolbar pt-6 pb-3"
+              className="mx-auto mt-auto flex w-full max-w-(--thread-content-max-width) shrink-0 flex-col px-toolbar pt-6 pb-3"
             >
               {loadEarlier}
               <AnimatePresence initial={false}>

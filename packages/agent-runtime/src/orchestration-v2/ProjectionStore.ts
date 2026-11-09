@@ -1,3 +1,4 @@
+import * as ExecutionPauseState from "./ExecutionPauseState.ts";
 import { isRuntimeDeliveryRun, queuedRunsInDeliveryOrder } from "./QueuedRunOrder.ts";
 import { isNativeCompactCommand } from "./nativeMaintenanceCommand.ts";
 import {
@@ -1005,6 +1006,9 @@ export interface ProjectionTurnStartFacts {
 }
 
 export interface ProjectionStoreV2Shape {
+  readonly isExecutionPaused: (
+    threadId: ThreadId,
+  ) => Effect.Effect<boolean, ProjectionStoreReadError>;
   readonly searchThreadStream: (
     input: OrchestrationV2SearchThreadInput,
   ) => Stream.Stream<OrchestrationV2SearchThreadResult, ProjectionStoreV2Error>;
@@ -10008,6 +10012,11 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getRunUserMessage,
       getOpeningRequest,
       getProjectProviderSessionBindings,
+      isExecutionPaused: (threadId) =>
+        ExecutionPauseState.isHeld(threadId).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+          Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })),
+        ),
       getExecutionActors,
       getExecutionHandoffs,
       getExecutionDetachBarrier,
@@ -10093,6 +10102,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getRunUserMessage: readOnReader(service.getRunUserMessage),
       getOpeningRequest: readOnReader(service.getOpeningRequest),
       getProjectProviderSessionBindings: readOnReader(service.getProjectProviderSessionBindings),
+      isExecutionPaused: readOnReader(service.isExecutionPaused),
       getExecutionActors: readOnReader(service.getExecutionActors),
       getExecutionHandoffs: readOnReader(service.getExecutionHandoffs),
       getExecutionDetachBarrier: readOnReader(service.getExecutionDetachBarrier),
@@ -11285,6 +11295,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                 state.projections.get(rootId)?.thread.executionHandoff?.operationId,
           };
         }),
+      isExecutionPaused: () => Effect.succeed(false),
       getExecutionActors: (rootThreadId, cursor) =>
         Effect.gen(function* () {
           const state = yield* Ref.get(replayState);

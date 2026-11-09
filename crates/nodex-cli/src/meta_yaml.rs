@@ -598,6 +598,7 @@ fn validate_property(
         "date" => ProjectedPropertyTypeV1::Date,
         "datetime" => ProjectedPropertyTypeV1::Datetime,
         "relation" => ProjectedPropertyTypeV1::Relation,
+        "assignment" => ProjectedPropertyTypeV1::Assignment,
         _ => return Err(invalid("unsupported Property type").at_path(type_path)),
     };
     let value_path = format!("{path}.value");
@@ -624,6 +625,12 @@ fn validate_property_value(
         return Ok(ProjectedPropertyValueV1::Null);
     }
     match (value_type, value.value) {
+        (ProjectedPropertyTypeV1::Assignment, Value::Mapping(map)) => {
+            let value = metadata_json(Value::Mapping(map));
+            serde_json::from_value(value)
+                .map(ProjectedPropertyValueV1::Assignment)
+                .map_err(|_| invalid("Assignment is invalid").at_path(path))
+        }
         (ProjectedPropertyTypeV1::Text, Value::String(value)) => {
             bounded_string(value, span, path, MAX_META_YAML_SCALAR_BYTES)
                 .map(ProjectedPropertyValueV1::Text)
@@ -736,6 +743,25 @@ fn validate_property_value(
             invalid("Property value does not match its declared type").at_path(path),
             span,
         )),
+    }
+}
+
+fn metadata_json(value: Value) -> serde_json::Value {
+    match value {
+        Value::Null => serde_json::Value::Null,
+        Value::Bool(value) => value.into(),
+        Value::Number(value) => value.into(),
+        Value::String(value) => value.into(),
+        Value::Sequence(values) => values
+            .into_iter()
+            .map(|value| metadata_json(value.value))
+            .collect(),
+        Value::Mapping(values) => serde_json::Value::Object(
+            values
+                .into_iter()
+                .map(|(key, value)| (key, metadata_json(value.value)))
+                .collect(),
+        ),
     }
 }
 
@@ -1030,7 +1056,7 @@ id: page_1
 title: "Blocked task"
 properties:
   "p_blocked0":
-    name: "Blocked by"
+    name: "Waits for"
     type: relation
     value:
       targets:
@@ -1060,7 +1086,7 @@ schedule: null
 title: title
 properties:
   p_blocked0:
-    name: Blocked by
+    name: Waits for
     type: relation
     value:
       targets: []

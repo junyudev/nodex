@@ -157,7 +157,6 @@ interface ServerTomlConfig {
   open_link_in_target?: LinkOpeningSettings["openLinkInTarget"];
   open_local_url_in_target?: LinkOpeningSettings["openLocalUrlInTarget"];
   external_browser_link_shortcut?: LinkOpeningSettings["externalBrowserLinkShortcut"];
-  mobile_access_enabled?: boolean;
   inbox_suggestions?: InboxSuggestionMode;
   inbox_dispatch_mode?: InboxSettings["dispatchMode"];
   /** Read only to migrate the former boolean preference. */
@@ -167,6 +166,7 @@ interface ServerTomlConfig {
   inbox_suggestion_effort?: string;
   inbox_suggestion_speed?: string;
   inbox_suggestion_concurrency?: number;
+  agents_running_at_once?: number;
   inbox_instructions?: string;
   inbox_chat_agent?: string;
   inbox_chat_model?: string;
@@ -1408,6 +1408,9 @@ export function getAgentRuntimeSettings(
   const config = loadProfileServerTomlConfig(source);
   // Each choice stands alone, so a damaged title model never resets the permission mode.
   return {
+    agentsRunningAtOnce:
+      AgentRuntimeSettingsSchema.shape.agentsRunningAtOnce.safeParse(config.agents_running_at_once)
+        .data ?? DEFAULT_AGENT_RUNTIME_SETTINGS.agentsRunningAtOnce,
     defaultRuntimeMode:
       AgentRuntimeModeSchema.safeParse(config.default_runtime_mode).data ??
       DEFAULT_AGENT_RUNTIME_SETTINGS.defaultRuntimeMode,
@@ -1426,6 +1429,7 @@ export function updateAgentRuntimeSettings(
   const server: ServerTomlConfig = {
     ...loadProfileServerTomlConfig(source),
     default_runtime_mode: settings.defaultRuntimeMode,
+    agents_running_at_once: settings.agentsRunningAtOnce,
   };
   if (settings.titleModel) server.title_model = settings.titleModel;
   else delete server.title_model;
@@ -1524,20 +1528,6 @@ export function updateTerminalShellSettings(
     terminal_shell: settings.windowsShell,
   });
   return getTerminalShellSettings(source);
-}
-
-export function getMobileAccessEnabled(source: ApplicationSettingsDocumentSource): boolean {
-  return loadProfileServerTomlConfig(source).mobile_access_enabled === true;
-}
-
-export function updateMobileAccessEnabled(
-  enabled: boolean,
-  source: ApplicationSettingsDocumentSource,
-): void {
-  writeProfileServerTomlConfig(source, {
-    ...loadProfileServerTomlConfig(source),
-    mobile_access_enabled: enabled,
-  });
 }
 
 export function getModelPolicy(source: ApplicationSettingsDocumentSource): ModelPolicy {

@@ -82,6 +82,7 @@ export function runCodexGitCommand(
   cwd: string,
   options?: {
     readonly allowedExitCodes?: readonly number[];
+    readonly stdin?: string;
     readonly env?: NodeJS.ProcessEnv;
     readonly maxOutputBytes?: number;
     readonly onOutput?: (output: {
@@ -228,5 +229,7 @@ export function runCodexGitCommand(
     };
     child.on("error", handleError);
     child.once("close", handleClose);
+    child.stdin?.on("error", () => undefined);
+    child.stdin?.end(options?.stdin);
   });
 }

@@ -222,6 +222,8 @@ pub(crate) fn execute_with_presentation(
     }
 
     match cli.command {
+        Command::Work(args) => crate::work::execute(&client, args, cli.project.as_deref(), &cwd),
+        Command::Members(args) => crate::members::execute(&client, args),
         Command::Sql(args) => crate::sql::execute(
             &client,
             cli.project.as_deref(),
@@ -259,6 +261,15 @@ pub(crate) fn execute_with_presentation(
         Command::Page(PageArgs {
             command: PageCommand::Prepare(arguments),
         }) => prepare_page(&client, cli.project.as_deref(), &cwd, arguments),
+        Command::Page(PageArgs {
+            command: PageCommand::Show(arguments),
+        }) => show_page(
+            &client,
+            cli.project.as_deref(),
+            &cwd,
+            &arguments.page,
+            presentation.json_result,
+        ),
         Command::Read(arguments) => read_page(
             &client,
             cli.project.as_deref(),
@@ -306,6 +317,9 @@ pub(crate) fn execute_with_presentation(
             arguments,
             presentation.json_result,
         ),
+        Command::Page(PageArgs {
+            command: PageCommand::Accept(arguments),
+        }) => crate::page_lifecycle::accept_page(&client, cli.project.as_deref(), &cwd, arguments),
         Command::Page(PageArgs {
             command: PageCommand::Create(arguments),
         }) => crate::page_lifecycle::create_page(&client, cli.project.as_deref(), &cwd, arguments),
@@ -752,6 +766,46 @@ fn read_page(
         ));
     }
     Ok(CommandOutput::Bytes(value.content.into_bytes()))
+}
+
+#[derive(Serialize, utoipa::ToSchema)]
+pub(crate) struct PageShowResult {
+    pub page: nodex_core_contracts::library::LibraryPageProjectionFile,
+    pub turn: nodex_core_contracts::workspace::PageTurn,
+}
+fn show_page(
+    client: &CoreClient,
+    explicit_project: Option<&str>,
+    cwd: &Path,
+    selector: &str,
+    json_output: bool,
+) -> Result<CommandOutput, CliError> {
+    let project = selected_project(client, explicit_project, cwd)?;
+    let page_id = resolve_page_selector(client, &project.id, selector)?;
+    let snapshot = unwrap_library(client.library_read(
+        Some(&project.id),
+        LibraryRead::PageProjectionFile {
+            page_id: page_id.clone(),
+            file_kind: LibraryPageProjectionFileKind::MetaYaml,
+            prepare: None,
+        },
+    ))?;
+    let LibraryReadValue::PageProjectionFile { value: page } = snapshot.value else {
+        return Err(internal("Core returned the wrong Page metadata"));
+    };
+    let snapshot = unwrap_workspace(client.workspace_read(
+        Some(&project.id),
+    ))?;
+    let ProjectWorkspaceReadValue::PageTurn { turn, .. } = snapshot.value else {
+        return Err(internal("Core returned the wrong Page Turn"));
+    };
+    if json_output {
+        return Ok(CommandOutput::Json(
+        ));
+    }
+    Ok(CommandOutput::Text(format!(
+        page.content,
+    )))
 }
 
 fn prepare_page(

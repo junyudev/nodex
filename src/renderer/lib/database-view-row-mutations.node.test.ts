@@ -153,6 +153,7 @@ const model = (): DatabaseViewRenderModel => {
               },
             }
           : {},
+      work: { unsatisfiedCount: 0, blockers: [], owner: null, assignee: null, autoStart: false },
       taskParent: { parentPageId: null, siblingRank: null, valueRevision: 1 },
       position: index === 2 ? null : { rankKey: String(index), revision: index + 1 },
       effectiveGroupKey: null,

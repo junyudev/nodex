@@ -66,7 +66,7 @@ describe("buildPagePropertyContextMenuModel", () => {
       [
         binding("status", "Status", "select"),
         binding("priority", "Priority", "select"),
-        binding("assignee", "Assignee", "text"),
+        binding("assignee", "Assignee", "assignment"),
         binding("due_date", "Due date", "date"),
         binding("tags", "Tags", "multi_select"),
         binding("estimate", "Estimate", "select"),
@@ -78,12 +78,8 @@ describe("buildPagePropertyContextMenuModel", () => {
     expect(model.visible.map((entry) => entry.property.propertyId)).toEqual([
       "status",
       "priority",
-      "assignee",
-    ]);
-    expect(model.overflow.map((entry) => entry.property.propertyId)).toEqual([
       "due_date",
-      "tags",
-      "estimate",
     ]);
+    expect(model.overflow.map((entry) => entry.property.propertyId)).toEqual(["tags", "estimate"]);
   });
 });

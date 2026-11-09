@@ -73,6 +73,7 @@ it.effect(
         Effect.die("Authority must not execute native commands or read conversation bodies.");
       const layers = Layer.mergeAll(
         Layer.mock(Projections.ProjectionStoreV2)({
+          isExecutionPaused: () => Effect.succeed(false),
           getThreadShell: () => Ref.get(shell),
           getThreadProjection: unused,
           getHostToolAuthorityContext: (target, selectedRun) =>

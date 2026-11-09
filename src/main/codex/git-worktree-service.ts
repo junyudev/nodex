@@ -1,9 +1,10 @@
 import { hasWindowsProcessTreeReleaseFailure } from "../process-tree";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import {
   copyFile,
   lstat,
+  link,
   mkdir,
   mkdtemp,
   readFile,
@@ -1030,6 +1031,12 @@ async function cleanupEmptyWorktreeTokenDir(worktreePath: string): Promise<void>
 export type ManagedWorktreeStartingState = CodexPendingWorktreeStartingState;
 
 export interface CreateManagedWorktreeInput {
+  pageWorkspace?: {
+    readonly workspaceId: string;
+    readonly operationId: string;
+    readonly branchName: string;
+    readonly baseCommitOid: string;
+  };
   repositoryPath: string;
   nodexHome: string;
   managedRoot?: string;
@@ -1177,6 +1184,7 @@ export async function createManagedWorktree(
 ): Promise<CreateManagedWorktreeResult> {
   const signal = input.signal;
   throwIfRequestAborted(signal);
+  if (input.pageWorkspace) return createPageManagedWorktree(input, input.pageWorkspace);
   const sourceWorkspace = await resolveSourceWorkspace(input.repositoryPath, signal);
   const sourceGitRoot = sourceWorkspace.sourceGitRoot;
   const nodexHome = path.resolve(input.nodexHome.trim());
@@ -1348,4 +1356,137 @@ export async function createManagedWorktree(
   }
 
   throw new Error("Could not allocate a unique worktree path");
+}
+
+export function pageWorkspaceWorktreePath(
+  managedRoot: string,
+  repositoryRoot: string,
+  workspaceId: string,
+): string {
+  const identity = createHash("sha256").update(workspaceId).digest("hex");
+  return path.join(
+    managedRoot,
+    identity.slice(0, 4),
+    `${path.basename(repositoryRoot)}-${identity.slice(4, 16)}`,
+  );
+}
+
+/** A retained operation record proves ownership; a same-named branch alone never does. */
+async function createPageManagedWorktree(
+  input: CreateManagedWorktreeInput,
+  workspace: NonNullable<CreateManagedWorktreeInput["pageWorkspace"]>,
+): Promise<CreateManagedWorktreeResult> {
+  const signal = input.signal;
+  const source = await resolveSourceWorkspace(input.repositoryPath, signal);
+  const root = path.resolve(input.managedRoot ?? path.join(input.nodexHome, "worktrees"));
+  const identity = createHash("sha256").update(workspace.workspaceId).digest("hex");
+  const worktreeGitRoot = pageWorkspaceWorktreePath(
+    root,
+    source.sourceGitRoot,
+    workspace.workspaceId,
+  );
+  const worktreeWorkspaceRoot = resolveWorktreeWorkspaceRoot(
+    worktreeGitRoot,
+    source.workspacePrefix,
+  );
+  await mkdir(root, { recursive: true });
+  const journalPath = path.join(root, `.page-workspace-${identity}.json`);
+  const identityRecord = {
+    workspaceId: workspace.workspaceId,
+    operationId: workspace.operationId,
+    baseCommitOid: workspace.baseCommitOid,
+    repositoryRoot: source.sourceGitRoot,
+    worktreeGitRoot,
+  };
+  const temporaryJournal = `${journalPath}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryJournal, JSON.stringify(identityRecord), { flag: "wx" });
+    await link(temporaryJournal, journalPath).catch(async (error: unknown) => {
+      if (!hasNodeErrorCode(error, "EEXIST")) throw error;
+      const retained: unknown = JSON.parse(await readFile(journalPath, "utf8"));
+      if (JSON.stringify(retained) !== JSON.stringify(identityRecord))
+        throw new Error("Page Workspace allocation belongs to another operation");
+    });
+  } finally {
+    await rm(temporaryJournal, { force: true });
+  }
+  await ensureSafeCopyDestinationParent(root, worktreeGitRoot, signal);
+  const exists = await lstat(worktreeGitRoot).catch(() => null);
+  if (exists?.isSymbolicLink()) throw new Error("Page Workspace path must not be a symlink");
+  input.onPathAllocated?.({ worktreeGitRoot, worktreeWorkspaceRoot });
+  if (!exists) {
+    // The retained allocation chooses an exact path and OID. It never copies source changes.
+    await createManagedWorktree({
+      ...input,
+      pageWorkspace: undefined,
+      allocatedWorktreePath: worktreeGitRoot,
+      mode: "detachedHead",
+      startingState: { type: "branch", branchName: workspace.baseCommitOid },
+      propagateLocalWorkspaceFiles: false,
+      setUpSyncedBranch: false,
+    });
+  }
+  const gitRoot = (
+    await runGitCommand(["rev-parse", "--show-toplevel"], worktreeGitRoot, { signal })
+  ).stdout.trim();
+  if (path.resolve(gitRoot) !== worktreeGitRoot)
+    throw new Error("Page Workspace checkout identity changed");
+  const attached = (
+    await runGitCommand(["branch", "--show-current"], worktreeGitRoot, { signal })
+  ).stdout.trim();
+  const ownerRef = `refs/nodex/page-workspaces/${identity}`;
+  const owned = await runGitCommand(
+    ["for-each-ref", "--format=%(refname)", `${ownerRef}/`],
+    source.sourceGitRoot,
+    { signal },
+  );
+  const ownedBranch = owned.stdout
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((ref) => ref.slice(ownerRef.length + 1));
+  if (ownedBranch.length > 1) throw new Error("Page Workspace has ambiguous branch ownership");
+  if (attached) {
+    if (ownedBranch[0] !== attached)
+      throw new Error("Page Workspace branch has no allocation proof");
+    return {
+      worktreeGitRoot,
+      worktreeWorkspaceRoot,
+      branchName: attached,
+      baseRef: workspace.baseCommitOid,
+    };
+  }
+  if (ownedBranch[0]) {
+    await runGitCommand(["checkout", ownedBranch[0]], worktreeGitRoot, { signal });
+    return {
+      worktreeGitRoot,
+      worktreeWorkspaceRoot,
+      branchName: ownedBranch[0],
+      baseRef: workspace.baseCommitOid,
+    };
+  }
+  // update-ref's atomic transaction creates the branch and ownership proof together.
+  for (let attempt = 1; attempt <= MAX_AUTO_BRANCH_NAME_ATTEMPTS; attempt += 1) {
+    const branch = attempt === 1 ? workspace.branchName : `${workspace.branchName}-${attempt}`;
+    await runGitCommand(["check-ref-format", "--branch", branch], source.sourceGitRoot, { signal });
+    if (await branchExists(source.sourceGitRoot, branch, signal)) continue;
+    try {
+      await runGitCommand(["update-ref", "--stdin"], source.sourceGitRoot, {
+        signal,
+        stdin: `start\ncreate refs/heads/${branch} ${workspace.baseCommitOid}\ncreate ${ownerRef}/${branch} ${workspace.baseCommitOid}\nprepare\ncommit\n`,
+      });
+    } catch (error) {
+      throwIfCodexGitRecoveryUnsafe(error, signal);
+      if (await branchExists(source.sourceGitRoot, branch, signal)) continue;
+      throw error;
+    }
+    await runGitCommand(["checkout", branch], worktreeGitRoot, { signal });
+    return {
+      worktreeGitRoot,
+      worktreeWorkspaceRoot,
+      branchName: branch,
+      baseRef: workspace.baseCommitOid,
+    };
+  }
+  throw new Error("Could not allocate a Page Workspace branch");
 }

@@ -122,3 +122,23 @@ export const outcomeLabel = (message: InboxMessage): string | null =>
 /** Who a message came from, when it was not the person themself. */
 export const sourceLabel = (message: InboxMessage): string | null =>
   message.source.kind === "user" ? null : message.source.label;
+/**
+ * An Inbox turn is always the reader's own, so it reads as the desktop words it for its reader:
+ * "Needs your answer", "Ready for your review". Keep these words the desktop's.
+ */
+const TURN_SIGNATURES: Readonly<Record<TurnReason, EntrySignature>> = {
+  question: { label: "Needs your answer", icon: "chat", tone: "warning" },
+  approval: { label: "Needs your approval", icon: "warning", tone: "warning" },
+  review: { label: "Ready for your review", icon: "check", tone: "accent" },
+  ready_to_start: { label: "Ready to start", icon: "clock", tone: "ink-3" },
+  blocked: { label: "Blocked · needs you", icon: "warning", tone: "danger" },
+  failed: { label: "Failed · needs you", icon: "warning", tone: "danger" },
+  stalled: { label: "Stalled · needs you", icon: "warning", tone: "danger" },
+  waiting_on_prerequisite: { label: "Waiting for another Page", icon: "clock", tone: "ink-3" },
+  paused: { label: "Paused", icon: "stop", tone: "ink-3" },
+  working: { label: "The Agent is working", icon: "agent", tone: "ink-3" },
+  queued: { label: "Queued", icon: "clock", tone: "ink-3" },
+  starting: { label: "The Agent is starting", icon: "agent", tone: "ink-3" },
+ * Whose move it is and why, in the desktop's turn words. Turn membership and reason come from
+ * Core; presentation never invents a completion state.
+  return TURN_SIGNATURES[entry.turn.reason ?? "ready_to_start"];

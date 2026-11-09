@@ -379,7 +379,6 @@ fn create_page(
         due_date.as_deref(),
         scheduled_start.as_deref(),
         scheduled_end.as_deref(),
-        assignee.as_deref(),
         selected_tags,
     )?;
     let view_group_key = if let Some(property_id) = source
@@ -573,6 +572,21 @@ fn create_page(
                 reminders,
             );
             insert_intrinsic_properties(connection, page_id, library_id, &intrinsic_values, &now)?;
+            super::members::initialize_owner(connection, context, page_id, None)?;
+            if let Some(assignee) = assignee {
+                let work_json:String=connection.query_row("SELECT value_json FROM block_properties WHERE block_id=?1 AND property_key='work'",[page_id],|r|r.get(0))?;
+                let mut work = super::parse_page_work(
+                    &serde_json::from_str::<Value>(&work_json)
+                        .map_err(|_| corrupt("Page work JSON is invalid"))?,
+                )?;
+                work.assignee = Some(assignee.clone());
+                super::parse_page_work(
+                    &serde_json::to_value(&work)
+                        .map_err(|_| corrupt("Page work cannot be encoded"))?,
+                )?;
+                super::members::validate_work(connection, library_id, &work)?;
+                connection.execute("UPDATE block_properties SET value_json=?2 WHERE block_id=?1 AND property_key='work'",params![page_id,serde_json::to_value(&work).map_err(|_|corrupt("Page work cannot be encoded"))?.to_string()])?;
+            }
             let placement = match view_placement {
                 LibraryPageLifecycleViewPlacement::Start => database::ViewOrderPlacement::Start,
                 LibraryPageLifecycleViewPlacement::End => database::ViewOrderPlacement::End,
@@ -853,7 +867,6 @@ fn validate_create_values(
     due_date: Option<&str>,
     scheduled_start: Option<&str>,
     scheduled_end: Option<&str>,
-    assignee: Option<&str>,
     selected_tags: Value,
 ) -> Result<BTreeMap<String, (String, Value)>, StoreError> {
     let inputs = BTreeMap::from([
@@ -898,13 +911,6 @@ fn validate_create_values(
             (
                 "datetime",
                 scheduled_end.map_or(Value::Null, |value| Value::String(value.to_owned())),
-            ),
-        ),
-        (
-            "assignee",
-            (
-                "text",
-                assignee.map_or(Value::Null, |value| Value::String(value.to_owned())),
             ),
         ),
         ("task_parent", ("relation", Value::Null)),
@@ -3348,6 +3354,7 @@ fn workflow_status(value: &str) -> Option<LibraryPageWorkflowStatus> {
         "doing" => Some(LibraryPageWorkflowStatus::Doing),
         "review" => Some(LibraryPageWorkflowStatus::Review),
         "done" => Some(LibraryPageWorkflowStatus::Done),
+        "canceled" => Some(LibraryPageWorkflowStatus::Canceled),
         _ => None,
     }
 }
@@ -3359,6 +3366,7 @@ fn workflow_status_key(value: LibraryPageWorkflowStatus) -> &'static str {
         LibraryPageWorkflowStatus::Doing => "doing",
         LibraryPageWorkflowStatus::Review => "review",
         LibraryPageWorkflowStatus::Done => "done",
+        LibraryPageWorkflowStatus::Canceled => "canceled",
     }
 }
 
@@ -3525,7 +3533,6 @@ mod tests {
             Some("2026-08-04"),
             None,
             None,
-            Some("alex"),
             Value::Array(Vec::new()),
         )
         .expect("sparse schema should accept absent optional semantics");

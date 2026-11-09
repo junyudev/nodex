@@ -71,6 +71,8 @@ export const make = Effect.gen(function* () {
     picked: CoreInboxSuggestionRequest,
   ) {
     let request = picked;
+    if (yield* inbox.executionHeld({ pageIds: request.context.entries.map((e) => e.page_id) }))
+      return;
     if (!request.delivery) {
       const session = yield* coordinator.ensure().pipe(Effect.result);
       if (session._tag === "Failure")
@@ -88,6 +90,10 @@ export const make = Effect.gen(function* () {
     while (true) {
       const pending = yield* inbox.suggestionRequest(request.request_id);
       if (!pending || pending.generation !== request.generation) return;
+      if (yield* inbox.executionHeld({ pageIds: pending.context.entries.map((e) => e.page_id) })) {
+        yield* Effect.sleep("1 second");
+        continue;
+      }
       if (!accepted) {
         const receipt = yield* runtime
           .messageAdmission({
@@ -126,6 +132,10 @@ export const make = Effect.gen(function* () {
           const context = yield* prepareContext(current).pipe(
             Effect.tapError((error) => fail(request, agentRuntimeFailureReason(error))),
           );
+          if (
+            yield* inbox.executionHeld({ pageIds: request.context.entries.map((e) => e.page_id) })
+          )
+            return false;
           if (followup) {
             const latest = yield* inbox.suggestionRequest(request.request_id);
             if (!latest || latest.generation !== request.generation) return "settled" as const;
@@ -215,6 +225,7 @@ export const make = Effect.gen(function* () {
   });
   // This runs under the admission permit, as do all changes to the request ID sets.
   const nextRequest = Effect.gen(function* () {
+    if (yield* inbox.executionHeld()) return;
     const preparation = yield* readPolicy();
     if (preparation.policy.kind === "off")
       yield* inbox.prepareSuggestions(INBOX_SUGGESTION_BATCH, false);

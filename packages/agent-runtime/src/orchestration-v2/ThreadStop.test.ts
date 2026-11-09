@@ -1,3 +1,4 @@
+import * as SessionPause from "../nodex/SessionPause.ts";
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
@@ -947,4 +948,44 @@ it.effect("internal task settlement rejects a child-owned provider thread", () =
       owner.pendingBackgroundTasks,
     );
   }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect(
+  "pause keeps delegated results and queued descendants without disposing their cohort",
+  () =>
+    Effect.gen(function* () {
+      const pause = yield* SessionPause.make;
+      const writer = yield* Orchestrator.OrchestratorV2;
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const root = ThreadId.make("thread:pause-parent");
+      yield* createWatchingThread(root, 31);
+      yield* send(root, "parent", "start_immediately");
+      const child = yield* delegate(root, "retained child result");
+      yield* send(child, "queued child follow-up", "queue_after_active");
+      const before = yield* writer.getThreadProjection(root);
+      const task = before.subagents[0]!;
+      yield* store.apply({
+        id: EventId.make("event:pause-retained-result"),
+        type: "subagent.updated",
+        threadId: root,
+        occurredAt: yield* DateTime.now,
+        payload: {
+          ...task,
+          status: "completed",
+          result: "Retained evidence",
+          completedAt: yield* DateTime.now,
+          updatedAt: yield* DateTime.now,
+        },
+      });
+      yield* pause.pause({ threadId: root, revision: "hold:delegated" });
+      const after = yield* writer.getThreadProjection(root);
+      assert.equal(after.subagents[0]?.status, "completed");
+      assert.notEqual(after.subagents[0]?.completionDelivery?.state, "disposed");
+      assert.deepEqual(after.subagents[0]?.result, "Retained evidence");
+      assert.isTrue(yield* store.isExecutionPaused(child));
+      const childState = yield* writer.getThreadProjection(child);
+      assert.isTrue(childState.messages.some((m) => m.text === "queued child follow-up"));
+      assert.isFalse(childState.runs.some((r) => r.queueHeld === true));
+      assert.deepEqual((yield* threadState(root)).watched, [31]);
+    }).pipe(Effect.provide(layerTest)),
 );

@@ -17,7 +17,7 @@ export function buildPageStageFixturePage(): DatabasePage {
     scheduledStart: new Date("2026-03-05T14:00:00.000Z"),
     scheduledEnd: new Date("2026-03-05T15:00:00.000Z"),
     reminders: [{ offsetMinutes: 30 }],
-    assignee: "asc",
+    assignee: { kind: "member", member_id: "asc" },
     runInTarget: "localProject",
     created: new Date("2026-03-04T09:30:00.000Z"),
     order: 0,

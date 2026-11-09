@@ -366,3 +366,4 @@ pub(crate) fn record_automation_changes(
     )?;
     Ok(pages)
 }
+        scope.evidence(),

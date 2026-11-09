@@ -20,6 +20,8 @@ installRendererThemeFixture();
 
 const waiting: InboxItem = {
   pageId: "page:1",
+  rowKind: "intake",
+  turn: null,
   outcome: null,
   basis: { pageId: "page:1", contentHash: "content:1" },
   pageKey: "IN-1",
@@ -368,6 +370,7 @@ test("a Page that has moved on opens its first line with its status and chats, a
     errorCount: 0,
     unreadCount: 0,
     soleSessionId: "session:1",
+    work: { activeChat: null, latestReport: null, managedSessionCount: 0 },
     runtimeSessionIds: [],
   };
   const body =
@@ -416,6 +419,7 @@ test("marks never push a message that fits on one line onto a second", () => {
           errorCount: 0,
           unreadCount: 0,
           soleSessionId: null,
+          work: { activeChat: null, latestReport: null, managedSessionCount: 0 },
           runtimeSessionIds: [],
         }}
       />
@@ -440,6 +444,7 @@ test("a message still waiting in Triage with no chats shows no marks", () => {
           errorCount: 0,
           unreadCount: 0,
           soleSessionId: null,
+          work: { activeChat: null, latestReport: null, managedSessionCount: 0 },
           runtimeSessionIds: [],
         }}
       />

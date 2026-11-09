@@ -36,11 +36,13 @@ import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
@@ -633,6 +635,7 @@ const make = Effect.gen(function* () {
   const changesPubSub = yield* PubSub.unbounded<ServerSettings>();
   const startedRef = yield* Ref.make(false);
   const startedDeferred = yield* Deferred.make<void, ServerSettingsError>();
+  const observedConfig = yield* Ref.make(Option.none<string>());
   const watcherScope = yield* Scope.make("sequential");
   yield* Effect.addFinalizer(() => Scope.close(watcherScope, Exit.void));
 
@@ -651,6 +654,7 @@ const make = Effect.gen(function* () {
   );
 
   const readRawConfig = fs.readFileString(settingsPath).pipe(
+    Effect.tap((raw) => Ref.set(observedConfig, Option.some(raw))),
     Effect.mapError(
       (cause) =>
         new ServerSettingsError({
@@ -752,6 +756,8 @@ const make = Effect.gen(function* () {
       } else {
         settings = decoded.value;
       }
+    } else {
+      yield* Ref.set(observedConfig, Option.none());
     }
 
     const providerHistory = yield* sql<{
@@ -1113,12 +1119,12 @@ const make = Effect.gen(function* () {
     }),
   );
 
-  const watchFileChanges = (filePath: string) => {
+  const watchFileChanges = (filePath: string, onReady: () => void) => {
     const directory = pathService.dirname(filePath);
     const fileName = pathService.basename(filePath);
     const resolvedFilePath = pathService.resolve(filePath);
     return fs
-      .watch(directory)
+      .watch(directory, { onReady })
       .pipe(
         Stream.filter(
           (event) =>
@@ -1143,12 +1149,28 @@ const make = Effect.gen(function* () {
       ),
     );
 
-    const revalidateAndEmitSafely = revalidateAndEmit.pipe(Effect.ignoreCause({ log: true }));
+    const events = yield* Queue.unbounded<void>();
+    const attachWatcher = Effect.fnUntraced(function* (filePath: string) {
+      const attached = yield* Deferred.make<void, ServerSettingsError>();
+      const fiber = yield* watchFileChanges(filePath, () => {
+        Deferred.doneUnsafe(attached, Effect.void);
+      }).pipe(
+        Stream.runForEach(() => Queue.offer(events, undefined)),
+        Effect.mapError(
+          (cause) => new ServerSettingsError({ settingsPath, operation: "watch", cause }),
+        ),
+        Effect.onExit((exit) => Deferred.done(attached, exit)),
+        Effect.ignoreCause({ log: true }),
+        Effect.forkIn(watcherScope),
+      );
+      yield* Deferred.await(attached);
+      return fiber;
+    });
 
     // A symlinked settings file is rewritten in its destination's directory,
     // which a watch on the link's directory never sees. The link is resolved
     // again whenever it changes, so repointing it moves the watch along.
-    const watchLinkTarget = Effect.gen(function* () {
+    const resolveLinkTarget = Effect.gen(function* () {
       const linkTargetPath = yield* resolveSymlinkTarget(settingsPath).pipe(
         Effect.provideService(FileSystem.FileSystem, fs),
         Effect.provideService(Path.Path, pathService),
@@ -1162,32 +1184,57 @@ const make = Effect.gen(function* () {
       return Option.some(linkTargetPath);
     }).pipe(Effect.orElseSucceed(() => Option.none<string>()));
 
-    const initialLinkTarget = yield* watchLinkTarget;
-    const linkTargetEvents = Stream.make(initialLinkTarget).pipe(
-      Stream.concat(watchFileChanges(settingsPath).pipe(Stream.mapEffect(() => watchLinkTarget))),
-      Stream.changes,
-      Stream.switchMap(
-        Option.match({
-          onNone: () => Stream.empty,
-          onSome: (linkTargetPath) =>
-            watchFileChanges(linkTargetPath).pipe(Stream.ignore({ log: true })),
-        }),
-      ),
-    );
+    let targetWatcher: { readonly path: string; readonly fiber: Fiber.Fiber<void> } | undefined;
+    const refreshTargetWatcher = Effect.gen(function* () {
+      const targetPath = Option.getOrUndefined(yield* resolveLinkTarget);
+      if (targetPath === targetWatcher?.path) return;
+
+      const previous = targetWatcher;
+      targetWatcher =
+        targetPath === undefined
+          ? undefined
+          : { path: targetPath, fiber: yield* attachWatcher(targetPath) };
+      if (previous !== undefined) yield* Fiber.interrupt(previous.fiber);
+    });
+
+    // Readiness means both directories can buffer events, not just that a
+    // lazy watch stream was forked. Startup reads the snapshot after attachment.
+    yield* attachWatcher(settingsPath);
+    yield* refreshTargetWatcher;
 
     // Debounce watch events so the file is fully written before we read it.
     // Editors emit multiple events per save (truncate, write, rename) and
     // `fs.watch` can fire before the content has been flushed to disk.
-    const debouncedSettingsEvents = Stream.merge(
-      watchFileChanges(settingsPath),
-      linkTargetEvents,
-    ).pipe(Stream.debounce(Duration.millis(100)));
-
-    yield* Stream.runForEach(debouncedSettingsEvents, () => revalidateAndEmitSafely).pipe(
+    yield* Stream.fromQueue(events).pipe(
+      Stream.debounce(Duration.millis(100)),
+      Stream.runForEach(() =>
+        Effect.gen(function* () {
+          // Reconcile after attachment so edits made while a new target's
+          // watcher was being acquired cannot fall between snapshot and watch.
+          yield* refreshTargetWatcher;
+          yield* revalidateAndEmit;
+        }).pipe(Effect.ignoreCause({ log: true })),
+      ),
       Effect.ignoreCause({ log: true }),
       Effect.forkIn(watcherScope),
       Effect.asVoid,
     );
+
+    // Native notifications can be dropped (including macOS atomic renames).
+    // Compare this one document every 500 ms so a missed hint never leaves
+    // settings stale; unchanged contents do not reload or publish anything.
+    yield* Effect.gen(function* () {
+      yield* Effect.sleep("500 millis");
+      const raw = yield* fs.readFileString(settingsPath).pipe(
+        Effect.map(Option.some),
+        Effect.catchIf(
+          (error) => error.reason._tag === "NotFound",
+          () => Effect.succeedNone,
+        ),
+      );
+      if (Equal.equals(raw, yield* Ref.get(observedConfig))) return;
+      yield* Queue.offer(events, undefined);
+    }).pipe(Effect.ignoreCause({ log: true }), Effect.forever, Effect.forkIn(watcherScope));
   });
 
   const start = Effect.gen(function* () {

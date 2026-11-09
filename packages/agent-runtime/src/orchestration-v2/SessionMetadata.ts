@@ -45,6 +45,7 @@ export interface SessionExecutionMetadata {
   readonly providerInstanceId: string;
   readonly providerDriver: string | null;
   readonly model: string;
+  readonly effort: string | null;
   readonly parentThreadId: string | null;
   readonly relationshipToParent: "fork" | "subagent" | null;
   readonly rootThreadId: string;
@@ -94,6 +95,7 @@ export const readSessionMetadata = Effect.fn("SessionMetadata.read")(function* (
     readonly provider_instance_id: string;
     readonly default_provider: string;
     readonly model: string;
+    readonly effort: string | null;
     readonly parent_thread_id: string | null;
     readonly relationship: SessionExecutionMetadata["relationshipToParent"];
     readonly root_thread_id: string;
@@ -115,6 +117,9 @@ export const readSessionMetadata = Effect.fn("SessionMetadata.read")(function* (
       run.run_id AS latest_run_id, run.status AS run_status,
       run.completed_at,t.default_provider, COALESCE(t.provider_instance_id,'') AS provider_instance_id,
       COALESCE(json_extract(t.payload_json,'$.modelSelection.model'),'') AS model,
+      (SELECT json_extract(option.value,'$.value') FROM json_each(t.payload_json,'$.modelSelection.options') option
+        WHERE json_extract(option.value,'$.id') IN ('reasoningEffort','effort','variant')
+          AND json_type(option.value,'$.value')='text' LIMIT 1) AS effort,
       json_extract(t.payload_json,'$.lineage.parentThreadId') AS parent_thread_id,
       json_extract(t.payload_json,'$.lineage.relationshipToParent') AS relationship,
       json_extract(t.payload_json,'$.lineage.rootThreadId') AS root_thread_id,
@@ -183,6 +188,7 @@ export const readSessionMetadata = Effect.fn("SessionMetadata.read")(function* (
           ? yield* options.providerDriver(row.provider_instance_id)
           : row.default_provider,
         model: row.model,
+        effort: row.effort,
         parentThreadId: row.parent_thread_id,
         relationshipToParent: row.relationship,
         rootThreadId: row.root_thread_id,

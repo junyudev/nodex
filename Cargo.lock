@@ -1245,6 +1245,7 @@ dependencies = [
 name = "nodex-page-search-kernel"
 version = "0.5.3"
 dependencies = [
+ "nodex-core-contracts",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",

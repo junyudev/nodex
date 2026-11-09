@@ -78,8 +78,8 @@ presentation route rather than a visible View projection. `Open in` contains `Op
 in new chat` and `Send to chat…`. Open in new chat atomically creates an
 ordinary Project Session and its Linked chat edge before Window Scene
 presentation; a presentation failure preserves that durable Chat and relation.
-Both hand the Page to the chat, so a Page still in Triage or Plan moves to Doing
-in the same transaction; a Page already in Doing, Review, or Done keeps its
+Both hand the Page to the chat, so a Page still in Triage or Todo moves to In Progress
+in the same transaction; a Page already in In Progress, In Review, Done, or Canceled keeps its
 stage.
 `Send to chat…` hands off to a Window-owned chooser after the context menu
 closes. The chooser retains the selected Page and remains usable if its source
@@ -119,7 +119,7 @@ removes the control.
 
 The Page context menu also exposes a bounded, schema-driven Property section.
 The current writable Board grouping Property appears first, followed by exact
-built-in Status, Priority, Assignee, Due date, Tags, and Estimate roles, with
+built-in Status, Priority, Due date, Tags, and Estimate roles, with
 duplicates removed and at most seven direct entries. Remaining active
 Properties appear under `More properties…`; root-menu search surfaces a matching
 custom Property directly instead of requiring that extra navigation step.
@@ -131,7 +131,7 @@ Page Stage. A single-select choice commits and closes the action menu, while a
 multi-select submenu remains open for additional set edits. Tags carries the
 same option-creation capability through Board and List adapters; creating a Tag
 atomically adds the option and selects it for the target Page. Text and number
-Properties such as Assignee use a compact draft-and-save submenu editor; other
+Properties use a compact draft-and-save submenu editor for text and number values; other
 Property types embed their canonical shared value editor in the submenu. The
 submenu is already the editor-opening action, so Date and Relation expose their
 input/calendar or search content immediately and never add a nested `Empty` or
@@ -727,24 +727,29 @@ budget. Large or multi-row changes publish the same exact View read requirement
 without a partial row patch. Mounted consumers then repair their loaded span
 from the canonical, commit-fenced read.
 
-Workflow status has five fixed stages: Triage, Plan, Doing, Review, and Done
+Workflow status has six fixed stages: Triage, Todo, In Progress, In Review, Done, and Canceled
 ([CONTEXT.md](../../CONTEXT.md#data-source) defines what each means and what may
 move a Page between them). A Data Source may rename its stages but not add,
 remove, or reorder them. Every surface that names a stage uses the names of the
 Data Source the stage belongs to: Board columns, List groups, Property values,
 filters, search results, and Move to destinations. Only a stage filter spanning
 several Data Sources uses the default names. An empty stage stays out of a Board
-or List unless the View shows empty groups, so a Database that never uses Review
+or List unless the View shows empty groups, so a Database that never uses In Review
 never shows it.
+
+Done and Canceled both count as completed for View filters and completion sorting. A
+membership's `completed_at` marks entering either terminal stage, is retained between
+terminal stages, and clears when reopened. Only Done is accepted work; it alone satisfies
+Waits for. See [guarded Status moves](../adr/0079-status-moves-on-facts-a-persons-move-wins.md)
+for automatic transitions and person precedence.
 
 Each writable List status group ends with a compact
 create action that opens the standard Page composer already seeded to that
 status. Their icons form one compact progress family: Triage uses a segmented
-ring, Plan an empty ring, Doing a half-filled ring, Review a three-quarter-filled
-ring, and Done a filled ring with a knocked-out check. Shape communicates state
-at 14–16px while semantic color remains supplementary: Triage alone is neutral
-because nobody has decided on its work yet, and each decided stage has its own
-hue, Plan violet, Doing blue, Review orange, and Done green. Status values use a flat
+ring, Todo an empty ring, In Progress a half-filled ring, In Review a three-quarter-filled
+ring, Done a filled ring with a knocked-out check, and Canceled an outlined ring with a cross. Shape communicates state
+at 14–16px while semantic color remains supplementary: Triage and Canceled are muted; Todo is violet, In Progress blue, In Review orange,
+and Done green. Status values use a flat
 icon-and-neutral-label presentation; the surrounding row or trigger owns hover,
 focus, and selection backgrounds, so status itself never adds a nested pill.
 Set-like Tags and Labels remain compact chips. Custom non-status option labels
@@ -843,8 +848,9 @@ causality. Exact revision and retention behavior remains a reliability concern.
 ## Properties
 
 Property identity and type, not display name, select behavior. Reserved
-Properties such as Status, Priority, Estimate, Tags, schedule boundaries, and
-Assignee may use focused controls only when their exact registered types match.
+Properties such as Status, Priority, Estimate, Tags, and schedule boundaries use
+focused controls only when their exact registered types match. Assignee uses its
+typed Page assignment and the Page picker.
 Custom or malformed Properties use the typed fallback.
 
 Every Property selector and option editor follows that same identity rule.
@@ -902,6 +908,7 @@ sortable or groupable in this release.
 
 ### Work prerequisites and Agent work
 
+Every Data Source with the standard workflow starts with **Waits for**
 (`blocked_by`), a reserved cardinality-many Page Relation. Its descriptor defaults to its own
 Data Source, and work edges may name prerequisites in other Project Sources. Each edge retains
 its target Source; moving the target elsewhere leaves it unsatisfied until restored. It can be renamed,
@@ -910,27 +917,81 @@ Relation patches and retains unavailable targets. Core validates the complete
 resulting graph once per transaction: self-dependencies and cycles are rejected
 with `invalid_input` and a cycle path. Retained edges remain acyclic across
 membership and lifecycle changes. The picker excludes the current Page.
+The Pages waiting for a Page are a bounded incoming-edge read of the same Relation,
+with no reciprocal stored values. Board and List rows carry one bounded `work` summary:
 an unsatisfied count, up to three blockers with Page identity/key/title/Status,
+the Page's Owner, typed Assignee and automatic-start consent, and its known pull request. These
 facts do not require complete Page intrinsic hydration or per-card reads.
+Page work edits refresh the same row projection as other intrinsic edits.
 The separate Page prerequisites read retains its count and blocker preview.
 
+A Library has stable Members, with a display name, active or removed lifecycle,
+and revision. A new personal Profile has one active Member, bound to that Profile
+and displayed as You. Removing a Member retains its identity.
+
+Every Page has one work value, under the intrinsic key `work`:
+`{ "owner": member_id, "assignee": Member | Agent | null, "auto_start": boolean }`.
+Member assignments are `{ "kind": "member", "member_id": string }`; Agent
+assignments are `{ "kind": "agent", "instance_id": string, "model": string,
+"effort": string | null }`, with effort optional. Assignment strings are canonical,
+with 512 UTF-8 bytes for identity/model and 128 for effort. Owner and person
+assignments reference active Members in the same Library. A single work revision
+protects Owner, Assignee and consent together.
+
+Owner defaults to the local Member for person-created Pages. Agent-created work
+inherits the Owner of its requesting Page or Inbox message, falling back to the
+local Member when there is no durable launch or unique active work Page. Merely
+related Pages do not choose the Owner. Plans retain the Inbox requester's Owner.
+
+Owner and Assignee are built-in Page fields in every Data Source View. They support
+is, is not and empty filters, display-name sorting, and grouping. Reordering within an assignment group preserves its authority;
+reassignment uses the Page picker rather than a group drop. Assignee filters
+use the typed Member or Agent value above. Owner filters use Member values. Agent
+groups combine provider and model, ignoring effort. Source schemas neither define
+nor store these values. Search facets and command palette results use the same
+Page references.
+
+The Page has one Assignee picker: People first, then Agents with their provider,
+model and effort. The Page's Assignee row, Board and List values show a small avatar
+or provider mark with the name alone: a person's display name or an Agent's model,
+without its effort. Owner stays hidden in a personal Library. The picker's **Start
+automatically** switch appears only for an Agent Assignee; while it is on, the
+Assignee row reads `Auto-start` after the name.
+
+Only a person can grant automatic starts. Verified Agent attribution cannot create
+a new grant, including through copy; caller-authored actor labels do not supply
+consent. Reassigning a Page to another Agent, a person, or nobody clears consent.
+An Agent can retain an existing grant for the same assignment or revoke it.
 
 The bounded Database `ReadyWork` read returns active Pages in active Projects'
+primary Databases with an Agent Assignee, Status `triage` or `plan`, no active chat,
 and all prerequisites satisfied. A prerequisite active in its retained target Source is
+satisfied only by Status `done`. Ready and dropped reports are brief evidence, never
+acceptance. A missing, archived, deleted, canceled, or moved target remains unsatisfied.
+The read returns Page work, consent, prerequisite satisfaction and Status revision
+tokens, and a deterministic readiness epoch from the Page identity, work revision, assignment, consent, Status and person-edit revisions, and sorted
+prerequisites. Report revisions do not change readiness. Reads return at most 100 ready Pages and accept an
 `after_page_id` continuation so Pages waiting for a go-ahead cannot hide later
 ready work. The read itself does not start work or change Status.
 
 Starting work creates a new managed Session in the Page's active Project, links
 the Page, and hands it off (`triage`/`plan` to `doing`) in one Core transaction.
 It also records a `started` event and freezes the brief, Agent selection, launch
+identity, and message identity in a durable outbox. An explicit Agent choice updates
+the Assignee before starting; otherwise the Page requires an Agent Assignee. The brief
+contains the active chat, Page key, title, Owner, Assignee, canonical Nodex Markdown body, and each
 prerequisite's key, title, Status, and latest report summary. Starting a Page
+with an active chat requires an explicit `again` attempt. Operation and launch
 replays reuse the original Session and frozen brief.
 
 Main delivers frozen launches through the same local-chat admission and launch
 path as Inbox dispatches. A lost reply is reconciled against Runtime admission
+before another launch is sent. In a Git Project, work starts allocate or reuse the
+Page's Workspace; non-Git Projects retain their local environment.
 `start_work` is available to any verified Agent and accepts a Page and optional
 Agent selection; it cannot grant automatic launch or start another attempt. Core
 records the start as that Agent's command. For the Coordinator it also requires the
+consent the scheduler uses: the Page is ready, is set to Start automatically, and the
 selection is its Agent Assignee; the start acts for the granting Member.
 
 The Main scheduler checks ready work at startup, on Database, Library, and

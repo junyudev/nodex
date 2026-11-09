@@ -1,3 +1,4 @@
+import { parsePageAssignee } from "../../shared/work-graph";
 import type { DatabaseJsonValue, DatabasePropertyValueType } from "../../shared/database-kernel";
 import type {
   DatabasePagePropertyVisibilityV2,
@@ -40,7 +41,9 @@ export interface PageStageSemanticProperties {
   readonly dueDate: PageStageSemanticProperty<Date> | null;
   readonly scheduledStart: PageStageSemanticProperty<Date> | null;
   readonly scheduledEnd: PageStageSemanticProperty<Date> | null;
-  readonly assignee: PageStageSemanticProperty<string> | null;
+  readonly assignee: PageStageSemanticProperty<
+    import("../../shared/work-graph").PageAssignee
+  > | null;
 }
 
 export interface PageStageSemanticValues {
@@ -51,7 +54,7 @@ export interface PageStageSemanticValues {
   readonly dueDate?: Date;
   readonly scheduledStart?: Date;
   readonly scheduledEnd?: Date;
-  readonly assignee?: string;
+  readonly assignee?: import("../../shared/work-graph").PageAssignee;
 }
 
 export type PageStagePropertyEdit =
@@ -93,6 +96,14 @@ const invalidValueReason = (
 ): string | null => {
   if (value === null) return null;
   switch (property.valueType) {
+    case "assignment": {
+      try {
+        parsePageAssignee(value);
+        return null;
+      } catch {
+        return "Expected a Member or Agent";
+      }
+    }
     case "text":
     case "select":
       return typeof value === "string" ? null : "Expected a text value";
@@ -203,7 +214,7 @@ export const readPageStageSemanticProperties = (
   const assignee = assigneeItem
     ? {
         item: assigneeItem,
-        value: typeof assigneeItem.value === "string" ? assigneeItem.value : null,
+        value: assigneeItem.error ? null : parsePageAssignee(assigneeItem.value),
       }
     : null;
   return {

@@ -72,6 +72,7 @@ export type DatabaseDateFormatV2 =
 export type DatabaseTimeFormatV2 = "twelve_hour" | "twenty_four_hour";
 
 export type DatabasePropertySchemaV2 =
+  | { readonly kind: "assignment" }
   | { readonly kind: "text" }
   | { readonly kind: "number"; readonly format: DatabaseNumberFormatV2 }
   | { readonly kind: "checkbox" }
@@ -95,7 +96,11 @@ export interface DatabasePropertyCapabilitiesV2 {
   readonly groupable: boolean;
 }
 
-export type DatabasePropertySystemRoleV2 = "status" | "task_parent";
+export type DatabasePropertySystemRoleV2 =
+  | "status"
+  | "task_parent"
+  | "page_owner"
+  | "page_assignee";
 
 export interface DatabasePropertyManagementPolicyV2 {
   readonly canRename: boolean;
@@ -883,7 +888,7 @@ export interface UndoDatabaseListOccurrenceMoveOperationV2 {
 
 export interface DatabaseDataEditPropertyStateV2 {
   readonly address: Pick<DatabasePropertyValueMutationV2, "pageId" | "dataSourceId" | "propertyId">;
-  readonly propertyType: Exclude<DatabasePropertyValueType, "relation">;
+  readonly propertyType: Exclude<DatabasePropertyValueType, "relation" | "assignment">;
   readonly beforeValue: DatabasePropertyValueInputV2;
   readonly afterValue: DatabasePropertyValueInputV2;
 }

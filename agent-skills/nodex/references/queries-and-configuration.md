@@ -83,7 +83,7 @@ and invalid operators fail the entire script.
 
 ```sh
 nodex data-source configure SOURCE_ID --idempotency-key review-queue-1 --input - <<'JSON'
-{"if_schema_revision":1,"operations":[{"kind":"create_view","name":"Review queue","layout":"list","filter":{"kind":"clause","propertyId":"Status","operator":"select_is","value":"Review"}}]}
+{"if_schema_revision":1,"operations":[{"kind":"create_view","name":"Review queue","layout":"list","filter":{"kind":"clause","propertyId":"Status","operator":"select_is","value":"In Review"}}]}
 JSON
 ```
 

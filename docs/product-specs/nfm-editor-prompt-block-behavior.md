@@ -65,7 +65,7 @@ config behave as in any Page send. A Prompt with Agent config always starts a ne
 Turn; otherwise a chat in a Turn receives it according to the Composer's Queue or
 Steer default. While the chat beside the Page is in a Turn, the send button's
 tooltip adds which of the two will happen. Like any Page send, it hands the Page
-to that chat, so a Page still in Triage or Plan moves to Doing.
+to that chat, so a Page still in Triage or Todo attempts its guarded move to In Progress.
 
 After the chat accepts the Prompt, Nodex records the receiving Session, accepted user message ID and the
 send time on the Block and folds a Prompt that has children. Sending again

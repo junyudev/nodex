@@ -3609,9 +3609,21 @@ export function WorkbenchRuntime({
   ): Promise<void> => {
     if (invocation.inboxEntry) {
       const entry = await readInboxEntry(invocation.inboxEntry.pageId);
+      if (
+        !entry ||
+        (invocation.inboxEntry.turnEpisode &&
+          entry.turn?.turn.episode !== invocation.inboxEntry.turnEpisode)
+      ) {
+        await presentLibraryTarget({ kind: "page", pageId: invocation.inboxEntry.pageId }, {});
+        return;
+      }
+      const inboxScope =
+        invocation.inboxEntry.scope.kind === "all" ? invocation.inboxEntry.scope : entry.scope;
       requestInboxEntryOpen({
         pageId: entry.pageId,
+        scope: inboxScope,
       });
+      openInboxScope(inboxScope);
       return;
     }
     const target = resolveDesktopNotificationTarget(invocation);

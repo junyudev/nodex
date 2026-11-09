@@ -44,6 +44,7 @@ export function pageInputToSummaryPatch(updates: Partial<PageInput>): Partial<Da
     patch.reminders = updates.reminders;
   if ("scheduleTimezone" in updates) patch.scheduleTimezone = updates.scheduleTimezone ?? undefined;
   if ("assignee" in updates) patch.assignee = updates.assignee ?? undefined;
+  if ("pageWork" in updates) patch.pageWork = updates.pageWork;
   if ("runInTarget" in updates) patch.runInTarget = updates.runInTarget ?? undefined;
   if ("runInLocalPath" in updates) patch.runInLocalPath = updates.runInLocalPath ?? undefined;
   if ("runInBaseBranch" in updates) patch.runInBaseBranch = updates.runInBaseBranch ?? undefined;

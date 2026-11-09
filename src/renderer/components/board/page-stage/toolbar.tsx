@@ -1,3 +1,4 @@
+import { PageExecutionHoldItem } from "@/components/workbench/execution-hold-controls";
 import type { ReactNode } from "react";
 import {
   AutomationsIcon,
@@ -26,6 +27,7 @@ import {
 import { PageStageBreadcrumb, type PageStageBreadcrumbProps } from "./breadcrumb";
 
 interface PageStageToolbarProps {
+  pageId?: string;
   saving: boolean;
   /** The Page is still opening: actions are inert but keep their resting appearance. */
   pending?: boolean;
@@ -88,6 +90,7 @@ function PageStageToolbarToggle({
 }
 
 export function PageStageToolbar({
+  pageId,
   saving,
   pending = false,
   historyPanelActive,
@@ -169,6 +172,7 @@ export function PageStageToolbar({
             </button>
           }
         >
+          {pageId ? <PageExecutionHoldItem pageId={pageId} /> : null}
           <NodexDropdownItem
             leftSlot={<PageMenuCopyLinkIcon className="icon-2xs" />}
             onSelect={onCopyDeeplink}

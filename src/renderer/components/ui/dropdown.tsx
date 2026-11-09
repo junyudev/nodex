@@ -2,6 +2,7 @@ import { mergeProps } from "@base-ui/react/merge-props";
 import { handleMenuEditorKeyDown } from "./menu-keyboard";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import {
+  Fragment,
   forwardRef,
   isValidElement,
   useId,
@@ -730,6 +731,7 @@ export const NodexDropdownRadioItem = forwardRef<HTMLDivElement, NodexDropdownRa
 export type NodexOptionPickerSearchMode = "none" | "filter";
 
 export interface NodexOptionPickerOption {
+  readonly group?: string;
   readonly value: string;
   readonly label: ReactNode;
   readonly searchText?: string;
@@ -835,22 +837,26 @@ function NodexStaticOptionPicker({
       {options.length === 0 ? (
         <NodexDropdownMessage compact>{emptyMessage}</NodexDropdownMessage>
       ) : (
-        options.map((option) => (
-          <NodexDropdownItem
-            key={option.value}
-            aria-current={option.value === value ? true : undefined}
-            onSelect={() => onValueChange(option.value)}
-            disabled={option.disabled}
-            leftSlot={option.leftSlot}
-            subText={option.subText}
-            tooltipText={option.tooltipText}
-            allowWrap={option.allowWrap}
-            rightSlot={
-              <NodexOptionTrailing detail={option.detail} selected={option.value === value} />
-            }
-          >
-            {option.label}
-          </NodexDropdownItem>
+        options.map((option, index) => (
+          <Fragment key={option.value}>
+            {option.group && options[index - 1]?.group !== option.group ? (
+              <NodexDropdownTitle>{option.group}</NodexDropdownTitle>
+            ) : null}
+            <NodexDropdownItem
+              aria-current={option.value === value ? true : undefined}
+              onSelect={() => onValueChange(option.value)}
+              disabled={option.disabled}
+              leftSlot={option.leftSlot}
+              subText={option.subText}
+              tooltipText={option.tooltipText}
+              allowWrap={option.allowWrap}
+              rightSlot={
+                <NodexOptionTrailing detail={option.detail} selected={option.value === value} />
+              }
+            >
+              {option.label}
+            </NodexDropdownItem>
+          </Fragment>
         ))
       )}
       {footer}
@@ -1117,14 +1123,18 @@ function NodexFilterOptionPicker({
               <NodexDropdownMessage compact>{noResultsMessage}</NodexDropdownMessage>
             ) : (
               filteredOptions.map((option, index) => (
-                <NodexFilterOptionButton
-                  key={option.value}
-                  id={`${listboxId}-option-${index}`}
-                  option={option}
-                  selected={option.value === value}
-                  onKeyDown={handleOptionKeyDown}
-                  onSelect={() => chooseOption(option)}
-                />
+                <Fragment key={option.value}>
+                  {option.group && filteredOptions[index - 1]?.group !== option.group ? (
+                    <NodexDropdownTitle>{option.group}</NodexDropdownTitle>
+                  ) : null}
+                  <NodexFilterOptionButton
+                    id={`${listboxId}-option-${index}`}
+                    option={option}
+                    selected={option.value === value}
+                    onKeyDown={handleOptionKeyDown}
+                    onSelect={() => chooseOption(option)}
+                  />
+                </Fragment>
               ))
             )}
           </div>

@@ -30,6 +30,9 @@ commands delegate to the landing package through Vite+. Its Vite plugins use the
 workspace's Vite+ alias. The focused tests run an isolated production build and
 check the generated pages and public assets. They run from the repository root
 because the shared Vitest setup resolves generated Markdown assets from that directory.
+The Astro configuration loads as native ESM, and Vite uses the landing package's
+explicit TypeScript configuration. Builds must not discover unrelated ancestor
+projects or depend on their installed frameworks, including in linked worktrees.
 
 ### Demo media capture
 
@@ -83,7 +86,7 @@ that Chromium never delivered.
 
 `packages/landing` contains:
 
-- `astro.config.ts` for static output, React islands, and the Tailwind Vite plugin
+- `astro.config.mjs` for static output, React islands, and the Tailwind Vite plugin
 - `src/layouts/BaseLayout.astro` for metadata, font preloads, and system theme detection
 - `src/pages/index.astro` for the homepage
 - `src/pages/download/index.astro` for the download page that lists every platform's build
@@ -106,7 +109,7 @@ that Chromium never delivered.
 
 The site is a static multi-page build. It does not use React Router or any client-side routing fallback.
 Download links point at the stable alias assets every GitHub Release carries: `Nodex-latest-arm64.dmg` for macOS and `Nodex-latest-windows-x64.exe` / `Nodex-latest-windows-arm64.exe` for Windows. The homepage's download action follows the visitor's platform. An inline script in `BaseLayout.astro` marks Windows visitors (`data-os="windows"`, plus `data-arch="arm64"` when the browser reports an Arm CPU), and the `windows` and `arm` Tailwind variants switch the action to the matching Windows installer and its SmartScreen note before first paint. Without the script, or on any other platform, the page offers macOS. The nav's Download goes to `/download/`, which lists every build without relying on JavaScript; the visitor's detected Windows architecture is emphasized there.
-The same page's `#mobile` card offers Nodex Mobile: the public TestFlight beta for iPhone and the `Nodex-latest-android.apk` alias every stable release carries, both in `DOWNLOADS` so their clicks count the same way. A Google Play button appears once `GOOGLE_PLAY_URL` names a listing. The homepage's mobile section and Settings > Mobile in the app both point at this card rather than at a store.
+The same page's `#mobile` card offers Nodex Mobile: the public TestFlight beta for iPhone and the `Nodex-latest-android.apk` alias every stable release carries, both in `DOWNLOADS` so their clicks count the same way. A Google Play button appears once `GOOGLE_PLAY_URL` names a listing. The homepage's mobile section and Link a device in Settings → Spaces both point at this card rather than at a store.
 Windows downloads appear only when the release the site describes carries Windows installers: `windowsDownloadsAvailable` in `src/lib/site.ts` compares the root app version with 0.5.0, the last stable release published without them. Once a later release is the oldest one the site can describe, that gate can be removed.
 The homepage release stamp is build-time data: the typed `VERSION_LABEL` constant imports the root app version from the repository `package.json`, so the published site shows the same semver that release automation cuts.
 The changelog page at `/changelog/` is also build-time data: it reads the root `CHANGELOG.md`, shows `Unreleased` first as in development and then each dated release in source order, marks the newest as Latest, and lists every release in a rail that follows the reader. Kinds of change always read Added, Changed, Deprecated, Removed, Fixed, Security. The release in development and the latest release show all their additions and changes; every other list shows its first entries and opens the rest on request. Each entry leads with its first sentence, so write that sentence to stand on its own.
@@ -230,7 +233,7 @@ Product demos are scripted re-enactments built from replicas of the interface, n
   Codex subagents reads at a glance.
 - Nodex Mobile's replica draws the app at its real point sizes in its own colors and scales as one
   device, with a fingertip for a pointer. Its demo stands the phone in front of the computer running
-  the same chats, joined through the routes Settings > Mobile lists, because what sets it apart is
+  the same chats, joined through the routes Settings → Spaces lists, because what sets it apart is
   that the phone reaches your own computer: a tap travels the line and then changes the computer's
   sidebar. Both routes stay in every frame, the local network and Tailscale, so any still says so.
   A screen too narrow for both shows the phone alone under a strip naming the routes.

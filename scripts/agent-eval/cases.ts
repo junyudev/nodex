@@ -537,20 +537,22 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
     return {
       prompt: `${promptPrefix}Set Priority to High for all tasks currently in Review. Leave every other task and Property unchanged.`,
       verify: async () => {
-        const assertions: CaseAssertion[] = [];
-        for (const [pageId, old] of before) {
-          const state = await observe(context, pageId);
-          const values = { ...old.values };
-          if (reviewIds.includes(pageId)) values.priority = "p1-high";
-          assertions.push(
-            check(`Exact values for ${pageId}`, same(state.values, values)),
-            preserve(
-              `Body and title for ${pageId}`,
-              state.markdown === old.markdown && state.title === old.title,
-            ),
-          );
-        }
-        return result([...assertions, await samePages()]);
+        // Variants retain at most eight Pages; their snapshots are independent reads.
+        const assertions = await Promise.all(
+          [...before].map(async ([pageId, old]) => {
+            const state = await observe(context, pageId);
+            const values = { ...old.values };
+            if (reviewIds.includes(pageId)) values.priority = "p1-high";
+            return [
+              check(`Exact values for ${pageId}`, same(state.values, values)),
+              preserve(
+                `Body and title for ${pageId}`,
+                state.markdown === old.markdown && state.title === old.title,
+              ),
+            ];
+          }),
+        );
+        return result([...assertions.flat(), await samePages()]);
       },
     };
   throw new Error(`Unknown evaluation case: ${id}`);

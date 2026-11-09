@@ -94,6 +94,23 @@ pub(super) struct WorkspaceMutationEffects {
     pub(super) committed_at: String,
 }
 
+impl WorkspaceMutationEffects {
+    pub(super) fn absorb_database(
+        &mut self,
+        receipt: nodex_core_contracts::database::DatabaseReceipt,
+    ) {
+        self.block_ids
+            .extend(receipt.affected_page_ids.iter().cloned());
+        self.block_ids
+            .extend(receipt.affected_database_ids.iter().cloned());
+        self.page_ids.extend(receipt.affected_page_ids);
+        self.database_ids.extend(receipt.affected_database_ids);
+        self.data_source_ids
+            .extend(receipt.affected_data_source_ids);
+        self.view_ids.extend(receipt.affected_view_ids);
+    }
+}
+
 pub(super) fn project_session_scope(project_id: Option<&str>) -> ProjectSessionInvalidationScope {
     project_id.map_or(ProjectSessionInvalidationScope::Projectless, |project_id| {
         ProjectSessionInvalidationScope::Project {
@@ -227,11 +244,14 @@ pub(super) fn apply(
                 &context,
                 &request.intent,
             )?;
+            }
             // An Agent command retry belongs to its caller root across Turns. Admission above
             // still checks the current Turn's persisted authority before receipt replay.
             // Runtime observations can change after a lost response. Capture identity is the
             // person's immutable input; receipt replay preserves the first durable decision.
             let mut capture_intent = request.intent.clone();
+
+            if let ProjectWorkspaceIntent::ReplyToPageTurn { dispatch, .. } = &mut capture_intent { *dispatch=None; }
             let fingerprint_intent = match &capture_intent {
                 ProjectWorkspaceIntent::AgentCommand { provenance, intent } => {
                     MutationFingerprintIntent::SessionDispatch {
@@ -286,12 +306,18 @@ pub(super) fn apply(
                 _ => None,
             };
             match admitted_intent {
+                intent @ (ProjectWorkspaceIntent::RecordChatDelivery{..}|ProjectWorkspaceIntent::BindChatInbound{..}|ProjectWorkspaceIntent::HandBackMessage{..}) => super::inbox::handback::apply(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, agent_provenance, intent),
+
+                intent @ (ProjectWorkspaceIntent::PauseWork { .. } | ProjectWorkspaceIntent::ResumeWork { .. }) => super::execution_holds::apply(transaction, &context, &library_id, &store_epoch, &request.operation_id, &request_hash, intent),
+                intent @ (ProjectWorkspaceIntent::ClaimPageWorkspace { .. } | ProjectWorkspaceIntent::BindPageWorkspace { .. } | ProjectWorkspaceIntent::RecordPageWorkspaceReady { .. } | ProjectWorkspaceIntent::RecordPageWorkspaceFailed { .. } | ProjectWorkspaceIntent::RequestPageWorkspaceCleanup { .. } | ProjectWorkspaceIntent::MarkPageWorkspaceRemoved { .. } | ProjectWorkspaceIntent::UpsertPagePullRequest { .. }) => super::page_workspace::apply(transaction, &context, &library_id, &store_epoch, &request.operation_id, &request_hash, intent),
+                ProjectWorkspaceIntent::BindCoordinator { .. } | ProjectWorkspaceIntent::UnbindCoordinator { .. } | ProjectWorkspaceIntent::SetSessionManaged { .. } | ProjectWorkspaceIntent::AcceptPageWork { .. } | ProjectWorkspaceIntent::ReportPageWork { .. } | ProjectWorkspaceIntent::RecordWorkEvents { .. } | ProjectWorkspaceIntent::RecordSessionExecution { .. } | ProjectWorkspaceIntent::CreateEventBatch { .. } | ProjectWorkspaceIntent::SettleEventBatch { .. } | ProjectWorkspaceIntent::DiscardEventBatch { .. } => super::coordinator::apply(transaction, &context, &library_id, &store_epoch, &request.operation_id, &request_hash, admitted_intent, agent_provenance),
                 ProjectWorkspaceIntent::CreatePageFor { target, page_id, document_id, title } => {
                     super::page_create::create_page_for(
                         transaction, &context, &library_id, &store_epoch,
                         &request.operation_id, &request_hash, target, page_id, document_id, title,
                     )
                 }
+                intent @ (ProjectWorkspaceIntent::WriteTurnNote { .. } | ProjectWorkspaceIntent::AnswerInboxQuestion { .. } | ProjectWorkspaceIntent::ReplyToPageTurn { .. } | ProjectWorkspaceIntent::ClaimTurnNotification { .. }) => super::inbox::nodex::apply(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, agent_provenance, intent),
                 ProjectWorkspaceIntent::SendInboxMessage {
                     reply_to_page_id,
                     expected_store_epoch,
@@ -763,6 +789,7 @@ pub(super) fn apply(
                     project_id,
                     title,
                     initial_page_ids,
+                    agent_selection,
                     runtime_id,
                     runtime_thread_id,
                     launch_request_id,
@@ -778,6 +805,7 @@ pub(super) fn apply(
                     project_id.as_deref(),
                     title,
                     initial_page_ids,
+                    agent_selection.as_ref(),
                     runtime_id,
                     runtime_thread_id,
                     launch_request_id,
@@ -1440,6 +1468,7 @@ pub(super) fn finish_no_op(
             )?;
             let committed = crate::ModuleWriterResult {
                 value: ProjectWorkspaceCommitValue {
+                    inbox_write: None,
                     inbox_created_page_ids: Vec::new(),
                     created_page: None,
                     inbox_undo_token: None,
@@ -1602,8 +1631,11 @@ pub(super) fn seal_mutation_with_created_page(
     )?;
     let committed = crate::ModuleWriterResult {
         value: ProjectWorkspaceCommitValue {
+            inbox_write: if matches!(effects.operation_kind, "inbox_write" | "inbox_write_replay") {
                 effects.page_ids.first().map(|id| {
+                    nodex_core_contracts::workspace::InboxWriteResult {
                         page_id: id.clone(),
+                        replay: effects.operation_kind == "inbox_write_replay",
                     }
                 })
             } else {

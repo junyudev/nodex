@@ -94,6 +94,7 @@ export function presentPageChatItemActivity(
       errorCount: status?.statusType === "systemError" ? 1 : 0,
       unreadCount: item.unread ? 1 : 0,
       soleSessionId: item.sessionId,
+      work: { activeChat: null, latestReport: null, managedSessionCount: 0 },
       runtimeSessionIds: item.executionRef && !inactive ? [item.sessionId] : [],
     },
     runtimeStatus ? new Map([[item.sessionId, runtimeStatus]]) : NO_RUNTIME_STATUSES,

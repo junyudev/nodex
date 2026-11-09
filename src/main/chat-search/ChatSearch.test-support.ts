@@ -89,6 +89,7 @@ export const metadata = (
   providerInstanceId: "claude",
   providerDriver: "claudeAgent",
   model: "model",
+  effort: null,
   parentThreadId: null,
   relationshipToParent: null,
   rootThreadId: id,

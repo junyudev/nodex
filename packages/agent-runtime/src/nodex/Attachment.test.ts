@@ -14,6 +14,8 @@ import {
 import { DatabaseSync } from "node:sqlite";
 import type { PersistChatAttachmentsResult } from "@nodex/runtime-contracts";
 import type { AgentWire } from "./Interface.ts";
+import * as IdAllocator from "../../vendor/provider-core/src/server/IdAllocator.ts";
+import { MessageId } from "@nodex/runtime-contracts";
 import * as Application from "./Application.ts";
 import { AgentRuntime } from "./Service.ts";
 
@@ -85,7 +87,11 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
               `UPDATE orchestration_v2_projection_threads SET payload_json = json_set(payload_json, '$.forkedFrom', json(?)) WHERE thread_id = 'thread:fork'`,
             ).run(JSON.stringify({ type: "run", threadId: "thread:source", runId: "run:1" }));
             for (const [id, runId, type] of [
-              ["item:captured", "run:1", "user_message"],
+              [
+                IdAllocator.derive.userTurnItem({ messageId: MessageId.make("message:source") }),
+                "run:1",
+                "user_message",
+              ],
               ["item:late", "run:2", "assistant_message"],
               ["item:text", "run:1", "assistant_message"],
               ["item:tool", "run:1", "dynamic_tool"],
@@ -231,15 +237,63 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
           path: path.join(home, "userdata", "attachments", `${image.id}.png`),
           attachment: image,
         };
-        expect(yield* query("thread:source", "item:captured")).toEqual(expected);
-        expect(yield* query("thread:source", "item:late")).toEqual(expected);
-        expect(yield* query("thread:fork", "item:captured")).toEqual(expected);
-        expect(yield* query("thread:fork", "item:late")).toBeNull();
-        expect(yield* query("thread:foreign", "item:captured")).toBeNull();
-        expect(yield* query("thread:source", "item:text")).toBeNull();
-        expect(yield* query("thread:fork", "item:captured", "other-image")).toBeNull();
         expect(
-          (yield* query("thread:fork", "item:captured", "../../private").pipe(Effect.result))._tag,
+          yield* query(
+            "thread:source",
+            IdAllocator.derive.userTurnItem({ messageId: MessageId.make("message:source") }),
+          ),
+        ).toEqual(expected);
+        expect(yield* query("thread:source", "item:late")).toEqual(expected);
+        expect(
+          yield* runtime.handle({
+            id: "inbound-image",
+            method: "thread.message-attachment",
+            input: {
+              threadId: "thread:source",
+              messageId: "message:source",
+              attachmentId: image.id,
+            },
+          }),
+        ).toEqual(expected);
+        expect(
+          yield* runtime.handle({
+            id: "foreign-inbound-image",
+            method: "thread.message-attachment",
+            input: {
+              threadId: "thread:foreign",
+              messageId: "message:source",
+              attachmentId: image.id,
+            },
+          }),
+        ).toBeNull();
+
+        expect(
+          yield* query(
+            "thread:fork",
+            IdAllocator.derive.userTurnItem({ messageId: MessageId.make("message:source") }),
+          ),
+        ).toEqual(expected);
+        expect(yield* query("thread:fork", "item:late")).toBeNull();
+        expect(
+          yield* query(
+            "thread:foreign",
+            IdAllocator.derive.userTurnItem({ messageId: MessageId.make("message:source") }),
+          ),
+        ).toBeNull();
+        expect(yield* query("thread:source", "item:text")).toBeNull();
+        expect(
+          yield* query(
+            "thread:fork",
+            IdAllocator.derive.userTurnItem({ messageId: MessageId.make("message:source") }),
+            "other-image",
+          ),
+        ).toBeNull();
+        expect(
+          (yield* query(
+            "thread:fork",
+            IdAllocator.derive.userTurnItem({ messageId: MessageId.make("message:source") }),
+            "../../private",
+          ).pipe(Effect.result))._tag,
         ).toBe("Failure");
         const toolImage = { dataUrl: "data:image/png;base64,AQID" };
         expect(yield* query("thread:source", "item:tool", "tool-result:1")).toEqual(toolImage);
@@ -261,7 +315,12 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
         expect(yield* query("thread:source", "item:claude", "tool-result:4")).toBeNull();
         expect(yield* query("thread:foreign", "item:claude", "tool-result:1")).toBeNull();
         yield* fs.remove(expected.path);
-        expect(yield* query("thread:source", "item:captured")).toBeNull();
+        expect(
+          yield* query(
+            "thread:source",
+            IdAllocator.derive.userTurnItem({ messageId: MessageId.make("message:source") }),
+          ),
+        ).toBeNull();
       }).pipe(
         Effect.provide(Application.layer({ home, cwd: home, providers: {} }, () => Effect.void)),
       ),

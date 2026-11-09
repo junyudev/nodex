@@ -33,6 +33,7 @@ fn start(launch: &str, again: bool) -> ProjectWorkspaceIntent {
         brief: "Work brief".into(),
         again,
         expected_readiness_epoch: None,
+        expected_turn_episode: None,
     }
 }
 fn counts(w: &TestWorkspace) -> (i64, i64, i64, i64, i64, String) {
@@ -144,6 +145,19 @@ fn page_work_start_requires_host_and_rechecks_automatic_epoch_before_creating() 
 }
 fn assign(w: &TestWorkspace) {
     use nodex_core_contracts::{ModuleApplyRequest, StoreEpoch, library::*};
+    let owner = w
+        .kernel
+        .readers()
+        .read_default(|c| {
+            c.query_row(
+                "SELECT member_id FROM local_profile_members WHERE library_id='library-1'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .map_err(crate::infrastructure::sqlite::StoreError::from)
+        })
+        .unwrap();
+    crate::library::LibraryModule::new("profile-1","library-1",&w.kernel).apply(&context(),ModuleApplyRequest {contract_version:LIBRARY_CONTRACT_VERSION,operation_id:"assign".into(),store_epoch:StoreEpoch("epoch-1".into()),intent:LibraryIntent::ApplyBlockPropertyMutation {mutation:Box::new(LibraryBlockPropertyMutation {actor:serde_json::json!({"kind":"host"}),client_session_id:None,fields:vec![LibraryBlockPropertyFieldMutation::IntrinsicSet {block_id:PAGE.into(),property_key:"work".into(),expected_revision:1,value:serde_json::json!({"owner":owner,"assignee":{"kind":"agent","instance_id":"codex","model":"gpt-6.1-sol","effort":null},"auto_start":true})}]})}}).unwrap();
 }
 #[test]
 fn page_work_start_freezes_page_selection_when_no_override_is_supplied() {
@@ -168,7 +182,44 @@ fn page_work_start_freezes_page_selection_when_no_override_is_supplied() {
     assert_eq!(value.selection.model, "gpt-6.1-sol");
     assert_eq!(value.selection.effort, None);
 }
+
 #[test]
+fn managed_work_creates_followup_pages_for_its_owner() {
+    let w = setup();
+    w.kernel.writer().call(|connection| {
+        connection.execute("UPDATE block_properties SET value_json=json_set(value_json,'$.owner','requester') WHERE block_id=?1 AND property_key='work'",[PAGE])?;
+        Ok(())
+    }).unwrap();
+    apply(&w.module, "work:start", start("owned", false));
+    let mut actor = context();
+    actor.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
+        session_id: "session:owned".into(),
+        backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
+    });
+    w.module
+        .apply(
+            &actor,
+            request(
+                "work:followup",
+                ProjectWorkspaceIntent::CreatePageFor {
+                    target: ProjectWorkspacePageCreationTarget::Project {
+                        project_id: "project:work".into(),
+                    },
+                    page_id: "019d0000-0000-7000-8000-000000000083".into(),
+                    document_id: "019d0000-0000-7000-8000-000000000084".into(),
+                    title: "Follow-up".into(),
+                },
+            ),
+        )
+        .unwrap();
+    let work=w.kernel.readers().read_default(|connection|connection.query_row("SELECT value_json FROM block_properties WHERE block_id='019d0000-0000-7000-8000-000000000083' AND property_key='work'",[],|row|row.get::<_,String>(0)).map_err(crate::infrastructure::sqlite::StoreError::from)).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&work).unwrap(),
+        serde_json::json!({"owner":"requester","assignee":null,"auto_start":false})
+    );
+}
+#[test]
+fn page_work_readiness_waits_for_acceptance_and_ignores_later_reports() {
     use nodex_core_contracts::{
         ModuleApplyRequest, ModuleReadRequest, StoreEpoch, agent::AgentTurnProvenance, database::*,
     };
@@ -249,6 +300,7 @@ fn page_work_start_freezes_page_selection_when_no_override_is_supplied() {
         &w.module,
         "prerequisite:session",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            agent_selection: None,
             coordinator: false,
             session_id: "prerequisite:chat".into(),
             project_id: Some("project:work".into()),
@@ -290,12 +342,25 @@ fn page_work_start_freezes_page_selection_when_no_override_is_supplied() {
         )
     };
     report("report:ready", WorkReportOutcome::Ready);
+    assert!(ready().is_empty(), "In Review still awaits acceptance");
     report("report:blocked", WorkReportOutcome::Blocked);
     assert!(ready().is_empty());
     report("report:dropped", WorkReportOutcome::Dropped);
+    assert!(
+        ready().is_empty(),
+        "a dropped report never satisfies a prerequisite"
+    );
+    apply(
+        &w.module,
+        "accept:prerequisite",
+        ProjectWorkspaceIntent::AcceptPageWork {
+            expected_turn_episode: None,
+            page_id: prerequisite.into(),
         },
+    );
     let done = ready();
     assert_eq!(done.len(), 1);
+    assert!(done[0].prerequisites[0].satisfied);
     assert!(
         done[0].prerequisites[0]
             .satisfying_revision
@@ -303,7 +368,10 @@ fn page_work_start_freezes_page_selection_when_no_override_is_supplied() {
             .unwrap()
             .starts_with("status:")
     );
+    report("report:failed-after-done", WorkReportOutcome::Failed);
+    assert_eq!(done[0].readiness_epoch, ready()[0].readiness_epoch);
     report("report:ready-again", WorkReportOutcome::Ready);
+    assert_eq!(done[0].readiness_epoch, ready()[0].readiness_epoch);
 }
 
 #[test]
@@ -340,4 +408,263 @@ fn page_work_outbox_bounds_encoded_bytes_and_makes_progress_after_settlement() {
     let next = pending();
     assert_eq!(next.len(), 1);
     assert_ne!(next[0].launch_id, first[0].launch_id);
+}
+
+#[test]
+fn start_again_moves_the_active_chat_and_archive_or_unlink_clears_only_that_chat() {
+    let w = setup();
+    apply(&w.module, "start", start("launch", false));
+    apply(&w.module, "start:again", start("other", true));
+    let active = || {
+        w.kernel
+            .readers()
+            .read_default(|c| super::page_chat::active_chat(c, PAGE))
+            .unwrap()
+    };
+    assert_eq!(active().unwrap().session_id, "session:other");
+    let work_page = |session: &str| {
+        read(
+            &w.module,
+            ProjectWorkspaceRead::SessionWorkPage {
+                session_id: session.into(),
+            },
+        )
+    };
+    assert_eq!(
+        work_page("session:other"),
+        ProjectWorkspaceReadValue::SessionWorkPage {
+            page_id: Some(PAGE.into())
+        }
+    );
+    assert_eq!(
+        work_page("session:launch"),
+        ProjectWorkspaceReadValue::SessionWorkPage { page_id: None }
+    );
+
+    apply(
+        &w.module,
+        "unlink:old",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: "session:launch".into(),
+            intent: ProjectSessionIntent::UnlinkPage {
+                page_id: PAGE.into(),
+            },
+        },
+    );
+    assert_eq!(active().unwrap().session_id, "session:other");
+    apply(
+        &w.module,
+        "archive:active",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: "session:other".into(),
+            intent: ProjectSessionIntent::SetArchived { archived: true },
+        },
+    );
+    assert!(active().is_none());
+    assert_eq!(
+        work_page("session:other"),
+        ProjectWorkspaceReadValue::SessionWorkPage { page_id: None }
+    );
+    apply(
+        &w.module,
+        "restore:chat",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: "session:other".into(),
+            intent: ProjectSessionIntent::SetArchived { archived: false },
+        },
+    );
+    assert!(
+        active().is_none(),
+        "restoring a chat never steals the active destination"
+    );
+    apply(
+        &w.module,
+        "explicit:handoff",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: "session:other".into(),
+            intent: ProjectSessionIntent::HandOffPage {
+                page_id: PAGE.into(),
+            },
+        },
+    );
+    assert_eq!(active().unwrap().session_id, "session:other");
+    apply(
+        &w.module,
+        "unlink:active",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: "session:other".into(),
+            intent: ProjectSessionIntent::UnlinkPage {
+                page_id: PAGE.into(),
+            },
+        },
+    );
+    assert!(active().is_none());
+}
+
+#[test]
+fn a_chat_with_multiple_active_pages_requires_an_explicit_work_launch() {
+    let w = setup();
+    apply(&w.module, "start", start("launch", false));
+    let other = "019d0000-0000-7000-8000-000000000083";
+    apply(
+        &w.module,
+        "other-page",
+        ProjectWorkspaceIntent::CreatePageFor {
+            target: ProjectWorkspacePageCreationTarget::Project {
+                project_id: "project:work".into(),
+            },
+            page_id: other.into(),
+            document_id: "019d0000-0000-7000-8000-000000000084".into(),
+            title: "Other work".into(),
+        },
+    );
+    apply(
+        &w.module,
+        "handoff-other",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: "session:launch".into(),
+            intent: ProjectSessionIntent::HandOffPage {
+                page_id: other.into(),
+            },
+        },
+    );
+    assert_eq!(
+        read(
+            &w.module,
+            ProjectWorkspaceRead::SessionWorkPage {
+                session_id: "session:launch".into()
+            }
+        ),
+        ProjectWorkspaceReadValue::SessionWorkPage { page_id: None }
+    );
+    let ProjectWorkspaceReadValue::PageWorkLaunch {
+        launch: Some(launch),
+    } = read(
+        &w.module,
+        ProjectWorkspaceRead::PageWorkLaunch {
+            launch_id: "launch".into(),
+        },
+    )
+    else {
+        panic!("first launch retained")
+    };
+    assert_eq!(launch.page_id, PAGE);
+}
+
+#[test]
+fn page_workspace_allocation_requires_an_agent_assignee() {
+    use nodex_core_contracts::{ModuleApplyRequest, StoreEpoch, library::*};
+    let w = setup();
+    let has_agent = || {
+        let ProjectWorkspaceReadValue::PageWorkspace { has_agent_work, .. } = read(
+            &w.module,
+            ProjectWorkspaceRead::PageWorkspace {
+                page_id: PAGE.into(),
+            },
+        ) else {
+            panic!("Page Workspace");
+        };
+        has_agent_work
+    };
+    assert!(
+        !has_agent(),
+        "unassigned Pages stay in the chat's directory"
+    );
+    assign(&w);
+    assert!(has_agent());
+    let (owner, revision) = w.kernel.readers().read_default(|c| {
+        Ok(c.query_row("SELECT json_extract(value_json,'$.owner'),revision FROM block_properties WHERE block_id=?1 AND property_key='work'", [PAGE], |r| Ok((r.get::<_, String>(0)?,r.get::<_, i64>(1)?)))?)
+    }).unwrap();
+    crate::library::LibraryModule::new("profile-1", "library-1", &w.kernel).apply(&context(), ModuleApplyRequest {
+        contract_version: LIBRARY_CONTRACT_VERSION,
+        operation_id: "assign-person".into(), store_epoch: StoreEpoch("epoch-1".into()),
+        intent: LibraryIntent::ApplyBlockPropertyMutation { mutation: Box::new(LibraryBlockPropertyMutation {
+            actor: serde_json::json!({"kind":"host"}), client_session_id: None,
+            fields: vec![LibraryBlockPropertyFieldMutation::IntrinsicSet {
+                block_id: PAGE.into(), property_key: "work".into(), expected_revision: revision,
+                value: serde_json::json!({"owner":owner,"assignee":{"kind":"member","member_id":owner},"auto_start":false}),
+            }],
+        }) },
+    }).unwrap();
+    assert!(
+        !has_agent(),
+        "person assignments do not allocate an Agent Workspace"
+    );
+}
+
+#[test]
+fn managed_chat_owner_uses_its_active_work_page_without_following_related_links() {
+    for active in [false, true] {
+        let w = setup();
+        let local = w.kernel.writer().call(|c| {
+            let local: String = c.query_row("SELECT member_id FROM local_profile_members WHERE library_id='library-1'", [], |r| r.get(0))?;
+            c.execute("UPDATE block_properties SET value_json=json_set(value_json,'$.owner','requester') WHERE block_id=?1 AND property_key='work'",[PAGE])?;
+            Ok(local)
+        }).unwrap();
+        apply(
+            &w.module,
+            "chat",
+            ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                agent_selection: None,
+                coordinator: false,
+                side_chat_source_session_id: None,
+                project_id: Some("project:work".into()),
+                session_id: "chat".into(),
+                title: "Work".into(),
+                initial_page_ids: vec![],
+                runtime_id: "runtime".into(),
+                runtime_thread_id: "thread".into(),
+                launch_request_id: "launch".into(),
+            },
+        );
+        apply(
+            &w.module,
+            "link",
+            ProjectWorkspaceIntent::MutateSession {
+                session_id: "chat".into(),
+                intent: if active {
+                    ProjectSessionIntent::HandOffPage {
+                        page_id: PAGE.into(),
+                    }
+                } else {
+                    ProjectSessionIntent::LinkPage {
+                        page_id: PAGE.into(),
+                    }
+                },
+            },
+        );
+        apply(
+            &w.module,
+            "manage",
+            ProjectWorkspaceIntent::SetSessionManaged {
+                session_id: "chat".into(),
+                managed: true,
+            },
+        );
+        let mut actor = context();
+        actor.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
+            session_id: "chat".into(),
+            backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
+        });
+        w.module
+            .apply(
+                &actor,
+                request(
+                    "followup",
+                    ProjectWorkspaceIntent::CreatePageFor {
+                        target: ProjectWorkspacePageCreationTarget::Project {
+                            project_id: "project:work".into(),
+                        },
+                        page_id: "019d0000-0000-7000-8000-000000000083".into(),
+                        document_id: "019d0000-0000-7000-8000-000000000084".into(),
+                        title: "Follow-up".into(),
+                    },
+                ),
+            )
+            .unwrap();
+        let owner = w.kernel.readers().read_default(|c| {
+            Ok(c.query_row("SELECT json_extract(value_json,'$.owner') FROM block_properties WHERE block_id='019d0000-0000-7000-8000-000000000083' AND property_key='work'", [], |r| r.get::<_, String>(0))?)
+        }).unwrap();
+        assert_eq!(owner, if active { "requester" } else { &local });
+    }
 }

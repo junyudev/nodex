@@ -83,6 +83,7 @@ const authority = (values: Readonly<Record<string, DatabaseJsonValue>>): DataSou
       },
     ]),
   ),
+  work: { unsatisfiedCount: 0, blockers: [], owner: null, assignee: null, autoStart: false },
   taskParent: { parentPageId: null, siblingRank: null, valueRevision: 1 },
   position: { rankKey: "a", revision: 1 },
   effectiveGroupKey: null,
@@ -94,7 +95,7 @@ describe("database Board presentation model", () => {
     const status = projectDatabaseBoardGroup({
       property: property("status", "select", "Status"),
       groupKey: "doing",
-      label: "Doing",
+      label: "In Progress",
       pathKey: "status/doing",
       options: [],
     });

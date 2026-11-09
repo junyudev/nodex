@@ -118,6 +118,29 @@ const STATUS_ICON_DEFINITIONS: Record<StatusVisualId, StatusIconDefinition> = {
       },
     ],
   },
+  canceled: {
+    viewBox: WORKFLOW_ICON_VIEW_BOX,
+    shapes: [
+      {
+        kind: "rect",
+        x: 1,
+        y: 1,
+        width: 12,
+        height: 12,
+        rx: 6,
+        fill: "none",
+        stroke: "currentColor",
+        strokeWidth: 1.5,
+      },
+      {
+        kind: "path",
+        d: "M4.5 4.5L9.5 9.5M9.5 4.5L4.5 9.5",
+        fill: "none",
+        stroke: "currentColor",
+        strokeWidth: 1.5,
+      },
+    ],
+  },
   archived: {
     viewBox: "0 0 20 20",
     shapes: [
@@ -161,6 +184,12 @@ export const columnStyles: Record<string, StatusTone> = {
     headerBg: "bg-[var(--column-done-header-bg)]",
     dropBg: "bg-[var(--column-done-drop-bg)]",
     accentColor: "var(--status-done-dot)",
+  },
+  canceled: {
+    dotColor: "bg-[var(--foreground-tertiary)]",
+    headerBg: "bg-[var(--background-secondary)]",
+    dropBg: "bg-[var(--background-secondary)]",
+    accentColor: "var(--foreground-tertiary)",
   },
   archived: {
     dotColor: "bg-[var(--column-archive-dot)]",

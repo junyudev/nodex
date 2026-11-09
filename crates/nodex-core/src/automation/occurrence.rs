@@ -34,7 +34,8 @@ pub(super) struct OccurrenceWindowQuery<'a> {
     pub search_query: Option<&'a str>,
 }
 
-const INTRINSIC_PROPERTY_KEYS: [&str; 9] = [
+const INTRINSIC_PROPERTY_KEYS: [&str; 10] = [
+    "work",
     "run.target",
     "run.localPath",
     "run.baseBranch",
@@ -617,7 +618,11 @@ fn validate_and_project(
         .to_owned();
     let priority = optional_string(&database, "priority")?;
     let estimate = optional_string(&database, "estimate")?;
-    let assignee = optional_string(&database, "assignee")?;
+    let assignee = intrinsic
+        .get("work")
+        .map(|property| crate::library::parse_page_work(&property.value))
+        .transpose()?
+        .and_then(|work| work.assignee);
     let due_date = optional_string(&database, "due_date")?;
     if let Some(value) = due_date.as_deref() {
         let parsed = NaiveDate::parse_from_str(value, "%Y-%m-%d")
@@ -732,7 +737,7 @@ fn read_database_properties(
            AND value.membership_id = ?1 \
          WHERE property.data_source_id = ?2 AND property.lifecycle = 'active' \
            AND property.id IN ('status','priority','estimate','tags','due_date', \
-             'scheduled_start','scheduled_end','assignee')",
+             'scheduled_start','scheduled_end')",
     )?;
     let rows = statement
         .query_map(params![membership_id, data_source_id], |row| {
@@ -769,7 +774,7 @@ fn read_intrinsic_properties(
          WHERE block_id = ?1 AND library_id = ?2 AND property_key IN ( \
            'run.target','run.localPath','run.baseBranch','run.worktreePath', \
            'run.environmentPath','schedule.isAllDay','schedule.timezone', \
-           'recurrence.config','reminders.config')",
+           'recurrence.config','reminders.config','work')",
     )?;
     let rows = statement
         .query_map(params![page_id, library_id], |row| {
@@ -1309,7 +1314,18 @@ fn matches_search(item: &ScheduledPageOccurrence, tokens: &[String]) -> bool {
         item.description.as_str(),
         item.priority.as_deref().unwrap_or_default(),
         item.estimate.as_deref().unwrap_or_default(),
-        item.assignee.as_deref().unwrap_or_default(),
+        &item
+            .assignee
+            .as_ref()
+            .map(|a| match a {
+                nodex_core_contracts::library::PageAssignee::Member { member_id } => {
+                    member_id.clone()
+                }
+                nodex_core_contracts::library::PageAssignee::Agent {
+                    instance_id, model, ..
+                } => format!("{instance_id} {model}"),
+            })
+            .unwrap_or_default(),
         &item.tags.join(" "),
     ]
     .join(" ")
@@ -1343,10 +1359,11 @@ fn require_active_project(
 fn status_label(value: &str) -> Option<&'static str> {
     match value {
         "triage" => Some("Triage"),
-        "plan" => Some("Plan"),
-        "doing" => Some("Doing"),
-        "review" => Some("Review"),
+        "plan" => Some("Todo"),
+        "doing" => Some("In Progress"),
+        "review" => Some("In Review"),
         "done" => Some("Done"),
+        "canceled" => Some("Canceled"),
         _ => None,
     }
 }

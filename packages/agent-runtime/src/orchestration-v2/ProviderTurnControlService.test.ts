@@ -210,6 +210,7 @@ it.effect(
       const layerProjection = Layer.succeed(
         ProjectionStore.ProjectionStoreV2,
         ProjectionStore.ProjectionStoreV2.of({
+          isExecutionPaused: () => Effect.succeed(false),
           apply: () => Effect.void,
           getSideChatThreadIds: Effect.succeed([]),
           getSideChatContext: () => Effect.succeed(null),

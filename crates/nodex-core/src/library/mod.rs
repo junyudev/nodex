@@ -27,7 +27,10 @@ pub(crate) use file_restore::{
     FileRestorePlan, RestoredFiles, apply as apply_file_restore, plan as plan_file_restore,
     publish as publish_file_restore,
 };
+mod inbound_files;
+pub(crate) use inbound_files::publish as publish_inbound_files;
 mod files;
+pub(crate) mod members;
 pub(crate) use files::capture_snapshot as capture_file_snapshot;
 mod agent_surface;
 mod file_blobs;
@@ -1714,9 +1717,10 @@ mod tests {
                 )
         }));
         assert!(
-            !metadata.properties.iter().any(|property| {
-                matches!(property.property_id.as_str(), "due_date" | "assignee")
-            })
+            !metadata
+                .properties
+                .iter()
+                .any(|property| { property.property_id == "due_date" })
         );
         assert!(meta_file.content.starts_with(&format!(
             "id: \"{PAGE}\"\npage_key: null\ntitle: \"Native lifecycle\"\nproperties:\n"
@@ -2384,6 +2388,7 @@ mod tests {
                             tags: Vec::new(),
                             tag_mode: LibraryPageSearchTagMode::Any,
                             assignees: Vec::new(),
+                            owners: Vec::new(),
                         }),
                         preferred_project_id: Some("project-1".to_owned()),
                         recent_page_ids: vec![ROW_PAGE.to_owned()],
@@ -4630,10 +4635,13 @@ mod tests {
         assert_eq!(promotion_commit.physical_evidence.effect_count, 3);
         assert!(
             !promotion_commit.delivery_atoms.is_empty()
-                && promotion_commit
-                    .delivery_atoms
-                    .iter()
-                    .all(|atom| { atom.kind == DeliveryAtomKind::LibraryNavigationChanged })
+                && promotion_commit.delivery_atoms.iter().all(|atom| {
+                    matches!(
+                        atom.kind,
+                        DeliveryAtomKind::LibraryNavigationChanged
+                            | DeliveryAtomKind::ProjectWorkspaceChanged
+                    )
+                })
         );
         assert_eq!(
             promotion_commit.identity.commit_seq,
@@ -6632,10 +6640,13 @@ mod tests {
         assert_eq!(moved_commit.physical_evidence.effect_count, 3);
         assert!(
             !moved_commit.delivery_atoms.is_empty()
-                && moved_commit
-                    .delivery_atoms
-                    .iter()
-                    .all(|atom| { atom.kind == DeliveryAtomKind::LibraryNavigationChanged })
+                && moved_commit.delivery_atoms.iter().all(|atom| {
+                    matches!(
+                        atom.kind,
+                        DeliveryAtomKind::LibraryNavigationChanged
+                            | DeliveryAtomKind::ProjectWorkspaceChanged
+                    )
+                })
         );
         let promoted_page_id = moved_result
             .result_root_block_ids
@@ -7792,6 +7803,9 @@ pub(crate) mod page_genesis;
 mod page_lifecycle;
 pub(crate) mod page_lifecycle_mutation;
 mod page_property_mutation;
+pub(crate) use page_property_mutation::{
+    initialize_agent_work, parse_page_work, validate_agent_selection,
+};
 mod page_write_semantic;
 mod primary_database;
 mod structural_edit;

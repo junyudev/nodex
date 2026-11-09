@@ -42,6 +42,13 @@ import { DEFAULT_PROJECT_APPEARANCE } from "../../../shared/project-appearance";
 import type { CommandPaletteWorkspaceSelection } from "@/lib/command-palette-workspace-selection";
 import { CommandPaletteSurface, type CommandPaletteSurfaceHandle } from "./command-palette-surface";
 
+vi.mock("@/lib/members-runtime", () => ({
+  useMembers: () => ({ data: [{ id: "Alex", display_name: "Alex", lifecycle: "active" }] }),
+}));
+vi.mock("@/lib/use-agent-runtime-providers", () => ({
+  useAgentRuntimeProviders: () => ({ data: [] }),
+}));
+
 vi.mock("./threads-icon", () => ({
   ThreadsIcon: ({ className }: { className?: string }) => createElement("span", { className }, "T"),
 }));
@@ -1099,11 +1106,11 @@ describe("CommandPaletteSurface", () => {
               pageId: "body-only-page",
               pageKey: null,
               title: "Body-only page",
-              status: { optionId: "doing", label: "Doing" },
+              status: { optionId: "doing", label: "In Progress" },
               priority: null,
               tags: [],
               assignee: null,
-              locationLabel: "Default / Doing",
+              locationLabel: "Default / In Progress",
               titleParts: [],
               excerpt: "Document vector clocks and replicated queue recovery.",
               excerptParts: [
@@ -1605,7 +1612,7 @@ describe("CommandPaletteSurface", () => {
           id: "ops-page",
           title: "Queue cleanup",
           descriptionPreview: "Executor queue polish.",
-          assignee: "Alex",
+          assignee: { kind: "member", member_id: "Alex" },
         }),
       }),
       makePalettePage({
@@ -1615,7 +1622,7 @@ describe("CommandPaletteSurface", () => {
           id: "design-page",
           title: "Queue cleanup",
           descriptionPreview: "Executor queue polish.",
-          assignee: "Alex",
+          assignee: { kind: "member", member_id: "Alex" },
         }),
       }),
     ];
@@ -1651,7 +1658,7 @@ describe("CommandPaletteSurface", () => {
     const filters = {
       ...getDefaultCommandPalettePageFilters(),
       projectIds: ["ops"],
-      assignees: ["Alex"],
+      assignees: [JSON.stringify({ kind: "member", member_id: "Alex" })],
     };
 
     const { container } = render(

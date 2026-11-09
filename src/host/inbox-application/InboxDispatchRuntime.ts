@@ -140,6 +140,7 @@ export const make = Effect.gen(function* () {
   const deliver = Effect.fn("InboxDispatchRuntime.deliver")(function* (
     work: CoreInboxDispatchWork,
   ) {
+    if (yield* inbox.executionHeld({ pageIds: work.page_ids, sessionId: work.session_id })) return;
     const action = inboxDispatchActionFromCore(work.action);
     if (action.type !== "new_chat" && action.type !== "send_to_chat")
       return yield* inbox.failDispatch(
@@ -207,6 +208,7 @@ export const make = Effect.gen(function* () {
         title: session.displayTitle,
         modelSelection: selection.modelSelection,
         interactionMode: selection.interactionMode,
+        workPage: work.page_ids[0] ? { pageId: work.page_ids[0] } : undefined,
         message,
       });
       return yield* inbox.completeDispatch(work, threadId);

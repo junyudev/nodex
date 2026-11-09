@@ -1,3 +1,4 @@
+import { pageAssigneeFromKey } from "../../shared/work-graph";
 import { useEffect, useMemo, useState } from "react";
 import { isPriority, PRIORITY_VALUES } from "../../shared/priority";
 import { WORKFLOW_STATUS_ORDER } from "../../shared/workflow-status";
@@ -112,7 +113,8 @@ export function toCorePageSearchFilters(
     statuses !== undefined ||
     priorities !== undefined ||
     tags.length > 0 ||
-    filters.assignees.length > 0;
+    filters.assignees.length > 0 ||
+    (filters.owners?.length ?? 0) > 0;
   if (!hasFilters) return undefined;
   return {
     statuses,
@@ -120,7 +122,8 @@ export function toCorePageSearchFilters(
     includeEmptyPriority: filters.includeEmptyPriority,
     tags,
     tagMode: filters.tagMode,
-    assignees: [...filters.assignees],
+    assignees: filters.assignees.map(pageAssigneeFromKey).filter((value) => value !== null),
+    owners: filters.owners ?? [],
   };
 }
 
@@ -216,6 +219,7 @@ export function buildCommandPalettePagesFromSearchResults({
           priority,
           tags: result.tags.map(pageSearchOptionIdentityKey),
           assignee: result.assignee,
+          owner: result.owner ?? null,
         },
         tagLabels: result.tags.map((tag) => tag.label),
         inActiveProject: result.projectId === activeProjectId,

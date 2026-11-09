@@ -46,6 +46,14 @@ pub(super) fn managed(
     id: &str,
 ) -> Result<Option<CoordinatorManagedSession>, StoreError> {
     validate_id("session_id", id)?;
+    let mut value = connection.query_row("SELECT session_id,since,observed_json,observed_revision,(SELECT max(report_at) FROM project_session_pages WHERE session_id=managed.session_id) FROM coordinator_managed_sessions managed WHERE session_id=?1", [id], |r| Ok(CoordinatorManagedSession { active_page_ids: Vec::new(), session_id:r.get(0)?, since:r.get(1)?, observed_json:r.get::<_,Option<String>>(2)?.map(decode).transpose()?, observed_revision:r.get(3)?, latest_report_at:r.get(4)? })).optional()?;
+    if let Some(value) = &mut value {
+        value.active_page_ids = connection
+            .prepare("SELECT page_id FROM page_active_chats WHERE session_id=?1 ORDER BY page_id")?
+            .query_map([id], |r| r.get(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+    }
+    Ok(value)
 }
 /// Used by chat dispatch inside its existing Workspace transaction.
 pub(super) fn set_managed(
@@ -86,6 +94,7 @@ pub(super) fn pending(
     library: &str,
     count: u32,
 ) -> Result<Vec<CoordinatorWorkEvent>, StoreError> {
+    let mut events = connection.prepare(&format!("SELECT event_id,dedupe_key,kind,session_id,page_id,payload_json,created_at,(SELECT COALESCE(NULLIF(thread.thread_name,''),session.no_thread_fallback_title) FROM project_sessions session LEFT JOIN project_session_threads link ON link.session_id=session.id LEFT JOIN codex_threads thread ON thread.thread_id=link.thread_id WHERE session.id=event.session_id),(SELECT title FROM page_read_model WHERE page_block_id=event.page_id) FROM coordinator_work_events event WHERE batch_id IS NULL AND resolved_at IS NULL AND NOT ({}) ORDER BY created_at,event_id LIMIT ?1",super::execution_holds::event_predicate("event.page_id","event.session_id")))?.query_map([limit(count)?], |r| Ok(CoordinatorWorkEvent { event_id:r.get(0)?, dedupe_key:r.get(1)?, kind:decode(format!("\"{}\"",r.get::<_,String>(2)?))?, session_id:r.get(3)?, page_id:r.get(4)?, payload:decode(r.get(5)?)?, created_at:r.get(6)?, session_title:r.get(7)?, page_title:r.get(8)?, page_key:None }))?.collect::<rusqlite::Result<Vec<_>>>()?;
     for event in &mut events {
         if let Some(id) = &event.page_id {
             event.page_key = crate::database::current_page_key_for_page(connection, library, id)?;
@@ -167,6 +176,17 @@ pub(super) fn apply(
     let mut sessions = Vec::new();
     let mut pages = Vec::new();
     let mut retired_attention = false;
+    let mut status_receipt = None;
+    if !matches!(
+        intent,
+        ProjectWorkspaceIntent::ReportPageWork { .. }
+            | ProjectWorkspaceIntent::AcceptPageWork { .. }
+    ) && (provenance.is_some()
+        || !matches!(
+            context.adapter,
+            nodex_core_contracts::AdapterKind::ElectronHost
+                | nodex_core_contracts::AdapterKind::Test
+        ))
     {
         return Err(denied("Coordinator control belongs to the Desktop Host"));
     }
@@ -195,6 +215,45 @@ pub(super) fn apply(
             require_session(connection, library, session_id)?;
             set_managed(connection, session_id, *enabled, &now)?;
             sessions.push(session_id.clone());
+        }
+        ProjectWorkspaceIntent::AcceptPageWork {
+            page_id,
+            expected_turn_episode,
+        } => {
+            if let Some(episode) = expected_turn_episode {
+            }
+            if provenance.is_some()
+                || context.agent_attribution.is_some()
+                || !matches!(
+                    context.adapter,
+                    nodex_core_contracts::AdapterKind::RemoteMember
+                        | nodex_core_contracts::AdapterKind::ElectronHost
+                        | nodex_core_contracts::AdapterKind::NativeCli
+                        | nodex_core_contracts::AdapterKind::LoopbackHttp
+                        | nodex_core_contracts::AdapterKind::Test
+                )
+            {
+                return Err(denied("Only a person may accept Page work"));
+            }
+            validate_id("page_id", page_id)?;
+            crate::library::require_page_read_access(connection, library, page_id)?;
+            status_receipt = crate::database::follow_workflow_status(
+                connection,
+                library,
+                context,
+                operation,
+                &[crate::database::WorkflowStatusStep {
+                    page_id,
+                    predecessors: &["review"],
+                    to: "done",
+                    person_revision: crate::database::status_person_revision(connection, page_id)?,
+                }],
+                &now,
+            )?;
+            if status_receipt.is_some() {
+                crate::database::record_person_status_edit(connection, page_id)?;
+            }
+            pages.push(page_id.clone());
         }
         ProjectWorkspaceIntent::ReportPageWork {
             page_id,
@@ -231,6 +290,36 @@ pub(super) fn apply(
             let page = reported_page(connection, library, &session, page_id.as_deref())?;
             crate::library::require_page_read_access(connection, library, &page)?;
             let revision: i64 = connection.query_row("UPDATE project_session_pages SET report_outcome=?3,report_summary=?4,report_at=?5,report_run_id=?6,report_revision=report_revision+1 WHERE session_id=?1 AND page_id=?2 RETURNING report_revision", params![session,page,literal(outcome),summary,now,report_run_id], |r| r.get(0)).optional()?.ok_or_else(|| denied("The reporting Session is not linked to this Page"))?;
+            let fence: Option<i64> = connection.query_row(
+                "SELECT status_fence FROM project_session_pages WHERE page_id=?1 AND session_id=?2",
+                params![page, session],
+                |r| r.get(0),
+            )?;
+            let transition = match outcome {
+                WorkReportOutcome::Ready => Some((&["doing"][..], "review")),
+                WorkReportOutcome::Dropped => Some((&["triage", "plan", "doing"][..], "canceled")),
+                WorkReportOutcome::Blocked | WorkReportOutcome::Failed => None,
+            };
+            // An older chat keeps its evidence, but cannot move a newer attempt's Page.
+            let active = super::page_chat::active_chat(connection, &page)?
+                .is_some_and(|active| active.session_id == session);
+            if let Some(((predecessors, to), fence)) = transition.filter(|_| active).zip(fence) {
+                status_receipt = crate::database::follow_workflow_status(
+                    connection,
+                    library,
+                    context,
+                    operation,
+                    &[crate::database::WorkflowStatusStep {
+                        page_id: &page,
+                        predecessors,
+                        to,
+                        person_revision: fence,
+                    }],
+                    &now,
+                )?;
+            }
+            let status_moved = status_receipt.is_some();
+            connection.execute("UPDATE project_session_pages SET report_status_moved=?3 WHERE page_id=?1 AND session_id=?2",params![page,session,status_moved])?;
             if managed(connection, &session)?.is_some() {
                 insert_event(
                     connection,
@@ -240,6 +329,7 @@ pub(super) fn apply(
                         kind: CoordinatorWorkEventKind::Report,
                         session_id: Some(session.clone()),
                         page_id: Some(page.clone()),
+                        payload: serde_json::json!({"outcome":outcome,"summary":summary,"revision":revision,"run_id":report_run_id,"status_moved":status_moved}),
                         dedupe_key: format!("report:{session}:{page}:{revision}"),
                     },
                     &now,
@@ -247,6 +337,105 @@ pub(super) fn apply(
             }
             sessions.push(session);
             pages.push(page);
+        }
+        ProjectWorkspaceIntent::RecordSessionExecution {
+            session_id,
+            expected_revision,
+            observation,
+            events,
+            resolved_request_ids,
+        } => {
+            if !matches!(
+                context.adapter,
+                nodex_core_contracts::AdapterKind::ElectronHost
+                    | nodex_core_contracts::AdapterKind::Test
+            ) || context.agent_attribution.is_some()
+            {
+                return Err(denied(
+                    "Session execution observations belong to the Desktop Host",
+                ));
+            }
+            require_session(connection, library, session_id)?;
+            if events.len() > 100
+                || observation.pending_requests.len() > 100
+                || observation.pending_request_ids.len() > 100
+                || resolved_request_ids.len() > 100
+            {
+                return Err(invalid(
+                    "Execution capture is bounded to 100 requests and events",
+                ));
+            }
+            if observation.state == SessionExecutionState::Queued
+                && observation
+                    .queue
+                    .as_ref()
+                    .is_none_or(|queue| queue.position == 0)
+            {
+                return Err(invalid(
+                    "Queued execution requires a positive queue position",
+                ));
+            }
+            for request in &observation.pending_requests {
+                validate_id("request_id", &request.id)?;
+            }
+            if let Some(agent) = &observation.agent {
+                crate::library::validate_agent_selection(agent)?;
+            }
+            let mut recorded = observation.clone();
+            if recorded.agent.is_none() {
+                recorded.agent = super::page_chat::session_agent_selection(connection, session_id)?;
+            }
+            let encoded = serde_json::to_string(&recorded)
+                .map_err(|_| invalid("Invalid execution observation"))?;
+            if encoded.len() > 16000 {
+                return Err(invalid("Observation exceeds 16000 bytes"));
+            }
+            let revision = connection
+                .query_row(
+                    "SELECT revision FROM session_execution_observations WHERE session_id=?1",
+                    [session_id],
+                    |r| r.get::<_, i64>(0),
+                )
+                .optional()?
+                .unwrap_or(0);
+            if revision != *expected_revision {
+                return Err(conflict("Session execution observation revision changed"));
+            }
+            connection.execute("INSERT INTO session_execution_observations(session_id,revision,observed_json,observed_at) VALUES(?1,1,?2,?3) ON CONFLICT(session_id) DO UPDATE SET revision=revision+1,observed_json=excluded.observed_json,observed_at=excluded.observed_at",params![session_id,encoded,now])?;
+            let managed = managed(connection, session_id)?.is_some();
+            if !managed && (!events.is_empty() || !resolved_request_ids.is_empty()) {
+                return Err(invalid("Only managed chats publish Coordinator events"));
+            }
+            if managed {
+                // Unknown execution facts cannot consume pending managed notifications.
+                if observation.state != SessionExecutionState::Unavailable {
+                    connection.execute("UPDATE coordinator_managed_sessions SET observed_json=?2,observed_revision=observed_revision+1 WHERE session_id=?1",params![session_id,encoded])?;
+                }
+                for request in resolved_request_ids {
+                    validate_id("resolved_request_id", request)?;
+                    let key = format!("attention:{session_id}:{request}");
+                    let ids=connection.prepare("SELECT event_id FROM coordinator_work_events WHERE dedupe_key=?1 AND kind='attention' AND resolved_at IS NULL")?.query_map([key],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+                    let handled =
+                        super::inbox::nodex::retire_attention(connection, library, &ids, &now)?;
+                    retired_attention |= !handled.is_empty();
+                    pages.extend(handled);
+                }
+                for (index, event) in events.iter().enumerate() {
+                    if event.session_id.as_deref() != Some(session_id) {
+                        return Err(invalid(
+                            "Observation events must belong to the observed Session",
+                        ));
+                    }
+                    insert_event(connection, operation, index, event, &now)?;
+                }
+            }
+            pages.extend(
+                connection
+                    .prepare("SELECT page_id FROM page_active_chats WHERE session_id=?1")?
+                    .query_map([session_id], |r| r.get::<_, String>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()?,
+            );
+            sessions.push(session_id.clone());
         }
         ProjectWorkspaceIntent::RecordWorkEvents { events, observed } => {
             if events.len() > 100 || observed.len() > 100 {
@@ -320,6 +509,18 @@ pub(super) fn apply(
             }
             connection.execute("INSERT INTO coordinator_event_batches(batch_id,coordinator_session_id,message_id,body,fingerprint,created_at) VALUES(?1,?2,?3,?4,?5,?6)", params![batch_id,coordinator_session_id,message_id,body,fingerprint,now])?;
             for id in event_ids {
+                let (page, session): (Option<String>, Option<String>) = connection.query_row(
+                    "SELECT page_id,session_id FROM coordinator_work_events WHERE event_id=?1",
+                    [id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?;
+                if super::execution_holds::event_held(
+                    connection,
+                    page.as_deref(),
+                    session.as_deref(),
+                )? {
+                    return Err(conflict("Work event is paused"));
+                }
                 if connection.execute("UPDATE coordinator_work_events SET batch_id=?2 WHERE event_id=?1 AND batch_id IS NULL AND resolved_at IS NULL",params![id,batch_id])? != 1 { return Err(conflict("A work event is missing or already batched")); }
             }
         }
@@ -349,8 +550,34 @@ pub(super) fn apply(
         }
         _ => return Err(invalid("Not a Coordinator command")),
     }
+    let mut effects = WorkspaceMutationEffects {
+        operation_kind: if retired_attention {
+            "inbox_retire_attention"
+        } else {
+            "coordinator"
         },
+        project_catalog_change: None,
+        change_project_id: None,
+        project_ids: vec![],
+        session_ids: sessions.clone(),
+        thread_ids: vec![],
+        session_summary_scopes: vec![ProjectSessionInvalidationScope::All],
+        session_detail_ids: sessions,
+        block_ids: pages.clone(),
+        document_ids: vec![],
+        database_ids: vec![],
+        page_ids: pages,
+        data_source_ids: vec![],
+        view_ids: vec![],
+        document_heads: vec![],
+        committed_at: now,
+    };
+    if let Some(receipt) = status_receipt {
+        effects.absorb_database(receipt);
+    }
+    finish_mutation(connection, context, epoch, operation, hash, effects)
 }
+
 pub(super) fn insert_event(
     connection: &Connection,
     operation: &str,
@@ -381,6 +608,7 @@ pub(super) fn insert_event(
     }
     let already_started = match (event.kind, event.page_id.as_deref()) {
         (CoordinatorWorkEventKind::ReadyToStart, Some(page)) => connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM page_active_chats WHERE page_id=?1)",
             [page],
             |r| r.get::<_, bool>(0),
         )?,
@@ -395,8 +623,11 @@ pub(super) fn work_descriptor(
     page: &str,
 ) -> Result<PageWorkDescriptor, StoreError> {
     // Reports remain evidence after a work chat is archived; unlinking removes that evidence.
+    let latest_report=connection.query_row("SELECT session_id,report_outcome,report_at,report_revision,report_status_moved FROM project_session_pages relation WHERE page_id=?1 AND report_outcome IS NOT NULL AND NOT EXISTS(SELECT 1 FROM coordinator WHERE session_id=relation.session_id) ORDER BY report_at DESC,report_revision DESC,session_id LIMIT 1",[page],|r| Ok(PageLatestWorkReport { status_moved:r.get(4)?, session_id:r.get(0)?,outcome:decode(format!("\"{}\"",r.get::<_,String>(1)?))?,at:r.get(2)?,revision:r.get(3)? })).optional()?;
     let managed_session_count=connection.query_row("SELECT count(*) FROM project_session_pages relation JOIN coordinator_managed_sessions managed ON managed.session_id=relation.session_id WHERE relation.page_id=?1",[page],|r| r.get(0))?;
     Ok(PageWorkDescriptor {
+        effective_hold: super::execution_holds::for_page(connection, page)?,
+        active_chat: super::page_chat::active_chat(connection, page)?,
         latest_report,
         managed_session_count,
     })
@@ -430,6 +661,14 @@ fn reported_page(
             })
         }
         None if keyed.len() == 1 => keyed.first(),
+        None => {
+            let active = connection.prepare("SELECT page_id FROM page_active_chats WHERE session_id=?1 ORDER BY page_id LIMIT 2")?.query_map([session],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+            if active.len() == 1 {
+                keyed.iter().find(|(id, _)| *id == active[0])
+            } else {
+                None
+            }
+        }
     };
     if let Some((id, _)) = found {
         return Ok(id.clone());

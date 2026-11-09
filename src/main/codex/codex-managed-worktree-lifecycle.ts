@@ -7,6 +7,7 @@ export function snapshotPolicyForManagedWorktreeRemoval(
   reason: CodexManagedWorktreeRemovalReason,
 ): CodexManagedWorktreeSnapshotPolicy {
   switch (reason) {
+    case "page-completed":
     case "archive":
     case "automatic-retention":
     case "automation-archive":

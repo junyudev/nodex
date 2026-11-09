@@ -1,3 +1,4 @@
+import { spaceHeld } from "../work-application/execution-holds";
 import { createHash } from "node:crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -39,6 +40,7 @@ export const make = Effect.gen(function* () {
   });
   const deliver = Effect.fn("CoordinatorDeliveryRuntime.deliver")(function* (batch: Batch) {
     if (yield* reconcile(batch)) return;
+    if (yield* spaceHeld(core)) return;
     const current = yield* core.workspace.read(
       { kind: "read_event_batch", batch_id: batch.batch_id },
       undefined,
@@ -74,6 +76,7 @@ export const make = Effect.gen(function* () {
   });
   const drain = lane.withPermits(1)(
     Effect.gen(function* () {
+      if (yield* spaceHeld(core)) return;
       const open = yield* core.workspace.read(
         { kind: "read_open_event_batches", limit: 100 },
         undefined,

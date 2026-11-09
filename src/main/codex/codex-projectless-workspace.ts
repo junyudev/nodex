@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { lstat, mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import path from "node:path";
 import type { CodexProjectlessWorkspace } from "../../shared/types";
 
@@ -24,7 +23,8 @@ export interface CreateCodexProjectlessWorkspaceInput {
   readonly createSplitDirectories: boolean;
   readonly directoryName?: string | null;
   readonly prompt?: string | null;
-  readonly homeDirectory?: string;
+  /** The Profile's projects directory; see `resolveNodexProjectsDirectory`. */
+  readonly workspaceRoot: string;
   readonly date?: Date;
   readonly fileSystem?: CodexProjectlessWorkspaceFileSystem;
   readonly uniqueDirectoryNameSuffix?: () => string;
@@ -42,10 +42,6 @@ const nodeProjectlessWorkspaceFileSystem: CodexProjectlessWorkspaceFileSystem = 
     };
   },
 };
-
-export function resolveCodexProjectlessWorkspaceRoot(homeDirectory: string = homedir()): string {
-  return path.join(homeDirectory, "Documents", "Nodex");
-}
 
 export function parseCodexProjectlessWorkspace(input: unknown): CodexProjectlessWorkspace {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
@@ -167,7 +163,7 @@ export async function createCodexProjectlessWorkspace(
   input: CreateCodexProjectlessWorkspaceInput,
 ): Promise<CodexProjectlessWorkspace> {
   const fileSystem = input.fileSystem ?? nodeProjectlessWorkspaceFileSystem;
-  const workspaceRoot = resolveCodexProjectlessWorkspaceRoot(input.homeDirectory);
+  const { workspaceRoot } = input;
   const dateDirectory = path.join(workspaceRoot, formatCodexProjectlessLocalDate(input.date));
   const directoryName = slugCodexProjectlessDirectoryName({
     directoryName: input.directoryName,

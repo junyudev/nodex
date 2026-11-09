@@ -28,7 +28,7 @@ describe("sidebar/linked-page-status over the real Core transport", () => {
           });
           pageKeys.add(snapshot.value.value.summary.page_key!);
         }
-        expect(pageKeys.size).toBe(5);
+        expect(pageKeys.size).toBe(WORKFLOW_STATUS_ORDER.length);
 
         const standalone = await project.libraryRead({
           kind: "page_detail",

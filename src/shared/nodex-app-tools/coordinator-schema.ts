@@ -79,6 +79,15 @@ export const InboxSuggestionOutput = z
   .strict();
 export type InboxSuggestionOutput = z.infer<typeof InboxSuggestionOutput>;
 
+const body = z.string().min(1).max(2000).regex(/\S/, "Body is empty");
+const eventId = z.string().min(1).max(512).regex(/\S/);
+export const writeTurnNoteSchema = z.strictObject({
+  pageId: eventId,
+  eventIds: z.array(eventId).min(1).max(8),
+  body,
+  notify: z.boolean(),
+});
+export const answerInboxQuestionSchema = z.strictObject({ questionPageId: eventId, body });
 export const coordinatorToolCatalog: readonly Tool[] = [
   {
     name: "inbox_suggest",
@@ -87,7 +96,15 @@ export const coordinatorToolCatalog: readonly Tool[] = [
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },
   {
+    name: "write_turn_note",
     description:
+      "Coordinator only. Add an immutable note of at most 100 words to a Page whose current Turn belongs to the local Member. Use 1–8 eventIds delivered to you concerning this Page or its active chat. Write only when it adds to the derived text; choose notify for review, blocked, failed or stalled work. Exact body, notify and event-set retries reuse the note.",
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+  },
+  {
+    name: "answer_inbox_question",
+    description:
+      "Coordinator only. Answer the person's pending Inbox question in at most 100 words. Creates one quiet answer and handles the question atomically. An exact retry returns the same answer.",
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },
 ];

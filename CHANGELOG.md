@@ -7,14 +7,19 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Nodex now coordinates your chats. One long-lived Nodex conversation routes every Inbox message knowing what is already running, watches the chats it starts, and keeps your Inbox focused on waiting messages and Pages waiting for you. Nodex adds a note when a Page needs more context, and one notification follows each episode. A chat can return a misrouted message with a reason for Nodex to route again. Reply to a Page waiting for you and your words go straight to its active chat, or answer the question it asked; open Nodex from the Inbox header to talk to it directly, and turn on Start my requests to let it start what you clearly ask for without a click. Work advances through Triage, Todo, In Progress and In Review as it starts and reports; your later Status choices take precedence. Accept reviewed work with `nodex page accept`; canceled work retires without releasing its dependents.
+- Pages have an Owner and one Assignee, either a person or an Agent. Board cards can wait for one another, and an Agent Assignee can be set to Start automatically. Cards, List rows, the Inbox and each Page’s Status say plainly whose move a Page waits for, such as Needs your answer, Ready for Alice’s review, Codex is working, Queued · 2nd or Waiting for NODEX-2. A Page’s Status offers Start, Resume, Accept or Open chat when you can act, while your later Status choices take precedence. Start hands a card to a chat Nodex watches, a card set to Start automatically starts once the cards it waits for are done, and for a bigger request Nodex can propose a plan that creates and starts its cards in one step.
+- Each Page’s Agent work in a Git Project gets its own branch and worktree, shared by its later chats. The Page shows its pull request and the GitHub threads it follows, the Board shows its pull request, and completing or canceling the Page removes the idle checkout while keeping the branch and PR link.
+- Agent work queues behind a limit you choose in Agents settings, initially four. Your messages and answers go first, and waiting chats show their place in the queue.
+- Pause Agent work for a Page, a Project, or the whole Space. Running work stops while queued messages and results wait for you to resume, including across restarts.
+
 ### Changed
 
 - Clicking a file attached in a Page now opens it, instead of a small details popup. A file saved in the Page opens in a tab beside the Page, just like from the Page's Files list, so Markdown renders, HTML reports show as pages, and images, PDFs and media play. A linked file opens in Files. Right-click a file for Open in new tab, Save… and Copy reference, and press Enter on a selected file to open it. In Page history and other read-only previews, a file opens in a viewer that shows the version that was captured.
 
 ### Fixed
 
-- Page history opens again after you edit a Page and pause. The automatic revision Nodex saves when you stop editing made the Page's history show a database error instead of its revisions.
 - Usage analytics that is off when Nodex starts no longer sends events an earlier launch left waiting. Setting `DO_NOT_TRACK`, or otherwise turning analytics off while Nodex was closed, now discards them as turning it off in Settings does.
+- Agent settings edits through symbolic links apply reliably, including immediately after startup or after a link points to a new file.
 
 ## [0.5.3] - 2026-11-08
 

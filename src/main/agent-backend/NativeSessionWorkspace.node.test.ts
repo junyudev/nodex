@@ -7,7 +7,7 @@ import * as path from "node:path";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { NativeSessionWorkspaceInput } from "./NativeSessionWorkspace";
-import { testLayer as configLayer } from "../app/MainConfig";
+import { testLayer as configLayer, type MainConfigValue } from "../app/MainConfig";
 import { CodexGitProbe, make as makeGitProbe } from "../codex-application/CodexGitProbe";
 import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
 import { ManagedWorktreeRuntime } from "../codex-application/ManagedWorktreeRuntime";
@@ -30,7 +30,7 @@ const input: NativeSessionWorkspaceInput = {
 
 const fixture = (
   options: {
-    homeDirectory?: string;
+    config?: Partial<MainConfigValue>;
     setupError?: string;
     ownerFailure?: boolean;
     environmentPath?: string;
@@ -108,9 +108,7 @@ const fixture = (
             }),
         }),
     } as never),
-    Effect.provide(
-      configLayer({ ...(options.homeDirectory ? { homeDirectory: options.homeDirectory } : {}) }),
-    ),
+    Effect.provide(configLayer(options.config)),
   );
   return { owner, events, requests };
 };
@@ -334,16 +332,31 @@ it.effect("uncertain Core ownership retains the workspace and its newborn protec
   }),
 );
 
-it.effect(
-  "projectless native session uses a disposable dedicated workspace and output directory",
-  () =>
+it.effect.each([
+  [
+    "a real Profile",
+    "Documents/Nodex",
+    (root: string) => ({ documentsPath: path.join(root, "Documents") }),
+  ],
+  [
+    "an isolated run",
+    ".nodex/workspace",
+    (root: string) => ({
+      documentsPath: path.join(root, "Documents"),
+      isolatedRunId: "isolated-run",
+      nodexHome: path.join(root, ".nodex"),
+    }),
+  ],
+] as const)(
+  "a projectless native session in %s uses a disposable workspace under %s",
+  ([, projectsDirectory, config]) =>
     Effect.scoped(
       Effect.gen(function* () {
-        const homeDirectory = yield* Effect.acquireRelease(
+        const root = yield* Effect.acquireRelease(
           Effect.promise(() => mkdtemp(path.join(tmpdir(), "nodex-native-automation-"))),
           (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
         );
-        const f = fixture({ homeDirectory });
+        const f = fixture({ config: config(root) });
         const owner = yield* f.owner;
         const lease = yield* owner.prepare({
           ...input,
@@ -352,9 +365,7 @@ it.effect(
           sourceCwd: null,
           operationId: "run:create",
         });
-        assert.isTrue(
-          lease.location.cwd.startsWith(path.join(homeDirectory, "Documents", "Nodex")),
-        );
+        assert.isTrue(lease.location.cwd.startsWith(path.join(root, projectsDirectory)));
         assert.equal(
           lease.location.projectlessOutputDirectory,
           path.join(lease.location.cwd, "outputs"),
@@ -371,11 +382,11 @@ it.effect(
 it.effect("projectless workspace ownership removes only a failed unlinked allocation", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const homeDirectory = yield* Effect.acquireRelease(
+      const documentsPath = yield* Effect.acquireRelease(
         Effect.promise(() => mkdtemp(path.join(tmpdir(), "nodex-native-automation-"))),
         (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
       );
-      const owner = yield* fixture({ homeDirectory }).owner;
+      const owner = yield* fixture({ config: { documentsPath } }).owner;
       for (const attach of [false, true]) {
         const directory = yield* Effect.scoped(
           Effect.gen(function* () {
@@ -395,6 +406,39 @@ it.effect("projectless workspace ownership removes only a failed unlinked alloca
         );
         assert.equal(exists, attach);
       }
+    }),
+  ),
+);
+
+it.effect("reuses a Page checkout in the Project primary source subdirectory", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const f = fixture({
+        git: {
+          readPath: () => Effect.succeed("apps/web/"),
+          isNonGitWorkspace: () => Effect.succeed(false),
+          isNonGitWorkspaceOnHost: () => Effect.succeed(false),
+        },
+      });
+      const workspace = yield* f.owner;
+      const lease = yield* workspace.prepare({
+        ...input,
+        sourceCwd: path.resolve("/repo/apps/web"),
+        sourceRoots: [path.resolve("/repo/apps/web"), path.resolve("/reference")],
+        runInTarget: "localProject",
+        reusePageWorkspace: {
+          worktreeGitRoot: path.resolve("/managed/abcd/repo"),
+          branchName: "nodex-12-web",
+        },
+      });
+      assert.equal(lease.location.cwd, path.resolve("/managed/abcd/repo/apps/web"));
+      assert.equal(lease.location.managedWorktreePath, path.resolve("/managed/abcd/repo"));
+      assert.deepEqual(lease.location.workspaceRoots, [
+        path.resolve("/managed/abcd/repo/apps/web"),
+        path.resolve("/managed/abcd/repo"),
+        path.resolve("/reference"),
+      ]);
+      assert.equal(f.requests.length, 0);
     }),
   ),
 );

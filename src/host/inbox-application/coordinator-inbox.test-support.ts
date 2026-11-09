@@ -99,6 +99,7 @@ export const routingFixture = Effect.fn("CoordinatorInbox.fixture")(function* (
     suggestionConcurrency: 3,
     suggestions: "on_request",
   };
+  let heldAt: number | null = null;
   let caller = "nodex";
   let bound = "nodex";
   const pending = new Map(requests.map((request) => [request.request_id, request]));
@@ -123,6 +124,7 @@ export const routingFixture = Effect.fn("CoordinatorInbox.fixture")(function* (
   });
   let routingStatus: InboxApplication["Service"]["routingStatus"];
   const inbox = {
+    executionHeld: () => Effect.succeed(heldAt !== null),
     prepareSuggestions: () => Effect.void,
     autoConfirm: Effect.void,
     cancelledRoutingDeliveries: () => Effect.succeed([]),
@@ -205,9 +207,19 @@ export const routingFixture = Effect.fn("CoordinatorInbox.fixture")(function* (
           const duplicate = seen.has(input.operationId);
           seen.add(input.operationId);
           const intent = input.intent.kind === "agent_command" ? input.intent.intent : null;
+          if (intent?.kind !== "write_turn_note" && intent?.kind !== "answer_inbox_question")
+            return { receipt: { duplicate } };
+          const key = JSON.stringify(
+            intent.kind === "write_turn_note"
+              ? [intent.page_id, intent.event_ids, intent.body, intent.notify]
+              : [intent.question_page_id, intent.body],
+          );
+          const id = intent.page_id;
           const existing = postPages.get(key);
+          postPages.set(key, existing ?? id);
           return {
             receipt: { duplicate },
+            outcome: { inbox_write: { page_id: existing ?? id, replay: existing !== undefined } },
           };
         }),
     },
@@ -289,6 +301,7 @@ export const routingFixture = Effect.fn("CoordinatorInbox.fixture")(function* (
     Layer.succeed(CoreAuthority, { identity: { profileId: "profile" } } as never),
     Layer.succeed(CoreModules, core as never),
     Layer.succeed(NodexEntryNotifications, {
+      drain: Effect.void,
       posted: (post: unknown) =>
         Effect.sync(() => {
           posted.push(post);
@@ -351,6 +364,26 @@ export const routingFixture = Effect.fn("CoordinatorInbox.fixture")(function* (
       runStartedAt = value;
     },
     worker,
+    setExecutionHeld: (held: boolean) =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        if (held) {
+          heldAt ??= now;
+          return;
+        }
+        if (heldAt === null) return;
+        const duration = now - heldAt;
+        heldAt = null;
+        for (const [id, request] of pending)
+          if (request.delivery)
+            pending.set(id, {
+              ...request,
+              delivery: {
+                ...request.delivery,
+                paused_ms: (request.delivery.paused_ms ?? 0) + duration,
+              },
+            });
+      }),
     completeRun: (messageId: string) => {
       completedRuns.add(messageId);
     },

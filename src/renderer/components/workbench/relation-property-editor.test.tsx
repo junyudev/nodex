@@ -59,7 +59,7 @@ describe("RelationPropertyEditor", () => {
     const onPatch = vi.fn();
     const view = render(
       <RelationPropertyEditor
-        label="Blocked by"
+        label="Waits for"
         value={relationValue}
         candidates={[
           { pageId: "page-visible", title: "Visible task" },
@@ -73,7 +73,7 @@ describe("RelationPropertyEditor", () => {
     );
 
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Blocked by relation" }));
+      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
       await Promise.resolve();
     });
     await act(async () => {
@@ -144,7 +144,7 @@ describe("RelationPropertyEditor", () => {
     }));
     const view = render(
       <RelationPropertyEditor
-        label="Blocked by"
+        label="Waits for"
         value={relationValue}
         candidates={[]}
         disabled={false}
@@ -156,7 +156,7 @@ describe("RelationPropertyEditor", () => {
     );
 
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Blocked by relation" }));
+      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
       await Promise.resolve();
     });
     await act(async () => {
@@ -182,7 +182,7 @@ describe("RelationPropertyEditor", () => {
     const confirm = vi.spyOn(window, "confirm");
     const view = render(
       <RelationPropertyEditor
-        label="Blocked by"
+        label="Waits for"
         value={relationValue}
         candidates={[]}
         disabled={false}
@@ -193,7 +193,7 @@ describe("RelationPropertyEditor", () => {
     );
 
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Blocked by relation" }));
+      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
       await Promise.resolve();
     });
     await act(async () => {
@@ -255,7 +255,7 @@ describe("RelationPropertyEditor", () => {
         }),
     );
     const props = {
-      label: "Blocked by",
+      label: "Waits for",
       candidates: [],
       disabled: false,
       targetMatchesCurrentSource: true,
@@ -266,7 +266,7 @@ describe("RelationPropertyEditor", () => {
     const view = render(<RelationPropertyEditor {...props} value={relationValue} />);
 
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Blocked by relation" }));
+      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
       await Promise.resolve();
     });
     await act(async () => {
@@ -333,7 +333,7 @@ describe("RelationPropertyEditor", () => {
     });
     const view = render(
       <RelationPropertyEditor
-        label="Blocked by"
+        label="Waits for"
         value={null}
         candidates={[]}
         disabled={false}
@@ -345,10 +345,10 @@ describe("RelationPropertyEditor", () => {
     );
 
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Blocked by relation" }));
+      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
       await Promise.resolve();
     });
-    const search = view.getByRole("combobox", { name: "Search Blocked by target pages" });
+    const search = view.getByRole("combobox", { name: "Search Waits for target pages" });
     await act(async () => {
       fireEvent.change(search, { target: { value: "old" } });
       await Promise.resolve();
@@ -394,7 +394,7 @@ describe("RelationPropertyEditor", () => {
     });
     const view = render(
       <RelationPropertyEditor
-        label="Blocked by"
+        label="Waits for"
         value={null}
         candidates={[]}
         disabled={false}
@@ -406,10 +406,10 @@ describe("RelationPropertyEditor", () => {
     );
 
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Blocked by relation" }));
+      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
       await Promise.resolve();
     });
-    const search = view.getByRole("combobox", { name: "Search Blocked by target pages" });
+    const search = view.getByRole("combobox", { name: "Search Waits for target pages" });
     await act(async () => {
       fireEvent.change(search, { target: { value: "old" } });
       await Promise.resolve();
@@ -445,7 +445,7 @@ describe("RelationPropertyEditor", () => {
     });
     const view = render(
       <RelationPropertyEditor
-        label="Blocked by"
+        label="Waits for"
         value={null}
         candidates={[]}
         disabled={false}
@@ -458,7 +458,7 @@ describe("RelationPropertyEditor", () => {
 
     try {
       await act(async () => {
-        fireEvent.click(view.getByRole("button", { name: "Edit Blocked by relation" }));
+        fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
         await Promise.resolve();
       });
       const retry = await view.findByRole("button", { name: "Couldn’t load pages. Retry" });
@@ -516,7 +516,7 @@ describe("RelationPropertyEditor", () => {
       });
     const view = render(
       <RelationPropertyEditor
-        label="Blocked by"
+        label="Waits for"
         value={relationValue}
         candidates={[]}
         disabled={false}
@@ -529,7 +529,7 @@ describe("RelationPropertyEditor", () => {
 
     try {
       await act(async () => {
-        fireEvent.click(view.getByRole("button", { name: "Edit Blocked by relation" }));
+        fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
         await Promise.resolve();
       });
       await act(async () => {
@@ -559,7 +559,7 @@ describe("RelationPropertyEditor", () => {
   test("treats an absent sparse value as Empty instead of corrupt", async () => {
     const view = render(
       <RelationPropertyEditor
-        label="Blocked by"
+        label="Waits for"
         value={undefined}
         candidates={[]}
         disabled={false}
@@ -568,21 +568,21 @@ describe("RelationPropertyEditor", () => {
         onClear={vi.fn()}
       />,
     );
-    const trigger = view.getByRole("button", { name: "Edit Blocked by relation" });
+    const trigger = view.getByRole("button", { name: "Edit Waits for relation" });
     expect(trigger.textContent).toBe("Empty");
     expect(trigger.querySelector("svg")).toBeNull();
     await act(async () => {
       fireEvent.click(trigger);
       await Promise.resolve();
     });
-    expect(view.getByRole("combobox", { name: "Search Blocked by target pages" })).toBeTruthy();
+    expect(view.getByRole("combobox", { name: "Search Waits for target pages" })).toBeTruthy();
   });
 
   test("rejects a target window from another value revision and requests authority refresh", async () => {
     const onValueStale = vi.fn();
     const view = render(
       <RelationPropertyEditor
-        label="Blocked by"
+        label="Waits for"
         value={relationValue}
         candidates={[]}
         disabled={false}
@@ -609,7 +609,7 @@ describe("RelationPropertyEditor", () => {
       />,
     );
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Blocked by relation" }));
+      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
       await Promise.resolve();
     });
     await act(async () => {
@@ -644,7 +644,7 @@ describe("RelationPropertyEditor", () => {
     });
     const view = render(
       <RelationPropertyEditor
-        label="Blocked by"
+        label="Waits for"
         value={relationValue}
         candidates={[]}
         disabled={false}
@@ -655,7 +655,7 @@ describe("RelationPropertyEditor", () => {
       />,
     );
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Blocked by relation" }));
+      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
       await Promise.resolve();
     });
     await act(async () => {
@@ -690,7 +690,7 @@ describe("RelationPropertyEditor", () => {
     });
     const view = render(
       <RelationPropertyEditor
-        label="Blocked by"
+        label="Waits for"
         value={null}
         candidates={[]}
         disabled={false}
@@ -701,7 +701,7 @@ describe("RelationPropertyEditor", () => {
       />,
     );
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Blocked by relation" }));
+      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
       await Promise.resolve();
     });
     await waitFor(() => expect(view.getByRole("option", { name: "First candidate" })).toBeTruthy());
@@ -742,7 +742,7 @@ describe("RelationPropertyEditor", () => {
     });
     const view = render(
       <RelationPropertyEditor
-        label="Blocked by"
+        label="Waits for"
         value={relationValue}
         candidates={[]}
         disabled={false}
@@ -753,7 +753,7 @@ describe("RelationPropertyEditor", () => {
       />,
     );
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Blocked by relation" }));
+      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
       await Promise.resolve();
     });
     await act(async () => {
@@ -775,7 +775,7 @@ describe("RelationPropertyEditor", () => {
   test("keeps the picker open while a Relation patch is pending", async () => {
     const onPatch = vi.fn();
     const props = {
-      label: "Blocked by",
+      label: "Waits for",
       value: null,
       candidates: [{ pageId: "candidate", title: "Candidate" }],
       disabled: false,
@@ -785,7 +785,7 @@ describe("RelationPropertyEditor", () => {
     } as const;
     const view = render(<RelationPropertyEditor {...props} />);
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Blocked by relation" }));
+      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
       await Promise.resolve();
     });
     await act(async () => {
@@ -793,7 +793,7 @@ describe("RelationPropertyEditor", () => {
       await Promise.resolve();
     });
     view.rerender(<RelationPropertyEditor {...props} pending />);
-    expect(view.getByRole("combobox", { name: "Search Blocked by target pages" })).toBeTruthy();
+    expect(view.getByRole("combobox", { name: "Search Waits for target pages" })).toBeTruthy();
     expect((view.getByRole("option", { name: "Candidate" }) as HTMLButtonElement).disabled).toBe(
       true,
     );
@@ -804,7 +804,7 @@ describe("RelationPropertyEditor", () => {
     const onPatch = vi.fn();
     const view = render(
       <RelationPropertyEditor
-        label="Blocked by"
+        label="Waits for"
         value={null}
         candidates={[
           { pageId: "first", title: "First" },
@@ -817,10 +817,10 @@ describe("RelationPropertyEditor", () => {
       />,
     );
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Blocked by relation" }));
+      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
       await Promise.resolve();
     });
-    const search = view.getByRole("combobox", { name: "Search Blocked by target pages" });
+    const search = view.getByRole("combobox", { name: "Search Waits for target pages" });
     await act(async () => {
       fireEvent.keyDown(search, { key: "ArrowDown" });
       await Promise.resolve();

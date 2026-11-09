@@ -70,6 +70,10 @@ fn dispatch(
             model_selection: ProjectWorkspaceInboxModelSelection {
                 instance_id: "codex".into(),
                 model: "dispatch-model".into(),
+                options: Some(vec![ProjectWorkspaceInboxModelOption {
+                    id: "reasoningEffort".into(),
+                    value: json!("medium"),
+                }]),
             },
             interaction_mode: ProjectWorkspaceInboxInteractionMode::Default,
         }),
@@ -98,6 +102,7 @@ fn prepare(w: &TestWorkspace, page: &str) {
         &w.module,
         "previous-chat",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            agent_selection: None,
             coordinator: false,
             side_chat_source_session_id: None,
             session_id: "chat".into(),
@@ -254,6 +259,103 @@ fn new_chat_relocates_user_and_github_intake_with_work_context_and_history() {
 #[test]
 fn send_to_chat_relocates_user_and_github_intake_with_work_context_and_history() {
     assert_relocation(true);
+}
+
+#[test]
+fn dispatch_assigns_only_empty_user_and_github_pages_to_the_receiving_agent() {
+    for github in [false, true] {
+        for existing in [false, true] {
+            for assigned in ["none", "member", "agent"] {
+                let w = setup();
+                let original = intake(&w, github);
+                let page = &original.page_id;
+                board(&w);
+                let before = work(&w, page);
+                let mut expected = before.clone();
+                expected["assignee"] = match assigned {
+                    "member" => json!({"kind":"member","member_id":before["owner"]}),
+                    "agent" => {
+                        json!({"kind":"agent","instance_id":"claude","model":"assigned-model","effort":"high"})
+                    }
+                    _ => serde_json::Value::Null,
+                };
+                if assigned != "none" {
+                    crate::library::LibraryModule::new("profile-1", "library-1", &w.kernel)
+                        .apply(
+                            &context(),
+                            ModuleApplyRequest {
+                                contract_version: LIBRARY_CONTRACT_VERSION,
+                                operation_id: "assign".into(),
+                                store_epoch: StoreEpoch("epoch-1".into()),
+                                intent: LibraryIntent::ApplyBlockPropertyMutation {
+                                    mutation: Box::new(LibraryBlockPropertyMutation {
+                                        actor: json!({"kind":"host"}),
+                                        client_session_id: None,
+                                        fields: vec![
+                                            LibraryBlockPropertyFieldMutation::IntrinsicSet {
+                                                block_id: page.clone(),
+                                                property_key: "work".into(),
+                                                expected_revision: 1,
+                                                value: expected.clone(),
+                                            },
+                                        ],
+                                    }),
+                                },
+                            },
+                        )
+                        .unwrap();
+                }
+                if existing {
+                    apply(
+                        &w.module,
+                        "receiver",
+                        ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                            coordinator: false,
+                            side_chat_source_session_id: None,
+                            session_id: "chat".into(),
+                            project_id: Some("project:work".into()),
+                            title: "Receiver".into(),
+                            initial_page_ids: vec![],
+                            agent_selection: Some(AgentWorkSelection {
+                                instance_id: "codex".into(),
+                                model: "receiver-model".into(),
+                                effort: Some("high".into()),
+                            }),
+                            runtime_id: "runtime".into(),
+                            runtime_thread_id: "thread:receiver".into(),
+                            launch_request_id: "launch:receiver".into(),
+                        },
+                    );
+                }
+                let intent = dispatch(&w, page, existing, Some("project:work"));
+                let result = w
+                    .module
+                    .apply(&context(), request("dispatch", intent.clone()))
+                    .unwrap();
+                if assigned == "none" {
+                    expected["assignee"] = json!({"kind":"agent","instance_id":"codex","model":if existing {"receiver-model"} else {"dispatch-model"},"effort":if existing {"high"} else {"medium"}});
+                    assert_eq!(
+                    );
+                    assert_eq!(commit_seq, result.committed.commit_seq);
+                }
+                assert_eq!(
+                    work(&w, page),
+                    expected,
+                    "github={github}, existing={existing}, assigned={assigned}"
+                );
+                assert_eq!(expected["auto_start"], false);
+                assert_eq!(membership(&w, page), project_home(&w));
+                assert_eq!(read_item(&w, page).page_status.unwrap().id, "doing");
+                let replay = w
+                    .module
+                    .apply(&context(), request("dispatch", intent))
+                    .unwrap();
+                assert!(replay.committed.receipt.mutation.duplicate);
+                assert_eq!(work(&w, page), expected);
+                assert!(!result.committed.receipt.mutation.duplicate);
+            }
+        }
+    }
 }
 #[test]
 fn projectless_chat_keeps_the_library_inbox_page_and_key() {

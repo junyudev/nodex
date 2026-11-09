@@ -53,6 +53,7 @@ export const BUILT_IN_DATA_SOURCE_PROPERTY_IDS = [
   "scheduled_start",
   "scheduled_end",
   "assignee",
+  "owner",
   TASK_PARENT_PROPERTY_ID,
   BLOCKED_BY_PROPERTY_ID,
 ] as const;

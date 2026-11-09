@@ -19,6 +19,7 @@ test("shares bounded Library Page reads and refreshes linked-chat activity after
       errorCount: 0,
       unreadCount: 0,
       soleSessionId: relatedCount === 1 ? "session:one" : null,
+      work: { activeChat: null, latestReport: null, managedSessionCount: 0 },
       runtimeSessionIds: [],
     })),
     projectionRevision: relatedCount,

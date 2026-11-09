@@ -121,6 +121,13 @@ const rowDetailSnapshot = (commitHead: number): DatabaseReadSnapshot => ({
         document_head_seq: 1,
         document_id: "document:test",
         has_description: true,
+        work: {
+          unsatisfied_count: 0,
+          blockers: [],
+          owner: null,
+          assignee: null,
+          auto_start: false,
+        },
         intrinsic_properties: {
           "schedule.isAllDay": false,
           "recurrence.config": null,

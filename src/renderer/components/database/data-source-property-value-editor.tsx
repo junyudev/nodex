@@ -1,3 +1,5 @@
+import { PageAssigneeLabel } from "./page-assignee-label";
+import { parsePageAssignee } from "../../../shared/work-graph";
 import { useRef, useState, type ReactElement, type ReactNode } from "react";
 import { NodexCheckbox } from "@/components/ui/settings";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -245,6 +247,8 @@ export function DataSourcePropertyValueEditor({
       {property.name}
     </span>
   ) : null;
+  if (property.valueType === "assignment")
+    return <PageAssigneeLabel assignee={parsePageAssignee(value ?? null)} />;
   if (property.valueType === "relation") {
     return (
       <RelationPropertyEditor

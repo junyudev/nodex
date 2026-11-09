@@ -25,6 +25,8 @@ export interface HostedAppToolSessionContext {
   readonly rootThreadId: string;
   readonly threadId: string;
   readonly runId: string | null;
+  /** The Run's inbound identity, proved by the Host rather than supplied by the model. */
+  readonly inboundMessageId?: string;
   readonly cwd: string | null;
 }
 

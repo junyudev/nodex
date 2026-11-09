@@ -460,10 +460,21 @@ const pendingWorktrees = Layer.effect(
   makeCodexPendingWorktreeRuntime,
 ).pipe(Layer.provideMerge(conversationCreation));
 const createdThreadTargets = createdThreadResolution.pipe(Layer.provideMerge(pendingWorktrees));
+import { CoreModules } from "../core-runtime/CoreModules";
+import { workspaceWindow } from "../agent-backend/PageWorkspaceApplication";
+
 const managedWorktreeRetention = Layer.unwrap(
   Effect.gen(function* () {
     const platform = yield* CodexPlatform;
+    const core = yield* CoreModules;
     return managedWorktreeRetentionLive({
+      pageWorkspacePaths: workspaceWindow(core).pipe(
+        Effect.map((values) =>
+          values
+            .filter((value) => value.lifecycle !== "removed")
+            .flatMap((value) => (value.worktree_path ? [value.worktree_path] : [])),
+        ),
+      ),
       handoffJournal: makeCodexThreadHandoffJournalStorage(
         resolveCodexThreadHandoffJournalPath(platform.runtimeStateHome),
       ),

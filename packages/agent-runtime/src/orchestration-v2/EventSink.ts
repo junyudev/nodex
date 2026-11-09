@@ -31,6 +31,7 @@ import { projectDomainEventForWire } from "./WireProjection.ts";
 import { boundStoredTurnItem } from "./commandOutputStorage.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
+import * as RunAdmission from "./RunAdmission.ts";
 import * as EventStore from "./EventStore.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProjectStore from "./ProjectStore.ts";
@@ -247,7 +248,18 @@ const layerBase: Layer.Layer<
         }
       });
     const publishStoredEvents = (events: ReadonlyArray<OrchestrationV2StoredEvent>) =>
-      eventStore.publishCommitted(events).pipe(Effect.andThen(publishLiveEvents(events)));
+      eventStore
+        .publishCommitted(events)
+        .pipe(
+          Effect.andThen(publishLiveEvents(events)),
+          Effect.andThen(
+            events.some(
+              ({ event }) => event.type === "run.updated" || event.type === "provider-turn.updated",
+            )
+              ? effectOutbox.notifyAvailable(16)
+              : Effect.void,
+          ),
+        );
 
     // Transactions commit one at a time, but each writer publishes after its
     // commit. If a writer is descheduled in between, a later commit reaches
@@ -453,6 +465,21 @@ const layerBase: Layer.Layer<
         yield* Effect.forEach(storedEvents, (stored) => projectionStore.apply(stored.event), {
           concurrency: 1,
         });
+        for (const { event } of storedEvents) {
+          if (event.type === "run.created")
+            yield* RunAdmission.enqueue(event.payload.id, event.payload.userMessageId).pipe(
+              Effect.provideService(SqlClient.SqlClient, sql),
+            );
+        }
+        if (
+          storedEvents.some(
+            ({ event }) =>
+              event.type === "run.created" ||
+              event.type === "run.updated" ||
+              event.type === "provider-turn.updated",
+          )
+        )
+          yield* RunAdmission.reconcile().pipe(Effect.provideService(SqlClient.SqlClient, sql));
         const sequence = storedEvents.at(-1)?.sequence;
         if (sequence !== undefined) {
           const now = DateTime.formatIso(yield* DateTime.now);

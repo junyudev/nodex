@@ -62,6 +62,8 @@ pub enum DatabaseTimeFormat {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DatabasePropertySchema {
+    /// Built-in Page Owner or Assignee; never stored in a Source value.
+    Assignment,
     Text,
     Number {
         #[serde(default)]
@@ -109,6 +111,8 @@ pub struct DatabasePropertyCapabilities {
 pub enum DatabasePropertySystemRole {
     Status,
     TaskParent,
+    PageOwner,
+    PageAssignee,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -793,6 +797,7 @@ pub enum DatabaseRead {
         project_id: Option<String>,
         limit: Option<u32>,
     },
+    /// Derived incoming Waits for edges. No reciprocal edges are stored.
     Blocking {
         page_id: String,
         window: CollectionWindowRequest,
@@ -1263,8 +1268,15 @@ pub struct DatabasePrerequisitesSummary {
 /// Bounded work facts carried by every Database row, independently of its selected Properties.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct DatabaseWorkSummary {
+    #[serde(default)]
+    pub turn: Option<crate::workspace::PageTurn>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pull_request: Option<crate::workspace::PagePullRequest>,
     pub unsatisfied_count: u32,
     pub blockers: Vec<DatabaseWorkPage>,
+    pub owner: Option<String>,
+    pub assignee: Option<crate::library::PageAssignee>,
+    pub auto_start: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1278,6 +1290,7 @@ pub struct WorkPrerequisite {
 pub struct ReadyWorkPage {
     pub page_id: String,
     pub project_id: String,
+    pub page_work: crate::library::PageWork,
     pub prerequisites: Vec<WorkPrerequisite>,
     pub readiness_epoch: String,
 }
@@ -1860,8 +1873,11 @@ mod tests {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct PageWorkContext {
+    pub turn: crate::workspace::PageTurn,
+    pub active_chat: Option<crate::workspace::PageActiveChat>,
     pub page: DatabaseWorkPage,
     pub project_id: String,
+    pub page_work: Option<crate::library::PageWork>,
     pub prerequisites: Vec<PageWorkPrerequisite>,
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

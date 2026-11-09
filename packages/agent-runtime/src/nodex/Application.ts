@@ -1,7 +1,9 @@
+import * as ExecutionPause from "../orchestration-v2/ExecutionPauseState.ts";
 import * as Layer from "effect/Layer";
 import * as Effect from "effect/Effect";
 import * as Host from "./Host.ts";
 import * as Runtime from "./Runtime.ts";
+import * as RunAdmission from "../orchestration-v2/RunAdmission.ts";
 import * as Service from "./Service.ts";
 import * as Bridge from "./HostBridge.ts";
 import * as RuntimeHomeLease from "./RuntimeHomeLease.ts";
@@ -35,7 +37,12 @@ export const layer = (
     Layer.provide(Bridge.layerExecutionHost.pipe(Layer.provide(bridge))),
     Layer.provide(turnAnalytics),
   );
-  const startup = Layer.effectDiscard(Runtime.acquireExecution).pipe(Layer.provideMerge(host));
+  const startup = Layer.effectDiscard(
+    RunAdmission.configure(configuration.agentsRunningAtOnce ?? 4).pipe(
+      Effect.andThen(ExecutionPause.initialize(configuration.pausedThreadIds ?? [])),
+      Effect.andThen(Runtime.acquireExecution),
+    ),
+  ).pipe(Layer.provideMerge(host));
   return Service.layer(notify, configuration.providers).pipe(
     Layer.provide(startup),
     Layer.provideMerge(bridge),

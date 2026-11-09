@@ -745,6 +745,7 @@ export const make = Effect.gen(function* () {
       let closedRequests = 0;
       let retiredEffects = 0;
       for (const threadId of threadIds) {
+        if (yield* projections.isExecutionPaused(threadId).pipe(Effect.orDie)) continue;
         const projection = yield* projections.getRuntimeRecoveryProjection(threadId).pipe(
           Effect.mapError(
             (cause) =>

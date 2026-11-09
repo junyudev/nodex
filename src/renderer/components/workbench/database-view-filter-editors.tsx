@@ -1,3 +1,8 @@
+import { parsePageAssignee } from "../../../shared/work-graph";
+import { useMembers } from "@/lib/members-runtime";
+import { InboxAgentPicker, useInboxAgents } from "@/features/inbox/inbox-agent-picker";
+import { PageAssigneeLabel } from "@/components/database/page-assignee-label";
+import { NodexDropdownButtonTrigger, NodexOptionPicker } from "@/components/ui/dropdown";
 import {
   CheckmarkIcon,
   ChevronDownIcon,
@@ -547,6 +552,15 @@ export function DatabaseViewFilterValueField({
   }, [onRequestOptions, property]);
   if (clause.operator === "is_empty" || clause.operator === "is_not_empty") return null;
 
+  if (property.valueType === "assignment")
+    return (
+      <AssignmentFilterValue
+        property={property}
+        value={clause.value ?? null}
+        onChange={onChange}
+        disabled={disabled}
+      />
+    );
   if (property.valueType === "checkbox") {
     const value = clause.value === true ? "true" : "false";
     if (presentation === "quick") {
@@ -1071,25 +1085,26 @@ function FilterClauseCells({
         triggerWidth="content"
         className={parentDepth > 0 ? "bg-[var(--color-background-control-opaque)]" : undefined}
       />
-      <DatabaseViewSelect
-        ariaLabel={`Filter operator for ${property.name}`}
-        value={clause.operator}
-        valueLabel={FILTER_OPERATOR_LABELS[clause.operator]}
-        disabled={context.disabled}
-        onValueChange={(value) =>
-          context.onUpdate(
-            path,
-            databaseFilterClauseWithOperator(property, value as DatabaseViewFilterOperator),
-          )
-        }
-        options={filterOperatorsForProperty(property).map((operator) => ({
-          value: operator,
-          label: FILTER_OPERATOR_LABELS[operator],
-        }))}
-        size="rule"
-        triggerWidth="content"
-        className={parentDepth > 0 ? "bg-[var(--color-background-control-opaque)]" : undefined}
-      />
+      {property.valueType === "assignment" ? (
+        <AssignmentFilterOperator
+          property={property}
+          clause={clause}
+          parentDepth={parentDepth}
+          disabled={context.disabled}
+          onChange={(next) => context.onUpdate(path, next)}
+        />
+      ) : (
+        <FilterOperatorPicker
+          property={property}
+          clause={clause}
+          parentDepth={parentDepth}
+          disabled={context.disabled}
+          onChange={(operator) =>
+            context.onUpdate(path, databaseFilterClauseWithOperator(property, operator))
+          }
+        />
+      )}
+
       <div
         className={cn(
           "flex min-h-8 min-w-0 items-center",
@@ -1259,5 +1274,138 @@ export function DatabaseViewAdvancedFilterEditor({
         onUnwrap={unwrapFilter}
       />
     </div>
+  );
+}
+
+interface FilterOperatorProps {
+  readonly property: DataSourcePropertyRecordV2;
+  readonly clause: DatabaseViewFilterClause;
+  readonly parentDepth: number;
+  readonly disabled: boolean;
+}
+
+function FilterOperatorPicker({
+  property,
+  clause,
+  parentDepth,
+  disabled,
+  onChange,
+}: FilterOperatorProps & { readonly onChange: (operator: DatabaseViewFilterOperator) => void }) {
+  return (
+    <DatabaseViewSelect
+      ariaLabel={`Filter operator for ${property.name}`}
+      value={clause.operator}
+      valueLabel={FILTER_OPERATOR_LABELS[clause.operator]}
+      disabled={disabled}
+      onValueChange={(value) => onChange(value as DatabaseViewFilterOperator)}
+      options={filterOperatorsForProperty(property).map((operator) => ({
+        value: operator,
+        label: FILTER_OPERATOR_LABELS[operator],
+      }))}
+      size="rule"
+      triggerWidth="content"
+      className={parentDepth > 0 ? "bg-[var(--color-background-control-opaque)]" : undefined}
+    />
+  );
+}
+
+/** A new identity predicate starts with a real person, never an invalid null draft. */
+function AssignmentFilterOperator({
+  property,
+  clause,
+  parentDepth,
+  disabled,
+  onChange,
+}: FilterOperatorProps & { readonly onChange: (clause: DatabaseViewFilterClause) => void }) {
+  const members = useMembers();
+  const first = members.data?.find((member) => member.lifecycle === "active");
+  return (
+    <FilterOperatorPicker
+      property={property}
+      clause={clause}
+      parentDepth={parentDepth}
+      disabled={disabled || !first}
+      onChange={(operator) => {
+        const next = databaseFilterClauseWithOperator(property, operator);
+        if (operator === "is_empty" || operator === "is_not_empty") {
+          onChange(next);
+          return;
+        }
+        const assignment =
+          parsePageAssignee(clause.value ?? null) ??
+          (first ? { kind: "member" as const, member_id: first.id } : null);
+        if (assignment) onChange({ ...next, value: assignment });
+      }}
+    />
+  );
+}
+
+function AssignmentFilterValue({
+  property,
+  value,
+  onChange,
+  disabled,
+}: {
+  readonly property: DataSourcePropertyRecordV2;
+  readonly value: DatabaseJsonValue;
+  readonly onChange: (value: DatabaseJsonValue) => void;
+  readonly disabled: boolean;
+}) {
+  const members = useMembers();
+  const agents = useInboxAgents();
+  const assignment = parsePageAssignee(value);
+  const people = members.data?.filter((member) => member.lifecycle === "active") ?? [];
+  const trigger = (
+    <NodexDropdownButtonTrigger
+      size="xs"
+      chrome="transparent"
+      aria-label={`Filter value for ${property.name}`}
+    >
+      <PageAssigneeLabel assignee={assignment} />
+    </NodexDropdownButtonTrigger>
+  );
+  if (property.propertyId === "owner")
+    return (
+      <NodexOptionPicker
+        disabled={disabled}
+        value={assignment?.kind === "member" ? assignment.member_id : ""}
+        options={people.map((member) => ({ value: member.id, label: member.display_name }))}
+        onValueChange={(member_id) => onChange({ kind: "member", member_id })}
+        triggerButton={trigger}
+      />
+    );
+  const agent = assignment?.kind === "agent" ? assignment : null;
+  return (
+    <InboxAgentPicker
+      agents={agents}
+      purpose="chat"
+      scope="page"
+      disabled={disabled}
+      trigger={trigger}
+      value={
+        agent
+          ? {
+              instanceId: agent.instance_id,
+              model: agent.model,
+              reasoningEffort: agent.effort ?? null,
+              serviceTier: null,
+            }
+          : agents.settings.chatAgent
+      }
+      people={{
+        members: people,
+        value: assignment?.kind === "member" ? assignment.member_id : agent ? undefined : null,
+        choose: (member_id) => onChange(member_id ? { kind: "member", member_id } : null),
+      }}
+      onChange={(next) => {
+        if (next.model)
+          onChange({
+            kind: "agent",
+            instance_id: next.instanceId,
+            model: next.model,
+            effort: next.reasoningEffort,
+          });
+      }}
+    />
   );
 }

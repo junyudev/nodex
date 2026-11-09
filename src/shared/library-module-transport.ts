@@ -1,3 +1,4 @@
+import { parseMember } from "./work-graph";
 import {
   isLibraryFileReadMode,
   isLibraryFileReadValueKind,
@@ -1606,6 +1607,10 @@ export const bindLibraryModuleRead = (value: unknown): LibraryModuleReadRequest 
       throw new TypeError("Structural history reconciliation tokens must be unique");
     return { read: { mode: "structural_history_states", tokens } };
   }
+  if (read.mode === "members" || read.mode === "local_member") {
+    exactKeys(read, "libraryModuleRead.read", ["mode"]);
+    return { read: { mode: read.mode } };
+  }
   if (read.mode === "metadata") {
     exactKeys(read, "libraryModuleRead.read", ["mode"]);
     return { read: { mode: "metadata" } };
@@ -2129,6 +2134,16 @@ const parseReadValue = (value: unknown): LibraryReadValue => {
     if (new Set(items.map((item) => item.token.recipeOperationId)).size !== items.length)
       throw new TypeError("Structural history reconciliation results must be unique");
     return { kind: "structural_history_states", items };
+  }
+  if (readValue.kind === "members") {
+    exactKeys(readValue, "Members read", ["kind", "items"]);
+    if (!Array.isArray(readValue.items) || readValue.items.length > 1024)
+      throw new TypeError("Members read exceeds its bound");
+    return { kind: "members", items: readValue.items.map(parseMember) };
+  }
+  if (readValue.kind === "local_member") {
+    exactKeys(readValue, "Local Member read", ["kind", "value"]);
+    return { kind: "local_member", value: parseMember(readValue.value) };
   }
   if (readValue.kind === "metadata") {
     exactKeys(readValue, "libraryModuleReadResult.value.value", ["kind"]);

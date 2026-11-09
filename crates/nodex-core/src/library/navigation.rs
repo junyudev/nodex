@@ -72,6 +72,11 @@ pub(super) fn read(
         .map(|project| project.0.as_str());
     let requesting_adapter = &context.adapter;
     match request {
+        LibraryRead::Members => Ok(LibraryReadValue::Members {
+            items: super::members::list(connection, library_id)?,
+        }),
+        LibraryRead::LocalMember => Ok(LibraryReadValue::LocalMember {
+        }),
         LibraryRead::PageFileInventory {
             page_id,
             query,

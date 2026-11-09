@@ -29,6 +29,7 @@ describe("project context menu model", () => {
     });
 
     expect(flattenIds(items)).toEqual([
+      PROJECT_CONTEXT_MENU_ACTION_IDS.togglePause,
       PROJECT_CONTEXT_MENU_ACTION_IDS.togglePin,
       PROJECT_CONTEXT_MENU_ACTION_IDS.edit,
       "separator",
@@ -58,6 +59,7 @@ describe("project context menu model", () => {
     );
 
     expect(flattenIds(items)).toEqual([
+      PROJECT_CONTEXT_MENU_ACTION_IDS.togglePause,
       PROJECT_CONTEXT_MENU_ACTION_IDS.edit,
       "separator",
       PROJECT_CONTEXT_MENU_ACTION_IDS.markAllRead,

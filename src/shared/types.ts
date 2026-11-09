@@ -1,3 +1,4 @@
+import type { PageAssignee, PageWork, WorkSummary } from "./work-graph";
 import type { RemoteSignalBlock } from "./product-analytics/remote-signals";
 import type { WorkflowStatusValue } from "./workflow-status";
 import type { components as CoreProtocolComponents } from "@nodex/core-protocol";
@@ -273,7 +274,10 @@ export interface DatabasePage {
   recurrence?: RecurrenceConfig;
   reminders?: ReminderConfig[];
   scheduleTimezone?: string;
+  assignee?: PageAssignee | null;
+  owner?: string;
   work?: WorkSummary;
+  pageWork?: PageWork | null;
   runInTarget?: PageRunInTarget;
   runInLocalPath?: string;
   runInBaseBranch?: string;
@@ -336,7 +340,8 @@ export interface PageInput {
   recurrence?: RecurrenceConfig | null;
   reminders?: ReminderConfig[];
   scheduleTimezone?: string | null;
-  assignee?: string;
+  assignee?: PageAssignee | null;
+  pageWork?: PageWork;
   runInTarget?: PageRunInTarget;
   runInLocalPath?: string | null;
   runInBaseBranch?: string | null;
@@ -441,12 +446,14 @@ export interface PageSearchFilters {
   includeEmptyPriority: boolean;
   tags: PageSearchOptionIdentity[];
   tagMode: "any" | "all" | "none";
-  assignees: string[];
+  assignees: PageAssignee[];
+  owners?: string[];
 }
 
 export interface PageSearchFacets {
   tags: PageSearchOption[];
-  assignees: string[];
+  assignees: PageAssignee[];
+  owners?: string[];
 }
 
 export interface PageSearchResult {
@@ -458,7 +465,8 @@ export interface PageSearchResult {
   status: WorkflowStatusValue | null;
   priority: Priority | null;
   tags: PageSearchOption[];
-  assignee: string | null;
+  assignee: PageAssignee | null;
+  owner?: string | null;
   locationLabel: string;
   titleParts: PageSearchTextPart[];
   excerpt: string | null;
@@ -493,7 +501,8 @@ export interface PageSearchMetadataDocument {
   status: WorkflowStatusValue | null;
   priority: Priority | null;
   tags: PageSearchOption[];
-  assignee: string | null;
+  assignee: PageAssignee | null;
+  owner?: string | null;
   locationLabel: string;
   updatedAt: string;
   properties: PageSearchMetadataProperty[];
@@ -643,7 +652,14 @@ export interface SessionLinkedPageSummaryResult {
 
 export type PageWorkReport = import("@nodex/core-protocol").components["schemas"]["PageWorkReport"];
 export interface PageWorkDescriptor {
+  readonly effectiveHold?: readonly import("./work-application").ExecutionHold[];
+  activeChat: {
+    readonly sessionId: string;
+    readonly revision: number;
+    readonly setAt: string;
+  } | null;
   latestReport: {
+    statusMoved: boolean | null;
     sessionId: string;
     outcome: PageWorkReport["outcome"];
     at: string;
@@ -1885,6 +1901,11 @@ export interface DesktopNotificationActionPayload {
 }
 
 export interface DesktopNotificationActionInvocation extends DesktopNotificationActionPayload {
+  inboxEntry?: {
+    readonly pageId: string;
+    readonly scope: import("./inbox").InboxScope;
+    readonly turnEpisode?: string;
+  };
   asyncQuestion?: { turnId: string; questionId: string };
   hostId: string;
   conversationId: string | null;
@@ -4278,10 +4299,13 @@ export interface GhCliStatusResult {
 
 export interface GhPrStatusRequest {
   cwd: string;
+  headBranch?: string;
   prNumber?: number | null;
 }
 
 export interface GhPrStatusResult {
+  headBranch?: string | null;
+  headRepositoryUrl?: string | null;
   cwd: string;
   available: boolean;
   status: "ready" | "disabled" | "error";

@@ -86,6 +86,56 @@ const SKILL_ERRORS: &[&str] = &[
 
 const COMMANDS: &[CommandMetadata] = &[
     CommandMetadata {
+        path: &["work", "pause"],
+        capability: "work.holds",
+        effect: CommandEffect::Write,
+        validators: IDEMPOTENCY_VALIDATOR,
+        result: "execution_hold_change",
+        errors: WRITE_ERRORS,
+        example: "nodex work pause --space",
+        example_argv: &["work", "pause", "--space"],
+    },
+    CommandMetadata {
+        path: &["work", "resume"],
+        capability: "work.holds",
+        effect: CommandEffect::Write,
+        validators: IDEMPOTENCY_VALIDATOR,
+        result: "execution_hold_change",
+        errors: WRITE_ERRORS,
+        example: "nodex work resume --space",
+        example_argv: &["work", "resume", "--space"],
+    },
+    CommandMetadata {
+        path: &["work", "holds"],
+        capability: "work.holds",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "execution_holds",
+        errors: READ_ERRORS,
+        example: "nodex work holds",
+        example_argv: &["work", "holds"],
+    },
+    CommandMetadata {
+        path: &["members", "list"],
+        capability: "members",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "members",
+        errors: READ_ERRORS,
+        example: "nodex members list",
+        example_argv: &["members", "list"],
+    },
+    CommandMetadata {
+        path: &["members", "me"],
+        capability: "members",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "member",
+        errors: READ_ERRORS,
+        example: "nodex members me",
+        example_argv: &["members", "me"],
+    },
+    CommandMetadata {
         path: &["sql", "schema"],
         capability: "sql",
         effect: CommandEffect::Read,
@@ -292,6 +342,16 @@ const COMMANDS: &[CommandMetadata] = &[
         example_argv: &["--json", "tree", "database"],
     },
     CommandMetadata {
+        path: &["page", "show"],
+        capability: "read",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "page_turn_metadata",
+        errors: READ_ERRORS,
+        example: "nodex page show NODEX-12",
+        example_argv: &["page", "show", "NODEX-12"],
+    },
+    CommandMetadata {
         path: &["page", "prepare"],
         capability: "read",
         effect: CommandEffect::Read,
@@ -400,6 +460,22 @@ const COMMANDS: &[CommandMetadata] = &[
         errors: WRITE_ERRORS,
         example: "nodex patch <<'PATCH'\n*** Begin Patch\n*** Update Page: page-id\n@@\n-Old note\n+Updated note\n*** End Patch\nPATCH",
         example_argv: &["patch"],
+    },
+    CommandMetadata {
+        path: &["page", "accept"],
+        capability: "pageWrite",
+        effect: CommandEffect::Write,
+        validators: IDEMPOTENCY_VALIDATOR,
+        result: "page_acceptance_receipt",
+        errors: WRITE_ERRORS,
+        example: "nodex page accept NODEX-12 --idempotency-key accept-1",
+        example_argv: &[
+            "page",
+            "accept",
+            "NODEX-12",
+            "--idempotency-key",
+            "accept-1",
+        ],
     },
     CommandMetadata {
         path: &["page", "create"],
@@ -1445,6 +1521,9 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
             "Selection must carry page_id, data_source_id, membership_revision and value_revisions. Preparation preserves those observations and never refreshes their revisions.",
             "Conditions protect the edited fields and membership, not arbitrary WHERE or JOIN dependencies.",
         ],
+        ["page", "accept"] => vec![
+            "Only a person may accept Page work. In Review moves to Done; every other stage stays unchanged. Agent credentials are refused.",
+        ],
         ["page", "prepare"] => vec![
             "Prepare validators apply only to the declared move or delete operation and scope; --view is valid only for move.",
         ],
@@ -1657,7 +1736,7 @@ const RECOMMENDED_ROUTES: &[&str] = &[
     "Filter, join or summarize Pages: prefer sql query; select the needed fields, bodies and validators together.",
     "Read one known Page: read. Find ranked candidates: search; use SQL when combining search with other data.",
     "Edit exact text: patch. Add content: page insert. Substantial rewrites or a local diff: draft.",
-    "Set one text, number or select value: page properties set. For other value types or several Pages/fields, prefer page properties apply.",
+    "Set Owner, Assignee, or one text, number or select value: page properties set. For other value types or several Pages/fields, prefer page properties apply.",
     "Edit SQL-selected Pages: sql query -> page properties prepare-batch -> page properties apply; preserve observed targets and versions.",
     "Change Property definitions or saved Views: data-source configure; combine related changes in one script.",
     "Reuse known IDs and relevant validators. Send short inputs through stdin; use shell/Python for further computation.",
@@ -1874,7 +1953,7 @@ JSON"#,
 {"if_schema_revision":1,"operations":[{"kind":"create_view","name":"Task list","layout":"list","sorts":[{"property":"title","direction":"asc"}]}]}
 JSON"#);
         examples.push(r#"nodex data-source configure source-id --idempotency-key review-queue-1 <<'JSON'
-{"if_schema_revision":1,"operations":[{"kind":"create_view","name":"Review queue","layout":"list","filter":{"kind":"clause","propertyId":"Status","operator":"select_is","value":"Review"}}]}
+{"if_schema_revision":1,"operations":[{"kind":"create_view","name":"Review queue","layout":"list","filter":{"kind":"clause","propertyId":"Status","operator":"select_is","value":"In Review"}}]}
 JSON"#);
     }
     examples

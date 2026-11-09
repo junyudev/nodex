@@ -32,6 +32,7 @@ pub(super) fn create_session(
     project_id: Option<&str>,
     title: &str,
     initial_page_ids: &[String],
+    agent_selection: Option<&nodex_core_contracts::library::AgentWorkSelection>,
     runtime_id: &str,
     runtime_thread_id: &str,
     launch_request_id: &str,
@@ -45,6 +46,8 @@ pub(super) fn create_session(
     }
     if let Some(source_id) = side_chat_source_session_id {
         require_host(context)?;
+    }
+    if let Some(source_id) = side_chat_source_session_id {
         let source = require_session(connection, library_id, source_id)?;
         if source_id == session_id
             || source.project_id.as_deref() != project_id
@@ -187,6 +190,27 @@ pub(super) fn create_session(
     if coordinator {
         super::coordinator::bind(connection, library_id, session_id, &now)?;
     }
+    if let Some(agent) = agent_selection {
+        crate::library::validate_agent_selection(agent)?;
+        // The Agent choice is known at admission, before execution is materialized.
+        // Retain it in the existing observation owner without inventing Run progress.
+        let observation = nodex_core_contracts::workspace::SessionExecutionObservation {
+            agent: Some(agent.clone()),
+            state: nodex_core_contracts::workspace::SessionExecutionState::Unavailable,
+            run_id: None,
+            run_started_at: None,
+            failure_reason: None,
+            pending_request_ids: vec![],
+            pending_requests: vec![],
+            queue: None,
+            terminal_status: None,
+            person_stopped: false,
+            stalled: false,
+            progress_fingerprint: None,
+            progress_since: 0,
+        };
+        connection.execute("INSERT INTO session_execution_observations(session_id,revision,observed_json,observed_at) VALUES(?1,1,?2,?3) ON CONFLICT(session_id) DO UPDATE SET observed_json=json_set(session_execution_observations.observed_json,'$.agent',json_extract(excluded.observed_json,'$.agent')),revision=session_execution_observations.revision+1,observed_at=excluded.observed_at WHERE json_extract(session_execution_observations.observed_json,'$.agent') IS NULL",params![session_id,serde_json::to_string(&observation).map_err(|_|StoreError::new(StoreErrorCode::InvalidInput,"Invalid Agent selection",false))?,now])?;
+    }
     finish_lifecycle_mutation(
         connection,
         library_id,
@@ -251,6 +275,7 @@ pub(super) fn adopt_native_session(
             false,
         )
     })?;
+    let agent_selection = super::page_chat::session_agent_selection(connection, session_id)?;
     connection.execute(
         "DELETE FROM project_session_threads WHERE session_id=?1 AND thread_id=?2",
         params![session_id, expected_native_thread_id],
@@ -267,6 +292,7 @@ pub(super) fn adopt_native_session(
         project_id,
         &title,
         &[],
+        agent_selection.as_ref(),
         runtime_id,
         runtime_thread_id,
         launch_request_id,
@@ -389,8 +415,7 @@ pub(super) fn is_runtime_bound(
 
 pub(super) struct BindingWindowQuery<'a> {
     pub(super) runtime_id: &'a str,
-    pub(super) project_id: Option<&'a str>,
-    pub(super) temporary_only: bool,
+    pub(super) scope: &'a nodex_core_contracts::workspace::AgentRuntimeBindingScope,
     pub(super) window: &'a CollectionWindowRequest,
 }
 
@@ -403,22 +428,23 @@ pub(super) fn read_binding_window(
 ) -> Result<CollectionWindow<ProjectWorkspaceAgentRuntimeSessionBinding>, StoreError> {
     let BindingWindowQuery {
         runtime_id,
-        project_id,
-        temporary_only,
+        scope,
         window,
     } = query;
     require_host(context)?;
     validate_id("runtime_id", runtime_id)?;
+    use nodex_core_contracts::workspace::AgentRuntimeBindingScope;
+    let (project_id, scope_kind) = match scope {
+        AgentRuntimeBindingScope::All => (None, 2),
+        AgentRuntimeBindingScope::Project { project_id } => (project_id.as_deref(), 0),
+        AgentRuntimeBindingScope::Temporary => (None, 1),
+    };
     if let Some(project_id) = project_id {
         validate_id("project_id", project_id)?;
     }
     let normalized = normalize_request(window)?;
-    let fingerprint = cursor::query_fingerprint(&(
-        "agent_runtime_session_binding_v2",
-        runtime_id,
-        project_id,
-        temporary_only,
-    ))?;
+    let fingerprint =
+        cursor::query_fingerprint(&("agent_runtime_session_binding_v3", runtime_id, scope))?;
     let subject = CollectionCursorSubject {
         kind: "agent_runtime_session_binding",
         library_id,
@@ -442,10 +468,10 @@ pub(super) fn read_binding_window(
     let rows = connection.prepare(
         "SELECT session.id, session.project_id, binding.runtime_id, binding.runtime_thread_id, binding.launch_request_id, binding.bound_at, (SELECT source_session_id FROM project_session_side_chats WHERE session_id = session.id) \
          FROM project_sessions session JOIN project_session_execution_bindings binding ON binding.session_id = session.id \
-         WHERE ((?6 = 0 AND session.project_id IS ?1) OR (?6 = 1 AND EXISTS(SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id))) AND binding.runtime_id = ?2 AND session.id > ?3 \
+         WHERE (?6 = 2 OR (?6 = 0 AND session.project_id IS ?1) OR (?6 = 1 AND EXISTS(SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id))) AND binding.runtime_id = ?2 AND session.id > ?3 \
            AND (session.project_id IS NULL OR EXISTS(SELECT 1 FROM projects project WHERE project.id = session.project_id AND project.library_id = ?4)) \
          ORDER BY session.id LIMIT ?5"
-    )?.query_map(params![project_id, runtime_id, after.as_deref().unwrap_or(""), library_id, (normalized.first + 1) as i64, temporary_only], |row| Ok(ProjectWorkspaceAgentRuntimeSessionBinding {
+    )?.query_map(params![project_id, runtime_id, after.as_deref().unwrap_or(""), library_id, (normalized.first + 1) as i64, scope_kind], |row| Ok(ProjectWorkspaceAgentRuntimeSessionBinding {
         session_id: row.get(0)?, project_id: row.get(1)?, runtime_id: row.get(2)?, runtime_thread_id: row.get(3)?, launch_request_id: row.get(4)?, bound_at: row.get(5)?, side_chat_source_session_id: row.get(6)?,
     }))?.collect::<rusqlite::Result<Vec<_>>>()?;
     assemble(
@@ -483,6 +509,7 @@ mod tests {
     };
     fn create_intent(session_id: &str) -> ProjectWorkspaceIntent {
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            agent_selection: None,
             coordinator: false,
             side_chat_source_session_id: None,
             session_id: session_id.into(),
@@ -561,8 +588,7 @@ mod tests {
             &workspace.module,
             ProjectWorkspaceRead::AgentRuntimeSessionBindingWindow {
                 runtime_id: "runtime:primary".into(),
-                project_id: None,
-                temporary_only: Some(true),
+                scope: nodex_core_contracts::workspace::AgentRuntimeBindingScope::Temporary,
                 window: CollectionWindowRequest {
                     first: Some(100),
                     after: None,
@@ -1110,9 +1136,10 @@ mod tests {
         );
         let query = |project_id: Option<&str>, after: Option<String>| {
             ProjectWorkspaceRead::AgentRuntimeSessionBindingWindow {
-                temporary_only: None,
                 runtime_id: "runtime:primary".into(),
-                project_id: project_id.map(str::to_owned),
+                scope: nodex_core_contracts::workspace::AgentRuntimeBindingScope::Project {
+                    project_id: project_id.map(str::to_owned),
+                },
                 window: CollectionWindowRequest {
                     first: Some(1),
                     after,
@@ -1174,13 +1201,39 @@ mod tests {
             panic!("window")
         };
         assert_eq!(rootless.items[0].session_id, "a");
+        let mut after = None;
+        let mut all = Vec::new();
+        loop {
+            let ProjectWorkspaceReadValue::AgentRuntimeSessionBindingWindow { bindings } = read(
+                &workspace.module,
+                ProjectWorkspaceRead::AgentRuntimeSessionBindingWindow {
+                    runtime_id: "runtime:primary".into(),
+                    scope: nodex_core_contracts::workspace::AgentRuntimeBindingScope::All,
+                    window: CollectionWindowRequest {
+                        first: Some(1),
+                        after,
+                    },
+                },
+            ) else {
+                panic!("all bindings")
+            };
+            all.extend(bindings.items.into_iter().map(|item| item.session_id));
+            after = bindings.next_cursor;
+            if after.is_none() {
+                break;
+            }
+        }
+        assert_eq!(all, vec!["a", "b", "c"]);
     }
 
     #[test]
     fn native_adoption_keeps_session_placement_links_and_rejects_changed_sources() {
         use super::super::test_support::create_session_thread;
         use nodex_core_contracts::collection::CollectionWindowRequest;
-        use nodex_core_contracts::workspace::{ProjectSessionIntent, ProjectWorkspaceThreadPatch};
+        use nodex_core_contracts::workspace::{
+            ProjectSessionIntent, ProjectWorkspaceThreadPatch, SessionExecutionObservation,
+            SessionExecutionState, SessionExecutionTerminalStatus,
+        };
         let workspace = seeded_workspace();
         create_session_thread(
             &workspace.module,
@@ -1190,10 +1243,51 @@ mod tests {
             Some("project:default"),
             1,
         );
+        let mut observation = SessionExecutionObservation {
+            agent: None,
+            state: SessionExecutionState::Idle,
+            run_id: Some("native-run".into()),
+            run_started_at: Some(1),
+            failure_reason: None,
+            pending_request_ids: vec![],
+            pending_requests: vec![],
+            queue: None,
+            terminal_status: Some(SessionExecutionTerminalStatus::Completed),
+            person_stopped: false,
+            stalled: false,
+            progress_fingerprint: Some("native-progress".into()),
+            progress_since: 1,
+        };
+        apply(
+            &workspace.module,
+            "observe-native",
+            ProjectWorkspaceIntent::RecordSessionExecution {
+                session_id: "session:native".into(),
+                expected_revision: 0,
+                observation: observation.clone(),
+                events: vec![],
+                resolved_request_ids: vec![],
+            },
+        );
+        apply(
+            &workspace.module,
+            "native-selection",
+            ProjectWorkspaceIntent::UpsertThread {
+                thread_id: "thread:native".into(),
+                patch: Box::new(ProjectWorkspaceThreadPatch {
+                    model_id: Some(Some("native-model".into())),
+                    reasoning_effort: Some(Some("high".into())),
+                    ..Default::default()
+                }),
+            },
+        );
         create_library_page(&workspace, "page:linked", "project:default");
         for intent in [
             ProjectSessionIntent::SetPinned { pinned: true },
             ProjectSessionIntent::LinkPage {
+                page_id: "page:linked".into(),
+            },
+            ProjectSessionIntent::HandOffPage {
                 page_id: "page:linked".into(),
             },
         ] {
@@ -1260,6 +1354,24 @@ mod tests {
             .apply(&context(), request("adopt", adopt("local")))
             .unwrap();
         assert_eq!(first.committed.commit_seq, repeated.committed.commit_seq);
+        let ProjectWorkspaceReadValue::SessionExecutionObserver {
+            observer: Some(observer),
+        } = read(
+            &workspace.module,
+            ProjectWorkspaceRead::SessionExecutionObserver {
+                session_id: "session:native".into(),
+            },
+        )
+        else {
+            panic!("Execution observer")
+        };
+        observation.agent = Some(nodex_core_contracts::library::AgentWorkSelection {
+            instance_id: "codex".into(),
+            model: "native-model".into(),
+            effort: Some("high".into()),
+        });
+        assert_eq!(observer.observation, Some(observation));
+        assert_eq!(observer.revision, 2);
         apply(
             &workspace.module,
             "native-background-update",

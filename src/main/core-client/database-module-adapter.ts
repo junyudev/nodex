@@ -1,3 +1,4 @@
+import { WORKFLOW_STATUS_ORDER } from "../../shared/workflow-status";
 import { projectCorePrerequisites, projectCoreWorkPage } from "../../shared/work-graph";
 import type {
   DatabaseApplyOperationV2,
@@ -1082,6 +1083,7 @@ export const mapCorePropertyDescriptor = (input: unknown): DataSourcePropertyRec
   const schemaKind = requireString(schema, "kind", "Core Property schema");
   if (
     ![
+      "assignment",
       "text",
       "number",
       "checkbox",
@@ -1114,7 +1116,10 @@ export const mapCorePropertyDescriptor = (input: unknown): DataSourcePropertyRec
       groupable: capabilities.groupable === true,
     },
     systemRole:
-      property.system_role === "status" || property.system_role === "task_parent"
+      property.system_role === "status" ||
+      property.system_role === "task_parent" ||
+      property.system_role === "page_owner" ||
+      property.system_role === "page_assignee"
         ? property.system_role
         : null,
     nonEmptyValueCount: Number(property.non_empty_value_count),
@@ -1182,13 +1187,13 @@ const hydrateCoreDataSource = async (
   );
   if (!status) return { dataSource: dataSourceRecord, properties };
 
-  // Status has exactly five fixed identities; its names belong to every Source-scoped read.
+  // Status has fixed identities; its names belong to every Source-scoped read.
   const snapshot = await client.databaseRead(
     {
       kind: "option_window",
       data_source_id: dataSourceId,
       property_id: "status",
-      window: { first: 5 },
+      window: { first: WORKFLOW_STATUS_ORDER.length },
     },
     options,
   );
@@ -1364,6 +1369,7 @@ const hydrateCoreReadValue = async (
       value: value.pages.map((page) => ({
         pageId: page.page_id,
         projectId: page.project_id,
+        pageWork: page.page_work,
         readinessEpoch: page.readiness_epoch,
         prerequisites: page.prerequisites.map((prerequisite) => ({
           pageId: prerequisite.page_id,

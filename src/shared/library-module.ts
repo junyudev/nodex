@@ -1,3 +1,4 @@
+import type { Member } from "./work-graph";
 import type {
   LibraryFileRead,
   LibraryFileReadValue,
@@ -201,6 +202,8 @@ export interface LibraryPageRelocationDestinationEntry {
 export type LibraryRead =
   | LibraryFileRead
   | { readonly mode: "metadata" }
+  | { readonly mode: "members" }
+  | { readonly mode: "local_member" }
   | {
       readonly mode: "structural_history_states";
       readonly tokens: readonly LibraryStructuralHistoryToken[];
@@ -300,6 +303,8 @@ export type LibraryCanvasTarget =
 export type LibraryReadValue =
   | LibraryFileReadValue
   | { readonly kind: "metadata" }
+  | { readonly kind: "members"; readonly items: readonly Member[] }
+  | { readonly kind: "local_member"; readonly value: Member }
   | {
       readonly kind: "structural_history_states";
       readonly items: readonly LibraryStructuralHistoryState[];

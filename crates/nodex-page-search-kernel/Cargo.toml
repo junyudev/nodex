@@ -13,6 +13,7 @@ default = []
 wasm = ["dep:serde-wasm-bindgen", "dep:wasm-bindgen"]
 
 [dependencies]
+nodex-core-contracts = { path = "../nodex-core-contracts" }
 serde.workspace = true
 serde_json.workspace = true
 unicode-normalization.workspace = true

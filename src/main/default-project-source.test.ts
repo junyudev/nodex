@@ -15,9 +15,15 @@ import { resolveNodexProjectsDirectory } from "./nodex-projects-directory";
 
 const PROJECT = { id: "project-created" } as Project;
 const DOCUMENTS_DIRECTORY = resolve("/Users/test/Documents");
-const PROJECTS_DIRECTORY = resolveNodexProjectsDirectory({
-  documentsDirectory: DOCUMENTS_DIRECTORY,
-});
+/** A real Profile's projects directory under the given Documents directory. */
+const realProjectsDirectory = (documentsPath: string) =>
+  resolveNodexProjectsDirectory({
+    projectsDirectory: null,
+    documentsPath,
+    isolatedRunId: null,
+    nodexHome: "/Users/test/.nodex",
+  });
+const PROJECTS_DIRECTORY = realProjectsDirectory(DOCUMENTS_DIRECTORY);
 
 describe("default Project sources", () => {
   test("sanitizes the generated folder name using the desktop filesystem contract", () => {
@@ -135,7 +141,7 @@ describe("default Project sources", () => {
         Effect.gen(function* () {
           const createProject = vi.fn(() => Effect.succeed(PROJECT));
 
-          const projectsDirectory = resolveNodexProjectsDirectory({ documentsDirectory });
+          const projectsDirectory = realProjectsDirectory(documentsDirectory);
           yield* createProjectWithDefaultSource(
             { name: "", sources: [] },
             { projectsDirectory, createProject },

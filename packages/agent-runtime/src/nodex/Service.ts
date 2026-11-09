@@ -1,3 +1,4 @@
+import * as SessionPause from "./SessionPause.ts";
 import type { AgentRuntimeOperations } from "./Interface.ts";
 import { RuntimeModelPolicy, executionProviders } from "./ModelPolicy.ts";
 import {
@@ -109,6 +110,7 @@ import {
   readSessionCatalog,
 } from "../orchestration-v2/SessionCatalog.ts";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as RunAdmission from "../orchestration-v2/RunAdmission.ts";
 import { readSessionDetails } from "../orchestration-v2/SessionReadDetails.ts";
 import { readSessionMetadata } from "../orchestration-v2/SessionMetadata.ts";
 import { readSessionSearch, resolveSessionSearch } from "../orchestration-v2/SessionSearch.ts";
@@ -186,6 +188,8 @@ const AgentRequest = Schema.Union([
   request("store.coordinate.record", Schema.Struct({ coordinate: Schema.String })),
   request("thread.import-native", NativeImport.NativeImportInput),
   request("native-imports.find", NativeImport.NativeImportsFindInput),
+  request("thread.pause", Schema.Struct({ threadId: ThreadId, revision: Schema.String })),
+  request("thread.resume", Schema.Struct({ threadId: ThreadId })),
   request("thread.queue-control", SessionQueue.SessionQueueInput),
   request("session-control.receipt", SessionControlReceipts.SessionControlReceiptInput),
   request(
@@ -341,6 +345,9 @@ const AgentRequest = Schema.Union([
     "providers.configure",
     Schema.Struct({
       providers: ProviderInstanceConfigMap,
+      agentsRunningAtOnce: Schema.optional(
+        Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 16 })),
+      ),
       modelPolicy: Schema.optional(Schema.Unknown),
     }),
   ),
@@ -363,6 +370,10 @@ const AgentRequest = Schema.Union([
       senderRunId: Schema.optional(Schema.NullOr(RunId)),
       modeLimit: Schema.optional(DispatchModeLimitSchema),
     }),
+  ),
+  request(
+    "thread.admission-context",
+    Schema.Struct({ threadId: ThreadId, pageId: Schema.NonEmptyString }),
   ),
   request("thread.stop-host-input", Schema.Struct({ threadId: ThreadId, messageId: MessageId })),
   request("thread.read", Schema.Struct({ threadId: ThreadId })),
@@ -572,6 +583,10 @@ const AgentRequest = Schema.Union([
       itemId: TurnItemId,
       sourceThreadId: Schema.optional(ThreadId),
     }),
+  ),
+  request(
+    "thread.message-attachment",
+    Schema.Struct({ threadId: ThreadId, messageId: MessageId, attachmentId: ChatAttachmentId }),
   ),
   request(
     "thread.attachment",
@@ -873,6 +888,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const executionLocation = yield* ExecutionLocation.make;
   const importNative = yield* NativeImport.make;
   const findNativeImports = yield* NativeImport.makeFind;
+  const sessionPause = yield* SessionPause.make;
   const sessionStop = yield* SessionStop.make;
   const sessionQueue = yield* SessionQueue.make;
   const sessionControlReceipt = yield* SessionControlReceipts.make;
@@ -946,6 +962,10 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return yield* sessionQueue(input.input);
       case "session-control.receipt":
         return yield* sessionControlReceipt(input.input);
+      case "thread.pause":
+        return yield* sessionPause.pause(input.input);
+      case "thread.resume":
+        return yield* sessionPause.resume(input.input);
       case "thread.stop":
         return yield* sessionStop(input.input);
       case "native-message.receipt":
@@ -1129,6 +1149,11 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return result;
       }
       case "providers.configure": {
+        if (input.input.agentsRunningAtOnce !== undefined) {
+          yield* RunAdmission.configure(input.input.agentsRunningAtOnce).pipe(
+            Effect.provideService(SqlClient.SqlClient, sql),
+          );
+        }
         const before = yield* providerPolicy.current;
         const previousPolicy = yield* modelPolicy.current;
         const nextPolicy =
@@ -1208,6 +1233,10 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
               yield* providerSessions.close(ProviderSessionId.make(session.provider_session_id));
           }
         }
+        const configured = yield* providerConfiguration.configure(wanted);
+        if (input.input.agentsRunningAtOnce !== undefined) yield* effectOutbox.notifyAvailable(16);
+        return configured;
+      }
       case "thread.stop-host-input": {
         const { threadId, messageId } = input.input;
         const read = projections.getRunOutcome({ threadId, messageId });
@@ -1244,6 +1273,11 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         });
         return null;
       }
+      case "thread.admission-context": {
+        yield* sql`INSERT INTO orchestration_v2_admission_context(thread_id, page_id)
+          VALUES(${input.input.threadId}, ${input.input.pageId})
+          ON CONFLICT(thread_id) DO UPDATE SET page_id = excluded.page_id`;
+        return { bound: true };
       }
       case "thread.send": {
         const shell = yield* orchestrator.getThreadShell(input.input.threadId);
@@ -1672,6 +1706,12 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
             Effect.map((item) => (item === null ? null : projectTurnItemForDetail(item))),
             Effect.flatMap(encodeItem),
           );
+      case "thread.message-attachment":
+        return yield* readThreadAttachment({
+          threadId: input.input.threadId,
+          itemId: IdAllocator.derive.userTurnItem({ messageId: input.input.messageId }),
+          attachmentId: input.input.attachmentId,
+        });
       case "thread.attachment":
         return yield* readThreadAttachment({
           threadId: input.input.threadId,

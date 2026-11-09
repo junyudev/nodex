@@ -4654,7 +4654,7 @@ pub(super) fn stage_fresh_page_in_library(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn stage_prepared_fresh_page_in_library(
     connection: &Connection,
-    _context: &BoundModuleContext,
+    context: &BoundModuleContext,
     commit_context: &local_commit::CommitContext,
     library_id: &str,
     actor_project_id: Option<&str>,
@@ -4713,6 +4713,7 @@ pub(super) fn stage_prepared_fresh_page_in_library(
          ) VALUES (?1, ?2, ?3, 'library', ?2, ?4, ?4)",
         params![page_id, library_id, document_id, now],
     )?;
+    super::members::initialize_owner(connection, context, page_id, None)?;
     insert_library_placement(connection, library_id, page_id, position, now)?;
 
     let authority = read_document_authority(connection, document_id)?
@@ -6385,19 +6386,15 @@ fn purge_promoted_page(
         }
         let now = sqlite_now(connection)?;
         for property in &root.source_root_properties {
-            connection.execute(
-                "INSERT INTO block_properties(\
-                   block_id, library_id, property_key, value_type, value_json, revision, updated_at\
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![
-                    root.source_root_id,
-                    recipe.library_id,
-                    property.property_key,
-                    property.value_type,
-                    property.value_json,
-                    property.revision + 1,
-                    now,
-                ],
+            super::page_property_mutation::persist_captured_intrinsic(
+                connection,
+                &root.source_root_id,
+                &recipe.library_id,
+                &property.property_key,
+                &property.value_type,
+                &property.value_json,
+                property.revision + 1,
+                &now,
             )?;
         }
     }

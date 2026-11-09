@@ -1,3 +1,4 @@
+use nodex_core_contracts::library::PageAssignee;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -34,6 +35,7 @@ pub enum WorkflowStatus {
     Doing,
     Review,
     Done,
+    Canceled,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -46,7 +48,8 @@ pub struct MetadataDocument {
     pub status: Option<WorkflowStatus>,
     pub priority: Option<String>,
     pub tags: Vec<SearchOption>,
-    pub assignee: Option<String>,
+    pub assignee: Option<PageAssignee>,
+    pub owner: Option<String>,
     pub location_label: String,
     pub updated_at: String,
     pub properties: Vec<MetadataProperty>,
@@ -78,7 +81,9 @@ pub struct SearchFilters {
     pub include_empty_priority: bool,
     pub tags: Vec<OptionIdentity>,
     pub tag_mode: TagMode,
-    pub assignees: Vec<String>,
+    pub assignees: Vec<PageAssignee>,
+    #[serde(default)]
+    pub owners: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -149,7 +154,8 @@ pub struct SearchHit {
     pub status: Option<WorkflowStatus>,
     pub priority: Option<String>,
     pub tags: Vec<SearchOption>,
-    pub assignee: Option<String>,
+    pub assignee: Option<PageAssignee>,
+    pub owner: Option<String>,
     pub location_label: String,
     pub title_parts: Vec<TextPart>,
     pub excerpt: Option<String>,
@@ -833,6 +839,7 @@ fn hit(document: &MetadataDocument, project_id: String, aggregate: Aggregate) ->
         priority: document.priority.clone(),
         tags: document.tags.clone(),
         assignee: document.assignee.clone(),
+        owner: document.owner.clone(),
         location_label: document.location_label.clone(),
         title_parts,
         excerpt,
@@ -948,6 +955,14 @@ fn matches_filters(d: &MetadataDocument, f: Option<&SearchFilters>) -> bool {
             None if f.include_empty_priority => {}
             _ => return false,
         }
+    }
+    if !f.owners.is_empty()
+        && !d
+            .owner
+            .as_ref()
+            .is_some_and(|owner| f.owners.contains(owner))
+    {
+        return false;
     }
     if !f.assignees.is_empty() && !d.assignee.as_ref().is_some_and(|a| f.assignees.contains(a)) {
         return false;
@@ -1168,6 +1183,7 @@ mod tests {
             priority: None,
             tags: Vec::new(),
             assignee: None,
+            owner: None,
             location_label: "Pages".into(),
             updated_at: "2026-01-01".into(),
             properties: Vec::new(),

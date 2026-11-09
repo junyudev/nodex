@@ -66,6 +66,11 @@ export function InboxComposer({
   readonly titleOpen?: boolean;
   readonly onTitleOpenChange?: (open: boolean) => void;
 }) {
+  const observedDestination = useInboxReplyDestination(draft.replyTo?.pageId, draft.text);
+  const replyDestination =
+    draft.replyTo?.turnEpisode && observedDestination?.kind === "nodex"
+      ? { ...observedDestination, kind: "unavailable" as const }
+      : observedDestination;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const showTitle = titleOpen || draft.title !== "";
@@ -151,6 +156,9 @@ export function InboxComposer({
           data-testid="inbox-composer-reply"
           className="flex min-w-0 items-center gap-1.5 pt-0.5 pr-1 pl-3 text-xs text-token-description-foreground"
         >
+          {!draft.replyTo.turnEpisode ? (
+            <NodexLogoMarkIcon monochrome className="size-3.5 shrink-0" />
+          ) : null}
           <span className="min-w-0 truncate">
             Replying to <span className="text-token-foreground">{draft.replyTo.label}</span>
           </span>
@@ -258,6 +266,7 @@ function ReplyDestinationPhrase({ destination }: { readonly destination: InboxRe
   const chat = destination.chat ? (
     <span className="text-token-foreground">{destination.chat.title}</span>
   ) : null;
+  if (destination.kind === "unavailable") return <>· Open chat to continue</>;
   if (destination.kind === "nodex" || !chat) return <>· Nodex routes it</>;
   if (destination.kind === "answer") return <>· answers {chat}’s question</>;
   return <>· goes to {chat}</>;

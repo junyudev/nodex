@@ -57,7 +57,10 @@ export type IpcCommand<
 
 /** Exact owner-audited groups. Never replace one group with an `Exclude<keyof IpcApi, ...>` remainder. */
 type QueryEndpointPolicy =
-  | "mobile-access:status"
+  | "work:workspace"
+  | "work:holds"
+  | "work:effective-hold"
+  | "work:turn"
   | "windows-startup:status"
   | "codex:plugins:marketplaces"
   | "codex:plugins:apps"
@@ -451,6 +454,8 @@ type CoreLocalCommitCommandEndpointPolicy =
   | "inbox:confirm"
   | "inbox:dispatch"
   | "work:start"
+  | "work:accept"
+  | "work:set-hold"
   | "inbox:keep"
   | "inbox:delete"
   | "inbox:set-state"
@@ -513,10 +518,7 @@ type MainRevisionCommandEndpointPolicy =
   | "codex:visualization:interaction:write";
 
 type PlainResultCommandEndpointPolicy =
-  | "mobile-access:set-enabled"
-  | "mobile-access:begin-pairing"
-  | "mobile-access:cancel-pairing"
-  | "mobile-access:revoke-device"
+  | "work:refresh-workspace"
   | "windows-startup:open-settings"
   | "inbox:open-nodex"
   | "inbox:reset-nodex"

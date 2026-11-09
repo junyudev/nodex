@@ -26,10 +26,10 @@ export interface AgentChatWorkLocation {
   readonly cwd: string;
 }
 
-/** Agent execution's view of the Agent chats that own managed worktrees. */
+/** Agent execution's view of all Agent chats consuming managed worktrees. */
 export interface AgentChatWorktreeSource {
   /**
-   * The Agent chats owning these worktrees, shaped like the native Thread consumers Core
+   * Every Agent chat consuming these worktrees, shaped like the native Thread consumers Core
    * reports. Owners whose chat no longer exists are omitted; a read failure fails.
    */
   readonly consumers: (

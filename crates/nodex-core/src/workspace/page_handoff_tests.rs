@@ -169,6 +169,7 @@ fn handoff_advances_only_early_stage_ids_and_preserves_other_value_revisions() {
         Some(IN_PROGRESS),
         Some("review"),
         Some(COMPLETED),
+        Some("canceled"),
         None,
     ] {
         let page = create_page(
@@ -196,7 +197,7 @@ fn handoff_advances_only_early_stage_ids_and_preserves_other_value_revisions() {
 }
 
 #[test]
-fn manual_link_and_scene_creation_stay_triage_but_an_already_linked_page_can_be_handed_off() {
+fn related_links_do_not_start_an_attempt_until_the_first_handoff() {
     let workspace = setup();
     let page = create_page(&workspace, "scene-page", true);
     let before = status(&workspace, &page);
@@ -225,6 +226,7 @@ fn manual_link_and_scene_creation_stay_triage_but_an_already_linked_page_can_be_
         },
     );
     assert_eq!(status(&workspace, &other), other_before);
+    set_status(&workspace, &page, Some("plan"));
     apply(&workspace.module, "handoff-related", hand_off(&page));
     assert_eq!(
         status(&workspace, &page).unwrap().0.as_deref(),
@@ -374,6 +376,11 @@ fn runtime_launch_hands_off_initial_pages_for_new_and_existing_sessions() {
         let page = create_page(&workspace, &format!("runtime-page-{session_id}"), false);
         let before = status(&workspace, &page).unwrap();
         let intent = ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            agent_selection: Some(nodex_core_contracts::library::AgentWorkSelection {
+                instance_id: "codex".into(),
+                model: "gpt".into(),
+                effort: Some("high".into()),
+            }),
             coordinator: false,
             session_id: session_id.into(),
             project_id: Some(PROJECT.into()),
@@ -393,5 +400,33 @@ fn runtime_launch_hands_off_initial_pages_for_new_and_existing_sessions() {
             Some((Some(IN_PROGRESS.into()), before.1 + 1))
         );
         assert_eq!(edge_count(&workspace, &page), 1);
+        let assigned = workspace.kernel.readers().read_default(|c| Ok(c.query_row("SELECT value_json FROM block_properties WHERE block_id=?1 AND property_key='work'",[&page],|r|r.get::<_,String>(0))?)).unwrap();
+        let work: nodex_core_contracts::library::PageWork =
+            serde_json::from_str(&assigned).unwrap();
+        assert_eq!(
+            work.assignee,
+            Some(nodex_core_contracts::library::PageAssignee::Agent {
+                instance_id: "codex".into(),
+                model: "gpt".into(),
+                effort: Some("high".into())
+            })
+        );
+        assert!(!work.auto_start);
+        let peer = create_page(&workspace, &format!("handoff-peer-{session_id}"), false);
+        apply(
+            &workspace.module,
+            &format!("handoff-{session_id}"),
+            ProjectWorkspaceIntent::MutateSession {
+                session_id: session_id.into(),
+                intent: ProjectSessionIntent::HandOffPage {
+                    page_id: peer.clone(),
+                },
+            },
+        );
+        let peer_work = workspace.kernel.readers().read_default(|c| Ok(c.query_row("SELECT value_json FROM block_properties WHERE block_id=?1 AND property_key='work'",[&peer],|r|r.get::<_,String>(0))?)).unwrap();
+        assert_eq!(
+            serde_json::from_str::<nodex_core_contracts::library::PageWork>(&peer_work).unwrap(),
+            work
+        );
     }
 }

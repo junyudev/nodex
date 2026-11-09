@@ -1389,6 +1389,8 @@ export const OrchestrationV2ConversationMessage = Schema.Struct({
   nodeId: Schema.NullOr(NodeId),
   role: Schema.Literals(["user", "assistant", "system"]),
   text: Schema.String,
+  /** Native delivery encoding; conversation reads retain the original message text. */
+  providerText: Schema.optional(Schema.String),
   context: Schema.optional(OrchestrationMessageContext),
   attachments: Schema.Array(ChatAttachment),
   streaming: Schema.Boolean,
@@ -3396,6 +3398,7 @@ export const OrchestrationV2Command = Schema.Union([
     threadId: ThreadId,
     messageId: MessageId,
     text: Schema.String,
+    providerText: Schema.optional(Schema.String),
     context: Schema.optional(OrchestrationMessageContext),
     attachments: Schema.Array(ChatAttachment),
     modelSelection: Schema.optional(ModelSelection),
@@ -3490,6 +3493,12 @@ export const OrchestrationV2Command = Schema.Union([
     subagentId: NodeId,
   }),
   Schema.Struct({
+    type: Schema.Literal("thread.execution-pause"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    phase: Schema.Literals(["hold", "settled"]),
+  }),
+  Schema.Struct({
     type: Schema.Literal("run.interrupt"),
     commandId: CommandId,
     threadId: ThreadId,
@@ -3554,6 +3563,7 @@ export const OrchestrationV2Command = Schema.Union([
     respondedBy: Schema.optional(UserInputResponder),
     /** Agent question tools cannot revise a resolved asynchronous request. */
     requirePending: Schema.optional(Schema.Boolean),
+    inboundMessage: Schema.optional(Schema.Struct({ id: MessageId, text: Schema.String })),
     responseFingerprint: Schema.optional(Schema.String),
     commandId: CommandId,
     threadId: ThreadId,

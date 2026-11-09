@@ -147,7 +147,7 @@ fn v196_workflow_vocabulary_preserves_values_views_preferences_and_occurrence_id
         );
         assert_eq!(
             config["options"][2],
-            json!({"id":"doing","name":if customized {"Making progress"} else {"Doing"},"color":"blue"})
+            json!({"id":"doing","name":if customized {"Making progress"} else {"In Progress"},"color":"blue"})
         );
         assert_eq!(
             config["options"][4],
@@ -167,19 +167,17 @@ fn v196_workflow_vocabulary_preserves_values_views_preferences_and_occurrence_id
             ),
             json!("done")
         );
-        assert_eq!(
-            json_column(
-                &connection,
-                "SELECT value_json FROM data_source_property_values WHERE property_id='assignee'"
-            ),
-            json!("build")
+        let work = json_column(
+            &connection,
+            "SELECT value_json FROM block_properties WHERE property_key='work' AND block_id=(SELECT page_block_id FROM data_source_page_memberships WHERE removed_at IS NULL LIMIT 1)",
         );
+        assert_eq!(work["assignee"]["kind"], "member");
         let values = json_column(
             &connection,
             "SELECT database_values_json FROM page_read_model WHERE membership_id IS NOT NULL",
         );
         assert_eq!(values["status"], "doing");
-        assert_eq!(values["assignee"], "build");
+        assert!(values.get("assignee").is_none());
         assert_eq!(
             connection
                 .query_row(
@@ -208,7 +206,7 @@ fn v196_workflow_vocabulary_preserves_values_views_preferences_and_occurrence_id
         );
         assert_eq!(
             config["rules"]["advancedFilter"]["children"][1]["value"],
-            "build"
+            work["assignee"]
         );
         assert_eq!(
             config["presentation"]["conditionalColors"][0]["value"],
@@ -237,17 +235,9 @@ fn v196_workflow_vocabulary_preserves_values_views_preferences_and_occurrence_id
         assert!(keys.contains(&(view.clone(), new_page_key)));
         assert!(keys.contains(&(view.clone(), "GROUP_\"doing\"".into())));
         assert!(keys.contains(&("view:personal".into(), "GROUP_\"done\"".into())));
-        assert!(keys.contains(&("view:text".into(), "GROUP_\"ship\"".into())));
+        assert!(keys.iter().all(|(view, _)| view != "view:text"));
         assert!(keys.iter().all(|(view, _)| view != "view:inactive"));
-        let new_subgroup_key = key(
-            "ITEM",
-            &(
-                vec![Some("build"), Some("doing")],
-                Vec::<String>::new(),
-                &page,
-            ),
-        );
-        assert!(keys.contains(&("view:subgroup".into(), new_subgroup_key)));
+        assert!(keys.iter().all(|(view, _)| view != "view:subgroup"));
 
         let after: Vec<Vec<u8>> = connection
             .prepare(

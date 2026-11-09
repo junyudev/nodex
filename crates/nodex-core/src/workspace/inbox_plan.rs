@@ -41,6 +41,11 @@ pub(super) fn validate(
             ));
         }
         if let Some(agent) = &step.agent {
+            crate::library::validate_agent_selection(&AgentWorkSelection {
+                instance_id: agent.instance_id.clone(),
+                model: agent.model.clone(),
+                effort: agent.effort.clone(),
+            })?;
         }
     }
     for step in steps {
@@ -110,6 +115,7 @@ pub(super) fn confirm(
                 let model = &default
                     .ok_or_else(|| invalid("A plan requires its resolved Inbox chat default"))?
                     .model_selection;
+                model.agent_selection()
             }
         };
         let home = project_home(connection, library_id, &step.project_id)?
@@ -143,6 +149,12 @@ pub(super) fn confirm(
                 now,
             },
             &destination,
+        )?;
+        crate::library::members::initialize_owner(
+            connection,
+            context,
+            page_id,
+            members.first().map(String::as_str),
         )?;
         crate::library::initialize_agent_work(connection, context, page_id, &selection, now)?;
         effects.project_ids.push(step.project_id.clone());

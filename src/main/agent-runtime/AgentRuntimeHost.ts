@@ -1,3 +1,7 @@
+import { inboundTextHash } from "./ChatMessageDelivery";
+import { createOperationId } from "../core-runtime/operation-identity";
+import { CoreModuleResponseError } from "../core-client/core-client";
+import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import {
   COORDINATOR_INSTRUCTIONS,
   MANAGED_SESSION_INSTRUCTIONS,
@@ -120,22 +124,96 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
   const authorize = Effect.fn("AgentRuntimeHost.authorize")(function* (
     identity: AgentHostExecutionIdentity,
     nativeTurnId?: string | null,
+    pauseIfHeld = false,
   ) {
     const proof = yield* readProof(identity);
     if (nativeTurnId !== undefined && proof.nativeTurnId !== nativeTurnId)
       return yield* unavailable("identity");
     const authorized = yield* authorizeExecution(proof, projectIdOf(proof.projectId));
     if (!open) return yield* unavailable("identity");
+    const holds = yield* effectiveHolds(core, {
+      kind: "session",
+      session_id: authorized.sessionId,
+    });
+    if (holds.length) {
+      // A hold can commit after Runtime claims a start but before Host preparation.
+      // Fence and queue that attempt before refusing its native authority.
+      if (pauseIfHeld)
+        yield* connection.request("thread.pause", {
+          threadId: proof.rootThreadId,
+          revision: holds.map((hold) => hold.revision).join(":"),
+        });
+      return yield* unavailable("identity");
+    }
     return { ...authorized, proof };
   });
   const presentation = options.presentation
     ? yield* makePresentationRelease(connection, options.presentation)
     : null;
 
+  const bindInbound = Effect.fn("AgentRuntimeHost.bindInbound")(function* (
+    proof: ExecutionProof,
+    sessionId: string,
+    managedKnown = false,
+  ) {
+    if (proof.runId === null) return;
+    if (!managedKnown) {
+      const managed = yield* core.workspace.read(
+        { kind: "read_managed_session", session_id: sessionId },
+        undefined,
+        null,
+      );
+      if (managed.value.kind !== "read_managed_session" || !managed.value.managed) return;
+    }
+    const message = yield* connection.request("thread.run-message", {
+      threadId: proof.threadId,
+      runId: proof.runId,
+    });
+    if (!message || message.id !== proof.userMessageId) return;
+    yield* core.workspace
+      .apply(
+        {
+          operationId: createOperationId("chat.inbound"),
+          intent: {
+            kind: "bind_chat_inbound",
+            session_id: sessionId,
+            run_id: proof.runId,
+            delivery_id: proof.userMessageId,
+            body_hash: inboundTextHash(message.text),
+            attachment_count: message.attachments.filter(
+              (attachment) => attachment.type === "image" || attachment.type === "file",
+            ).length,
+            author:
+              message.createdBy === "user"
+                ? { kind: "user" }
+                : {
+                    kind: "agent",
+                    session_id: null,
+                    thread_id: message.senderThreadId ?? null,
+                    run_id: null,
+                    project_id: null,
+                    label: message.createdBy === "system" ? "Nodex" : "Agent",
+                  },
+          },
+        },
+        undefined,
+        null,
+      )
+      .pipe(
+        Effect.provideService(CoreApplicationAgent, null),
+        Effect.catchIf(
+          (error) =>
+            error.cause instanceof CoreModuleResponseError &&
+            error.cause.coreError.code === "not_found",
+          () => Effect.void,
+        ),
+      );
+  });
+
   const prepare = Effect.fn("AgentRuntimeHost.prepare")(function* (
     identity: AgentHostTurnIdentity,
   ) {
-    const { proof, sessionId, context } = yield* authorize(identity);
+    const { proof, sessionId, context } = yield* authorize(identity, undefined, true);
     if (proof.runId === null) return yield* unavailable("turn.prepare");
     const project =
       context.actorProjectId === null
@@ -168,12 +246,15 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         ? (identity.nativeThreadRef.nativeId ?? null)
         : null,
       agentAttribution,
+    );
     const coordinator = yield* core.workspace.read({ kind: "read_coordinator" }, undefined, null);
     const managed = yield* core.workspace.read(
       { kind: "read_managed_session", session_id: sessionId },
       undefined,
       null,
     );
+    if (managed.value.kind === "read_managed_session" && managed.value.managed)
+      yield* bindInbound(proof, sessionId, true);
     const role =
       coordinator.value.kind === "read_coordinator" && coordinator.value.session_id === sessionId
         ? COORDINATOR_INSTRUCTIONS
@@ -255,6 +336,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
             ]));
       const capture = authorize(request.identity, request.identity.nativeTurnId ?? null);
       const { proof, sessionId, context } = yield* capture;
+      if (request.tool === "hand_back_message") yield* bindInbound(proof, sessionId);
       const backend = agentBackendKindOfRuntimeDriver(driverOf(proof.providerInstanceId));
       if (
         !backend ||
@@ -275,6 +357,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
           rootThreadId: proof.rootThreadId,
           threadId: proof.threadId,
           runId: proof.runId,
+          ...(proof.runId !== null ? { inboundMessageId: proof.userMessageId } : {}),
           cwd: proof.cwd,
         },
         isActive: () => open,

@@ -1,17 +1,26 @@
-export const WORKFLOW_STATUS_ORDER = ["triage", "plan", "doing", "review", "done"] as const;
+export const WORKFLOW_STATUS_ORDER = [
+  "triage",
+  "plan",
+  "doing",
+  "review",
+  "done",
+  "canceled",
+] as const;
 
 export type WorkflowStatus = (typeof WORKFLOW_STATUS_ORDER)[number];
 
 // Seeds new Databases and labels cross-Data-Source filters; scoped surfaces use Source option names.
 export const DEFAULT_WORKFLOW_STATUS_LABELS: Record<WorkflowStatus, string> = {
   triage: "Triage",
-  plan: "Plan",
-  doing: "Doing",
-  review: "Review",
+  plan: "Todo",
+  doing: "In Progress",
+  review: "In Review",
   done: "Done",
+  canceled: "Canceled",
 };
 
 export const DEFAULT_WORKFLOW_STATUS: WorkflowStatus = "triage";
+// The destination of an explicit completion action; Canceled is terminal without acceptance.
 export const COMPLETED_WORKFLOW_STATUS: WorkflowStatus = "done";
 
 export const DEFAULT_WORKFLOW_STATUS_COLUMNS = WORKFLOW_STATUS_ORDER.map((status) => ({
@@ -40,4 +49,9 @@ export function compareWorkflowStatuses(left: WorkflowStatus, right: WorkflowSta
 export interface WorkflowStatusValue {
   readonly optionId: WorkflowStatus;
   readonly label: string;
+}
+
+/** Terminal stages leave active work; only Done represents acceptance. */
+export function isTerminalWorkflowStatus(status: unknown): boolean {
+  return status === "done" || status === "canceled";
 }

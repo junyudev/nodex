@@ -106,6 +106,7 @@ export function usePageChatSendPort({
           promptInput,
           title: input.threadName,
           initialPageIds: [pageId],
+          workPage: { pageId, onlyIfAgentWork: true },
           onSelectionResolved: (backend) =>
             sessionFirstSubmissionOwner.update(submission.launchId, { backend }),
           presentationTicket,

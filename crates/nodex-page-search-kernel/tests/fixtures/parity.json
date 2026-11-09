@@ -8,7 +8,8 @@
       "status": "doing",
       "priority": "p1-high",
       "tags": [],
-      "assignee": "Ada",
+      "assignee": { "kind": "member", "member_id": "member:ada" },
+      "owner": "member:you",
       "locationLabel": "Product / Editor",
       "updatedAt": "2026-08-18T00:00:00.000Z",
       "properties": [{ "propertyId": "summary", "propertyName": "Summary", "text": "Metadata projection" }],
@@ -23,7 +24,8 @@
       "status": null,
       "priority": null,
       "tags": [],
-      "assignee": null,
+      "assignee": { "kind": "agent", "instance_id": "codex", "model": "gpt-6.1-sol", "effort": "high" },
+      "owner": "member:ada",
       "locationLabel": "Pages",
       "updatedAt": "2026-08-17T00:00:00.000Z",
       "properties": [],
@@ -121,6 +123,26 @@
       "name": "stable Page ID tie break",
       "request": { "projectIds": ["project-1"], "query": "stable", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": [] },
       "expectedPageIds": ["page-stable-a", "page-stable-b"]
+    },
+    {
+      "name": "Member assignment filter",
+      "request": {"projectIds": ["project-1"], "query": "canonical", "filters": {"statuses": null, "priorities": null, "includeEmptyPriority": true, "tags": [], "tagMode": "any", "assignees": [{"kind": "member", "member_id": "member:ada"}], "owners": []}, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": ["page-canonical"]
+    },
+    {
+      "name": "Agent assignment filter",
+      "request": {"projectIds": ["project-1"], "query": "canonical", "filters": {"statuses": null, "priorities": null, "includeEmptyPriority": true, "tags": [], "tagMode": "any", "assignees": [{"kind": "agent", "instance_id": "codex", "model": "gpt-6.1-sol", "effort": "high"}], "owners": []}, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": ["page-secondary"]
+    },
+    {
+      "name": "Owner filter",
+      "request": {"projectIds": ["project-1"], "query": "canonical", "filters": {"statuses": null, "priorities": null, "includeEmptyPriority": true, "tags": [], "tagMode": "any", "assignees": [], "owners": ["member:ada"]}, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": ["page-secondary"]
+    },
+    {
+      "name": "Agent effort is an exact filter",
+      "request": {"projectIds": ["project-1"], "query": "canonical", "filters": {"statuses": null, "priorities": null, "includeEmptyPriority": true, "tags": [], "tagMode": "any", "assignees": [{"kind": "agent", "instance_id": "codex", "model": "gpt-6.1-sol", "effort": "low"}], "owners": []}, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": []
     }
   ]
 }

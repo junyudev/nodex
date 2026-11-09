@@ -3,7 +3,7 @@ import type { SqlClient } from "effect/sql/SqlClient";
 import type { Fragment } from "effect/sql/Statement";
 
 // Presence of these durable markers separates Agent deliveries from the user's outbox.
-// Ordering is separate: only delegated completions receive delivery priority.
+// Person-authored messages take precedence over automatic deliveries.
 const deliveryMarkers = [
   ["delegatedCompletion", "delegated_completion"],
   ["notification", "notification"],
@@ -38,4 +38,5 @@ export const queuedMessageKindSql = (sql: SqlClient, payload: Fragment): Fragmen
 
 /** SQL delivery priority matching queuedRunsInDeliveryOrder: 0 runs before 1. */
 export const queuedRunPrioritySql = (sql: SqlClient, payload: Fragment): Fragment =>
-  sql`CASE WHEN json_type(${payload}, '$.delegatedCompletion') IS NOT NULL THEN 0 ELSE 1 END`;
+  sql`CASE WHEN json_extract(${payload}, '$.createdBy') = 'user'
+    AND ${queuedMessageKindSql(sql, payload)} = 'message' THEN 0 ELSE 1 END`;

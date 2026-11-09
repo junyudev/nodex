@@ -14,10 +14,20 @@ describe("nodex-coordinator over the real Core transport", () => {
       async ({ seed, manifest, client }) => {
         const facts = requireNodexCoordinatorFacts(await inspectScenario(manifest, seed));
         expect(facts).toMatchObject({
+          cardCount: 13,
+          managedChatCount: 8,
           reportCounts: { ready: 2, blocked: 1, failed: 1, dropped: 1 },
+          turnCounts: {
+            review: 1,
             blocked: 1,
             failed: 1,
             working: 1,
+            queued: 1,
+            paused: 1,
+            question: 1,
+            waiting_on_prerequisite: 2,
+            ready_to_start: 1,
+            none: 2,
           },
           planSteps: [
             { key: "audit", blockedBy: [] },
@@ -25,6 +35,7 @@ describe("nodex-coordinator over the real Core transport", () => {
             { key: "verify", blockedBy: ["simplify"] },
           ],
           nodexStartedCount: 1,
+          projectTurnCount: 5,
           automaticBlockedCount: 1,
         });
         const projects = await client.workspaceRead({
@@ -34,7 +45,36 @@ describe("nodex-coordinator over the real Core transport", () => {
         if (projects.value.kind !== "project_window") throw new Error("Expected Projects");
         expect(projects.value.projects.items.map((project) => project.name)).toEqual(["Nodex"]);
         expect((await seed.readBoard(manifest.projectId, manifest.databaseViewId)).totalRows).toBe(
+          13,
         );
+        // Work waiting in line, paused work and work with a pull request read as Core decides them.
+        expect((await seed.readPageTurn(manifest.pageIdsByKey.queued!)).actor).toEqual({
+          kind: "queue",
+          position: 2,
+        });
+        expect((await seed.readPageTurn(manifest.pageIdsByKey.paused!)).hold?.scope).toEqual({
+          kind: "page",
+          page_id: manifest.pageIdsByKey.paused,
+        });
+        const workspace = await client.workspaceRead({
+          kind: "page_workspace",
+          page_id: manifest.pageIdsByKey.blocked!,
+        });
+        if (workspace.value.kind !== "page_workspace") throw new Error("Expected a Page Workspace");
+        expect(workspace.value.workspace?.branch_name).toBe("nodex-2-add-team-invitations");
+        expect(workspace.value.pull_request).toMatchObject({ number: 2, state: "OPEN" });
+        const review = library.find((item) => item.pageId === manifest.pageIdsByKey.ready);
+        expect(review?.rowKind).toBe("turn");
+        expect(review?.turn?.turn.reason).toBe("review");
+        expect(review?.turn?.note_id).toBeTruthy();
+        const returned = library.find((item) => item.pageId === manifest.pageIdsByKey.handedBack);
+        expect(returned?.body).toBe("Update the keyboard shortcut guide.");
+        expect(returned?.handback).toMatchObject({
+          reason: "The keyboard navigation chat owns this change.",
+          chat: { display_title: "Documentation" },
+        });
+        const answer = library.find((item) => item.pageId === manifest.pageIdsByKey.answer);
+        expect(answer?.rowKind).toBe("answer");
         expect(answer?.replyToPageId).toBe(manifest.pageIdsByKey.question);
         expect(history.find((item) => item.pageId === manifest.pageIdsByKey.question)?.state).toBe(
           "done",

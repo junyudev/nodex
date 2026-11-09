@@ -57,7 +57,9 @@ export function InboxQuickCapture({
   const { destination, seed } = request;
   const summary = useInboxSummary(destination.scope);
   const send = useSendInboxMessage();
-  const images = useInboxImageAccess(destination.scope);
+  const images = useInboxImageAccess(
+    destination.scope.kind === "project" ? destination.scope : { kind: "library" },
+  );
   const capture = useInboxCapture({
     windowSessionId,
     scope: destination.scope,

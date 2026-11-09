@@ -59,6 +59,41 @@ pub(super) fn read(
     request: ProjectWorkspaceRead,
 ) -> Result<ProjectWorkspaceReadValue, StoreError> {
     match request {
+        request @ (ProjectWorkspaceRead::HeldSessionWindow { .. }
+        | ProjectWorkspaceRead::EffectiveExecutionHold { .. }
+        | ProjectWorkspaceRead::ExecutionHolds { .. }) => {
+            super::execution_holds::read(connection, library_id, request)
+        }
+        ProjectWorkspaceRead::PageTurn { page_id } => Ok(ProjectWorkspaceReadValue::PageTurn {
+            turn: super::page_turn::read_turns(
+                connection,
+                library_id,
+                std::slice::from_ref(&page_id),
+            )?
+            .remove(0),
+            active_chat: super::page_chat::active_chat(connection, &page_id)?,
+        }),
+        ProjectWorkspaceRead::PageTurns { page_ids } => Ok(ProjectWorkspaceReadValue::PageTurns {
+            turns: super::page_turn::read_turns(connection, library_id, &page_ids)?,
+        }),
+        ProjectWorkspaceRead::SessionExecutionObserver { session_id } => {
+            Ok(ProjectWorkspaceReadValue::SessionExecutionObserver {
+                observer: super::page_turn::observer(connection, &session_id)?,
+            })
+        }
+        ProjectWorkspaceRead::SessionExecutionObservers {
+            after_session_id,
+            limit,
+        } => Ok(ProjectWorkspaceReadValue::SessionExecutionObservers {
+            observers: super::page_turn::observers(connection, after_session_id.as_deref(), limit)?,
+        }),
+        request @ (ProjectWorkspaceRead::PageWorkspace { .. }
+        | ProjectWorkspaceRead::SessionWorkspace { .. }
+        | ProjectWorkspaceRead::SessionWorkPage { .. }
+        | ProjectWorkspaceRead::PageWorkspaceWindow { .. }
+        | ProjectWorkspaceRead::PageWorkspaceConsumers { .. }) => {
+            super::page_workspace::read(connection, library_id, request)
+        }
         ProjectWorkspaceRead::PageWorkLaunch { launch_id } => {
             Ok(ProjectWorkspaceReadValue::PageWorkLaunch {
                 launch: super::page_work::launch(connection, &launch_id)?,
@@ -180,10 +215,20 @@ pub(super) fn read(
                 },
             )
         }
+        ProjectWorkspaceRead::ChatMessageInbound { session_id, run_id } => {
+            super::inbox::require_host(context)?;
+            Ok(ProjectWorkspaceReadValue::ChatMessageInbound {
+                inbound: super::inbox::handback::inbound(connection, &session_id, &run_id)?,
+            })
+        }
+        ProjectWorkspaceRead::InboxTurnNotifications => {
+            Ok(ProjectWorkspaceReadValue::InboxTurnNotifications {
                     connection,
                     library_id,
                     &request_ids,
                 )?,
+            })
+        }
         ProjectWorkspaceRead::InboxEntry { page_id } => Ok(ProjectWorkspaceReadValue::InboxEntry {
             item: super::inbox_read::read_single_entry(connection, context, library_id, &page_id)?
                 .map(Box::new),
@@ -536,8 +581,7 @@ pub(super) fn read(
         }
         ProjectWorkspaceRead::AgentRuntimeSessionBindingWindow {
             runtime_id,
-            project_id,
-            temporary_only,
+            scope,
             window,
         } => Ok(
             ProjectWorkspaceReadValue::AgentRuntimeSessionBindingWindow {
@@ -548,8 +592,7 @@ pub(super) fn read(
                     commit_head,
                     super::agent_runtime_binding::BindingWindowQuery {
                         runtime_id: &runtime_id,
-                        project_id: project_id.as_deref(),
-                        temporary_only: temporary_only.unwrap_or(false),
+                        scope: &scope,
                         window: &window,
                     },
                 )?,

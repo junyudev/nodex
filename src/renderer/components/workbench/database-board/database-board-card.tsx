@@ -4,6 +4,7 @@ import type {
   MouseEvent as ReactMouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { PagePullRequestLink } from "@/components/board/page-stage/page-workspace-row";
 
 import { BoardPageKey } from "@/components/board/board-page-key";
 import { PagePresenceRail } from "@/components/board/page-presence-rail";
@@ -41,6 +42,7 @@ import type { DatabaseViewPageOpenHandler } from "../database-view-page-open";
 import type { BoardCardDragData } from "@/components/board/pragmatic-drag-data";
 import { useDatabaseViewPageDragSource } from "../database-view-page-drag";
 import { PageChatActivityControl } from "../page-chat-activity-control";
+import { usePageTurnCardChip } from "../page-turn-card";
 import type { PageChatActivitySummary } from "@/lib/types";
 import {
   formatDatabaseBoardMetadataTimestamp,
@@ -294,10 +296,13 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
     headSeq: row.documentHeadSeq,
   });
   // Where the Page's Agent work stands leads its properties; a live chat speaks in the title row.
+  const workState = usePageTurnCardChip({
     row,
+    onOpenPage: (pageId, label) => onOpenPage(pageId, label, "preview"),
   });
   const authority = model.query.rows.find((candidate) => candidate.page.pageId === row.pageId);
   if (!authority) return null;
+  const pullRequest = row.work?.pullRequest;
   const description = row.preview.trim();
   const footerSlots = projectDatabaseBoardCardFooter({
     authority,
@@ -443,7 +448,7 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
           {description}
         </p>
       ) : null}
-      {footerSlots.length > 0 ? (
+      {footerSlots.length > 0 || workState || pullRequest ? (
         <div
           className={cn(
             "mx-2 min-w-0 pb-2",
@@ -458,12 +463,13 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
             "[--database-property-chip-focus:var(--color-token-focus-border)]",
           )}
         >
-          {propertySlots.length > 0 ? (
+          {propertySlots.length > 0 || workState || pullRequest ? (
             <div
               data-database-board-property-row="true"
               className="flex min-w-0 flex-wrap items-center gap-1"
             >
               {workState}
+              {pullRequest ? <PagePullRequestLink pullRequest={pullRequest} compact /> : null}
               {propertySlots.map((slot) => {
                 const binding = propertyBinding(slot.property);
                 return (

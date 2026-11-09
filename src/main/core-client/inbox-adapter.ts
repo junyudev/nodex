@@ -150,7 +150,9 @@ export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInbo
 };
 
 export const inboxScopeFromCore = (scope: CoreInboxScope): InboxScope =>
-  scope.kind === "library" ? { kind: "library" } : { kind: "project", projectId: scope.project_id };
+  scope.kind === "project"
+    ? { kind: "project", projectId: scope.project_id }
+    : { kind: scope.kind };
 
 export const inboxPageBasisFromCore = (basis: CoreInboxPageBasis): InboxPageBasis => ({
   pageId: basis.page_id,
@@ -185,7 +187,9 @@ export const inboxExecutionSelectionFromCore = (
   });
 
 export const inboxScopeToCore = (scope: InboxScope): CoreInboxScope =>
-  scope.kind === "library" ? { kind: "library" } : { kind: "project", project_id: scope.projectId };
+  scope.kind === "project"
+    ? { kind: "project", project_id: scope.projectId }
+    : { kind: scope.kind };
 
 export const inboxSourceFromCore = (source: CoreInboxSource): InboxSource => {
   switch (source.kind) {
@@ -280,6 +284,9 @@ const proposalFromCore = (proposal: CoreInboxProposal): InboxProposal => ({
 });
 
 export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
+  handback: item.handback ?? null,
+  rowKind: item.row_kind,
+  turn: item.turn ?? null,
   pageId: item.page_id,
   pageKey: item.page_key ?? null,
   pageStatus: item.page_status ? { id: item.page_status.id, label: item.page_status.label } : null,

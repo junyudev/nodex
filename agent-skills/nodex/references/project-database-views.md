@@ -41,6 +41,17 @@ observed value versions. System-managed Properties use their owning operation.
 For query-selected batches, use the four observation columns and prepare/apply
 workflow in the linked query reference.
 
+Owner and Assignee belong to the Page and share its intrinsic `work` revision.
+Use `nodex members list` to discover people or `nodex members me` for the local
+person. Set `--owner me|member:<id>` and
+`--assignee me|member:<id>|agent:<instance>/<model>[/<effort>]|none` with
+`page properties set PAGE_ID --if-revision WORK_REVISION`. These flags can be
+combined with each other. Omit `--if-revision` to use the command's own observed
+Page work revision, or supply an observed revision to fence an earlier decision.
+Source `property_values` revisions do not apply to these fields. An Agent
+Assignee is required to start work. Changing the assignment revokes automatic
+start consent, which only a person can grant.
+
 `page create-batch --input -` creates 1–16 Pages at an explicit destination in
 one transaction. Drafts use `title_markdown`, `markdown` and typed initial
 `values`. Fetch its input schema for destination/value shapes. Failure rolls

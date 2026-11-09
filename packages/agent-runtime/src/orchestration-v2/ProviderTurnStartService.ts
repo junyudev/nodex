@@ -1361,7 +1361,10 @@ export const layer: Layer.Layer<
         ? continuation === "empty"
           ? ""
           : "Continue where you left off."
-        : projectMessageForProvider(inputMessage);
+        : projectMessageForProvider({
+            text: inputMessage.providerText ?? inputMessage.text,
+            context: inputMessage.context,
+          });
       // Delivered once: this run's provider turn marks the work as told. A
       // restart continuation is prompted by its own text or resumes natively.
       const noteContinuation = projection.restartNoteState.continuation;

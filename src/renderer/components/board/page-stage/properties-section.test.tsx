@@ -13,6 +13,12 @@ import type {
   LibraryPageFileInventory,
   LibraryPageFileItem,
 } from "../../../../shared/library-files";
+import type { PageTurn } from "../../../../shared/page-turn";
+import {
+  parseDataSourceId,
+  parseDataSourcePropertyId,
+} from "../../../../shared/database-identities";
+import { testPropertySemantics } from "../../../../shared/testing/database-property-record";
 
 const api = vi.hoisted(() => ({
   applyLibraryModule: vi.fn(),
@@ -23,9 +29,23 @@ const api = vi.hoisted(() => ({
   subscribeCodexScheduledAutomationChanges: vi.fn(() => () => undefined),
   subscribeCodexAutomationRunsUpdates: vi.fn(() => () => undefined),
 }));
+const turnState = vi.hoisted(() => ({ turn: null as PageTurn | null }));
+vi.mock("@/lib/page-turn-runtime", () => ({
+  usePageTurn: () => ({
+    data: turnState.turn ? { turn: turnState.turn, activeChat: null } : undefined,
+  }),
+  acceptPageWork: vi.fn(),
+}));
+vi.mock("@/lib/page-workspace-runtime", () => ({ usePageWorkspace: () => ({ data: undefined }) }));
 const modal = vi.hoisted(() => ({ openModal: vi.fn() }));
 
 vi.mock("@/lib/api", () => api);
+vi.mock("@/lib/members-runtime", () => ({
+  useMembers: () => ({ data: [{ id: "person", display_name: "You", lifecycle: "active" }] }),
+}));
+vi.mock("@/lib/use-agent-runtime-providers", () => ({
+  useAgentRuntimeProviders: () => ({ data: [] }),
+}));
 vi.mock("@/features/inbox/inbox-agent-picker", async (original) => ({
   ...(await original<typeof import("@/features/inbox/inbox-agent-picker")>()),
   useInboxAgents: () => inboxAgentsFixture(),
@@ -92,6 +112,7 @@ const manifestResponse = (manifest: LibraryPageFileInventory) => ({
 });
 
 beforeEach(() => {
+  turnState.turn = null;
   modal.openModal.mockReset();
   api.readLibraryModule.mockReset();
   api.readLibraryModule.mockResolvedValue(manifestResponse(emptyManifest));
@@ -104,6 +125,7 @@ const page = {
   title: "Nested Page",
   richTitle: [],
   isAllDay: false,
+  pageWork: { owner: "person", assignee: null, auto_start: false },
   reminders: [],
   revision: 1,
   created: new Date("2026-07-15T00:00:00.000Z"),
@@ -162,7 +184,75 @@ const buildController = (overrides: Partial<PageStageController> = {}): PageStag
 const renderProperties = (element: ReactElement) =>
   renderWithAppMaitai(element, { wrapper: TestQueryProvider });
 
+const statusItem = {
+  property: {
+    propertyId: parseDataSourcePropertyId("status"),
+    dataSourceId: parseDataSourceId("source-1"),
+    name: "Status",
+    ...testPropertySemantics("select", 6),
+    valueType: "select",
+    config: {},
+    optionCount: 6,
+    rankKey: "0",
+    lifecycle: "active",
+    revision: 1,
+    createdAt: "2026-08-12T00:00:00.000Z",
+    updatedAt: "2026-08-12T00:00:00.000Z",
+  },
+  value: null,
+  valueRevision: 1,
+  error: null,
+  pageVisibility: "hide_when_empty",
+} as const;
+const statusControls: PageStagePropertyControls = {
+  ...emptyPropertyControls,
+  pageId: "nested-page",
+  properties: [statusItem],
+  rows: [{ kind: "property", key: "status", item: statusItem, shownByLayout: false }],
+};
+
 describe("PageStagePropertiesSection", () => {
+  test("Status carries whose move the Page waits for, with no separate Turn row", async () => {
+    turnState.turn = {
+      page_id: "nested-page",
+      actor: { kind: "member", member_id: "person" },
+      reason: "question",
+      since: "now",
+      episode: "episode",
+    };
+    const view = renderProperties(
+      <PageStagePropertiesSection
+        controller={buildController({ propertyControls: statusControls })}
+      />,
+    );
+    const status = view.container.querySelector('[data-page-stage-property-id="status"]');
+    expect(status?.textContent).toContain("Needs your answer");
+    expect(view.queryByText("Turn")).toBeNull();
+  });
+
+  test("a Page without work keeps a plain Status, tucked away while empty", async () => {
+    const view = renderProperties(
+      <PageStagePropertiesSection
+        controller={buildController({ propertyControls: statusControls })}
+      />,
+    );
+    expect(view.container.querySelector('[data-page-stage-property-id="status"]')).toBeNull();
+    expect(view.container.querySelector("[data-page-turn-line]")).toBeNull();
+  });
+
+  test("work in a Page without a Status Property still says whose move it is", () => {
+    turnState.turn = {
+      page_id: "nested-page",
+      actor: { kind: "page", page_id: "prerequisite", key: "NODEX-2" },
+      reason: "waiting_on_prerequisite",
+      since: "now",
+      episode: "episode",
+    };
+    const view = renderProperties(<PageStagePropertiesSection controller={buildController()} />);
+    expect(view.getByText("Status")).toBeTruthy();
+    expect(view.getByRole("link", { name: "Waiting for NODEX-2" })).toBeTruthy();
+  });
+
   test("keeps empty Files available behind the shared disclosure", async () => {
     const view = renderProperties(<PageStagePropertiesSection controller={buildController()} />);
 
@@ -176,6 +266,7 @@ describe("PageStagePropertiesSection", () => {
     });
     expect(more.getAttribute("aria-expanded")).toBe("true");
     // A Project Page that names no Agent offers one behind the same disclosure.
+    expect(view.getByRole("button", { name: "Choose Assignee" })).toBeTruthy();
     const files = view.getByRole("button", { name: "Add Page Files" });
     await act(async () => {
       fireEvent.click(files);
@@ -420,6 +511,7 @@ describe("PageStagePropertiesSection", () => {
       "true",
     );
     expect(view.getByRole("treeitem", { name: "image.png" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Choose Assignee" })).toBeTruthy();
     expect(view.queryByText("Empty", { exact: true })).toBeNull();
   });
 });

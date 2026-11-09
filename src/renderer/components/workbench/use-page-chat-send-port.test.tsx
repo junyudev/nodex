@@ -76,7 +76,10 @@ it("returns the launch's accepted user message identity", async () => {
       prompt: "Review",
     });
     expect(mocks.launch).toHaveBeenCalledWith(
-      expect.objectContaining({ initialPageIds: ["page"] }),
+      expect.objectContaining({
+        initialPageIds: ["page"],
+        workPage: { pageId: "page", onlyIfAgentWork: true },
+      }),
     );
     expect(accepted).toEqual({
       sessionId: "chat",

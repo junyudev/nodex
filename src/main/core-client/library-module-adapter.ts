@@ -1,3 +1,4 @@
+import { parsePageAssignee } from "../../shared/work-graph";
 import { toCoreLibraryFileRead } from "../../shared/library-files-transport";
 import type { components } from "@nodex/core-protocol";
 import {
@@ -319,6 +320,10 @@ const toCoreRead = (request: LibraryModuleReadRequest): LibraryRead => {
           store_epoch: token.storeEpoch,
         })),
       };
+    case "members":
+      return { kind: "members" };
+    case "local_member":
+      return { kind: "local_member" };
     case "metadata":
       return { kind: "metadata" };
 
@@ -924,6 +929,10 @@ const mapReadValue = (snapshot: LibraryReadSnapshot): LibraryReadValue => {
           },
         })),
       };
+    case "members":
+      return { kind: value.kind, items: value.items };
+    case "local_member":
+      return { kind: value.kind, value: value.value };
     case "metadata":
       return { kind: value.kind } as const;
 
@@ -1372,9 +1381,8 @@ function validatePageSearchMetadataItem(item: CorePageSearchMetadataItem): void 
   if (typeof item.location_label !== "string" || typeof item.updated_at !== "string") {
     throw new Error("Core Page search metadata returned invalid location or timestamp");
   }
-  if (item.assignee !== null && typeof item.assignee !== "string") {
-    throw new Error("Core Page search metadata returned an invalid assignee");
-  }
+  parsePageAssignee(item.assignee ?? null);
+
   if (!Array.isArray(item.tags) || !Array.isArray(item.properties)) {
     throw new Error("Core Page search metadata returned invalid property collections");
   }
@@ -1795,7 +1803,6 @@ const toCoreBlockPropertyMutation = (
   actor: BlockPropertyMutationRequestV2["actor"],
   clientSessionId: string | undefined,
 ): CoreBlockPropertyMutation => ({
-  actor,
   client_session_id: clientSessionId ?? null,
   fields: fields.map((field) => ({
     kind: "intrinsic_set" as const,
@@ -2239,6 +2246,7 @@ export const createCoreLibraryModuleAdapter = (
                 })),
                 tag_mode: searchInput.filters.tagMode,
                 assignees: searchInput.filters.assignees,
+                owners: searchInput.filters.owners ?? [],
               }
             : null,
           preferred_project_id: searchInput.preferredProjectId ?? null,
@@ -2278,6 +2286,7 @@ export const createCoreLibraryModuleAdapter = (
           priority: item.priority ?? null,
           tags: item.tags.map(mapPageSearchOption),
           assignee: item.assignee ?? null,
+          owner: item.owner ?? null,
           locationLabel: item.location_label,
           titleParts: mapPageSearchParts(item.title_parts),
           excerpt: item.excerpt ?? null,
@@ -2323,6 +2332,7 @@ export const createCoreLibraryModuleAdapter = (
             priority: item.priority !== null && isPriority(item.priority) ? item.priority : null,
             tags: item.tags.map(mapPageSearchOption),
             assignee: item.assignee ?? null,
+            owner: item.owner ?? null,
             locationLabel: item.location_label,
             updatedAt: item.updated_at,
             properties: item.properties.map((property) => ({
@@ -2350,6 +2360,7 @@ export const createCoreLibraryModuleAdapter = (
       return {
         tags: snapshot.value.value.tags.map(mapPageSearchOption),
         assignees: [...snapshot.value.value.assignees],
+        owners: [...(snapshot.value.value.owners ?? [])],
       };
     },
     resolvePageTarget: async (request) => {

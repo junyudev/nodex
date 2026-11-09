@@ -5,6 +5,12 @@ import { NODEX_AGENT_V6_TOOL_CONTRACTS } from "../nodex-agent-tools/v6-contracts
 import { accountSchemas } from "./account-schemas";
 import { automationSchema } from "./automation-schema";
 import { sendToInboxSchema } from "./inbox-schema";
+import {
+  InboxSuggestionOutput,
+  writeTurnNoteSchema,
+  answerInboxQuestionSchema,
+} from "./coordinator-schema";
+import { reportWorkSchema, startWorkSchema, handBackMessageSchema } from "./work-schema";
 import { uninstallPluginSchema } from "./plugin-schema";
 import { describeContentSchemaInput, sqlQuerySchema } from "./query-schemas";
 import { sessionForkSchema } from "./session-fork-schema";
@@ -41,7 +47,10 @@ export const appToolArgumentSchemas: Readonly<Record<string, z.ZodType>> = {
   automation_update: automationSchema,
   send_to_inbox: sendToInboxSchema,
   inbox_suggest: InboxSuggestionOutput,
+  write_turn_note: writeTurnNoteSchema,
+  answer_inbox_question: answerInboxQuestionSchema,
   report_work: reportWorkSchema,
+  hand_back_message: handBackMessageSchema,
   start_work: startWorkSchema,
   uninstall_plugin: uninstallPluginSchema,
   query_content: sqlQuerySchema,

@@ -41,6 +41,7 @@ export interface AgentRuntimeLaunch {
   readonly projectId: string | null;
   readonly title: string;
   readonly initialPageIds?: readonly string[];
+  readonly workPage?: { readonly pageId: string; readonly onlyIfAgentWork?: boolean };
   readonly presentationTicket?: import("./nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
   readonly sourceRoot?: string;
   readonly modelSelection: CreateThread["modelSelection"];
@@ -93,6 +94,7 @@ export interface AgentRuntimeLaunchResult {
 }
 
 export interface AgentRuntimeConversation {
+  readonly waitingAdmissions?: AgentRuntimeOperations["thread.read-details"]["output"]["waitingAdmissions"];
   readonly sessionId: string;
   readonly projectId: string | null;
   readonly threadId: string;

@@ -416,6 +416,8 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
   // The first frame configures providers before readiness; it is queued ahead of every request.
   yield* send({
     type: "bootstrap",
+    agentsRunningAtOnce: options.configuration.agentsRunningAtOnce,
+    pausedThreadIds: options.configuration.pausedThreadIds,
     providers: options.configuration.providers,
     modelPolicy: options.configuration.modelPolicy,
     ...(options.configuration.host ? { hostTools: options.configuration.host.tools } : {}),

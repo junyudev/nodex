@@ -17,6 +17,7 @@ import {
 } from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import { readWaiting } from "./RunAdmission.ts";
 import * as Layer from "effect/Layer";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
@@ -226,6 +227,7 @@ it.effect("keeps unanswered siblings pending and records each answer batch exact
       answers: { first: "Use the screenshot" },
     };
     const accepted = yield* fixture.orchestrator.dispatch(first);
+    assert.equal((yield* readWaiting(fixture.threadId))[0]?.class, "person");
     assert.deepEqual(yield* fixture.orchestrator.dispatch(first), accepted);
     const partial = yield* fixture.projections.getRuntimeResponseContext(
       fixture.threadId,
@@ -254,8 +256,14 @@ it.effect("keeps unanswered siblings pending and records each answer batch exact
     const projection = yield* fixture.projections.getThreadRecords(fixture.threadId, ["messages"]);
     assert.equal(projection.messages.length, 2);
     assert.deepEqual(
+      projection.messages.map((message) => message.text),
+      ["Use the screenshot", "main"],
+    );
+    assert.deepEqual(
       projection.messages.map((message) =>
-        decodeCodexAsyncQuestionReplies(message.text)?.map((reply) => reply.questionItemId),
+        decodeCodexAsyncQuestionReplies(message.providerText ?? "")?.map(
+          (reply) => reply.questionItemId,
+        ),
       ),
       [["first"], ["second"]],
     );
@@ -389,7 +397,9 @@ it.effect("accepts newer answer edits after an earlier batch completes", () =>
     const data = yield* fixture.projections.getThreadRecords(fixture.threadId, ["messages"]);
     assert.equal(data.messages.length, 2);
     assert.deepEqual(
-      decodeCodexAsyncQuestionReplies(data.messages[1]!.text)?.map((reply) => reply.answer),
+      decodeCodexAsyncQuestionReplies(data.messages[1]!.providerText ?? "")?.map(
+        (reply) => reply.answer,
+      ),
       ["edited while submitting"],
     );
     yield* fixture.orchestrator.dispatch({
@@ -449,7 +459,9 @@ it.effect(
       const messages = (yield* fixture.projections.getThreadRecords(fixture.threadId, ["messages"]))
         .messages;
       assert.deepEqual(
-        messages.map((message) => decodeCodexAsyncQuestionReplies(message.text)?.[0]?.answer),
+        messages.map(
+          (message) => decodeCodexAsyncQuestionReplies(message.providerText ?? "")?.[0]?.answer,
+        ),
         ["", "  exact text  "],
       );
     }).pipe(Effect.provide(layerTest)),

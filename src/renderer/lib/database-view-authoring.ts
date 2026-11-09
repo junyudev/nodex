@@ -163,7 +163,7 @@ export const defaultDatabaseFilterValue = (
   }
   if (property.valueType === "checkbox") return false;
   if (property.valueType === "number") return null;
-  if (property.valueType === "select") return null;
+  if (property.valueType === "select" || property.valueType === "assignment") return null;
   if (property.valueType === "multi_select") return [];
   if (property.valueType === "relation") return [];
   return "";
@@ -172,7 +172,12 @@ export const defaultDatabaseFilterValue = (
 export const createDatabaseViewFilterClause = (
   property: DatabaseAuthoringProperty,
 ): DatabaseViewFilterClause =>
-  databaseFilterClauseWithOperator(property, filterOperatorsForProperty(property)[0] ?? "is_empty");
+  databaseFilterClauseWithOperator(
+    property,
+    property.valueType === "assignment"
+      ? "is_empty"
+      : (filterOperatorsForProperty(property)[0] ?? "is_empty"),
+  );
 
 export const databaseFilterClauseWithOperator = (
   property: DatabaseAuthoringProperty,
@@ -194,6 +199,7 @@ export const databaseFilterClauseWithProperty = (
   property: DatabaseAuthoringProperty,
 ): DatabaseViewFilterClause => {
   const supported = filterOperatorsForProperty(property);
+  if (property.valueType === "assignment") return createDatabaseViewFilterClause(property);
   const operator = supported.includes(clause.operator)
     ? clause.operator
     : (supported[0] ?? "is_empty");

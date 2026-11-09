@@ -1,9 +1,12 @@
+import type { AgentSelection } from "../../shared/work-graph";
 import { createHash } from "node:crypto";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { components } from "@nodex/core-protocol";
+import type { AcceptWorkInput, StartWorkInput } from "../../shared/work-application";
+import { agentSelectionOf } from "../../shared/work-graph";
 import { createUuidV7FromTimestamp } from "../../shared/uuid-v7";
 import { resolveInboxModel } from "../inbox-application/InboxRuntimeSelection";
 
@@ -19,8 +22,22 @@ export const workIdentity = (parent: string, purpose: string): string => {
     .digest();
   return createUuidV7FromTimestamp(0, bytes.readUInt32BE(0), bytes);
 };
+/**
+ * The first message of a work chat, read by its Agent and shown to people in the transcript.
+ * It carries what the Agent cannot learn from its own chat: the Page it works on, whom it works
+ * for when the Space has several people, the threads it follows and how its prerequisites stand.
+ */
+export const renderWorkBrief = (
+  context: WorkContext,
+  markdown: string,
+  follows: readonly components["schemas"]["PageThreadFollow"][] = [],
+  ownerName: string | null = null,
+): string =>
   [
     `# ${context.page.page_key ? `${context.page.page_key} · ` : ""}${context.page.title}`,
+    [`Page ID: ${context.page.page_id}`, ownerName ? `Owner: ${ownerName}` : null]
+      .filter(Boolean)
+      .join(" · "),
     markdown,
     ...(context.prerequisites.length
       ? [
@@ -34,6 +51,16 @@ export const workIdentity = (parent: string, purpose: string): string => {
   ]
     .filter(Boolean)
     .join("\n\n");
+
+/** Names the Owner only when someone else could be meant; one person needs no attribution. */
+export const briefOwnerName = (
+  members: readonly components["schemas"]["Member"][],
+  ownerId: string | undefined,
+): string | null => {
+  const active = members.filter((member) => member.lifecycle === "active");
+  if (!ownerId || active.length < 2) return null;
+  return members.find((member) => member.id === ownerId)?.display_name ?? null;
+};
 
 export const make = Effect.gen(function* () {
   const core = yield* CoreModules;
@@ -91,18 +118,33 @@ export const make = Effect.gen(function* () {
       );
       if (content.value.kind !== "page_content")
         return yield* new WorkApplicationError({ message: "Invalid Page content read" });
+      const selection: AgentSelection | null =
+        input.selection ?? agentSelectionOf(work.page_work?.assignee);
+      if (!selection)
+        return yield* new WorkApplicationError({
+          message: "Assign this Page to an Agent before starting work",
+        });
       // Validate availability now; the durable outbox retains the explicit model and effort.
       yield* resolveInboxModel(runtime, {
         ...selection,
         reasoningEffort: selection.effort,
         serviceTier: null,
       });
+      const memberRead = yield* core.library.read({ kind: "members" }, undefined, null);
+      if (memberRead.value.kind !== "members")
+        return yield* new WorkApplicationError({ message: "Invalid Member read" });
+      const members = memberRead.value.items;
       frozen = {
         page_id: input.pageId,
         session_id: workIdentity(launchId, "session"),
         launch_id: launchId,
         message_id: workIdentity(launchId, "message"),
         selection,
+        brief: renderWorkBrief(
+          work,
+          content.value.value.body_markdown,
+          briefOwnerName(members, work.page_work?.owner),
+        ),
         again: input.again ?? false,
       };
     }
@@ -113,12 +155,29 @@ export const make = Effect.gen(function* () {
           kind: "start_page_work",
           ...frozen,
           expected_readiness_epoch: input.readinessEpoch ?? null,
+          ...(input.turnEpisode ? { expected_turn_episode: input.turnEpisode } : {}),
         },
       },
       null,
     );
     return { value: { pageId: frozen.page_id, sessionId: frozen.session_id, launchId }, apply };
   });
+  const acceptWork = Effect.fn("WorkApplication.acceptWork")(function* (input: AcceptWorkInput) {
+    const apply = yield* core.workspace.apply(
+      {
+        operationId: input.operationId,
+        intent: {
+          kind: "accept_page_work",
+          page_id: input.pageId,
+          ...(input.turnEpisode ? { expected_turn_episode: input.turnEpisode } : {}),
+        },
+      },
+      undefined,
+      null,
+    );
+    return { value: undefined, apply };
+  });
+  return { startWork, acceptWork };
 });
 export class WorkApplication extends Context.Service<
   WorkApplication,

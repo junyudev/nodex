@@ -117,6 +117,7 @@ const model = (): DatabaseViewRenderModel => ({
         updatedAt: timestamp,
       },
       values: { [propertyId]: { propertyId, valueType: "number", value: index, revision: 1 } },
+      work: { unsatisfiedCount: 0, blockers: [], owner: null, assignee: null, autoStart: false },
       taskParent: { parentPageId: null, siblingRank: null, valueRevision: 1 },
       position: { rankKey: String(index), revision: 1 },
       effectiveGroupKey: null,

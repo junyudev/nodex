@@ -2,12 +2,10 @@
 
 ## Intent and authority
 
-The Inbox is where a user drops a thought, a todo, or a question without first
-deciding which chat it belongs to. The Library Inbox takes anything; each
-Project's own Inbox, its Home, takes what is already about that Project. Every
-message is saved as an ordinary Page, written in Nodex Markdown as described in
-[Message Content Behavior](./message-content-behavior.md). A bound suggestion Agent may then propose
-where it should go; a proposal never confirms itself.
+The Inbox is what is yours: waiting messages to route, Pages whose current Turn
+all Projects and messages without a Project; each Project Inbox filters the same
+set. Captured messages remain ordinary Pages and keep today's routing, suggestion
+and dispatch rules.
 
 Rust Core owns the Library Inbox Database, each Inbox entry's Inbox, provenance,
 and triage state, and versioned dispatch proposals. The Desktop Host owns
@@ -35,12 +33,18 @@ intents, and selection.
   last tab beside the Inbox returns it to full width. `Open Board` and
   `Open Inbox as a Database` open in the Inbox's own group instead, since a Board
   needs the width.
-- The Inbox composer sends to the Inbox it shows. Agent Turns send to their
-  chat's Project Inbox, and the command line to its Project's Inbox; both use
-  the Library Inbox outside a Project. Only the desktop app and
-  [Nodex Mobile](./mobile-companion-behavior.md) choose an Inbox explicitly.
-- The sidebar's `Inbox` row counts the Library Inbox. Each Project row shows its
-  own Inbox count, muted, in place of nothing when the count is zero.
+- The Inbox composer sends to the Inbox it shows. The all-Projects Library view
+  captures without a Project. Agent and CLI ingress use their Project when present.
+  Desktop and [Mobile](mobile-companion-behavior.md) choose destinations explicitly.
+- The sidebar counts actionable intake, Turns and Problems across all Projects.
+  Each Project row shows its own count, muted at zero.
+
+Mobile uses the same Member-scoped projection in the personal Space. Intake
+alone offers routing and triage decisions. Turns offer episode-fenced Reply,
+question options, Accept or Start, plus Open chat. Answers link their chat.
+Problems retain their own identity and one exact fix; desktop-only fixes state
+that limitation on the phone. A Turn has no independent Done or dismissal state.
+
 
 ## Messages are Pages
 
@@ -222,29 +226,8 @@ Done and filing also offer `Undo` in a toast. A message handled elsewhere simply
 folds away. Clearing the last message shows an `All clear` state, and beneath
 it [how the Inbox plans](#how-the-inbox-plans).
 
-History is a dense log, newest first. Work still under way leads under
-`In progress`: messages handed to a chat that is being delivered, working,
-waiting on the user, in error, or holding a reply the user has not read, until
-the user marks their work done. These lines show the day they were sent unless
-it is today. Everything else follows, grouped by day. Each line shows the
-message's Page title and where it went:
-
-- the receiving chat and its live status, or `Done` once the user closed it;
-- the Project it was moved to;
-- `Kept as <kind>`;
-- `Done`.
-
-Expanding a line shows the message, its Page key, and icon buttons:
-
-- `Open chat` or `Open in Project`;
-- `Open page`;
-- `Copy`;
-- `Mark done` or `Reopen`, for work handed to a chat;
-- `Return to Inbox`, for kept or done messages;
-- `Delete`, while the Page is still in its Inbox's Database.
-
-Every count, in the sidebar and on the `Inbox` tab, is the number of messages in
-that Inbox. It is never an unread count.
+Every badge counts actionable intake plus current eligible Turns in that scope.
+Answers do not inflate it. It is never an unread count.
 
 ## Important messages
 
@@ -275,6 +258,51 @@ The user can mark a message important so it stays within reach while it waits.
   it off that list, and `Return to Inbox` brings it back with its mark. History
   does not show the mark.
 
+## Turns, notes and answers
+
+Core returns one mixed window of `intake`, `turn` and `answer` rows. All share
+one time-and-identity ordering and one scope-bound cursor. Counts use the same
+membership as the window. The badge counts actionable intake and Turns; answers
+stay visible without increasing it. `all` includes every Project; `library`
+means messages without a Project.
+
+A Turn row belongs to the local Member and has reason question, approval,
+review, blocked, failed or stalled. Ready-to-start appears only for a Page with
+Prerequisites that are all now Done. Backlog cards without Prerequisites and
+paused Pages stay out. The row is ordered by the current episode's start time;
+a new episode enters at its own time. It has no dismissed or done state and
+and answered conversations, never the complement of all Page Turns.
+
+The first line shows the Page key, title and whose move the Page waits for, in
+the words its Status row uses for the reader, such as `Needs your answer` or
+`Ready for your review`. Beneath it are one or two lines of the current episode's
+newest Turn note, led by Nodex's monochrome mark, named Note from Nodex, only
+when Nodex wrote that text. Without a note Core shows the exact pending question,
+report summary, failure reason, or which Prerequisites finished.
+
+Actions revalidate the episode. Questions show the exact option labels: four
+buttons then More… when needed, plus Reply. Approval offers Open chat. Review
+offers Accept, Open PR when linked, and Reply. Blocked, failed and stalled offer
+Open chat and Reply. Newly ready work offers Start. Accept moves reviewed work
+to Done through the person-only work command.
+
+Reply sends the person's unchanged words to the Page's active chat through the
+durable person-dispatch outbox. Its single pending question is answered directly
+when the reply is a valid choice or custom answer. No active chat, ambiguity,
+approval or an invalid required choice is explained with Open chat; there is
+no fallback to intake routing. A reply retains its authored episode across
+restart and never becomes an intake entry.
+
+Only the Coordinator writes `write_turn_note { pageId, eventIds, body, notify }`.
+The note is immutable, at most 100 words by countWords, and binds to the current
+local-Member episode. Events must have been delivered to that Coordinator and
+concern the Page or its active chat. Each event backs one note per episode;
+exact retries preserve the note. A note neither creates a row nor changes order.
+
+`answer_inbox_question { questionPageId, body }` creates a quiet answer Page and
+handles its pending question atomically. One question has one answer; exact
+retries reuse it. Answers look like Nodex's conversation messages. Reply to an
+answer continues with Nodex as ordinary intake, retaining the answer's context.
 
 ## Suggestions
 
@@ -662,7 +690,9 @@ instructions.
 - **Send to chat:** a local chat receives the message into its Runtime queue even
   while busy. Its own queue controls when execution starts.
 - Both make every message Page a Linked Page of the receiving chat in the same
-  transaction. The Page then shows that chat and its live status on its Board,
+  transaction. If the Page has no Assignee, that transaction assigns it to the
+  receiving chat's Agent instance, model and effort, without automatic-start consent.
+  An existing Member or Agent Assignee stays unchanged. The Page then shows that chat and its live status on its Board,
   List and Page for as long as the chat exists, well after the message has left
   the Inbox.
 - **Move to Project:** Core moves every member and records the filing in one
@@ -883,3 +913,31 @@ creates a second message, and does not count against the Agent budget again.
   shortcut.
 - Messages are named only when suggestions run. With no advice asked for, or
   failing, a message keeps its provisional title until the user renames it.
+
+### Remote Member admission
+
+person actions: answer an option, Reply, Accept and Start. Commands retain their
+current episode and request fences, and receipt replay belongs to the initiating
+Member. Turn notes and Inbox answers require the Coordinator's Agent authority;
+managed-chat handback requires captured Agent execution authority. These Agent tools
+cannot be called directly by a remote Member. Notification-intent reads and claiming
+belong to the Host. New commands remain denied remotely until explicitly admitted.
+
+## Returning a message for routing
+
+A managed chat calls `hand_back_message { reason }` when it is the wrong destination
+for its current inbound message. The Host supplies that identity from the proved
+execution; the model cannot choose a message ID. Core returns the original intake
+Pages, or creates one envelope for a direct-chat message, preserving words, images,
+author and dispatch history. A receipt makes exact retries return the same result.
+
+Handback never grants consent to start work. Nodex routes with `explicit_request`
+false and excludes the previous chat; the person may explicitly reconsider that
+chat in the manual destination picker. Core enforces at most two handbacks per
+original message across rerouting and refuses already-answered questions, replaced
+delivery attempts and changed, closed or erased original Pages. Unavailable causal identity or
+attachments produce a refusal, preserving the message in its current owner.
+
+Runtime remains the chat-content owner. Core retains hashes, bindings and receipts;
+binary attachments of direct-chat messages are published with their new intake Page
+in one transaction. A partial attachment failure creates no intake Page or File.

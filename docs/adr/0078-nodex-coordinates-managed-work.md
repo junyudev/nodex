@@ -45,7 +45,9 @@ Nodex routes, watches and speaks:
 
 Work becomes explicit on the Board. A managed chat reports the outcome of its Page's work with
 `report_work` — ready, blocked, failed or not needed. A Page names the Agent that should do it and
+whether it may Start automatically; it can **Wait for** other Pages. Starting a Page hands it to
 a new managed chat. When a Page's prerequisites are satisfied — each is done, or its latest
+report is ready or not needed — a Page set to Start automatically starts, and any other asks the
 person through Nodex. Nodex may propose a plan of several such Pages; the person's confirmation
 creates them and grants their unattended starts.
 

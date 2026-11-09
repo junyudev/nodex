@@ -284,6 +284,7 @@ it.effect.each([
                     },
             }),
             Layer.mock(ProjectionStore.ProjectionStoreV2)({
+              isExecutionPaused: () => Effect.succeed(false),
               getRecoveryThreadIds: () => Effect.succeed([threadId]),
               getRuntimeRecoveryProjection: () => Effect.succeed(makeProjection()),
             }),
@@ -406,6 +407,7 @@ it.effect("prepares no continuation for background work another provider thread 
         Layer.mergeAll(
           ServerSettings.layerTest({ continueThreadsAfterServerUpdate: true }),
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
+            isExecutionPaused: () => Effect.succeed(false),
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
             getRuntimeRecoveryProjection: () => Effect.succeed(projection),
           }),
@@ -434,6 +436,7 @@ it.effect("prepares no continuation for background work another provider thread 
         Layer.mergeAll(
           ServerSettings.layerTest({ continueThreadsAfterServerUpdate: true }),
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
+            isExecutionPaused: () => Effect.succeed(false),
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
             getRuntimeRecoveryProjection: () => Effect.succeed(ownWork),
           }),
@@ -502,6 +505,7 @@ it.effect.each([
             Layer.mergeAll(
               ServerSettings.layerTest({ continueThreadsAfterServerUpdate: true }),
               Layer.mock(ProjectionStore.ProjectionStoreV2)({
+                isExecutionPaused: () => Effect.succeed(false),
                 getRecoveryThreadIds: () => Effect.succeed([threadId]),
                 getRuntimeRecoveryProjection: () => Effect.succeed(projection),
               }),
@@ -558,6 +562,7 @@ it.effect("does not cancel or resume a run that completes while shutdown intent 
         Layer.mergeAll(
           ServerSettings.layerTest({ continueThreadsAfterServerUpdate: true }),
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
+            isExecutionPaused: () => Effect.succeed(false),
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
             getRuntimeRecoveryProjection: () => Effect.sync(() => projection),
           }),
@@ -819,6 +824,7 @@ it.effect("prepares later threads' continuations when one thread fails", () =>
         Layer.mergeAll(
           ServerSettings.layerTest({ continueThreadsAfterServerUpdate: true }),
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
+            isExecutionPaused: () => Effect.succeed(false),
             getRecoveryThreadIds: () => Effect.succeed([brokenThreadId, threadId]),
             getRuntimeRecoveryProjection: (id) =>
               id === brokenThreadId

@@ -1,3 +1,4 @@
+import { parsePageWork } from "../../../src/shared/work-graph";
 import type { Page } from "playwright";
 import * as Y from "yjs";
 import { encodeRecoveryBundle } from "../../../src/shared/block-documents/recovery-bundle";
@@ -456,6 +457,8 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
       title: detail.page.title,
       descriptionPreview: detail.page.preview,
       documentReadiness: detail.document.readiness,
+      pageWork: parsePageWork(
+        detail.intrinsicProperties.find((item) => item.key === "work")?.value ?? null,
       ),
       commitSeq: detail.commitSeq,
     };
@@ -499,6 +502,12 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
   async createCoordinatorSession(): Promise<never> {
     throw new Error("Coordinator admission is seeded only through Core");
   }
+  async recordSessionExecution(): Promise<never> {
+    throw new Error("Execution observations are seeded through Core");
+  }
+  async readPageTurn(pageId: string) {
+    return (await this.#invoke("work:turn", pageId)).turn;
+  }
   async setSessionManaged(sessionId: string, managed: boolean): Promise<void> {
     requireSuccess(
       await this.#invoke("project-sessions:set-managed", {
@@ -508,12 +517,31 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
       "Manage scenario chat",
     );
   }
+  async setPageWork(): Promise<never> {
     throw new Error("Agent work is seeded only through Core");
   }
   async reportPageWork(): Promise<never> {
     throw new Error("Agent reports are seeded only through Core");
   }
+  async createWorkChat(): Promise<never> {
+    throw new Error("Work chats are seeded only through Core");
   }
+  async pauseWork(): Promise<never> {
+    throw new Error("Work holds are seeded only through Core");
+  }
+  async recordPageWorkspace(): Promise<never> {
+    throw new Error("Page Workspaces are seeded only through Core");
+  }
+  async writeTurnNote(): Promise<never> {
+    throw new Error("Turn notes are seeded only through Core");
+  }
+  async handBackChatMessage(): Promise<never> {
+    throw new Error("Handback seeding requires Core");
+  }
+  async answerInboxQuestion(): Promise<never> {
+    throw new Error("Not supported");
+  }
+
   async settleCoordinatorSuggestion(): Promise<never> {
     throw new Error("Coordinator suggestions are seeded only through Core");
   }
@@ -614,7 +642,9 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
       "Session creation",
     );
     for (const pageId of input.relatedPageIds) {
-      await this.#invoke("page-chats:link", session.id, { pageId });
+      await this.#invoke(input.handOff ? "page-chats:hand-off" : "page-chats:link", session.id, {
+        pageId,
+      });
     }
     if (input.pinned) {
       unwrapCoreResult(

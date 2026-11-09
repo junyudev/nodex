@@ -15,6 +15,8 @@ import { rendererWorkerCount } from "./config/renderer-worker-count";
 const testFiles = filesForSuite("renderer", resolveVitestTestTier());
 
 export default defineConfig(async () => ({
+  // Generated JavaScript still belongs to this renderer, even in nested worktrees.
+  tsconfig: "./tsconfig.web.json",
   plugins: await createRendererVitePlugins(),
   resolve: rendererViteResolve,
   css: rendererViteCss,

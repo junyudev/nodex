@@ -244,6 +244,7 @@ const model: DatabaseViewRenderModel = {
             revision: 1,
           },
         },
+        work: { unsatisfiedCount: 0, blockers: [], owner: null, assignee: null, autoStart: false },
         taskParent: { parentPageId: null, siblingRank: null, valueRevision: 1 },
         position: { rankKey: "a", revision: 1 },
         effectiveGroupKey: null,
@@ -461,6 +462,13 @@ const nestedListModel = (): DatabaseViewRenderModel => {
         parentAuthority,
         {
           ...childAuthority,
+          work: {
+            unsatisfiedCount: 0,
+            blockers: [],
+            owner: null,
+            assignee: null,
+            autoStart: false,
+          },
           taskParent: {
             parentPageId: parentAuthority.page.pageId,
             siblingRank: "a",
@@ -904,6 +912,7 @@ describe("DatabaseViewSurface", () => {
         errorCount: 0,
         unreadCount: 1,
         soleSessionId: "session-related",
+        work: { activeChat: null, latestReport: null, managedSessionCount: 0 },
         runtimeSessionIds: [],
       },
     ];

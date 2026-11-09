@@ -138,12 +138,21 @@ const fixture = Effect.gen(function* () {
         if (method === "thread.authority")
           return (live.get((input as AgentRuntimeOperations["thread.authority"]["input"]).runId) ??
             null) as AgentRuntimeOperations[M]["output"];
+        if (method === "thread.run-message")
+          return {
+            id: "message",
+            text: "Original inbound words",
+            attachments: [],
+            createdBy: "user",
+          } as AgentRuntimeOperations[M]["output"];
         throw new Error(`Unexpected runtime request ${method}`);
       }),
   };
   const read = (input: ProjectWorkspaceRead) =>
     Effect.sync(() => {
       coreReads.push(input);
+      if (input.kind === "effective_execution_hold")
+        return { value: { kind: input.kind, holds: [] } };
       if (input.kind === "read_coordinator")
         return { value: { kind: input.kind, session_id: coordinatorId } };
       if (input.kind === "read_managed_session")
@@ -545,6 +554,21 @@ it.effect("standing instructions follow the verified Session role on each turn",
     assert.include(yield* prepare, COORDINATOR_INSTRUCTIONS);
     assert.notInclude(yield* prepare, MANAGED_SESSION_INSTRUCTIONS);
   }).pipe(Effect.scoped),
+);
+
+it.effect("binds the managed Run to its proved inbound before tools execute", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    f.setManaged(true);
+    yield* f.execute(prepareTurn());
+    const binding = f.coreWrites.find((input) => input.intent.kind === "bind_chat_inbound")?.intent;
+    assert.equal(binding?.kind, "bind_chat_inbound");
+    if (binding?.kind !== "bind_chat_inbound") throw new Error("No inbound binding");
+    assert.equal(binding.delivery_id, "message");
+    assert.equal(binding.run_id, "run:one");
+    yield* f.execute(request(turn()));
+    assert.equal(readHostedAppToolSessionContext(f.caller()!)?.inboundMessageId, "message");
+  }),
 );
   }),
 );

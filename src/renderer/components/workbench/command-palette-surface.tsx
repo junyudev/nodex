@@ -1,3 +1,5 @@
+import { pageAssigneeKey } from "../../../shared/work-graph";
+import { PageAssigneeLabel } from "@/components/database/page-assignee-label";
 import type { FileSearchScope } from "../../../shared/file-search";
 import {
   commandPaletteWorkspaceScope,
@@ -348,6 +350,11 @@ function PageRow({
           {item.pageKeyMatch && !item.pageKeyMatch.isCurrent ? (
             <span className="shrink-0 text-[11px] tabular-nums text-token-description-foreground">
               Matched {item.pageKeyMatch.matchedPageKey}
+            </span>
+          ) : null}
+          {item.page.assignee ? (
+            <span className="ml-auto max-w-40 shrink-0 text-xs text-token-description-foreground">
+              <PageAssigneeLabel assignee={item.page.assignee} />
             </span>
           ) : null}
         </div>
@@ -822,17 +829,17 @@ export const CommandPaletteSurface = forwardRef<
   }, [facetBatch.facets, pages, projects.length]);
   const availableAssignees = useMemo(
     () =>
-      projects.length > 0
-        ? [...facetBatch.facets.assignees]
-        : Array.from(
-            new Set(
-              pages
-                .map((item) => item.page.assignee?.trim() ?? "")
-                .filter((value) => value.length > 0),
-            ),
-          ).sort((left, right) => left.localeCompare(right)),
-    [facetBatch.facets.assignees, pages, projects.length],
+      Array.from(
+        new Set(
+          (projects.length > 0
+            ? facetBatch.facets.assignees
+            : pages.flatMap((item) => (item.page.assignee ? [item.page.assignee] : []))
+          ).map(pageAssigneeKey),
+        ),
+      ),
+    [projects.length, facetBatch.facets.assignees, pages],
   );
+
   const projectNameById = useMemo(
     () => new Map(availableProjects.map((project) => [project.id, project.label] as const)),
     [availableProjects],

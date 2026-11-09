@@ -243,13 +243,13 @@ describe("DataSourcePagePropertyContextMenuItems", () => {
     expect(view.getByRole("combobox", { name: "Search Tags options" })).toBeTruthy();
   });
 
-  test("edits a string Assignee with the compact scalar submenu", async () => {
+  test("edits a text Property with the compact scalar submenu", async () => {
     const onChange = vi.fn();
     const view = render(
       <Harness
         bindings={[
           {
-            property: property("assignee", "Assignee", "text"),
+            property: property("p_NOTES001", "Notes", "text"),
             value: "Sam",
             revision: 1,
             disabled: false,
@@ -261,10 +261,15 @@ describe("DataSourcePagePropertyContextMenuItems", () => {
 
     await openMenu(view.getByRole("button", { name: "Page row" }));
     await act(async () => {
-      fireEvent.click(view.getByRole("menuitem", { name: "Assignee" }));
+      fireEvent.click(view.getByRole("menuitem", { name: "More properties…" }));
       await Promise.resolve();
     });
-    const input = await view.findByRole("textbox", { name: "Assignee value" });
+    const notesOption = await view.findByRole("menuitem", { name: "Notes" });
+    await act(async () => {
+      fireEvent.click(notesOption);
+      await Promise.resolve();
+    });
+    const input = await view.findByRole("textbox", { name: "Notes value" });
     await act(async () => {
       fireEvent.change(input, { target: { value: "Alex" } });
       fireEvent.click(view.getByRole("menuitem", { name: "Save" }));

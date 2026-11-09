@@ -423,13 +423,13 @@ it.effect("lists delivery kinds, protects both markers and preserves internal ca
     assert.deepEqual(
       listed.items.map(({ queuedId, kind }) => [queuedId, kind]),
       [
-        [completion, "delegated_completion"],
         [user, "message"],
+        [completion, "delegated_completion"],
         [notification, "notification"],
       ],
     );
     const store = yield* ProjectionStore.ProjectionStoreV2;
-    assert.equal((yield* store.getQueuedRunHead(threadId))?.runId, completion);
+    assert.equal((yield* store.getQueuedRunHead(threadId))?.runId, user);
     const outbox = yield* store.getQueuedRunPage(threadId);
     assert.deepEqual(
       outbox.entries.map((entry) => entry.runId),
@@ -501,7 +501,7 @@ it.effect("lists delivery kinds, protects both markers and preserves internal ca
       );
     assert.deepEqual(
       queuedRunsInDeliveryOrder(reordered).map((run) => run.id),
-      [completion, second, notification, user],
+      [second, user, completion, notification],
     );
     yield* f.orchestrator.dispatch({
       type: "queue.resume",
@@ -512,7 +512,7 @@ it.effect("lists delivery kinds, protects both markers and preserves internal ca
     const resumed = yield* f.orchestrator.getThreadProjection(threadId);
     assert.deepEqual(
       queuedRunsInDeliveryOrder(resumed).map((run) => run.id),
-      [completion, user, second, notification],
+      [user, second, completion, notification],
     );
     // The transport schema cannot admit the runtime-only cancellation command.
     assert.throws(() =>

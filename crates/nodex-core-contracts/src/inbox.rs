@@ -19,6 +19,8 @@ use crate::workspace::{ProjectWorkspaceSessionExecutionRef, ProjectWorkspaceThre
 pub enum ProjectWorkspaceInboxScope {
     /// The Library Inbox, for thoughts whose Project is not known yet.
     Library,
+    /// All Projects, including messages without a Project.
+    All,
     /// A Project's own Inbox. Its messages are Pages in the Project's Database.
     Project { project_id: String },
 }
@@ -26,7 +28,7 @@ pub enum ProjectWorkspaceInboxScope {
 impl ProjectWorkspaceInboxScope {
     pub fn project_id(&self) -> Option<&str> {
         match self {
-            Self::Library => None,
+            Self::Library | Self::All => None,
             Self::Project { project_id } => Some(project_id),
         }
     }
@@ -224,6 +226,7 @@ pub enum InboxConfirmedBy {
     Nodex,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct InboxReplyContext {
     pub page_id: String,
     pub purpose: Option<NodexEntryPurpose>,
@@ -252,6 +255,8 @@ pub struct InboxQuestionResponse {
 /// Handover and the carrying Run start survive restarts.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct InboxRoutingDelivery {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paused_ms: Option<i64>,
     pub coordinator_session_id: String,
     pub handed_over_at_ms: i64,
     pub run_started_at_ms: Option<i64>,
@@ -266,6 +271,7 @@ pub struct InboxRoutingCancellation {
     pub coordinator_session_id: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
     pub automation_id: String,
     pub dispatch_id: String,
     pub status: crate::automation::AutomationFiringStatus,
@@ -361,6 +367,10 @@ pub struct ProjectWorkspaceInboxPageStatus {
 pub struct ProjectWorkspaceInboxItem {
     pub basis: ProjectWorkspaceInboxPageBasis,
     pub outcome: Option<ProjectWorkspaceInboxOutcome>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handback: Option<InboxHandback>,
+    pub row_kind: InboxRowKind,
+    pub turn: Option<InboxTurn>,
     pub page_id: String,
     pub page_key: Option<String>,
     pub page_status: Option<ProjectWorkspaceInboxPageStatus>,
@@ -454,6 +464,8 @@ pub struct ProjectWorkspaceInboxMessageImage {
 /// One entry the suggestion Agent should consider, with bounded content.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxSuggestionInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handback: Option<InboxHandback>,
     pub page_id: String,
     #[serde(default)]
     pub reply_to: Option<InboxReplyContext>,
@@ -560,6 +572,23 @@ pub struct ProjectWorkspaceInboxModelSelection {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub options: Option<Vec<ProjectWorkspaceInboxModelOption>>,
 }
+impl ProjectWorkspaceInboxModelSelection {
+    pub fn agent_selection(&self) -> crate::library::AgentWorkSelection {
+        crate::library::AgentWorkSelection {
+            instance_id: self.instance_id.clone(),
+            model: self.model.clone(),
+            effort: self
+                .options
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .find(|option| {
+                    matches!(option.id.as_str(), "reasoningEffort" | "effort" | "variant")
+                })
+                .and_then(|option| option.value.as_str().map(str::to_owned)),
+        }
+    }
+}
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectWorkspaceInboxModelOption {
@@ -619,4 +648,58 @@ pub struct ProjectWorkspaceInboxSuggestedDispatch {
     pub entry_kind: Option<ProjectWorkspaceInboxEntryKind>,
     pub summary: String,
     pub rationale: Option<String>,
+}
+
+/// Membership comes from Core's current Turn, independently of its explanatory note.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum InboxRowKind {
+    Intake,
+    Turn,
+    Answer,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxTurn {
+    pub turn: crate::workspace::PageTurn,
+    pub note_id: Option<String>,
+    pub active_chat: Option<ProjectWorkspaceInboxChat>,
+    pub options: Vec<String>,
+    pub pull_request_url: Option<String>,
+    pub delivery_error: Option<String>,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxTurnNotification {
+    pub member_id: String,
+    pub page_id: String,
+    pub episode: String,
+}
+
+/// Returned-message context never changes the original author or message body.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxHandback {
+    pub receipt_id: String,
+    pub chat: ProjectWorkspaceInboxChat,
+    pub reason: String,
+    pub returned_at: String,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ChatMessageHandbackReceipt {
+    pub receipt_id: String,
+    pub page_ids: Vec<String>,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ChatMessageInbound {
+    pub delivery_id: String,
+    pub session_id: String,
+    pub run_id: String,
+    pub original_page_ids: Vec<String>,
+    pub attachment_count: u32,
+    pub question_answered: bool,
+    pub receipt: Option<ChatMessageHandbackReceipt>,
+}
+/// Host-supplied original text and prepared binary attachments, read from Runtime.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct HandbackMessage {
+    pub text: String,
+    pub files: Vec<crate::library::LibraryFileChange>,
 }

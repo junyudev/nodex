@@ -12,6 +12,20 @@ import {
   DatabaseViewFilterValueField,
 } from "./database-view-filter-editors";
 
+vi.mock("@/lib/members-runtime", () => ({
+  useMembers: () => ({
+    data: [
+      {
+        id: "person",
+        library_id: "library",
+        display_name: "You",
+        lifecycle: "active",
+        revision: 1,
+      },
+    ],
+  }),
+}));
+
 const timestamp = "2026-08-30T00:00:00.000Z";
 const property = (propertyId: string, name: string): DataSourcePropertyRecordV2 => ({
   propertyId: parseDataSourcePropertyId(propertyId),
@@ -66,6 +80,47 @@ const config: DatabaseViewConfigV6 = {
     conditionalColors: [],
   },
 };
+
+test("changing an empty assignment filter to is uses a typed person value", async () => {
+  const assignee: DataSourcePropertyRecordV2 = {
+    ...property("assignee", "Assignee"),
+    ...testPropertySemantics("assignment"),
+    valueType: "assignment",
+  };
+  const onChange = vi.fn();
+  const view = render(
+    <DatabaseViewAdvancedFilterEditor
+      config={{
+        ...config,
+        rules: {
+          ...config.rules,
+          advancedFilter: {
+            kind: "group",
+            operator: "and",
+            children: [{ kind: "clause", propertyId: assignee.propertyId, operator: "is_empty" }],
+          },
+        },
+      }}
+      properties={[assignee]}
+      onChange={onChange}
+    />,
+  );
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: "Filter operator for Assignee" }));
+    await Promise.resolve();
+  });
+  const isOption = await view.findByRole("menuitem", { name: "is" });
+  await act(async () => {
+    fireEvent.click(isOption);
+    await Promise.resolve();
+  });
+  expect(onChange.mock.lastCall?.[0].rules.advancedFilter.children[0]).toEqual({
+    kind: "clause",
+    propertyId: "assignee",
+    operator: "equals",
+    value: { kind: "member", member_id: "person" },
+  });
+});
 
 describe("DatabaseViewAdvancedFilterEditor", () => {
   test("authors the boolean tree as Where, selectable And/Or, and lowercase continuations", async () => {

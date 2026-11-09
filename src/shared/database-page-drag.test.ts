@@ -173,6 +173,7 @@ const querySnapshot = (
         revision: revision + 10,
       },
     },
+    work: { unsatisfiedCount: 0, blockers: [], owner: null, assignee: null, autoStart: false },
     taskParent: { parentPageId: null, siblingRank: null, valueRevision: 1 },
     position: { rankKey, revision: revision + 20 },
     effectiveGroupKey: status,

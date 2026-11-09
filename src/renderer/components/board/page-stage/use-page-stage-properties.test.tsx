@@ -73,6 +73,7 @@ const pageModel: PageStagePageModel = {
     title: "Page",
     richTitle: [],
     isAllDay: false,
+    pageWork: null,
     reminders: [],
     revision: 1,
     created: new Date("2026-08-12T00:00:00.000Z"),
@@ -207,7 +208,7 @@ describe("usePageStageProperties", () => {
   test("commits Status through the same revision-aware Property mutation as every scalar", async () => {
     optionRuntime.readWindow.mockResolvedValue({
       options: [
-        { id: "plan", name: "Plan", color: "gray" },
+        { id: "plan", name: "Todo", color: "gray" },
         { id: "done", name: "Done", color: "green" },
       ],
       nextCursor: null,

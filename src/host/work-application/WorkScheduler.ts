@@ -1,3 +1,4 @@
+import { effectiveHolds } from "./execution-holds";
 import { createHash } from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -21,11 +22,43 @@ export const make = Effect.gen(function* () {
       if (ready.value.kind !== "ready_work") return;
       afterPageId = ready.value.pages.length === 100 ? ready.value.pages.at(-1)!.page_id : null;
       for (const page of ready.value.pages) {
+        if ((yield* effectiveHolds(core, { kind: "page", page_id: page.page_id })).length) continue;
         const epoch = createHash("sha256")
           .update(JSON.stringify([page.page_id, page.readiness_epoch]))
           .digest("hex");
+        const task = page.page_work.auto_start
+          ? work
+              .startWork({
+                pageId: page.page_id,
+                launchId: `work:${epoch}`,
+                readinessEpoch: page.readiness_epoch,
+              })
+              .pipe(Effect.asVoid)
+          : core.workspace
+              .apply(
+                {
+                  operationId: createOperationId("work.ready"),
+                  intent: {
+                    kind: "record_work_events",
+                    observed: [],
+                    events: [
+                      {
+                        kind: "ready_to_start",
+                        page_id: page.page_id,
+                        session_id: null,
+                        dedupe_key: `ready_to_start:${page.page_id}:${page.readiness_epoch}`,
+                        payload: {
+                          prerequisites: page.prerequisites,
+                          readiness_epoch: page.readiness_epoch,
                         },
+                      },
+                    ],
                   },
+                },
+                undefined,
+                null,
+              )
+              .pipe(Effect.asVoid);
         yield* task.pipe(
           Effect.catchCause(() =>
             Effect.sync(() =>

@@ -122,6 +122,8 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
     if (request.input.projectId === "bootstrap") {
       success(request.id, {
         providers: bootstrap.providers,
+        agentsRunningAtOnce: bootstrap.agentsRunningAtOnce,
+        pausedThreadIds: bootstrap.pausedThreadIds,
         hostTools: bootstrap.hostTools ?? null,
         environment: process.env,
         execArgv: process.execArgv,

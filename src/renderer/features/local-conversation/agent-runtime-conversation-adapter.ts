@@ -1084,6 +1084,9 @@ export function useAgentRuntimeConversationAdapter(input: {
     if (nativeSessions?.length) reloadCatalog();
   }
   const observed = projection?.thread;
+  const admissionRunId = projection?.runs.findLast((run) =>
+    ["preparing", "starting", "running", "waiting"].includes(run.status),
+  )?.id;
   /** A discounted Nodex model says so wherever it's chosen, the same way its price row does. */
   const withNodexRate = (label: string, provider: AgentRuntimeProvider, model: string) => {
     const rate = spendsNodexCredit(provider)
@@ -1898,6 +1901,17 @@ export function useAgentRuntimeConversationAdapter(input: {
           }
         : (agentNotice ?? windowsSandboxNotice ?? notificationOffer);
   const presentation: ConversationProviderPresentation = {
+    ...(target && admissionRunId
+      ? {
+          admissionQueue: {
+            runId: admissionRunId,
+            read: async () =>
+              (await agentRuntimeRuntime.control(target)).waitingAdmissions?.find(
+                (entry) => entry.runId === admissionRunId,
+              ) ?? null,
+          },
+        }
+      : {}),
     runtimeMode: resolveAgentRuntimeMode(
       observed?.runtimeMode ?? draftRuntimeMode,
       provider?.supportedRuntimeModes,

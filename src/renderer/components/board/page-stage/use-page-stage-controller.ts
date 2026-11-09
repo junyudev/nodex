@@ -48,6 +48,7 @@ interface UsePageStageControllerResult {
   schedulePage: PageScheduleSource | null;
   onCreateRelatedChat?: () => Promise<void> | void;
   onLinkRelatedChat?: (sessionId: string) => Promise<void>;
+  onOpenPage?: PageStageProps["onOpenPage"];
   onOpenRelatedChat?: (sessionId: string) => Promise<void> | void;
   onRemoveRelatedChat?: (sessionId: string) => Promise<void>;
   onRetryRelatedChats?: () => Promise<void> | void;
@@ -385,6 +386,7 @@ export function usePageStageController(
     schedulePage,
     onCreateRelatedChat,
     onLinkRelatedChat,
+    onOpenPage: props.onOpenPage,
     onOpenRelatedChat,
     onRemoveRelatedChat,
     onRetryRelatedChats,

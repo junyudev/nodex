@@ -470,7 +470,7 @@ fn complete_captured_rules_match_shared_filters_and_personal_list_sort() {
             "completion":{"range":"all","order_by_recency":false},
             "hierarchy":{"show_sub_pages":true,"nested_sub_pages":false},
             "display":{"fields":[{"kind":"property","property_id":"status"},{"kind":"property","property_id":"priority"},{"kind":"property","property_id":"estimate"},{"kind":"property","property_id":"tags"}],
-            "property_order":["status","priority","estimate","tags","due_date","scheduled_start","scheduled_end","assignee","task_parent"],"show_empty_groups":false,"show_description":false}
+            "property_order":["status","priority","estimate","tags","due_date","scheduled_start","scheduled_end","task_parent","blocked_by","owner","assignee"],"show_empty_groups":false,"show_description":false}
         }
     })).unwrap();
     let mut definition = fixture.definition();
@@ -550,6 +550,9 @@ fn captured_property_order_preserves_overrides_and_completes_fields_before_sourc
                 "scheduled_end",
                 "assignee",
                 "task_parent",
+                "blocked_by",
+                "owner",
+                "assignee",
             ],
         ),
         (
@@ -565,6 +568,9 @@ fn captured_property_order_preserves_overrides_and_completes_fields_before_sourc
                 "scheduled_end",
                 "assignee",
                 "task_parent",
+                "blocked_by",
+                "owner",
+                "assignee",
             ],
         ),
     ] {

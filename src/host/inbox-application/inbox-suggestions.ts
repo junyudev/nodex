@@ -48,6 +48,8 @@ export const inboxRoutingDeadline = (
   delivery: NonNullable<CoreInboxSuggestionRequest["delivery"]>,
 ) =>
   delivery.run_started_at_ms == null
+    ? delivery.handed_over_at_ms + INBOX_ROUTING_HANDOVER_CAP_MS + (delivery.paused_ms ?? 0)
+    : delivery.run_started_at_ms + INBOX_ROUTING_DEADLINE_MS + (delivery.paused_ms ?? 0);
 export const INBOX_PROMPT_VERSION = "inbox-routing-v14";
 export const INBOX_SCHEMA_VERSION = "inbox-routing-v8";
 const MAX_PROMPT_CHARS = 2_000;
@@ -100,6 +102,7 @@ export const renderInboxRoutingRequest = (input: {
         page_id: entry.page_id,
         page_key: entry.page_key,
         reply_to: entry.reply_to ?? null,
+        handback: entry.handback ?? null,
         body: entry.body,
         source: entry.source,
         kind: entry.kind,

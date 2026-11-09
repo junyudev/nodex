@@ -4,12 +4,37 @@ import type { components } from "@nodex/core-protocol";
 export const MANAGED_CHAT_STALL_MS = 20 * 60 * 1000;
 const terminalStatus = z.enum(["completed", "failed", "interrupted"]).nullable();
 const observationSchema = z.strictObject({
+  agent: z
+    .strictObject({ instanceId: z.string(), model: z.string(), effort: z.string().nullable() })
+    .optional(),
+  state: z.enum(["working", "queued", "waiting", "idle", "failed", "unavailable"]),
   runId: z.string().nullable(),
   runStartedAt: z.number().finite().nullable(),
   pendingRequestIds: z.array(z.string()),
+  pendingRequests: z
+    .array(
+      z.strictObject({
+        id: z.string(),
+        kind: z.enum(["question", "approval"]),
+        question: z.string().optional(),
+        options: z.array(z.string()).default([]),
+      }),
+    )
+    .default([]),
+  queue: z
+    .strictObject({
+      runId: z.string(),
+      class: z.enum(["person", "continuation", "start"]),
+      position: z.number().int().positive(),
+      waitingSince: z.string(),
+    })
+    .nullable()
+    .default(null),
+  personStopped: z.boolean().default(false),
   progressFingerprint: z.string().nullable(),
   progressSince: z.number().finite(),
   terminalStatus,
+  failureReason: z.string().nullable().optional(),
   stalled: z.boolean(),
 });
 export type ManagedChatObservation = z.infer<typeof observationSchema>;
@@ -23,6 +48,13 @@ export interface ManagedChatRequest {
   }[];
 }
 export interface ManagedChatFacts {
+  readonly agent?: ManagedChatObservation["agent"];
+  readonly waitingAdmissions?: readonly {
+    readonly runId: string;
+    readonly class: "person" | "continuation" | "start";
+    readonly position: number;
+    readonly waitingSince: string;
+  }[];
   readonly state: ManagedChatObservation["state"];
   readonly runId: string | null;
   readonly runStartedAt: number | null;
@@ -31,6 +63,7 @@ export interface ManagedChatFacts {
   readonly progressFingerprint: string | null;
   readonly lastReplyExcerpt?: string;
   readonly interruptRequested?: boolean;
+  readonly failureReason?: string | null;
 }
 export const unavailableManagedChatFacts: ManagedChatFacts = {
   state: "unavailable",
@@ -82,6 +115,8 @@ function attentionPayload(request: ManagedChatRequest) {
 export function diffManagedChatObservation(input: {
   readonly sessionId: string;
   readonly previous: ManagedChatObservation | null;
+  /** Unmanaged execution observations must not consume a managed chat's notification baseline. */
+  readonly eventPrevious?: ManagedChatObservation | null;
   readonly facts: ManagedChatFacts;
   readonly now: number;
   readonly latestReportAt: number | null;
@@ -93,6 +128,8 @@ export function diffManagedChatObservation(input: {
   readonly resolvedRequestIds: string[];
 } {
   const { sessionId, facts, now, latestReportAt } = input;
+  const previous = input.previous;
+  const eventPrevious = input.eventPrevious === undefined ? previous : input.eventPrevious;
   const available = facts.state !== "unavailable";
   const pendingRequestIds = available
     ? [...new Set(facts.pendingRequests.map((r) => r.id))].sort()
@@ -114,19 +151,51 @@ export function diffManagedChatObservation(input: {
     input.previous.progressFingerprint === facts.progressFingerprint &&
     JSON.stringify(input.previous.pendingRequestIds) === JSON.stringify(pendingRequestIds);
   const observed: ManagedChatObservation = {
+    ...((facts.agent ?? previous?.agent) ? { agent: facts.agent ?? previous!.agent } : {}),
     state: facts.state,
     runId: facts.runId,
     runStartedAt: facts.runStartedAt,
     pendingRequestIds,
+    pendingRequests: available
+      ? facts.pendingRequests
+          .map(({ id, kind, question, questions }) => ({
+            id,
+            kind,
+            ...(question ? { question } : {}),
+            options:
+              questions?.length === 1
+                ? (questions[0]!.options?.map((option) => option.label) ?? [])
+                : [],
+          }))
+          .sort((a, b) => a.id.localeCompare(b.id))
+      : [],
+    queue: available
+      ? (facts.waitingAdmissions?.find((admission) => admission.runId === facts.runId) ??
+        facts.waitingAdmissions?.toSorted((a, b) => a.position - b.position)[0] ??
+        null)
+      : null,
+    personStopped:
+      facts.interruptRequested ??
+      (previous?.runId === facts.runId && previous?.personStopped) ??
+      false,
     progressFingerprint: facts.progressFingerprint,
     progressSince: sameProgress ? input.previous!.progressSince : now,
     terminalStatus: facts.terminalStatus,
+    ...(facts.failureReason ? { failureReason: facts.failureReason } : {}),
     stalled: continuous ? previous.stalled : false,
   };
   const events: components["schemas"]["CoordinatorWorkEventInput"][] = [];
+  if (!available)
+    return {
+      observed: previous ? { ...previous, state: "unavailable", stalled: false } : observed,
+      events,
+      resolvedRequestIds: [],
+    };
+  const resolvedRequestIds = (eventPrevious?.pendingRequestIds ?? []).filter(
     (id) => !pendingRequestIds.includes(id),
   );
   for (const request of facts.pendingRequests) {
+    if (eventPrevious?.pendingRequestIds.includes(request.id)) continue;
     if (events.some((event) => event.dedupe_key === `attention:${sessionId}:${request.id}`))
       continue;
     events.push({
@@ -138,8 +207,10 @@ export function diffManagedChatObservation(input: {
     });
   }
   const newlyEnded =
+    eventPrevious &&
     facts.runId &&
     facts.terminalStatus &&
+    (eventPrevious.runId !== facts.runId || eventPrevious.terminalStatus !== facts.terminalStatus);
   if (newlyEnded && !facts.interruptRequested && facts.terminalStatus !== "completed") {
     events.push({
       kind: "failed",
@@ -176,6 +247,14 @@ export function diffManagedChatObservation(input: {
     now - observed.progressSince >= MANAGED_CHAT_STALL_MS
   ) {
     observed.stalled = true;
+  }
+  if (
+    observed.stalled &&
+    !eventPrevious?.stalled &&
+    facts.runId &&
+    facts.progressFingerprint !== null &&
+    !facts.interruptRequested
+  ) {
     events.push({
       kind: "stalled",
       session_id: sessionId,

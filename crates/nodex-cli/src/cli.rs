@@ -86,6 +86,10 @@ pub enum HelpSchema {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum Command {
+    /// Pause or resume Agent work by Page, Project or Space.
+    Work(crate::work::WorkArgs),
+    /// Discover people in the current Library.
+    Members(crate::members::MembersArgs),
     /// Filter, join and summarize Pages, bodies, Properties and View results with read-only SQL.
     Sql(crate::sql::SqlArgs),
     /// Read one known Page body; --json includes reusable edit validators.
@@ -250,6 +254,12 @@ pub struct OpenResourceArgs {
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
+pub struct PageShowArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
+    pub page: String,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
 pub struct ReadArgs {
     /// Page ID, Page key, or uniquely resolvable title path.
     #[arg(value_name = "PAGE_SELECTOR")]
@@ -320,6 +330,10 @@ pub struct PageArgs {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum PageCommand {
+    /// Show Page metadata and whose Turn it is.
+    Show(PageShowArgs),
+    /// Accept reviewed work and move In Review to Done.
+    Accept(PageAcceptArgs),
     /// Prepare operation-specific conditions for a move or deletion.
     Prepare(PagePrepareArgs),
     /// Create one Page with a title, body and explicit parent.
@@ -342,6 +356,15 @@ pub enum PageCommand {
     Delete(PageDeleteArgs),
     /// Read and manage this Page’s File entries and logical paths.
     File(PageFileArgs),
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct PageAcceptArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
+    pub page: String,
+    /// Stable key for an identical retry after an uncertain result.
+    #[arg(long)]
+    pub idempotency_key: Option<String>,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]

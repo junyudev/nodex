@@ -18,6 +18,7 @@ mod files;
 mod inbox;
 mod input;
 mod input_document;
+mod members;
 pub mod meta_yaml;
 mod open;
 mod page_batch;
@@ -36,6 +37,7 @@ mod service;
 pub mod skills;
 mod sql;
 mod view;
+mod work;
 
 use cli::Cli;
 use error::{CliError, CliErrorCode};

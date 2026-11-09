@@ -15,6 +15,7 @@ import {
 } from "./data-source-property-presentation";
 
 const TYPE_ICONS = {
+  assignment: dataSourcePropertyTypeIcon("assignment"),
   text: dataSourcePropertyTypeIcon("text"),
   number: dataSourcePropertyTypeIcon("number"),
   checkbox: dataSourcePropertyTypeIcon("checkbox"),

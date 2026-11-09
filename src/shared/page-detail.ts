@@ -15,7 +15,11 @@ import {
   parseDataSourceId,
   parseDataSourcePropertyId,
 } from "./database-identities";
-import type { DatabasePropertyValueType } from "./database-kernel";
+import {
+  DATABASE_VIEW_FILTER_OPERATORS_BY_VALUE_TYPE,
+  type DatabasePropertyValueType,
+} from "./database-kernel";
+import { parsePageAssignee } from "./work-graph";
 import { parsePage, type Page } from "./page";
 
 export interface PageIntrinsicProperty {
@@ -155,16 +159,10 @@ const portableJson = (value: unknown, label: string): BlockPropertyJsonValue => 
 
 const valueType = (value: unknown, label: string): DatabasePropertyValueType => {
   if (
-    value === "text" ||
-    value === "number" ||
-    value === "checkbox" ||
-    value === "select" ||
-    value === "multi_select" ||
-    value === "date" ||
-    value === "datetime" ||
-    value === "relation"
+    typeof value === "string" &&
+    Object.hasOwn(DATABASE_VIEW_FILTER_OPERATORS_BY_VALUE_TYPE, value)
   ) {
-    return value;
+    return value as DatabasePropertyValueType;
   }
   throw new PageDetailContractError(`${label} is unsupported`);
 };
@@ -353,7 +351,9 @@ const parseProperty = (
   if (
     value.systemRole !== null &&
     value.systemRole !== "status" &&
-    value.systemRole !== "task_parent"
+    value.systemRole !== "task_parent" &&
+    value.systemRole !== "page_owner" &&
+    value.systemRole !== "page_assignee"
   ) {
     throw new PageDetailContractError(`${label}.systemRole is invalid`);
   }
@@ -432,10 +432,16 @@ const parseValues = (
     ) {
       throw new PageDetailContractError(`pageDetail.values.${propertyId} diverges from its schema`);
     }
+    const propertyValue = portableJson(raw.value, `pageDetail.values.${propertyId}.value`);
+    if (property.valueType === "assignment") {
+      const assignment = parsePageAssignee(propertyValue);
+      if (property.systemRole === "page_owner" && assignment?.kind !== "member")
+        throw new PageDetailContractError("Page Owner requires a Member");
+    }
     result[propertyId] = {
       propertyId: parsedPropertyId,
       valueType: property.valueType,
-      value: portableJson(raw.value, `pageDetail.values.${propertyId}.value`),
+      value: propertyValue,
       revision: revision(raw.revision, `pageDetail.values.${propertyId}.revision`),
     };
   }

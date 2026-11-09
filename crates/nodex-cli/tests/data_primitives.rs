@@ -17,6 +17,178 @@ const PAGE_A: &str = "019b1000-1000-7000-8000-000000000002";
 const PAGE_A_DOCUMENT: &str = "019b1000-1000-7000-8000-0000000000a2";
 const PAGE_B: &str = "019b1000-1000-7000-8000-000000000003";
 
+#[test]
+fn members_and_page_assignments_use_typed_identity_and_revision_fences() {
+    use nodex_core_contracts::library::{LibraryRead, LibraryReadValue};
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
+    let client = connect_or_launch(&home, "members-cli-integration", Some(&core_binary)).unwrap();
+    let _core = CoreGuard(client.handshake.generation.pid);
+    seed(&client, &home);
+    let me = success(&home, &["members", "me"]);
+    assert_eq!(
+        success(&home, &["members", "list"]),
+        serde_json::json!([me.clone()])
+    );
+    let work = || {
+        let ResponseEnvelope::Ok(result) = client
+            .library_read(
+                Some(PROJECT),
+                LibraryRead::PageDetail {
+                    page_id: PAGE_A.into(),
+                },
+            )
+            .unwrap()
+            .0
+        else {
+            panic!("Page detail");
+        };
+        let LibraryReadValue::PageDetail { value } = result.value else {
+            panic!("Page detail");
+        };
+        value
+            .intrinsic_properties
+            .into_iter()
+            .find(|property| property.key == "work")
+            .unwrap()
+    };
+    assert_eq!(work().value["owner"], me["id"]);
+    success(
+        &home,
+        &[
+            "page",
+            "properties",
+            "set",
+            PAGE_A,
+            "--owner",
+            "me",
+            "--assignee",
+            "me",
+            "--if-revision",
+            "1",
+        ],
+    );
+    assert_eq!(
+        work().value["assignee"],
+        serde_json::json!({"kind":"member","member_id":me["id"]})
+    );
+    success(
+        &home,
+        &[
+            "page",
+            "properties",
+            "set",
+            PAGE_A,
+            "--assignee",
+            "agent:codex/model/high",
+            "--if-revision",
+            "2",
+        ],
+    );
+    assert_eq!(
+        work().value["assignee"],
+        serde_json::json!({"kind":"agent","instance_id":"codex","model":"model","effort":"high"})
+    );
+    assert_eq!(work().value["auto_start"], false);
+    assert_eq!(
+        run(
+            &home,
+            &[
+                "page",
+                "properties",
+                "set",
+                PAGE_A,
+                "--assignee",
+                "none",
+                "--if-revision",
+                "2"
+            ]
+        )["ok"],
+        false
+    );
+    assert_eq!(work().revision, 3);
+    success(
+        &home,
+        &[
+            "page",
+            "properties",
+            "set",
+            PAGE_A,
+            "--assignee",
+            "none",
+            "--if-revision",
+            "3",
+        ],
+    );
+    assert!(work().value["assignee"].is_null());
+}
+
+#[test]
+fn execution_holds_round_trip_by_scope_and_replay_the_persons_operation() {
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
+    let client = connect_or_launch(&home, "holds-cli-integration", Some(&core_binary)).unwrap();
+    let _core = CoreGuard(client.handshake.generation.pid);
+    seed(&client, &home);
+    let first = success(
+        &home,
+        &[
+            "work",
+            "pause",
+            "--page",
+            PAGE_A,
+            "--idempotency-key",
+            "pause-page",
+        ],
+    );
+    assert_eq!(first["paused"], true);
+    assert_eq!(first["duplicate"], false);
+    assert_eq!(
+        success(
+            &home,
+            &[
+                "work",
+                "pause",
+                "--page",
+                PAGE_A,
+                "--idempotency-key",
+                "pause-page"
+            ]
+        )["duplicate"],
+        true
+    );
+    success(&home, &["work", "pause", "--project", PROJECT]);
+    success(&home, &["work", "pause", "--space"]);
+    assert_eq!(
+        success(&home, &["work", "holds"]).as_array().unwrap().len(),
+        3
+    );
+    success(&home, &["work", "resume", "--page", PAGE_A]);
+    let holds = success(&home, &["work", "holds"]);
+    assert_eq!(holds.as_array().unwrap().len(), 2);
+    assert!(
+        holds
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|h| h["scope"]["kind"] != "page")
+    );
+    success(&home, &["work", "resume", "--project", PROJECT]);
+    success(&home, &["work", "resume", "--space"]);
+    assert!(
+        success(&home, &["work", "holds"])
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+}
+
 struct CoreGuard(u32);
 impl Drop for CoreGuard {
     fn drop(&mut self) {
@@ -377,7 +549,7 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
     );
     let option = options
         .iter()
-        .find(|option| option["name"] == "Review")
+        .find(|option| option["name"] == "In Review")
         .unwrap()["option_id"]
         .as_str()
         .unwrap();

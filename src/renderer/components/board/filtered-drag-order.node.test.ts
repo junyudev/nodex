@@ -20,8 +20,15 @@ function createPage(id: string, status: WorkflowStatus, order: number): Database
   };
 }
 
-function createBoard(columns: Record<WorkflowStatus, string[]>): BoardSummary {
-  const orderedStatuses: WorkflowStatus[] = ["triage", "plan", "doing", "review", "done"];
+function createBoard(columns: Partial<Record<WorkflowStatus, string[]>>): BoardSummary {
+  const orderedStatuses: WorkflowStatus[] = [
+    "triage",
+    "plan",
+    "doing",
+    "review",
+    "done",
+    "canceled",
+  ];
   return {
     columns: orderedStatuses.map((status) => ({
       id: status,

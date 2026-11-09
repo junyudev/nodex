@@ -22,7 +22,8 @@ import type {
 
 /**
  * Live execution facts for Runtime-bound Sessions, keyed by product Session.
- * The Runtime owns the facts; Core never stores them; windows read one shared projection.
+ * The Runtime owns these live facts; Main records revisioned observations in Core for Page Turn.
+ * Windows read this shared projection for chat activity.
  */
 export interface AgentRuntimeSessionActivityShape {
   /** Bounded snapshot of non-idle Sessions. Reading never starts an idle Runtime. */

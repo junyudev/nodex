@@ -94,6 +94,11 @@ export const readExecution = Effect.fn("Runtime.readExecution")(function* (input
           'completedAt',json_extract(payload_json,'$.completedAt')) AS payload
         FROM chain ORDER BY ordinal DESC LIMIT 1`;
       const run = rows[0]!;
+      const waiting = yield* sql<{ waiting: number }>`SELECT EXISTS (
+        SELECT 1 FROM orchestration_v2_run_admissions
+        WHERE run_id = ${run.run_id} AND state = 'waiting'
+      ) AS waiting`;
+      const status = !terminal(run.status) && waiting[0]?.waiting === 1 ? "queued" : run.status;
       const pending = terminal(run.status)
         ? yield* sql<{ status: string }>`
       SELECT status FROM orchestration_v2_effect_outbox
@@ -119,11 +124,11 @@ export const readExecution = Effect.fn("Runtime.readExecution")(function* (input
       return {
         selectedRunId,
         runId: run.run_id,
-        status: run.status,
+        status,
         continuationPending: pending.length > 0,
         activeFlags,
         revision: createHash("sha256")
-          .update(JSON.stringify({ run, pending, attention, items }))
+          .update(JSON.stringify({ run, status, pending, attention, items, progress }))
           .digest("base64url"),
       } satisfies AgentThreadExecution;
     }),

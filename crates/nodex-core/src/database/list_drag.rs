@@ -532,6 +532,22 @@ fn property_adoption(
         let Some(property_id) = property_id else {
             continue;
         };
+        if matches!(property_id, "owner" | "assignee") {
+            let stays_in_group = sources.concrete.iter().all(|occurrence| {
+                let key = if primary_axis {
+                    &occurrence.group_key
+                } else {
+                    &occurrence.subgroup_key
+                };
+                key.as_deref() == target_key
+            });
+            if !stays_in_group {
+                return Err(invalid(
+                    "Change Owner or Assignee from the Page before moving between these groups",
+                ));
+            }
+            continue;
+        }
         let property = super::active_property(connection, &graph.data_source_id, property_id)?;
         for page_id in &sources.moved_page_ids {
             let occurrence = first_occurrence

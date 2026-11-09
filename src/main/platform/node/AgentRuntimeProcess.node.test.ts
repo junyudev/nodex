@@ -36,6 +36,8 @@ afterEach(async () => {
   await rm(fixtureHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
+import { make as makeApplicationSettings } from "../../settings/ApplicationSettings";
+
 const entryPath = fileURLToPath(
   new URL("../../../../tests/fixtures/agent-runtime-stdio.mjs", import.meta.url),
 );
@@ -974,3 +976,37 @@ for (const unexpected of [false, true]) {
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 }
+it.live("delivers the saved machine capacity to the Runtime over its bootstrap pipe", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-capacity-settings-" });
+    const source = {
+      environment: {},
+      hostHomeDirectory: home,
+      settingsPath: path.join(home, "config.toml"),
+    };
+    const settings = yield* makeApplicationSettings(source);
+    yield* settings.update({
+      type: "update-agent-runtime",
+      input: { defaultRuntimeMode: "full-access", agentsRunningAtOnce: 7 },
+    });
+    const reopened = yield* makeApplicationSettings(source);
+    const saved = (yield* reopened.snapshot()).agentRuntime;
+    const connection = yield* acquireAgentRuntimeProcess({
+      executable: process.execPath,
+      entryPath,
+      configuration: {
+        home,
+        cwd: home,
+        providers: {},
+        agentsRunningAtOnce: saved.agentsRunningAtOnce,
+      },
+      host: () => Effect.succeed(null),
+    });
+    const received = (yield* connection.request("project.read", {
+      projectId: "bootstrap",
+    })) as unknown as { agentsRunningAtOnce: number };
+    assert.equal(received.agentsRunningAtOnce, 7);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);

@@ -110,6 +110,7 @@ export const inboxOverRealCore = (
   catalog: AgentRuntimeApplication["Service"]["catalog"] = () =>
     Effect.die("Content tests must not start an Agent catalog"),
   inboxSettings: () => InboxSettings = () => DEFAULT_INBOX_SETTINGS,
+  runtimeOverrides: Partial<AgentRuntimeApplication["Service"]> = {},
 ) =>
   Effect.gen(function* () {
     const { context } = yield* scenario;
@@ -122,6 +123,7 @@ export const inboxOverRealCore = (
       Effect.provideService(AgentRuntimeApplication, {
         catalog,
         runOutcome: () => Effect.succeed(null),
+        ...runtimeOverrides,
       } as unknown as AgentRuntimeApplication["Service"]),
       Effect.provideService(ApplicationSettings, {
         snapshot: () => Effect.sync(() => ({ inbox: inboxSettings() })),

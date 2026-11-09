@@ -22,6 +22,7 @@ import { createUuidV7 } from "../../../shared/uuid-v7";
 export interface InboxDraftReply {
   readonly pageId: string;
   readonly label: string;
+  readonly turnEpisode?: string;
 }
 
 /**
@@ -109,6 +110,7 @@ const draftSchema = z.object({
     }),
   ),
   replyTo: z
+    .object({ pageId: z.string().min(1), label: z.string(), turnEpisode: z.string().optional() })
     .nullable()
     .optional(),
 });
@@ -174,6 +176,14 @@ export function createInboxCapture(
       storeEpoch,
       scope,
       ...(title ? { title } : {}),
+      ...(state.draft.replyTo
+        ? {
+            replyToPageId: state.draft.replyTo.pageId,
+            ...(state.draft.replyTo.turnEpisode
+              ? { turnEpisode: state.draft.replyTo.turnEpisode }
+              : {}),
+          }
+        : {}),
       body: inboxDraftBody(state.draft),
     },
     draft: state.draft,

@@ -1,3 +1,4 @@
+import { pageAssigneeFromGroupKey, pageAssigneeName, type Member } from "../../shared/work-graph";
 import {
   databasePromotionReadIdentity,
   type DatabasePromotionReadEvidence,
@@ -38,6 +39,7 @@ import { isPriority } from "../../shared/priority";
 const ESTIMATES = new Set<Estimate>(["xs", "s", "m", "l", "xl"]);
 
 export interface DatabaseViewRenderModel {
+  readonly members?: readonly Member[];
   readonly boundedRead?: DatabasePromotionReadEvidence | null;
   readonly routingContext: DatabaseViewRoutingContext;
   readonly libraryId: string;
@@ -88,9 +90,14 @@ export interface DatabaseViewRenderRow {
   readonly dueDate?: Date;
   readonly scheduledStart?: Date;
   readonly scheduledEnd?: Date;
+  readonly assignee?: import("../../shared/work-graph").PageAssignee | null;
   readonly work?: {
+    readonly turn?: import("../../shared/page-turn").PageTurn | null;
+    readonly pullRequest?: import("../../shared/work-graph").WorkSummary["pullRequest"];
     readonly unsatisfiedCount: number;
     readonly firstBlocker: { readonly pageKey: string | null; readonly title: string } | null;
+    readonly assignee: import("../../shared/work-graph").PageAssignee | null;
+    readonly autoStart: boolean;
   };
   readonly documentGeneration: number;
   readonly documentHeadSeq: number;
@@ -215,7 +222,7 @@ export const projectDataSourcePageRowToDatabaseViewRenderRow = (
   const dueDate = readDate(row, propertyById(properties, "due_date"));
   const scheduledStart = readDate(row, propertyById(properties, "scheduled_start"));
   const scheduledEnd = readDate(row, propertyById(properties, "scheduled_end"));
-  const assignee = readNullableString(row, propertyById(properties, "assignee"));
+  const assignee = row.work.assignee;
 
   return {
     pageId: row.page.pageId,
@@ -243,10 +250,14 @@ export const projectDataSourcePageRowToDatabaseViewRenderRow = (
     ...(scheduledEnd ? { scheduledEnd } : {}),
     ...(assignee ? { assignee } : {}),
     work: {
+      turn: row.work.turn,
+      ...(row.work.pullRequest ? { pullRequest: row.work.pullRequest } : {}),
       unsatisfiedCount: row.work.unsatisfiedCount,
       firstBlocker: row.work.blockers[0]
         ? { pageKey: row.work.blockers[0].pageKey, title: row.work.blockers[0].title }
         : null,
+      assignee: row.work.assignee,
+      autoStart: row.work.autoStart,
     },
     documentGeneration: row.page.documentGeneration,
     documentHeadSeq: row.page.documentHeadSeq,
@@ -285,6 +296,7 @@ export const buildDatabaseViewColumns = (
   query: DatabaseViewQueryResultV2,
   groupPropertyId: string | null,
   showEmptyGroups = true,
+  members: readonly Member[] = [],
 ): readonly DatabaseViewRenderColumn[] => {
   const statusGrouped = hasStatusGroupContract(
     query,
@@ -334,6 +346,8 @@ export const buildDatabaseViewColumns = (
     const groupKeys = configuredGroupKeys.length > 0 ? configuredGroupKeys : [null];
     const groupName = (key: string | null): string => {
       if (key === null) return `No ${groupProperty.name}`;
+      if (groupProperty.valueType === "assignment")
+        return pageAssigneeName(pageAssigneeFromGroupKey(key), members);
       const optionName = optionNames.get(key);
       if (optionName) return optionName;
       if (groupProperty.valueType === "multi_select") {
@@ -405,7 +419,12 @@ export const withEffectiveDatabaseView = (
   };
   return {
     ...model,
-    columns: buildDatabaseViewColumns(query, effective.presentation.group?.propertyId ?? null),
+    columns: buildDatabaseViewColumns(
+      query,
+      effective.presentation.group?.propertyId ?? null,
+      true,
+      model.members,
+    ),
     query,
   };
 };
@@ -458,6 +477,8 @@ export const withPublishedDatabaseViewDefinition = (
           columns: buildDatabaseViewColumns(
             query,
             query.view.config.presentation.group?.propertyId ?? null,
+            true,
+            model.members,
           ),
         }),
     query,
@@ -509,6 +530,7 @@ export const buildDatabaseViewWindowRenderModel = (
   options: {
     readonly windowKey?: string;
     readonly boundedRead?: DatabasePromotionReadEvidence | null;
+    readonly members?: readonly Member[];
   } = {},
 ): DatabaseViewRenderModel => {
   const model = buildDatabaseViewRenderModel({
@@ -522,6 +544,13 @@ export const buildDatabaseViewWindowRenderModel = (
   });
   return {
     ...model,
+    members: options.members,
+    columns: buildDatabaseViewColumns(
+      model.query,
+      model.query.view.config.presentation.group?.propertyId ?? null,
+      model.query.view.config.presentation.display.showEmptyGroups,
+      options.members,
+    ),
     boundedRead:
       options.boundedRead !== undefined
         ? options.boundedRead

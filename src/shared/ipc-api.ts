@@ -1087,6 +1087,41 @@ export interface IpcApi
   "inbox:entry": { args: [pageId: string]; result: import("./inbox").InboxItem | null };
   "inbox:open-nodex": { args: []; result: string };
   "inbox:reset-nodex": { args: []; result: void };
+  "work:holds": { args: []; result: readonly import("./work-application").ExecutionHold[] };
+  "work:effective-hold": {
+    args: [target: import("./work-application").ExecutionHoldTarget];
+    result: readonly import("./work-application").ExecutionHold[];
+  };
+  "work:set-hold": {
+    args: [input: import("./work-application").SetExecutionHoldInput];
+    result: CoreLocalCommitResult<void>;
+  };
+  "work:accept": {
+    args: [input: import("./work-application").AcceptWorkInput];
+    result: CoreLocalCommitResult<void>;
+  };
+  "work:turn": {
+    args: [pageId: string];
+    result: {
+      readonly turn: import("./page-turn").PageTurn;
+      readonly activeChat:
+        | import("@nodex/core-protocol").components["schemas"]["PageActiveChat"]
+        | null;
+      readonly storeEpoch: string;
+      readonly commitSeq: number;
+    };
+  };
+  "work:workspace": {
+    args: [pageId: string];
+    result: Extract<
+      Extract<
+        import("@nodex/core-protocol").components["schemas"]["ProjectWorkspaceReadResponse"],
+        { status: "ok" }
+      >["payload"]["value"],
+      { kind: "page_workspace" }
+    >;
+  };
+  "work:refresh-workspace": { args: [pageId: string]; result: void };
   "work:start": {
     args: [input: import("./work-application").StartWorkInput & { readonly operationId: string }];
     result: CoreLocalCommitResult<import("./work-application").StartWorkResult>;

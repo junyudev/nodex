@@ -1,10 +1,10 @@
+import type { AgentSelection } from "../../src/shared/work-graph";
 import type { PageDocumentEnvelope } from "../../src/shared/block-documents/page-document";
 import type {
   InboxDispatchAction,
   InboxEntryKind,
   InboxScope,
   InboxWindow,
-  InboxWindowFilter,
 } from "../../src/shared/inbox";
 import type {
   CodexScheduledAutomation,
@@ -37,6 +37,7 @@ import type {
   LibraryPageFileInventory,
 } from "../../src/shared/library-files";
 
+import type { PageWork } from "../../src/shared/work-graph";
 
 export const SCENARIO_MANIFEST_VERSION = 1 as const;
 
@@ -113,6 +114,7 @@ export interface ScenarioPageObservation {
   readonly descriptionPreview: string;
   readonly documentReadiness: "pending_genesis" | "ready" | "failed";
   readonly commitSeq: number;
+  readonly pageWork?: PageWork | null;
 }
 
 export interface ScenarioBoardObservation {
@@ -121,8 +123,10 @@ export interface ScenarioBoardObservation {
   readonly groups: Readonly<Record<WorkflowStatus, number>>;
 }
 
-/** A Chat with related Pages, linked through the manual association command without a hand-off. */
+/** A Chat with linked Pages; ordinary recipes use related-only links. */
 export interface ScenarioRelatedChatSeed {
+  /** Explicitly hands work to this chat and selects it as each Page's active chat. */
+  readonly handOff?: boolean;
   readonly projectId: string | null;
   readonly relatedPageIds: readonly string[];
   readonly noThreadFallbackTitle: string;
@@ -156,8 +160,12 @@ export interface ScenarioRelatedChatSeedResult {
   readonly threadId: string | null;
 }
 
+export interface ScenarioTurnNoteSeed {
   readonly coordinatorSessionId: string;
+  readonly pageId: string;
+  readonly sessionId?: string;
   readonly body: string;
+  readonly notify: boolean;
 }
 export interface ScenarioCoordinatorSuggestionSeed extends ScenarioInboxProposalSeed {
   readonly coordinatorSessionId: string;
@@ -173,10 +181,44 @@ export interface ScenarioRecoveryDraftSeed {
   readonly edit: (document: PageDocumentEnvelope) => void;
 }
 
+export interface ScenarioPageWorkspaceSeed {
+  readonly projectId: string;
+  readonly pageId: string;
+  readonly sessionId: string;
+  /** The Project's source repository. */
+  readonly repositoryRoot: string;
+  readonly branchName: string;
+  readonly pullRequest?: { readonly number: number; readonly state: "OPEN" | "MERGED" | "CLOSED" };
+}
+
 export interface ScenarioSeedPort {
+  /** Holds Agent work for a scope as a person's Pause does. Core seeding only. */
+  pauseWork(
+    scope: import("@nodex/core-protocol").components["schemas"]["ExecutionHoldScope"],
+  ): Promise<void>;
+  /**
+   * Hands a Page to a new Agent chat as starting its work does, without launching anything.
+   * Core seeding only; its execution stays unavailable until a runtime observes it.
+   */
+  createWorkChat(input: {
+    readonly projectId: string;
+    readonly pageId: string;
+    readonly title: string;
+  }): Promise<{ readonly sessionId: string; readonly threadId: null }>;
+  /**
+   * Records the checkout Host allocation would have prepared for a Page's chat, and optionally
+   * the pull request GitHub would report for its branch. Core seeding only; nothing is checked out.
+   */
+  recordPageWorkspace(input: ScenarioPageWorkspaceSeed): Promise<void>;
+  recordSessionExecution(
+    sessionId: string,
+    observation: import("@nodex/core-protocol").components["schemas"]["SessionExecutionObservation"],
+  ): Promise<void>;
+  readPageTurn(pageId: string): Promise<import("../../src/shared/page-turn").PageTurn>;
   /** Host admission binds Nodex without starting an execution process. Core seeding only. */
   createCoordinatorSession(): Promise<string>;
   setSessionManaged(sessionId: string, managed: boolean): Promise<void>;
+  setPageWork(projectId: string, pageId: string, work: Omit<PageWork, "owner">): Promise<void>;
   /** Uses a persisted Agent execution identity; never writes report columns directly. */
   reportPageWork(input: {
     readonly sessionId: string;
@@ -184,8 +226,19 @@ export interface ScenarioSeedPort {
     readonly outcome: "ready" | "blocked" | "failed" | "dropped";
     readonly summary: string;
   }): Promise<void>;
+  writeTurnNote(input: ScenarioTurnNoteSeed): Promise<void>;
+  handBackChatMessage(input: {
+    readonly body: string;
+    readonly reason: string;
+  }): Promise<{ readonly pageId: string; readonly sessionId: string }>;
+  answerInboxQuestion(input: {
+    readonly coordinatorSessionId: string;
+    readonly questionPageId: string;
+    readonly body: string;
+  }): Promise<{ readonly pageId: string }>;
   /** Begins Host routing and settles the same request as inbox_suggest. */
   settleCoordinatorSuggestion(input: ScenarioCoordinatorSuggestionSeed): Promise<string>;
+  confirmInboxRequestByNodex(proposalId: string, selection: AgentSelection): Promise<void>;
   createProject(input: ProjectCreateInput): Promise<Project>;
   createPage(input: ScenarioPageSeed): Promise<{ readonly documentId: string }>;
   createStandalonePage(input: ScenarioStandalonePageSeed): Promise<void>;

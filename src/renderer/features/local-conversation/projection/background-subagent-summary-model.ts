@@ -11,7 +11,7 @@ export interface BackgroundSubagentCompactStripModel<T extends BackgroundSubagen
   doneCount: number;
 }
 
-function isBackgroundSubagentWorking(row: BackgroundSubagentSummaryRowCore): boolean {
+function isBackgroundSubpageWorking(row: BackgroundSubagentSummaryRowCore): boolean {
   return row.status !== "done";
 }
 
@@ -19,7 +19,7 @@ export function buildBackgroundSubagentCompactStripModel<
   T extends BackgroundSubagentSummaryRowCore,
 >(rows: readonly T[]): BackgroundSubagentCompactStripModel<T> {
   const inlineRows = rows.filter((row) => row.showInlineActivity);
-  const workingRows = inlineRows.filter(isBackgroundSubagentWorking);
+  const workingRows = inlineRows.filter(isBackgroundSubpageWorking);
   const doneRows = inlineRows.filter((row) => row.status === "done");
 
   return {

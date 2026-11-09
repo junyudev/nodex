@@ -1,3 +1,4 @@
+import type { AgentSelection } from "./work-graph";
 import { modelIsOn, spendsNodexCredit } from "./model-policy";
 import type { CodexThreadActiveFlag, CodexThreadStatusType } from "./types";
 import type { components } from "@nodex/core-protocol";
@@ -36,15 +37,16 @@ export type InboxWindowFilter = "inbox" | "processed";
  */
 export type InboxScope =
   | { readonly kind: "library" }
+  | { readonly kind: "all" }
   | { readonly kind: "project"; readonly projectId: string };
 
-export const LIBRARY_INBOX: InboxScope = { kind: "library" };
+export const LIBRARY_INBOX: InboxScope = { kind: "all" };
 
 export const projectInbox = (projectId: string): InboxScope => ({ kind: "project", projectId });
 
 /** A stable identity for caches and keys. */
 export const inboxScopeKey = (scope: InboxScope): string =>
-  scope.kind === "library" ? "library" : `project:${scope.projectId}`;
+  scope.kind === "project" ? `project:${scope.projectId}` : scope.kind;
 
 export const inboxScopeProjectId = (scope: InboxScope): string | null =>
   scope.kind === "project" ? scope.projectId : null;
@@ -89,6 +91,7 @@ export interface InboxPlanStep {
   readonly projectId: string;
   readonly title: string;
   readonly body: string;
+  readonly agent: AgentSelection | null;
   readonly blockedBy: readonly string[];
 }
 
@@ -116,6 +119,7 @@ export const MAX_INBOX_ADDITION_CHARS = 600;
 export const inboxPromptWithAdditions = (prompt: string, additions: readonly string[]): string =>
   [prompt.trim(), ...additions].join("\n\n");
 
+export type NodexEntryPurpose = "answer";
 
 export type InboxSource =
   | { readonly kind: "user" }
@@ -236,7 +240,9 @@ export interface InboxPageStatus {
 }
 
 export interface InboxItem {
+  readonly handback?: components["schemas"]["InboxHandback"] | null;
   readonly outcome: "kept" | "done" | "moved" | "chat" | null;
+  readonly turn: components["schemas"]["InboxTurn"] | null;
   readonly pageId: string;
   readonly pageKey: string | null;
   readonly pageStatus: InboxPageStatus | null;
@@ -335,11 +341,13 @@ export interface InboxWindowInput {
 }
 
 export interface InboxReplyDestination {
+  readonly kind: "send" | "answer" | "nodex" | "unavailable";
   readonly chat: { readonly sessionId: string; readonly title: string } | null;
 }
 
 export interface InboxSendInput {
   readonly replyToPageId?: string;
+  readonly turnEpisode?: string;
   readonly operationId: string;
   readonly pageId: string;
   readonly documentId: string;

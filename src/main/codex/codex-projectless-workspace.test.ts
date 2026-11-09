@@ -6,7 +6,6 @@ import {
   createCodexProjectlessWorkspace,
   formatCodexProjectlessLocalDate,
   parseCodexProjectlessWorkspace,
-  resolveCodexProjectlessWorkspaceRoot,
   slugCodexProjectlessDirectoryName,
   type CodexProjectlessWorkspaceFileSystem,
 } from "./codex-projectless-workspace";
@@ -21,15 +20,6 @@ async function captureErrorMessage(action: () => Promise<unknown>): Promise<stri
 }
 
 describe("Codex projectless workspace", () => {
-  test("keeps the broad Documents/Nodex authority even when Default is a Project source", () => {
-    const homeDirectory = path.join(path.sep, "Users", "test");
-    const workspaceRoot = resolveCodexProjectlessWorkspaceRoot(homeDirectory);
-    const defaultProjectSource = path.join(homeDirectory, "Documents", "Nodex", "Default");
-
-    expect(workspaceRoot).toBe(path.join(homeDirectory, "Documents", "Nodex"));
-    expect(path.relative(workspaceRoot, defaultProjectSource)).toBe("Default");
-  });
-
   test("uses local calendar dates and the exact prompt/directory-name slug boundaries", () => {
     expect(formatCodexProjectlessLocalDate(new Date(2026, 0, 2, 23, 59, 59))).toBe("2026-01-02");
     expect(slugCodexProjectlessDirectoryName("One two three four five six seven eight")).toBe(
@@ -55,16 +45,16 @@ describe("Codex projectless workspace", () => {
     ).toBe(80);
   });
 
-  test("creates a split workspace under Documents/Nodex with cwd at the thread root", async () => {
+  test("creates a split workspace under the projects directory with cwd at the thread root", async () => {
     const homeDirectory = await mkdtemp(path.join(tmpdir(), "nodex-projectless-home-"));
     try {
+      const workspaceRoot = path.join(homeDirectory, "Documents", "Nodex");
       const workspace = await createCodexProjectlessWorkspace({
         createSplitDirectories: true,
         date: new Date(2026, 6, 11, 12),
-        homeDirectory,
+        workspaceRoot,
         prompt: "Draft a concise launch report with sources",
       });
-      const workspaceRoot = path.join(homeDirectory, "Documents", "Nodex");
       const threadDirectory = path.join(
         workspaceRoot,
         "2026-07-11",
@@ -106,7 +96,7 @@ describe("Codex projectless workspace", () => {
   test("tries 100 numeric names followed by at most five unique names", async () => {
     const homeDirectory = await mkdtemp(path.join(tmpdir(), "nodex-projectless-collision-"));
     try {
-      const workspaceRoot = resolveCodexProjectlessWorkspaceRoot(homeDirectory);
+      const workspaceRoot = path.join(homeDirectory, "Documents", "Nodex");
       const dateDirectory = path.join(workspaceRoot, "2026-07-11");
       await mkdir(dateDirectory, { recursive: true });
       for (let index = 0; index < 100; index += 1) {
@@ -122,7 +112,7 @@ describe("Codex projectless workspace", () => {
         createSplitDirectories: false,
         date: new Date(2026, 6, 11, 12),
         directoryName: "collision",
-        homeDirectory,
+        workspaceRoot,
         uniqueDirectoryNameSuffix: () => `uuid-${(suffixAttempt += 1)}`,
       });
 
@@ -141,7 +131,7 @@ describe("Codex projectless workspace", () => {
     try {
       const homeDirectory = path.join(fixtureRoot, "home");
       const targetDirectory = path.join(fixtureRoot, "target");
-      const workspaceRoot = resolveCodexProjectlessWorkspaceRoot(homeDirectory);
+      const workspaceRoot = path.join(homeDirectory, "Documents", "Nodex");
       await mkdir(path.dirname(workspaceRoot), { recursive: true });
       await mkdir(targetDirectory);
       await symlink(targetDirectory, workspaceRoot, "dir");
@@ -151,7 +141,7 @@ describe("Codex projectless workspace", () => {
           createCodexProjectlessWorkspace({
             createSplitDirectories: false,
             date: new Date(2026, 6, 11, 12),
-            homeDirectory,
+            workspaceRoot,
             prompt: "workspace symlink",
           }),
         ),
@@ -166,7 +156,7 @@ describe("Codex projectless workspace", () => {
           createCodexProjectlessWorkspace({
             createSplitDirectories: false,
             date: new Date(2026, 6, 11, 12),
-            homeDirectory,
+            workspaceRoot,
             prompt: "date symlink",
           }),
         ),
@@ -197,7 +187,7 @@ describe("Codex projectless workspace", () => {
         createSplitDirectories: true,
         date: new Date(2026, 6, 11, 12),
         fileSystem,
-        homeDirectory,
+        workspaceRoot: homeDirectory,
         prompt: "fallback",
       });
 

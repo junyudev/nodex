@@ -1,4 +1,5 @@
 import { parseDatabaseViewId } from "../../../src/shared/database-identities";
+import type { InboxItem, InboxPlanStep } from "../../../src/shared/inbox";
 import { projectInbox } from "../../../src/shared/inbox";
 import { createUuidV7 } from "../../../src/shared/uuid-v7";
 import type { WorkflowStatus } from "../../../src/shared/workflow-status";
@@ -11,9 +12,11 @@ import {
 } from "../contracts";
 
 export const NODEX_COORDINATOR_SCENARIO_ID = "nodex-coordinator";
+export const NODEX_COORDINATOR_SCENARIO_REVISION = 11;
 export const COORDINATOR_AGENT = {
   selection: { instanceId: "codex", model: "gpt-5.5", effort: "medium" },
   launch: "ask",
+} as const;
 
 const CARDS = {
   ready: {
@@ -27,6 +30,8 @@ const CARDS = {
     status: "doing",
     outcome: "blocked",
     summary: "Invitation flow is ready; waiting for the email sender domain to be verified.",
+    branch: "nodex-2-add-team-invitations",
+    pullRequest: 2,
   },
   failed: {
     title: "Restore search indexing",
@@ -41,8 +46,17 @@ const CARDS = {
     outcome: "dropped",
     summary: "The welcome email already sends once. No change is needed.",
   },
+  ask: { title: "Polish empty search results", status: "plan", blockedBy: "done" },
   dependent: { title: "Test invitation delivery", status: "plan", blockedBy: "blocked" },
   chainStart: { title: "Build keyboard navigation", status: "doing", live: "working" },
+  // Its chat waits second in line for Agent capacity, on a checkout with no pull request yet.
+  queued: {
+    title: "Speed up Board loading",
+    status: "doing",
+    live: "queued",
+    branch: "nodex-12-speed-up-board-loading",
+  },
+  paused: { title: "Tidy settings copy", status: "plan", paused: true },
   chainEnd: {
     title: "Document keyboard shortcuts",
     status: "plan",
@@ -61,15 +75,24 @@ type CardKey = keyof typeof CARDS;
   readonly status: WorkflowStatus;
   readonly outcome?: "ready" | "blocked" | "failed" | "dropped";
   readonly summary?: string;
+  readonly live?: "working" | "input" | "queued";
   readonly launch?: "automatic";
+  /** A person paused this Page's work. */
+  readonly paused?: true;
+  /** The Page's checkout, and the pull request GitHub reports for it. */
+  readonly branch?: string;
+  readonly pullRequest?: number;
 };
 
 export interface NodexCoordinatorScenarioFacts extends ScenarioFacts {
   readonly cardCount: number;
   readonly managedChatCount: number;
   readonly reportCounts: Readonly<Record<"ready" | "blocked" | "failed" | "dropped", number>>;
+  readonly turnCounts: Readonly<Record<string, number>>;
   readonly planSteps: readonly { readonly key: string; readonly blockedBy: readonly string[] }[];
   readonly nodexStartedCount: number;
+  /** The Project filters the same mixed Inbox projection. */
+  readonly projectTurnCount: number;
   readonly automaticBlockedCount: number;
 }
 
@@ -83,9 +106,12 @@ export const requireNodexCoordinatorFacts = (value: unknown): NodexCoordinatorSc
       candidate.cardCount,
       candidate.managedChatCount,
       candidate.nodexStartedCount,
+      candidate.projectTurnCount,
       candidate.automaticBlockedCount,
     ].every((count) => typeof count === "number" && Number.isInteger(count) && count >= 0) ||
     !candidate.reportCounts ||
+    !candidate.turnCounts ||
+    !candidate.inboxRowCounts ||
     !Array.isArray(candidate.planSteps)
   ) {
     throw new Error("nodex-coordinator facts are invalid");
@@ -136,9 +162,48 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
             ? "Make the empty search state useful. Keep the query visible, offer Clear filters, and check keyboard focus."
             : (recipe.summary ?? "Ship a focused improvement and check the main user path."),
       });
+    await port.setPageWork(project.id, pageId, {
+      assignee: {
+        kind: "agent",
+        instance_id: COORDINATOR_AGENT.selection.instanceId,
+        model: COORDINATOR_AGENT.selection.model,
+        effort: COORDINATOR_AGENT.selection.effort,
+      },
+      auto_start: recipe.launch === "automatic",
     });
+    if (recipe.paused) await port.pauseWork({ kind: "page", page_id: pageId });
     if (!recipe.outcome && !recipe.live) continue;
+    // Work with a checkout runs in an Agent chat, as starting it would create; the rest use
+    // native chats with their own status.
+    const chat = recipe.branch
+      ? await port.createWorkChat({ projectId: project.id, pageId, title: recipe.title })
+      : await port.createRelatedChat({
+          handOff: true,
+          projectId: key === "ready" || key === "failed" || key === "needsYou" ? null : project.id,
+          relatedPageIds: [pageId],
+          noThreadFallbackTitle: recipe.title,
+          thread: {
+            threadId: createUuidV7(),
+            threadName: recipe.title,
+            threadPreview: recipe.summary ?? "Working through the keyboard interaction.",
+            statusType: recipe.live ? "active" : "idle",
+            statusActiveFlags: recipe.live === "input" ? ["waitingOnUserInput"] : [],
+            unread: false,
+          },
+        });
     entities[key + "Session"] = chat.sessionId;
+    if (chat.threadId) entities[key + "Thread"] = chat.threadId;
+    if (recipe.branch)
+      await port.recordPageWorkspace({
+        projectId: project.id,
+        pageId,
+        sessionId: chat.sessionId,
+        repositoryRoot: workspace,
+        branchName: recipe.branch,
+        ...(recipe.pullRequest
+          ? { pullRequest: { number: recipe.pullRequest, state: "OPEN" as const } }
+          : {}),
+      });
     // A report also hands these linked chats to Nodex. Live states need the same managed membership.
     if (recipe.outcome)
       await port.reportPageWork({
@@ -148,6 +213,38 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
         summary: recipe.summary!,
       });
     else await port.setSessionManaged(chat.sessionId, true);
+    if (recipe.live)
+      await port.recordSessionExecution(chat.sessionId, {
+        state: recipe.live === "input" ? "waiting" : recipe.live,
+        runId: `scenario:${key}`,
+        runStartedAt: 0,
+        pendingRequestIds: recipe.live === "input" ? ["scenario:question"] : [],
+        pendingRequests:
+          recipe.live === "input"
+            ? [
+                {
+                  id: "scenario:question",
+                  kind: "question",
+                  question: "How long should completed sessions stay?",
+                  options: ["Keep 30 days", "Keep 90 days", "Keep until I delete them"],
+                },
+              ]
+            : [],
+        queue:
+          recipe.live === "queued"
+            ? {
+                runId: `scenario:${key}`,
+                class: "person",
+                position: 2,
+                waitingSince: new Date().toISOString(),
+              }
+            : null,
+        terminalStatus: null,
+        personStopped: false,
+        stalled: false,
+        progressFingerprint: `scenario:${key}`,
+        progressSince: 0,
+      });
   }
   const view = valueOf(
     await port.readDatabase({
@@ -170,6 +267,7 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
   const blockedBy = source.value.value.properties.find(
     (property) => property.propertyId === "blocked_by",
   );
+  if (!blockedBy) throw new Error("Nodex Source has no Waits for");
   valueOf(
     await port.applyDatabase({
       projectId: project.id,
@@ -231,6 +329,49 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
 
   const question = await port.sendInboxMessage("What is still waiting on me?");
   pages.question = question.pageId;
+  pages.answer = (
+    await port.answerInboxQuestion({
+      coordinatorSessionId: coordinator,
+      questionPageId: question.pageId,
+      body: "Session retention needs your decision. Search indexing needs fresh credentials.",
+    })
+  ).pageId;
+  await port.writeTurnNote({
+    coordinatorSessionId: coordinator,
+    pageId: identity(pages, "ready"),
+    sessionId: identity(entities, "readySession"),
+    body: "README install typo fixed; checked all docs. Ready for review.",
+    notify: false,
+  });
+  await port.writeTurnNote({
+    coordinatorSessionId: coordinator,
+    pageId: identity(pages, "failed"),
+    sessionId: identity(entities, "failedSession"),
+    body: "Update the search service key to continue indexing.",
+    notify: true,
+  });
+  const returned = await port.handBackChatMessage({
+    body: "Update the keyboard shortcut guide.",
+    reason: "The keyboard navigation chat owns this change.",
+  });
+  pages.handedBack = returned.pageId;
+  entities.handedBackSession = returned.sessionId;
+  await port.settleCoordinatorSuggestion({
+    coordinatorSessionId: coordinator,
+    pageIds: [returned.pageId],
+    action: {
+      type: "send_to_chat",
+      sessionId: identity(entities, "chainStartSession"),
+      prompt: "Continue the existing keyboard navigation work.",
+      additions: [],
+    },
+    kind: "todo",
+    summary: "Continue with keyboard navigation",
+    rationale: null,
+    explicitRequest: false,
+    automaticDispatch: false,
+  });
+
   const plan = await port.sendInboxMessage(
     "Improve onboarding: audit the first run, simplify setup, then verify the new flow.",
   );
@@ -276,6 +417,8 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
   };
 };
 
+const rowCounts = (items: readonly InboxItem[]) => {
+  for (const item of items) counts[item.rowKind]++;
   return counts;
 };
 const inspect = async (
@@ -283,6 +426,16 @@ const inspect = async (
   manifest: ScenarioManifest,
 ): Promise<NodexCoordinatorScenarioFacts> => {
   const plan = library.find((item) => item.pageId === manifest.pageIdsByKey.planRequest)?.proposal;
+  const dispatched = await port.readPage(
+    manifest.projectId,
+    identity(manifest.pageIdsByKey, "startedRequest"),
+  );
+  if (
+    dispatched.pageWork?.assignee?.kind !== "agent" ||
+    dispatched.pageWork.assignee.instance_id !== COORDINATOR_AGENT.selection.instanceId ||
+    dispatched.pageWork.auto_start
+  )
+    throw new Error("Dispatched work must retain its receiving Agent without automatic starts");
   if (plan?.action.type !== "plan" || plan.state !== "open")
     throw new Error("Expected an open Coordinator plan");
   const counts = { ready: 0, blocked: 0, failed: 0, dropped: 0 };
@@ -296,7 +449,10 @@ const inspect = async (
     const detail = await port.readPage(manifest.projectId, pageId);
     if (
       detail.title !== recipe.title ||
+      detail.pageWork?.assignee?.kind !== "agent" ||
+      detail.pageWork.assignee.model !== COORDINATOR_AGENT.selection.model
     )
+      throw new Error("Card did not retain its Agent Assignee: " + key);
     managedChatCount += activity.work.managedSessionCount;
     const report = activity.work.latestReport;
     if (report) counts[report.outcome]++;
@@ -310,10 +466,15 @@ const inspect = async (
     const waiting = prerequisites.value.value.unsatisfiedCount;
     if (
       recipe.blockedBy &&
+      CARDS[recipe.blockedBy].status !== "done" &&
       prerequisites.value.value.blockers[0]?.pageId !==
         identity(manifest.pageIdsByKey, recipe.blockedBy)
     )
       throw new Error("Missing work graph edge: " + key);
+    if (recipe.blockedBy && CARDS[recipe.blockedBy].status === "done" && waiting !== 0)
+      throw new Error("Done prerequisites still block work: " + key);
+    if (detail.pageWork.auto_start && waiting > 0) automaticBlockedCount++;
+    const state = (await port.readPageTurn(pageId)).reason ?? "none";
     states[state] = (states[state] ?? 0) + 1;
   }
   return requireNodexCoordinatorFacts({
@@ -322,10 +483,13 @@ const inspect = async (
     cardCount: (await port.readBoard(manifest.projectId, manifest.databaseViewId)).totalRows,
     managedChatCount,
     reportCounts: counts,
+    turnCounts: states,
+    inboxRowCounts: rowCounts(library),
     planSteps: plan.action.steps.map(({ key, blockedBy }) => ({ key, blockedBy })),
     nodexStartedCount: history.filter(
       (item) => item.proposal?.confirmedBy === "nodex" && item.proposal.state === "completed",
     ).length,
+    projectTurnCount: project.filter((item) => item.rowKind === "turn").length,
     automaticBlockedCount,
   });
 };

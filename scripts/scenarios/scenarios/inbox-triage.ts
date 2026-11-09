@@ -15,7 +15,7 @@ import {
 } from "../contracts";
 
 export const INBOX_TRIAGE_SCENARIO_ID = "inbox/triage" as const;
-export const INBOX_TRIAGE_SCENARIO_REVISION = 5 as const;
+export const INBOX_TRIAGE_SCENARIO_REVISION = 6 as const;
 /** The Claude Code account every Profile starts with. */
 const DEFAULT_CLAUDE_INSTANCE_ID = agentRuntimeProviderId({
   kind: "claude",
@@ -64,7 +64,9 @@ interface InboxTriageMessageFacts {
 }
 
 export interface InboxTriageScenarioFacts extends ScenarioFacts {
+  /** Retained intake messages across the Library and all Projects. */
   readonly entryCount: number;
+  /** Mixed Inbox rows, including eligible Page Turns. */
   readonly inboxCount: number;
   readonly needsDecisionCount: number;
   readonly keptCount: number;
@@ -567,7 +569,9 @@ const inspectInboxTriage = async (
       if (!sessionId) throw new Error(`inbox/triage manifest has no ${sessionKey}`);
       return sessionId;
     });
-    const item = (library ? inbox : projectItems).find((entry) => entry.pageId === pageId);
+    const item = (library ? inbox : projectItems).find(
+      (entry) => entry.rowKind === "intake" && entry.pageId === pageId,
+    );
     const [chats, activity] = await Promise.all([
       port.readPageChats(pageId),
       port.readPageChatActivity([pageId]),
@@ -628,7 +632,7 @@ const inspectInboxTriage = async (
   const facts: InboxTriageScenarioFacts = {
     scenarioId: manifest.scenarioId,
     scenarioRevision: manifest.scenarioRevision,
-    entryCount: items.length,
+    entryCount: items.filter((item) => item.rowKind === "intake").length,
     inboxCount: inbox.length,
     needsDecisionCount: items.filter(
       (item) => item.state === "open" && item.proposal?.state === "open",
@@ -645,14 +649,15 @@ const inspectInboxTriage = async (
     libraryInboxMovedWithChat,
   };
   if (
-    facts.entryCount !== 8 ||
-    facts.inboxCount !== 6 ||
-    facts.needsDecisionCount !== 5 ||
+    facts.entryCount !== 16 ||
+    facts.inboxCount !== 15 ||
+    facts.needsDecisionCount !== 13 ||
     facts.keptCount !== 1 ||
     facts.dispatchedCount !== 1 ||
     facts.failedSuggestionCount !== 1 ||
-    facts.projectInboxCount !== 8 ||
+    facts.projectInboxCount !== 9 ||
     projectItems
+      .filter((item) => item.rowKind === "intake")
       .slice(0, 5)
       .map((item) => item.pageId)
       .join(",") !==

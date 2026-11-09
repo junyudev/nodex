@@ -1,3 +1,4 @@
+import { pageAssigneeFromGroupKey, pageAssigneeName } from "../../../../shared/work-graph";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useDatabasePromotionPresentation } from "@/lib/database-promotion-presentation";
 import {
@@ -340,6 +341,8 @@ const groupLabel = (
   const property = model.query.properties.find(
     (candidate) => candidate.lifecycle === "active" && candidate.propertyId === propertyId,
   );
+  if (property?.valueType === "assignment")
+    return pageAssigneeName(pageAssigneeFromGroupKey(key), model.members);
   const option = property
     ? readDatabasePropertyOptions(property).find((candidate) => candidate.id === key)
     : undefined;
@@ -1837,6 +1840,7 @@ export function DatabaseList({
               : { ...current, activeOccurrenceKey: item.key },
           )
         }
+        onOpenPrerequisite={(pageId, title) => onOpenPage(pageId, title, "preview")}
         onOpen={(titleSnapshot, openMode) => {
           onOpenPage(item.pageId, titleSnapshot, openMode);
         }}

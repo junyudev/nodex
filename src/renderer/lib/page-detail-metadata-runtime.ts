@@ -1,3 +1,4 @@
+import { parsePageAssignee, parsePageWork, withPageAssignee } from "../../shared/work-graph";
 import type {
   BlockPropertyFieldMutationV2,
   BlockPropertyJsonValueV2,
@@ -135,7 +136,6 @@ const DATABASE_FIELDS = {
     key: "scheduled_end",
     ...BUILT_IN_DATA_SOURCE_PROPERTY_DEFINITIONS.scheduled_end,
   },
-  assignee: { key: "assignee", ...BUILT_IN_DATA_SOURCE_PROPERTY_DEFINITIONS.assignee },
 } as const satisfies Partial<
   Record<keyof PageInput, { readonly key: string; readonly valueType: DatabasePropertyValueType }>
 >;
@@ -145,6 +145,7 @@ const INTRINSIC_FIELDS = {
   recurrence: "recurrence.config",
   reminders: "reminders.config",
   scheduleTimezone: "schedule.timezone",
+  pageWork: "work",
   runInTarget: "run.target",
   runInLocalPath: "run.localPath",
   runInBaseBranch: "run.baseBranch",
@@ -184,7 +185,10 @@ export const isPageMetadataPatch = (patch: Partial<PageInput>): boolean => {
   const fields = Object.keys(patch);
   return (
     fields.length > 0 &&
-    fields.every((field) => DATABASE_FIELD_NAMES.has(field) || INTRINSIC_FIELD_NAMES.has(field))
+    fields.every(
+      (field) =>
+        field === "assignee" || DATABASE_FIELD_NAMES.has(field) || INTRINSIC_FIELD_NAMES.has(field),
+    )
   );
 };
 
@@ -232,10 +236,7 @@ const databaseValue = (field: keyof typeof DATABASE_FIELDS, value: unknown): Dat
     });
     return [...new Set(tags)].sort();
   }
-  if (field === "assignee") {
-    if (typeof value === "string") return value.trim() || null;
-    throw new TypeError("Page assignee must be a string");
-  }
+
   return portableValue(value, `Page ${field}`);
 };
 
@@ -245,6 +246,11 @@ const intrinsicValue = (
 ): BlockPropertyJsonValueV2 => {
   if (value === undefined) {
     throw new TypeError(`Page ${field} must be omitted instead of undefined`);
+  }
+  if (field === "pageWork") {
+    const work = parsePageWork(value);
+    if (!work) throw new TypeError("Page work requires an Owner");
+    return portableValue(work, "Page work");
   }
   if (field === "isAllDay") {
     if (typeof value === "boolean") return value;
@@ -505,8 +511,22 @@ export const commitPageDetailMetadataPatchWithReceipt = async (input: {
   }
   const detail = await dependencies.readDetail(input.projectId, input.pageId);
   if (!detail) return mutationEnvelope({ status: "not_found" });
-  const dataSourceOperations = compileDataSourceFields(detail, input.patch);
-  const intrinsicFields = compileIntrinsicFields(detail, input.patch);
+  let patch = input.patch;
+  if (Object.hasOwn(patch, "assignee")) {
+    const current = parsePageWork(
+      detail.intrinsicProperties.find((property) => property.key === "work")?.value ?? null,
+    );
+    if (!current) throw new TypeError("Page work is absent");
+    if (Object.hasOwn(patch, "pageWork"))
+      throw new TypeError("Set Assignee through one Page work edit");
+    const { assignee, ...rest } = patch;
+    patch = {
+      ...rest,
+      pageWork: withPageAssignee(current, parsePageAssignee(assignee ?? null)),
+    };
+  }
+  const dataSourceOperations = compileDataSourceFields(detail, patch);
+  const intrinsicFields = compileIntrinsicFields(detail, patch);
   if (dataSourceOperations.length === 0 && intrinsicFields.length === 0) {
     await refreshPageDetailBestEffort(input.projectId, input.pageId, dependencies);
     return mutationEnvelope(

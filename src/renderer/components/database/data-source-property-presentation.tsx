@@ -15,6 +15,7 @@ import type { DataSourcePropertyRecordV2 } from "../../../shared/database-module
 import { resolveDataSourcePropertyPresentationRole } from "@/lib/data-source-property-presentation-role";
 
 export const DATA_SOURCE_PROPERTY_TYPE_LABELS = {
+  assignment: "Person or Agent",
   text: "Text",
   number: "Number",
   checkbox: "Checkbox",
@@ -27,6 +28,8 @@ export const DATA_SOURCE_PROPERTY_TYPE_LABELS = {
 
 export const dataSourcePropertyTypeIcon = (valueType: DatabasePropertyValueType) => {
   switch (valueType) {
+    case "assignment":
+      return AssigneeIcon;
     case "number":
       return Hash;
     case "checkbox":

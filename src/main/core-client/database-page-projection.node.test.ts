@@ -68,7 +68,7 @@ const properties: readonly DataSourcePropertyRecordV2[] = [
   property("due_date", "date"),
   property("scheduled_start", "datetime"),
   property("scheduled_end", "datetime"),
-  property("assignee", "text"),
+  property("assignee", "assignment"),
 ];
 
 const databaseValue = (
@@ -115,10 +115,16 @@ const makeRow = (pageId: string, status: "triage" | "doing" = "doing"): DataSour
     due_date: databaseValue("due_date", "date", "2026-07-25"),
     scheduled_start: databaseValue("scheduled_start", "datetime", "2026-07-25T08:00:00.000Z"),
     scheduled_end: databaseValue("scheduled_end", "datetime", "2026-07-25T09:00:00.000Z"),
-    assignee: databaseValue("assignee", "text", "Ada"),
+    assignee: databaseValue("assignee", "assignment", { kind: "member", member_id: "Ada" }),
   },
   bodyMarkdown: "# Detail\n\nA body with **structure**.",
   intrinsicProperties: [
+    {
+      key: "work",
+      valueType: "json",
+      value: { owner: "person", assignee: { kind: "member", member_id: "Ada" }, auto_start: false },
+      revision: 1,
+    },
     { key: "run.target", valueType: "string", value: "newWorktree", revision: 1 },
     { key: "run.localPath", valueType: "string", value: "/repo/nodex", revision: 1 },
     { key: "run.baseBranch", valueType: "string", value: "main", revision: 1 },
@@ -139,6 +145,13 @@ const makeRow = (pageId: string, status: "triage" | "doing" = "doing"): DataSour
       revision: 1,
     },
   ],
+  work: {
+    unsatisfiedCount: 0,
+    blockers: [],
+    owner: "person",
+    assignee: { kind: "member", member_id: "Ada" },
+    autoStart: false,
+  },
   taskParent: { parentPageId: null, siblingRank: null, valueRevision: 1 },
   position: {
     rankKey: `rank:${pageId}`,
@@ -214,6 +227,9 @@ describe("native Database Page projections", () => {
       has_description: false,
       database_values: { status: "triage", tags: ["o_AAAAAAAA"] },
       work: {
+        owner: "person",
+        assignee: { kind: "agent", instance_id: "codex", model: "gpt-6-luna", effort: null },
+        auto_start: false,
         unsatisfied_count: 1,
         blockers: [
           {
@@ -225,6 +241,10 @@ describe("native Database Page projections", () => {
         ],
       },
       intrinsic_properties: {
+        work: {
+          owner: "person",
+          assignee: { kind: "agent", instance_id: "codex", model: "gpt-6-luna", effort: null },
+          auto_start: false,
         },
         "run.target": "localProject",
         "run.localPath": null,
@@ -255,13 +275,20 @@ describe("native Database Page projections", () => {
     const board = projectCoreDatabaseViewBoard([row], [{ id: "triage", name: "Incoming" }]);
     expect(board.columns[0]).toMatchObject({ id: "triage", name: "Incoming" });
     expect(board.columns[0]?.cards.map((card) => card.id)).toEqual(["page:defaults"]);
-    expect(board.columns.find((column) => column.id === "doing")?.name).toBe("Doing");
+    expect(board.columns.find((column) => column.id === "doing")?.name).toBe("In Progress");
 
     expect(projectCoreDatabaseRowSummary(row)).toMatchObject({
       id: "page:defaults",
       status: "triage",
+      pageWork: {
+        owner: "person",
+        assignee: { kind: "agent", instance_id: "codex", model: "gpt-6-luna", effort: null },
+        auto_start: false,
       },
       work: {
+        owner: "person",
+        assignee: { kind: "agent", instance_id: "codex", model: "gpt-6-luna", effort: null },
+        autoStart: false,
         unsatisfiedCount: 1,
         blockers: [
           {
@@ -278,7 +305,7 @@ describe("native Database Page projections", () => {
       dueDate: undefined,
       scheduledStart: undefined,
       scheduledEnd: undefined,
-      assignee: undefined,
+      assignee: { kind: "agent", instance_id: "codex", model: "gpt-6-luna", effort: null },
     });
     expect(
       projectCoreDatabaseQueryRow(row, {
@@ -304,7 +331,7 @@ describe("native Database Page projections", () => {
       recurrence: { frequency: "weekly", interval: 1, byWeekdays: [1, 3] },
       reminders: [{ offsetMinutes: 30 }],
       scheduleTimezone: "UTC",
-      assignee: "Ada",
+      assignee: { kind: "member", member_id: "Ada" },
       runInTarget: "newWorktree",
       runInLocalPath: "/repo/nodex",
       runInBaseBranch: "main",

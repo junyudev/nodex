@@ -79,6 +79,7 @@ const meta = (id: string) =>
     providerInstanceId: "codex",
     providerDriver: "codex",
     model: "model",
+    effort: null,
     parentThreadId: null,
     relationshipToParent: null,
     rootThreadId: id,

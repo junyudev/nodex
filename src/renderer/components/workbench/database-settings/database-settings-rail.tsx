@@ -138,10 +138,12 @@ import {
   type DatabaseSettingsRouteStack,
 } from "./database-settings-route";
 
-const PROPERTY_TYPES = Object.entries(DATA_SOURCE_PROPERTY_TYPE_LABELS).map(([value, label]) => ({
-  value: value as DatabasePropertyValueType,
-  label,
-}));
+const PROPERTY_TYPES = Object.entries(DATA_SOURCE_PROPERTY_TYPE_LABELS)
+  .filter(([value]) => value !== "assignment")
+  .map(([value, label]) => ({
+    value: value as DatabasePropertyValueType,
+    label,
+  }));
 
 const OPTION_COLORS = [
   "gray",

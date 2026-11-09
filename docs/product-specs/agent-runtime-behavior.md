@@ -76,6 +76,75 @@ has no dependency on the source's native history, ancestry or lifecycle: deletin
 does not remove its Runtime transcript or prevent the next Run. The complete behavior and chooser
 contract live in [Native Conversation Connection Behavior](native-conversation-connection-behavior.md).
 
+## Machine admission and queue
+
+Agent Runs share one durable admission queue on this machine, across Projects, chats,
+and delegated tasks. Settings → Agents → **Agents running at once** sets its capacity
+from 1 to 16, initially 4. Saving a limit applies to the running Runtime and future
+launches; lowering it lets current work finish before admitting more.
+
+Admission classes come from the accepted message's trusted origin, never its words:
+
+- `person`: the person's messages and answers, including directly driven chats;
+- `continuation`: Host or milestone wakes, delegated results, recovery and resumed parents;
+- `start`: new managed work launched by the Host, including delegated child starts.
+
+The queue orders these classes person first, then continuation, then start, FIFO within
+each class. With capacity N ≥ 2, automatic work can hold at most N−1 permits; person
+work can use every permit. At capacity 1 there is one shared slot: automatic work can
+progress, and a queued person goes before queued automatic work. Nothing preempts a
+running Run. Steering or answering an admitted Run keeps its permit. Steering or
+answering a parked Run must first re-admit it with the accepted answer's origin.
+
+Every first start, queued follow-up, delegated wake, retry, recovery restart and
+answer-triggered continuation passes admission before occupying an effect worker or
+native start resource. A permit follows native computation, not a window, request or
+UI lifetime. A native replacement retains the slot across stopping the old turn and
+starting its replacement. Recovery reconciles persisted permits with native liveness
+before admitting new work.
+
+A parent parked in a blocking delegation or task wait releases its permit. It re-enters
+as a continuation before returning the tool result to its Agent. Concurrent waits share
+one re-admission after all those waits finish. A parent whose turn ends while its
+children run also releases its permit; a completion wake queues a new
+continuation. Each application-owned child Run takes its own permit, so a parent cannot
+hold the last slot while waiting for its child. Provider-native children and background
+tools inside one native turn share that turn's permit; a terminal shell left behind by
+a finished turn does not itself occupy an Agent slot. A provider that supplies only Session
+identity names `parentRunId` for an unfinished blocking `task_wait`, as it does for
+delegation; Runtime never guesses which Run to park. Without that identity the wait is
+refused, and asynchronous delegation remains available.
+
+Session read details publish every waiting admission as
+`{runId, class, position, waitingSince}`. Position is 1-based among all waiting admissions
+on this Runner, ordered by class and enqueue sequence; it changes as other work is
+admitted or cancelled. Main's metadata-only managed-chat observation retains the same
+queue facts for Page Turn presentation. The chat header shows `Queued · 2nd` while its
+current Run waits, and refreshes its rank even when this chat has no new events.
+Internal wakes stay outside the person's editable Composer outbox.
+
+## Pause and Stop
+
+Pause is a resumable execution fence backed by Core's person-owned Page, Project and
+Space holds. Runtime persists the affected root Thread fence before it retires native
+execution, including delegated descendants. The fence denies tool authority immediately
+and gates provider starts, retries, queued input, answers and internal wakes. Core policy
+is loaded before startup recovery activates execution.
+
+Pause returns `requested` until every native retirement is acknowledged, then `stopped`.
+A shared provider process retains unrelated Threads. Capacity is released through normal
+admission reconciliation only after native execution is stopped. An unfinished reply
+retains its Run with a queued continuation attempt; pending input and delegated completion
+cohorts remain intact. A scheduled recovery keeps its intent and cannot run while held.
+Resume removes the Runtime fence only after retirement and returns queued work to normal
+priority admission. A reply can be paused and resumed repeatedly: each new attempt gets
+its own admission and start, while retries of the same attempt remain idempotent.
+Independent Stop queue holds remain in effect.
+
+Stop interrupts the conversation and delegated work, holds its queue for an explicit
+queue action, and disposes pending delegated completion wakes. It does not create or
+clear a Core hold. Resume is therefore not an undo of Stop.
+
 ## Request recovery and continuation
 
 A reply's outcome comes only from its Agent. When Nodex itself loses track of a reply,
@@ -243,6 +312,17 @@ Connection closure invalidates only its own calls. After a restart, new calls ar
 against the new process while old calls remain invalid. Profile/Store identity, resource existence and lifecycle, transaction
 integrity and exact execution routing apply to every operation. Project membership,
 working directories and list filters organize content and execution.
+
+## Runtime settings
+
+External edits to Runtime settings apply through symbolic links, including atomic file
+replacement, a repointed link, or creation of a dangling link's destination. Runtime
+readiness includes attachment of the settings and destination directory watchers. When
+a link changes, settings reload after the new destination watcher is attached so edits
+made during attachment are included without requiring another save.
+Native change notifications are hints: the Runtime also compares the settings
+document every 500 ms and reloads changed contents after the 100 ms save debounce.
+Unchanged contents do not generate periodic settings-change notifications.
 
 ## Conversation interface
 
@@ -765,8 +845,8 @@ An application-owned subagent's own conversation ends with a Stopped marker.
 Input the user did not type names its sender: Sent by, then the sending conversation's mark
 and title, so a delegated task names the chat that sent it. Answers another Agent gave to a
 question read Answered by the same way, and a fork names the chat it was forked from.
-Messages Nodex sends itself say so. Queued input carries a Queued marker. Steering appears as
-an ordinary user message, without an additional delivery label.
+Messages Nodex sends itself say so. Queued input waits in the queue above the Composer; once
+delivered it appears, like steering, as an ordinary user message without a delivery label.
 Subagents reporting back read like the row that started them: the same avatars and names
 with the same details on hover, then how they ended — finished, failed or stopped — and each
 name opens its own subagent. A report whose subagents the parent no longer lists keeps the
@@ -1210,3 +1290,14 @@ waits for the user instead. Opening the model menu reads the catalog again witho
 check, so a provider that has recovered appears without a manual refresh. A listing may name the Agents it needs; it then waits
 only for their first checks. A first message sent before any model is chosen takes Codex's
 default as soon as Codex is checked, and reads the whole catalog only when Codex has none.
+
+### Inbound routing identity
+
+For active chats, Main records delivery evidence before sending and the Host binds
+the admitted Run's inbound identity to Core. The trusted application-tool context
+carries that identity. Queued edits are reconciled from Runtime's admitted message
+before binding. Submitted question answers fence handback before Runtime can resume
+the chat. `hand_back_message` requires this captured Run context; a native-session
+invocation without causal inbound identity is refused. Runtime retains the original
+text and attachment bytes; Core stores control evidence and publishes content only
+when the message returns to intake. See [Inbox behavior](inbox-behavior.md).

@@ -113,6 +113,7 @@ const makeCatalog = (
     readonly publish?: (event: CodexApplicationEvent) => void;
     readonly retention?: ManagedWorktreeRetentionRuntime["Service"];
     readonly agentChats?: AgentChatWorktreeSource;
+    readonly pageWorkspacePaths?: Effect.Effect<readonly string[], unknown>;
     readonly settings?: {
       readonly read: () => ManagedWorktreeSettings;
       readonly update: (input: Partial<ManagedWorktreeSettings>) => ManagedWorktreeSettings;
@@ -128,7 +129,10 @@ const makeCatalog = (
     read: () => defaultSettings,
     update: () => defaultSettings,
   };
-  return make({ defaultManagedRoot: path.resolve("/managed") }).pipe(
+  return make({
+    defaultManagedRoot: path.resolve("/managed"),
+    pageWorkspacePaths: options.pageWorkspacePaths,
+  }).pipe(
     Effect.provideService(
       CodexApplicationEventHub,
       CodexApplicationEventHub.of({
@@ -830,6 +834,42 @@ it.effect("lists, deletes and restores the worktree an Agent chat works in", () 
         candidateRepositoryPaths: ["/repositories/repository"],
       },
     ]);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("keeps Page Workspace cleanup with its Page lifecycle", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    let removed = false;
+    const worktreeGitRoot = path.resolve("/managed/abcd/page");
+    const catalog = yield* makeCatalog(
+      scope,
+      makeProjectWorkspace(),
+      makeManaged({
+        list: () =>
+          Effect.succeed({
+            entries: [
+              {
+                worktreeGitRoot,
+                repositoryPath: "/repo",
+                createdAtMs: 1,
+                ownerThreadId: null,
+                ownerReadFailed: false,
+              },
+            ],
+          }),
+        remove: () =>
+          Effect.sync(() => {
+            removed = true;
+            return { removed: true, alreadyMissing: false, snapshot: null, warnings: [] };
+          }),
+      }),
+      { pageWorkspacePaths: Effect.succeed([worktreeGitRoot]) },
+    );
+    const result = yield* Effect.exit(catalog.delete("local", worktreeGitRoot));
+    assert.strictEqual(result._tag, "Failure");
+    assert.isFalse(removed);
     yield* Scope.close(scope, Exit.void);
   }),
 );

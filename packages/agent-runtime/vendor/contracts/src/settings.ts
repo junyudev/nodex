@@ -1447,6 +1447,7 @@ export const ServerSettingsOperation = Schema.Literals([
   "write-secret",
   "write-file",
   "prepare-directory",
+  "watch",
 ]);
 export type ServerSettingsOperation = typeof ServerSettingsOperation.Type;
 

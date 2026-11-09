@@ -128,6 +128,13 @@ const snapshot = (): DatabaseModuleReadSnapshotV2 => ({
               revision: 2,
             },
           },
+          work: {
+            unsatisfiedCount: 0,
+            blockers: [],
+            owner: null,
+            assignee: null,
+            autoStart: false,
+          },
           taskParent: { parentPageId: null, siblingRank: null, valueRevision: 1 },
           position: { rankKey: "a", revision: 3 },
           effectiveGroupKey: "triage",

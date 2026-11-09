@@ -398,7 +398,11 @@ export const layer: Layer.Layer<
               providerTurnId: loaded.providerTurn.id,
               message: {
                 messageId: message.id,
-                text: projectMessageForProvider(message),
+                // A Host-authored provider text replaces the words people read, never their context.
+                text: projectMessageForProvider({
+                  text: message.providerText ?? message.text,
+                  context: message.context,
+                }),
                 attachments: message.attachments,
                 createdBy: message.createdBy,
                 creationSource: message.creationSource,

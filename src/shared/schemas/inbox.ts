@@ -177,6 +177,7 @@ export const InboxWindowInputSchema = z
 export const InboxSendInputSchema = z
   .object({
     replyToPageId: id.optional(),
+    turnEpisode: id.optional(),
     operationId,
     pageId: id,
     documentId: id,

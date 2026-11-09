@@ -65,6 +65,7 @@ const row: DataSourcePageRowV2 = {
   position: { rankKey: "rank-a", revision: 8 },
   effectiveGroupKey: "doing",
   effectiveSubgroupKey: null,
+  work: { unsatisfiedCount: 0, blockers: [], owner: null, assignee: null, autoStart: false },
   taskParent: { parentPageId: null, siblingRank: null, valueRevision: 1 },
 };
 const config = upgradeDatabaseViewConfigV2({

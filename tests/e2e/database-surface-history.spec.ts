@@ -111,7 +111,7 @@ test("replays Board, List, and editor transfers through their content participan
             .locator('[data-card-context-menu-trigger="true"]')
             .click({ button: "right" });
           await page.getByRole("menuitem", { name: /Status/ }).click();
-          await page.getByRole("option", { name: "Doing", exact: true }).click();
+          await page.getByRole("option", { name: "In Progress", exact: true }).click();
           await expect(doing.locator(card)).toBeVisible();
           await expect(triage.locator(card)).toHaveCount(0);
           await invokeHistoryMenu(harness, "undo", "Move Pages");

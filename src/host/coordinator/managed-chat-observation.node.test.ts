@@ -83,6 +83,7 @@ describe("managed chat observation", () => {
       expect(observe(current, ended.observed).events).toEqual([]);
       const missing = observe(unavailableManagedChatFacts, working, STALL);
       expect(missing.events).toEqual([]);
+      expect(missing.observed).toEqual({ ...working, state: "unavailable" });
       expect(observe(current, missing.observed, STALL + 1).events).toEqual(ended.events);
     },
   );
@@ -146,6 +147,20 @@ describe("managed chat observation", () => {
       ).toEqual([]);
     },
   );
+  test("captures an already-stalled execution when it first becomes managed", () => {
+    const previous = observe(facts(), working, STALL).observed;
+    const input = {
+      sessionId: "chat",
+      previous,
+      facts: facts(),
+      now: STALL + 1,
+      latestReportAt: null,
+    };
+    const first = diff({ ...input, eventPrevious: null });
+    expect(first.observed).toEqual(previous);
+    expect(first.events.map((event) => event.kind)).toEqual(["stalled"]);
+    expect(diff({ ...input, eventPrevious: first.observed }).events).toEqual([]);
+  });
   test("request resolution, Run replacement, restart and recovery give a fresh stall grace", () => {
     const waiting = observe(
       facts({ state: "waiting", pendingRequests: [question] }),

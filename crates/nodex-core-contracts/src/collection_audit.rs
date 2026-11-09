@@ -33,7 +33,22 @@ enum ReadBudgetPolicy {
 
 fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
     match read {
+        ProjectWorkspaceRead::EffectiveExecutionHold { .. } => ReadBudgetPolicy::Identity,
+        ProjectWorkspaceRead::ExecutionHolds { .. }
+        | ProjectWorkspaceRead::HeldSessionWindow { .. } => ReadBudgetPolicy::BoundedBatch,
+        ProjectWorkspaceRead::PageTurn { .. }
+        | ProjectWorkspaceRead::SessionExecutionObserver { .. } => ReadBudgetPolicy::Identity,
+        ProjectWorkspaceRead::PageTurns { .. }
+        | ProjectWorkspaceRead::SessionExecutionObservers { .. } => ReadBudgetPolicy::BoundedBatch,
+        ProjectWorkspaceRead::PageWorkspace { .. }
+        | ProjectWorkspaceRead::SessionWorkspace { .. }
+        ProjectWorkspaceRead::PageWorkspaceWindow { .. }
+        | ProjectWorkspaceRead::PageWorkspaceConsumers { .. } => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::PageWorkLaunch { .. } => ReadBudgetPolicy::Identity,
+        ProjectWorkspaceRead::InboxTurnNotifications
+        | ProjectWorkspaceRead::PageWorkOutbox { .. } => ReadBudgetPolicy::BoundedBatch,
+        ProjectWorkspaceRead::ChatMessageInbound { .. }
+        | ProjectWorkspaceRead::ReadCoordinator
         | ProjectWorkspaceRead::ReadManagedSession { .. }
         | ProjectWorkspaceRead::ReadEventBatch { .. } => ReadBudgetPolicy::Identity,
         ProjectWorkspaceRead::ReadManagedSessions { .. }
@@ -216,7 +231,8 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
         LibraryRead::Path { .. } | LibraryRead::PageOwnershipPath { .. } => {
             ReadBudgetPolicy::FixedDomain
         }
-        LibraryRead::StructuralHistoryStates { .. }
+        LibraryRead::Members
+        | LibraryRead::StructuralHistoryStates { .. }
         | LibraryRead::BlockTransferPresentationPlan { .. }
         | LibraryRead::ProjectPageSearch { .. }
         | LibraryRead::ProjectPageSearchFacets { .. }
@@ -228,7 +244,8 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
         LibraryRead::PageContent { .. } | LibraryRead::PageProjectionFile { .. } => {
             ReadBudgetPolicy::LargeObject
         }
-        LibraryRead::Metadata
+        LibraryRead::LocalMember
+        | LibraryRead::Metadata
         | LibraryRead::PageDetail { .. }
         | LibraryRead::File { .. }
         | LibraryRead::FilePresentation { .. }

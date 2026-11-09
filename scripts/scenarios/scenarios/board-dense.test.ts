@@ -43,16 +43,40 @@ class RecordingSeedPort implements ScenarioSeedPort {
   async createCoordinatorSession(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }
+  async recordSessionExecution(): Promise<never> {
+    throw new Error("Execution observations are seeded through Core");
+  }
+  async readPageTurn(): Promise<never> {
+    throw new Error("Turn inspection requires Core");
+  }
   async setSessionManaged(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }
+  async setPageWork(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }
   async reportPageWork(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }
+  async createWorkChat(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }
+  async pauseWork(): Promise<never> {
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+  async recordPageWorkspace(): Promise<never> {
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+  async writeTurnNote(): Promise<never> {
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+  async handBackChatMessage(): Promise<never> {
+    throw new Error("Handback seeding requires Core");
+  }
+  async answerInboxQuestion(): Promise<never> {
+    throw new Error("Not supported");
+  }
+
   async settleCoordinatorSuggestion(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }
@@ -293,7 +317,7 @@ class RecordingSeedPort implements ScenarioSeedPort {
     return {
       totalRows: BOARD_DENSE_PAGES.length,
       commitSeq: 12,
-      groups: { triage: 3, plan: 2, doing: 3, review: 1, done: 1 },
+      groups: { triage: 3, plan: 2, doing: 3, review: 1, done: 1, canceled: 0 },
     };
   }
 
@@ -421,7 +445,7 @@ describe("board/dense authoritative scenario", () => {
       scenarioId: BOARD_DENSE_SCENARIO_ID,
       scenarioRevision: BOARD_DENSE_SCENARIO_REVISION,
       totalRows: BOARD_DENSE_PAGES.length,
-      groups: { triage: 3, plan: 2, doing: 3, review: 1, done: 1 },
+      groups: { triage: 3, plan: 2, doing: 3, review: 1, done: 1, canceled: 0 },
       listViewId: manifest.entityIdsByKey?.listView,
       primaryDoingPage: {
         pageId: manifest.pageIdsByKey[BOARD_DENSE_PRIMARY_PAGE_KEY],

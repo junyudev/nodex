@@ -32,6 +32,12 @@ and unsupported private requests do not produce desktop notifications.
 
 ## Ownership and Ordering
 
+Core owns durable Page Turn notification intents. Main drains and atomically
+claims them while their episodes are current, then applies preferences, focus
+and OS permission through the shared native notification owner. A restart or
+repeated note never creates a second interruption. Migrated waiting episodes
+start quietly. Question and approval use the question preference and suppress
+while their chat is presented; note-requested notifications use the turn preference.
 
 
 1. `CodexProtocolNotificationEffects` publishes a typed application occurrence
@@ -389,5 +395,6 @@ Native notification attempts settle before presentation and are not replayed aft
 restart. System permission or process termination can prevent visible delivery.
 The existing turn notification preference and native authorization gate apply;
 suppressed or denied presentation does not undo the unread transition. Seeing the chat
-dismisses its reminder notification through the ordinary notification lifecycle. A
-paired phone receives the reminder as a phone notification while the person is away.
+
+Handback updates intake and its badge without creating a desktop notification of
+its own. Turn notifications continue to depend on current Member episodes.

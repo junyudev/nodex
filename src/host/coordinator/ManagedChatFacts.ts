@@ -16,7 +16,11 @@ const millis = (value: string | null | undefined) => {
   return status === "completed" || status === "failed" ? status : null;
 };
   if (pending > 0) return "waiting";
+  if (status === "queued") return "queued";
   if (
+    ["working", "preparing", "starting", "running", "waiting", "inProgress", "active"].includes(
+      status ?? "",
+    )
   )
     return "working";
   if (["failed", "cancelled", "interrupted"].includes(status ?? "")) return "failed";
@@ -55,12 +59,24 @@ export const make = Effect.gen(function* () {
             : {}),
         }));
         facts = {
+          agent: {
+            instanceId: metadata.providerInstanceId,
+            model: metadata.model,
+            effort: metadata.effort,
+          },
+          waitingAdmissions: details.waitingAdmissions,
+            execution.status === "queued"
+              ? "queued"
+              : execution.continuationPending
+                ? "working"
+                : execution.status,
             pendingRequests.length,
           ),
           interruptRequested: run?.interruptRequested ?? false,
           runId: execution.runId,
           runStartedAt: millis(run?.startedAt ?? run?.requestedAt),
           pendingRequests,
+          ...(run?.failureMessage ? { failureReason: run.failureMessage } : {}),
             binding,
             execution.runId,
             execution.revision,

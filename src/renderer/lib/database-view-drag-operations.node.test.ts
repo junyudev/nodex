@@ -62,6 +62,7 @@ const row = (pageId: string, status: string, priority: string, rankKey: string) 
       revision: 3,
     },
   },
+  work: { unsatisfiedCount: 0, blockers: [], owner: null, assignee: null, autoStart: false },
   taskParent: { parentPageId: null, siblingRank: null, valueRevision: 1 },
   position: { rankKey, revision: 4 },
   effectiveGroupKey: status,

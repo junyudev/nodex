@@ -5,6 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
+    "checkJs": true,
     "noEmit": true,
     "incremental": true,
     "tsBuildInfoFile": "../../.cache/typescript/landing.tsbuildinfo",
@@ -16,6 +17,6 @@
     "jsxImportSource": "react",
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
-  "include": ["src", "scripts", "astro.config.ts"],
+  "include": ["src", "scripts", "astro.config.mjs"],
   "exclude": ["dist", "node_modules"]
 }

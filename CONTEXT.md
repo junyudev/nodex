@@ -16,7 +16,7 @@ Nodex is a local-first workspace for durable content and agent work. A local
 Profile owns one Library containing Pages, Databases, Blocks, Documents, and
 their durable history. A Project is an execution context: it owns filesystem
 roots, sessions, terminals and Threads, and binds one primary Database.
-The single user and all Agents have full content access to every resource in that Profile;
+The local Member and all Agents have full content access to every resource in that Profile;
 what an Agent may do natively on the computer is its Session's Permission Mode.
 Projects organize execution, placement and lifecycle. Project lifecycle
 never owns or deletes Library content.
@@ -24,6 +24,38 @@ never owns or deletes Library content.
 Accepted system-wide decisions live in `docs/adr/`.
 
 ## Canonical terms
+
+### Member
+
+
+### Page Owner
+
+The Owner is the Member responsible for a Page. A new Page belongs to its creator, or to
+the requester whose Page or Inbox message caused an Agent to create it.
+
+### Assignee
+
+A Page's Assignee is a Member or an Agent with a selected instance, model and optional
+effort. Assignment belongs to the Page across moves between Sources and standalone placement.
+Handing an unassigned Page to an Agent chat assigns that chat's selected instance,
+model and effort atomically. Existing Assignees stay unchanged; handoff grants no
+automatic-start consent.
+
+### Automatic start consent
+
+A person can set a Page assigned to an Agent to **Start automatically** when it is ready.
+Changing its Assignee clears that permission. Agents cannot grant it.
+
+### Hold
+
+A Hold is a person's durable pause of Agent work on a Page, in a Project, or throughout
+the Space. A Page is held when any of those scopes is held. Clearing a child Hold cannot
+waive a parent Hold. Only a person pauses or resumes work.
+
+Core owns the policy. Runtime stops the affected native execution and its delegated
+Threads while retaining inputs, recovery intent and delegated results. Work facts continue
+to accumulate; starts, wakes and delivery wait for Resume. A Space Hold includes Nodex.
+A Hold survives restart and is independent of Status and Stop.
 
 ### Agent Runtime
 
@@ -422,24 +454,35 @@ Priority has four assigned option identities in severity order:
 `p0-critical`, `p1-high`, `p2-medium`, and `p3-low`.
 An unset value is `No priority`; planning horizons such as “later” belong to workflow or scheduling rather than the priority scale.
 
-Status has five assigned stage identities in workflow order: `triage`, not yet
-decided; `plan`, decided but not started; `doing`, in progress, including every
-round of checking and redirecting an Agent's work; `review`, waiting on someone
-else's verdict; and `done`, accepted. Their default names are Triage, Plan,
-Doing, Review, and Done. A Data Source may rename them, and every surface shows
-its Source's names.
-Status moves only on intent: a person's edit, an Inbox decision, or handing the
-Page to a chat, which moves it from `triage` or `plan` to `doing`. Agent
-execution never moves it; whose turn it is belongs to Page Chat activity.
-Nothing enters or leaves `review` on its own, and only a person's decision
-completes a Page.
+Status is the work's single stage. Its stable identities are `triage`, not yet
+decided; `plan`, decided but not started; `doing`, in progress; `review`, waiting
+for acceptance; `done`, accepted; and `canceled`, no longer needed. Default names
+are Triage, Todo, In Progress, In Review, Done, and Canceled. A Data Source may
+rename them, and every surface shows its Source's names.
+
+Status moves on facts: a start or handoff moves Triage/Todo to In Progress; a
+`ready` Work report moves In Progress to In Review; a `dropped` report moves
+Triage/Todo/In Progress to Canceled. A person's acceptance moves In Review to
+Done. Automatic moves require the expected predecessor and the person-edit
+revision captured when the work attempt began. A newer person's Status edit
+wins, including moving away and back to the same stage. A skipped move still
+records its work fact. Blocked and failed reports do not move Status.
+
+Done and Canceled are terminal for presentation, completion filters, sorting,
+and membership `completed_at`: the timestamp starts on entering either terminal
+stage, survives moves within them, and clears on reopening. Only Done is accepted
+work and satisfies Prerequisites; Canceled never does.
 
 The standard **Task Parent** is a non-owning cardinality-one self-Relation on a
 Data Source Page. Its children have one shared manual order independent of any
 View's personal sorting or presentation.
 
+The standard **Waits for** is a non-owning many-valued Page Relation naming a
 Page's Prerequisites, including Pages in other Projects. Each edge retains its
 target Data Source, so a moved prerequisite remains unsatisfied until restored.
+It is never a hierarchy: it has no order, and Core rejects an edge to the Page itself or one that closes a cycle. Its reverse, the Pages
+waiting for a Page, is read from the same edges. Blocked describes only an Agent reporting that its
+work is blocked.
 
 ### Database View
 
@@ -564,7 +607,7 @@ Page navigation, Scenes, mentions, references, links, and prompt text do not
 infer one.
 
 Open in new chat, Send to chat, and Prompt sends hand the Page to the chat: the
-same transaction moves its Status from Triage or Plan to Doing. Linking an
+same transaction attempts its guarded move from Triage or Todo to In Progress. Linking an
 existing chat as related, New page in a Session's Scene, and a Runbook's link
 only associate. The Inbox moves its message Pages through its own handling.
 
@@ -578,6 +621,15 @@ Project Sessions, and optional Threads. Execution and unread are orthogonal
 signals. Database Page rows do not store or project Chat state; renderer
 surfaces join the independent bounded projections for presentation.
 
+### Active chat
+
+A Page's Active chat is its one current work destination, recorded by Core with
+a revision and selection time. Start, Start again, an explicit handoff, and
+Inbox new-chat or send-to-chat dispatch select it. Older Linked chats stay linked
+as evidence. Related-only links never select it. Archiving or unlinking the
+selected chat clears it; restoring a chat does not select it again. Replies go
+to this chat, and an old attempt's report cannot move the current attempt's Status.
+
 ### Prompt
 
 A Prompt is a Page Block whose content is meant for a chat. It is ordinary
@@ -589,19 +641,24 @@ edge or a scheduled action. See
 
 ### Inbox
 
-An Inbox is where the user captures a message without first choosing a chat.
-The Library has one Inbox, and each Project has its own. Each message is an
-ordinary Page in its Inbox's primary Database, and the whole message is its
-body. A Project's Inbox uses the Project's primary Database; the Library Inbox
-uses one Library-owned Inbox Database, created on the first message. A primary
-Database is ordinary Library content listed in Space, but it cannot be archived
-while its owner depends on it. The title is a label: the sender's own, or a
-provisional excerpt that the suggestion Agent may replace with a name once.
+An Inbox is what is yours: waiting intake messages, Pages whose current Turn
+The Library Inbox includes every Project and messages without a Project. A
+Project Inbox filters that same set. Core owns one ordered window, cursor,
+counts and badge predicate. Answers are visible but do not increase the badge.
+
+Intake messages and answers are ordinary Pages. A Project's intake uses its
+primary Database; messages without a Project use the Library's Inbox Database,
+created on first capture. A Turn row is the work Page itself, never another
+message Page. It appears for question, approval, review, blocked, failed or
+stalled, and for ready-to-start only when it has Prerequisites that are all
+Done. Todo backlog and paused Pages stay out. Its episode start orders it;
 
 ### Inbox entry
 
 An Inbox entry is the Workspace-owned record beside a message Page. It holds:
 
+- the message's immutable source: the person, an Agent, the command line or a
+- the Nodex answer it replies to, when it continues that conversation;
 - a user-editable kind: note, todo, or question, for messages that take advice;
 - whether the user marked it important, which keeps it within reach while it
   waits;
@@ -612,7 +669,7 @@ dispatch, filing in another Project, Keep, or Done hands it to History; where
 its Page lives never does.
 Work handed to a chat stays in progress until the user marks it done; a chat
 finishing never does. The message Page's workflow status follows the handling,
-Triage while waiting, Doing once handed to a chat, Plan when kept or filed,
+Triage while waiting, In Progress once handed to a chat, Todo when kept or filed,
 Done when done, but only while it still shows the status the previous handling
 gave it, so a status set by hand is never overwritten.
 Deleting a message erases it: the entry, every suggestion naming it, the Page,
@@ -638,25 +695,10 @@ never does.
 
 _Avoid_: task, job, routing rule.
 
-### Scheduled task
 
-A Scheduled task is a Profile-owned definition that starts Agent work on a
-schedule: a Cron task starts a new chat for each run, and a Heartbeat continues
-one chat. It is the only thing that starts Agent work on a schedule. A Page's
-recurrence and reminders schedule a person's work and never start an Agent.
-Its Launch is `Automatic`, which runs when due, or `Ask`, which holds each due
-Firing in the Inbox. Only the user grants `Automatic`.
 
-_Avoid_: automation (in product copy), job, routine.
 
-### Firing
 
-A Firing is one due occurrence of a Scheduled task, with a stable dispatch
-identity across lease retries. An `Ask` task's Firing is held as one Inbox
-message, and later due times fold into it while it waits. Confirming it admits
-the reviewed message text as that run's instructions. An admitted Firing runs
-through the task's ordinary lease. Skipping it, handing its message elsewhere,
-or deleting its task ends it.
 
 ### Runbook
 
@@ -668,6 +710,7 @@ runs, and each run's chat links to it.
 
 The Coordinator is the Profile's one persistent coordinating chat, shown to the
 user as **Nodex**. It routes every Inbox message by answering its suggestion
+request, watches Managed chats, and adds Turn notes only when they explain something the derived text does not say. It is an ordinary Runtime chat that never appears among
 chats; the Inbox is its face. Its conversation is working memory, not authority:
 what it decides is recorded in Core, so it can be compacted, restarted or
 started fresh without losing work. It never does the work it routes.
@@ -678,11 +721,17 @@ _Avoid_: router, bot, dispatcher (in product copy).
 
 A Managed chat is a chat whose work the Coordinator watches: every chat an Inbox
 dispatch or a Page start creates or continues, and any chat the user hands to
+Nodex. Its notifications come from Page Turn episodes: questions and approvals by rule,
+review and problems when Nodex requests an interruption in a Turn note.
 
 ### Work report
 
 A Work report is the outcome a chat last reported for a Page it is linked to:
 `ready` for the user to review, `blocked` on the user or another piece of work,
+`failed`, or `dropped` when there was nothing to do. A later report replaces it.
+Ready and dropped attempt guarded Status moves; blocked and failed only record
+the outcome. Core retains whether a report moved Status, even when a person's
+choice or a newer active attempt prevented it.
 
 ### Work event
 
@@ -694,12 +743,78 @@ batches as Host input.
 
 ### Agent work
 
+A Page has Agent work when its Assignee is an Agent. Its assignment names the Agent
+instance, model and optional effort. A person can set it to Start automatically when
+its Prerequisites are satisfied, or let Nodex ask first. Changing the Assignee clears
+that consent. The Owner remains the Member responsible for the Page.
+
+### Page Workspace
+
+A Page Workspace is the Page's stable Git execution identity in a Project whose
+primary source is a repository. It records the repository, attached branch and
+starting commit, independently of the checkout files. Every chat started for
+that Page shares its Workspace; a Linked chat alone does not acquire it.
+
+The branch starts at the default branch's current commit, without copying local
+changes. Its name uses the Page key and title, or a short Page identity when no
+key exists. Later renames do not rename the branch. Done or Canceled requests checkout
+cleanup, which waits for all consuming chats and preparations. Reopening work
+recreates the checkout on the same branch. The branch and verified pull request
+link remain with the Page after checkout cleanup. Non-git Projects keep their
+local execution directory.
 
 ### Prerequisite
 
+A Prerequisite is a Page another Page waits for. It is satisfied when it is
+active in its retained target Data Source and its Status is `done`. In Review
+awaits acceptance, and Canceled never satisfies it. A Page with
+an Agent Assignee, no active chat, Status `triage` or `plan`, and every Prerequisite
 satisfied is ready to start. Starting it hands it to a new Managed chat with a
 brief of the Page and of what its Prerequisites reported.
 
+### Turn
+
+A Page's Turn is Core's bounded answer to whose action comes next: a Member, its
+executing Agent, the first unsatisfied Prerequisite, a queue position, or nobody. A working
+or queued active chat names its Agent even when the Page is unassigned or assigned
+to a Member; the Agent executes for that Member. Its reason
+is paused, working, queued, question, approval, blocked, failed, stalled, review,
+ready_to_start, starting, or waiting_on_prerequisite. Done and Canceled suppress
+Turn. Main supplies revisioned execution observations for every active chat;
+Board, List, Page, CLI and work briefs consume the same Core decision, and every
+interface words it for its reader as whose move the Page waits for, such as "Needs
+your answer" or "Waiting for Alice’s answer", without calling it a Turn. Execution
+unavailability is distinct from failure. After terminal stages, the most specific effective hold gives the Turn to the Member who paused it, before attention requests.
+
+### Turn episode
+
+A Turn episode identifies one continuous actor and reason on a Page. Core
+persists its identity and start time in the same LocalCommit as changes to its
+inputs, including reverse Prerequisites. Repeated progress or report observations
+leave it unchanged. Changing applicable pause holds begins a new episode. Returning to a previous actor and reason begins a new
+episode. Notes and notifications can bind to that identity.
+
+### Inbound delivery and handback
+
+Core records an identity, integrity hash, author and original intake Page bindings
+for each message delivered to an active chat. Runtime owns chat text and attachment
+bytes. The Host proves the Run's inbound identity as tool context. A managed chat
+can return that message to intake with a routing reason under one durable receipt.
+Original words, images, author and dispatch history remain intact. A direct-chat
+message gets one intake envelope. Returned messages re-enter at their return time.
+At most two handbacks are allowed per original message across destinations. An
+already-answered question cannot be returned. A handback grants no automatic-start
+consent, and only a person may send it to the previous destination again.
+
+### Turn note
+
+A Turn note is immutable Page-owned context from the Coordinator, bound to the
+local Member's current episode and 1–8 Work events delivered to that Coordinator.
+Each event backs at most one note per Page and episode; exact retries reuse it.
+The newest note of the current episode explains the Inbox row. Without one,
+Core shows the exact question, report summary, failure, or finished Prerequisites.
+A note never creates membership or reorders the Page. Its notify choice may
+create one durable interruption intent for that Member, Page and episode.
 
 ### Conversation recency
 
@@ -846,31 +961,35 @@ state is rejected rather than replayed.
 
 ## Authority and ownership
 
-| State                                                                      | Canonical authority                                                      |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Profile → Library                                                          | `profiles` and `libraries`                                               |
-| Block identity, type, lifecycle, Library, and parent                       | `blocks` plus typed placement detail                                     |
-| Page title and body                                                        | Page Document (`yjs`)                                                    |
-| File identity, name, versions, and provenance                              | Library Files and immutable Profile Blobs                                |
-| Page-local File paths                                                      | Page File entries and their manifest revision                            |
-| Ordinary Block hierarchy/order/content                                     | nearest owning Document                                                  |
-| Canvas metadata and Library/Page placement                                 | `blocks`, `canvas_owners`, and the exact host shell or Library placement |
-| Canvas scene and managed-file metadata                                     | normalized Canvas scene rows                                             |
-| Document ownership                                                         | `block_documents`                                                        |
-| Library top-level placement                                                | Library placement records                                                |
-| Database metadata, lifecycle, default View                                 | Database Container records                                               |
-| Page-key prefix registry, counter, and Database/Page assignments           | Database Page-key authority records                                      |
-| Schema, Pages, and property values                                         | Data Source relational records                                           |
-| View query/configuration/manual Page position                              | Database View records                                                    |
-| Project binding/lifecycle                                                  | Project execution records                                                |
-| Page-intrinsic schedule/run behavior                                       | generic Block properties and typed read models                           |
-| NFM, preview, search, schedule, asset, and Page summary                    | rebuildable projections                                                  |
-| Restorable Document states                                                 | immutable semantic Document revisions                                    |
-| Presence, cursor, selection, leases                                        | ephemeral collaboration state                                            |
-| Project Sessions, Thread links, and Linked chats                           | Project execution domain                                                 |
-| Inbox entries and Dispatch proposals                                       | Project execution domain beside Inbox message Pages                      |
-| Per-window Project/Session Scene surfaces, panels, selection, and geometry | Window Session view                                                      |
-| Browser guests and Terminal PTYs                                           | Main-process runtime Modules                                             |
+| State                                                                                                                                               | Canonical authority                                                      |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Profile → Library                                                                                                                                   | `profiles` and `libraries`                                               |
+| Block identity, type, lifecycle, Library, and parent                                                                                                | `blocks` plus typed placement detail                                     |
+| Page title and body                                                                                                                                 | Page Document (`yjs`)                                                    |
+| File identity, name, versions, and provenance                                                                                                       | Library Files and immutable Profile Blobs                                |
+| Page-local File paths                                                                                                                               | Page File entries and their manifest revision                            |
+| Ordinary Block hierarchy/order/content                                                                                                              | nearest owning Document                                                  |
+| Canvas metadata and Library/Page placement                                                                                                          | `blocks`, `canvas_owners`, and the exact host shell or Library placement |
+| Canvas scene and managed-file metadata                                                                                                              | normalized Canvas scene rows                                             |
+| Document ownership                                                                                                                                  | `block_documents`                                                        |
+| Library top-level placement                                                                                                                         | Library placement records                                                |
+| Database metadata, lifecycle, default View                                                                                                          | Database Container records                                               |
+| Page-key prefix registry, counter, and Database/Page assignments                                                                                    | Database Page-key authority records                                      |
+| Schema, Pages, and property values                                                                                                                  | Data Source relational records                                           |
+| View query/configuration/manual Page position                                                                                                       | Database View records                                                    |
+| Project binding/lifecycle                                                                                                                           | Project execution records                                                |
+| Page-intrinsic schedule/run behavior                                                                                                                | generic Block properties and typed read models                           |
+| NFM, preview, search, schedule, asset, and Page summary                                                                                             | rebuildable projections                                                  |
+| Restorable Document states                                                                                                                          | immutable semantic Document revisions                                    |
+| Presence, cursor, selection, leases                                                                                                                 | ephemeral collaboration state                                            |
+| Project Sessions, Thread links, and Linked chats                                                                                                    | Project execution domain                                                 |
+| Inbox entries and Dispatch proposals                                                                                                                | Project execution domain beside Inbox message Pages                      |
+| Coordinator binding, Session execution observations, Turns, Turn episodes, Turn notes, Inbox answers, notification intents, Work reports and events | Project execution domain                                                 |
+| Prerequisites (Waits for)                                                                                                                           | Data Source relational records                                           |
+| Members and local identity                                                                                                                          | Library                                                                  |
+| Page Owner, Assignee and automatic start consent                                                                                                    | Page intrinsic state and typed read models                               |
+| Per-window Project/Session Scene surfaces, panels, selection, and geometry                                                                          | Window Session view                                                      |
+| Browser guests and Terminal PTYs                                                                                                                    | Main-process runtime Modules                                             |
 
 ## Invariants
 
@@ -925,8 +1044,13 @@ state is rejected rather than replayed.
     command-line Inbox workflow endpoints append entries; their backing Pages
     follow the same full-Profile content model. Core records each entry's actual
     execution source, and confirmed triage owns dispatch intent.
+    Owner review. A Page's Start automatically and a plan's starts require the
+30. Only the Coordinator authors Turn notes and Inbox answers and answers suggestion
     requests through its tool; the source is derived from verified execution
     identity, never from a name.
+31. Work facts move Status only from their expected predecessors while their
+    attempt's person-edit fence still matches; a person's later Status choice wins.
+    Only Done is accepted work.
 
 ## Operation semantics
 
@@ -1047,6 +1171,8 @@ explicitly invalidate the same worker-owned read plane.
 - Say **revision** for immutable restorable Document state and **checkpoint**
   for storage/transport mechanics.
 - Say **Card** only for visual structures such as Board or request cards.
+- Say **Automation** for standing Agent work and name its modes **Dry run**,
+  **Ask first** and **Run**; do not call it a Rule or a Scheduled task.
 
 ## Nodex account vocabulary
 
@@ -1091,6 +1217,9 @@ idempotency, projections, and post-commit events behind `read` and `apply`.
 
 ## Decision index
 
+- `docs/adr/0080-the-inbox-is-what-is-yours.md`: one Core projection over intake,
+  current Member Turns and quiet answers; episode-bound notes and notifications.
+
 - `docs/adr/0068-agent-runtime-execution-authority.md`: one Runtime execution
   owner, exact Session and native source identity, and full-Profile content access.
 - `docs/adr/0067-inbox-entries-and-dispatch-proposals.md`: Page-backed Inbox
@@ -1098,10 +1227,14 @@ idempotency, projections, and post-commit events behind `read` and `apply`.
 - `docs/adr/0072-inbox-page-peek-and-primary-inbox-database.md`: Inbox Pages
   open beside their Inbox, and each Inbox's primary Database is protected
   Library content listed in Space.
-- `docs/adr/0073-scheduled-runs-that-ask-in-the-inbox.md`: Scheduled tasks as
-  the only Agent scheduler, held Firings reviewed in the Inbox, user-granted
+- `docs/adr/0082-automations-replace-scheduled-tasks.md`: Owner-authorized Automations, clock
   unattended execution, and runbook Pages.
+- `docs/adr/0079-status-moves-on-facts-a-persons-move-wins.md`: guarded Status
+  transitions preserve the person's later move; Done accepts prerequisites, Canceled
+  retires work, and the active chat names the work destination.
+- `docs/adr/0078-nodex-coordinates-managed-work.md`: the Coordinator routes the
   Inbox, watches Managed chats through durable Work events and speaks through
+  Page Turn notes and quiet Inbox answers; Pages carry Agent work, Prerequisites and Work reports
   without a second task authority.
 - `docs/adr/0043-database-scoped-page-keys.md`: Database-owned Page-key
   namespaces, Library-unique prefix history, monotonic allocation, UUID
@@ -1129,3 +1262,4 @@ idempotency, projections, and post-commit events behind `read` and `apply`.
   and scene-native Canvas authority.
 - `docs/adr/0014-document-revision-history.md`: semantic revisions and forward
   restore.
+

@@ -76,6 +76,7 @@ const databaseRowEffect = (
       description_length: 0,
       has_description: false,
       database_values: { status: "done" },
+      work: { unsatisfied_count: 0, blockers: [], owner: null, assignee: null, auto_start: false },
       intrinsic_properties: {
         "run.target": "localProject",
         "run.localPath": null,

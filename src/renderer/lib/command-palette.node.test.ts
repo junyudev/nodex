@@ -351,7 +351,7 @@ describe("filterCommandPaletteItems", () => {
         priorities: ["p0-critical"],
         includeEmptyPriority: true,
         tags: ["search"],
-        assignees: ["Alex"],
+        assignees: [JSON.stringify({ kind: "member", member_id: "Alex" })],
         projectIds: ["ops"],
       },
       new Map([["ops", "Ops Console"]]),
@@ -359,7 +359,7 @@ describe("filterCommandPaletteItems", () => {
 
     expect(summaries.length).toBe(5);
     expect(summaries[0]?.label).toBe("Status");
-    expect(summaries[0]?.value).toBe("Plan, Doing");
+    expect(summaries[0]?.value).toBe("Todo, In Progress");
     expect(summaries[1]?.value).toBe("P0, -");
     expect(summaries[2]?.label).toBe("Tags (any)");
     expect(summaries[4]?.value).toBe("Ops Console");
@@ -372,13 +372,13 @@ describe("filterCommandPaletteItems", () => {
       const written = writeCommandPalettePageFilters({
         ...getDefaultCommandPalettePageFilters(),
         projectIds: ["ops"],
-        assignees: ["Alex"],
+        assignees: [JSON.stringify({ kind: "member", member_id: "Alex" })],
       });
       const read = readCommandPalettePageFilters();
 
       expect(areCommandPalettePageFiltersEqual(read, written)).toBe(true);
       expect(read.projectIds[0]).toBe("ops");
-      expect(read.assignees[0]).toBe("Alex");
+      expect(read.assignees[0]).toBe(JSON.stringify({ kind: "member", member_id: "Alex" }));
     });
   });
 

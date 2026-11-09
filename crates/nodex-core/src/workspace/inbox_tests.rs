@@ -1493,6 +1493,7 @@ fn runtime_session(module: &ProjectWorkspaceModule) {
         module,
         "runtime-session",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            agent_selection: None,
             coordinator: false,
             side_chat_source_session_id: None,
             session_id: "session:runtime-source".into(),
@@ -1842,7 +1843,7 @@ fn project_messages_become_project_pages_and_wait_in_the_project_inbox() {
             inbox_count: 1,
         }]
     );
-    assert_eq!(counts(module).library_count, 1);
+    assert_eq!(counts(module).library_count, 2);
 
     // A Project's message can be erased from its own Inbox.
     apply_host(
@@ -4578,7 +4579,7 @@ fn set_status_option_by_hand(
             &context(),
             ModuleApplyRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
-                operation_id: format!("status:{page_id}:{}", option_id.unwrap_or("empty")),
+                operation_id: format!("status-{page_id}-{}", option_id.unwrap_or("empty")),
                 store_epoch: StoreEpoch("epoch-1".to_owned()),
                 intent: vec![DatabaseIntent::EditPropertyValues {
                     edits: vec![DatabasePropertyValueMutation {
@@ -4643,7 +4644,7 @@ fn inbox_messages_project_the_current_page_status_in_library_and_project_scopes(
         assert_eq!(read_status(), Some(("triage".into(), "Triage".into())));
 
         let changed = set_status_by_hand(&workspace, &format!("page:{id}"), "doing");
-        assert_eq!(read_status(), Some(("doing".into(), "Doing".into())));
+        assert_eq!(read_status(), Some(("doing".into(), "In Progress".into())));
         assert_inbox_invalidated(&workspace, changed.committed.commit_seq);
 
         set_status_option_by_hand(&workspace, &format!("page:{id}"), None);
@@ -4746,6 +4747,7 @@ fn a_messages_status_follows_its_handling_until_someone_else_sets_it() {
         ("keep", "The Linear changelog layout is nice"),
         ("done", "Rename the settings tab"),
         ("hand", "Audit the empty states"),
+        ("aba", "Audit filters"),
     ] {
         send_to(module, id, text, Some(PROJECT));
         assert_eq!(
@@ -4870,6 +4872,25 @@ fn a_messages_status_follows_its_handling_until_someone_else_sets_it() {
     assert_eq!(
         status_of(&workspace, "page:hand").as_deref(),
         Some("review")
+    );
+
+    set_status_by_hand(&workspace, "page:aba", "review");
+    set_status_by_hand(&workspace, "page:aba", "triage");
+    keep(module, "page:aba");
+    assert_eq!(
+        status_of(&workspace, "page:aba").as_deref(),
+        Some("triage"),
+        "manual ABA keeps the person's choice even at the implied predecessor"
+    );
+    assert_eq!(
+        workspace
+            .kernel
+            .readers()
+            .read_default(|c| super::page_chat::active_chat(c, "page:chat"))
+            .unwrap()
+            .unwrap()
+            .session_id,
+        "session:chat"
     );
 
     // The Library Inbox's Database follows the same handling.
@@ -7773,6 +7794,7 @@ mod plans {
         let w = seeded_workspace();
         super::super::test_support::create_project(&w.module, "create:other", "project:other");
         send(&w.module, "plan", "Prepare and implement");
+
         propose(
             &w.module,
             "proposal:plan",
@@ -7802,6 +7824,7 @@ mod plans {
         assert_eq!(
             count(
                 &w,
+                "SELECT count(*) FROM block_properties WHERE property_key='work' AND json_extract(value_json,'$.assignee.kind')='agent'"
             ),
             0
         );
@@ -7822,10 +7845,19 @@ mod plans {
             .unwrap();
         let ids = applied.committed.value.inbox_created_page_ids.clone();
         assert_eq!(ids.len(), 2);
+        assert_eq!(
+            count(
+                &w,
+                "SELECT count(*) FROM block_properties WHERE property_key='work' AND json_extract(value_json,'$.assignee.kind')='agent' AND json_extract(value_json,'$.owner')='member:requester'"
+            ),
+            2
+        );
+
         assert_eq!(count(&w, "SELECT count(*) FROM pages"), before + 2);
         assert_eq!(
             count(
                 &w,
+                "SELECT count(*) FROM block_properties WHERE property_key='work' AND json_extract(value_json,'$.auto_start')=1"
             ),
             2
         );
@@ -7840,6 +7872,7 @@ mod plans {
         assert_eq!(
             count(
                 &w,
+                "SELECT count(*) FROM data_source_property_values value JOIN data_source_page_memberships member ON member.id=value.membership_id JOIN block_properties work ON work.block_id=member.page_block_id AND work.property_key='work' WHERE value.property_id='status' AND json_extract(value.value_json,'$')='plan'"
             ),
             2
         );
@@ -7878,6 +7911,26 @@ mod plans {
         assert_eq!(pages.len(), 1);
         assert_eq!(pages[0].page_id, ids[0]);
         assert_eq!(
+            pages[0]
+                .page_work
+                .assignee
+                .as_ref()
+                .unwrap()
+                .agent_selection()
+                .unwrap()
+                .model,
+            "chosen"
+        );
+        assert_eq!(
+            pages[0]
+                .page_work
+                .assignee
+                .as_ref()
+                .unwrap()
+                .agent_selection()
+                .unwrap()
+                .effort
+                .as_deref(),
             Some("high")
         );
         let detail = database
@@ -7897,7 +7950,18 @@ mod plans {
         };
         assert_eq!(value.body_markdown, "Write **a brief**.\n\n- Include tests");
         assert_eq!(
+            value
+                .summary
+                .work
+                .assignee
+                .as_ref()
+                .unwrap()
+                .agent_selection()
+                .unwrap()
+                .model,
+            "chosen"
         );
+        assert!(value.summary.work.auto_start);
         assert_eq!(value.summary.work.unsatisfied_count, 0);
 
         let context = database
@@ -8033,4 +8097,37 @@ mod plans {
             );
         }
     }
+}
+
+#[test]
+fn a_first_inbox_handoff_captures_the_current_person_choice_as_its_attempt_baseline() {
+    let w = seeded_workspace();
+    let m = &w.module;
+    send_to(m, "first-handoff", "Build this", Some(PROJECT));
+    set_status_by_hand(&w, "page:first-handoff", "plan");
+    dispatch(
+        m,
+        "first-handoff",
+        &["page:first-handoff"],
+        ProjectWorkspaceInboxDispatchAction::NewChat {
+            additions: vec![],
+            project_id: Some(PROJECT.into()),
+            prompt: "Build this".into(),
+            agent: None,
+        },
+        Some("session:first-handoff"),
+    );
+    assert_eq!(
+        status_of(&w, "page:first-handoff").as_deref(),
+        Some("doing")
+    );
+    let fence=w.kernel.readers().read_default(|c|Ok(c.query_row("SELECT status_fence FROM project_session_pages WHERE page_id='page:first-handoff' AND session_id='session:first-handoff'",[],|r|r.get::<_,i64>(0))?)).unwrap();
+    assert_eq!(fence, 1);
+    set_state(
+        m,
+        "finish:first-handoff",
+        "page:first-handoff",
+        ProjectWorkspaceInboxEntryState::Done,
+    );
+    assert_eq!(status_of(&w, "page:first-handoff").as_deref(), Some("done"));
 }

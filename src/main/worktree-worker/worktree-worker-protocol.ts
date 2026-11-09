@@ -152,6 +152,7 @@ function isCreateInput(value: unknown): value is CodexWorktreeWorkerCreateInput 
       "targetId",
       "threadTitle",
       "branchPrefix",
+      "pageWorkspace",
       "mode",
       "startingState",
       "localEnvironmentConfigPath",
@@ -168,6 +169,19 @@ function isCreateInput(value: unknown): value is CodexWorktreeWorkerCreateInput 
     (value.branchPrefix === undefined ||
       value.branchPrefix === null ||
       typeof value.branchPrefix === "string") &&
+    (value.pageWorkspace === undefined ||
+      (isRecord(value.pageWorkspace) &&
+        hasOnlyKeys(value.pageWorkspace, [
+          "workspaceId",
+          "operationId",
+          "branchName",
+          "baseCommitOid",
+        ]) &&
+        isNonEmptyString(value.pageWorkspace.workspaceId, 512) &&
+        isNonEmptyString(value.pageWorkspace.operationId, 512) &&
+        isNonEmptyString(value.pageWorkspace.branchName, 256) &&
+        typeof value.pageWorkspace.baseCommitOid === "string" &&
+        /^[a-f0-9]{40,64}$/.test(value.pageWorkspace.baseCommitOid))) &&
     (value.mode === undefined || value.mode === "autoBranch" || value.mode === "detachedHead") &&
     (value.startingState === null || isStartingState(value.startingState)) &&
     (value.localEnvironmentConfigPath === null ||
@@ -223,6 +237,7 @@ function isInspectInput(value: unknown): value is CodexWorktreeWorkerInspectInpu
 
 function isRemovalReason(value: unknown): boolean {
   return (
+    value === "page-completed" ||
     value === "archive" ||
     value === "automatic-retention" ||
     value === "automation-archive" ||
@@ -634,10 +649,12 @@ function isCreateResult(value: unknown): value is CodexWorktreeWorkerCreateResul
       "worktreeGitRoot",
       "worktreeWorkspaceRoot",
       "setupError",
+      "branchName",
       "shellEnvironment",
     ]) &&
     isAbsolutePath(value.worktreeGitRoot) &&
     isAbsolutePath(value.worktreeWorkspaceRoot) &&
+    (value.branchName === undefined || isNullableString(value.branchName, 256)) &&
     isNullableString(value.setupError, 64_000) &&
     (value.shellEnvironment === null || isRecord(value.shellEnvironment))
   );

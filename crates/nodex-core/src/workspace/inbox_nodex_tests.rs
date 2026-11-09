@@ -1,11 +1,17 @@
 use super::*;
 use nodex_core_contracts::inbox::{
+    InboxConfirmedBy, InboxRowKind, ProjectWorkspaceInboxSuggestedDispatch,
 };
 use nodex_core_contracts::workspace::{
     CoordinatorObservationInput, CoordinatorWorkEventInput, CoordinatorWorkEventKind,
     ProjectWorkspaceAgentRuntimeAuthority, ProjectWorkspaceAgentRuntimeTurnKind,
+    ProjectWorkspacePageCreationTarget, SessionExecutionObservation, SessionExecutionState,
 };
 
+// Keep fixture Page UUIDs separate from operation timestamps.
+fn apply_host(module: &ProjectWorkspaceModule, operation: &str, intent: ProjectWorkspaceIntent) {
+    super::apply_host(module, &operation.replace(':', "_"), intent);
+}
 fn runtime_session(
     module: &ProjectWorkspaceModule,
     id: &str,
@@ -16,6 +22,7 @@ fn runtime_session(
         module,
         &format!("runtime:{id}"),
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            agent_selection: None,
             coordinator,
             session_id: id.into(),
             project_id: project.map(str::to_owned),
@@ -305,6 +312,19 @@ fn routing_delivery_fixes_recipient_and_first_deadline_and_bounds_unsettled_requ
 }
 
 #[test]
+fn resolved_questions_in_unadmitted_batches_are_discarded_without_losing_other_facts() {
+    for admitted in [false, true] {
+        let w = seeded_workspace();
+        let m = &w.module;
+        runtime_session(m, "nodex", None, true);
+        runtime_session(m, "work", None, false);
+        apply_host(
+            m,
+            "managed",
+            ProjectWorkspaceIntent::SetSessionManaged {
+                session_id: "work".into(),
+                managed: true,
+            },
         );
         apply_host(
             m,
@@ -436,6 +456,624 @@ fn routing_delivery_fixes_recipient_and_first_deadline_and_bounds_unsettled_requ
     }
 }
 
+#[test]
+fn routing_clocks_preserve_the_pause_union_across_reopen_and_agents_cannot_change_holds() {
+    use nodex_core_contracts::workspace::ExecutionHoldScope;
+    let w = seeded_workspace();
+    let m = &w.module;
+    runtime_session(m, "nodex", None, true);
+    send(m, "paused-route", "Fix this");
+    grouped_request(m, "paused-request", vec!["page:paused-route".into()]);
+    apply_host(
+        m,
+        "begin-paused",
+        ProjectWorkspaceIntent::BeginInboxRouting {
+            request_id: "paused-request".into(),
+            generation: 1,
+            coordinator_session_id: "nodex".into(),
+        },
+    );
+    let page = ExecutionHoldScope::Page {
+        page_id: "page:paused-route".into(),
+    };
+    for intent in [
+        ProjectWorkspaceIntent::PauseWork {
+            scope: page.clone(),
+        },
+        ProjectWorkspaceIntent::ResumeWork {
+            scope: page.clone(),
+        },
+    ] {
+        assert_eq!(
+            m.apply(
+                &host(),
+                request("agent-hold", agent_command("nodex", intent))
+            )
+            .unwrap_err()
+            .code,
+            CoreErrorCode::Unauthorized
+        );
+    }
+    apply_host(
+        m,
+        "hold-page",
+        ProjectWorkspaceIntent::PauseWork {
+            scope: page.clone(),
+        },
+    );
+    assert!(requests(m).is_empty());
+    w.kernel
+        .writer()
+        .call(|c| {
+            c.execute(
+                "UPDATE execution_hold_routing_clocks SET paused_at_ms=paused_at_ms-10000",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    apply_host(
+        m,
+        "hold-space",
+        ProjectWorkspaceIntent::PauseWork {
+            scope: ExecutionHoldScope::Space,
+        },
+    );
+    apply_host(
+        m,
+        "resume-page",
+        ProjectWorkspaceIntent::ResumeWork { scope: page },
+    );
+    assert!(requests(m).is_empty());
+    let reopened = reopen_inbox_workspace(w);
+    let m = &reopened.module;
+    apply_host(
+        m,
+        "resume-space",
+        ProjectWorkspaceIntent::ResumeWork {
+            scope: ExecutionHoldScope::Space,
+        },
+    );
+    let delivery = requests(m)[0].delivery.clone().unwrap();
+    assert!(delivery.paused_ms.unwrap() >= 10000);
+    let budget = delivery.paused_ms;
+    apply_host(
+        m,
+        "resume-space-again",
+        ProjectWorkspaceIntent::ResumeWork {
+            scope: ExecutionHoldScope::Space,
+        },
+    );
+    assert_eq!(requests(m)[0].delivery.as_ref().unwrap().paused_ms, budget);
+}
+
+fn create_work_page(w: &TestWorkspace, id: &str) {
+    apply_host(
+        &w.module,
+        &format!("page:{id}"),
+        ProjectWorkspaceIntent::CreatePageFor {
+            target: ProjectWorkspacePageCreationTarget::Project {
+                project_id: PROJECT.into(),
+            },
+            page_id: id.into(),
+            document_id: format!(
+                "019d0000-0000-7000-8000-{:012}",
+                if id.ends_with("91") { 92 } else { 94 }
+            ),
+            title: id.into(),
+        },
+    );
+}
+fn start_work_page(w: &TestWorkspace, id: &str) {
+    apply_host(
+        &w.module,
+        &format!("start:{id}"),
+        ProjectWorkspaceIntent::StartPageWork {
+            page_id: id.into(),
+            selection: Some(nodex_core_contracts::library::AgentWorkSelection {
+                instance_id: "codex".into(),
+                model: "gpt".into(),
+                effort: None,
+            }),
+            session_id: format!("chat:{id}"),
+            launch_id: format!("launch:{id}"),
+            message_id: format!("message:{id}"),
+            brief: "Work".into(),
+            again: false,
+            expected_readiness_epoch: None,
+            expected_turn_episode: None,
+        },
+    );
+}
+fn observe(w: &TestWorkspace, id: &str, revision: i64, state: SessionExecutionState) {
+    let observation:SessionExecutionObservation=serde_json::from_value(serde_json::json!({"state":state,"runId":"run","runStartedAt":0,"pendingRequestIds":[],"pendingRequests":[],"queue":null,"terminalStatus":null,"personStopped":false,"stalled":false,"progressFingerprint":"p","progressSince":0})).unwrap();
+    apply_host(
+        &w.module,
+        &format!("observe:{id}:{revision}"),
+        ProjectWorkspaceIntent::RecordSessionExecution {
+            session_id: format!("chat:{id}"),
+            expected_revision: revision,
+            observation,
+            events: vec![],
+            resolved_request_ids: vec![],
+        },
+    );
+}
+fn mixed(
+    w: &TestWorkspace,
+    scope: ProjectWorkspaceInboxScope,
+    after: Option<String>,
+    first: u32,
+) -> nodex_core_contracts::collection::CollectionWindow<ProjectWorkspaceInboxItem> {
+    let ProjectWorkspaceReadValue::InboxWindow { items } = read_host(
+        &w.module,
+        ProjectWorkspaceRead::InboxWindow {
+            scope,
+            filter: ProjectWorkspaceInboxWindowFilter::Inbox,
+            window: CollectionWindowRequest {
+                after,
+                first: Some(first),
+            },
+        },
+    ) else {
+        panic!("mixed Inbox")
+    };
+    items
+}
+fn note(page: &str, id: &str, event: &str, body: &str) -> ProjectWorkspaceIntent {
+    agent_command(
+        "nodex",
+        ProjectWorkspaceIntent::WriteTurnNote {
+            page_id: page.into(),
+            note_id: id.into(),
+            body: body.into(),
+            event_ids: vec![event.into()],
+            notify: true,
+        },
+    )
+}
+#[test]
+fn mixed_inbox_counts_scope_pagination_and_episode_reentry_share_one_membership() {
+    let w = seeded_workspace();
+    runtime_session(&w.module, "nodex", None, true);
+    send(&w.module, "intake", "Please route this");
+    create_work_page(&w, "019d0000-0000-7000-8000-000000000091");
+    start_work_page(&w, "019d0000-0000-7000-8000-000000000091");
+    set_status_by_hand(&w, "019d0000-0000-7000-8000-000000000091", "review");
+    send(&w.module, "question", "What is waiting?");
+    apply_host(
+        &w.module,
+        "question:kind",
+        ProjectWorkspaceIntent::SetInboxEntryKind {
+            page_id: "page:question".into(),
+            entry_kind: Some(ProjectWorkspaceInboxEntryKind::Question),
+        },
+    );
+    let answer = agent_command(
+        "nodex",
+        ProjectWorkspaceIntent::AnswerInboxQuestion {
+            question_page_id: "page:question".into(),
+            page_id: "answer".into(),
+            document_id: "answer:doc".into(),
+            body: "Work is ready to review.".into(),
+        },
+    );
+    apply_host(&w.module, "answer", answer.clone());
+    apply_host(&w.module, "answer:retry", answer);
+    let all = mixed(&w, ProjectWorkspaceInboxScope::All, None, 20);
+    assert_eq!(all.items.len(), 3);
+    assert_eq!(
+        all.items
+            .iter()
+            .filter(|r| r.row_kind == InboxRowKind::Turn)
+            .count(),
+        1
+    );
+    assert_eq!(
+        all.items
+            .iter()
+            .filter(|r| r.row_kind == InboxRowKind::Answer)
+            .count(),
+        1
+    );
+    let ProjectWorkspaceReadValue::InboxCounts { counts } =
+        read_host(&w.module, ProjectWorkspaceRead::InboxCounts)
+    else {
+        panic!()
+    };
+    assert_eq!(counts.library_count, 2);
+    assert_eq!(counts.projects[0].inbox_count, 1);
+    assert_eq!(mixed(&w, project_scope(), None, 10).items.len(), 1);
+    let mut seen = vec![];
+    let mut cursor = None;
+    loop {
+        let page = mixed(&w, ProjectWorkspaceInboxScope::All, cursor, 1);
+        seen.extend(page.items.into_iter().map(|r| r.page_id));
+        cursor = page.next_cursor;
+        if cursor.is_none() {
+            break;
+        }
+    }
+    assert_eq!(
+        seen,
+        all.items
+            .iter()
+            .map(|r| r.page_id.clone())
+            .collect::<Vec<_>>()
+    );
+    let original = all
+        .items
+        .iter()
+        .find_map(|r| r.turn.as_ref())
+        .unwrap()
+        .turn
+        .episode
+        .clone();
+    observe(
+        &w,
+        "019d0000-0000-7000-8000-000000000091",
+        0,
+        SessionExecutionState::Working,
+    );
+    assert_eq!(mixed(&w, project_scope(), None, 10).items.len(), 0);
+    observe(
+        &w,
+        "019d0000-0000-7000-8000-000000000091",
+        1,
+        SessionExecutionState::Idle,
+    );
+    let row = mixed(&w, project_scope(), None, 10).items.remove(0);
+    assert_ne!(row.turn.unwrap().turn.episode, original);
+    apply_host(
+        &w.module,
+        "pause",
+        ProjectWorkspaceIntent::PauseWork {
+            scope: nodex_core_contracts::workspace::ExecutionHoldScope::Page {
+                page_id: "019d0000-0000-7000-8000-000000000091".into(),
+            },
+        },
+    );
+    assert!(mixed(&w, project_scope(), None, 10).items.is_empty());
+}
+#[test]
+fn turn_notes_bind_delivered_page_events_to_current_episode_and_retry_exactly() {
+    let w = seeded_workspace();
+    runtime_session(&w.module, "nodex", None, true);
+    create_work_page(&w, "019d0000-0000-7000-8000-000000000091");
+    set_status_by_hand(&w, "019d0000-0000-7000-8000-000000000091", "review");
+    let event = delivered(
+        &w.module,
+        "ready",
+        CoordinatorWorkEventKind::Attention,
+        None,
+        Some("019d0000-0000-7000-8000-000000000091"),
+        None,
+    );
+    apply_host(
+        &w.module,
+        "note",
+        note(
+            "019d0000-0000-7000-8000-000000000091",
+            "note:one",
+            &event,
+            "Check the migration evidence before accepting.",
+        ),
+    );
+    apply_host(
+        &w.module,
+        "note:retry",
+        note(
+            "019d0000-0000-7000-8000-000000000091",
+            "note:two",
+            &event,
+            "Check the migration evidence before accepting.",
+        ),
+    );
+    let row = mixed(&w, project_scope(), None, 20).items.remove(0);
+    assert_eq!(row.turn.unwrap().note_id.as_deref(), Some("note:one"));
+    assert_eq!(row.body, "Check the migration evidence before accepting.");
+    assert_eq!(
+        apply_host_error(
+            &w.module,
+            "note:changed",
+            note(
+                "019d0000-0000-7000-8000-000000000091",
+                "note:three",
+                &event,
+                "Changed"
+            )
+        ),
+        CoreErrorCode::Conflict
+    );
+    create_work_page(&w, "019d0000-0000-7000-8000-000000000093");
+    set_status_by_hand(&w, "019d0000-0000-7000-8000-000000000093", "review");
+    assert_eq!(
+        apply_host_error(
+            &w.module,
+            "note:wrong",
+            note(
+                "019d0000-0000-7000-8000-000000000093",
+                "note:wrong",
+                &event,
+                "Wrong Page"
+            )
+        ),
+        CoreErrorCode::InvalidInput
+    );
+    assert_eq!(
+        apply_host_error(
+            &w.module,
+            "note:undelivered",
+            note(
+                "019d0000-0000-7000-8000-000000000091",
+                "note:missing",
+                "missing",
+                "Missing"
+            )
+        ),
+        CoreErrorCode::InvalidInput
+    );
+    start_work_page(&w, "019d0000-0000-7000-8000-000000000091");
+    observe(
+        &w,
+        "019d0000-0000-7000-8000-000000000091",
+        0,
+        SessionExecutionState::Working,
+    );
+    assert_eq!(
+        apply_host_error(
+            &w.module,
+            "note:late",
+            note(
+                "019d0000-0000-7000-8000-000000000091",
+                "note:late",
+                &event,
+                "Late"
+            )
+        ),
+        CoreErrorCode::Conflict
+    );
+    observe(
+        &w,
+        "019d0000-0000-7000-8000-000000000091",
+        1,
+        SessionExecutionState::Idle,
+    );
+    let row = mixed(&w, project_scope(), None, 20)
+        .items
+        .into_iter()
+        .find(|r| r.page_id == "019d0000-0000-7000-8000-000000000091")
+        .unwrap();
+    assert!(row.turn.unwrap().note_id.is_none());
+}
+#[test]
+fn turn_reply_is_durable_unchanged_and_never_creates_intake_and_stale_episode_fails() {
+    let w = seeded_workspace();
+    create_work_page(&w, "019d0000-0000-7000-8000-000000000091");
+    start_work_page(&w, "019d0000-0000-7000-8000-000000000091");
+    set_status_by_hand(&w, "019d0000-0000-7000-8000-000000000091", "review");
+    let row = mixed(&w, project_scope(), None, 10).items.remove(0);
+    let episode = row.turn.unwrap().turn.episode;
+    let reply = ProjectWorkspaceIntent::ReplyToPageTurn {
+        page_id: "019d0000-0000-7000-8000-000000000091".into(),
+        episode: episode.clone(),
+        body: "  Keep my words\nexactly.  ".into(),
+        dispatch: Some(nodex_core_contracts::inbox::InboxReplyDispatch::Send),
+    };
+    apply_host(&w.module, "reply", reply.clone());
+    let ProjectWorkspaceReadValue::InboxDispatchOutbox { dispatches } = read_host(
+        &w.module,
+        ProjectWorkspaceRead::InboxDispatchOutbox { limit: 10 },
+    ) else {
+        panic!()
+    };
+    assert_eq!(dispatches.len(), 1);
+    assert_eq!(
+        dispatches[0].final_text.as_deref(),
+        Some("  Keep my words\nexactly.  ")
+    );
+    assert_eq!(
+        dispatches[0].session_id,
+        "chat:019d0000-0000-7000-8000-000000000091"
+    );
+    let ProjectWorkspaceReadValue::InboxSummary { summary } = read_host(
+        &w.module,
+        ProjectWorkspaceRead::InboxSummary {
+            scope: ProjectWorkspaceInboxScope::Library,
+        },
+    ) else {
+        panic!()
+    };
+    assert_eq!(summary.entry_count, 0);
+    observe(
+        &w,
+        "019d0000-0000-7000-8000-000000000091",
+        0,
+        SessionExecutionState::Working,
+    );
+    assert_eq!(
+        apply_host_error(&w.module, "reply:stale", reply),
+        CoreErrorCode::Conflict
+    );
+}
+fn entry(module: &ProjectWorkspaceModule, id: &str) -> ProjectWorkspaceInboxItem {
+    let ProjectWorkspaceReadValue::InboxEntry { item } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxEntry { page_id: id.into() },
+    ) else {
+        panic!("entry")
+    };
+    *item.expect("entry")
+}
+
+#[test]
+fn inbox_ready_turn_requires_real_done_prerequisites_and_excludes_backlog_and_pause() {
+    use nodex_core_contracts::database::DatabasePropertySetDelta;
+    let w = seeded_workspace();
+    let page = "019d0000-0000-7000-8000-000000000091";
+    let prerequisite = "019d0000-0000-7000-8000-000000000093";
+    create_work_page(&w, page);
+    start_work_page(&w, page);
+    apply_host(
+        &w.module,
+        "archive:work",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: format!("chat:{page}"),
+            intent: ProjectSessionIntent::SetArchived { archived: true },
+        },
+    );
+    set_status_by_hand(&w, page, "plan");
+    assert!(
+        mixed(&w, project_scope(), None, 20).items.is_empty(),
+        "Todo backlog is not Inbox work"
+    );
+    create_work_page(&w, prerequisite);
+    let source = page_parent(&w, page);
+    crate::database::DatabaseModule::new("profile-1", "library-1", &w.kernel)
+        .apply(
+            &context(),
+            ModuleApplyRequest {
+                contract_version: DATABASE_CONTRACT_VERSION,
+                operation_id: "prerequisite:add".into(),
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent: vec![DatabaseIntent::EditPropertyValues {
+                    edits: vec![DatabasePropertyValueMutation {
+                        expected_membership_revision: None,
+                        address: DatabasePagePropertyAddress {
+                            page_id: page.into(),
+                            data_source_id: source,
+                            property_id: "blocked_by".into(),
+                        },
+                        edit: DatabasePropertyValueEdit::PatchSet {
+                            delta: DatabasePropertySetDelta::Relation {
+                                add_page_ids: vec![prerequisite.into()],
+                                remove_edge_ids: vec![],
+                            },
+                        },
+                    }],
+                }],
+            },
+        )
+        .unwrap();
+    assert!(mixed(&w, project_scope(), None, 20).items.is_empty());
+    set_status_by_hand(&w, prerequisite, "review");
+    // Review is the person's Turn, but does not release dependent work.
+    assert!(
+        !mixed(&w, project_scope(), None, 20)
+            .items
+            .iter()
+            .any(|row| row.page_id == page)
+    );
+    set_status_by_hand(&w, prerequisite, "done");
+    let rows = mixed(&w, project_scope(), None, 20).items;
+    let ready = rows.iter().find(|row| row.page_id == page).unwrap();
+    assert_eq!(
+        ready.turn.as_ref().unwrap().turn.reason,
+        Some(nodex_core_contracts::workspace::TurnReason::ReadyToStart)
+    );
+    assert!(ready.body.starts_with("Finished:"));
+    apply_host(
+        &w.module,
+        "pause:ready",
+        ProjectWorkspaceIntent::PauseWork {
+            scope: nodex_core_contracts::workspace::ExecutionHoldScope::Page {
+                page_id: page.into(),
+            },
+        },
+    );
+    assert!(
+        !mixed(&w, project_scope(), None, 20)
+            .items
+            .iter()
+            .any(|row| row.page_id == page)
+    );
+}
+
+#[test]
+fn notification_intents_are_claimed_once_only_while_their_turn_is_current() {
+    let w = seeded_workspace();
+    let page = "019d0000-0000-7000-8000-000000000091";
+    create_work_page(&w, page);
+    start_work_page(&w, page);
+    let capture = |revision: i64, kind: &str| {
+        let observation:SessionExecutionObservation=serde_json::from_value(serde_json::json!({"state":"waiting","runId":"run","runStartedAt":0,"pendingRequestIds":["request"],"pendingRequests":[{"id":"request","kind":kind,"question":"Choose one","options":["One","Two"]}],"queue":null,"terminalStatus":null,"personStopped":false,"stalled":false,"progressFingerprint":"p","progressSince":0})).unwrap();
+        apply_host(
+            &w.module,
+            &format!("notify:observe:{revision}"),
+            ProjectWorkspaceIntent::RecordSessionExecution {
+                session_id: format!("chat:{page}"),
+                expected_revision: revision,
+                observation,
+                events: vec![],
+                resolved_request_ids: vec![],
+            },
+        );
+    };
+    let intents = || {
+        let ProjectWorkspaceReadValue::InboxTurnNotifications { intents } =
+            read_host(&w.module, ProjectWorkspaceRead::InboxTurnNotifications)
+        else {
+            panic!()
+        };
+        intents
+    };
+    capture(0, "question");
+    capture(1, "question");
+    let first = intents();
+    assert_eq!(first.len(), 1);
+    let claim = ProjectWorkspaceIntent::ClaimTurnNotification {
+        page_id: page.into(),
+        episode: first[0].episode.clone(),
+    };
+    apply_host(&w.module, "notify:claim", claim.clone());
+    apply_host(&w.module, "notify:claim:retry", claim.clone());
+    assert!(intents().is_empty());
+    capture(2, "approval");
+    let second = intents();
+    assert_eq!(second.len(), 1);
+    assert_ne!(second[0].episode, first[0].episode);
+    assert_eq!(
+        apply_host_error(&w.module, "notify:stale", claim),
+        CoreErrorCode::Conflict
+    );
+}
+
+#[test]
+fn answers_refuse_questions_already_dispatched_to_a_chat() {
+    let w = seeded_workspace();
+    runtime_session(&w.module, "nodex", None, true);
+    send(&w.module, "routed-question", "How should we test this?");
+    dispatch(
+        &w.module,
+        "routed-question",
+        &["page:routed-question"],
+        ProjectWorkspaceInboxDispatchAction::NewChat {
+            project_id: None,
+            prompt: "Investigate the question".into(),
+            agent: None,
+            additions: vec![],
+        },
+        Some("question-chat"),
+    );
+    assert_eq!(
+        apply_host_error(
+            &w.module,
+            "answer:routed",
+            agent_command(
+                "nodex",
+                ProjectWorkspaceIntent::AnswerInboxQuestion {
+                    question_page_id: "page:routed-question".into(),
+                    page_id: "answer:routed".into(),
+                    document_id: "answer:routed:doc".into(),
+                    body: "An answer".into(),
+                }
+            )
+        ),
+        CoreErrorCode::Conflict
+    );
+    assert_eq!(count(&w, "SELECT count(*) FROM inbox_answers"), 0);
+}
+
 fn assign_agent(w: &TestWorkspace, operation: &str, page: &str, auto_start: bool, revision: i64) {
     use nodex_core_contracts::LIBRARY_CONTRACT_VERSION;
     use nodex_core_contracts::library::*;
@@ -533,3 +1171,8 @@ fn nodex_starts_only_work_that_may_start_on_its_own_and_reads_as_nodex() {
     assert_eq!(helper.actor_label, "by Agent on behalf of You");
 }
 
+#[path = "inbox_remote_tests.rs"]
+mod remote_tests;
+
+#[path = "inbox_handback_tests.rs"]
+mod handback_tests;

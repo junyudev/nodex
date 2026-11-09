@@ -111,14 +111,15 @@ An archived Thread must be explicitly restored before resume.
 ## Projectless Chats
 
 A projectless Chat has no Project route and receives a generated workspace
-under the user's Documents/Nodex collection. It persists cwd, output-directory,
+under the Profile's projects directory: the user's Documents/Nodex collection, or
+the home of an isolated development or test run. It persists cwd, output-directory,
 and workspace-browser-root hints. Scratch work belongs under `work/`; user-facing
 deliverables belong under `outputs/`. A persistent fork or Side chat inherits
 the same workspace boundary.
 
 Owner-time preparation reuses an existing generated projectless cwd before creating another one.
 It prefers the current generated cwd, then the newest retained writable root under the same
-Documents/Nodex collection, then repairs from the persisted workspace-browser root. A selected
+projects directory, then repairs from the persisted workspace-browser root. A selected
 Environment or pending Project workspace suppresses projectless materialization for that Turn.
 
 Projectless Chats support conversation, Browser, exact-file previews, and

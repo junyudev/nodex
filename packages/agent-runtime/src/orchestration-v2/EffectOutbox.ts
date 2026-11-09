@@ -28,6 +28,9 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import * as ExecutionPause from "./ExecutionPauseState.ts";
+import * as RunAdmission from "./RunAdmission.ts";
+
 import { forkParked } from "../serverActivation.ts";
 
 export const OrchestrationEffectRequestV2 = Schema.Union([
@@ -52,6 +55,7 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("provider-turn.start"),
     runId: RunId,
+    admissionClass: Schema.optional(Schema.Literals(["person", "continuation"])),
   }),
   Schema.Struct({
     type: Schema.Literal("provider-turn.interrupt"),
@@ -70,6 +74,8 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("provider-turn.steer"),
+    runId: Schema.optional(RunId),
+    admissionClass: Schema.optional(Schema.Literals(["person", "continuation"])),
     modelPolicyOrigin: Schema.optional(
       Schema.Literals(["person", "nodex-agent", "agent", "automatic"]),
     ),
@@ -85,6 +91,7 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
     providerTurnId: ProviderTurnId,
     interruptedAttemptId: RunAttemptId,
     runId: RunId,
+    admissionClass: Schema.optional(Schema.Literals(["person", "continuation"])),
     sessionTransition: Schema.optional(
       Schema.Union([
         Schema.Struct({
@@ -97,6 +104,8 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("runtime-request.respond"),
+    runId: Schema.optional(RunId),
+    admissionClass: Schema.optional(Schema.Literals(["person", "continuation"])),
     modelPolicyOrigin: Schema.optional(
       Schema.Literals(["person", "nodex-agent", "agent", "automatic"]),
     ),
@@ -359,6 +368,7 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
     const claimableCandidatePredicate = (
       availableBefore?: string,
       excludeRestartContinuations = false,
+      deadlineNow?: string,
     ) =>
       sql`
         ${
@@ -367,6 +377,13 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
             : sql`candidate.available_at <= ${availableBefore}`
         }
         AND candidate.status = 'pending'
+        AND (candidate.effect_type IN ('provider-turn.interrupt','provider-task.stop','provider-session.detach','delegated-tasks.stop','checkpoint.capture','side-chat.discard-native') OR NOT ${ExecutionPause.heldSql(sql, sql`candidate.thread_id`)})
+        AND (${deadlineNow === undefined ? sql`0` : sql`candidate.available_at > ${deadlineNow}`} OR candidate.effect_type NOT IN ${sql.in(RunAdmission.ADMISSION_EFFECT_TYPES)}
+          OR NOT EXISTS (SELECT 1 FROM orchestration_v2_projection_runs run
+            WHERE run.run_id = json_extract(candidate.payload_json, '$.runId')
+              AND run.status IN ('queued', 'preparing', 'starting', 'running', 'waiting'))
+          OR EXISTS (SELECT 1 FROM orchestration_v2_run_admissions admission
+            WHERE admission.run_id = json_extract(candidate.payload_json, '$.runId') AND admission.state = 'admitted'))
         AND NOT EXISTS (
           SELECT 1
           FROM orchestration_v2_effect_outbox AS active
@@ -376,6 +393,8 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
               OR (
                 active.status = 'pending'
                 AND active.rowid < candidate.rowid
+                AND (candidate.effect_type NOT IN ${sql.in(RunAdmission.CONTROL_EFFECT_TYPES)}
+                  OR active.effect_type NOT IN ${sql.in(RunAdmission.START_EFFECT_TYPES)})
                 AND ${
                   excludeRestartContinuations
                     ? sql`active.effect_type != 'provider-runtime.continue'`
@@ -435,6 +454,27 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
             `,
             { concurrency: 1, discard: true },
           );
+          for (const effect of effects) {
+            if (
+              !RunAdmission.ADMISSION_EFFECT_TYPES.includes(effect.request.type) ||
+              !("runId" in effect.request) ||
+              effect.request.runId === undefined
+            )
+              continue;
+            yield* RunAdmission.enqueue(
+              effect.request.runId,
+              effect.id,
+              "admissionClass" in effect.request
+                ? effect.request.admissionClass
+                : effect.request.type === "run.recover"
+                  ? "continuation"
+                  : undefined,
+            ).pipe(Effect.provideService(SqlClient.SqlClient, sql));
+            if (effect.request.type === "provider-turn.restart")
+              yield* RunAdmission.transfer(effect.threadId, effect.request.runId).pipe(
+                Effect.provideService(SqlClient.SqlClient, sql),
+              );
+          }
           // Do not signal here: callers enqueue inside a larger transaction,
           // and workers must only observe availability after that transaction
           // commits. EventSink owns the corresponding post-commit notification.
@@ -550,6 +590,7 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
             last_error = 'Cancelled because the server process ended before the effect completed.'
           WHERE status IN ('pending', 'running')
             AND effect_type IN ${sql.in(PROCESS_BOUND_EFFECT_TYPES)}
+            AND NOT ${ExecutionPause.heldSql(sql, sql`orchestration_v2_effect_outbox.thread_id`)}
           RETURNING effect_id
         `;
         const requeuedRows = yield* sql<{ readonly effect_id: string }>`
@@ -562,7 +603,7 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
             updated_at = ${now},
             last_error = 'Requeued after the previous server process ended.'
           WHERE status = 'running'
-            AND effect_type IN ${sql.in(REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS)}
+            AND (effect_type IN ${sql.in(REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS)} OR ${ExecutionPause.heldSql(sql, sql`orchestration_v2_effect_outbox.thread_id`)})
           RETURNING effect_id
         `;
         yield* signalSettled(cancelledRows.map((row) => row.effect_id));
@@ -575,6 +616,10 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
       ),
       claimNext: ({ workerId, leaseDurationMs, excludeRestartContinuations = false }) =>
         Effect.gen(function* () {
+          yield* RunAdmission.admitReady().pipe(
+            Effect.provideService(SqlClient.SqlClient, sql),
+            Effect.withTracerEnabled(false),
+          );
           const now = yield* DateTime.now;
           const nowIso = DateTime.formatIso(now);
           const leaseExpiresAt = DateTime.formatIso(
@@ -597,7 +642,14 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
               FROM orchestration_v2_effect_outbox AS candidate
               WHERE ${claimableCandidatePredicate(nowIso, excludeRestartContinuations)}
                 AND ${excludeRestartContinuations ? sql`candidate.effect_type != 'provider-runtime.continue'` : sql`1 = 1`}
-              ORDER BY candidate.available_at ASC, candidate.created_at ASC, candidate.effect_id ASC
+              ORDER BY COALESCE((SELECT ${RunAdmission.prioritySql(sql, sql`admission.class`)}
+                FROM orchestration_v2_run_admissions admission
+                WHERE admission.run_id = json_extract(candidate.payload_json, '$.runId')
+                  AND admission.state = 'admitted'), -1),
+                COALESCE((SELECT sequence FROM orchestration_v2_run_admissions admission
+                  WHERE admission.run_id = json_extract(candidate.payload_json, '$.runId')
+                    AND admission.state = 'admitted'), 0),
+                candidate.available_at ASC, candidate.created_at ASC, candidate.effect_id ASC
               LIMIT 1
             )
             RETURNING *
@@ -607,12 +659,16 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
           if (row === undefined) return Option.none();
           cancellationSignals.set(row.effect_id, Deferred.makeUnsafe<void>());
           return Option.some(yield* rowToEffect(row));
-        }).pipe(Effect.mapError((cause) => new EffectOutboxError({ operation: "claim", cause }))),
+        }).pipe(
+          sql.withTransaction,
+          Effect.mapError((cause) => new EffectOutboxError({ operation: "claim", cause })),
+        ),
       nextClaimableAt: Effect.gen(function* () {
+        const now = DateTime.formatIso(yield* DateTime.now);
         const rows = yield* sql<{ readonly available_at: string | null }>`
           SELECT MIN(candidate.available_at) AS available_at
           FROM orchestration_v2_effect_outbox AS candidate
-          WHERE ${claimableCandidatePredicate()}
+          WHERE ${claimableCandidatePredicate(undefined, false, now)}
         `.pipe(Effect.withTracerEnabled(false));
         const availableAt = rows[0]?.available_at;
         if (availableAt === undefined || availableAt === null) return Option.none();
@@ -681,11 +737,23 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
             RETURNING effect_id
           `;
           if (rows.length === 1) {
+            const effect = yield* service.get(effectId);
+            if (
+              Option.isSome(effect) &&
+              RunAdmission.START_EFFECT_TYPES.includes(effect.value.request.type) &&
+              "runId" in effect.value.request &&
+              effect.value.request.runId !== undefined
+            )
+              yield* RunAdmission.retry(
+                effect.value.request.runId,
+                `${effectId}:retry:${effect.value.attemptCount}`,
+              ).pipe(Effect.provideService(SqlClient.SqlClient, sql));
             cancellationSignals.delete(effectId);
             yield* notifyAvailable();
           }
           return rows.length === 1;
         }).pipe(
+          sql.withTransaction,
           Effect.mapError(
             (cause) => new EffectOutboxError({ operation: "retry", effectId, cause }),
           ),

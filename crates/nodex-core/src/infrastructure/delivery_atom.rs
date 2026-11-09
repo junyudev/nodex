@@ -82,6 +82,7 @@ fn touches_inbox_messages(
             | OwnedDocumentEvent::DocumentResyncRequired { document_id, .. }
             | OwnedDocumentEvent::DocumentInvalidated { document_id, .. },
         ) => {
+            if connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='inbox_answers')",[],|r|r.get::<_,bool>(0))? && connection.query_row("SELECT EXISTS(SELECT 1 FROM pages page WHERE page.document_id=?1 AND page.library_id=?2 AND (EXISTS(SELECT 1 FROM page_turn_episodes WHERE page_id=page.block_id) OR EXISTS(SELECT 1 FROM inbox_answers WHERE page_id=page.block_id)))",[document_id.as_str(),library_id],|r|r.get::<_,bool>(0))? {return Ok(true)}
             return Ok(connection.query_row(
                 "SELECT EXISTS(SELECT 1 FROM pages page
                    JOIN inbox_entries entry ON entry.page_id = page.block_id
@@ -96,6 +97,9 @@ fn touches_inbox_messages(
         return Ok(false);
     }
     if !pages.is_empty() {
+        // Turn episodes remain present after a Page leaves the Inbox, so this also
+        // invalidates departures. Text changes on answer Pages share the same boundary.
+        if connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='inbox_answers')",[],|r|r.get::<_,bool>(0))? && connection.query_row("SELECT EXISTS(SELECT 1 FROM json_each(?1) changed WHERE EXISTS(SELECT 1 FROM page_turn_episodes episode JOIN pages page ON page.block_id=episode.page_id WHERE episode.page_id=changed.value AND page.library_id=?2) OR EXISTS(SELECT 1 FROM inbox_answers answer WHERE answer.page_id=changed.value AND answer.library_id=?2))",[serde_json::to_string(pages).map_err(|_|corrupt("Inbox dependencies"))?.as_str(),library_id],|r|r.get::<_,bool>(0))? {return Ok(true)}
         let pages = serde_json::to_string(pages)
             .map_err(|error| corrupt(&format!("Inbox Page identities: {error}")))?;
         if connection.query_row(

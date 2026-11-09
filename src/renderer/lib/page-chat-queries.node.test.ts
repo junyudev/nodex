@@ -22,6 +22,7 @@ describe("Page Chat activity queries", () => {
             errorCount: 0,
             unreadCount: 0,
             soleSessionId: null,
+            work: { activeChat: null, latestReport: null, managedSessionCount: 0 },
             runtimeSessionIds: [],
           })),
           projectionRevision: calls.length * 10,

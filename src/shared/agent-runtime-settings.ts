@@ -8,6 +8,7 @@ export type AgentRuntimeTitleModel = z.infer<typeof AgentRuntimeTitleModelSchema
 
 export const AgentRuntimeSettingsSchema = z
   .object({
+    agentsRunningAtOnce: z.number().int().min(1).max(16).default(4),
     defaultRuntimeMode: AgentRuntimeModeSchema,
     /** Titles chats a person starts; null leaves it to each chat's own model. */
     titleModel: AgentRuntimeTitleModelSchema.nullable(),
@@ -21,5 +22,6 @@ export type UpdateAgentRuntimeSettingsInput = z.infer<typeof UpdateAgentRuntimeS
 /** New chats run with full access unless the Profile chooses otherwise. */
 export const DEFAULT_AGENT_RUNTIME_SETTINGS: AgentRuntimeSettings = {
   defaultRuntimeMode: "full-access",
+  agentsRunningAtOnce: 4,
   titleModel: null,
 };

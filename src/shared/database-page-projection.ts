@@ -1,3 +1,4 @@
+import { parsePageAssignee, parsePageWork, projectCoreWorkSummary } from "./work-graph";
 import { readDatabasePropertyOptions } from "./database-property-options";
 import type {
   DatabaseContainerDescriptorV2,
@@ -370,11 +371,8 @@ export const projectCoreDatabaseRowSummary = (
       "intrinsic Property schedule.timezone",
       requireCoreIntrinsicValue(row, "schedule.timezone"),
     ),
-    assignee: coreNullableString(
-      row,
-      "Database Property assignee",
-      coreDatabaseValueOr(row, "assignee", null),
-    ),
+    assignee: parsePageAssignee(row.work.assignee),
+    owner: row.work.owner ?? undefined,
     runInTarget: coreRunTarget(row, requireCoreIntrinsicValue(row, "run.target")),
     runInLocalPath: coreNullableString(
       row,
@@ -396,6 +394,7 @@ export const projectCoreDatabaseRowSummary = (
       "intrinsic Property run.environmentPath",
       requireCoreIntrinsicValue(row, "run.environmentPath"),
     ),
+    pageWork: parsePageWork(row.intrinsic_properties["work"] ?? null),
     work: projectCoreWorkSummary(row.work),
     revision: row.metadata_revision,
     created: new Date(row.created_at),
@@ -560,11 +559,8 @@ export const projectDatabasePage = (
       "intrinsic Property schedule.timezone",
       requireIntrinsicValue(row, intrinsic, "schedule.timezone"),
     ),
-    assignee: nullableString(
-      row,
-      "Database Property assignee",
-      requireDatabaseValue(row, "assignee"),
-    ),
+    assignee: row.work.assignee,
+    owner: parsePageWork(intrinsic.get("work")?.value ?? null)?.owner,
     runInTarget: readRunTarget(row, requireIntrinsicValue(row, intrinsic, "run.target")),
     runInLocalPath: nullableString(
       row,
@@ -586,6 +582,7 @@ export const projectDatabasePage = (
       "intrinsic Property run.environmentPath",
       requireIntrinsicValue(row, intrinsic, "run.environmentPath"),
     ),
+    pageWork: parsePageWork(intrinsic.get("work")?.value ?? null),
     work: row.work,
     revision: row.page.metadataRevision,
     created: new Date(row.page.createdAt),

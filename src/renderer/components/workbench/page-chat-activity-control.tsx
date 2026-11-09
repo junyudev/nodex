@@ -16,6 +16,8 @@ import { usePageChatActivity, usePageChatItemActivity } from "@/lib/use-page-cha
 import { pageChatWindowQueryOptions } from "@/lib/query-options";
 import type { PageChatActivitySummary, PageChatItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { workReportLine } from "@/lib/work-report";
+import { WorkReportGlyph } from "./work-report-glyph";
 
 export interface PageChatActivityDetailOverride {
   readonly items: readonly PageChatItem[];

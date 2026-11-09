@@ -199,3 +199,31 @@ describe("github PR service", () => {
     expect(result.message).toBe("Pull request comment body is required.");
   });
 });
+
+test("reads the selected branch and retains the PR head repository for verification", async () => {
+  const cwd = createTempDir("nodex-gh-pr-head-");
+  const logPath = installFakeGhEnvironment(
+    cwd,
+    [
+      "if (args[0] === '--version') process.exit(0);",
+      "if (args[0] === 'auth') process.exit(0);",
+      "if (args[0] === 'pr' && args[1] === 'view') { console.log(JSON.stringify({number:42,title:'Fix login',url:'https://github.com/acme/project/pull/42',state:'OPEN',headRefName:'nodex-12-fix-login',headRepository:{name:'project'},headRepositoryOwner:{login:'fork-owner'}})); process.exit(0); }",
+      "process.exit(1);",
+    ].join("\n"),
+  );
+  const result = await readGhPrStatus({ cwd, headBranch: "nodex-12-fix-login" });
+  expect(result).toMatchObject({
+    prNumber: 42,
+    headBranch: "nodex-12-fix-login",
+    headRepositoryUrl: "https://github.com/fork-owner/project",
+  });
+  const commands = readFileSync(logPath, "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => line.split("\u0000"));
+  expect(
+    commands.some(
+      (args) => args[0] === "pr" && args[1] === "view" && args[2] === "nodex-12-fix-login",
+    ),
+  ).toBe(true);
+});

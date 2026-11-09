@@ -1,3 +1,4 @@
+import { parsePageAssignee, parsePageWork } from "./work-graph";
 import type {
   PageInput,
   Estimate,
@@ -9,7 +10,6 @@ import type {
 import { isPriority } from "./priority";
 import { parseDataSourceOptionId } from "./database-identities";
 import {
-  MAX_PAGE_ASSIGNEE_LENGTH,
   MAX_PAGE_DESCRIPTION_LENGTH,
   MAX_PAGE_TAG_COUNT,
   MAX_PAGE_TITLE_LENGTH,
@@ -55,7 +55,9 @@ export function assertValidPageInput(input: Partial<PageInput>, mode: "create" |
   assertOptionalRecurrence(input.recurrence);
   assertOptionalReminders(input.reminders);
   assertOptionalScheduleTimezone(input.scheduleTimezone);
-  assertOptionalString("assignee", input.assignee, MAX_PAGE_ASSIGNEE_LENGTH);
+  if (input.assignee !== undefined) parsePageAssignee(input.assignee);
+  if (input.pageWork !== undefined && !parsePageWork(input.pageWork))
+    throw new TypeError("Page work requires an Owner");
   assertOptionalRunInTarget(input.runInTarget);
   assertOptionalRunInLocalPath(input.runInLocalPath);
   assertOptionalRunInBaseBranch(input.runInBaseBranch);

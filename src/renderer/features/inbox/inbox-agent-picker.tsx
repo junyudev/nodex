@@ -5,7 +5,10 @@ import {
   type InboxSettings,
   type UpdateInboxSettingsInput,
 } from "../../../shared/inbox";
-import { AgentModelPicker } from "@/components/shared/agent-runtime/agent-model-picker";
+import {
+  AgentModelPicker,
+  type AgentModelCatalogPresentation,
+} from "@/components/shared/agent-runtime/agent-model-picker";
 import { AgentProviderIcon, CompactChevronDownIcon } from "@/components/shared/icons";
 import { NodexSettingsDropdownTrigger } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
@@ -129,16 +132,23 @@ const PURPOSE_LABELS: Readonly<Record<InboxAgentPurpose, string>> = {
 
 /** Chooses what an Inbox Agent runs on, with the same model menu as the composer. */
 export function InboxAgentPicker({
+  people,
   agents,
   purpose,
   scope,
   value,
   onChange,
   trigger,
+  toggles,
   disabled = false,
 }: {
   readonly agents: InboxAgents;
   readonly purpose: InboxAgentPurpose;
+  readonly people?: {
+    readonly members: readonly import("../../../shared/work-graph").Member[];
+    readonly value: string | null | undefined;
+    readonly choose: (memberId: string | null) => void;
+  };
   /**
    * `inbox` for the Inbox's own choice; `message` for one decision's chat, which can become the
    * Inbox's; `page` for the Agent a Page names for its own work.
@@ -148,6 +158,8 @@ export function InboxAgentPicker({
   readonly onChange: (next: InboxAgentChoice) => void;
   /** `field` fills a form or panel row, `inline` sits beside a send button, or a caller's trigger. */
   readonly trigger: "field" | "inline" | ReactElement;
+  /** Settings of the chosen Agent itself, such as a Page's Start automatically. */
+  readonly toggles?: AgentModelCatalogPresentation["toggles"];
   readonly disabled?: boolean;
 }) {
   const openAgentSettings = useAgentSettingsNavigation();
@@ -178,6 +190,30 @@ export function InboxAgentPicker({
       disabled={disabled}
       triggerStyle={trigger === "field" ? "settings" : "composer"}
       triggerButton={triggerButton}
+      additionalOptions={
+        people
+          ? [
+              ...people.members
+                .filter((member) => member.lifecycle === "active")
+                .map((member) => ({
+                  value: `member:${member.id}`,
+                  label: member.display_name,
+                  group: "People",
+                })),
+              { value: "none", label: "Unassigned" },
+            ]
+          : undefined
+      }
+      additionalValue={
+        people?.value === undefined
+          ? undefined
+          : people.value === null
+            ? "none"
+            : `member:${people.value}`
+      }
+      onAdditionalChoice={(value) =>
+        people?.choose(value === "none" ? null : value.slice("member:".length))
+      }
       models={model.models}
       selection={{
         kind: model.kind,
@@ -201,6 +237,7 @@ export function InboxAgentPicker({
         reload: agents.reload,
         manage: () => openAgentSettings?.(model.kind),
         configOptions: model.configOptions,
+        toggles,
         changeConfig: async (_id, next) => {
           if (typeof next === "string")
             onChange(chooseInboxChatOptions(value, { reasoningEffort: next }));

@@ -10,6 +10,8 @@ import {
 
 const message = (pageId: string, submittedAt: string): InboxItem => ({
   pageId,
+  rowKind: "intake",
+  turn: null,
   outcome: null,
   basis: { pageId, contentHash: "content:1" },
   pageKey: null,

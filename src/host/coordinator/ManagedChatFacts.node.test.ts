@@ -36,6 +36,7 @@ it.effect("reads Runtime Run, question choices and progress using metadata-only 
       observeSessionMetadata: () => {
         requests.push("observe");
         return Effect.succeed({
+          metadata: { itemCount: 4, providerInstanceId: "codex", model: "gpt", effort: "high" },
           execution: {
             runId: "run",
             status: "running",
@@ -43,6 +44,14 @@ it.effect("reads Runtime Run, question choices and progress using metadata-only 
             revision: "revision",
           },
           details: {
+            waitingAdmissions: [
+              {
+                runId: "queued",
+                class: "person",
+                position: 2,
+                waitingSince: "2026-11-03T00:00:00Z",
+              },
+            ],
             recentRuns: [{ runId: "run", requestedAt: "2026-11-03T00:00:00Z", startedAt: null }],
             pendingRequests: [
               {
@@ -62,7 +71,11 @@ it.effect("reads Runtime Run, question choices and progress using metadata-only 
     };
     const facts = yield* owner(core, runtime);
     const result = yield* facts.read("chat");
+    assert.deepEqual(result.agent, { instanceId: "codex", model: "gpt", effort: "high" });
     assert.equal(result.state, "waiting");
+    assert.deepEqual(result.waitingAdmissions, [
+      { runId: "queued", class: "person", position: 2, waitingSince: "2026-11-03T00:00:00Z" },
+    ]);
     assert.equal(result.runStartedAt, Date.parse("2026-11-03T00:00:00Z"));
     assert.equal(result.pendingRequests[0]?.id, "q");
     assert.equal(result.pendingRequests[0]?.questions?.[0]?.options?.[0]?.label, "Yes");
@@ -200,6 +213,7 @@ it.effect.each([true, false])(
       const source = yield* owner(core, {
         observeSessionMetadata: () =>
           Effect.succeed({
+            metadata: { itemCount: 4, providerInstanceId: "codex", model: "gpt", effort: "high" },
             execution: {
               runId: "run",
               status: "interrupted",
@@ -244,6 +258,12 @@ it.effect.each([
             Effect.gen(function* () {
               const details = yield* readSessionDetails("thread", 1);
               return {
+                metadata: {
+                  itemCount: 4,
+                  providerInstanceId: "codex",
+                  model: "gpt",
+                  effort: "high",
+                },
                 execution: {
                   runId: "run",
                   status: details.recentRuns[0]!.status,
@@ -319,4 +339,45 @@ it.effect.each([
       assert.deepEqual(resolved.resolvedRequestIds, ["question"]);
       assert.isEmpty(resolved.events);
     }).pipe(Effect.provide(layerMemory)),
+);
+
+it.effect(
+  "keeps Runtime queued admission distinct from healthy working, including its ordinal",
+  () =>
+    Effect.gen(function* () {
+      const facts = yield* owner(
+        {
+          workspace: {
+            read: () => Effect.succeed({ value: { kind: "session", session: runtimeSession } }),
+          },
+        },
+        {
+          observeSessionMetadata: () =>
+            Effect.succeed({
+              metadata: { itemCount: 0 },
+              execution: {
+                runId: "queued",
+                status: "queued",
+                continuationPending: true,
+                revision: 1,
+              },
+              details: {
+                recentRuns: [{ runId: "queued", requestedAt: "2026-11-03T00:00:00Z" }],
+                pendingRequests: [],
+                waitingAdmissions: [
+                  {
+                    runId: "queued",
+                    class: "start",
+                    position: 3,
+                    waitingSince: "2026-11-03T00:00:00Z",
+                  },
+                ],
+              },
+            }),
+        },
+      );
+      const observation = yield* facts.read("chat");
+      assert.equal(observation.state, "queued");
+      assert.equal(observation.waitingAdmissions?.[0]?.position, 3);
+    }),
 );

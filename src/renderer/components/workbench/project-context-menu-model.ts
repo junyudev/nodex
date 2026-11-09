@@ -1,6 +1,7 @@
 import type { NativeContextMenuItem } from "../../../shared/native-context-menu";
 
 export const PROJECT_CONTEXT_MENU_ACTION_IDS = {
+  togglePause: "project.togglePause",
   togglePin: "project.togglePin",
   edit: "project.edit",
   reveal: "project.reveal",
@@ -23,6 +24,7 @@ export function readProjectMoveToSectionActionId(actionId: string): string | nul
 }
 
 export interface ProjectContextMenuInput {
+  readonly paused?: boolean;
   readonly pinned: boolean;
   readonly showPinAction: boolean;
   readonly sectionItems?: readonly NativeContextMenuItem[];
@@ -77,6 +79,10 @@ export function buildProjectContextMenuItems(
   });
 
   return [
+    {
+      id: PROJECT_CONTEXT_MENU_ACTION_IDS.togglePause,
+      label: input.paused ? "Resume all work" : "Pause all work",
+    },
     ...(input.showPinAction
       ? [
           {

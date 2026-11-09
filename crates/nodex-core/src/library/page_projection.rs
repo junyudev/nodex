@@ -473,6 +473,7 @@ fn project_properties(
 
 fn property_type(value: &str) -> Result<ProjectedPropertyTypeV1, StoreError> {
     match value {
+        "assignment" => Ok(ProjectedPropertyTypeV1::Assignment),
         "text" => Ok(ProjectedPropertyTypeV1::Text),
         "number" => Ok(ProjectedPropertyTypeV1::Number),
         "checkbox" => Ok(ProjectedPropertyTypeV1::Checkbox),
@@ -496,6 +497,9 @@ fn project_property_value(
         return Ok(ProjectedPropertyValueV1::Null);
     }
     match value_type {
+        ProjectedPropertyTypeV1::Assignment => serde_json::from_value(value.clone())
+            .map(ProjectedPropertyValueV1::Assignment)
+            .map_err(|_| corrupt("Assignment Property value is invalid")),
         ProjectedPropertyTypeV1::Text => value
             .as_str()
             .map(|value| bounded_text(value, "Text Property").map(str::to_owned))
@@ -763,6 +767,14 @@ fn render_property(output: &mut String, property: &ProjectedPropertyV1) -> Resul
 
 fn render_value(output: &mut String, value: &ProjectedPropertyValueV1) -> Result<(), StoreError> {
     match value {
+        ProjectedPropertyValueV1::Assignment(value) => {
+            output.push(' ');
+            output.push_str(
+                &serde_json::to_string(value)
+                    .map_err(|_| corrupt("Assignment cannot be encoded"))?,
+            );
+            output.push('\n');
+        }
         ProjectedPropertyValueV1::Null => output.push_str(" null\n"),
         ProjectedPropertyValueV1::Text(value)
         | ProjectedPropertyValueV1::Date(value)
@@ -859,6 +871,9 @@ fn validate_projected_value(
         || matches!(
             (value_type, value),
             (
+                ProjectedPropertyTypeV1::Assignment,
+                ProjectedPropertyValueV1::Assignment(_)
+            ) | (
                 ProjectedPropertyTypeV1::Text,
                 ProjectedPropertyValueV1::Text(_)
             ) | (
@@ -939,6 +954,7 @@ fn validate_schedule(value: &ProjectedScheduleV1) -> Result<(), StoreError> {
 
 fn property_type_name(value: ProjectedPropertyTypeV1) -> &'static str {
     match value {
+        ProjectedPropertyTypeV1::Assignment => "assignment",
         ProjectedPropertyTypeV1::Text => "text",
         ProjectedPropertyTypeV1::Number => "number",
         ProjectedPropertyTypeV1::Checkbox => "checkbox",
@@ -1081,7 +1097,7 @@ mod tests {
                 },
                 ProjectedPropertyV1 {
                     property_id: "p_blocked0".to_owned(),
-                    name: "Blocked by".to_owned(),
+                    name: "Waits for".to_owned(),
                     value_type: ProjectedPropertyTypeV1::Relation,
                     value: ProjectedPropertyValueV1::Relation(ProjectedRelationSummaryV1 {
                         targets: vec![ProjectedIdentityV1 {
@@ -1122,7 +1138,7 @@ mod tests {
                 "      - id: \"native\"\n",
                 "        name: \"Native\"\n",
                 "  \"p_blocked0\":\n",
-                "    name: \"Blocked by\"\n",
+                "    name: \"Waits for\"\n",
                 "    type: relation\n",
                 "    value:\n",
                 "      targets:\n",

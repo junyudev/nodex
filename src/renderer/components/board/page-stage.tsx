@@ -534,6 +534,7 @@ export function PageStage(props: PageStageProps) {
       scrollContainerRef={scrollContainerRef}
       toolbar={
         <PageStageToolbar
+          pageId={page.id}
           onNavigateBack={props.onNavigateBack}
           saving={controller.saving}
           pending={!documentAuthority}

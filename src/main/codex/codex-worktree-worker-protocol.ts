@@ -24,6 +24,7 @@ export const CODEX_WORKTREE_WORKER_OPERATIONS = [
 export type CodexWorktreeWorkerOperation = (typeof CODEX_WORKTREE_WORKER_OPERATIONS)[number];
 
 export type CodexManagedWorktreeRemovalReason =
+  | "page-completed"
   | "archive"
   | "automatic-retention"
   | "automation-archive"
@@ -73,6 +74,12 @@ export interface CodexWorktreeWorkerCreateInput extends CodexWorktreeWorkerReque
   readonly targetId: string;
   readonly threadTitle: string;
   readonly branchPrefix?: string | null;
+  readonly pageWorkspace?: {
+    readonly workspaceId: string;
+    readonly operationId: string;
+    readonly branchName: string;
+    readonly baseCommitOid: string;
+  };
   readonly mode?: WorktreeStartMode;
   readonly startingState: CodexPendingWorktreeStartingState | null;
   /** Portable path relative to `repositoryPath`, under `.codex/environments`. */
@@ -115,6 +122,7 @@ export type CodexWorktreeWorkerEvent =
     };
 
 export interface CodexWorktreeWorkerCreateResult {
+  readonly branchName?: string | null;
   readonly worktreeGitRoot: string;
   readonly worktreeWorkspaceRoot: string;
   readonly setupError: string | null;

@@ -3189,7 +3189,7 @@ describe("orchestration v2 provider switching", () => {
             activeSession?.id,
           );
           const startCommandId = CommandId.make(
-            `command:system:start-queued:${queued.runs[3]!.id}`,
+            `command:system:start-queued:${queued.runs[3]!.id}:${queued.runs[3]!.activeAttemptId}`,
           );
           const detachEffects = (yield* effectOutbox.listByCommandId(startCommandId)).filter(
             (effect) => effect.request.type === "provider-session.detach",

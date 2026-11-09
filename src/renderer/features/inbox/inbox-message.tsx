@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { INBOX_KIND_ICONS } from "./inbox-icon-action";
 import { InboxArrivalRing, InboxImportantStar } from "./inbox-important";
 import { InboxMessageDocument } from "./inbox-message-document";
+import { NodexAuthor } from "./inbox-nodex";
 import {
   INBOX_KIND_LABELS,
   formatInboxTime,
@@ -106,7 +107,7 @@ export function InboxMessageMenu({
           Suggest again
         </NodexDropdownItem>
       ) : null}
-      {done || !rowOffers.done ? (
+      {advisable && (done || !rowOffers.done) ? (
         <NodexDropdownItem
           leftSlot={<CheckmarkIcon className="icon-xs" />}
           onSelect={() => handlers.onSetDone(!done)}
@@ -114,7 +115,7 @@ export function InboxMessageMenu({
           {done ? "Reopen" : "Mark done"}
         </NodexDropdownItem>
       ) : null}
-      {item.state === "open" ? (
+      {advisable && item.state === "open" ? (
         <NodexDropdownItem
           leftSlot={
             item.important ? (
@@ -149,6 +150,18 @@ export function InboxMessageMenu({
             );
           })}
         </NodexDropdownSummarySubmenuItem>
+      ) : null}
+      {advisable ? (
+        <>
+          <NodexDropdownSeparator />
+          <NodexDropdownItem
+            className="text-token-error-foreground"
+            leftSlot={<DeleteIcon className="icon-xs" />}
+            onSelect={handlers.onDelete}
+          >
+            Delete
+          </NodexDropdownItem>
+        </>
       ) : null}
     </NodexDropdownMenu>
   );
@@ -247,21 +260,25 @@ export function InboxMessage({
         fromUser ? "flex-row" : "flex-row-reverse",
       )}
     >
-      <span
-        className={cn(
-          "flex size-6 items-center justify-center transition-opacity",
-          selected || selectionActive
-            ? "opacity-100"
-            : "opacity-0 group-hover/message:opacity-100 focus-within:opacity-100",
-        )}
-      >
-        <NodexCheckbox
-          ariaLabel={selected ? "Deselect message" : "Select message"}
-          checked={selected}
-          onCheckedChange={onToggleSelected}
-        />
-      </span>
-      <InboxImportantStar important={item.important} onUnmark={onUnmarkImportant} />
+      {item.rowKind === "intake" ? (
+        <>
+          <span
+            className={cn(
+              "flex size-6 items-center justify-center transition-opacity",
+              selected || selectionActive
+                ? "opacity-100"
+                : "opacity-0 group-hover/message:opacity-100 focus-within:opacity-100",
+            )}
+          >
+            <NodexCheckbox
+              ariaLabel={selected ? "Deselect message" : "Select message"}
+              checked={selected}
+              onCheckedChange={onToggleSelected}
+            />
+          </span>
+          <InboxImportantStar important={item.important} onUnmark={onUnmarkImportant} />
+        </>
+      ) : null}
       {/* The exact time surfaces only after a lingering hover and takes no room. It is the
           message's link to its Page, so it can be chosen only once it shows. */}
       <NodexTooltip tooltipContent="Open page" side="bottom">
@@ -291,6 +308,16 @@ export function InboxMessage({
         fromUser ? "items-end" : "items-start",
       )}
     >
+      {item.handback ? (
+        <p className="max-w-[80%] whitespace-pre-wrap text-xs text-token-description-foreground">
+          <button
+            type="button"
+            className="cursor-interaction hover:text-token-foreground"
+            onClick={() => onOpenChat(item.handback!.chat.session_id)}
+          >
+            {item.handback.chat.display_title}
+        </p>
+      ) : null}
       {item.source.kind === "nodex" ? (
         <NodexAuthor />
       ) : item.source.kind === "agent" ? (

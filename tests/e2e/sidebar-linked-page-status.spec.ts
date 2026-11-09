@@ -83,7 +83,7 @@ test("shows the earliest linked Page's Status, opens the Page, and follows live 
       const projectList = page.locator(
         `[data-app-action-sidebar-project-list-id="${manifest.projectId}"]:visible`,
       );
-      // Project chat lists initially reveal five rows; this scenario has nine.
+      // Project chat lists initially reveal five rows; reveal the remaining fixture chats.
       await projectList.getByRole("button", { name: "Show more", exact: true }).click();
       await page.mouse.move(1000, 900);
 

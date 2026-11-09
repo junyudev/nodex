@@ -10,7 +10,7 @@ it.effect("projects provenance, explicit settlement and snooze wake rules", () =
     const payload = {
       createdBy: "agent",
       creationSource: "mcp",
-      modelSelection: { model: "model" },
+      modelSelection: { model: "model", options: [{ id: "reasoningEffort", value: "high" }] },
       lineage: { rootThreadId: "thread", parentThreadId: "parent", relationshipToParent: "fork" },
       worktreePath: "/isolated/worktree",
       settledOverride: "settled",
@@ -34,6 +34,7 @@ it.effect("projects provenance, explicit settlement and snooze wake rules", () =
         providerDriver: () => Effect.succeed("claudeAgent"),
       }).pipe(Effect.map((rows) => rows[0]!));
     const first = yield* read();
+    assert.equal(first.effort, "high");
     assert.equal(first.createdBy, "agent");
     assert.equal(first.creationSource, "mcp");
     assert.equal(first.providerDriver, "claudeAgent");

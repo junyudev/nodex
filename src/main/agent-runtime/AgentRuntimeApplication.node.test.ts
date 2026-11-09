@@ -21,7 +21,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
 import * as Cause from "effect/Cause";
-import * as Exit from "effect/Exit";
+
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import * as Deferred from "effect/Deferred";
@@ -245,6 +245,8 @@ const setup = (
     storeCoordinate: null as string | null,
     missingProjects: new Set<string>(),
     stopSettles: true,
+    executionHolds: [] as import("../../shared/work-application").ExecutionHold[],
+    pauseRequested: true,
     archived: false,
     lifecycle: "active",
     mode: "auto",
@@ -291,6 +293,8 @@ const setup = (
     rejectAttachmentPersistence: false,
     rollbackImmediate: true,
     rollbackFails: false,
+    workLaunchPage: null as string | null,
+    sessionWorkPage: null as string | null,
     messageReplay: null as AgentRuntimeOperations["thread.message-replay"]["output"],
     nativeReceipt: null as AgentRuntimeOperations["native-message.receipt"]["output"],
   };
@@ -304,6 +308,8 @@ const setup = (
             state.missingSessionLookupError
           ? Effect.fail(state.missingSessionLookupError)
           : Effect.sync(() => {
+              if (input.kind === "effective_execution_hold")
+                return { value: { kind: input.kind, holds: state.executionHolds } };
               if (input.kind === "agent_runtime_execution_cleanup_window")
                 return {
                   value: {
@@ -315,6 +321,16 @@ const setup = (
                       next_cursor: null,
                       has_more: false,
                     },
+                  },
+                };
+              if (input.kind === "session_work_page")
+                return { value: { kind: "session_work_page", page_id: state.sessionWorkPage } };
+              if (input.kind === "page_work_launch")
+                return {
+                  value: {
+                    kind: "page_work_launch",
+                    launch: state.workLaunchPage
+                      : null,
                   },
                 };
               if (input.kind === "agent_session") {
@@ -375,9 +391,10 @@ const setup = (
                       items: [...bindings.values()].filter(
                         (binding) =>
                           binding.runtime_id === input.runtime_id &&
-                          (input.temporary_only
+                          (input.scope.kind === "temporary"
                             ? binding.side_chat_source_session_id !== undefined
-                            : (binding.project_id ?? null) === (input.project_id ?? null)),
+                            : input.scope.kind === "all" ||
+                              binding.project_id === input.scope.project_id),
                       ),
                       next_cursor: null,
                       authority: { projection_revision: 1 },
@@ -436,6 +453,7 @@ const setup = (
       applied.push(input);
       receipt.set(input.operationId, encoded);
       const intent = input.intent;
+      if (intent.kind === "record_chat_delivery") return {};
       if (intent.kind === "acknowledge_agent_runtime_execution_cleanup") {
         cleanups.delete(intent.cleanup_id);
         return {};
@@ -923,12 +941,19 @@ const setup = (
         } as unknown as AgentRuntimeOperations[M]["output"];
       if (method === "thread.read-details")
         return {
+          waitingAdmissions: [],
           runCount: 0,
           pendingRequestCount: 0,
           pendingRequests: [],
           recentRuns: [],
           nextOrdinal: null,
         } as unknown as AgentRuntimeOperations[M]["output"];
+      if (method === "thread.pause")
+        return {
+          status: state.pauseRequested ? "requested" : "stopped",
+        } as AgentRuntimeOperations[M]["output"];
+      if (method === "thread.resume")
+        return { status: "resumed" } as AgentRuntimeOperations[M]["output"];
       if (method === "thread.read") {
         const value = snapshots.get((input as { threadId: string }).threadId);
         if (!value) return null as AgentRuntimeOperations[M]["output"];
@@ -1467,7 +1492,6 @@ it.effect.each(openReads)(
       const expected = yield* run(owner, openReadTarget);
       fixture.attempts.length = 0;
       let remaining = 2;
-      const error = openReadCoreFailure(true);
       fixture.state.beforeCoreRead = (input) =>
         input.kind === "project" && remaining-- > 0 ? Effect.fail(error) : Effect.void;
       const reading = yield* run(owner, openReadTarget).pipe(Effect.forkScoped);
@@ -1494,7 +1518,6 @@ it.effect.each(openReads)(
     Effect.gen(function* () {
       const fixture = setupOpenRead();
       const owner = yield* fixture.owner;
-      const error = openReadCoreFailure(true);
       fixture.state.beforeCoreRead = () => Effect.fail(error);
       const reading = yield* run(owner, openReadTarget).pipe(Effect.result, Effect.forkScoped);
       yield* TestClock.adjust(0);
@@ -1745,6 +1768,7 @@ it.effect("binds an independent imported chat before reading its history into th
       project_id: codexImport.projectId,
       title: codexImport.title,
       initial_page_ids: [],
+      agent_selection: { instanceId: "codex", model: "model-b", effort: null },
       runtime_id: "engine",
       runtime_thread_id: result.threadId,
       launch_request_id: `native-import:${codexImport.requestId}`,
@@ -2494,6 +2518,7 @@ it.effect(
         project_id: launch.projectId,
         title: launch.title,
         initial_page_ids: launch.initialPageIds ?? [],
+        agent_selection: { instanceId: "claude", model: "claude-sonnet", effort: null },
         runtime_id: "engine",
         runtime_thread_id: result.threadId,
         launch_request_id: launch.launchId,
@@ -2610,14 +2635,18 @@ it.effect("control reads retain Session ownership without hydrating transcript h
     const value = yield* owner.control(target);
     assert.equal(value.sessionId, opened.sessionId);
     assert.equal(value.threadId, opened.threadId);
+    assert.deepEqual(value.waitingAdmissions, []);
     assert.isTrue(fixture.calls.some((call) => call.method === "thread.control"));
     assert.isFalse(fixture.calls.some((call) => call.method === "thread.snapshot"));
     assert.isFalse(fixture.calls.some((call) => call.method === "thread.history"));
     yield* owner.control({ ...target, runId: "queued:exact" });
-    assert.deepEqual(fixture.calls.at(-1)!.input, {
-      threadId: opened.threadId,
-      runId: "queued:exact",
-    });
+    assert.deepEqual(
+      fixture.calls.filter((call) => call.method === "thread.control").at(-1)!.input,
+      {
+        threadId: opened.threadId,
+        runId: "queued:exact",
+      },
+    );
     fixture.snapshots.set("foreign", snapshot("foreign"));
     const before = fixture.calls.filter((call) => call.method === "thread.control").length;
     assert.equal(
@@ -7763,6 +7792,128 @@ it.effect(
       assert.deepEqual(cold.calls, []);
     }),
 );
+
+it.effect.each(["work", "inbox", "page", "active-chat"] as const)(
+  "prepares the %s Page Workspace after Core admission and before executable release",
+  (source) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = setup({
+          ensurePageWorkspace: (input) =>
+              assert.isTrue(fixture.bindings.has(input.launch.sessionId));
+              assert.equal(input.launch.workPage?.pageId, "page:work");
+              fixture.order.push("workspace.page");
+              return {
+                branchName: "nodex-12-work",
+                location: {
+                  cwd: "/page-workspace",
+                  workspaceRoots: ["/page-workspace"],
+                  managedWorktreePath: "/page-workspace",
+                  projectlessOutputDirectory: null,
+                  projectlessWorkspaceBrowserRoot: null,
+                },
+                retain: Effect.void,
+                attach: () => Effect.void,
+              };
+            }),
+        });
+        if (source === "work") fixture.state.workLaunchPage = "page:work";
+        if (source === "active-chat") {
+          fixture.state.sessionWorkPage = "page:work";
+          fixture.state.workLaunchPage = "page:older-launch";
+        }
+        const owner = yield* fixture.owner;
+        const result = yield* owner.launch({
+          ...launch,
+          ...(source === "work" || source === "active-chat"
+            ? {}
+            : { workPage: { pageId: "page:work", onlyIfAgentWork: source === "page" } }),
+        });
+        assert.isBelow(fixture.order.indexOf("core.bind"), fixture.order.indexOf("workspace.page"));
+        assert.isBelow(
+          fixture.order.indexOf("workspace.page"),
+          fixture.order.indexOf("engine.thread.create"),
+        );
+        const thread = fixture.snapshots.get(result.threadId)!.projection.thread;
+        assert.equal(thread.worktreePath, "/page-workspace");
+        assert.equal(thread.branch, "nodex-12-work");
+        assert.deepEqual(
+          fixture.calls.filter((call) => call.method === "thread.admission-context"),
+          [
+            {
+              method: "thread.admission-context",
+              input: { threadId: result.threadId, pageId: "page:work" },
+            },
+          ],
+        );
+      }),
+    ),
+);
+
+it.effect("enumerates every chat sharing a Page worktree", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const ids: string[] = [];
+      const fixture = setup({ pageWorkspaceThreads: () => Effect.succeed(ids) });
+      const owner = yield* fixture.owner;
+      const first = yield* owner.launch(launch);
+      const second = yield* owner.launch({
+        ...launch,
+        launchId: "second",
+        sessionId: "second",
+        message: { messageId: "second", text: "Follow up" },
+      });
+      ids.push(first.threadId, second.threadId);
+      const consumers = yield* owner.worktreeChats.consumers([
+        { hostId: "local", worktreeGitRoot: "/shared-worktree", ownerThreadId: first.threadId },
+      ]);
+      assert.deepEqual(
+        consumers.map((consumer) => consumer.threadId).sort(),
+        [first.threadId, second.threadId].sort(),
+      );
+    }),
+  ),
+);
+
+it.effect("reconciles durable parent holds after Main restart and blocks Composer input", () =>
+  Effect.gen(function* () {
+    const f = setup();
+    const owner = yield* f.owner;
+    const created = yield* owner.launch(launch);
+    const parent: import("../../shared/work-application").ExecutionHold = {
+      scope: { kind: "project", project_id: "project" },
+      actor: "person",
+      revision: 2,
+      paused_at: "today",
+    };
+    f.state.executionHolds = [
+      { ...parent, scope: { kind: "page", page_id: "page" }, revision: 1 },
+      parent,
+    ];
+    assert.isTrue((yield* owner.reconcileExecutionHolds).requested);
+    const send = yield* owner
+      .sendMessage({
+        sessionId: created.sessionId,
+        mode: "queue",
+        message: { messageId: "held-person-message", text: "Follow up", agentConfigs: [] },
+      })
+      .pipe(Effect.result);
+    assert.equal(send._tag, "Failure");
+    if (send._tag === "Failure") assert.include(send.failure.message, "Resume work");
+    f.state.executionHolds = [parent];
+    f.state.pauseRequested = false;
+    const restarted = yield* f.owner;
+    assert.isFalse((yield* restarted.reconcileExecutionHolds).requested);
+    assert.equal(f.calls.filter((call) => call.method === "thread.resume").length, 0);
+    const pauses = f.calls.filter((call) => call.method === "thread.pause");
+    assert.isAtLeast(pauses.length, 2);
+    assert.deepInclude(pauses.at(-1)!.input, { threadId: created.threadId, revision: "2" });
+    f.state.executionHolds = [];
+    yield* restarted.reconcileExecutionHolds;
+    assert.equal(f.calls.filter((call) => call.method === "thread.resume").length, 1);
+  }),
+);
+
 it.effect(
   "rewrites persist replacement images before rollback and leave history intact on preparation failure",
   () =>

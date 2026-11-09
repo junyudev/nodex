@@ -1,3 +1,5 @@
+import * as SessionPause from "../nodex/SessionPause.ts";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as RuntimeRecovery from "./ProviderRuntimeRecoveryService.ts";
 import { RuntimeModelPolicy, make as makeModelPolicy } from "../nodex/ModelPolicy.ts";
 import { DEFAULT_MODEL_POLICY, setModelOn } from "../../../../src/shared/model-policy.ts";
@@ -21,8 +23,10 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -60,7 +64,8 @@ type Services =
   | EffectOutbox.EffectOutboxV2
   | EventSink.EventSinkV2
   | ProjectionStore.ProjectionStoreV2
-  | Tasks.OrchestratorMcpService;
+  | Tasks.OrchestratorMcpService
+  | SqlClient.SqlClient;
 
 const withRecovery = <A, E>(
   test: (input: {
@@ -73,6 +78,8 @@ const withRecovery = <A, E>(
     readonly empty?: boolean;
     readonly interrupt?: boolean;
     readonly restartSession?: boolean;
+    readonly automatic?: boolean;
+    readonly restart?: boolean;
   } = {},
 ) =>
   Effect.scoped(
@@ -137,6 +144,7 @@ const withRecovery = <A, E>(
                   updatedAt: now,
                 }),
               resumeThread: ({ providerThread }) => Effect.succeed(providerThread),
+              unloadThread: () => Effect.void,
               startTurn: (turn) =>
                 Effect.gen(function* () {
                   started.push(turn);
@@ -172,7 +180,16 @@ const withRecovery = <A, E>(
             };
           }),
       };
-      const database = Sqlite.layerMemory;
+      const database = options.restart
+        ? yield* Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem;
+            const path = yield* Path.Path;
+            const directory = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-run-restart-" });
+            return Sqlite.layerFromPath(path.join(directory, "runtime.sqlite")).pipe(
+              Layer.provide(NodeServices.layer),
+            );
+          }).pipe(Effect.provide(NodeServices.layer))
+        : Sqlite.layerMemory;
       const registry = ProviderAdapterRegistry.layerFromAdapters([adapter]);
       const runtime = ProviderReplayHarness.layerWithRegistry(
         { name: "run-recovery", runtimePolicyOverride: { cwd } },
@@ -202,11 +219,11 @@ const withRecovery = <A, E>(
           ),
         ),
       );
-      const layer = Layer.merge(runtime, tasks);
-      return yield* Effect.gen(function* () {
+      const layer = Layer.mergeAll(runtime, tasks, database);
+      const threadId = ThreadId.make("thread:recovery");
+      const initialize = Effect.gen(function* () {
         const orchestrator = yield* Orchestrator.OrchestratorV2;
         const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
-        const threadId = ThreadId.make("thread:recovery");
         yield* orchestrator.dispatch({
           type: "thread.create",
           commandId: CommandId.make("create"),
@@ -237,13 +254,22 @@ const withRecovery = <A, E>(
             }),
           ],
           dispatchMode: { type: "start_immediately" },
-          createdBy: "user",
-          creationSource: "web",
+          createdBy: options.automatic ? "system" : "user",
+          creationSource: options.automatic ? "server" : "web",
         });
         yield* worker.drain();
         yield* waitEvent(
           (event) => event.type === "provider-turn.updated" && event.payload.status === "running",
         );
+      });
+      if (options.restart) yield* initialize.pipe(Effect.provide(layer));
+      return yield* Effect.gen(function* () {
+        if (!options.restart) yield* initialize;
+        if (options.restart) {
+          yield* reconcileRestart;
+          yield* recover(started[0]!);
+          assert.equal(started.length, 2, "restart must recover the lost native turn");
+        }
         return yield* test({
           started,
           interruptCalls: () => interrupts,
@@ -253,6 +279,29 @@ const withRecovery = <A, E>(
       }).pipe(Effect.provide(layer));
     }),
   );
+
+const reconcileRestart = Effect.gen(function* () {
+  const store = yield* ProjectionStore.ProjectionStoreV2;
+  const outbox = yield* EffectOutbox.EffectOutboxV2;
+  const sink = yield* EventSink.EventSinkV2;
+  yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService.use(
+    (service) => service.recover,
+  ).pipe(
+    Effect.provide(
+      ProviderRuntimeRecovery.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(ProjectionStore.ProjectionStoreV2, store),
+            Layer.succeed(EffectOutbox.EffectOutboxV2, outbox),
+            Layer.succeed(EventSink.EventSinkV2, sink),
+            IdAllocator.layer,
+            ServerSettings.layerTest(),
+          ),
+        ),
+      ),
+    ),
+  );
+});
 
 const waitEvent = (predicate: (event: OrchestrationV2DomainEvent) => boolean) =>
   EventSink.EventSinkV2.use((sink) =>
@@ -396,6 +445,23 @@ const complete = (
   turn: Turn,
 ) =>
   Effect.gen(function* () {
+    yield* waitEvent(
+      (event) =>
+        event.type === "provider-turn.updated" &&
+        event.payload.runAttemptId === turn.attemptId &&
+        event.payload.status === "running",
+    );
+    const projection = yield* (yield* Orchestrator.OrchestratorV2).getThreadProjection(
+      turn.threadId,
+    );
+    const providerTurn = projection.providerTurns.find(
+      (candidate) => candidate.runAttemptId === turn.attemptId,
+    )!;
+    yield* emit({
+      type: "provider_turn.updated",
+      driver,
+      providerTurn: { ...providerTurn, status: "completed", completedAt: yield* DateTime.now },
+    });
     yield* output(emit, turn);
     yield* emit({
       type: "turn.terminal",
@@ -502,6 +568,14 @@ it.effect("user work wins immediately over a future recovery deadline", () =>
           createdBy: "user",
           creationSource: "web",
         });
+        const replacement = Option.getOrThrow(
+          yield* (yield* EffectOutbox.EffectOutboxV2).get(
+            `effect:provider-turn.start:${first.runId}:2`,
+          ),
+        );
+        assert.equal(replacement.request.type, "provider-turn.start");
+        if (replacement.request.type === "provider-turn.start")
+          assert.equal(replacement.request.admissionClass, "person");
         yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain();
         assert.equal(started.length, 2);
         assert.equal(started[1]!.message.text, "Do this instead");
@@ -513,7 +587,7 @@ it.effect("user work wins immediately over a future recovery deadline", () =>
           "failed",
         );
       }),
-    { interrupt: false },
+    { interrupt: false, automatic: true },
   ),
 );
 
@@ -991,6 +1065,176 @@ it.effect("replaces a required provider session during recovery without an inter
         );
       }),
     { restartSession: true, interrupt: false },
+  ),
+);
+
+it.effect.each(["active Run", "Stop-held queue", "Runtime restart", "provider recovery"] as const)(
+  "repeated pause resumes each attempt once after %s",
+  (origin) =>
+    withRecovery(
+      ({ threadId, started, emit }) =>
+        Effect.gen(function* () {
+          const writer = yield* Orchestrator.OrchestratorV2;
+          const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+          const sql = yield* SqlClient.SqlClient;
+          const pause = yield* SessionPause.make;
+          if (origin === "Stop-held queue") {
+            yield* writer.dispatch({
+              type: "message.dispatch",
+              threadId,
+              commandId: CommandId.make("queued-before-stop"),
+              messageId: MessageId.make("queued-before-stop"),
+              text: "Resume this after Stop",
+              attachments: [],
+              dispatchMode: { type: "queue_after_active" },
+              createdBy: "user",
+              creationSource: "web",
+            });
+            yield* writer.dispatch({
+              type: "thread.stop",
+              threadId,
+              commandId: CommandId.make("stop-before-queue-resume"),
+            });
+            yield* worker.drain();
+            assert.equal(started.length, 1);
+            assert.equal((yield* writer.getThreadProjection(threadId)).runs[1]?.queueHeld, true);
+            yield* writer.dispatch({
+              type: "queue.resume",
+              threadId,
+              commandId: CommandId.make("resume-after-stop"),
+            });
+            yield* worker.drain();
+            assert.equal(started.length, 2);
+          }
+          if (origin === "provider recovery") {
+            yield* failTurn(emit, started[0]!);
+            yield* waitRecovery(started[0]!);
+            yield* recover(started[0]!);
+            assert.equal(started.length, 2);
+          }
+          const first = started.at(-1)!;
+          const initialStartCount = started.length;
+          if (origin === "active Run")
+            yield* writer.dispatch({
+              type: "message.dispatch",
+              threadId,
+              commandId: CommandId.make("queued-before-pause"),
+              messageId: MessageId.make("queued-before-pause"),
+              text: "Keep this input",
+              attachments: [],
+              dispatchMode: { type: "queue_after_active" },
+              createdBy: "user",
+              creationSource: "web",
+            });
+          const store = yield* ProjectionStore.ProjectionStoreV2;
+          for (let cycle = 1; cycle <= 3; cycle++) {
+            const previous = started.at(-1)!;
+            yield* waitEvent(
+              (event) =>
+                event.type === "provider-turn.updated" &&
+                event.payload.runAttemptId === previous.attemptId &&
+                event.payload.status === "running",
+            );
+            const hold = { threadId, revision: `hold-${cycle}` };
+            assert.equal((yield* pause.pause(hold)).status, "requested");
+            yield* worker.drain();
+            assert.equal((yield* pause.pause(hold)).status, "stopped");
+            const retained = yield* writer.getThreadProjection(threadId);
+            assert.equal(retained.runs.find((r) => r.id === first.runId)?.status, "queued");
+            assert.equal(
+              retained.attempts.find((a) => a.id === previous.attemptId)?.status,
+              "interrupted",
+            );
+            if (origin === "active Run")
+              assert.isTrue(retained.messages.some((m) => m.text === "Keep this input"));
+            assert.isFalse(retained.runs.some((r) => r.queueHeld === true));
+            assert.isTrue(yield* store.isExecutionPaused(threadId));
+            assert.deepEqual(
+              yield* sql`SELECT request_id FROM orchestration_v2_run_admissions WHERE run_id = ${first.runId} AND state <> 'released'`,
+              [],
+            );
+            yield* worker.drain();
+            assert.equal(started.length, initialStartCount + cycle - 1);
+            assert.equal((yield* pause.resume({ threadId })).status, "resumed");
+            yield* writer.resumeQueuedRuns;
+            yield* worker.drain();
+            assert.equal(
+              started.length,
+              initialStartCount + cycle,
+              `pause/resume cycle ${cycle} must start its attempt`,
+            );
+            assert.equal(started.at(-1)!.runId, first.runId);
+            assert.notEqual(started.at(-1)!.attemptId, previous.attemptId);
+            assert.equal((yield* pause.resume({ threadId })).status, "resumed");
+            yield* writer.resumeThreadQueue(threadId);
+            yield* worker.drain();
+            assert.equal(
+              started.length,
+              initialStartCount + cycle,
+              "retrying Resume must not start the same attempt twice",
+            );
+            const attemptsStarted = started.filter((turn) => turn.runId === first.runId);
+            assert.equal(
+              new Set(attemptsStarted.map((turn) => turn.attemptId)).size,
+              attemptsStarted.length,
+            );
+            assert.lengthOf(
+              yield* sql`SELECT effect_id FROM orchestration_v2_effect_outbox WHERE effect_type = 'provider-turn.start' AND json_extract(payload_json, '$.runId') = ${first.runId} AND status = 'succeeded'`,
+              attemptsStarted.length,
+            );
+            assert.lengthOf(
+              yield* sql`SELECT request_id FROM orchestration_v2_run_admissions WHERE run_id = ${first.runId}`,
+              attemptsStarted.length,
+            );
+          }
+          yield* complete(emit, started.at(-1)!);
+          const finished = yield* writer.getThreadProjection(threadId);
+          assert.equal(finished.runs.find((r) => r.id === first.runId)?.status, "completed");
+          assert.deepEqual(
+            finished.attempts
+              .filter((a) => a.runId === first.runId)
+              .slice(-4)
+              .map((a) => a.status),
+            ["interrupted", "interrupted", "interrupted", "completed"],
+          );
+          assert.lengthOf(
+            yield* sql`SELECT event_id FROM orchestration_events WHERE stream_id = ${threadId} AND event_type = 'run.updated' AND json_extract(payload_json, '$.id') = ${first.runId} AND json_extract(payload_json, '$.status') = 'completed'`,
+            1,
+          );
+          if (origin === "active Run") {
+            assert.equal(started.at(-1)!.message.text, "Keep this input");
+            yield* complete(emit, started.at(-1)!);
+          }
+          assert.deepEqual(
+            yield* sql`SELECT request_id FROM orchestration_v2_run_admissions WHERE state <> 'released'`,
+            [],
+          );
+        }),
+      { restart: origin === "Runtime restart" },
+    ),
+);
+
+it.effect("restart recovery preserves a paused retry until the person resumes", () =>
+  withRecovery(({ threadId, started, emit }) =>
+    Effect.gen(function* () {
+      const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+      const writer = yield* Orchestrator.OrchestratorV2;
+      const pause = yield* SessionPause.make;
+      const first = started[0]!;
+      yield* failTurn(emit, first);
+      yield* waitRecovery(first);
+      yield* pause.pause({ threadId, revision: "hold-recovery" });
+      yield* worker.drain();
+      assert.equal((yield* pause.pause({ threadId, revision: "hold-recovery" })).status, "stopped");
+      yield* reconcileRestart;
+      yield* TestClock.adjust("1 hour");
+      yield* worker.drain();
+      assert.equal(started.length, 1);
+      assert.isDefined((yield* writer.getThreadProjection(threadId)).runs[0]!.recovery);
+      assert.equal((yield* pause.resume({ threadId })).status, "resumed");
+      yield* worker.drain();
+      assert.equal(started.length, 2);
+    }),
   ),
 );
 

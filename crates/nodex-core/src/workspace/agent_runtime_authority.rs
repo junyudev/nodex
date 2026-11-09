@@ -69,6 +69,7 @@ mod tests {
 
     fn launch(session: &str, thread: &str, project: Option<&str>) -> ProjectWorkspaceIntent {
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            agent_selection: None,
             coordinator: false,
             side_chat_source_session_id: None,
             session_id: session.into(),

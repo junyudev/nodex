@@ -1,5 +1,10 @@
+import { parsePageTurn, type PageTurn } from "./page-turn";
 import type { components } from "@nodex/core-protocol";
 
+export type PageWork = components["schemas"]["PageWork"];
+export type PageAssignee = components["schemas"]["PageAssignee"];
+export type Member = components["schemas"]["Member"];
+export type AgentSelection = components["schemas"]["AgentWorkSelection"];
 export type WorkPage = {
   readonly pageId: string;
   readonly pageKey: string | null;
@@ -11,10 +16,16 @@ export interface PrerequisitesSummary {
   readonly blockers: readonly WorkPage[];
 }
 export interface WorkSummary extends PrerequisitesSummary {
+  readonly turn?: PageTurn | null;
+  readonly pullRequest?: { readonly number: number; readonly url: string; readonly state: string };
+  readonly owner: string | null;
+  readonly assignee: PageAssignee | null;
+  readonly autoStart: boolean;
 }
 export interface ReadyWorkPage {
   readonly pageId: string;
   readonly projectId: string;
+  readonly pageWork: PageWork;
   readonly prerequisites: readonly {
     readonly pageId: string;
     readonly satisfied: boolean;
@@ -57,9 +68,42 @@ const count = (value: unknown): number => {
   throw new TypeError("Work graph count must be a nonnegative integer");
 };
 
+/** Validates the exact Page-owned assignment grammar at transport boundaries. */
+export const parsePageAssignee = (value: unknown): PageAssignee | null => {
   if (value === null) return null;
+  const assignment = record(value);
+  if (assignment.kind === "member") {
+    exact(assignment, ["kind", "member_id"]);
+    return { kind: "member", member_id: text(assignment.member_id) };
+  }
+  if (assignment.kind !== "agent") throw new TypeError("Assignee must be a Member or an Agent");
+  exact(
+    assignment,
+    Object.hasOwn(assignment, "effort")
+      ? ["kind", "instance_id", "model", "effort"]
+      : ["kind", "instance_id", "model"],
+  );
   return {
+    kind: "agent",
+    instance_id: text(assignment.instance_id),
+    model: text(assignment.model),
+    effort: assignment.effort == null ? null : text(assignment.effort, 128),
   };
+};
+export const agentSelectionOf = (
+  assignee: PageAssignee | null | undefined,
+): AgentSelection | null =>
+  assignee?.kind === "agent"
+    ? { instanceId: assignee.instance_id, model: assignee.model, effort: assignee.effort ?? null }
+    : null;
+export const parsePageWork = (value: unknown): PageWork | null => {
+  if (value === null) return null;
+  const work = record(value);
+  exact(work, ["owner", "assignee", "auto_start"]);
+  const assignee = parsePageAssignee(work.assignee);
+  if (typeof work.auto_start !== "boolean" || (work.auto_start && assignee?.kind !== "agent"))
+    throw new TypeError("Automatic start requires an Agent Assignee");
+  return { owner: text(work.owner), assignee, auto_start: work.auto_start };
 };
 export const parseWorkPage = (value: unknown): WorkPage => {
   const page = record(value);
@@ -85,16 +129,55 @@ export const parsePrerequisitesSummary = (value: unknown): PrerequisitesSummary 
 };
 export const parseWorkSummary = (value: unknown): WorkSummary => {
   const summary = record(value);
+  exact(summary, [
+    "unsatisfiedCount",
+    "blockers",
+    "owner",
+    "assignee",
+    "autoStart",
+    ...(Object.hasOwn(summary, "turn") ? ["turn"] : []),
+    ...(Object.hasOwn(summary, "pullRequest") ? ["pullRequest"] : []),
+  ]);
   const prerequisites = parsePrerequisitesSummary({
     unsatisfiedCount: summary.unsatisfiedCount,
     blockers: summary.blockers,
   });
+  const assignee = parsePageAssignee(summary.assignee);
+  if (typeof summary.autoStart !== "boolean" || (summary.autoStart && assignee?.kind !== "agent"))
+    throw new TypeError("Invalid automatic start consent");
+  const pr = summary.pullRequest === undefined ? null : record(summary.pullRequest);
+  if (
+    pr &&
+    (!Number.isInteger(pr.number) ||
+      Number(pr.number) < 1 ||
+      !["OPEN", "CLOSED", "MERGED"].includes(String(pr.state)))
+  )
+    throw new TypeError("Invalid Page pull request");
+  return {
+    ...prerequisites,
+    ...(summary.turn ? { turn: parsePageTurn(summary.turn) } : {}),
+    owner: nullableText(summary.owner),
+    assignee,
+    autoStart: summary.autoStart,
+    ...(pr
+      ? {
+          pullRequest: {
+            number: Number(pr.number),
+            url: text(pr.url, 2048),
+            state: String(pr.state),
+          },
+        }
+      : {}),
+  };
 };
 export const parseReadyWorkPages = (value: unknown): readonly ReadyWorkPage[] => {
   if (!Array.isArray(value) || value.length > 100)
     throw new TypeError("Ready work must contain at most 100 Pages");
   return value.map((entry) => {
     const page = record(entry);
+    exact(page, ["pageId", "projectId", "pageWork", "prerequisites", "readinessEpoch"]);
+    const pageWork = parsePageWork(page.pageWork);
+    if (!pageWork || pageWork.assignee?.kind !== "agent")
       throw new TypeError("Ready work requires its Agent work launch policy");
     if (!Array.isArray(page.prerequisites) || page.prerequisites.length > 10_000)
       throw new TypeError("Ready work prerequisites exceed their bound");
@@ -112,6 +195,7 @@ export const parseReadyWorkPages = (value: unknown): readonly ReadyWorkPage[] =>
     return {
       pageId: text(page.pageId),
       projectId: text(page.projectId),
+      pageWork,
       prerequisites,
       readinessEpoch: text(page.readinessEpoch, 1024),
     };
@@ -144,4 +228,92 @@ export const projectCoreWorkSummary = (
   summary: components["schemas"]["DatabaseWorkSummary"],
 ): WorkSummary => ({
   ...projectCorePrerequisites(summary),
+  turn: summary.turn ?? null,
+  ...(summary.pull_request
+    ? {
+        pullRequest: {
+          number: summary.pull_request.number,
+          url: summary.pull_request.url,
+          state: summary.pull_request.state,
+        },
+      }
+    : {}),
+  owner: summary.owner ?? null,
+  assignee: summary.assignee ?? null,
+  autoStart: summary.auto_start,
 });
+
+export const parseMember = (value: unknown): Member => {
+  const member = record(value);
+  if (member.lifecycle !== "active" && member.lifecycle !== "removed")
+    throw new TypeError("Invalid Member lifecycle");
+  if (count(member.revision) < 1) throw new TypeError("Member revision must be positive");
+  return {
+    id: text(member.id),
+    library_id: text(member.library_id),
+    display_name: text(member.display_name, 1024),
+    lifecycle: member.lifecycle,
+    revision: count(member.revision),
+  };
+};
+
+/** Mirrors Core consent revocation when an editor replaces an assignment. */
+export const withPageAssignee = (work: PageWork, assignee: PageAssignee | null): PageWork => ({
+  ...work,
+  assignee,
+  auto_start:
+    assignee?.kind === "agent" &&
+    work.assignee?.kind === "agent" &&
+    pageAssigneeKey(assignee) === pageAssigneeKey(work.assignee)
+      ? work.auto_start
+      : false,
+});
+
+/** Stable presentation keys; persistent assignment still uses the typed reference. */
+export const pageAssigneeKey = (assignee: PageAssignee): string =>
+  JSON.stringify(
+    assignee.kind === "member"
+      ? { kind: "member", member_id: assignee.member_id }
+      : {
+          kind: "agent",
+          instance_id: assignee.instance_id,
+          model: assignee.model,
+          effort: assignee.effort ?? null,
+        },
+  );
+export const pageAssigneeFromKey = (key: string): PageAssignee | null => {
+  try {
+    return parsePageAssignee(JSON.parse(key));
+  } catch {
+    return null;
+  }
+};
+export const pageAssigneeName = (
+  assignee: PageAssignee | null | undefined,
+  members: readonly Member[] = [],
+): string => {
+  if (!assignee) return "";
+  if (assignee.kind === "agent") return `${assignee.instance_id} · ${assignee.model}`;
+  return members.find((member) => member.id === assignee.member_id)?.display_name ?? "Member";
+};
+
+export const pageAssigneeGroupKey = (assignee: PageAssignee): string =>
+  assignee.kind === "member"
+    ? `member:${assignee.member_id}`
+    : `agent:${JSON.stringify([assignee.instance_id, assignee.model])}`;
+export const pageAssigneeFromGroupKey = (key: string | null): PageAssignee | null => {
+  if (key?.startsWith("member:")) return { kind: "member", member_id: key.slice(7) };
+  if (!key?.startsWith("agent:")) return null;
+  try {
+    const value: unknown = JSON.parse(key.slice(6));
+    if (
+      !Array.isArray(value) ||
+      value.length !== 2 ||
+      value.some((part) => typeof part !== "string" || !part)
+    )
+      return null;
+    return parsePageAssignee({ kind: "agent", instance_id: value[0], model: value[1] });
+  } catch {
+    return null;
+  }
+};

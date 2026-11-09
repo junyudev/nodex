@@ -351,12 +351,14 @@ describe("DataSourcePropertyValueEditor", () => {
     expect(view.queryByRole("button", { name: "Create “New signal”" })).toBeNull();
   });
 
+  test("excludes the current Page from the Waits for picker", async () => {
     const onPatchRelation = vi.fn();
     const view = render(
       <DataSourcePropertyValueEditor
         property={{
           ...statusProperty,
           propertyId: parseDataSourcePropertyId("blocked_by"),
+          name: "Waits for",
           ...testPropertySemantics("relation"),
           schema: {
             kind: "relation",
@@ -379,6 +381,7 @@ describe("DataSourcePropertyValueEditor", () => {
       />,
     );
     await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
       await Promise.resolve();
     });
     expect(view.queryByRole("option", { name: "Current task" })).toBeNull();

@@ -147,10 +147,11 @@ fn initial_property_definitions(
             json!({
                 "options": [
                     { "id": "triage", "name": "Triage" },
-                    { "id": "plan", "name": "Plan" },
-                    { "id": "doing", "name": "Doing" },
-                    { "id": "review", "name": "Review" },
-                    { "id": "done", "name": "Done" }
+                    { "id": "plan", "name": "Todo" },
+                    { "id": "doing", "name": "In Progress" },
+                    { "id": "review", "name": "In Review" },
+                    { "id": "done", "name": "Done" },
+                    { "id": "canceled", "name": "Canceled" }
                 ]
             }),
         ),
@@ -193,6 +194,7 @@ fn initial_property_definitions(
         ));
         definitions.push((
             super::property_semantics::BLOCKED_BY_PROPERTY_ID,
+            "Waits for",
             "relation",
             json!({}),
         ));

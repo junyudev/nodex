@@ -166,6 +166,9 @@ pub(in crate::workspace) fn apply_reliable(
                     coordinator_session_id,
                 } => {
                     require_host(context)?;
+                    if super::super::execution_holds::routing_held(connection, &request_id)? {
+                        return Err(conflict("Routing work is paused"));
+                    }
                     if read_request(connection, context, library_id, &request_id)?
                         .is_none_or(|request| request.generation != generation)
                     {
@@ -250,6 +253,29 @@ pub(in crate::workspace) fn apply_reliable(
                     }
                     require_basis(connection, &proposal.page_ids, &basis)?;
                     if confirmed_by == InboxConfirmedBy::Nodex {
+                        if let Some(ProjectWorkspaceInboxDispatchAction::NewChat {
+                            project_id: Some(project_id),
+                            ..
+                        }) = &action
+                            && connection.query_row("SELECT EXISTS(SELECT 1 FROM execution_holds WHERE scope_kind='project' AND scope_id=?1)",[project_id],|r|r.get::<_,bool>(0))? {return Err(conflict("Project work is paused"));}
+
+                        for page in &proposal.page_ids {
+                            if !super::super::execution_holds::for_page(connection, page)?
+                                .is_empty()
+                            {
+                                return Err(conflict("Work is paused"));
+                            }
+                        }
+                        if let Some(ProjectWorkspaceInboxDispatchAction::SendToChat {
+                            session_id,
+                            ..
+                        }) = &action
+                            && !super::super::execution_holds::for_session(connection, session_id)?
+                                .is_empty()
+                        {
+                            return Err(conflict("The chat is paused"));
+                        }
+
                         if matches!(
                             proposal.action,
                             ProjectWorkspaceInboxDispatchAction::Plan { .. }
@@ -736,6 +762,7 @@ fn decide(
     supersede_requests(connection, pages, now)?;
     let mut effects = apply_confirmation(
         connection,
+        scope.evidence(),
         library_id,
         ConfirmedProposal {
             proposal_id,
@@ -744,6 +771,30 @@ fn decide(
             session_id,
         now,
     )?;
+    let receiving_agent = match &action {
+        ProjectWorkspaceInboxDispatchAction::NewChat { .. } => Some(
+            selection
+                .ok_or_else(|| invalid("A new chat requires its resolved Agent selection"))?
+                .model_selection
+                .agent_selection(),
+        ),
+        ProjectWorkspaceInboxDispatchAction::SendToChat { session_id, .. } => {
+            super::super::page_chat::session_agent_selection(connection, session_id)?
+        }
+        _ => None,
+    };
+    if let Some(agent) = receiving_agent {
+        for page in pages {
+            crate::library::members::assign_agent_if_unassigned(
+                connection,
+                library_id,
+                context,
+                scope.evidence(),
+                page,
+                &agent,
+            )?;
+        }
+    }
     for page in pages {
         connection.execute("UPDATE inbox_entries SET suggestion_state='settled',suggestion_request_id=NULL,suggestion_error=NULL WHERE page_id=?1",[page])?;
     }
@@ -831,7 +882,18 @@ fn decide(
             effects.page_ids.push(page.clone());
         }
     }
-    statuses.follow(connection, library_id, context, operation_id, &mut effects)?;
+    statuses.follow(
+        connection,
+        library_id,
+        context,
+        operation_id,
+        matches!(
+            action,
+            ProjectWorkspaceInboxDispatchAction::NewChat { .. }
+                | ProjectWorkspaceInboxDispatchAction::SendToChat { .. }
+        ),
+        &mut effects,
+    )?;
     Ok(effects)
 }
 fn dispatch_fence(
@@ -930,7 +992,14 @@ fn undo_decision(
     }
     let mut effects = simple_effects("inbox_undo_decision", now);
     effects.page_ids = recipe.pages;
-    statuses.follow(connection, library_id, context, operation_id, &mut effects)?;
+    statuses.follow(
+        connection,
+        library_id,
+        context,
+        operation_id,
+        false,
+        &mut effects,
+    )?;
     Ok(effects)
 }
 
@@ -1192,6 +1261,13 @@ fn settle_request(
     }
     let inbox_scope = require_one_scope(connection, &pages)?;
     for suggestion in suggestions {
+        if suggestion.explicit_request {
+            for page in &suggestion.page_ids {
+                    return Err(invalid(
+                    ));
+                }
+            }
+        }
         if suggestion.explicit_request
             && matches!(
                 suggestion.action,
@@ -1387,6 +1463,7 @@ fn pickup_request(
         }];
     }
     Ok(ProjectWorkspaceInboxSuggestionRequest {
+        delivery: connection.query_row("SELECT coordinator_session_id,handed_over_at_ms,run_started_at_ms,last_refusal FROM inbox_routing_deliveries WHERE request_id=?1 AND generation=?2",params![row.id,row.generation],|r|Ok(InboxRoutingDelivery {paused_ms:connection.query_row("SELECT elapsed_ms + CASE WHEN paused_at_ms IS NULL THEN 0 ELSE MAX(0,CAST(unixepoch('subsec')*1000 AS INTEGER)-paused_at_ms) END FROM execution_hold_routing_clocks WHERE request_id=?1 AND generation=?2",params![row.id,row.generation],|clock|clock.get(0)).optional()?,coordinator_session_id:r.get(0)?,handed_over_at_ms:r.get(1)?,run_started_at_ms:r.get(2)?,last_refusal:r.get(3)?})).optional()?,
         context,
         request_id: row.id.clone(),
         generation: row.generation,
@@ -1473,6 +1550,9 @@ pub(in crate::workspace) fn read_requests(
     let mut output = Vec::new();
     let mut encoded_bytes = 0;
     for row in pending_requests(connection, library_id)? {
+        if super::super::execution_holds::routing_held(connection, &row.id)? {
+            continue;
+        }
         let request = match pickup_request(connection, library_id, &row) {
             Ok(request) => request,
             Err(error) if error.retryable => return Err(error),

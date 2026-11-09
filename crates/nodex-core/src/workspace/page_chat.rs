@@ -60,8 +60,8 @@ pub(super) fn insert_initial_page_links(
 ) -> Result<(), StoreError> {
     for page_id in page_ids {
         let changed = connection.execute(
-            "INSERT INTO project_session_pages(session_id, page_id, linked_at) \
-             VALUES (?1, ?2, ?3)",
+            "INSERT INTO project_session_pages(session_id, page_id, linked_at, status_fence) \
+             VALUES (?1, ?2, ?3, (SELECT status_person_revision FROM pages WHERE block_id=?2))",
             params![session_id, page_id, linked_at],
         )?;
         if changed != 1 {
@@ -89,6 +89,70 @@ pub(crate) fn link_pages(
     Ok(())
 }
 
+/// Only work decisions select a destination; merely adding a related link does not.
+pub(super) fn set_active_chats(
+    connection: &Connection,
+    session: &str,
+    pages: &[String],
+    now: &str,
+) -> Result<(), StoreError> {
+    for page in pages {
+        // An ordinary link starts its first work attempt here. Re-selecting an existing
+        // attempt must retain its original fence against old Runs reporting later.
+        connection.execute("UPDATE project_session_pages SET status_fence=(SELECT status_person_revision FROM pages WHERE block_id=?1) WHERE page_id=?1 AND session_id=?2 AND status_fence IS NULL",params![page,session])?;
+        // Inbox handling after this handoff belongs to the same attempt, including
+        // handling that arrives after its active chat has been archived.
+        connection.execute("UPDATE inbox_entries SET status_fence=(SELECT status_fence FROM project_session_pages WHERE page_id=?1 AND session_id=?2) WHERE page_id=?1",params![page,session])?;
+        connection.execute("INSERT INTO page_active_chats(page_id,session_id,revision,set_at) VALUES(?1,?2,1,?3) ON CONFLICT(page_id) DO UPDATE SET session_id=excluded.session_id,revision=page_active_chats.revision+1,set_at=excluded.set_at",params![page,session,now])?;
+    }
+    Ok(())
+}
+
+/// Execution observations carry the current Agent; admitted work retains its choice before
+/// the first observation. Native chats expose the same choice through their Thread binding.
+pub(super) fn session_agent_selection(
+    connection: &Connection,
+    session: &str,
+) -> Result<Option<nodex_core_contracts::library::AgentWorkSelection>, StoreError> {
+    let encoded: Option<String> = connection.query_row(
+        "SELECT COALESCE(json_extract(observation.observed_json,'$.agent'),launch.selection_json,json_extract(handoff.execution_selection_json,'$.model_selection')) FROM project_sessions session LEFT JOIN session_execution_observations observation ON observation.session_id=session.id LEFT JOIN page_work_launches launch ON launch.session_id=session.id LEFT JOIN inbox_proposals proposal ON proposal.dispatch_session_id=session.id AND json_extract(proposal.action_json,'$.type')='new_chat' LEFT JOIN inbox_handoffs handoff ON handoff.proposal_id=proposal.proposal_id WHERE session.id=?1 ORDER BY launch.created_at DESC,proposal.created_at DESC LIMIT 1",
+        [session], |row| row.get(0),
+    ).optional()?.flatten();
+    if let Some(encoded) = encoded {
+        let value: serde_json::Value =
+            serde_json::from_str(&encoded).map_err(|_| corrupt("Invalid chat Agent selection"))?;
+        if let Ok(selection) = serde_json::from_value(value.clone()) {
+            return Ok(Some(selection));
+        }
+        let selection: nodex_core_contracts::inbox::ProjectWorkspaceInboxModelSelection =
+            serde_json::from_value(value).map_err(|_| corrupt("Invalid chat model selection"))?;
+        return Ok(Some(selection.agent_selection()));
+    }
+    Ok(connection.query_row(
+        "SELECT 'codex',thread.model_id,thread.reasoning_effort FROM project_session_threads binding JOIN codex_threads thread ON thread.thread_id=binding.thread_id WHERE binding.session_id=?1 AND thread.agent_backend_kind='codex' AND thread.model_id IS NOT NULL",
+        [session], |row| Ok(nodex_core_contracts::library::AgentWorkSelection { instance_id:row.get(0)?,model:row.get(1)?,effort:row.get(2)? }),
+    ).optional()?)
+}
+
+pub(crate) fn active_chat(
+    connection: &Connection,
+    page: &str,
+) -> Result<Option<nodex_core_contracts::workspace::PageActiveChat>, StoreError> {
+    Ok(connection
+        .query_row(
+            "SELECT session_id,revision,set_at FROM page_active_chats WHERE page_id=?1",
+            [page],
+            |r| {
+                Ok(nodex_core_contracts::workspace::PageActiveChat {
+                    session_id: r.get(0)?,
+                    revision: r.get(1)?,
+                    set_at: r.get(2)?,
+                })
+            },
+        )
+        .optional()?)
+}
+
 /// Edge creation alone never implies a hand-off (Scene Pages, Runbooks and Inbox own theirs).
 #[derive(Clone, Copy)]
 pub(super) enum PageLinkIntent {
@@ -100,33 +164,65 @@ pub(super) fn advance_handed_off_pages(
     connection: &Connection,
     library_id: &str,
     context: &BoundModuleContext,
+    commit: &crate::infrastructure::local_commit::CommitContext,
     operation_id: &str,
     page_ids: &[String],
     mut effects: WorkspaceMutationEffects,
 ) -> Result<WorkspaceMutationEffects, StoreError> {
-    let Some(receipt) = crate::database::advance_handed_off_pages(
+    if page_ids.is_empty() {
+        return Ok(effects);
+    }
+    let [session] = effects.session_ids.as_slice() else {
+        return Err(corrupt("A handoff requires exactly one Session"));
+    };
+    if let Some(selection) = session_agent_selection(connection, session)? {
+        for page in page_ids {
+            crate::library::members::assign_agent_if_unassigned(
+                connection, library_id, context, commit, page, &selection,
+            )?;
+        }
+    }
+    set_active_chats(connection, session, page_ids, &effects.committed_at)?;
+    effects.page_ids.extend(page_ids.iter().cloned());
+    effects.block_ids.extend(page_ids.iter().cloned());
+    let fences = page_ids.iter().map(|page| {
+        connection.query_row("SELECT status_fence FROM project_session_pages WHERE page_id=?1 AND session_id=?2",params![page,session],|r|r.get::<_,i64>(0)).map_err(StoreError::from)
+    }).collect::<Result<Vec<_>,_>>()?;
+    let steps = page_ids
+        .iter()
+        .zip(&fences)
+        .map(|(page, revision)| crate::database::WorkflowStatusStep {
+            page_id: page,
+            predecessors: &["triage", "plan"],
+            to: crate::database::property_semantics::IN_PROGRESS_STATUS_OPTION_ID,
+            person_revision: *revision,
+        })
+        .collect::<Vec<_>>();
+    let receipt = crate::database::follow_workflow_status(
         connection,
         library_id,
         context,
         operation_id,
-        page_ids,
+        &steps,
         &effects.committed_at,
-    )?
-    else {
+    )?;
+    for page in page_ids {
+        let moved = receipt
+            .as_ref()
+            .is_some_and(|receipt| receipt.affected_page_ids.contains(page));
+        connection.execute(
+            "UPDATE project_session_pages SET status_moved=?3 WHERE page_id=?1 AND session_id=?2",
+            params![page, session, moved],
+        )?;
+        connection.execute(
+            "UPDATE page_work_launches SET status_moved=?3 WHERE page_id=?1 AND session_id=?2",
+            params![page, session, moved],
+        )?;
+    }
+    let Some(receipt) = receipt else {
         return Ok(effects);
     };
-    effects
-        .block_ids
-        .extend(receipt.affected_page_ids.iter().cloned());
-    effects
-        .block_ids
-        .extend(receipt.affected_database_ids.iter().cloned());
-    effects.page_ids.extend(receipt.affected_page_ids);
-    effects.database_ids.extend(receipt.affected_database_ids);
-    effects
-        .data_source_ids
-        .extend(receipt.affected_data_source_ids);
-    effects.view_ids.extend(receipt.affected_view_ids);
+    effects.absorb_database(receipt);
     Ok(effects)
 }
 
@@ -606,7 +702,7 @@ pub(super) fn read_page_chat_window(
              relation.linked_at AS linked_at, \
              0 AS recency_null, \
              -session.activity_at AS recency_order, \
-             binding.runtime_id, binding.runtime_thread_id \
+             binding.runtime_id, binding.runtime_thread_id, relation.report_outcome, relation.report_summary, relation.report_at, relation.report_revision, relation.report_status_moved \
            FROM project_session_pages relation \
            JOIN pages page ON page.block_id = relation.page_id AND page.library_id = ?2 \
            JOIN project_sessions session ON session.id = relation.session_id \
@@ -717,6 +813,7 @@ fn page_chat_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PageChatRow> {
                 .get::<_, Option<String>>(18)?
                 .map(|outcome| -> rusqlite::Result<_> {
                     Ok(nodex_core_contracts::workspace::PageWorkReport {
+                        status_moved: row.get(22)?,
                         outcome: serde_json::from_value(serde_json::Value::String(outcome))
                             .map_err(|_| rusqlite::Error::InvalidQuery)?,
                         summary: row.get(19)?,
@@ -1218,6 +1315,7 @@ mod tests {
             &workspace.module,
             "launch-runtime-chat",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                agent_selection: None,
                 coordinator: false,
                 side_chat_source_session_id: None,
                 session_id: "session:runtime".to_owned(),

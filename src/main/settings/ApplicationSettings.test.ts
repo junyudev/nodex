@@ -876,6 +876,7 @@ it.effect("persists the Profile's default native execution mode and rejects inva
     const settings = yield* makeApplicationSettings(source);
     assert.deepEqual((yield* settings.snapshot()).agentRuntime, {
       defaultRuntimeMode: "full-access",
+      agentsRunningAtOnce: 4,
       titleModel: null,
     });
     for (const defaultRuntimeMode of ["auto", "approval-required", "full-access"] as const) {
@@ -910,12 +911,14 @@ it.effect("keeps the chat title model and permission mode independent", () =>
     });
     yield* settings.update({ type: "update-agent-runtime", input: { titleModel } });
     assert.deepEqual((yield* (yield* makeApplicationSettings(source)).snapshot()).agentRuntime, {
+      agentsRunningAtOnce: 4,
       defaultRuntimeMode: "auto",
       titleModel,
     });
 
     yield* settings.update({ type: "update-agent-runtime", input: { titleModel: null } });
     assert.deepEqual((yield* settings.snapshot()).agentRuntime, {
+      agentsRunningAtOnce: 4,
       defaultRuntimeMode: "auto",
       titleModel: null,
     });
@@ -926,10 +929,44 @@ it.effect("keeps the chat title model and permission mode independent", () =>
       '[server]\ndefault_runtime_mode = "auto"\n[server.title_model]\nmodel = "no-agent"\n',
     );
     assert.deepEqual((yield* (yield* makeApplicationSettings(source)).snapshot()).agentRuntime, {
+      agentsRunningAtOnce: 4,
       defaultRuntimeMode: "auto",
       titleModel: null,
     });
   }),
+);
+
+it.effect(
+  "persists machine Agent capacity independently of permissions and rejects out-of-range values",
+  () =>
+    Effect.gen(function* () {
+      const { root, settingsPath } = fixture("");
+      const source = { environment: {}, hostHomeDirectory: root, settingsPath };
+      const settings = yield* makeApplicationSettings(source);
+      for (const agentsRunningAtOnce of [1, 7, 16]) {
+        yield* settings.update({
+          type: "update-agent-runtime",
+          input: { defaultRuntimeMode: "approval-required", agentsRunningAtOnce },
+        });
+        const reopened = yield* makeApplicationSettings(source);
+        assert.deepEqual((yield* reopened.snapshot()).agentRuntime, {
+          defaultRuntimeMode: "approval-required",
+          agentsRunningAtOnce,
+          titleModel: null,
+        });
+      }
+      const before = readFileSync(settingsPath, "utf8");
+      for (const agentsRunningAtOnce of [0, 17, 1.5]) {
+        const result = yield* settings
+          .update({
+            type: "update-agent-runtime",
+            input: { defaultRuntimeMode: "full-access", agentsRunningAtOnce },
+          })
+          .pipe(Effect.result);
+        assert.equal(result._tag, "Failure");
+      }
+      assert.equal(readFileSync(settingsPath, "utf8"), before);
+    }),
 );
 
 it.effect(

@@ -140,6 +140,33 @@ describe("decisionReversal", () => {
   });
 });
 
+      label: "Needs your answer",
+  it("says whose move it is in the desktop's words", () => {
+    expect(
+      (
+        [
+          "question",
+          "approval",
+          "review",
+          "blocked",
+          "failed",
+          "stalled",
+          "ready_to_start",
+        ] as const
+      ).map((reason) => entrySignature(turn(reason))?.label),
+    ).toEqual([
+      "Needs your answer",
+      "Needs your approval",
+      "Ready for your review",
+      "Blocked · needs you",
+      "Failed · needs you",
+      "Stalled · needs you",
+      "Ready to start",
+    ]);
+    // Prerequisites that are all done leave the work ready to start.
+    expect(entrySignature(turn(null))?.label).toBe("Ready to start");
+  });
+
 describe("proposalHeadline", () => {
   it("says what accepting will do, and where when that is known", () => {
     const newChat = {

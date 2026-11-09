@@ -20,16 +20,40 @@ class PerformanceSeedPort implements ScenarioSeedPort {
   async createCoordinatorSession(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }
+  async recordSessionExecution(): Promise<never> {
+    throw new Error("Execution observations are seeded through Core");
+  }
+  async readPageTurn(): Promise<never> {
+    throw new Error("Turn inspection requires Core");
+  }
   async setSessionManaged(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }
+  async setPageWork(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }
   async reportPageWork(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }
+  async createWorkChat(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }
+  async pauseWork(): Promise<never> {
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+  async recordPageWorkspace(): Promise<never> {
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+  async writeTurnNote(): Promise<never> {
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+  async handBackChatMessage(): Promise<never> {
+    throw new Error("Handback seeding requires Core");
+  }
+  async answerInboxQuestion(): Promise<never> {
+    throw new Error("Not supported");
+  }
+
   async settleCoordinatorSuggestion(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }
@@ -116,7 +140,7 @@ class PerformanceSeedPort implements ScenarioSeedPort {
     return {
       totalRows: this.pages.length,
       commitSeq: 205,
-      groups: { triage: 32, plan: 32, doing: 32, review: 32, done: 32 },
+      groups: { triage: 32, plan: 32, doing: 32, review: 32, done: 32, canceled: 0 },
     };
   }
 

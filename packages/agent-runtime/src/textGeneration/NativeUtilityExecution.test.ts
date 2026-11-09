@@ -3,9 +3,8 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Context from "effect/Context";
-import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
-import * as NodeFS from "node:fs";
+import * as Schedule from "effect/Schedule";
 import * as Application from "../nodex/Application.ts";
 import { AgentRuntime } from "../nodex/Service.ts";
 import { writeFakeCli } from "@nodex/provider-testing/fakeCli";
@@ -216,17 +215,6 @@ it.live.each(["success", "failure", "output-budget", "interruption"] as const)(
       const path = yield* Path.Path;
       const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-utility-images-" });
       const proofPath = path.join(home, "image-proof.json");
-      const peerReady = yield* Deferred.make<void>();
-      if (behavior === "interruption")
-        yield* Effect.acquireRelease(
-          Effect.sync(() =>
-            NodeFS.watch(home, (_event, fileName) => {
-              if (fileName?.toString() === "image-proof.json")
-                Deferred.doneUnsafe(peerReady, Effect.void);
-            }),
-          ),
-          (watcher) => Effect.sync(() => watcher.close()),
-        );
       const binaryPath = writeFakeCli({
         directory: path.join(home, "bin"),
         name: "codex",
@@ -269,7 +257,13 @@ fs.writeFileSync(args[args.indexOf("--output-last-message") + 1], JSON.stringify
           .pipe(Effect.setContext(Context.empty()));
         if (behavior === "interruption") {
           const running = yield* Effect.forkChild(execution);
-          yield* Deferred.await(peerReady).pipe(Effect.timeout("5 seconds"));
+          // The peer publishes this file atomically; watcher filenames are not guaranteed.
+          yield* fs
+            .exists(proofPath)
+            .pipe(
+              Effect.repeat({ until: (exists) => exists, schedule: Schedule.spaced("20 millis") }),
+              Effect.timeout("5 seconds"),
+            );
           yield* Fiber.interrupt(running);
           const proof = decodeImageProof(yield* fs.readFileString(proofPath));
           // Cleanup must finish on request cancellation, before the whole Runtime is closed.

@@ -8,8 +8,8 @@ use nodex_core_contracts::inbox::{
     ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSource, ProjectWorkspaceInboxWindowFilter,
 };
 use nodex_core_contracts::workspace::{
-    PROJECT_WORKSPACE_CONTRACT_VERSION, ProjectWorkspaceIntent, ProjectWorkspaceRead,
-    ProjectWorkspaceReadValue,
+    PROJECT_WORKSPACE_CONTRACT_VERSION, ProjectWorkspaceIntent, ProjectWorkspacePageCreationTarget,
+    ProjectWorkspaceRead, ProjectWorkspaceReadValue,
 };
 use nodex_core_contracts::{ModuleApplyRequest, StoreEpoch};
 use nodex_core_protocol::ResponseEnvelope;
@@ -96,6 +96,53 @@ fn command_line_sends_land_in_the_inbox_of_their_project() {
         )
         .unwrap();
     assert!(matches!(created.0, ResponseEnvelope::Ok(_)));
+    let created = client
+        .workspace_apply(
+            None,
+            ModuleApplyRequest {
+                contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                operation_id: "inbox-cli:page".to_owned(),
+                store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
+                intent: ProjectWorkspaceIntent::CreatePageFor {
+                    target: ProjectWorkspacePageCreationTarget::Project {
+                        project_id: PROJECT.to_owned(),
+                    },
+                    page_id: "019b1000-1000-7000-8000-000000000102".to_owned(),
+                    document_id: "019b1000-1000-7000-8000-000000000103".to_owned(),
+                    title: "Notes".to_owned(),
+                },
+            },
+        )
+        .unwrap();
+    assert!(matches!(created.0, ResponseEnvelope::Ok(_)));
+    let shown = nodex(
+        &home,
+        &workspace,
+        &["page", "show", "019b1000-1000-7000-8000-000000000102"],
+        None,
+    );
+    assert_eq!(shown["turn"]["actor"]["kind"], "none");
+    assert_eq!(shown["turn"]["reason"], Value::Null);
+    assert!(
+        shown["turn"]["episode"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty())
+    );
+    let response = client
+        .workspace_read(
+            None,
+            ProjectWorkspaceRead::PageTurn {
+                page_id: "019b1000-1000-7000-8000-000000000102".into(),
+            },
+        )
+        .unwrap();
+    let ResponseEnvelope::Ok(snapshot) = response.0 else {
+        panic!("Turn read");
+    };
+    let ProjectWorkspaceReadValue::PageTurn { turn, .. } = snapshot.value else {
+        panic!("Turn value");
+    };
+    assert_eq!(shown["turn"], serde_json::to_value(turn).unwrap());
 
     let args = [
         "inbox",

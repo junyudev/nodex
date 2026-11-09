@@ -25,6 +25,7 @@ import type { BoardCardDragData } from "@/components/board/pragmatic-drag-data";
 import { useDatabaseViewPageDragSource } from "../database-view-page-drag";
 import type { DatabaseViewPageOpenMode } from "../database-view-page-open";
 import { PageChatActivityControl } from "../page-chat-activity-control";
+import { usePageTurnCardChip } from "../page-turn-card";
 import type { PageChatActivitySummary } from "@/lib/types";
 
 export const DATABASE_LIST_INTERACTIVE_SELECTOR = DATABASE_LIST_DND_INTERACTIVE_SELECTOR;
@@ -42,6 +43,7 @@ export function DatabaseListRow({
   onSelect,
   onActivate,
   onOpen,
+  onOpenPrerequisite,
   statusOptions,
   priorityOptions,
   onSetStatus,
@@ -71,6 +73,7 @@ export function DatabaseListRow({
   readonly onSelect: (mode: "replace" | "toggle" | "range") => void;
   readonly onActivate: () => void;
   readonly onOpen: (titleSnapshot: string, openMode: DatabaseViewPageOpenMode) => void;
+  readonly onOpenPrerequisite?: (pageId: string, title: string) => void;
   readonly statusOptions: readonly { readonly id: string; readonly name: string }[];
   readonly priorityOptions: readonly { readonly id: string; readonly name: string }[];
   readonly onSetStatus: (optionId: string | null) => void;
@@ -90,7 +93,9 @@ export function DatabaseListRow({
 }) {
   const dnd = useDatabaseListPageDnd(item);
   // A row offers its chats only inside a Project, which is also where its work can start.
+  const workChip = usePageTurnCardChip({
     row: item.row,
+    onOpenPage: onOpenPrerequisite,
   });
   const setListDndNodeRef = dnd.setNodeRef;
   const [pageDragHandle, setPageDragHandle] = useState<HTMLButtonElement | null>(null);

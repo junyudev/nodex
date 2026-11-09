@@ -63,6 +63,7 @@ const MAX_OCCURRENCE_KEY_LENGTH: usize = 1_024;
 #[derive(Default)]
 struct MutationEffects {
     blocked_by_changed: bool,
+    status_edit_page_ids: BTreeSet<String>,
     database_ids: BTreeSet<String>,
     data_source_ids: BTreeSet<String>,
     page_ids: BTreeSet<String>,
@@ -197,6 +198,7 @@ pub(crate) fn apply_in_transaction(
                     &mut effects,
                 )?;
             }
+            record_explicit_status_edits(connection, context, &effects)?;
             if effects.blocked_by_changed {
                 super::work_graph::validate_graph(connection, StoreErrorCode::InvalidInput)?;
             }
@@ -257,6 +259,32 @@ pub(crate) fn apply_as_collaborator(
     intents: &[DatabaseIntent],
     committed_at: &str,
 ) -> Result<DatabaseReceipt, StoreError> {
+    apply_collaborator(
+        connection,
+        library_id,
+        context,
+        operation_id,
+        intents,
+        committed_at,
+        StatusEditOrigin::Explicit,
+    )
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum StatusEditOrigin {
+    Explicit,
+    WorkFact,
+}
+
+fn apply_collaborator(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    operation_id: &str,
+    intents: &[DatabaseIntent],
+    committed_at: &str,
+    status_origin: StatusEditOrigin,
+) -> Result<DatabaseReceipt, StoreError> {
     if intents.is_empty() || intents.len() > MAX_OPERATIONS {
         return Err(invalid("Database collaborator operation count is invalid"));
     }
@@ -274,6 +302,9 @@ pub(crate) fn apply_as_collaborator(
             committed_at,
             &mut effects,
         )?;
+    }
+    if status_origin == StatusEditOrigin::Explicit {
+        record_explicit_status_edits(connection, context, &effects)?;
     }
     if effects.blocked_by_changed {
         super::work_graph::validate_graph(connection, StoreErrorCode::InvalidInput)?;
@@ -302,50 +333,57 @@ pub(crate) fn apply_as_collaborator(
     })
 }
 
-/// Advances explicitly handed-off Pages, preserving every stage already in progress or later.
-/// Stage identities, rather than their user-defined labels, determine forward movement.
-pub(crate) fn advance_handed_off_pages(
-    connection: &Connection,
-    library_id: &str,
-    context: &BoundModuleContext,
-    operation_id: &str,
-    page_ids: &[String],
-    committed_at: &str,
-) -> Result<Option<DatabaseReceipt>, StoreError> {
-    let steps = page_ids
-        .iter()
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .flat_map(|page_id| {
-            ["triage", "plan"].map(|from| WorkflowStatusStep {
-                page_id,
-                from,
-                to: super::property_semantics::IN_PROGRESS_STATUS_OPTION_ID,
-            })
-        })
-        .collect::<Vec<_>>();
-    follow_workflow_status(
-        connection,
-        library_id,
-        context,
-        operation_id,
-        &steps,
-        committed_at,
-    )
-}
-
-/// One Page's workflow status moving from what another Module's state implied to what it
-/// implies now.
+/// A causal work fact may move only from these predecessors at its original person fence.
 pub(crate) struct WorkflowStatusStep<'a> {
     pub(crate) page_id: &'a str,
-    pub(crate) from: &'a str,
+    pub(crate) predecessors: &'a [&'a str],
     pub(crate) to: &'a str,
+    pub(crate) person_revision: i64,
 }
 
-/// Moves Pages' workflow status along with another Module's decision, inside that decision's
-/// transaction. A Page follows only while its row still shows `from`, so a status someone set
-/// by hand is never overwritten, and only to an option its Status still offers. Returns the
-/// collaborator receipt when any Page moved.
+pub(crate) fn status_person_revision(
+    connection: &Connection,
+    page_id: &str,
+) -> Result<i64, StoreError> {
+    connection
+        .query_row(
+            "SELECT status_person_revision FROM pages WHERE block_id=?1",
+            [page_id],
+            |r| r.get(0),
+        )
+        .map_err(Into::into)
+}
+
+fn record_explicit_status_edits(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    effects: &MutationEffects,
+) -> Result<(), StoreError> {
+    if context.agent_attribution.is_some()
+        || context.adapter == nodex_core_contracts::AdapterKind::Agent
+    {
+        return Ok(());
+    }
+    for page in &effects.status_edit_page_ids {
+        record_person_status_edit(connection, page)?;
+    }
+    Ok(())
+}
+
+/// A Page-local monotonic fence survives membership moves and manual A→B→A edits.
+pub(crate) fn record_person_status_edit(
+    connection: &Connection,
+    page_id: &str,
+) -> Result<(), StoreError> {
+    connection.execute(
+        "UPDATE pages SET status_person_revision=status_person_revision+1 WHERE block_id=?1",
+        [page_id],
+    )?;
+    Ok(())
+}
+
+/// The caller owns the transaction and the fact, including skipped moves. Some means moved;
+/// None means a newer person edit, wrong predecessor, or unavailable Status kept the stage.
 pub(crate) fn follow_workflow_status(
     connection: &Connection,
     library_id: &str,
@@ -356,36 +394,29 @@ pub(crate) fn follow_workflow_status(
 ) -> Result<Option<DatabaseReceipt>, StoreError> {
     let status_property = super::property_semantics::STATUS_PROPERTY_ID;
     let mut edits = Vec::new();
-    for step in steps.iter().filter(|step| step.from != step.to) {
-        let Some((data_source_id, current, revision)) = connection
-            .query_row(
-                "SELECT page.parent_id, value.value_json, COALESCE(value.revision, 0) \
-                 FROM pages page \
-                 JOIN blocks block ON block.id = page.block_id AND block.lifecycle = 'active' \
-                 JOIN data_source_page_memberships membership \
-                   ON membership.data_source_id = page.parent_id \
-                  AND membership.page_block_id = page.block_id AND membership.removed_at IS NULL \
-                 LEFT JOIN data_source_property_values value \
-                   ON value.data_source_id = page.parent_id \
-                  AND value.membership_id = membership.id AND value.property_id = ?2 \
-                 WHERE page.block_id = ?1 AND page.parent_kind = 'data_source'",
-                params![step.page_id, status_property],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, Option<String>>(1)?,
-                        row.get::<_, i64>(2)?,
-                    ))
-                },
-            )
-            .optional()?
-        else {
+    for step in steps {
+        let Some((data_source_id, current, revision, person_revision)) = connection.query_row(
+            "SELECT page.parent_id,value.value_json,COALESCE(value.revision,0),page.status_person_revision \
+             FROM pages page JOIN blocks block ON block.id=page.block_id AND block.lifecycle='active' \
+             JOIN data_sources source ON source.id=page.parent_id AND source.lifecycle='active' \
+             JOIN database_containers container ON container.block_id=source.home_database_block_id AND container.lifecycle='active' \
+             JOIN data_source_page_memberships membership ON membership.data_source_id=page.parent_id \
+               AND membership.page_block_id=page.block_id AND membership.removed_at IS NULL \
+             LEFT JOIN data_source_property_values value ON value.data_source_id=page.parent_id \
+               AND value.membership_id=membership.id AND value.property_id=?2 \
+             WHERE page.block_id=?1 AND page.parent_kind='data_source'",
+            params![step.page_id,status_property],|r|Ok((r.get::<_,String>(0)?,r.get::<_,Option<String>>(1)?,r.get::<_,i64>(2)?,r.get::<_,i64>(3)?))
+        ).optional()? else { continue; };
+        if person_revision != step.person_revision {
+            continue;
+        }
+        let current = current
+            .map(|v| parse_json(&v, "Workflow status value"))
+            .transpose()?;
+        let Some(current) = current.as_ref().and_then(Value::as_str) else {
             continue;
         };
-        let current = current
-            .map(|value| parse_json(&value, "Workflow status value"))
-            .transpose()?;
-        if current.as_ref().and_then(Value::as_str) != Some(step.from) {
+        if current == step.to || !step.predecessors.contains(&current) {
             continue;
         }
         let Some(property) = property_row(connection, &data_source_id, status_property)? else {
@@ -418,13 +449,14 @@ pub(crate) fn follow_workflow_status(
     if edits.is_empty() {
         return Ok(None);
     }
-    apply_as_collaborator(
+    apply_collaborator(
         connection,
         library_id,
         context,
         operation_id,
         &[DatabaseIntent::EditPropertyValues { edits }],
         committed_at,
+        StatusEditOrigin::WorkFact,
     )
     .map(Some)
 }
@@ -2758,6 +2790,9 @@ fn set_value(
     )?;
     let value = normalize_value(&property, input_value)?;
     let revision = existing_revision + 1;
+    if address.property_id == "status" {
+        effects.status_edit_page_ids.insert(address.page_id.clone());
+    }
     connection.execute(
         "INSERT INTO data_source_property_values(\
            data_source_id, membership_id, property_id, value_type, value_json, revision, updated_at\
@@ -2828,7 +2863,11 @@ fn update_membership_completion_timestamp(
     if property_id != super::property_semantics::STATUS_PROPERTY_ID {
         return Ok(());
     }
-    if value.as_str() == Some(super::property_semantics::COMPLETED_STATUS_OPTION_ID) {
+    crate::workspace::page_workspace::status_changed(connection, membership_id, value)?;
+    if matches!(
+        value.as_str(),
+        Some(super::property_semantics::COMPLETED_STATUS_OPTION_ID | "canceled")
+    ) {
         connection.execute(
             "UPDATE data_source_page_memberships \
              SET completed_at = COALESCE(completed_at, ?1) WHERE id = ?2",
@@ -6410,6 +6449,16 @@ pub(super) fn validate_view_definition(
             },
         );
     }
+    for id in ["owner", "assignee"] {
+        let schema = DatabasePropertySchema::Assignment;
+        property_semantics.insert(
+            id.to_owned(),
+            ViewPropertySemantics {
+                capabilities: super::property_semantics::capabilities(&schema),
+                schema,
+            },
+        );
+    }
     if !property_ids
         .iter()
         .all(|property_id| property_semantics.contains_key(property_id))
@@ -6553,6 +6602,42 @@ fn validate_filter_capabilities(
             .is_some_and(super::property_semantics::is_priority_option_id)
     {
         return Err(invalid("Priority filter references a noncanonical option"));
+    }
+    if matches!(property.schema, DatabasePropertySchema::Assignment) {
+        if matches!(
+            operator,
+            ViewFilterOperator::IsEmpty | ViewFilterOperator::IsNotEmpty
+        ) {
+            return Ok(());
+        }
+        let assignment = value
+            .cloned()
+            .and_then(|v| {
+                serde_json::from_value::<nodex_core_contracts::library::PageAssignee>(v).ok()
+            })
+            .ok_or_else(|| invalid("Assignment filters require a typed Member or Agent"))?;
+        if property_id == "owner"
+            && !matches!(
+                assignment,
+                nodex_core_contracts::library::PageAssignee::Member { .. }
+            )
+        {
+            return Err(invalid("Owner filters require a Member"));
+        }
+        if let Some(agent) = assignment.agent_selection() {
+            crate::library::validate_agent_selection(&agent)?;
+        }
+        if let nodex_core_contracts::library::PageAssignee::Member { member_id } = &assignment
+            && (member_id.is_empty()
+                || member_id.len() > 512
+                || member_id.trim() != member_id
+                || member_id.chars().any(char::is_control))
+        {
+            return Err(invalid(
+                "Assignment filters require a valid Member identity",
+            ));
+        }
+        return Ok(());
     }
     if !filter_value_matches_operator(*operator, value) {
         return Err(invalid("Property filter value does not match its operator"));

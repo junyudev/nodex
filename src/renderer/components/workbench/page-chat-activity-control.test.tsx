@@ -15,6 +15,7 @@ const summary = (overrides: Partial<PageChatActivitySummary> = {}): PageChatActi
   errorCount: 0,
   unreadCount: 0,
   soleSessionId: "session-1",
+  work: { activeChat: null, latestReport: null, managedSessionCount: 0 },
   runtimeSessionIds: [],
   ...overrides,
 });

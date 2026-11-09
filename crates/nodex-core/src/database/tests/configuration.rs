@@ -215,7 +215,7 @@ fn configuration_filters_resolve_in_transaction_preserve_on_omission_and_clear_e
             {"kind":"add_property","name":"Risk","schema":{"kind":"multi_select"},"options":["Low","High"]},
             {"kind":"create_view","name":"Review queue","layout":"list","filter":{
                 "kind":"group","operator":"or","children":[
-                    {"kind":"clause","propertyId":"Status","operator":"select_is","value":"Review"},
+                    {"kind":"clause","propertyId":"Status","operator":"select_is","value":"In Review"},
                     {"kind":"clause","propertyId":"Risk","operator":"multi_select_contains_all","value":["High","Low"]}
                 ]
             },"sorts":[{"property":"title","direction":"asc"}]}

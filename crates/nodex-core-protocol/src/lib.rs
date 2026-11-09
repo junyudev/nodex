@@ -1369,7 +1369,19 @@ mod api {
 )]
 pub struct CoreProtocolApi;
 
+/// The generated visitor exceeds ordinary worker-thread stacks in debug builds.
+/// Keep its stack budget local to schema generation, independent of the caller.
 pub fn openapi() -> utoipa::openapi::OpenApi {
+    std::thread::Builder::new()
+        .name("core-openapi".to_owned())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(build_openapi)
+        .expect("OpenAPI generator thread starts")
+        .join()
+        .unwrap_or_else(|error| std::panic::resume_unwind(error))
+}
+
+fn build_openapi() -> utoipa::openapi::OpenApi {
     use utoipa::openapi::{ContentBuilder, Ref, ResponseBuilder};
 
     let mut api = CoreProtocolApi::openapi();

@@ -1,4 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { parsePageAssignee } from "../../../../shared/work-graph";
+import { PageAssigneeLabel } from "@/components/database/page-assignee-label";
+import { type ReactNode } from "react";
 
 import { DataSourcePropertyValueEditor } from "@/components/database/data-source-property-value-editor";
 import { DueDateValueIcon } from "@/components/database/due-date-value-icon";
@@ -7,7 +9,6 @@ import type {
   DataSourcePropertyEditorBinding,
   DataSourcePropertyOptionRegistryState,
 } from "@/components/database/data-source-property-editor-binding";
-import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { resolveDataSourcePropertyPresentationRole } from "@/lib/data-source-property-presentation-role";
 import type { RelationTargetWindow } from "@/lib/data-source-relation-value";
@@ -25,7 +26,6 @@ import type {
   DataSourcePropertyRecordV2,
 } from "../../../../shared/database-module-v2";
 import {
-  DatabaseListAssigneeIcon,
   DatabaseListEstimateIcon,
   DatabaseListLabelIcon,
   DatabaseListProjectIcon,
@@ -156,73 +156,6 @@ const propertyIcon = (
   return <DatabaseListLabelIcon style={{ color: DATABASE_LIST_MUTED_ICON_COLOR }} />;
 };
 
-function DatabaseListAssigneeEditor({
-  label,
-  value,
-  revision,
-  pending,
-  onChange,
-}: {
-  readonly label: string;
-  readonly value: string;
-  readonly revision: number;
-  readonly pending: boolean;
-  readonly onChange: (value: string | null) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(value);
-  const [committed, setCommitted] = useState({ revision, value });
-  if (committed.revision !== revision || committed.value !== value) {
-    setCommitted({ revision, value });
-    setDraft(value);
-  }
-  const commit = () => {
-    const next = draft.trim();
-    if (next !== value) onChange(next || null);
-    setOpen(false);
-  };
-  return (
-    <NodexPopover
-      open={open}
-      onOpenChange={(next) => {
-        if (next && pending) return;
-        setDraft(value);
-        setOpen(next);
-      }}
-    >
-      <NodexTooltip tooltipContent={value}>
-        <NodexPopoverTrigger disabled={pending}>
-          <button
-            type="button"
-            aria-label={`Edit ${label}: ${value}`}
-            className="grid size-[18px] shrink-0 place-items-center overflow-hidden rounded-full text-[var(--database-list-icon-muted)] outline-none hover:bg-[var(--database-list-row-hover)] focus-visible:ring-1 focus-visible:ring-[var(--database-list-focus)] disabled:opacity-50"
-          >
-            <DatabaseListAssigneeIcon />
-          </button>
-        </NodexPopoverTrigger>
-      </NodexTooltip>
-      <NodexPopoverContent align="end" className="w-64 p-2">
-        <input
-          autoFocus
-          type="text"
-          aria-label={`${label} value`}
-          value={draft}
-          disabled={pending}
-          onChange={(event) => setDraft(event.target.value)}
-          onBlur={commit}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") commit();
-            if (event.key !== "Escape") return;
-            setDraft(value);
-            setOpen(false);
-          }}
-          className="h-8 w-full rounded-lg border border-token-border bg-token-input-background px-2 text-sm text-token-text-primary outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
-        />
-      </NodexPopoverContent>
-    </NodexPopover>
-  );
-}
-
 function PropertyEditor({
   property,
   authority,
@@ -234,27 +167,15 @@ function PropertyEditor({
 }) {
   const binding = createDatabaseListPropertyEditorBinding(property, authority, runtime);
   const current = authority.values[property.propertyId];
-  const pending = binding.pending ?? false;
   const error = binding.error;
-  const role = resolveDataSourcePropertyPresentationRole(property);
-  if (role.kind === "assignee" && typeof current?.value === "string") {
+  if (property.valueType === "assignment") {
     return (
-      <span className="inline-flex shrink-0 items-center" data-list-property={property.propertyId}>
-        <DatabaseListAssigneeEditor
-          label={property.name}
-          value={current.value}
-          revision={current.revision}
-          pending={pending}
-          onChange={(value) => binding.onChange(value)}
-        />
-        {error ? (
-          <span role="alert" className="sr-only">
-            {error}
-          </span>
-        ) : null}
+      <span className="inline-flex min-w-0 items-center" data-list-property={property.propertyId}>
+        <PageAssigneeLabel assignee={parsePageAssignee(current?.value ?? null)} />
       </span>
     );
   }
+
   return (
     <NodexTooltip tooltipContent={error ?? property.name}>
       <span

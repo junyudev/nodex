@@ -4,6 +4,7 @@ use nodex_core_contracts::{CoreErrorCode, agent::AgentTurnProvenance, workspace:
 
 fn launch(id: &str) -> ProjectWorkspaceIntent {
     ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+        agent_selection: None,
         coordinator: false,
         session_id: id.into(),
         project_id: None,
@@ -155,6 +156,7 @@ fn coordinator_managed_state_projects_to_sessions_and_invalidates_on_each_toggle
 }
 
 #[test]
+fn coordinator_report_is_authorized_atomic_replayed_and_keeps_an_ordinary_links_status() {
     let w = seeded_workspace();
     coordinator(&w);
     apply(&w.module, "work", launch("work"));
@@ -782,4 +784,357 @@ fn coordinator_composite_work_keys_fit_full_page_identities_and_stay_bounded() {
         .unwrap_err();
     assert_eq!(rejected.code, CoreErrorCode::InvalidInput);
     assert_eq!(pending(&w).len(), 1);
+}
+
+const STAGE_PAGE: &str = "019d0000-0000-7000-8000-000000000091";
+fn stage_fixture() -> TestWorkspace {
+    let w = seeded_workspace();
+    create_project(&w.module, "project:stages", "project:work");
+    apply(
+        &w.module,
+        "page:stages",
+        ProjectWorkspaceIntent::CreatePageFor {
+            target: ProjectWorkspacePageCreationTarget::Project {
+                project_id: "project:work".into(),
+            },
+            page_id: STAGE_PAGE.into(),
+            document_id: "019d0000-0000-7000-8000-000000000092".into(),
+            title: "Work".into(),
+        },
+    );
+    apply(&w.module, "work", launch("work"));
+    apply(
+        &w.module,
+        "handoff",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: "work".into(),
+            intent: ProjectSessionIntent::HandOffPage {
+                page_id: STAGE_PAGE.into(),
+            },
+        },
+    );
+    apply(
+        &w.module,
+        "manage",
+        ProjectWorkspaceIntent::SetSessionManaged {
+            session_id: "work".into(),
+            managed: true,
+        },
+    );
+    w
+}
+fn stage(w: &TestWorkspace) -> String {
+    w.kernel.readers().read_default(|c|Ok(c.query_row("SELECT json_extract(value.value_json,'$') FROM data_source_property_values value JOIN data_source_page_memberships member ON member.id=value.membership_id WHERE member.page_block_id=?1 AND member.removed_at IS NULL AND value.property_id='status'",[STAGE_PAGE],|r|r.get(0))?)).unwrap()
+}
+fn stage_edit(w: &TestWorkspace, status: &str) -> nodex_core_contracts::database::DatabaseIntent {
+    use nodex_core_contracts::database::*;
+    let (source,revision) = w.kernel.readers().read_default(|c|Ok(c.query_row("SELECT value.data_source_id,value.revision FROM data_source_property_values value JOIN data_source_page_memberships member ON member.id=value.membership_id WHERE member.page_block_id=?1 AND member.removed_at IS NULL AND value.property_id='status'",[STAGE_PAGE],|r|Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?)))?)).unwrap();
+    DatabaseIntent::EditPropertyValues {
+        edits: vec![DatabasePropertyValueMutation {
+            expected_membership_revision: None,
+            address: DatabasePagePropertyAddress {
+                page_id: STAGE_PAGE.into(),
+                data_source_id: source,
+                property_id: "status".into(),
+            },
+            edit: DatabasePropertyValueEdit::Replace {
+                expected_value_revision: revision,
+                value: DatabasePropertyValueInput::Select {
+                    option_id: status.into(),
+                },
+            },
+        }],
+    }
+}
+
+fn set_stage(w: &TestWorkspace, id: &str, status: &str, person: bool) {
+    let intent = stage_edit(w, status);
+    if person {
+        crate::database::DatabaseModule::new("profile-1", "library-1", &w.kernel)
+            .apply(
+                &context(),
+                nodex_core_contracts::ModuleApplyRequest {
+                    contract_version: nodex_core_contracts::DATABASE_CONTRACT_VERSION,
+                    store_epoch: nodex_core_contracts::StoreEpoch("epoch-1".into()),
+                    operation_id: id.into(),
+                    intent: vec![intent],
+                },
+            )
+            .unwrap();
+        return;
+    }
+    // Set an automatic predecessor through the same transactional Database collaborator.
+    let id = id.to_owned();
+    let mut agent = context();
+    agent.adapter = nodex_core_contracts::AdapterKind::Agent;
+    w.kernel
+        .writer()
+        .call(move |c| {
+            crate::infrastructure::sqlite::with_immediate_transaction(c, |c| {
+                crate::database::apply_intents_as_collaborator(
+                    c,
+                    "library-1",
+                    &agent,
+                    &id,
+                    &[intent],
+                    "2026-11-05T00:00:00.000Z",
+                )
+                .map(|_| ())
+            })
+        })
+        .unwrap();
+}
+fn outcome_report(outcome: WorkReportOutcome) -> ProjectWorkspaceIntent {
+    let ProjectWorkspaceIntent::AgentCommand { provenance, .. } = report(None, "Checked work.")
+    else {
+        panic!()
+    };
+    ProjectWorkspaceIntent::AgentCommand {
+        provenance,
+        intent: Box::new(ProjectWorkspaceIntent::ReportPageWork {
+            page_id: None,
+            outcome,
+            summary: "Checked work.".into(),
+        }),
+    }
+}
+fn report_moved(w: &TestWorkspace) -> bool {
+    pending(w)
+        .iter()
+        .rev()
+        .find(|e| e.kind == CoordinatorWorkEventKind::Report)
+        .unwrap()
+        .payload["status_moved"]
+        .as_bool()
+        .unwrap()
+}
+#[test]
+fn report_facts_follow_only_their_predecessors_and_keep_every_skipped_fact() {
+    for before in ["triage", "plan", "doing", "review", "done", "canceled"] {
+        for outcome in [
+            WorkReportOutcome::Ready,
+            WorkReportOutcome::Dropped,
+            WorkReportOutcome::Blocked,
+            WorkReportOutcome::Failed,
+        ] {
+            let w = stage_fixture();
+            set_stage(&w, "predecessor", before, false);
+            apply(&w.module, "report", outcome_report(outcome));
+            let expected = match (outcome, before) {
+                (WorkReportOutcome::Ready, "doing") => "review",
+                (WorkReportOutcome::Dropped, "triage" | "plan" | "doing") => "canceled",
+                _ => before,
+            };
+            assert_eq!(stage(&w), expected, "{before} {outcome:?}");
+            assert_eq!(report_moved(&w), before != expected);
+            let ProjectWorkspaceReadValue::PageChatActivitySummaries { summaries, .. } = read(
+                &w.module,
+                ProjectWorkspaceRead::PageChatActivitySummaries {
+                    page_ids: vec![STAGE_PAGE.into()],
+                },
+            ) else {
+                panic!()
+            };
+            assert_eq!(
+                summaries[0]
+                    .work
+                    .latest_report
+                    .as_ref()
+                    .unwrap()
+                    .status_moved,
+                Some(before != expected)
+            );
+
+            let retained=w.kernel.readers().read_default(|c|Ok(c.query_row("SELECT report_revision,report_status_moved FROM project_session_pages WHERE page_id=?1 AND session_id='work'",[STAGE_PAGE],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,bool>(1)?)))?)).unwrap();
+            assert_eq!(retained, (1, before != expected));
+        }
+    }
+}
+#[test]
+fn a_persons_move_including_aba_fences_a_later_report() {
+    for moves in [vec!["review"], vec!["plan", "doing"]] {
+        let w = stage_fixture();
+        for (i, status) in moves.iter().enumerate() {
+            set_stage(&w, &format!("person:{i}"), status, true);
+        }
+        apply(
+            &w.module,
+            "report",
+            outcome_report(WorkReportOutcome::Ready),
+        );
+        assert_eq!(stage(&w), *moves.last().unwrap());
+        assert!(!report_moved(&w));
+    }
+}
+#[test]
+fn an_old_chat_reports_evidence_without_moving_the_new_attempt() {
+    let w = stage_fixture();
+    apply(&w.module, "new", launch("new"));
+    apply(
+        &w.module,
+        "new:handoff",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: "new".into(),
+            intent: ProjectSessionIntent::HandOffPage {
+                page_id: STAGE_PAGE.into(),
+            },
+        },
+    );
+    apply(
+        &w.module,
+        "old:report",
+        outcome_report(WorkReportOutcome::Ready),
+    );
+    assert_eq!(stage(&w), "doing");
+    assert!(!report_moved(&w));
+    let ProjectWorkspaceReadValue::ReadManagedSession { managed } = read(
+        &w.module,
+        ProjectWorkspaceRead::ReadManagedSession {
+            session_id: "work".into(),
+        },
+    ) else {
+        panic!()
+    };
+    assert!(managed.unwrap().active_page_ids.is_empty());
+}
+#[test]
+fn only_a_person_accepts_reviewed_work_and_acceptance_is_a_person_edit() {
+    use nodex_core_contracts::AdapterKind;
+    for adapter in [AdapterKind::ElectronHost, AdapterKind::NativeCli] {
+        let w = stage_fixture();
+        apply(&w.module, "ready", outcome_report(WorkReportOutcome::Ready));
+        let ProjectWorkspaceIntent::AgentCommand { provenance, .. } = report(None, "Reviewed")
+        else {
+            panic!()
+        };
+        let rejected = w
+            .module
+            .apply(
+                &context(),
+                request(
+                    "agent:accept",
+                    ProjectWorkspaceIntent::AgentCommand {
+                        provenance,
+                        intent: Box::new(ProjectWorkspaceIntent::AcceptPageWork {
+                            expected_turn_episode: None,
+                            page_id: STAGE_PAGE.into(),
+                        }),
+                    },
+                ),
+            )
+            .unwrap_err();
+        assert_eq!(rejected.code, CoreErrorCode::Unauthorized);
+        let mut person = context();
+        person.adapter = adapter;
+        w.module
+            .apply(
+                &person,
+                request(
+                    "accept",
+                    ProjectWorkspaceIntent::AcceptPageWork {
+                        expected_turn_episode: None,
+                        page_id: STAGE_PAGE.into(),
+                    },
+                ),
+            )
+            .unwrap();
+        assert_eq!(stage(&w), "done");
+        assert_eq!(
+            w.kernel
+                .readers()
+                .read_default(|c| crate::database::status_person_revision(c, STAGE_PAGE))
+                .unwrap(),
+            1
+        );
+    }
+    for before in ["triage", "plan", "doing", "done", "canceled"] {
+        let w = stage_fixture();
+        set_stage(&w, "before", before, false);
+        apply(
+            &w.module,
+            "accept",
+            ProjectWorkspaceIntent::AcceptPageWork {
+                expected_turn_episode: None,
+                page_id: STAGE_PAGE.into(),
+            },
+        );
+        assert_eq!(stage(&w), before);
+    }
+}
+
+#[test]
+fn rehanding_an_existing_attempt_cannot_undo_a_newer_person_choice() {
+    let w = stage_fixture();
+    set_stage(&w, "person:triage", "triage", true);
+    set_stage(&w, "person:todo", "plan", true);
+    apply(
+        &w.module,
+        "rehand",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: "work".into(),
+            intent: ProjectSessionIntent::HandOffPage {
+                page_id: STAGE_PAGE.into(),
+            },
+        },
+    );
+    assert_eq!(stage(&w), "plan");
+    let moved=w.kernel.readers().read_default(|c|Ok(c.query_row("SELECT status_moved FROM project_session_pages WHERE page_id=?1 AND session_id='work'",[STAGE_PAGE],|r|r.get::<_,bool>(0))?)).unwrap();
+    assert!(!moved);
+}
+
+#[test]
+fn report_keeps_its_fact_when_the_status_source_is_unavailable() {
+    let w = stage_fixture();
+    w.kernel.writer().call(|c|{c.execute("UPDATE data_sources SET lifecycle='archived' WHERE id=(SELECT parent_id FROM pages WHERE block_id=?1)",[STAGE_PAGE])?;Ok(())}).unwrap();
+    apply(
+        &w.module,
+        "report",
+        outcome_report(WorkReportOutcome::Ready),
+    );
+    assert_eq!(stage(&w), "doing");
+    assert!(!report_moved(&w));
+}
+
+#[test]
+fn compound_page_metadata_status_edits_also_fence_work_reports() {
+    use nodex_core_contracts::library::*;
+    let w = stage_fixture();
+    let revision=w.kernel.readers().read_default(|c|Ok(c.query_row("SELECT COALESCE((SELECT revision FROM block_properties WHERE block_id=?1 AND property_key='schedule.isAllDay'),0)",[STAGE_PAGE],|r|r.get::<_,i64>(0))?)).unwrap();
+    let intent = LibraryIntent::ApplyPageMetadataProperties {
+        database_intents: vec![stage_edit(&w, "doing")],
+        intrinsic_mutation: Box::new(LibraryBlockPropertyMutation {
+            actor: serde_json::json!({"kind":"host"}),
+            client_session_id: None,
+            fields: vec![LibraryBlockPropertyFieldMutation::IntrinsicSet {
+                block_id: STAGE_PAGE.into(),
+                property_key: "schedule.isAllDay".into(),
+                expected_revision: revision,
+                value: serde_json::json!(false),
+            }],
+        }),
+    };
+    let library = crate::library::LibraryModule::new("profile-1", "library-1", &w.kernel);
+    let input = nodex_core_contracts::ModuleApplyRequest {
+        contract_version: LIBRARY_CONTRACT_VERSION,
+        operation_id: "compound:status".into(),
+        store_epoch: nodex_core_contracts::StoreEpoch("epoch-1".into()),
+        intent,
+    };
+    library.apply(&context(), input.clone()).unwrap();
+    library.apply(&context(), input).unwrap();
+    assert_eq!(
+        w.kernel
+            .readers()
+            .read_default(|c| crate::database::status_person_revision(c, STAGE_PAGE))
+            .unwrap(),
+        1,
+        "an exact retry retains its one person edit"
+    );
+    apply(
+        &w.module,
+        "ready:after-person",
+        outcome_report(WorkReportOutcome::Ready),
+    );
+    assert_eq!(stage(&w), "doing");
+    assert!(!report_moved(&w));
 }

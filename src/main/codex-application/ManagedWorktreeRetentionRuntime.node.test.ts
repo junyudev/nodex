@@ -94,6 +94,7 @@ const buildRuntime = (
     readonly automation?: AutomationApplication["Service"];
     readonly handoffJournal?: CodexThreadHandoffJournalStorage;
     readonly agentChats?: AgentChatWorktreeSource;
+    readonly pageWorkspacePaths?: Effect.Effect<readonly string[], unknown>;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -105,6 +106,7 @@ const buildRuntime = (
         .pipe(Scope.provide(scope));
     const context = yield* Layer.buildWithScope(
       managedWorktreeRetentionRuntimeLive({
+        pageWorkspacePaths: options.pageWorkspacePaths,
         handoffJournal: options.handoffJournal ?? {
           load: Effect.succeed([]),
           persist: () => Effect.void,
@@ -709,6 +711,40 @@ it.effect("cleans up nothing until Agent execution can describe the chats owning
     const plan = yield* runtime.run;
     assert.strictEqual(plan.status, "skipped");
     assert.deepEqual(removed, []);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("protects idle Page Workspaces independently of physical owner metadata", () =>
+  Effect.gen(function* () {
+    const roots = ["/managed/abcd/page", "/managed/bcde/old", "/managed/cdef/new"];
+    const removed: string[] = [];
+    const { runtime, scope } = yield* buildRuntime({
+      settings: () => ({ ...disabledSettings, autoDeleteEnabled: true }),
+      executionHosts: executionHosts(["local"]),
+      pageWorkspacePaths: Effect.succeed([roots[0]!]),
+      managedWorktrees: managedWorktrees({
+        list: () =>
+          Effect.succeed({
+            entries: roots.map((worktreeGitRoot, index) => ({
+              worktreeGitRoot,
+              repositoryPath: "/repo",
+              createdAtMs: Date.parse("2026-08-13T00:00:00.000Z") + index,
+              ownerThreadId: null,
+              ownerReadFailed: false,
+            })),
+          }),
+        remove: (input) =>
+          Effect.sync(() => {
+            removed.push(input.worktreeGitRoot);
+            return { removed: true, alreadyMissing: false, snapshot: null, warnings: [] };
+          }),
+      }),
+    });
+    yield* TestClock.setTime(Date.parse("2026-08-14T00:00:00.000Z"));
+    const plan = yield* runtime.run;
+    assert.strictEqual(plan.status, "planned");
+    assert.deepEqual(removed, [roots[1]]);
     yield* Scope.close(scope, Exit.void);
   }),
 );

@@ -220,6 +220,7 @@ export async function executeCodexWorktreeWorkerCreate(
     targetId: input.targetId,
     threadTitle: input.threadTitle,
     branchPrefix: input.branchPrefix ?? null,
+    pageWorkspace: input.pageWorkspace,
     preferredBaseBranch: null,
     mode: input.mode ?? "detachedHead",
     startingState,
@@ -247,6 +248,7 @@ export async function executeCodexWorktreeWorkerCreate(
     },
   });
   const paths = {
+    ...(input.pageWorkspace ? { branchName: created.branchName } : {}),
     worktreeGitRoot: created.worktreeGitRoot,
     worktreeWorkspaceRoot: created.worktreeWorkspaceRoot,
   };

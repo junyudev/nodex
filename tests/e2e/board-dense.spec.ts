@@ -116,7 +116,7 @@ const clearQueryAndCloseCommandPalette = async ({
   readonly search: Locator;
 }): Promise<void> => {
   await expect(search).toBeFocused();
-  await page.keyboard.press("Escape");
+  await search.fill("");
   await expect(search).toHaveValue("");
   await expect(dialog).toBeVisible();
   await page.keyboard.press("Escape");
@@ -962,10 +962,10 @@ test("materializes and opens the authoritative board/dense environment", async (
         .toEqual({ opaque: true, zIndex: 20 });
       const doingHeader = page
         .locator('[data-database-board-column-header="true"]')
-        .filter({ hasText: "Doing" });
+        .filter({ hasText: "In Progress" });
       await doingHeader.hover();
       const moreOptions = doingHeader.getByRole("button", {
-        name: "More options for Doing",
+        name: "More options for In Progress",
       });
       await expect(moreOptions).toHaveCSS("opacity", "1");
       const labelBox = await requireLocatorGeometry(
@@ -983,11 +983,11 @@ test("materializes and opens the authoritative board/dense environment", async (
       await expect(doingColumn).toHaveAttribute("data-board-column-collapsed", "true");
       await expect.poll(async () => (await doingColumn.boundingBox())?.width ?? null).toBe(52);
       await expect(doingHeader.locator('[data-database-board-collapsed-label="true"]')).toHaveText(
-        "Doing",
+        "In Progress",
       );
       const collapsedHeaderUnderlay = page
         .locator('[data-database-board-collapsed-header-underlay="true"]')
-        .filter({ hasText: "Doing" });
+        .filter({ hasText: "In Progress" });
       await expect
         .poll(
           async () =>
@@ -1012,7 +1012,7 @@ test("materializes and opens the authoritative board/dense environment", async (
       expect(
         collapsedLabelBox.y - (collapsedIconBox.y + collapsedIconBox.height),
       ).toBeLessThanOrEqual(10);
-      await doingColumn.getByRole("button", { name: "Expand Doing" }).click();
+      await doingColumn.getByRole("button", { name: "Expand In Progress" }).click();
       await expect(doingColumn).toHaveAttribute("data-board-column-collapsed", "false");
       const headerBox = await requireLocatorGeometry(doingHeader, "Board Column header");
       const buildBodyBox = await requireLocatorGeometry(
@@ -1026,7 +1026,7 @@ test("materializes and opens the authoritative board/dense environment", async (
       const observation = await observeBoardDenseUi(page);
       expect(observation).toEqual({
         totalCards: 10,
-        cardsByStatus: { triage: 3, plan: 2, doing: 3, review: 1, done: 1 },
+        cardsByStatus: { triage: 3, plan: 2, doing: 3, review: 1, done: 1, canceled: 0 },
         pageStageVisible: true,
         editorVisible: true,
       });

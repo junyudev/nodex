@@ -835,8 +835,9 @@ export function SubagentActivityInlineRows({
 }
 
 /**
- * Attribute messages sent by another source, question replies another Agent gave, and input
- * delivered from the queue.
+ * Attribute messages sent by another source and question replies another Agent gave. A message
+ * waits in the queue above the Composer; once it is in the transcript it has been delivered, so
+ * it reads as an ordinary message however it arrived.
  */
 function UserMessageDeliveryMarkers({
   entry,
@@ -865,7 +866,7 @@ function UserMessageDeliveryMarkers({
   ) : origin?.kind === "nodex" ? (
     <span>Sent by Nodex</span>
   ) : null;
-  if (!attribution && !queued) return null;
+  if (!attribution) return null;
   return (
     <div
       className="me-1 flex min-w-0 items-center justify-end gap-2 text-xs text-token-text-tertiary"

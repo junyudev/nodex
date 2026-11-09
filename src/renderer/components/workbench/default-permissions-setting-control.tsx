@@ -16,7 +16,10 @@ export function DefaultPermissionsSettingControl() {
       mode={settings.data?.defaultRuntimeMode ?? DEFAULT_AGENT_RUNTIME_SETTINGS.defaultRuntimeMode}
       disabled={settings.isPending}
       onSelect={async (defaultRuntimeMode) => {
-        await updateAgentRuntimeSettings(client, { defaultRuntimeMode });
+        await updateAgentRuntimeSettings(client, {
+          ...(settings.data ?? DEFAULT_AGENT_RUNTIME_SETTINGS),
+          defaultRuntimeMode,
+        });
       }}
     />
   );

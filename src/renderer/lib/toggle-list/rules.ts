@@ -16,6 +16,7 @@ import { TOGGLE_LIST_PRIORITY_ORDER, TOGGLE_LIST_STATUS_ORDER } from "./types";
 import { priorityClauseIncludesEmpty } from "./priority-clause";
 import { compareNullableRanks } from "../sort-empty-placement";
 import type { DatabasePageSummary } from "../types";
+import type { Member } from "../../../shared/work-graph";
 
 const priorityRank = new Map(
   TOGGLE_LIST_PRIORITY_ORDER.map((priority, index) => [priority, index]),
@@ -44,6 +45,7 @@ export function filterCards<T extends ToggleListFilterableCard>(
   searchQuery: string,
   options?: {
     excludedPageIds?: ReadonlySet<string>;
+    members?: readonly Member[];
   },
 ): T[] {
   const compiledSearch = compilePageCollectionSearchQuery(searchQuery);
@@ -55,13 +57,17 @@ export function filterCards<T extends ToggleListFilterableCard>(
     if (!matchesFilterSpec(card, rulesV2.filter)) return false;
     if (!compiledSearch.normalizedQuery) return true;
 
-    const searchable = `${buildPageSearchText({
-      id: card.id,
-      pageKey: card.pageKey,
-      title: card.title,
-      descriptionPreview: card.descriptionPreview ?? "",
-      assignee: card.assignee,
-    })} ${card.columnName.toLowerCase()}`;
+    const searchable = `${buildPageSearchText(
+      {
+        id: card.id,
+        pageKey: card.pageKey,
+        title: card.title,
+        descriptionPreview: card.descriptionPreview ?? "",
+        assignee: card.assignee,
+      },
+      [],
+      options?.members,
+    )} ${card.columnName.toLowerCase()}`;
     return matchesPageCollectionSearchQuery(card.pageKey, searchable, compiledSearch);
   });
 }

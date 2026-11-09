@@ -1,3 +1,4 @@
+import { pageAssigneeName, type Member } from "../../shared/work-graph";
 import type { DatabasePageSummary } from "./types";
 import {
   matchPageKeySearchQuery,
@@ -41,10 +42,15 @@ export function matchesPageCollectionSearchQuery(
 export function buildPageSearchText(
   card: Pick<DatabasePageSummary, "id" | "pageKey" | "title" | "descriptionPreview" | "assignee">,
   tagLabels: readonly string[] = [],
+  members: readonly Member[] = [],
 ): string {
   return normalizeSearchText(
-    [card.id, card.title, card.descriptionPreview, tagLabels.join(" "), card.assignee ?? ""].join(
-      " ",
-    ),
+    [
+      card.id,
+      card.title,
+      card.descriptionPreview,
+      tagLabels.join(" "),
+      pageAssigneeName(card.assignee, members),
+    ].join(" "),
   );
 }

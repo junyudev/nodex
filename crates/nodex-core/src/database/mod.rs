@@ -48,15 +48,17 @@ pub(crate) use mutation::{
     transfer_existing_page_for_agent_move, transfer_existing_page_for_block_transfer,
     validate_page_copy_data_source_destination, validate_page_transfer_data_source_source,
 };
-pub(crate) use mutation::{WorkflowStatusStep, advance_handed_off_pages, follow_workflow_status};
+pub(crate) use mutation::{
+    WorkflowStatusStep, follow_workflow_status, record_person_status_edit, status_person_revision,
+};
 pub(crate) use page_key::{
     create_page_key_namespace, current_page_key_for_database_page, current_page_key_for_page,
     current_page_keys_in_library, ensure_database_page_key, page_key_namespace_settings,
     preview_page_key_prefix, rename_page_key_prefix, resolve_page_key_matches_in_library,
 };
 pub(crate) use projection_delta::{
-    record_local_projection_delta, record_page_detail_projection_delta,
-    record_page_document_projection_delta,
+    record_local_projection_delta, record_local_projection_read_repairs,
+    record_page_detail_projection_delta, record_page_document_projection_delta,
 };
 pub(crate) use relation::{
     RelationValueRevision, copy_relation_edges, remove_membership_task_parent_edges,
@@ -1158,7 +1160,14 @@ mod tests {
             panic!("native query result");
         };
         assert_eq!(native.rows.items.len(), 1);
-        assert!(native.rows.items[0].database_values.is_empty());
+        assert_eq!(
+            native.rows.items[0]
+                .database_values
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            vec!["assignee", "owner"]
+        );
         let next = module
             .read(
                 &context(),
@@ -2616,6 +2625,10 @@ mod tests {
                            NULL, 1, 1, 1, ?2, ?2
                          FROM blocks block JOIN database_view_order_state state ON state.view_id = ?1
                          WHERE block.id LIKE 'page:rank-pressure-%'", params![VIEW_ID, NOW])?;
+                    // Storage-pressure setup bypasses semantic commits. Its unpublished Turn
+                    // backlog is outside the rank operation measured below.
+                    transaction.execute("DELETE FROM page_turn_dirty WHERE page_id LIKE 'page:rank-pressure-%'",[])?;
+
                     Ok(())
                 }),
             ).unwrap();
@@ -7095,7 +7108,7 @@ mod tests {
                         property_id: "p_blocked0".to_owned(),
                         expected_data_source_revision: source_revision,
                         expected_property_revision: 0,
-                        name: "Blocked by".to_owned(),
+                        name: "Waits for".to_owned(),
                         schema: DatabasePropertySchema::Relation {
                             target_data_source_id: SOURCE_ID.to_owned(),
                             cardinality:
@@ -8227,6 +8240,12 @@ mod tests {
         assert_eq!(read_completed_at().as_deref(), Some(completed_at.as_str()));
         write_status("operation:reopen", 3, "doing");
         assert_eq!(read_completed_at(), None);
+        write_status("operation:cancel", 4, "canceled");
+        let canceled_at = read_completed_at().expect("cancellation is terminal for Views");
+        write_status("operation:repeat-cancel", 5, "canceled");
+        assert_eq!(read_completed_at(), Some(canceled_at));
+        write_status("operation:reopen-canceled", 6, "plan");
+        assert_eq!(read_completed_at(), None);
     }
 
     #[test]
@@ -8252,7 +8271,7 @@ mod tests {
                 GroupRowSpec {
                     page_id: "page:older-completed",
                     title: "Older",
-                    value_json: Some("\"done\""),
+                    value_json: Some("\"canceled\""),
                     rank_key: Some("a"),
                 },
             ],
@@ -8430,8 +8449,8 @@ mod tests {
         assert!(groups.subgrouped);
         assert!(!groups.truncated);
         assert_eq!(groups.group_limit, 200);
-        assert_eq!(groups.total_groups, 20);
-        assert_eq!(groups.groups.len(), 20);
+        assert_eq!(groups.total_groups, 24);
+        assert_eq!(groups.groups.len(), 24);
         assert_eq!(
             groups
                 .groups
@@ -8726,7 +8745,36 @@ mod tests {
         revision: i64,
         value: Value,
     ) -> crate::library::LibraryApplyOutcome {
+        graph_set_page_work_result(kernel, context, "page:a", id, revision, value)
+    }
+    fn graph_set_page_work_result(
+        kernel: &SqliteStoreKernel,
+        context: &BoundModuleContext,
+        page: &str,
+        id: &str,
+        revision: i64,
+        value: Value,
+    ) -> crate::library::LibraryApplyOutcome {
         use nodex_core_contracts::library::*;
+        let owner = kernel
+            .readers()
+            .read_default(|c| {
+                c.query_row(
+                    "SELECT member_id FROM local_profile_members WHERE library_id='library-1'",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )
+                .map_err(StoreError::from)
+            })
+            .unwrap();
+        let mut value = if value.is_null() {
+            json!({"owner":owner,"assignee":null,"auto_start":false})
+        } else {
+            value
+        };
+        if value["owner"] == "local" {
+            value["owner"] = json!(owner);
+        }
         LibraryModule::new("profile-1", "library-1", kernel)
             .apply(
                 context,
@@ -8739,6 +8787,9 @@ mod tests {
                             actor: json!({"kind": "host"}),
                             client_session_id: None,
                             fields: vec![LibraryBlockPropertyFieldMutation::IntrinsicSet {
+                                block_id: page.into(),
+                                property_key: "work".into(),
+                                expected_revision: revision + 1,
                                 value,
                             }],
                         }),
@@ -8764,6 +8815,7 @@ mod tests {
     }
 
     fn agent_work(launch: &str) -> Value {
+        json!({"owner":"local","assignee":{"kind":"agent","instance_id":"agent:codex","model":"gpt-6-luna","effort":null},"auto_start":launch=="automatic"})
     }
 
     #[test]
@@ -8965,8 +9017,11 @@ mod tests {
                 .unwrap()
         };
         let initial = read();
+        assert!(initial.database_values.contains_key("owner"));
         assert_eq!(initial.work.unsatisfied_count, 1);
         assert_eq!(initial.work.blockers[0].page_id, "page:b");
+        assert!(initial.work.assignee.is_none());
+        assert!(!initial.work.auto_start);
         for (index, value, launch) in [
             (
                 0,
@@ -9012,10 +9067,19 @@ mod tests {
                     );
                 }
             }
+            assert!(row.database_values.contains_key("owner"));
             assert!(row.metadata_revision > initial.metadata_revision);
             assert_eq!(row.work.unsatisfied_count, 1);
             assert_eq!(
+                row.work.auto_start,
+            );
+            assert_eq!(
                 row.work
+                    .assignee
+                    .as_ref()
+                    .and_then(|a| a.agent_selection())
+                    .map(|a| a.model),
+                launch.map(|_| "gpt-6-luna".to_owned())
             );
         }
     }
@@ -9111,7 +9175,30 @@ mod tests {
         assert!(ready().is_empty());
         graph_set_work(&kernel, &context(), "assign", 0, agent_work("ask"));
         assert_eq!(ready().len(), 1);
+        let initial = ready().remove(0);
+        graph_set_work(&kernel, &context(), "reselect", 1, agent_work("ask"));
+        assert_ne!(
+            initial.readiness_epoch,
+            ready()[0].readiness_epoch,
+            "a new work revision fences an identical Agent assignment"
+        );
+        graph_set_work(
+            &kernel,
+            &context(),
+            "assign-person",
+            2,
+            json!({"owner":"local","assignee":{"kind":"member","member_id":initial.page_work.owner},"auto_start":false}),
+        );
+        assert!(
+            ready().is_empty(),
+            "a Member Assignee is never ready for Agent work"
+        );
+        graph_set_work(&kernel, &context(), "restore-agent", 3, agent_work("ask"));
         let empty_epoch = ready()[0].readiness_epoch.clone();
+        assert_ne!(
+            initial.readiness_epoch, empty_epoch,
+            "restoring an Agent keeps the work revision fence"
+        );
         graph_apply(
             &module,
             "block-a",
@@ -9142,6 +9229,10 @@ mod tests {
             )
             .unwrap()
         };
+        kernel.writer().call(|c| {c.execute("INSERT INTO project_sessions(id,project_id,no_thread_fallback_title,created_at,updated_at,activity_at) VALUES ('session:report','project-1','Report',?1,?1,unixepoch(?1)*1000)",[NOW])?;c.execute("INSERT INTO project_session_pages(session_id,page_id,linked_at,report_outcome,report_summary,report_at,report_revision) VALUES('session:report','page:b',?1,'ready','Ready',?1,1)",[NOW])?;Ok(())}).unwrap();
+        assert!(ready().is_empty(), "ready report is not acceptance");
+        kernel.writer().call(|c| {c.execute("UPDATE project_session_pages SET report_outcome='dropped' WHERE session_id='session:report'",[])?;Ok(())}).unwrap();
+        assert!(ready().is_empty(), "dropped report is not acceptance");
         set_status("b-done", "page:b", "done", 1);
         assert!(ready().is_empty(), "every prerequisite must be satisfied");
         set_status("c-done", "page:c", "done", 1);
@@ -9177,14 +9268,32 @@ mod tests {
         assert!(pages[0].prerequisites[0].satisfied);
         assert_ne!(pages[0].readiness_epoch, empty_epoch);
         assert_eq!(pages[0].readiness_epoch, ready()[0].readiness_epoch);
+        kernel.writer().call(|c| {c.execute("UPDATE project_session_pages SET report_revision=report_revision+1 WHERE session_id='session:report'",[])?;Ok(())}).unwrap();
+        assert_eq!(
+            pages[0].readiness_epoch,
+            ready()[0].readiness_epoch,
+            "report revisions are not prerequisite acceptance"
+        );
+
+        for (i, stage) in ["doing", "review", "done", "canceled", "triage", "plan"]
             .into_iter()
             .enumerate()
         {
             set_status(&format!("stage:{i}"), "page:a", stage, i as i64 + 1);
             assert_eq!(!ready().is_empty(), matches!(stage, "triage" | "plan"));
         }
+        let before_person_edit = ready()[0].readiness_epoch.clone();
+        set_status("same-stage-person-edit", "page:a", "plan", 7);
+        assert_ne!(
+            before_person_edit,
+            ready()[0].readiness_epoch,
+            "an explicit person choice fences work even in the same stage"
+        );
         set_status("reopen-b", "page:b", "plan", 2);
         assert!(ready().is_empty());
+        set_status("cancel-b", "page:b", "canceled", 3);
+        assert!(ready().is_empty(), "Canceled is not accepted work");
+        set_status("redone-b", "page:b", "done", 4);
         assert_eq!(ready().len(), 1);
         assert_ne!(pages[0].readiness_epoch, ready()[0].readiness_epoch);
         kernel
@@ -9213,6 +9322,12 @@ mod tests {
         kernel.writer().call(|c| { c.execute("UPDATE projects SET lifecycle='active', database_block_id=NULL WHERE id='project-1'", [])?; Ok(()) }).unwrap();
         assert!(ready().is_empty());
         kernel.writer().call(|c| { c.execute("UPDATE projects SET database_block_id=?1 WHERE id='project-1'", [DATABASE_ID])?; c.execute("INSERT INTO project_sessions(id,project_id,no_thread_fallback_title,created_at,updated_at,activity_at) VALUES ('session:linked','project-1','Linked',?1,?1,unixepoch(?1)*1000)", [NOW])?; c.execute("INSERT INTO project_session_pages(session_id,page_id,linked_at) VALUES ('session:linked','page:a',?1)", [NOW])?; Ok(()) }).unwrap();
+        assert_eq!(
+            ready().len(),
+            1,
+            "ordinary linked chats do not suppress readiness"
+        );
+        kernel.writer().call(|c| { c.execute("INSERT INTO page_active_chats(page_id,session_id,revision,set_at) VALUES('page:a','session:linked',1,?1)",[NOW])?;Ok(()) }).unwrap();
         assert!(ready().is_empty());
         let DatabaseReadValue::ReadyWork { pages } = graph_read(
             &module,
@@ -9225,6 +9340,207 @@ mod tests {
             panic!()
         };
         assert!(pages.is_empty());
+    }
+
+    #[test]
+    fn page_assignment_fields_filter_sort_and_group_without_source_properties() {
+        use nodex_core_contracts::database::*;
+        let directory = tempdir().unwrap();
+        let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
+        let module = work_graph_fixture(&kernel);
+        let mut first = agent_work("ask");
+        first["assignee"]["instance_id"] = json!("codex:account-one");
+        graph_set_page_work_result(&kernel, &context(), "page:a", "assign:a", 0, first.clone());
+        let mut second = first.clone();
+        second["assignee"]["instance_id"] = json!("codex:account-one");
+        second["assignee"]["effort"] = json!("high");
+        graph_set_page_work_result(&kernel, &context(), "page:b", "assign:b", 0, second);
+        let query = |operator, value| {
+            let DatabaseReadValue::DataSourceQuery { value } = graph_read(
+                &module,
+                DatabaseRead::DataSourceQuery {
+                    data_source_id: SOURCE_ID.into(),
+                    query: DatabaseDataSourceQuery {
+                        cursor: None,
+                        limit: Some(10),
+                        projection_property_ids: None,
+                        filter: DatabaseViewFilter::Clause {
+                            property_id: "assignee".into(),
+                            operator,
+                            value,
+                        },
+                        sort: vec![],
+                    },
+                },
+            ) else {
+                panic!("assignment query");
+            };
+            value.rows.items
+        };
+        assert_eq!(
+            query(
+                DatabaseViewFilterOperator::Equals,
+                Some(Some(first["assignee"].clone()))
+            )
+            .iter()
+            .map(|r| r.page_id.as_str())
+            .collect::<Vec<_>>(),
+            vec!["page:a"]
+        );
+        assert_eq!(
+            query(
+                DatabaseViewFilterOperator::NotEquals,
+                Some(Some(first["assignee"].clone()))
+            )
+            .len(),
+            4
+        );
+        assert_eq!(query(DatabaseViewFilterOperator::IsEmpty, None).len(), 3);
+        assert_eq!(kernel.readers().read_default(|c|c.query_row("SELECT count(*) FROM data_source_properties WHERE id IN ('owner','assignee')",[],|r|r.get::<_,i64>(0)).map_err(StoreError::from)).unwrap(),0);
+        let grouped = "018f1000-0000-7000-8000-000000000088";
+        graph_apply(
+            &module,
+            "assignment:group",
+            vec![DatabaseIntent::PutView {
+                database_id: DATABASE_ID.into(),
+                data_source_id: SOURCE_ID.into(),
+                view_id: grouped.into(),
+                expected_revision: 0,
+                name: "By Assignee".into(),
+                layout: DatabaseViewLayout::List,
+                definition: view_definition(view_config(
+                    json!({"kind":"group","operator":"and","children":[]}),
+                    Some("assignee"),
+                    &["owner", "assignee"],
+                )),
+                is_default: false,
+                before_view_id: None,
+            }],
+        )
+        .unwrap();
+        let DatabaseReadValue::ViewGroups { value } = graph_read(
+            &module,
+            DatabaseRead::ViewGroups {
+                target: DatabaseViewReadTarget::View {
+                    view_id: grouped.into(),
+                },
+            },
+        ) else {
+            panic!("assignment groups");
+        };
+        assert!(value.groups.iter().any(|group| group.group_key.as_deref()
+            == Some(r#"agent:["codex:account-one","gpt-6-luna"]"#)
+            && group.total_rows == 2));
+        graph_set_page_work_result(
+            &kernel,
+            &context(),
+            "page:c",
+            "owner:c",
+            0,
+            json!({"owner":"member:other","assignee":null,"auto_start":false}),
+        );
+        let DatabaseReadValue::DataSourceQuery { value } = graph_read(
+            &module,
+            DatabaseRead::DataSourceQuery {
+                data_source_id: SOURCE_ID.into(),
+                query: DatabaseDataSourceQuery {
+                    cursor: None,
+                    limit: Some(10),
+                    projection_property_ids: None,
+                    filter: DatabaseViewFilter::Group {
+                        operator: DatabaseViewFilterGroupOperator::And,
+                        children: vec![],
+                    },
+                    sort: vec![DatabaseViewSort {
+                        field: DatabaseViewSortField::Property {
+                            property_id: "owner".into(),
+                        },
+                        direction: DatabaseViewSortDirection::Asc,
+                        nulls: DatabaseViewNullOrder::Last,
+                    }],
+                },
+            },
+        ) else {
+            panic!("Owner sort");
+        };
+        assert_eq!(value.rows.items[0].page_id, "page:c");
+    }
+
+    #[test]
+    fn assignment_changes_revoke_consent_and_members_must_belong_to_the_library() {
+        use nodex_core_contracts::library::LibraryBlockPropertyMutationOutcome as Outcome;
+        let directory = tempdir().unwrap();
+        let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
+        let module = work_graph_fixture(&kernel);
+        assert!(matches!(
+            graph_set_work(
+                &kernel,
+                &context(),
+                "assign-first",
+                0,
+                agent_work("automatic")
+            ),
+            Outcome::Committed { .. }
+        ));
+        let mut changed = agent_work("automatic");
+        changed["assignee"]["model"] = json!("different-model");
+        assert!(matches!(
+            graph_set_work(&kernel, &context(), "reassign", 1, changed),
+            Outcome::Committed { .. }
+        ));
+        let DatabaseReadValue::WorkContext { value } = graph_read(
+            &module,
+            DatabaseRead::WorkContext {
+                page_id: "page:a".into(),
+            },
+        ) else {
+            panic!("work context");
+        };
+        assert!(!value.page_work.unwrap().auto_start);
+        let local = kernel
+            .readers()
+            .read_default(|connection| {
+                connection
+                    .query_row(
+                        "SELECT member_id FROM local_profile_members WHERE library_id='library-1'",
+                        [],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .map_err(StoreError::from)
+            })
+            .unwrap();
+        assert!(matches!(
+            graph_set_work(
+                &kernel,
+                &context(),
+                "assign-person",
+                2,
+                json!({"owner":"local","assignee":{"kind":"member","member_id":local},"auto_start":true})
+            ),
+            Outcome::Committed { .. }
+        ));
+        let DatabaseReadValue::WorkContext { value } = graph_read(
+            &module,
+            DatabaseRead::WorkContext {
+                page_id: "page:a".into(),
+            },
+        ) else {
+            panic!("work context");
+        };
+        assert!(!value.page_work.unwrap().auto_start);
+        let foreign = kernel.writer().call(|connection| {
+            connection.query_row("SELECT member_id FROM local_profile_members WHERE library_id='other-library'",[],|row|row.get::<_,String>(0)).map_err(StoreError::from)
+        }).unwrap();
+        assert!(matches!(
+            graph_set_work(
+                &kernel,
+                &context(),
+                "foreign-member",
+                3,
+                json!({"owner":"local","assignee":{"kind":"member","member_id":foreign},"auto_start":false})
+            ),
+            Outcome::Rejected { .. }
+        ));
     }
 
     #[test]
@@ -9242,6 +9558,7 @@ mod tests {
             super::create_page_key_namespace(c, "library-1", DATABASE_ID, Some("WORK"), "Work", NOW)?;
             c.execute("INSERT INTO data_source_property_values(data_source_id,membership_id,property_id,value_type,value_json,revision,updated_at) VALUES (?1,'membership:page:b','blocked_by','relation','null',1,?2)", params![SOURCE_ID, NOW])?;
             c.execute("INSERT INTO data_source_relation_edges(edge_id,source_data_source_id,source_membership_id,property_id,target_page_block_id,created_at) VALUES (?1,?2,'membership:page:b','blocked_by','page:a',?3)", params!["a".repeat(64), SOURCE_ID, NOW])?;
+            let error = crate::infrastructure::store_validation::validate_store_semantics(c).unwrap_err(); assert_eq!(error.code, StoreErrorCode::StoreCorrupt); assert!(error.message.contains("Prerequisite cycle"), "{}", error.message); Ok(())
         }).unwrap();
     }
 }

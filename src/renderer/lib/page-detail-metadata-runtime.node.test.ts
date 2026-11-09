@@ -622,6 +622,9 @@ describe("Page Detail metadata runtime", () => {
   test("writes Agent work and clears it through the Page intrinsic revision", async () => {
     const requests: BlockPropertyMutationRequestV2[] = [];
     const work = {
+      owner: "person",
+      assignee: { kind: "agent", instance_id: "agent:codex", model: "gpt-6-luna", effort: null },
+      auto_start: false,
     } as const;
     const source = detail(false);
     const deps = dependencies({ detail: source, requests, refreshes: [] });
@@ -630,6 +633,7 @@ describe("Page Detail metadata runtime", () => {
         projectId: "project-1",
         pageId: "page-1",
         operationId: "assign-work",
+        patch: { pageWork: work },
         dependencies: deps,
       }),
     ).toEqual({ status: "updated", didMutate: true });
@@ -637,6 +641,7 @@ describe("Page Detail metadata runtime", () => {
       {
         scope: "intrinsic",
         blockId: "page-1",
+        propertyKey: "work",
         operation: "set",
         expectedRevision: 0,
         value: work,
@@ -646,6 +651,7 @@ describe("Page Detail metadata runtime", () => {
       ...source,
       intrinsicProperties: [
         ...source.intrinsicProperties,
+        { key: "work", valueType: "json", value: work, revision: 4 },
       ],
     };
     expect(
@@ -653,6 +659,7 @@ describe("Page Detail metadata runtime", () => {
         projectId: "project-1",
         pageId: "page-1",
         operationId: "clear-work",
+        patch: { pageWork: { ...work, assignee: null } },
         dependencies: dependencies({ detail: assigned, requests, refreshes: [] }),
       }),
     ).toEqual({ status: "updated", didMutate: true });
@@ -660,8 +667,10 @@ describe("Page Detail metadata runtime", () => {
       {
         scope: "intrinsic",
         blockId: "page-1",
+        propertyKey: "work",
         operation: "set",
         expectedRevision: 4,
+        value: { owner: "person", assignee: null, auto_start: false },
       },
     ]);
   });

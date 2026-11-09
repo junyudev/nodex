@@ -515,13 +515,20 @@ it.effect(
           const { turnItems } = yield* projections.getThreadRecords(threadId, ["turnItems"], {
             turnItemTypes: ["user_message"],
           });
+          const { messages } = yield* projections.getThreadRecords(threadId, ["messages"], {
+            messageIds: [MessageId.make(`async-answer:${requestId}:respond:${mode}`)],
+          });
           const reply = turnItems.find(
             (item) =>
               item.type === "user_message" &&
               item.messageId === `async-answer:${requestId}:respond:${mode}`,
           );
+          assert.equal(reply?.type === "user_message" ? reply.text : null, "/repo/target");
           assert.deepEqual(
-            reply?.type === "user_message" ? decodeCodexAsyncQuestionReplies(reply.text) : null,
+            decodeCodexAsyncQuestionReplies(
+              messages.find((message) => message.id === `async-answer:${requestId}:respond:${mode}`)
+                ?.providerText ?? "",
+            ),
             [
               {
                 questionItemId: "workspace",

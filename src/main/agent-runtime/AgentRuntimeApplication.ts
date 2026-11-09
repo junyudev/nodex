@@ -1,3 +1,4 @@
+import { make as makeChatMessageDelivery } from "./ChatMessageDelivery";
 import type { InsightsOrigin, InsightsUsageSource } from "../../shared/insights";
 import {
   automaticModelCatalog,
@@ -108,6 +109,7 @@ import {
 } from "../../shared/conversation-identity";
 import {
   agentRuntimeProviderId,
+  agentRuntimeWorkSelection,
   applyAgentRuntimeOptionIntent,
   readAgentRuntimeEffort,
 } from "../../shared/agent-runtime-provider";
@@ -200,6 +202,11 @@ export interface AgentRuntimeApplicationOptions {
     readonly ensureWorkspaceRoot: Effect.Effect<void, unknown>;
   };
   readonly prepareWorkspace?: NativeSessionWorkspace["Service"]["prepare"];
+  readonly pageWorkspaceThreads?: (
+    worktreePath: string,
+  ) => Effect.Effect<readonly string[], unknown>;
+  readonly refreshPageWorkspace?: (pageId: string) => Effect.Effect<void, unknown>;
+  readonly ensurePageWorkspace?: import("../agent-backend/PageWorkspaceApplication").PageWorkspaceApplication["ensure"];
   readonly presentation?: CodexTurnPresentation["Service"];
   /** Desktop resources an archived or deleted Session's Agents held, such as Browser pages. */
   readonly releaseDesktopSession?: (sessionId: string) => Effect.Effect<void>;
@@ -406,6 +413,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   const lifecycle = yield* ProjectRuntimeLifecycleRuntime;
   const workspace = yield* ProjectWorkspace;
   const messageResources = yield* makeMessageResources();
+  const recordDelivery = yield* makeChatMessageDelivery;
   const sessionLanes = yield* RcMap.make({ lookup: (_sessionId: string) => Semaphore.make(1) });
   const ownerScope = yield* Effect.scope;
   if (!validId(options.projectless.engineProjectId) || !options.projectless.workspaceRoot.trim())
@@ -787,7 +795,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         core.workspace.read({
           kind: "agent_runtime_session_binding_window",
           runtime_id: connection.identity.runtimeId,
-          project_id: projectId,
+          scope: { kind: "project", project_id: projectId },
           window: { first: 200, ...(after === undefined ? {} : { after }) },
         }),
       );
@@ -1309,6 +1317,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               ...binding,
               title: input.title.trim(),
               initial_page_ids: [...new Set(input.initialPageIds ?? [])],
+              agent_selection: agentRuntimeWorkSelection(
+                prepared.message.modelSelection ?? input.modelSelection,
+              ),
             },
           },
         });
@@ -1336,12 +1347,49 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         (!previousBinding && existing.activeRunId !== null))
     )
       return yield* failure("launch", "Launch metadata does not match this Session");
+    if ((yield* effectiveHolds(core, { kind: "session", session_id: input.sessionId })).length)
+      return yield* failure("launch", "Resume work before starting this chat");
     const sourceCwd = input.sourceRoot ?? scope.workspaceRoot;
-    const deferWorktree = !existing && input.runInTarget === "newWorktree";
+    const sessionWorkPage = options.ensurePageWorkspace
+      ? yield* host(
+          core.workspace.read(
+            { kind: "session_work_page", session_id: input.sessionId },
+            undefined,
+            projectId,
+          ),
+        )
+      : null;
+    const workPage =
+      sessionWorkPage?.value.kind === "session_work_page" && sessionWorkPage.value.page_id
+        ? { pageId: sessionWorkPage.value.page_id }
+        : workLaunch?.value.kind === "page_work_launch" &&
+            workLaunch.value.launch?.session_id === input.sessionId
+          ? { pageId: workLaunch.value.launch.page_id }
+          : input.workPage;
+    if (
+      workPage &&
+      (yield* effectiveHolds(core, { kind: "page", page_id: workPage.pageId })).length
+    )
+      return yield* failure("launch", "Resume work before starting this Page");
+    const pageLease =
+      workPage && options.ensurePageWorkspace
+        ? yield* options
+            .ensurePageWorkspace({
+              launch: { ...input, workPage },
+              sourceRoots: scope.sourceRoots,
+            })
+            .pipe(
+              Effect.mapError((cause) =>
+                failure("workspace", "Page Workspace could not be prepared", cause),
+              ),
+            )
+        : null;
+    const deferWorktree = !pageLease && !existing && input.runInTarget === "newWorktree";
     // A checkout or projectless workspace is ready immediately; a managed worktree is prepared
     // after the Run is durable, so the prompt survives and the user sees progress.
     const lease =
-      !existing && !deferWorktree && options.prepareWorkspace
+      pageLease ??
+      (!existing && !deferWorktree && options.prepareWorkspace
         ? yield* options.prepareWorkspace({
             projectId,
             targetId: input.sessionId,
@@ -1354,8 +1402,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               launchId: input.launchId,
             }),
           })
-        : null;
-    const cwd = existing?.worktreePath ?? lease?.location.cwd ?? input.worktreePath ?? sourceCwd;
+        : null);
+    const cwd = lease?.location.cwd ?? existing?.worktreePath ?? input.worktreePath ?? sourceCwd;
     yield* upsertProject(connection, scope);
     if (lease) yield* lease.retain;
     if (!existing)
@@ -1373,7 +1421,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           modelSelection: prepared.message.modelSelection ?? input.modelSelection,
           runtimeMode,
           interactionMode: prepared.message.interactionMode ?? input.interactionMode,
-          branch: input.branch ?? null,
+          branch: pageLease?.branchName ?? input.branch ?? null,
           worktreePath: cwd,
           createdBy: input.messageOrigin === "host" ? "system" : provenance ? "agent" : "user",
           creationSource: input.messageOrigin === "host" ? "server" : provenance ? "mcp" : "web",
@@ -1415,11 +1463,23 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }
       : prepared.message;
     const message = yield* prepareMessage(connection, threadId, outgoing);
+    yield* recordDelivery(input.sessionId, message, {
+      host: input.messageOrigin === "host" || input.messageOrigin === "automation",
+      senderThreadId: sender?.threadId,
+      senderRunId: sender?.runId,
+    });
     const command = {
+      ...messageCommand(threadId, message, undefined, provenance !== null, false, sender),
       ...(input.messageOrigin === "host"
         ? { createdBy: "system" as const, creationSource: "server" as const }
         : {}),
     };
+    const admissionPageId = workPage?.pageId ?? input.initialPageIds?.[0];
+    if (admissionPageId)
+      yield* connection.request("thread.admission-context", {
+        threadId,
+        pageId: admissionPageId,
+      });
     const firstLaunch = !existing && !previousBinding;
     yield* dispatch(
       connection,
@@ -1761,6 +1821,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               kind: "create_agent_runtime_session",
               ...binding,
               title: prepared.title.trim() || "Imported conversation",
+              agent_selection: agentRuntimeWorkSelection({ instanceId: input.instanceId, model }),
               initial_page_ids: [],
             },
           },
@@ -1917,6 +1978,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               kind: "create_agent_runtime_session",
               ...binding,
               title: input.title.trim(),
+              agent_selection: agentRuntimeWorkSelection({
+                instanceId: provider.instanceId,
+                model,
+              }),
               initial_page_ids: [],
             },
           },
@@ -2351,6 +2416,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               ...binding,
               title,
               initial_page_ids: [],
+              agent_selection: agentRuntimeWorkSelection(source.thread.modelSelection),
             },
           },
         });
@@ -2667,6 +2733,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       queueAfterActive = false,
     ) {
       const { connection, loaded, prepared, interactive, agent } = preparedDispatch;
+      yield* recordDelivery(input.sessionId, outgoing);
+      yield* requireAutomationExecution(input.automationExecution);
       const result = yield* dispatch(
         connection,
         messageCommand(
@@ -2815,6 +2883,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       });
       if (replay) return replay;
     }
+    if ((yield* effectiveHolds(core, { kind: "session", session_id: input.sessionId })).length)
+      return yield* failure("message", "Resume work to send");
     const {
       connection,
       loaded,
@@ -2829,6 +2899,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       input.mode === "queue",
     );
     const prepared = yield* prepareMessage(connection, loaded.threadId, outgoing);
+    yield* recordDelivery(input.sessionId, prepared, {
+      host: input.origin === "host",
+      senderThreadId: input.senderThreadId,
+      senderRunId: input.senderRunId,
+    });
     if (input.messageFingerprint)
       yield* connection.request("thread.message-admit", {
         threadId: loaded.threadId,
@@ -3016,10 +3091,30 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     }
     const respondedBy = responder;
     const { decision, feedback, answers, attachmentsByQuestionId } = input;
+    const answerValues = Object.values(answers ?? {});
+    const inboundMessage =
+      !approval && answers
+        ? {
+            id:
+              input.submissionId ??
+              commandId("response", { threadId: loaded.threadId, requestId: input.requestId }),
+            text:
+              answerValues.length === 1 && typeof answerValues[0] === "string"
+                ? answerValues[0]
+                : stableStringifyBlockPropertyJson(answers),
+          }
+        : undefined;
+    if (inboundMessage && input.runId)
+      yield* recordDelivery(
+        input.sessionId,
+        { messageId: inboundMessage.id, text: inboundMessage.text },
+        { questionRunId: input.runId },
+      );
     return yield* dispatch(
       connection,
       {
         type: "runtime-request.respond",
+        ...(inboundMessage ? { inboundMessage } : {}),
         commandId: commandId("response", {
           threadId: loaded.threadId,
           requestId: input.requestId,
@@ -3345,40 +3440,56 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     consumers: (owners) =>
       owned(
         "worktree-consumers",
-        Effect.forEach(
-          owners,
-          (owner) =>
-            Effect.gen(function* () {
-              const bound = yield* readBoundThread(owner.ownerThreadId);
-              if (!bound) return [];
-              const session = yield* workspace.getProjectSession(bound.sessionId);
-              if (!session) return [];
-              const { thread } = bound;
-              const working =
-                thread.activeRunId !== null || (thread.pendingBackgroundTasks?.length ?? 0) > 0;
-              return [
-                {
-                  threadId: thread.id,
-                  projectId: session.projectId,
-                  sessionId: session.id,
-                  executionHostId: owner.hostId,
-                  cwd: thread.worktreePath,
-                  managedWorktreePath: owner.worktreeGitRoot,
-                  runtimeWorkspaceRoots: [],
-                  archived: session.archived,
-                  pinnedOrder: session.pinnedOrder,
-                  statusType: working ? "active" : "idle",
-                  statusActiveFlags: [],
-                  // Native Threads count in seconds.
-                  createdAt: seconds(thread.createdAt),
-                  updatedAt: Math.max(seconds(thread.updatedAt), seconds(session.updatedAt)),
-                  linkedAt: session.createdAt,
-                  title: session.displayTitle,
-                } satisfies AgentChatWorktreeConsumer,
-              ];
-            }),
-          { concurrency: 4 },
-        ).pipe(Effect.map((consumers) => consumers.flat())),
+        Effect.forEach(owners, (owner) =>
+          options.pageWorkspaceThreads
+            ? options.pageWorkspaceThreads(owner.worktreeGitRoot).pipe(
+                Effect.map((ids) =>
+                  [...new Set([owner.ownerThreadId, ...ids])].map((ownerThreadId) => ({
+                    ...owner,
+                    ownerThreadId,
+                  })),
+                ),
+              )
+            : Effect.succeed([owner]),
+        ).pipe(
+          Effect.map((groups) => groups.flat()),
+          Effect.flatMap((expanded) =>
+            Effect.forEach(
+              expanded,
+              (owner) =>
+                Effect.gen(function* () {
+                  const bound = yield* readBoundThread(owner.ownerThreadId);
+                  if (!bound) return [];
+                  const session = yield* workspace.getProjectSession(bound.sessionId);
+                  if (!session) return [];
+                  const { thread } = bound;
+                  const working =
+                    thread.activeRunId !== null || (thread.pendingBackgroundTasks?.length ?? 0) > 0;
+                  return [
+                    {
+                      threadId: thread.id,
+                      projectId: session.projectId,
+                      sessionId: session.id,
+                      executionHostId: owner.hostId,
+                      cwd: thread.worktreePath,
+                      managedWorktreePath: owner.worktreeGitRoot,
+                      runtimeWorkspaceRoots: [],
+                      archived: session.archived,
+                      pinnedOrder: session.pinnedOrder,
+                      statusType: working ? "active" : "idle",
+                      statusActiveFlags: [],
+                      // Native Threads count in seconds.
+                      createdAt: seconds(thread.createdAt),
+                      updatedAt: Math.max(seconds(thread.updatedAt), seconds(session.updatedAt)),
+                      linkedAt: session.createdAt,
+                      title: session.displayTitle,
+                    } satisfies AgentChatWorktreeConsumer,
+                  ];
+                }),
+              { concurrency: 4 },
+            ).pipe(Effect.map((consumers) => consumers.flat())),
+          ),
+        ),
       ),
     location: (threadId) =>
       owned(
@@ -3534,6 +3645,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               runtime_thread_id: root.rootThreadId,
               launch_request_id: `adopt:${identity}`,
             };
+            const restored = yield* connection.request("thread.read", {
+              threadId: root.rootThreadId,
+            });
+            if (!restored)
+              return yield* failure("reconcile-store", "Conversation metadata is unavailable");
             yield* bindExecution({
               binding: adopted,
               operation: {
@@ -3547,6 +3663,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
                   ...adopted,
                   title: root.title,
                   initial_page_ids: [],
+                  agent_selection: agentRuntimeWorkSelection(restored.modelSelection),
                 },
               },
             });
@@ -3634,6 +3751,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ),
     nativeThread: (threadId: string) => owned("native-thread", boundThread(threadId, false)),
     worktreeChats,
+    refreshPageWorkspace: (pageId: string) =>
+      owned("page-workspace-refresh", options.refreshPageWorkspace?.(pageId) ?? Effect.void),
     /** The Codex thread and workspace an Agent chat's reply visualizations are read from. */
     visualizationSource: (threadId: string) =>
       owned(
@@ -3770,6 +3889,45 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           });
         }),
       ),
+    reconcileExecutionHolds: ownedWrite(
+      "execution-holds",
+      Effect.gen(function* () {
+        const connection = yield* options.connect;
+        let after: string | null = null;
+        let requested = false;
+        do {
+          const read: import("../core-client/types").ProjectWorkspaceReadSnapshot = yield* host(
+            core.workspace.read({
+              kind: "agent_runtime_session_binding_window",
+              runtime_id: connection.identity.runtimeId,
+              scope: { kind: "all" },
+              window: { first: 100, after },
+            }),
+          );
+          if (read.value.kind !== "agent_runtime_session_binding_window")
+            return yield* failure("execution-holds", "Session metadata is unavailable");
+          for (const binding of read.value.bindings.items) {
+            const holds = yield* effectiveHolds(core, {
+              kind: "session",
+              session_id: binding.session_id,
+            });
+            const shell = yield* connection.request("thread.read", {
+              threadId: binding.runtime_thread_id,
+            });
+            if (!shell || shell.archivedAt || shell.deletedAt) continue;
+            const result = holds.length
+              ? yield* connection.request("thread.pause", {
+                  threadId: binding.runtime_thread_id,
+                  revision: holds.map((h) => h.revision).join(":"),
+                })
+              : yield* connection.request("thread.resume", { threadId: binding.runtime_thread_id });
+            if (result.status === "requested") requested = true;
+          }
+          after = read.value.bindings.next_cursor ?? null;
+        } while (after);
+        return { requested };
+      }),
+    ),
     stopSession: (
       input: AgentRuntimeSessionTarget & {
         readonly requestId: string;
@@ -3939,8 +4097,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               core.workspace.read({
                 kind: "agent_runtime_session_binding_window",
                 runtime_id: runtimeId,
-                project_id: null,
-                temporary_only: true,
+                scope: { kind: "temporary" },
                 window: { first: 200, after },
               }),
             );
@@ -4063,6 +4220,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             projectId: loaded.binding.project_id ?? null,
             threadId: loaded.threadId,
             snapshot,
+            waitingAdmissions: (yield* connection.request("thread.read-details", {
+              threadId: loaded.threadId,
+              runLimit: 1,
+            })).waitingAdmissions,
           };
         }),
       ),
@@ -4816,6 +4977,26 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             threadId: loaded.threadId,
             ...(input.activeCursor === undefined ? {} : { activeCursor: input.activeCursor }),
             ...(input.terminalCursor === undefined ? {} : { terminalCursor: input.terminalCursor }),
+          });
+        }),
+      ),
+    messageAttachment: (
+      input: AgentRuntimeSessionTarget & {
+        readonly messageId: string;
+        readonly attachmentId: string;
+      },
+    ) =>
+      owned(
+        "message-attachment",
+        Effect.gen(function* () {
+          if (!validId(input.messageId) || !validId(input.attachmentId))
+            return yield* failure("message-attachment", "Attachment identity is invalid");
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          return yield* connection.request("thread.message-attachment", {
+            threadId: loaded.threadId,
+            messageId: input.messageId,
+            attachmentId: input.attachmentId,
           });
         }),
       ),

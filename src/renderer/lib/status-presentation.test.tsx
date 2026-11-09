@@ -48,8 +48,23 @@ describe("status presentation", () => {
   test("renders the shared in-review label with an icon and text", () => {
     const { container, getByText } = render(<StatusLabel statusId="review" />);
 
-    expect(getByText("Review").textContent).toBe("Review");
+    expect(getByText("In Review").textContent).toBe("In Review");
     expect(container.querySelector("svg")).not.toBeNull();
+  });
+
+  test("presents Canceled with a separate muted terminal glyph in both renderers", () => {
+    const { container, getByText } = render(<StatusLabel statusId="canceled" />);
+    expect(getByText("Canceled")).toBeTruthy();
+    const icon = container.querySelector("svg");
+    expect(icon?.style.color).toBe("var(--foreground-tertiary)");
+    const editorIcon = createStatusIconElement("canceled", { documentRef: document });
+    const canceledGlyph = editorIcon.querySelector("path")?.getAttribute("d");
+    expect(canceledGlyph).toBe(icon?.querySelector("path")?.getAttribute("d"));
+    expect(canceledGlyph).not.toBe(
+      createStatusIconElement("done", { documentRef: document })
+        .querySelector("path")
+        ?.getAttribute("d"),
+    );
   });
 
   test("renders the triage icon as decorative svg markup", () => {

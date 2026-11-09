@@ -16,9 +16,9 @@ test("keeps Board headers settled when a sibling tab group opens and closes", as
       await page.keyboard.press("Escape");
       const doing = page
         .locator('[data-database-board-column-header="true"]')
-        .filter({ hasText: "Doing" });
+        .filter({ hasText: "In Progress" });
       await doing.hover();
-      await doing.getByRole("button", { name: "More options for Doing" }).click();
+      await doing.getByRole("button", { name: "More options for In Progress" }).click();
       const column = page.locator('[data-board-column-root][data-board-column-id="doing"]');
       const expandedWidth = (await column.boundingBox())!.width;
       await column.evaluate((element) => {

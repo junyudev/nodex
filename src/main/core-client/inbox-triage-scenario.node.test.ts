@@ -12,13 +12,13 @@ describe("inbox/triage scenario", () => {
     await withCoreScenario({ scenarioId: INBOX_TRIAGE_SCENARIO_ID }, async (context) => {
       const facts = requireInboxTriageScenarioFacts(context.facts);
       expect(facts).toMatchObject({
-        entryCount: 8,
-        inboxCount: 6,
-        needsDecisionCount: 5,
+        entryCount: 16,
+        inboxCount: 15,
+        needsDecisionCount: 13,
         keptCount: 1,
         dispatchedCount: 1,
         failedSuggestionCount: 1,
-        projectInboxCount: 8,
+        projectInboxCount: 9,
       });
       expect(() =>
         requireInboxTriageScenarioFacts({ ...facts, inboxMovedWithChat: undefined }),
@@ -29,11 +29,15 @@ describe("inbox/triage scenario", () => {
           inboxTriageTwoChats: { pageId: facts.inboxTriageTwoChats.pageId, sessionIds: [null] },
         }),
       ).toThrow("inbox/triage facts are invalid");
-      const [library, project] = await Promise.all([
-        context.seed.readInbox("inbox"),
-        context.seed.readInbox("inbox", projectInbox(context.manifest.projectId)),
+      const [all, project] = await Promise.all([
       ]);
-      const pending = [...library.items, ...project.items];
+      expect(all.items.filter((item) => item.rowKind === "intake")).toHaveLength(14);
+      expect(
+        all.items
+          .filter((item) => item.rowKind === "turn")
+          .map((item) => ({ pageId: item.pageId, reason: item.turn?.turn.reason })),
+      ).toEqual([{ pageId: facts.inboxMovedNoChat.pageId, reason: "review" }]);
+      const pending = [...all.items, ...project.items];
       expect(pending.some((item) => item.suggestionState === "pending")).toBe(false);
       expect(
         pending.some(
@@ -47,7 +51,8 @@ describe("inbox/triage scenario", () => {
     await withCoreScenario({ scenarioId: INBOX_TRIAGE_SCENARIO_ID }, async (context) => {
       const facts = requireInboxTriageScenarioFacts(context.facts);
       const scope = projectInbox(context.manifest.projectId);
-      const items = (await context.seed.readInbox("inbox", scope)).items;
+        (item) => item.rowKind === "intake",
+      );
       expect(items.map((item) => item.scope)).toEqual(Array.from({ length: 8 }, () => scope));
       // Newest first, like every Inbox window.
       expect(items.slice(0, 5).map((item) => item.pageId)).toEqual([
@@ -131,8 +136,7 @@ describe("inbox/triage scenario", () => {
     await withCoreScenario({ scenarioId: INBOX_TRIAGE_SCENARIO_ID }, async (context) => {
       const pageId = context.manifest.pageIdsByKey.picturedMessage;
       const fileId = context.manifest.entityIdsByKey?.screenshotFile;
-      const item = (await context.seed.readInbox("inbox")).items.find(
-        (entry) => entry.pageId === pageId,
+        (entry) => entry.rowKind === "intake" && entry.pageId === pageId,
       );
       expect(item).toMatchObject({
         body: [

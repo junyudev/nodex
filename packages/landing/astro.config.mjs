@@ -10,6 +10,7 @@ export default defineConfig({
   integrations: [react()],
   devToolbar: { enabled: false },
   vite: {
+    tsconfig: "./tsconfig.json",
     plugins: [tailwindcss()],
   },
 });

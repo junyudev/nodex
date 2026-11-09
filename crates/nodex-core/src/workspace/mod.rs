@@ -9,12 +9,22 @@ mod coordinator;
 #[cfg(test)]
 mod coordinator_tests;
 mod execution;
+pub(crate) mod execution_holds;
+#[cfg(test)]
+mod execution_holds_tests;
 mod inbox;
+pub(crate) mod page_turn;
+#[cfg(test)]
+mod page_turn_tests;
 mod page_work;
 #[cfg(test)]
 mod page_work_tests;
+pub(crate) mod page_workspace;
+#[cfg(test)]
+mod page_workspace_tests;
 pub(crate) use inbox::reliable::discard_replaced_dispatches as discard_replaced_inbox_dispatches;
 pub(crate) mod inbox_content;
+mod inbox_projection;
 mod inbox_read;
 mod inbox_serialization;
 pub(crate) use inbox_read::frozen_input_for_content;

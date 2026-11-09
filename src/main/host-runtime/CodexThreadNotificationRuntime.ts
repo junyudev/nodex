@@ -94,6 +94,7 @@ export const live: Layer.Layer<
           currentSettings = snapshot.notifications;
           const notification = event.value;
           if (notification.type !== "turn-completed") {
+            if (yield* turnSpeaksThroughNodex(core, notification)) return;
             handle(notification);
             return;
           }

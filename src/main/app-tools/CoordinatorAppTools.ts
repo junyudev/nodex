@@ -4,6 +4,8 @@ import { countWords } from "../../shared/word-count";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import {
   InboxSuggestionOutput,
+  writeTurnNoteSchema,
+  answerInboxQuestionSchema,
 } from "../../shared/nodex-app-tools/coordinator-schema";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-authorization";
@@ -70,11 +72,17 @@ export const makeWithCapture = (
             "coordinator_only",
             "Only Nodex's Coordinator Session can use this tool.",
           );
+        if (input.name === "write_turn_note" || input.name === "answer_inbox_question") {
+          const parsed =
+            input.name === "write_turn_note"
+              ? parseAppToolArguments(writeTurnNoteSchema, input.arguments)
+              : parseAppToolArguments(answerInboxQuestionSchema, input.arguments);
           if (!parsed.success) return parsed.result;
           const args = parsed.data;
           const words = countWords(args.body);
           if (words > 100)
             return toolFailure(
+              "body_too_long",
               `Body has ${words} words; shorten it to at most 100.`,
             );
           const operation = yield* admit(input, authority, identity.identity.profileId, args);
@@ -87,6 +95,35 @@ export const makeWithCapture = (
                 intent: {
                   kind: "agent_command",
                   provenance,
+                  intent:
+                    "pageId" in args
+                      ? {
+                          kind: "write_turn_note",
+                          page_id: args.pageId,
+                          note_id: deriveSessionDispatchIdentity(
+                            operation.operationId,
+                            "turn-note",
+                            operation.acceptedAtMs,
+                          ),
+                          body: args.body,
+                          event_ids: args.eventIds,
+                          notify: args.notify,
+                        }
+                      : {
+                          kind: "answer_inbox_question",
+                          question_page_id: args.questionPageId,
+                          page_id: deriveSessionDispatchIdentity(
+                            operation.operationId,
+                            "inbox-answer",
+                            operation.acceptedAtMs,
+                          ),
+                          document_id: deriveSessionDispatchIdentity(
+                            operation.operationId,
+                            "inbox-answer-document",
+                            operation.acceptedAtMs,
+                          ),
+                          body: args.body,
+                        },
                 },
               },
               undefined,
@@ -94,8 +131,17 @@ export const makeWithCapture = (
             )
             .pipe(Effect.result);
           if (sent._tag === "Failure")
+            return toolFailure("inbox_write_unavailable", failureMessage(sent.failure));
+          const written = sent.success.outcome.inbox_write;
+          if (!written)
+            return toolFailure(
+              "inbox_write_unavailable",
+              "The result is missing; retry this call.",
+            );
           return toolSuccess({
+            pageId: written.page_id,
             recorded: true,
+            ...(written.replay || sent.success.receipt.duplicate ? { replay: true } : {}),
           });
         }
         const parsed = parseAppToolArguments(InboxSuggestionOutput, input.arguments);

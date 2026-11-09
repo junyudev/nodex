@@ -15,8 +15,70 @@ use crate::document::{ContentRoutingContext, DocumentHeadRevision};
 use crate::{ApplyResponse, ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
 
+/// A person in the Library. Removing a Member retains references and identity.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
+pub struct Member {
+    pub id: String,
+    pub library_id: String,
+    pub display_name: String,
+    pub lifecycle: MemberLifecycle,
+    pub revision: i64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MemberLifecycle {
+    Active,
+    Removed,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PageAssignee {
+    Member {
+        member_id: String,
+    },
+    Agent {
+        instance_id: String,
+        model: String,
+        effort: Option<String>,
+    },
+}
+
+impl PageAssignee {
+    pub fn agent_selection(&self) -> Option<AgentWorkSelection> {
+        let Self::Agent {
+            instance_id,
+            model,
+            effort,
+        } = self
+        else {
+            return None;
+        };
+        Some(AgentWorkSelection {
+            instance_id: instance_id.clone(),
+            model: model.clone(),
+            effort: effort.clone(),
+        })
+    }
+}
+
+/// One revision fences assignment and consent together, including consent revocation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PageWork {
+    pub owner: String,
+    #[serde(deserialize_with = "required_nullable_assignee")]
+    #[schema(required = true)]
+    pub assignee: Option<PageAssignee>,
+    pub auto_start: bool,
+}
+
+fn required_nullable_assignee<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<PageAssignee>, D::Error> {
+    Option::<PageAssignee>::deserialize(deserializer)
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -847,6 +909,8 @@ pub struct LibraryStructuralEditResult {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LibraryRead {
     Metadata,
+    Members,
+    LocalMember,
     Files {
         query: Option<String>,
         lifecycle: LibraryFileLifecycle,
@@ -1414,7 +1478,7 @@ pub enum LibraryPageLifecycleMutation {
         recurrence: Option<Value>,
         reminders: Vec<Value>,
         schedule_timezone: Option<String>,
-        assignee: Option<String>,
+        assignee: Option<PageAssignee>,
         run_in_target: String,
         run_in_local_path: Option<String>,
         run_in_base_branch: Option<String>,
@@ -2007,6 +2071,7 @@ pub enum LibraryPagePrepareKind {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectedPropertyTypeV1 {
+    Assignment,
     Text,
     Number,
     Checkbox,
@@ -2034,6 +2099,7 @@ pub struct ProjectedRelationSummaryV1 {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum ProjectedPropertyValueV1 {
+    Assignment(PageAssignee),
     Null,
     Text(String),
     Number(f64),
@@ -2458,6 +2524,7 @@ pub enum LibraryPageWorkflowStatus {
     Doing,
     Review,
     Done,
+    Canceled,
 }
 
 /// A Page's stage identity and current Source-owned display name.
@@ -2477,7 +2544,8 @@ pub struct LibraryProjectPageSearchHit {
     pub status: Option<LibraryPageWorkflowStatusValue>,
     pub priority: Option<String>,
     pub tags: Vec<LibraryPageSearchOption>,
-    pub assignee: Option<String>,
+    pub assignee: Option<PageAssignee>,
+    pub owner: Option<String>,
     pub location_label: String,
     pub title_parts: Vec<LibraryPageSearchTextPart>,
     pub excerpt: Option<String>,
@@ -2511,7 +2579,8 @@ pub struct LibraryPageSearchMetadataDocument {
     pub priority: Option<String>,
     pub tags: Vec<LibraryPageSearchOption>,
     #[schema(required = true)]
-    pub assignee: Option<String>,
+    pub assignee: Option<PageAssignee>,
+    pub owner: Option<String>,
     pub location_label: String,
     pub updated_at: String,
     pub properties: Vec<LibraryPageSearchMetadataProperty>,
@@ -2562,7 +2631,9 @@ pub struct LibraryProjectPageSearchFilters {
     pub include_empty_priority: bool,
     pub tags: Vec<LibraryPageSearchOptionIdentity>,
     pub tag_mode: LibraryPageSearchTagMode,
-    pub assignees: Vec<String>,
+    pub assignees: Vec<PageAssignee>,
+    #[serde(default)]
+    pub owners: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -2607,7 +2678,9 @@ pub enum LibraryPageSearchMatch {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryProjectPageSearchFacets {
     pub tags: Vec<LibraryPageSearchOption>,
-    pub assignees: Vec<String>,
+    pub assignees: Vec<PageAssignee>,
+    #[serde(default)]
+    pub owners: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -2809,6 +2882,12 @@ pub struct LibraryPageHistoryPage {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LibraryReadValue {
+    Members {
+        items: Vec<Member>,
+    },
+    LocalMember {
+        value: Member,
+    },
     PageFileInventory {
         value: LibraryPageFileInventory,
     },

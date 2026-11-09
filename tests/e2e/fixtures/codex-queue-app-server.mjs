@@ -777,7 +777,7 @@ const handle = (message) => {
       respond(id, { goal: null });
       return;
     case "thread/unsubscribe":
-      respond(id, {});
+      respond(id, { status: "unsubscribed" });
       return;
     case "thread/delete":
       if (state.thread?.id === params.threadId) {

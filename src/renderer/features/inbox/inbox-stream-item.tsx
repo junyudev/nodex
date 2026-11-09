@@ -28,7 +28,7 @@ export function InboxStreamItem({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, height: 0, scale: 0.98 }}
       transition={{ duration: 0.28, ease: INBOX_EASE_OUT }}
-      className={cn("origin-top pb-4", !present && "overflow-hidden")}
+      className={cn("shrink-0 origin-top pb-4", !present && "overflow-hidden")}
     >
       {children}
     </motion.div>

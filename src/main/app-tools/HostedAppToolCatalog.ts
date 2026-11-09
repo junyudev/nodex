@@ -15,7 +15,10 @@ const commonNames = new Set([
   "session_question",
   "send_to_inbox",
   "report_work",
+  "hand_back_message",
   "inbox_suggest",
+  "write_turn_note",
+  "answer_inbox_question",
   "start_work",
   "read_session_terminal",
 ]);

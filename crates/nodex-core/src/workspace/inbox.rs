@@ -8,6 +8,8 @@
 //! `DispatchInboxEntries` can turn it into dispatch work, and confirmed chat
 //! work is delivered by the Desktop Host through the dispatch outbox.
 
+#[path = "inbox_handback.rs"]
+pub(super) mod handback;
 #[path = "inbox_nodex.rs"]
 pub(super) mod nodex;
 #[path = "inbox_plan.rs"]
@@ -758,6 +760,7 @@ pub(super) fn send_message(
                 inbox_project.as_deref(),
                 &now,
             )?;
+            if reply_kind.as_deref() == Some("answer") {
                 nodex::finish_reply(connection, library_id, reply_to_page_id, &now)?;
                 effects.page_ids.extend(reply_to_page_id.map(str::to_owned));
             }
@@ -819,12 +822,15 @@ fn capture_message_in_scope(
         &destination,
     )?;
     let seq = allocate_seq(connection, library_id, now)?;
-    connection.execute(
+    if source.kind == "answer" {
+        connection.execute("INSERT INTO inbox_answers(page_id,question_page_id,library_id,scope_project_id,coordinator_session_id,created_at) VALUES(?1,?2,?3,?4,?5,?6)",params![page_id,source.reply_to_page_id,library_id,inbox_project,source.session_id,now])?;
+    } else {
+        connection.execute(
                 "INSERT INTO inbox_entries(\
                    page_id, library_id, seq, submitted_at, source_kind, source_session_id, \
                    source_thread_id, source_turn_id, source_project_id, source_label, source_budget_key, source_automation_id, source_dispatch_id, \
-                   provisional_title, scope_project_id, updated_at, suggestion_state\
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?4, 'waiting')",
+                   provisional_title, scope_project_id, updated_at, suggestion_state, reply_to_page_id\
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?4, ?16, ?17)",
                 params![
                     page_id,
                     library_id,
@@ -841,9 +847,11 @@ fn capture_message_in_scope(
                     source.dispatch_id,
                     message.provisional_title,
                     inbox_project,
+                    "waiting",
                     source.reply_to_page_id,
                 ],
             )?;
+    }
     let mut block_ids = vec![created_page.page_create.page_id.clone()];
     block_ids.extend(created_page.page_create.block_ids.iter().cloned());
     let mut database_ids = Vec::new();
@@ -926,7 +934,7 @@ fn simple_effects(operation_kind: &'static str, now: &str) -> WorkspaceMutationE
 // ---------------------------------------------------------------------------
 
 /// The workflow status a message's handling implies for its Page: Triage while it waits,
-/// Doing once its work is handed to a chat, Plan when it is kept or filed, Done when done.
+/// In Progress once handed to a chat, Todo when kept or filed, Done when done.
 fn implied_status(connection: &Connection, page_id: &str) -> Result<String, StoreError> {
     Ok(connection.query_row(
         "SELECT CASE entry.state WHEN 'done' THEN 'done' WHEN 'kept' THEN 'plan' \
@@ -944,13 +952,23 @@ fn implied_status(connection: &Connection, page_id: &str) -> Result<String, Stor
 
 /// What each message's handling implied before a decision, so the decision can move the
 /// messages' Pages along with it.
-pub(super) struct ImpliedStatuses(Vec<(String, String)>);
+pub(super) struct ImpliedStatuses(Vec<(String, String, i64)>);
 
 impl ImpliedStatuses {
     pub(super) fn read(connection: &Connection, page_ids: &[String]) -> Result<Self, StoreError> {
         page_ids
             .iter()
-            .map(|page_id| Ok((page_id.clone(), implied_status(connection, page_id)?)))
+            .map(|page_id| {
+                Ok((
+                    page_id.clone(),
+                    implied_status(connection, page_id)?,
+                    connection.query_row(
+                        "SELECT status_fence FROM inbox_entries WHERE page_id=?1",
+                        [page_id],
+                        |r| r.get(0),
+                    )?,
+                ))
+            })
             .collect::<Result<_, StoreError>>()
             .map(Self)
     }
@@ -963,18 +981,46 @@ impl ImpliedStatuses {
         library_id: &str,
         context: &BoundModuleContext,
         operation_id: &str,
+        handoff: bool,
         effects: &mut WorkspaceMutationEffects,
     ) -> Result<(), StoreError> {
         let after = self
             .0
             .iter()
-            .map(|(page_id, _)| implied_status(connection, page_id))
+            .map(|(page_id, _, _)| implied_status(connection, page_id))
             .collect::<Result<Vec<_>, _>>()?;
+        // A chat handoff starts work from either early stage at its own attempt fence.
+        // Other Inbox handling continues to follow the message's original person fence.
+        let starts = self.0.iter().zip(&after).map(|((page,_,_),to)| {
+            if !handoff || to != "doing" {return Ok(None);}
+            Ok(connection.query_row("SELECT link.status_fence FROM page_active_chats active JOIN project_session_pages link ON link.page_id=active.page_id AND link.session_id=active.session_id WHERE active.page_id=?1",[page],|r|r.get::<_,Option<i64>>(0)).optional()?.flatten())
+        }).collect::<Result<Vec<_>,StoreError>>()?;
+        let predecessors = self
+            .0
+            .iter()
+            .zip(&starts)
+            .map(|((_, from, _), start)| {
+                if start.is_some() {
+                    vec!["triage", "plan"]
+                } else {
+                    vec![from.as_str()]
+                }
+            })
+            .collect::<Vec<_>>();
         let steps = self
             .0
             .iter()
             .zip(&after)
-            .map(|((page_id, from), to)| WorkflowStatusStep { page_id, from, to })
+            .zip(&predecessors)
+            .zip(&starts)
+            .map(
+                |((((page_id, _, revision), to), predecessors), start)| WorkflowStatusStep {
+                    page_id,
+                    predecessors,
+                    to,
+                    person_revision: start.unwrap_or(*revision),
+                },
+            )
             .collect::<Vec<_>>();
         let Some(receipt) = follow_workflow_status(
             connection,
@@ -1102,12 +1148,37 @@ struct NewProposal<'a> {
     produced_by: Option<&'a str>,
 }
 
+/// A returned message needs a fresh routing decision, not another loop to its last chat.
+fn validate_returned_destination(
+    connection: &Connection,
+    library_id: &str,
+    proposal: &NewProposal<'_>,
+) -> Result<(), StoreError> {
+    if proposal.origin != ProjectWorkspaceInboxProposalOrigin::Agent {
+        return Ok(());
+    }
+    let ProjectWorkspaceInboxDispatchAction::SendToChat { session_id, .. } = proposal.action else {
+        return Ok(());
+    };
+    for page in proposal.page_ids {
+        if handback::context(connection, library_id, page)?
+            .is_some_and(|returned| returned.chat.session_id == *session_id)
+        {
+            return Err(invalid(
+                "Choose another destination for a handed-back message; only a person can send it back to the previous chat",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn insert_proposal(
     connection: &Connection,
     library_id: &str,
     proposal: NewProposal<'_>,
     now: &str,
 ) -> Result<(), StoreError> {
+    validate_returned_destination(connection, library_id, &proposal)?;
     if connection
         .query_row(
             "SELECT 1 FROM inbox_proposals WHERE proposal_id = ?1",
@@ -1267,6 +1338,7 @@ fn user_summary(action: &ProjectWorkspaceInboxDispatchAction) -> String {
 
 fn apply_confirmation(
     connection: &Connection,
+    commit: &crate::infrastructure::local_commit::CommitContext,
     library_id: &str,
     proposal_id: &str,
     page_ids: &[String],
@@ -1291,6 +1363,7 @@ fn apply_confirmation(
         ProjectWorkspaceInboxDispatchAction::Plan { .. } => {
             Err(internal("Plan must be confirmed inside its creation scope"))
         }
+                    commit,
             scheduled::admit(
                 connection,
                 library_id,
@@ -1349,6 +1422,7 @@ fn apply_confirmation(
             // The messages become the new chat's Linked Pages, so each Page shows the work it
             // started for as long as the chat exists.
             super::page_chat::insert_initial_page_links(connection, session_id, page_ids, now)?;
+            super::page_chat::set_active_chats(connection, session_id, page_ids, now)?;
             start_dispatch(
                 connection,
                 proposal_id,
@@ -1371,6 +1445,7 @@ fn apply_confirmation(
             let authority =
                 super::session_mutation::require_session(connection, library_id, target)?;
             super::page_chat::link_pages(connection, target, page_ids, now)?;
+            super::page_chat::set_active_chats(connection, target, page_ids, now)?;
             start_dispatch(
                 connection,
                 proposal_id,
@@ -1488,7 +1563,14 @@ pub(super) fn keep_entries(
             set_entries_state(connection, library_id, &page_ids, "kept", &now)?;
             let mut effects = simple_effects("inbox_keep_entries", &now);
             effects.page_ids = page_ids.clone();
-            before.follow(connection, library_id, context, operation_id, &mut effects)?;
+            before.follow(
+                connection,
+                library_id,
+                context,
+                operation_id,
+                false,
+                &mut effects,
+            )?;
             Ok(effects)
         },
     )
@@ -1674,7 +1756,14 @@ pub(super) fn set_state(
             )?;
             let mut effects = simple_effects("inbox_set_entry_state", &now);
             effects.page_ids = page_ids.clone();
-            before.follow(connection, library_id, context, operation_id, &mut effects)?;
+            before.follow(
+                connection,
+                library_id,
+                context,
+                operation_id,
+                false,
+                &mut effects,
+            )?;
             Ok(effects)
         },
     )

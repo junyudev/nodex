@@ -172,29 +172,40 @@ export function NodexSwitch({
         className,
       )}
     >
+      <NodexSwitchTrack checked={checked} size={size} />
+    </button>
+  );
+}
+
+/** The switch's track and thumb, for a row that is itself the switch, such as a menu row. */
+export function NodexSwitchTrack({
+  checked,
+  size = "default",
+}: Pick<NodexSwitchProps, "checked" | "size">) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "relative inline-flex shrink-0 items-center rounded-full transition-colors duration-200 ease-out",
+        size === "compact" ? "h-3.5 w-[22px]" : "h-5 w-8",
+        checked ? "bg-chart-blue" : "bg-text/10",
+      )}
+      data-state={checked ? "checked" : "unchecked"}
+    >
       <span
         className={cn(
-          "relative inline-flex shrink-0 items-center rounded-full transition-colors duration-200 ease-out",
-          size === "compact" ? "h-3.5 w-[22px]" : "h-5 w-8",
-          checked ? "bg-chart-blue" : "bg-text/10",
+          "rounded-full border border-control-thumb-on-accent bg-control-thumb-on-accent shadow-sm transition-transform duration-200 ease-out",
+          size === "compact" ? "size-3" : "size-4",
+          checked
+            ? size === "compact"
+              ? "translate-x-[9px]"
+              : "translate-x-[14px]"
+            : size === "compact"
+              ? "translate-x-px"
+              : "translate-x-[2px]",
         )}
         data-state={checked ? "checked" : "unchecked"}
-      >
-        <span
-          className={cn(
-            "rounded-full border border-control-thumb-on-accent bg-control-thumb-on-accent shadow-sm transition-transform duration-200 ease-out",
-            size === "compact" ? "size-3" : "size-4",
-            checked
-              ? size === "compact"
-                ? "translate-x-[9px]"
-                : "translate-x-[14px]"
-              : size === "compact"
-                ? "translate-x-px"
-                : "translate-x-[2px]",
-          )}
-          data-state={checked ? "checked" : "unchecked"}
-        />
-      </span>
-    </button>
+      />
+    </span>
   );
 }

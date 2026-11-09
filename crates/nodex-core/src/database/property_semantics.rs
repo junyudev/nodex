@@ -12,10 +12,12 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 pub(crate) const PRIORITY_PROPERTY_ID: &str = "priority";
 pub(crate) const STATUS_PROPERTY_ID: &str = "status";
 pub(crate) const COMPLETED_STATUS_OPTION_ID: &str = "done";
+pub(crate) const IN_PROGRESS_STATUS_OPTION_ID: &str = "doing";
 // Reserved but removable, like Priority: absence means no prerequisites. Empty values
 // use the generic Relation convention (no header, revision zero), not Parent's roots.
 pub(crate) const BLOCKED_BY_PROPERTY_ID: &str = "blocked_by";
 pub(crate) const TASK_PARENT_PROPERTY_ID: &str = "task_parent";
+const BUILT_IN_PROPERTY_IDS: [&str; 11] = [
     STATUS_PROPERTY_ID,
     PRIORITY_PROPERTY_ID,
     "estimate",
@@ -24,10 +26,11 @@ pub(crate) const TASK_PARENT_PROPERTY_ID: &str = "task_parent";
     "scheduled_start",
     "scheduled_end",
     "assignee",
+    "owner",
     TASK_PARENT_PROPERTY_ID,
     BLOCKED_BY_PROPERTY_ID,
 ];
-const STATUS_OPTION_IDS: [&str; 5] = ["triage", "plan", "doing", "review", "done"];
+const STATUS_OPTION_IDS: [&str; 6] = ["triage", "plan", "doing", "review", "done", "canceled"];
 const ESTIMATE_OPTION_IDS: [&str; 5] = ["xs", "s", "m", "l", "xl"];
 const MAX_OPTION_NAME_LENGTH: usize = 256;
 const MAX_OPTION_COLOR_LENGTH: usize = 128;
@@ -131,7 +134,7 @@ pub(crate) fn schema_matches_canonical_property(
         "scheduled_start" | "scheduled_end" => {
             matches!(schema, DatabasePropertySchema::Datetime { .. })
         }
-        "assignee" => matches!(schema, DatabasePropertySchema::Text),
+        "owner" | "assignee" => matches!(schema, DatabasePropertySchema::Assignment),
         TASK_PARENT_PROPERTY_ID => matches!(
             schema,
             DatabasePropertySchema::Relation {
@@ -206,6 +209,7 @@ pub(crate) fn option_config_from_storage(
 
 pub(crate) fn value_type(schema: &DatabasePropertySchema) -> &'static str {
     match schema {
+        DatabasePropertySchema::Assignment => "assignment",
         DatabasePropertySchema::Text => "text",
         DatabasePropertySchema::Number { .. } => "number",
         DatabasePropertySchema::Checkbox => "checkbox",
@@ -221,6 +225,11 @@ pub(crate) fn capabilities(schema: &DatabasePropertySchema) -> DatabasePropertyC
     use DatabaseViewFilterOperator::*;
 
     match schema {
+        DatabasePropertySchema::Assignment => DatabasePropertyCapabilities {
+            filter_operators: vec![Equals, NotEquals, IsEmpty, IsNotEmpty],
+            sortable: true,
+            groupable: true,
+        },
         DatabasePropertySchema::Text => DatabasePropertyCapabilities {
             filter_operators: vec![
                 TextIs,
@@ -356,6 +365,7 @@ pub(crate) fn schema_from_storage(
     stored_value_type: &str,
 ) -> Result<DatabasePropertySchema, StoreError> {
     let schema = match stored_value_type {
+        "assignment" => DatabasePropertySchema::Assignment,
         "text" => DatabasePropertySchema::Text,
         "number" => {
             #[derive(Deserialize)]
@@ -446,8 +456,8 @@ fn corrupt(message: &str) -> StoreError {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn workflow_options_accept_only_the_current_five_stage_identities() {
-        for id in ["triage", "plan", "doing", "review", "done"] {
+    fn workflow_options_accept_only_the_current_six_stage_identities() {
+        for id in ["triage", "plan", "doing", "review", "done", "canceled"] {
             assert!(super::is_canonical_option_id("status", id));
         }
         for id in ["build", "ship", "in_progress", "in_review"] {

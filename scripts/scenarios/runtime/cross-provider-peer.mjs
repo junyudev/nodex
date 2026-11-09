@@ -664,7 +664,13 @@ async function handleCodex(message) {
       });
       return;
     case "getAuthStatus":
-      reply({ authMethod: "chatgpt", authToken: null, requiresOpenaiAuth: false });
+      reply({
+        authMethod: "chatgpt",
+        authToken: params.includeToken
+          ? `fixture.${Buffer.from(JSON.stringify({ exp: 4102444800, "https://api.openai.com/auth": { chatgpt_account_id: "native-scenario", user_id: "native-user" } })).toString("base64url")}.unsigned`
+          : null,
+        requiresOpenaiAuth: false,
+      });
       return;
     case "account/read":
       reply({
@@ -768,6 +774,24 @@ async function handleCodex(message) {
     case "thread/read": {
       state = load();
       reply({ thread: state.threads[params.threadId] });
+      return;
+    }
+    case "thread/turns/list": {
+      state = load();
+      const turns = state.threads[params.threadId]?.turns ?? [];
+      const ordered = params.sortDirection === "asc" ? turns : turns.toReversed();
+      const offset = Number(params.cursor ?? 0);
+      const limit = params.limit ?? 20;
+      const data = ordered.slice(offset, offset + limit).map((turn) => ({
+        ...turn,
+        items: params.itemsView === "notLoaded" ? [] : turn.items,
+        itemsView: params.itemsView ?? "full",
+      }));
+      reply({
+        data,
+        nextCursor: offset + data.length < ordered.length ? String(offset + data.length) : null,
+        backwardsCursor: offset > 0 ? String(Math.max(0, offset - limit)) : null,
+      });
       return;
     }
     case "thread/fork": {

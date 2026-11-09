@@ -20,6 +20,7 @@ export async function launchAgentRuntimeSession(
     readonly prompt: string;
     readonly promptInput?: CodexPromptInput;
     readonly initialPageIds?: readonly string[];
+    readonly workPage?: AgentRuntimeLaunch["workPage"];
     readonly title?: string;
     /** No picker shows these launches, so they never count as attended. */
     readonly newChatDefaults?: Omit<AgentRuntimeNewChatDefaults, "attended">;
@@ -66,6 +67,7 @@ export async function launchAgentRuntimeSession(
     acceptedAt: identity.acceptedAt,
     title: input.title?.trim() || input.prompt.slice(0, 120) || "New chat",
     initialPageIds: input.initialPageIds,
+    workPage: input.workPage,
     presentationTicket: input.presentationTicket,
     modelSelection: selection,
     interactionMode: input.interactionMode ?? "default",

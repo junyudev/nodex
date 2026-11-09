@@ -141,10 +141,12 @@ it.effect("refuses non-Coordinator suggestion and post calls before any mutation
   Effect.gen(function* () {
     const f = yield* routingFixture();
     f.setCaller("other");
+    for (const name of ["inbox_suggest", "write_turn_note"]) {
       const result = yield* f.tool(
         invocation(
           name === "inbox_suggest"
             ? keepOutput(routingRequest())
+            : { pageId: "page:work", notify: false, body: "Done", eventIds: ["event"] },
           name,
         ),
       );
@@ -156,18 +158,23 @@ it.effect("refuses non-Coordinator suggestion and post calls before any mutation
   }),
 );
 
+it.effect("uses stable note identities and stays quiet on replay", () =>
   Effect.gen(function* () {
     const f = yield* routingFixture();
     const input = invocation(
       {
+        pageId: "page:work",
+        notify: false,
         body: "README is ready",
         eventIds: ["report:ready"],
       },
+      "write_turn_note",
     );
     const first = yield* f.tool(input);
     const replay = yield* f.tool({ ...input, caller: { ...input.caller, callId: "retry" } });
     assert.isUndefined(first.isError);
     assert.equal(first.structuredContent?.pageId, replay.structuredContent?.pageId);
+    assert.isEmpty(f.posted);
     assert.equal(replay.structuredContent?.replay, true);
     assert.equal(f.commands[0]!.intent.kind, "agent_command");
   }),
@@ -540,5 +547,40 @@ it.effect("fences a tool answer after the unanswered follow-up ends, before the 
     assert.equal(late.structuredContent?.recorded, false);
     assert.include(f.settlements[0]!.error!, "ended its follow-up without answering");
     assert.lengthOf(f.send.mock.calls, 0);
+  }),
+);
+
+it.effect("holds an unanswered routing follow-up across restart and resumes it once", () =>
+  Effect.gen(function* () {
+    const f = yield* routingFixture();
+    const first = yield* Deferred.make<void>();
+    f.setOnSend((input) =>
+      Effect.gen(function* () {
+        if (f.send.mock.calls.length === 1) {
+          f.completeRun(input.message.messageId);
+          yield* f.setExecutionHeld(true);
+          yield* Deferred.succeed(first, undefined);
+          return;
+        }
+        const request = f.pending.get("request:one")!;
+        yield* f.tool(invocation(keepOutput(request), "inbox_suggest", "resumed-followup"));
+      }),
+    );
+    const running = yield* (yield* f.worker).drain.pipe(Effect.forkScoped);
+    yield* Deferred.await(first);
+    yield* TestClock.adjust(INBOX_ROUTING_DEADLINE_MS * 2);
+    assert.lengthOf(f.send.mock.calls, 1);
+    assert.isEmpty(f.settlements);
+    yield* Fiber.interrupt(running);
+    yield* (yield* f.worker).drain;
+    assert.lengthOf(f.send.mock.calls, 1);
+    yield* f.setExecutionHeld(false);
+    const resumed = yield* (yield* f.worker).drain.pipe(Effect.forkScoped);
+    yield* TestClock.adjust(1000);
+    yield* Fiber.join(resumed);
+    assert.lengthOf(f.send.mock.calls, 2);
+    assert.include(f.send.mock.calls[1]![0].message.text, "still unanswered");
+    assert.lengthOf(f.settlements, 1);
+    assert.isNull(f.settlements[0]!.error);
   }),
 );

@@ -15,6 +15,7 @@ export const make = Effect.gen(function* () {
     readonly threadId: ThreadId;
     readonly runId: RunId;
   }) {
+    if (yield* projections.isExecutionPaused(input.threadId)) return null;
     const shell = yield* projections.getThreadShell(input.threadId);
     if (shell === null) return null;
     const state = yield* projections.getHostToolAuthorityContext(input.threadId, input.runId);
@@ -97,6 +98,7 @@ export const makeNativeSession = Effect.gen(function* () {
   }) {
     const actor = yield* bridge.nativeSessionActor(input.threadId, input);
     if (actor === undefined) return null;
+    if (yield* projections.isExecutionPaused(input.threadId)) return null;
     const shell = yield* projections.getThreadShell(input.threadId);
     if (shell === null || shell.deletedAt !== null || shell.archivedAt !== null) return null;
     const state = yield* projections.getHostToolAuthorityContext(

@@ -210,7 +210,12 @@ mod tests {
                     }),
                 )]),
                 work: nodex_core_contracts::database::DatabaseWorkSummary {
+                    turn: None,
+                    pull_request: None,
                     unsatisfied_count: 2,
+                    owner: None,
+                    assignee: None,
+                    auto_start: false,
                     blockers: vec![
                         nodex_core_contracts::database::DatabaseWorkPage {
                             page_id: "page:prerequisite".into(),

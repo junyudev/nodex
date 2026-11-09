@@ -22,7 +22,7 @@ const result = (overrides: Partial<PageSearchResult> = {}): PageSearchResult => 
   pageId: "page:one",
   pageKey: "NDX-42",
   title: "Search authority",
-  status: { optionId: "doing", label: "Doing" },
+  status: { optionId: "doing", label: "In Progress" },
   priority: "p1-high",
   tags: [
     {
@@ -32,8 +32,8 @@ const result = (overrides: Partial<PageSearchResult> = {}): PageSearchResult => 
       label: "Core",
     },
   ],
-  assignee: "Ada",
-  locationLabel: "Product / Doing",
+  assignee: { kind: "member", member_id: "Ada" },
+  locationLabel: "Product / In Progress",
   titleParts: [
     { text: "Search", highlighted: true },
     { text: " authority", highlighted: false },

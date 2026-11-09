@@ -153,6 +153,53 @@ pub(crate) fn record_local_projection_delta(
     Ok(metrics)
 }
 
+/// Repairs Library reads and exact View scope clocks without row patches. A broad Project
+/// reset cannot advance a View query's retained coordinate.
+pub(crate) fn record_local_projection_read_repairs(
+    connection: &Connection,
+    commit: &CommitContext,
+    library_id: &str,
+    impact: &ProjectionImpact,
+) -> Result<(), StoreError> {
+    let ProjectionImpact::Resources {
+        page_ids, view_ids, ..
+    } = impact
+    else {
+        return record_local_projection_delta(connection, commit, library_id, impact).map(|_| ());
+    };
+    let pages = canonical_strings(page_ids);
+    let views = canonical_strings(view_ids);
+    if pages.is_empty() && views.is_empty() {
+        return Ok(());
+    }
+    local_commit::require_projection_read(
+        connection,
+        commit,
+        LocalProjectionScope::Library {
+            library_id: library_id.into(),
+        },
+    )?;
+    let coordinates=connection.prepare("SELECT id,database_block_id,data_source_id FROM database_views WHERE id IN (SELECT value FROM json_each(?1))")?.query_map([serde_json::json!(views).to_string()],|row|Ok((row.get::<_,String>(0)?,(row.get::<_,String>(1)?,row.get::<_,String>(2)?))))?.collect::<rusqlite::Result<BTreeMap<_,_>>>()?;
+    for audience in compile_audiences(connection, library_id, &pages, &views)? {
+        for view in audience.input.visible_view_ids {
+            let Some((database, data_source)) = coordinates.get(&view) else {
+                continue;
+            };
+            local_commit::require_projection_read(
+                connection,
+                commit,
+                LocalProjectionScope::DatabaseView {
+                    project_id: audience.project_id.clone(),
+                    database_id: database.clone(),
+                    data_source_id: data_source.clone(),
+                    view_id: view,
+                },
+            )?;
+        }
+    }
+    Ok(())
+}
+
 /// Advances the exact Page and DatabaseView projection scopes affected by a
 /// Page Document edit without materializing relational View rows on the
 /// document writer's hot path.

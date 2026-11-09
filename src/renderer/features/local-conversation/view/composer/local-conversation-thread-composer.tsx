@@ -1,3 +1,4 @@
+import { useComposerExecutionHold } from "./use-composer-execution-hold";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useAgentApprovals } from "../../use-agent-approvals";
 import { agentApprovalComposerPlaceholder } from "../../agent-approval";
@@ -1531,6 +1532,13 @@ function HydratedThreadComposer({
   intentFocusNonce,
   onIntentFocused,
 }: HydratedThreadComposerProps) {
+  const executionHold = useComposerExecutionHold(
+    model.newThreadTarget
+      ? { kind: "new_chat", projectId: model.newThreadTarget.projectId }
+      : model.composerChatKey?.kind === "session"
+        ? { kind: "session", sessionId: model.composerChatKey.sessionId }
+        : null,
+  );
   const { floating: isFloatingComposer, visible: composerVisible } =
     useRightPanelComposerPresentation();
   const composerHandle = useScopeHandle(ComposerScope);
@@ -2403,6 +2411,10 @@ function HydratedThreadComposer({
     },
     pageReferences: readonly PageReference[],
   ): Promise<boolean> => {
+    if (executionHold.held) {
+      toastUnsentMessage("Resume work to send");
+      return false;
+    }
     if (isDraftCaptureLocked()) return false;
     if (hasPendingPastedTextAttachments) return false;
     // Nothing is chosen to send this to yet, so choosing is the next step and the message stays.
@@ -3089,7 +3101,7 @@ function HydratedThreadComposer({
       const nextPrompt = await insertDictationTranscript(transcript);
       if (nextPrompt === null) return;
       const actionState = resolveStageThreadsComposerActionState({
-        canSendPrompt: model.conversation !== null || canStartNewThread,
+        canSendPrompt: !executionHold.held && (model.conversation !== null || canStartNewThread),
         isThreadRunning: model.isThreadRunning,
         busyAction,
         hasDraftContent:
@@ -3660,7 +3672,7 @@ function HydratedThreadComposer({
     const hasMultilinePrompt = prompt.includes("\n");
     const isComposing = "nativeEvent" in event ? event.nativeEvent.isComposing : event.isComposing;
     const actionState = resolveStageThreadsComposerActionState({
-      canSendPrompt: model.conversation !== null || canStartNewThread,
+      canSendPrompt: !executionHold.held && (model.conversation !== null || canStartNewThread),
       isThreadRunning: model.isThreadRunning,
       busyAction,
       hasDraftContent: prompt.trim().length > 0 || hasAttachments || goalModeActive,
@@ -3721,6 +3733,7 @@ function HydratedThreadComposer({
   const modelCatalog = model.provider?.modelCatalog;
   const currentModelOff = modelCatalog?.currentModelOff;
   const composerNotice =
+    executionHold.notice ??
     model.provider?.notice ??
     (currentModelOff
       ? {
@@ -3749,7 +3762,7 @@ function HydratedThreadComposer({
     typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
 
   const composerActionState = resolveStageThreadsComposerActionState({
-    canSendPrompt: model.conversation !== null || canStartNewThread,
+    canSendPrompt: !executionHold.held && (model.conversation !== null || canStartNewThread),
     isThreadRunning: model.isThreadRunning && approvals.pending.length === 0,
     busyAction,
     hasDraftContent: hasComposerContent,

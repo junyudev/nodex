@@ -284,6 +284,10 @@ outputs still come from the task's worktree. Each environment has this layout:
 └── artifacts/
 ```
 
+Projects created without a folder and chats started without a Project get their
+folders in `workspace/`, never in your own `~/Documents/Nodex`. An isolated run
+that names no `NODEX_PROJECTS_DIR` keeps them in `<NODEX_HOME>/workspace`.
+
 The manifest records a canonical environment UUID and the creating worktree's
 real path. The launcher rejects a directory without that ownership manifest,
 another worktree's environment, a symlinked root, a concurrent launcher lease,
@@ -545,6 +549,10 @@ never starts an Agent:
 ```
 
 `nodex-coordinator` shows Nodex's posts, a three-card plan, and a request Nodex
+state, including a chat second in line on its own checkout, a paused card and a
+card with an open pull request, plus an Ask card, two Waits for edges, and an
+automatic step waiting for its prerequisite. Seeded checkouts and pull requests
+are Core records only; nothing is checked out. The Project Inbox also has a ready-to-start attention post, which
 is itself a Page on the Board.
 
 ```bash

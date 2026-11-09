@@ -6,6 +6,7 @@ export const LEGACY_WORKFLOW_STATUS_ORDER = [
   "in_progress",
   "in_review",
   "done",
+  "canceled",
 ] as const;
 
 export type LegacyWorkflowStatus = (typeof LEGACY_WORKFLOW_STATUS_ORDER)[number];
@@ -16,6 +17,7 @@ export const WORKFLOW_STATUS_CUTOVER_MAP: Readonly<Record<LegacyWorkflowStatus, 
   in_progress: "doing",
   in_review: "review",
   done: "done",
+  canceled: "canceled",
 };
 
 export function isLegacyWorkflowStatus(value: unknown): value is LegacyWorkflowStatus {

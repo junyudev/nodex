@@ -31,22 +31,30 @@ const unionRoots = (...groups: readonly (readonly string[])[]): string[] => [
   ...new Set(groups.flat()),
 ];
 
-const PROJECTLESS_WORKSPACE_PATTERN =
-  /^(.*(?:^|[\\/])Documents[\\/]+Nodex)[\\/]+(?:\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*|\d{4}-\d{2}-\d{2}[\\/]+[a-z0-9][a-z0-9-]*)[\\/]*$/i;
+/** A thread directory Nodex generated under the projects directory: `<date>/<slug>` or `<date>-<slug>`. */
+const GENERATED_PROJECTLESS_DIRECTORY =
+  /^[\\/]+(?:\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*|\d{4}-\d{2}-\d{2}[\\/]+[a-z0-9][a-z0-9-]*)[\\/]*$/i;
 
-/** Returns the durable browser root for a generated projectless thread cwd. */
-export function codexProjectlessWorkspaceRootFromCwd(cwd: string | null): string | null {
-  return cwd?.trim().match(PROJECTLESS_WORKSPACE_PATTERN)?.[1] ?? null;
+/** Returns the durable browser root for a cwd Nodex generated under the projects directory. */
+export function codexProjectlessWorkspaceRootFromCwd(
+  cwd: string | null,
+  projectsDirectory: string,
+): string | null {
+  const candidate = cwd?.trim();
+  const root = projectsDirectory.replace(/[\\/]+$/u, "");
+  if (!candidate || !root || !candidate.startsWith(root)) return null;
+  return GENERATED_PROJECTLESS_DIRECTORY.test(candidate.slice(root.length)) ? root : null;
 }
 
 /** The newest retained generated root wins, matching the desktop's reverse scan. */
 export function findCodexProjectlessWorkspaceInRoots(
   roots: readonly string[],
+  projectsDirectory: string,
 ): CodexPreparedProjectlessWorkspace | null {
   for (let index = roots.length - 1; index >= 0; index -= 1) {
     const cwd = roots[index];
     if (!cwd) continue;
-    const workspaceRoot = codexProjectlessWorkspaceRootFromCwd(cwd);
+    const workspaceRoot = codexProjectlessWorkspaceRootFromCwd(cwd, projectsDirectory);
     if (workspaceRoot) return { cwd, workspaceRoot };
   }
   return null;
@@ -88,16 +96,20 @@ export function resolveCodexPreparedWorkspaceKind(input: {
 /** Reuses the same projectless workspace hints before a new directory is created. */
 export function resolveExistingCodexProjectlessWorkspace(input: {
   readonly cwd: string | null;
+  readonly projectsDirectory: string;
   readonly retainedWritableRoots: readonly string[];
   readonly workspaceKind: "project" | "projectless" | null | undefined;
   readonly workspaceBrowserRoot: string | null | undefined;
 }): CodexPreparedProjectlessWorkspace | null {
-  const directRoot = codexProjectlessWorkspaceRootFromCwd(input.cwd);
+  const directRoot = codexProjectlessWorkspaceRootFromCwd(input.cwd, input.projectsDirectory);
   if (input.cwd !== null && directRoot !== null) {
     return { cwd: input.cwd, workspaceRoot: directRoot };
   }
 
-  const retained = findCodexProjectlessWorkspaceInRoots(input.retainedWritableRoots);
+  const retained = findCodexProjectlessWorkspaceInRoots(
+    input.retainedWritableRoots,
+    input.projectsDirectory,
+  );
   if (retained) return retained;
 
   const browserRoot = input.workspaceBrowserRoot ?? null;

@@ -39,6 +39,16 @@ it.effect("reconciles acceptance after a lost send reply across a worker restart
         read: (input: ProjectWorkspaceRead) =>
           Effect.sync(() => ({
             value:
+              input.kind === "execution_holds"
+                ? { kind: input.kind, holds: [], next_key: null }
+                : input.kind === "read_event_batch"
+                  ? { kind: input.kind, batch: batches.get(input.batch_id) ?? null }
+                  : input.kind === "read_pending_work_events"
+                    ? { kind: input.kind, events: pending.slice(0, input.limit) }
+                    : {
+                        kind: "read_open_event_batches",
+                        batches: [...batches.values()].filter((b) => !b.accepted_at),
+                      },
           })),
         apply: (input: ProjectWorkspaceApplyInput) =>
           Effect.sync(() => {
@@ -200,6 +210,16 @@ it.effect.each([false, true])(
             read: (input: ProjectWorkspaceRead) =>
               Effect.sync(() => ({
                 value:
+                  input.kind === "execution_holds"
+                    ? { kind: input.kind, holds: [], next_key: null }
+                    : input.kind === "read_open_event_batches"
+                      ? { kind: input.kind, batches: open ? [batch] : [] }
+                      : input.kind === "read_event_batch"
+                        ? {
+                            kind: input.kind,
+                            batch: { ...batch, invalidated_at: "2026-11-03T00:01:00.000Z" },
+                          }
+                        : { kind: "read_pending_work_events", events: [] },
               })),
             apply: (input: ProjectWorkspaceApplyInput) =>
               Effect.sync(() => {
@@ -228,5 +248,142 @@ it.effect.each([false, true])(
         "admission",
         accepted ? "settle_event_batch" : "discard_event_batch",
       ]);
+    }),
+);
+
+it.effect(
+  "held Pages split frozen batches and survive a delivery worker restart until resume",
+  () =>
+    Effect.gen(function* () {
+      const { inbox, core, client } = yield* inboxOverRealCore();
+      const coordinatorId = yield* bindTestCoordinator(client);
+      const first = yield* captureInbox(inbox, "Held work");
+      const second = yield* captureInbox(inbox, "Eligible work");
+      const pageIds = [first.pageId, second.pageId];
+      yield* core.workspace.apply(
+        {
+          operationId: "pause-test-facts",
+          intent: {
+            kind: "record_work_events",
+            observed: [],
+            events: pageIds.map((page_id) => ({
+              kind: "report",
+              page_id,
+              session_id: null,
+              dedupe_key: `pause-test:${page_id}`,
+              payload: { outcome: "ready" },
+            })),
+          },
+        },
+        undefined,
+        null,
+      );
+      const pending = yield* core.workspace.read(
+        { kind: "read_pending_work_events", limit: 20 },
+        undefined,
+        null,
+      );
+      if (pending.value.kind !== "read_pending_work_events") return assert.fail("pending events");
+      yield* core.workspace.apply(
+        {
+          operationId: "pause-test-freeze",
+          intent: {
+            kind: "create_event_batch",
+            batch_id: "pause-test-mixed",
+            coordinator_session_id: coordinatorId,
+            message_id: "pause-test-message",
+            body: "mixed",
+            fingerprint: "a".repeat(64),
+            event_ids: pending.value.events.map((e) => e.event_id),
+          },
+        },
+        undefined,
+        null,
+      );
+      yield* core.workspace.apply(
+        {
+          operationId: "pause-test-hold",
+          intent: { kind: "pause_work", scope: { kind: "page", page_id: first.pageId } },
+        },
+        undefined,
+        null,
+      );
+      const accepted = new Set<string>();
+      const sent: string[] = [];
+      const owner = make.pipe(
+        Effect.provideService(CoreModules, core),
+        Effect.provideService(CoordinatorSession, {
+          ensure: () => Effect.succeed(coordinatorId),
+          isCoordinator: () => Effect.succeed(true),
+        } as never),
+        Effect.provideService(AgentRuntimeApplication, {
+          messageAdmission: ({ messageId }: { messageId: string }) =>
+            Effect.succeed(accepted.has(messageId) ? { status: "accepted" } : null),
+          sendMessage: (input: { message: { messageId: string; text: string } }) =>
+            Effect.sync(() => {
+              accepted.add(input.message.messageId);
+              sent.push(input.message.text);
+            }),
+        } as never),
+      );
+      yield* (yield* owner).drain;
+      assert.equal(sent.length, 1);
+      assert.include(sent[0], second.pageId);
+      assert.notInclude(sent[0], first.pageId);
+      yield* (yield* owner).drain;
+      assert.equal(sent.length, 1);
+      yield* core.workspace.apply(
+        {
+          operationId: "pause-test-resume",
+          intent: { kind: "resume_work", scope: { kind: "page", page_id: first.pageId } },
+        },
+        undefined,
+        null,
+      );
+      yield* (yield* owner).drain;
+      yield* (yield* owner).drain;
+      assert.equal(sent.length, 2);
+      assert.include(sent[1], first.pageId);
+      yield* core.workspace.apply(
+        {
+          operationId: "pause-test-space",
+          intent: { kind: "pause_work", scope: { kind: "space" } },
+        },
+        undefined,
+        null,
+      );
+      yield* core.workspace.apply(
+        {
+          operationId: "pause-test-more",
+          intent: {
+            kind: "record_work_events",
+            observed: [],
+            events: [
+              {
+                kind: "report",
+                page_id: second.pageId,
+                session_id: null,
+                dedupe_key: "after-space-hold",
+                payload: {},
+              },
+            ],
+          },
+        },
+        undefined,
+        null,
+      );
+      yield* (yield* owner).drain;
+      assert.equal(sent.length, 2);
+      yield* core.workspace.apply(
+        {
+          operationId: "pause-test-space-resume",
+          intent: { kind: "resume_work", scope: { kind: "space" } },
+        },
+        undefined,
+        null,
+      );
+      yield* (yield* owner).drain;
+      yield* (yield* owner).drain;
+      assert.equal(sent.length, 3);
     }),
 );

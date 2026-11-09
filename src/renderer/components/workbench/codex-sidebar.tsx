@@ -1,3 +1,4 @@
+import { useExecutionHold } from "@/lib/execution-holds-runtime";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import type {
   ComponentPropsWithoutRef,
@@ -536,7 +537,12 @@ export const CodexProjectActionsMenu = forwardRef<
       ]
     : undefined;
 
+  const executionHold = useExecutionHold({ kind: "project", project_id: project.id });
   const handleNativeMenuAction = async (actionId: string) => {
+    if (actionId === PROJECT_CONTEXT_MENU_ACTION_IDS.togglePause) {
+      await executionHold.setPaused(!executionHold.paused);
+      return;
+    }
     const targetSectionId = readProjectMoveToSectionActionId(actionId);
     if (targetSectionId) {
       await moveProjectToSection(currentSectionId === targetSectionId ? null : targetSectionId);
@@ -589,6 +595,7 @@ export const CodexProjectActionsMenu = forwardRef<
     if (!canShowNativeContextMenu()) return false;
     if (nativeMenuOpenRef.current) return true;
     const items = buildProjectContextMenuItems({
+      paused: executionHold.paused,
       pinned: project.pinned,
       showPinAction: Boolean(onSetProjectPinned),
       sectionItems,
@@ -712,6 +719,18 @@ export const CodexProjectActionsMenu = forwardRef<
               Create permanent worktree
             </NodexDropdownItem>
           ) : null}
+          <NodexDropdownItem
+            onSelect={() => {
+              setMenuOpen(false);
+              void executionHold.setPaused(!executionHold.paused).catch((error) =>
+                toast.danger("Work pause could not be updated", {
+                  description: error instanceof Error ? error.message : undefined,
+                }),
+              );
+            }}
+          >
+            {executionHold.paused ? "Resume all work" : "Pause all work"}
+          </NodexDropdownItem>
           <NodexDropdownItem
             leftSlot={<SettingsGeneralIcon className="icon-xs" />}
             onSelect={() => {

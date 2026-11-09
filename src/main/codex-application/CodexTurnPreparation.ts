@@ -50,6 +50,7 @@ import { CodexInputAssets } from "./CodexInputAssets";
 import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
 import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
+import { resolveNodexProjectsDirectory } from "../nodex-projects-directory";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import { CodexAgentConfigRuntime } from "./CodexAgentConfigRuntime";
 import { CodexAttachments } from "./CodexAttachments";
@@ -325,22 +326,28 @@ export const make: Effect.Effect<
           isProjectlessConversation: projectId === null,
           workspaceKind: currentWorkspaceKind,
         });
-      let projectlessWorkspace = shouldMaterializeProjectless
-        ? resolveExistingCodexProjectlessWorkspace({
-            cwd: state.canonical.cwd ?? liveContext.conversationCwd ?? liveContext.cwd,
-            retainedWritableRoots: liveContext.writableRoots,
-            workspaceKind: currentWorkspaceKind,
-            workspaceBrowserRoot:
-              state.canonical.workspaceBrowserRoot ??
-              state.snapshot?.projectlessWorkspaceBrowserRoot ??
-              null,
-          })
+      const projectsDirectory = shouldMaterializeProjectless
+        ? resolveNodexProjectsDirectory(config)
         : null;
-      if (shouldMaterializeProjectless && projectlessWorkspace === null) {
+      let projectlessWorkspace =
+        projectsDirectory !== null
+          ? resolveExistingCodexProjectlessWorkspace({
+              cwd: state.canonical.cwd ?? liveContext.conversationCwd ?? liveContext.cwd,
+              projectsDirectory,
+              retainedWritableRoots: liveContext.writableRoots,
+              workspaceKind: currentWorkspaceKind,
+              workspaceBrowserRoot:
+                state.canonical.workspaceBrowserRoot ??
+                state.snapshot?.projectlessWorkspaceBrowserRoot ??
+                null,
+            })
+          : null;
+      if (projectsDirectory !== null && projectlessWorkspace === null) {
         const created = yield* Effect.tryPromise(() =>
           createCodexProjectlessWorkspace({
             createSplitDirectories: true,
             prompt: prepared.promptText,
+            workspaceRoot: projectsDirectory,
           }),
         );
         projectlessWorkspace = {

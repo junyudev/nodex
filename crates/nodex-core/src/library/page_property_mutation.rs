@@ -124,6 +124,102 @@ pub(super) struct PagePropertyApplySupplement<'a> {
     pub(super) committed_at: Option<&'a str>,
 }
 
+/// A semantic owner may apply intrinsic fields inside its existing LocalCommit.
+/// Use the normal validation, projection and history ledger without another receipt or commit.
+pub(super) fn apply_collaborator(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    commit: &crate::infrastructure::local_commit::CommitContext,
+    operation_id: &str,
+) -> Result<(), StoreError> {
+    let library = &context.library_id.0;
+    let now = commit.committed_at();
+    let project = actor_project_id(connection, context, library)?;
+    let map_error = |error| match error {
+        PropertyApplyError::Rejected(error) => rejection_store_error(error),
+        PropertyApplyError::Store(error) => error,
+    };
+    let evidence = validate_request(
+        library,
+        project.as_deref(),
+        commit.store_epoch(),
+        operation_id,
+        mutation,
+    )
+    .map_err(map_error)?;
+    let fields =
+        resolve_fields(connection, context, library, operation_id, mutation).map_err(map_error)?;
+    let results = fields
+        .iter()
+        .map(|field| persist_field(connection, operation_id, field, now))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(map_error)?;
+    let metadata =
+        bump_page_metadata_revisions(connection, operation_id, &evidence.target_page_ids, now)?;
+    for page in &evidence.target_page_ids {
+        refresh_page_intrinsic_projection(connection, page, now)?;
+        connection.execute("UPDATE page_read_model SET projection_version=projection_version+1,updated_at=?2 WHERE page_block_id=?1",params![page,now])?;
+    }
+    let impact = nodex_core_contracts::ProjectionImpact::Resources {
+        page_ids: evidence.target_page_ids.clone(),
+        database_ids: evidence.database_ids.clone(),
+        data_source_ids: vec![],
+        view_ids: vec![],
+        document_heads: vec![],
+    };
+    let payload = change_payload(&evidence, &fields, &results, &metadata);
+    let sequence = crate::infrastructure::event_log::append_change_log(
+        connection,
+        crate::infrastructure::event_log::NewChangeLogEntry {
+            project_id: project.as_deref(),
+            store_epoch: commit.store_epoch(),
+            kind: "block_mutation",
+            operation_id: Some(operation_id),
+            block_ids: &evidence.target_page_ids,
+            document_ids: &[],
+            database_block_ids: &evidence.database_ids,
+            payload_json: &canonical_json(&payload)?,
+            projection_impact: &impact,
+            committed_at: now,
+        },
+        commit,
+    )?;
+    let result = ledger_success_json(
+        operation_id,
+        library,
+        project.as_deref(),
+        commit.store_epoch(),
+        &results,
+        &metadata,
+        commit.commit_seq(),
+        now,
+    );
+    let revisions = Value::Object(
+        results
+            .iter()
+            .map(|field| {
+                (
+                    field_result_path(field).to_owned(),
+                    Value::from(field_result_revision(field)),
+                )
+            })
+            .collect(),
+    );
+    persist_property_ledger(
+        connection,
+        project.as_deref(),
+        commit.store_epoch(),
+        operation_id,
+        mutation.client_session_id.as_deref(),
+        &evidence,
+        "committed",
+        &result,
+        &revisions,
+        Some(sequence),
+        now,
+    )
+}
+
 pub(super) fn apply(
     connection: &Connection,
     context: &BoundModuleContext,
@@ -550,6 +646,33 @@ fn resolve_intrinsic(
         }
         None => (0, Value::Null),
     };
+    let mut value = value.clone();
+    if property_key == "work" {
+        let mut work: nodex_core_contracts::library::PageWork =
+            serde_json::from_value(value.clone()).map_err(|_| {
+                property_value_invalid(
+                    &path,
+                    "Page work requires owner, typed assignee and auto_start",
+                )
+            })?;
+        super::members::validate_work(connection, library_id, &work)
+            .map_err(|error| property_value_invalid(&path, &error.message))?;
+        let previous = parse_page_work(&current_value).ok();
+        if previous
+            .as_ref()
+            .is_some_and(|old| old.assignee.is_some() && old.assignee != work.assignee)
+            || work
+                .assignee
+                .as_ref()
+                .and_then(|a| a.agent_selection())
+                .is_none()
+        {
+            work.auto_start = false;
+        }
+        value = serde_json::to_value(work)
+            .map_err(|_| property_value_invalid(&path, "Page work cannot be encoded"))?;
+        parse_page_work(&value).map_err(|error| property_value_invalid(&path, &error.message))?;
+        require_work_launch_consent(context, &current_value, &value)
             .map_err(|error| property_value_invalid(&path, &error.message))?;
     }
     if current_revision != *expected_revision {
@@ -565,8 +688,8 @@ fn resolve_intrinsic(
         path,
         page,
         property_key: property_key.clone(),
-        value: value.clone(),
-        value_type: intrinsic_value_type(value),
+        value_type: intrinsic_value_type(&value),
+        value,
         current_revision,
         current_value,
     }))
@@ -844,7 +967,10 @@ fn validate_intrinsic_value(
     value: &Value,
     path: &str,
 ) -> Result<(), PropertyApplyError> {
-    if matches!(property_key, "agent.blocked" | "agent.status") {
+    if matches!(
+        property_key,
+        "agent.blocked" | "agent.status" | "agent.work"
+    ) {
         return Err(rejected(
             LibraryBlockPropertyMutationErrorCode::PropertyNotFound,
             format!("Intrinsic Property {path} is retired"),
@@ -854,6 +980,9 @@ fn validate_intrinsic_value(
         ));
     }
     let valid = match property_key {
+        "work" => {
+            serde_json::from_value::<nodex_core_contracts::library::PageWork>(value.clone()).is_ok()
+        }
         "run.target" => value
             .as_str()
             .is_some_and(|value| matches!(value, "localProject" | "newWorktree" | "cloud")),
@@ -891,28 +1020,76 @@ fn validate_intrinsic_value(
 
 /// Verified Agent identity cannot create a new automatic-launch grant, including
 /// when execution configuration is copied onto a different Page.
+pub(super) fn require_work_launch_consent(
     context: &BoundModuleContext,
     current_value: &Value,
     value: &Value,
 ) -> Result<(), StoreError> {
+        || value.get("auto_start").and_then(Value::as_bool) != Some(true)
+        || current_value.get("auto_start").and_then(Value::as_bool) == Some(true)
     {
         return Ok(());
     }
     Err(StoreError::new(
         StoreErrorCode::InvalidInput,
+        "Only a person can grant automatic Agent work start",
         false,
     ))
 }
 
+pub(crate) fn validate_agent_selection(
+    selection: &nodex_core_contracts::library::AgentWorkSelection,
+) -> Result<(), StoreError> {
     let valid = |value: &str, bound: usize| {
         !value.is_empty()
             && value.len() <= bound
             && value == value.trim()
             && !value.chars().any(char::is_control)
     };
+    if valid(&selection.instance_id, 512)
+        && valid(&selection.model, 512)
+        && selection.effort.as_deref().is_none_or(|v| valid(v, 128))
+    {
+        return Ok(());
+    }
+    Err(StoreError::new(
+        StoreErrorCode::InvalidInput,
+        "Agent assignment requires canonical bounded instance, model and effort",
+        false,
+    ))
+}
+
+pub(crate) fn parse_page_work(
+    value: &Value,
+) -> Result<nodex_core_contracts::library::PageWork, StoreError> {
+    let work: nodex_core_contracts::library::PageWork = serde_json::from_value(value.clone())
+        .map_err(|_| {
+            StoreError::new(
+                StoreErrorCode::InvalidInput,
+                "Page work requires owner, typed assignee and auto_start",
+                false,
+            )
+        })?;
+    if work.owner.is_empty() || work.owner.len() > 512 || work.owner.trim() != work.owner {
+        return Err(StoreError::new(
+            StoreErrorCode::InvalidInput,
+            "Page Owner requires a Member identity",
+            false,
+        ));
+    }
+    if let Some(selection) = work.assignee.as_ref().and_then(|a| a.agent_selection()) {
+        validate_agent_selection(&selection)?;
+    }
+    if work.auto_start
+        && work
+            .assignee
+            .as_ref()
+            .and_then(|a| a.agent_selection())
+            .is_none()
     {
         return Err(StoreError::new(
             StoreErrorCode::InvalidInput,
+            "Automatic start requires an Agent Assignee",
             false,
         ));
     }
@@ -1673,6 +1850,36 @@ fn internal(message: &str) -> StoreError {
 }
 
 /// Initialize execution on a freshly created plan Page, under the enclosing Workspace scope.
+/// Fresh Pages already have work authority. Captured state replaces that default
+/// while every other duplicate Property remains an error.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn persist_captured_intrinsic(
+    connection: &Connection,
+    block_id: &str,
+    library_id: &str,
+    key: &str,
+    value_type: &str,
+    value_json: &str,
+    revision: i64,
+    now: &str,
+) -> Result<(), StoreError> {
+    if key == "agent.work" {
+        return Err(StoreError::new(
+            StoreErrorCode::InvalidInput,
+            "Agent work is a Page assignment",
+            false,
+        ));
+    }
+    if key == "work" {
+        connection.execute(
+            "DELETE FROM block_properties WHERE block_id=?1 AND property_key='work'",
+            [block_id],
+        )?;
+    }
+    connection.execute("INSERT INTO block_properties(block_id,library_id,property_key,value_type,value_json,revision,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![block_id,library_id,key,value_type,value_json,revision,now])?;
+    Ok(())
+}
+
 pub(crate) fn initialize_agent_work(
     connection: &Connection,
     context: &BoundModuleContext,
@@ -1680,5 +1887,24 @@ pub(crate) fn initialize_agent_work(
     selection: &nodex_core_contracts::library::AgentWorkSelection,
     now: &str,
 ) -> Result<(), StoreError> {
+    validate_agent_selection(selection)?;
+    let current: String = connection.query_row(
+        "SELECT value_json FROM block_properties WHERE block_id=?1 AND property_key='work'",
+        [page_id],
+        |r| r.get(0),
+    )?;
+    let mut work = parse_page_work(
+        &serde_json::from_str::<Value>(&current)
+            .map_err(|_| internal("Page work JSON is invalid"))?,
+    )?;
+    work.assignee = Some(nodex_core_contracts::library::PageAssignee::Agent {
+        instance_id: selection.instance_id.clone(),
+        model: selection.model.clone(),
+        effort: selection.effort.clone(),
+    });
+    work.auto_start = true;
+    let value = serde_json::to_value(work).map_err(|_| internal("Page work cannot be encoded"))?;
+    require_work_launch_consent(context, &Value::Null, &value)?;
+    connection.execute("UPDATE block_properties SET value_json=?2,revision=revision+1,updated_at=?3 WHERE block_id=?1 AND property_key='work'",params![page_id,value.to_string(),now])?;
     refresh_page_intrinsic_projection(connection, page_id, now)
 }

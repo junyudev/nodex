@@ -13,7 +13,7 @@ import {
 } from "../contracts";
 
 export const SIDEBAR_LINKED_PAGE_STATUS_SCENARIO_ID = "sidebar/linked-page-status" as const;
-export const SIDEBAR_LINKED_PAGE_STATUS_SCENARIO_REVISION = 3 as const;
+export const SIDEBAR_LINKED_PAGE_STATUS_SCENARIO_REVISION = 4 as const;
 
 const PAGE_TITLES = {
   triage: "Investigate slow search",
@@ -21,6 +21,7 @@ const PAGE_TITLES = {
   doing: "Add search shortcuts",
   review: "Review export flow",
   done: "Ship sidebar polish",
+  canceled: "Retire unused export path",
   noStatus: "Search research notes",
 } as const;
 
@@ -237,7 +238,10 @@ const inspect = async (
     }),
   );
   const board = await port.readBoard(manifest.projectId, manifest.databaseViewId);
-  if (board.totalRows !== 5 || WORKFLOW_STATUS_ORDER.some((status) => board.groups[status] !== 1)) {
+  if (
+    board.totalRows !== WORKFLOW_STATUS_ORDER.length ||
+    WORKFLOW_STATUS_ORDER.some((status) => board.groups[status] !== 1)
+  ) {
     throw new Error("sidebar/linked-page-status workflow Pages did not materialize");
   }
   const chats = Object.entries(CHATS).map(([key, recipe]) => {

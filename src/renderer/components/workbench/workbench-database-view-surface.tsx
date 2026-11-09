@@ -1,3 +1,4 @@
+import { useMembers } from "@/lib/members-runtime";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -192,6 +193,7 @@ export function WorkbenchDatabaseViewSurface({
   readonly onSendPageToChat?: (input: SendPageToChatInput) => Promise<void> | void;
 }) {
   const queryClient = useQueryClient();
+  const members = useMembers();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const inFlightScopesRef = useRef({ updatedAt: 0, scopes: new Set<string>() });
   const requiredMinimumCommitSeqRef = useRef(0);
@@ -268,12 +270,13 @@ export function WorkbenchDatabaseViewSurface({
     () =>
       mergedWindow
         ? buildDatabaseViewWindowRenderModel(mergedWindow, {
+            members: members.data,
             windowKey: JSON.stringify(
               [...windowsByScope].map(([key, windows]) => [key, windows.length]),
             ),
           })
         : undefined,
-    [mergedWindow, windowsByScope],
+    [mergedWindow, windowsByScope, members.data],
   );
   useWorkbenchDatabaseViewPresentation(
     workbenchPresentation,

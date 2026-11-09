@@ -731,3 +731,47 @@ mod tests {
         assert_eq!(error.code, CliErrorCode::InvalidInput);
     }
 }
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct PageAcceptanceResult {
+    page_id: String,
+    operation_id: String,
+    duplicate: bool,
+}
+
+/// Acceptance is a person command; Core guards both identity and the review predecessor.
+pub(crate) fn accept_page(
+    client: &CoreClient,
+    explicit_project: Option<&str>,
+    cwd: &Path,
+    arguments: crate::cli::PageAcceptArgs,
+) -> Result<CommandOutput, CliError> {
+    let project = selected_project(client, explicit_project, cwd)?;
+    let page_id = resolve_page_selector(client, &project.id, &arguments.page)?;
+    let response = client
+        .workspace_apply(
+            Some(&project.id),
+            ModuleApplyRequest {
+                contract_version:
+                    nodex_core_contracts::workspace::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                operation_id: operation_id(arguments.idempotency_key.as_deref())?,
+                store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
+                intent: nodex_core_contracts::workspace::ProjectWorkspaceIntent::AcceptPageWork {
+                    expected_turn_episode: None,
+                    page_id: page_id.clone(),
+                },
+            },
+        )
+        .map_err(map_client_error)?;
+    let committed = match response.0 {
+        ResponseEnvelope::Ok(value) => value,
+        ResponseEnvelope::Error(error) => return Err(map_core_error(error)),
+    };
+    serde_json::to_value(PageAcceptanceResult {
+        page_id,
+        operation_id: committed.receipt().mutation.operation_id.clone(),
+        duplicate: committed.receipt().mutation.duplicate,
+    })
+    .map(CommandOutput::Json)
+    .map_err(|e| CliError::new(CliErrorCode::Internal, e.to_string()))
+}

@@ -1,3 +1,4 @@
+import { PageAssigneeLabel } from "@/components/database/page-assignee-label";
 import { memo } from "react";
 import { RepeatIcon } from "@/components/shared/icons";
 import { formatTimeRange } from "@/lib/calendar-utils";
@@ -28,7 +29,7 @@ interface CalendarEventBlockProps {
   priority?: Priority;
   estimate?: Estimate;
   tags: string[];
-  assignee?: string;
+  assignee?: import("../../../../shared/work-graph").PageAssignee | null;
   description?: string;
   isRecurring?: boolean;
   isSeriesFirstOccurrence?: boolean;
@@ -350,7 +351,7 @@ export const CalendarEventBlock = memo(function CalendarEventBlock({
                 ))}
                 {assignee && !isLarge && (
                   <span className="ml-auto shrink-0 truncate text-xs text-(--foreground-tertiary)">
-                    @{assignee}
+                    <PageAssigneeLabel assignee={assignee} />
                   </span>
                 )}
               </div>

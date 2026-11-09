@@ -3176,7 +3176,7 @@ mod tests {
                     "INSERT INTO data_source_properties(\
                        data_source_id, id, name, value_type, config_json, rank_key, lifecycle, \
                        schema_revision, created_at, updated_at\
-                     ) VALUES ('source:relation-retention', 'p_blocked0', 'Blocked by', \
+                     ) VALUES ('source:relation-retention', 'p_blocked0', 'Waits for', \
                        'relation', '{}', 'z', 'active', 1, ?1, ?1)",
                     [old],
                 )?;

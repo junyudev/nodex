@@ -1996,6 +1996,7 @@ fn create_database(
 #[allow(clippy::too_many_arguments)]
 fn create_page_records_and_genesis(
     connection: &Connection,
+    context: &BoundModuleContext,
     store_epoch: &str,
     library_id: &str,
     operation_id: &str,
@@ -2074,6 +2075,7 @@ fn create_page_records_and_genesis(
             now
         ],
     )?;
+    super::members::initialize_owner(connection, context, page_id, None)?;
     if resolved_parent.document.is_none() {
         insert_library_placement(
             connection,
@@ -2511,6 +2513,7 @@ fn create_page_mention(
         |scope| {
             let page_create = create_page_records_and_genesis(
                 connection,
+                context,
                 store_epoch,
                 library_id,
                 operation_id,
@@ -3704,7 +3707,7 @@ fn internal(message: &str) -> StoreError {
 #[allow(clippy::too_many_arguments)]
 fn execute_page_create(
     connection: &Connection,
-    _context: &BoundModuleContext,
+    context: &BoundModuleContext,
     store_epoch: &str,
     library_id: &str,
     operation_id: &str,
@@ -3719,6 +3722,7 @@ fn execute_page_create(
 ) -> Result<MutationEffects, StoreError> {
     let page_create = create_page_records_and_genesis(
         connection,
+        context,
         store_epoch,
         library_id,
         operation_id,
@@ -4625,7 +4629,7 @@ mod tests {
                 assert_eq!(
                     intrinsic,
                     (
-                        9,
+                        10,
                         "\"localProject\"".to_owned(),
                         "localProject".to_owned(),
                     )

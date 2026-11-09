@@ -1,3 +1,4 @@
+import { DEFAULT_WORKFLOW_STATUS_COLUMNS } from "../../shared/workflow-status";
 import {
   PAGE_DOCUMENT_SCHEMA_KEY,
   PAGE_DOCUMENT_SCHEMA_VERSION,
@@ -76,13 +77,7 @@ export const buildPageDetailFixtureResult = (
   });
   const properties = [
     property("status", "select", {
-      options: [
-        { id: "triage", name: "Triage" },
-        { id: "plan", name: "Plan" },
-        { id: "doing", name: "Doing" },
-        { id: "review", name: "Review" },
-        { id: "done", name: "Done" },
-      ],
+      options: DEFAULT_WORKFLOW_STATUS_COLUMNS,
     }),
     property("priority", "select", {
       options: [
@@ -110,7 +105,8 @@ export const buildPageDetailFixtureResult = (
     property("due_date", "date"),
     property("scheduled_start", "datetime"),
     property("scheduled_end", "datetime"),
-    property("assignee", "text"),
+    property("assignee", "assignment"),
+    property("owner", "assignment"),
     property("p_C0nf1d3n", "number", {}, "Confidence"),
     property("p_Appr0v3d", "checkbox", {}, "Approved"),
     property("p_N0t3sxxx", "text", {}, "Notes"),
@@ -133,7 +129,8 @@ export const buildPageDetailFixtureResult = (
   putValue("due_date", page.dueDate?.toISOString().slice(0, 10) ?? null);
   putValue("scheduled_start", page.scheduledStart?.toISOString() ?? null);
   putValue("scheduled_end", page.scheduledEnd?.toISOString() ?? null);
-  putValue("assignee", page.assignee ?? null);
+  putValue("assignee", page.pageWork?.assignee ?? page.assignee ?? null);
+  putValue("owner", { kind: "member", member_id: page.pageWork?.owner ?? "member:local" });
   putValue("p_C0nf1d3n", 0.82);
   putValue("p_Appr0v3d", true);
   putValue("p_N0t3sxxx", "Ready for design review");
@@ -168,6 +165,16 @@ export const buildPageDetailFixtureResult = (
         schemaVersion: PAGE_DOCUMENT_SCHEMA_VERSION,
       },
       intrinsicProperties: [
+        {
+          key: "work",
+          valueType: "json",
+          value: page.pageWork ?? {
+            owner: "member:local",
+            assignee: page.assignee ?? null,
+            auto_start: false,
+          },
+          revision: 1,
+        },
         intrinsic("schedule.isAllDay", Boolean(page.isAllDay)),
         intrinsic("recurrence.config", page.recurrence ?? null),
         intrinsic("reminders.config", page.reminders ?? []),

@@ -50,6 +50,7 @@ export class ManagedWorktreeCatalogError extends Data.TaggedError("ManagedWorktr
 
 export interface ManagedWorktreeCatalogOptions {
   readonly defaultManagedRoot: string;
+  readonly pageWorkspacePaths?: Effect.Effect<readonly string[], unknown>;
 }
 
 export class ManagedWorktreeCatalog extends Context.Service<
@@ -443,6 +444,22 @@ export const make = (
               .list(hostId)
               .pipe(Effect.mapError((cause) => fail("delete", cause)));
             const normalizedPath = normalizeWorktreePathForIdentity(worktreePath);
+            const pagePaths = options.pageWorkspacePaths
+              ? yield* options.pageWorkspacePaths.pipe(
+                  Effect.mapError((cause) => fail("delete", cause)),
+                )
+              : [];
+            if (
+              hostId === "local" &&
+              pagePaths.some(
+                (candidate) => normalizeWorktreePathForIdentity(candidate) === normalizedPath,
+              )
+            )
+              return yield* fail(
+                "delete",
+                new Error("Complete the Page to remove its Workspace checkout"),
+              );
+
             if (
               !inventory.entries.some(
                 (entry) =>

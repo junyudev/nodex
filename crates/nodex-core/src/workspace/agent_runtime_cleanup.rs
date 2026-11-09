@@ -104,6 +104,7 @@ pub(super) fn acknowledge(
             false,
         ));
     }
+    connection.execute("DELETE FROM session_workspaces WHERE session_id=(SELECT session_id FROM nodex_agent_runtime_execution_cleanups WHERE cleanup_id=?1 AND library_id=?2)",params![cleanup_id,library_id])?;
     let now = sqlite_now(connection)?;
     connection.execute("UPDATE nodex_agent_runtime_execution_cleanups SET acknowledged_at=?1 WHERE cleanup_id=?2 AND acknowledged_at IS NULL",params![now,cleanup_id])?;
     finish_lifecycle_mutation(
@@ -137,6 +138,7 @@ mod tests {
     };
     fn binding(session_id: &str, thread_id: &str) -> ProjectWorkspaceIntent {
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            agent_selection: None,
             coordinator: false,
             side_chat_source_session_id: None,
             session_id: session_id.into(),

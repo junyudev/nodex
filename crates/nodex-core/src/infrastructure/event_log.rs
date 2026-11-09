@@ -3057,19 +3057,27 @@ mod tests {
             .expect("resolve packet")
             .expect("visible sibling packet");
 
-        assert_eq!(packet.atoms.len(), 2);
+        // Inbox invalidation may accompany the two independently authorized resources.
+        assert_eq!(
+            packet
+                .atoms
+                .iter()
+                .filter(|atom| matches!(atom.payload, DeliveryAtomPayload::Library { .. }))
+                .count(),
+            2
+        );
         let page_ids = packet
             .atoms
             .iter()
             .flat_map(|atom| match &atom.payload {
                 DeliveryAtomPayload::Library { event, .. } => event.page_ids.clone(),
-                _ => panic!("Library resource atom"),
+                _ => Vec::new(),
             })
             .collect::<std::collections::BTreeSet<_>>();
         assert_eq!(
             page_ids,
             std::collections::BTreeSet::from(["page:visible".to_owned(), "page:hidden".to_owned()])
         );
-        assert_eq!(packet.coverage.atom_ids.len(), 2);
+        assert_eq!(packet.coverage.atom_ids.len(), packet.atoms.len());
     }
 }

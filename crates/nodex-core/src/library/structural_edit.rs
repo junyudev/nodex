@@ -2392,18 +2392,15 @@ fn restore_turned_selection(
             ],
         )?;
         for property in &original_page.properties {
-            connection.execute(
-                "INSERT INTO block_properties( \
-                   block_id, library_id, property_key, value_type, value_json, revision, updated_at \
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6)",
-                params![
-                    dormant.page_id,
-                    library_id,
-                    property.property_key,
-                    property.value_type,
-                    property.value_json,
-                    now,
-                ],
+            super::page_property_mutation::persist_captured_intrinsic(
+                connection,
+                &dormant.page_id,
+                &library_id,
+                &property.property_key,
+                &property.value_type,
+                &property.value_json,
+                1,
+                &now,
             )?;
         }
         let dormant_parent = load_parent_document(connection, &dormant.document_id)?;
@@ -6630,6 +6627,7 @@ fn clone_snapshot_into_target(
     assert_fresh_auxiliary_identities(connection, &data_source_ids, &view_ids)?;
     stage_clone_authority(
         connection,
+        context,
         snapshot,
         &block_ids,
         &document_ids,
@@ -6826,6 +6824,7 @@ fn clone_snapshot_into_target(
 #[allow(clippy::too_many_arguments)]
 fn stage_clone_authority(
     connection: &Connection,
+    context: &BoundModuleContext,
     snapshot: &OwnershipClosureSnapshot,
     block_ids: &BTreeMap<String, String>,
     document_ids: &BTreeMap<String, String>,
@@ -6965,20 +6964,19 @@ fn stage_clone_authority(
             &page.file_entries,
         )?;
         for property in &page.properties {
-            connection.execute(
-                "INSERT INTO block_properties( \
-                   block_id, library_id, property_key, value_type, value_json, revision, updated_at \
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6)",
-                params![
-                    page_id,
-                    library_id,
-                    property.property_key,
-                    property.value_type,
-                    property.value_json,
-                    now,
-                ],
+            super::page_property_mutation::persist_captured_intrinsic(
+                connection,
+                page_id,
+                &library_id,
+                &property.property_key,
+                &property.value_type,
+                &property.value_json,
+                1,
+                now,
             )?;
         }
+        connection.execute("UPDATE block_properties SET value_json=json_set(value_json,'$.owner',(SELECT member_id FROM local_profile_members WHERE library_id=?2)) WHERE block_id=?1 AND property_key='work'",params![page_id,library_id])?;
+        super::members::initialize_owner(connection, context, page_id, None)?;
     }
     for document in snapshot
         .documents

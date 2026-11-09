@@ -37,6 +37,7 @@ export type InboxTriageModel =
   | { readonly kind: "dispatch-failed"; readonly proposal: InboxProposal; readonly message: string }
   /** A post Nodex wrote about a chat or Page; it takes no advice. */
   | {
+      readonly kind: "answer";
       readonly purpose: NodexEntryPurpose;
       readonly subjectSessionId: string | null;
       readonly subjectPageId: string | null;
@@ -130,7 +131,10 @@ export function inboxTriageModel(item: InboxItem, policy: InboxSuggestionPolicy)
   if (isInboxItemHandled(item)) return { kind: "handled" };
   if (item.source.kind === "nodex")
     return {
+      kind: "answer",
       purpose: item.source.purpose,
+      subjectSessionId: null,
+      subjectPageId: null,
     };
   // A message waiting for automatic advice gets it only while suggestions run on their own;
   // otherwise Main releases it and it simply has none.
@@ -174,6 +178,8 @@ export function inboxRowOffers(
       return { done: true, handleManually: true, suggest: false };
     case "firing-withdrawn":
       return { done: true, handleManually: true, suggest: false };
+    case "answer":
+      return { done: false, handleManually: false, suggest: false };
     case "suggestion":
       // Changing a suggestion happens in `Handle manually`, which stays in the menu. An outdated
       // or failed one asks again from the row, where new advice then shows its spinner.
@@ -212,7 +218,7 @@ export function inboxPageRoutingContext(item: InboxItem): ContentRoutingContext 
       ? { kind: "project", projectId: item.location.projectId }
       : { kind: "library" };
   }
-  return item.scope;
+  return item.scope.kind === "project" ? item.scope : { kind: "library" };
 }
 
 /** The kind the user set, else the one the current suggestion proposes. */
@@ -292,6 +298,17 @@ export function describeInboxOutcome(
   item: InboxItem,
   live: SessionLiveIndicator | null = null,
 ): InboxOutcome {
+  if (item.rowKind === "answer")
+    return {
+      icon: "done",
+      label: "Answered",
+      status: null,
+      open: null,
+      canReturn: false,
+      done: null,
+      inProgress: false,
+    };
+
   if (item.outcome === "kept") {
     return { ...KEPT, label: keptLabel(item.kind), inProgress: false };
   }

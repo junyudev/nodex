@@ -1237,6 +1237,7 @@ export interface components {
             /** Format: int32 */
             readonly total: number;
         };
+            readonly kind: "space";
         readonly BackupCapacity: {
             /** Format: int64 */
             readonly automatic_ready_bytes: number;
@@ -1768,7 +1769,7 @@ export interface components {
                  */
                 readonly body_editable: boolean;
                 readonly body_truncated: boolean;
-                readonly firing?: components["schemas"]["ProjectWorkspaceInboxFiring"] | null;
+                readonly handback?: components["schemas"]["InboxHandback"] | null;
                 /** @description The user marked the message important, so it stays in view while it waits. */
                 readonly important: boolean;
                 readonly kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
@@ -1781,6 +1782,7 @@ export interface components {
                 readonly reply_to_page_id?: string | null;
                 /** Format: int64 */
                 readonly revision: number;
+                readonly row_kind: components["schemas"]["InboxRowKind"];
                 readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
                 readonly source: components["schemas"]["ProjectWorkspaceInboxSource"];
                 readonly state: components["schemas"]["ProjectWorkspaceInboxEntryState"];
@@ -1788,6 +1790,7 @@ export interface components {
                 readonly suggestion_error?: string | null;
                 readonly suggestion_state: components["schemas"]["ProjectWorkspaceInboxSuggestionState"];
                 readonly title: string;
+                readonly turn?: components["schemas"]["InboxTurn"] | null;
             }[];
             readonly next_cursor?: string | null;
         };
@@ -2137,6 +2140,7 @@ export interface components {
             readonly message_id: string;
         };
         readonly CoordinatorManagedSession: {
+            readonly active_page_ids: readonly string[];
             readonly latest_report_at?: string | null;
             readonly observed_json?: unknown;
             /** Format: int64 */
@@ -3216,6 +3220,9 @@ export interface components {
         };
         readonly DatabasePropertySchema: {
             /** @enum {string} */
+            readonly kind: "assignment";
+        } | {
+            /** @enum {string} */
             readonly kind: "text";
         } | {
             readonly format?: components["schemas"]["DatabaseNumberFormat"];
@@ -3257,7 +3264,7 @@ export interface components {
             readonly remove_edge_ids: readonly string[];
         };
         /** @enum {string} */
-        readonly DatabasePropertySystemRole: "status" | "task_parent";
+        readonly DatabasePropertySystemRole: "status" | "task_parent" | "page_owner" | "page_assignee";
         /** @enum {string} */
         readonly DatabasePropertyType: "text" | "number" | "checkbox" | "select" | "multi_select" | "date" | "datetime" | "relation";
         readonly DatabasePropertyValueEdit: {
@@ -3739,7 +3746,12 @@ export interface components {
         };
         /** @description Bounded work facts carried by every Database row, independently of its selected Properties. */
         readonly DatabaseWorkSummary: {
+            readonly assignee?: components["schemas"]["PageAssignee"] | null;
+            readonly auto_start: boolean;
             readonly blockers: readonly components["schemas"]["DatabaseWorkPage"][];
+            readonly owner?: string | null;
+            readonly pull_request?: components["schemas"]["PagePullRequest"] | null;
+            readonly turn?: components["schemas"]["PageTurn"] | null;
             /** Format: int32 */
             readonly unsatisfied_count: number;
         };
@@ -4188,6 +4200,38 @@ export interface components {
             readonly requested_after: number;
             readonly resync_token: string;
         };
+        readonly ExecutionHold: {
+            readonly actor: string;
+            readonly paused_at: string;
+            readonly revision: number;
+            readonly scope: components["schemas"]["ExecutionHoldScope"];
+        };
+        /** @description Person-owned durable execution policy. Space names the current Library. */
+        readonly ExecutionHoldScope: {
+            /** @enum {string} */
+            readonly kind: "page";
+            readonly page_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "project";
+            readonly project_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "space";
+        };
+        readonly ExecutionHoldTarget: {
+            /** @enum {string} */
+            readonly kind: "page";
+            readonly page_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "session";
+            readonly session_id: string;
+        };
+        /** @description Host-supplied original text and prepared binary attachments, read from Runtime. */
+        readonly HandbackMessage: {
+            readonly files: readonly components["schemas"]["LibraryFileChange"][];
+            readonly text: string;
         readonly HandshakeRequest: {
             readonly client: components["schemas"]["ClientIdentity"];
             readonly connection_id: string;
@@ -4237,6 +4281,12 @@ export interface components {
         };
         /** @enum {string} */
         readonly InboxConfirmedBy: "user" | "nodex";
+        /** @description Returned-message context never changes the original author or message body. */
+        readonly InboxHandback: {
+            readonly chat: components["schemas"]["ProjectWorkspaceInboxChat"];
+            readonly reason: string;
+            readonly receipt_id: string;
+            readonly returned_at: string;
         readonly InboxPlanAgent: {
             readonly effort: string | null;
             readonly instance_id: string;
@@ -4284,7 +4334,27 @@ export interface components {
             readonly handed_over_at_ms: number;
             readonly last_refusal?: string | null;
             /** Format: int64 */
+            readonly paused_ms?: number | null;
+            /** Format: int64 */
             readonly run_started_at_ms?: number | null;
+        };
+        /**
+         * @description Membership comes from Core's current Turn, independently of its explanatory note.
+         * @enum {string}
+         */
+        readonly InboxTurn: {
+            readonly active_chat?: components["schemas"]["ProjectWorkspaceInboxChat"] | null;
+            readonly delivery_error?: string | null;
+            readonly note_id?: string | null;
+            readonly options: readonly string[];
+            readonly pull_request_url?: string | null;
+            readonly turn: components["schemas"]["PageTurn"];
+        };
+        readonly InboxTurnNotification: {
+            readonly episode: string;
+            readonly member_id: string;
+            readonly page_id: string;
+        };
         readonly LauncherKind: "electron_host" | "native_cli" | "test";
         readonly LibraryAgentBlockTarget: {
             readonly block_id: string;
@@ -5757,7 +5827,7 @@ export interface components {
             readonly view_revision: number;
         };
         readonly LibraryPageLifecycleMutation: {
-            readonly assignee?: string | null;
+            readonly assignee?: components["schemas"]["PageAssignee"] | null;
             readonly before_block_id?: string | null;
             readonly data_source_id: string;
             readonly due_date?: string | null;
@@ -6124,9 +6194,10 @@ export interface components {
          *     Library read snapshot and is not a second durable authority.
          */
         readonly LibraryPageSearchMetadataDocument: {
-            readonly assignee: string | null;
+            readonly assignee: components["schemas"]["PageAssignee"] | null;
             readonly data_source_ids: readonly string[];
             readonly location_label: string;
+            readonly owner?: string | null;
             readonly page_id: string;
             readonly page_key: string | null;
             readonly preview: string;
@@ -6190,7 +6261,7 @@ export interface components {
             readonly view_id: string;
         };
         /** @enum {string} */
-        readonly LibraryPageWorkflowStatus: "triage" | "plan" | "doing" | "review" | "done";
+        readonly LibraryPageWorkflowStatus: "triage" | "plan" | "doing" | "review" | "done" | "canceled";
         /** @description A Page's stage identity and current Source-owned display name. */
         readonly LibraryPageWorkflowStatusValue: {
             readonly label: string;
@@ -6236,23 +6307,26 @@ export interface components {
             readonly expected_location_revision: number;
         };
         readonly LibraryProjectPageSearchFacets: {
-            readonly assignees: readonly string[];
+            readonly assignees: readonly components["schemas"]["PageAssignee"][];
+            readonly owners?: readonly string[];
             readonly tags: readonly components["schemas"]["LibraryPageSearchOption"][];
         };
         readonly LibraryProjectPageSearchFilters: {
-            readonly assignees: readonly string[];
+            readonly assignees: readonly components["schemas"]["PageAssignee"][];
             readonly include_empty_priority: boolean;
+            readonly owners?: readonly string[];
             readonly priorities?: readonly string[] | null;
             readonly statuses?: readonly components["schemas"]["LibraryPageWorkflowStatus"][] | null;
             readonly tag_mode: components["schemas"]["LibraryPageSearchTagMode"];
             readonly tags: readonly components["schemas"]["LibraryPageSearchOptionIdentity"][];
         };
         readonly LibraryProjectPageSearchHit: {
-            readonly assignee?: string | null;
+            readonly assignee?: components["schemas"]["PageAssignee"] | null;
             readonly excerpt?: string | null;
             readonly excerpt_parts: readonly components["schemas"]["LibraryPageSearchTextPart"][];
             readonly location_label: string;
             readonly matches: readonly components["schemas"]["LibraryPageSearchMatch"][];
+            readonly owner?: string | null;
             readonly page_id: string;
             readonly page_key?: string | null;
             readonly priority?: string | null;
@@ -6706,6 +6780,17 @@ export interface components {
         };
         /** @enum {string} */
         readonly MaintenanceTask: "integrity_check" | "foreign_key_check" | "document_revision_finalize" | "document_compaction" | "history_retention" | "block_retention" | "operational_journal";
+        /** @description A person in the Library. Removing a Member retains references and identity. */
+        readonly Member: {
+            readonly display_name: string;
+            readonly id: string;
+            readonly library_id: string;
+            readonly lifecycle: components["schemas"]["MemberLifecycle"];
+            /** Format: int64 */
+            readonly revision: number;
+        };
+        /** @enum {string} */
+        readonly MemberLifecycle: "active" | "removed";
         readonly ModuleApplyRequest_AutomationIntent: {
             /** Format: int32 */
             readonly contract_version: number;
@@ -6732,7 +6817,7 @@ export interface components {
                 /** Format: int64 */
                 readonly expected_revision: number;
                 /** @enum {string} */
-                readonly kind: "delete_definition";
+                readonly automation_id: string;
             } | {
                 readonly automation_id: string;
                 /** @enum {string} */
@@ -7257,19 +7342,78 @@ export interface components {
                 readonly execution_host_key: string;
                 readonly identity_key: string;
                 /** @enum {string} */
-                readonly kind: "set_identity_thread_unread";
-                readonly thread_id: string;
-                readonly unread: boolean;
+                readonly kind: "pause_work";
+                readonly scope: components["schemas"]["ExecutionHoldScope"];
             } | {
                 readonly identity_key: string;
                 /** @enum {string} */
-                readonly kind: "clear_identity_thread_read_state";
+                readonly kind: "resume_work";
+                readonly scope: components["schemas"]["ExecutionHoldScope"];
             } | {
-                readonly intent: components["schemas"]["ProjectWorkspaceIntent"];
+                readonly events: readonly components["schemas"]["CoordinatorWorkEventInput"][];
+                /** Format: int64 */
+                readonly expected_revision: number;
                 /** @enum {string} */
+                readonly kind: "record_session_execution";
+                readonly observation: components["schemas"]["SessionExecutionObservation"];
+                readonly resolved_request_ids: readonly string[];
+                readonly session_id: string;
+            } | {
+                readonly base_commit_oid: string;
+                readonly branch_name: string;
+                /** @enum {string} */
+                readonly kind: "claim_page_workspace";
+                readonly page_id: string;
+                readonly project_id: string;
+                readonly repository_root: string;
+                readonly repository_url?: string | null;
+                readonly session_id: string;
+                readonly workspace_id: string;
+                readonly worktree_path: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "bind_page_workspace";
+                readonly session_id: string;
+                readonly workspace_id: string;
+            } | {
+                readonly allocation_operation_id: string;
+                readonly branch_name: string;
+                /** @enum {string} */
+                readonly kind: "record_page_workspace_ready";
+                readonly workspace_id: string;
+                readonly worktree_path: string;
+            } | {
+                readonly allocation_operation_id: string;
+                readonly failure: string;
+                /** @enum {string} */
+                readonly kind: "record_page_workspace_failed";
+                readonly workspace_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "request_page_workspace_cleanup";
+                readonly workspace_id: string;
+            } | {
+                /** Format: int64 */
+                readonly expected_revision: number;
+                /** @enum {string} */
+                readonly kind: "mark_page_workspace_removed";
+                readonly workspace_id: string;
+            } | {
+                readonly head_branch: string;
+                /** @enum {string} */
+                readonly kind: "upsert_page_pull_request";
+                /** Format: int64 */
+                readonly number: number;
+                readonly observed_at: string;
+                readonly repository: string;
+                readonly state: string;
+                readonly url: string;
+                readonly workspace_id: string;
+            } | {
                 readonly again: boolean;
                 readonly brief: string;
                 readonly expected_readiness_epoch?: string | null;
+                readonly expected_turn_episode?: string | null;
                 /** @enum {string} */
                 readonly kind: "start_page_work";
                 readonly launch_id: string;
@@ -7296,6 +7440,11 @@ export interface components {
                 readonly kind: "set_session_managed";
                 readonly managed: boolean;
                 readonly session_id: string;
+            } | {
+                readonly expected_turn_episode?: string | null;
+                /** @enum {string} */
+                readonly kind: "accept_page_work";
+                readonly page_id: string;
             } | {
                 /** @enum {string} */
                 readonly kind: "report_page_work";
@@ -7443,6 +7592,7 @@ export interface components {
                 readonly session_id: string;
                 readonly title: string;
             } | {
+                readonly agent_selection?: components["schemas"]["AgentWorkSelection"] | null;
                 /** @description Host-only role binding, atomic with Session/execution admission. */
                 readonly coordinator?: boolean;
                 /** @description Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress. */
@@ -7704,7 +7854,46 @@ export interface components {
                 readonly body: string;
                 readonly event_ids: readonly string[];
                 /** @enum {string} */
+                readonly kind: "write_turn_note";
+                readonly note_id: string;
+                readonly notify: boolean;
                 readonly page_id: string;
+                readonly kind: "answer_inbox_question";
+                readonly question_page_id: string;
+                readonly body: string;
+                readonly dispatch?: components["schemas"]["InboxReplyDispatch"] | null;
+                readonly episode: string;
+                readonly kind: "reply_to_page_turn";
+                readonly page_id: string;
+                readonly episode: string;
+                readonly kind: "claim_turn_notification";
+                readonly page_id: string;
+                /** Format: int32 */
+                readonly attachment_count: number;
+                readonly author: components["schemas"]["ProjectWorkspaceInboxSource"];
+                readonly body_hash: string;
+                readonly delivery_id: string;
+                /** @enum {string} */
+                readonly kind: "record_chat_delivery";
+                readonly question_answer_run_id?: string | null;
+                readonly session_id: string;
+            } | {
+                /** Format: int32 */
+                readonly attachment_count: number;
+                readonly author: components["schemas"]["ProjectWorkspaceInboxSource"];
+                readonly body_hash: string;
+                readonly delivery_id: string;
+                /** @enum {string} */
+                readonly kind: "bind_chat_inbound";
+                readonly run_id: string;
+                readonly session_id: string;
+            } | {
+                readonly document_id: string;
+                /** @enum {string} */
+                readonly kind: "hand_back_message";
+                readonly message?: components["schemas"]["HandbackMessage"] | null;
+                readonly page_id: string;
+                readonly reason: string;
             } | {
                 readonly coordinator_session_id: string;
                 readonly generation: number;
@@ -8204,6 +8393,7 @@ export interface components {
             /** Format: int32 */
             readonly contract_version: number;
             readonly read: {
+                readonly automation_id: string;
                 /** @enum {string} */
                 readonly kind: "agent_definitions";
                 readonly provenance: components["schemas"]["AgentTurnProvenance"];
@@ -8426,6 +8616,12 @@ export interface components {
             readonly read: {
                 /** @enum {string} */
                 readonly kind: "metadata";
+            } | {
+                /** @enum {string} */
+                readonly kind: "members";
+            } | {
+                /** @enum {string} */
+                readonly kind: "local_member";
             } | {
                 readonly cursor?: string | null;
                 /** @enum {string} */
@@ -8766,6 +8962,56 @@ export interface components {
             /** Format: int32 */
             readonly contract_version: number;
             readonly read: {
+                readonly after_session_id?: string | null;
+                readonly kind: "held_session_window";
+                /** Format: int32 */
+                readonly limit: number;
+                readonly kind: "effective_execution_hold";
+                readonly target: components["schemas"]["ExecutionHoldTarget"];
+                readonly after_key?: string | null;
+                readonly kind: "execution_holds";
+                /** Format: int32 */
+                readonly limit: number;
+            } | {
+                /** @enum {string} */
+                readonly kind: "page_turn";
+                readonly page_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "page_turns";
+                readonly page_ids: readonly string[];
+            } | {
+                /** @enum {string} */
+                readonly kind: "session_execution_observer";
+                readonly session_id: string;
+            } | {
+                readonly after_session_id?: string | null;
+                /** @enum {string} */
+                readonly kind: "session_execution_observers";
+                /** Format: int32 */
+                readonly limit: number;
+                readonly kind: "page_workspace";
+                readonly page_id: string;
+                readonly kind: "session_workspace";
+                readonly session_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "session_work_page";
+                readonly session_id: string;
+            } | {
+                readonly after_workspace_id?: string | null;
+                /** @enum {string} */
+                readonly kind: "page_workspace_window";
+                /** Format: int32 */
+                readonly limit: number;
+            } | {
+                readonly after_session_id?: string | null;
+                /** @enum {string} */
+                readonly kind: "page_workspace_consumers";
+                /** Format: int32 */
+                readonly limit: number;
+                readonly workspace_id: string;
+            } | {
                 /** @enum {string} */
                 readonly kind: "page_work_launch";
                 readonly launch_id: string;
@@ -8921,7 +9167,7 @@ export interface components {
                 readonly kind: "agent_runtime_session_binding_window";
                 readonly project_id?: string | null;
                 readonly runtime_id: string;
-                readonly temporary_only?: boolean | null;
+                readonly scope: components["schemas"]["AgentRuntimeBindingScope"];
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 /** @enum {string} */
@@ -8997,6 +9243,14 @@ export interface components {
             } | {
                 /** @enum {string} */
                 readonly kind: "managed_worktree_lifecycle_snapshot";
+            } | {
+                /** @enum {string} */
+                readonly kind: "chat_message_inbound";
+                readonly run_id: string;
+                readonly session_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "inbox_turn_notifications";
             } | {
                 /** @enum {string} */
                 readonly kind: "inbox_entry";
@@ -9127,6 +9381,7 @@ export interface components {
          * @description Why Nodex is speaking; independent of a message's user-editable kind.
          * @enum {string}
          */
+        readonly NodexEntryPurpose: "answer";
         readonly OperationalJournalStatus: {
             /** Format: int64 */
             readonly commit_head_seq: number;
@@ -9259,6 +9514,23 @@ export interface components {
             /** @enum {string} */
             readonly kind: "canvas_scene";
         };
+        readonly PageActiveChat: {
+            /** Format: int64 */
+            readonly revision: number;
+            readonly session_id: string;
+            readonly set_at: string;
+        };
+        readonly PageAssignee: {
+            /** @enum {string} */
+            readonly kind: "member";
+            readonly member_id: string;
+        } | {
+            readonly effort?: string | null;
+            readonly instance_id: string;
+            /** @enum {string} */
+            readonly kind: "agent";
+            readonly model: string;
+        };
         readonly PageFileReferenceChange: {
             readonly added_file_ids: readonly string[];
             /** @enum {string} */
@@ -9274,6 +9546,7 @@ export interface components {
             /** Format: int64 */
             readonly revision: number;
             readonly session_id: string;
+            readonly status_moved?: boolean | null;
         };
         readonly PageMetaProjectionV2: {
             readonly id: string;
@@ -9306,6 +9579,16 @@ export interface components {
         };
         /** @enum {string} */
         readonly PageOccurrenceUpdateScope: "this" | "this_and_future" | "all";
+        readonly PagePullRequest: {
+            /** Format: int64 */
+            readonly number: number;
+            readonly observed_at: string;
+            readonly page_id: string;
+            readonly repository: string;
+            readonly state: string;
+            readonly url: string;
+            readonly workspace_id: string;
+        };
         readonly PageRecurrenceConfig: {
             readonly byWeekdays?: readonly number[];
             readonly endCondition?: components["schemas"]["PageRecurrenceEndCondition"] | null;
@@ -9327,12 +9610,32 @@ export interface components {
             /** Format: int32 */
             readonly offsetMinutes: number;
         };
+        /** @description Core's answer to whose Turn it is; never an editable Page Property. */
+        readonly PageTurn: {
+            readonly actor: components["schemas"]["TurnActor"];
+            readonly episode: string;
+            readonly hold?: components["schemas"]["ExecutionHold"] | null;
+            readonly page_id: string;
+            readonly reason?: components["schemas"]["TurnReason"] | null;
+            readonly since: string;
+        };
+        /** @description One revision fences assignment and consent together, including consent revocation. */
+        readonly PageWork: {
+            readonly assignee: components["schemas"]["PageAssignee"] | null;
+            readonly auto_start: boolean;
+            readonly owner: string;
+        };
         readonly PageWorkContext: {
+            readonly active_chat?: components["schemas"]["PageActiveChat"] | null;
             readonly page: components["schemas"]["DatabaseWorkPage"];
+            readonly page_work?: components["schemas"]["PageWork"] | null;
             readonly prerequisites: readonly components["schemas"]["PageWorkPrerequisite"][];
             readonly project_id: string;
+            readonly turn: components["schemas"]["PageTurn"];
         };
         readonly PageWorkDescriptor: {
+            readonly active_chat?: components["schemas"]["PageActiveChat"] | null;
+            readonly effective_hold?: readonly components["schemas"]["ExecutionHold"][];
             readonly latest_report?: components["schemas"]["PageLatestWorkReport"] | null;
             /** Format: int32 */
             readonly managed_session_count: number;
@@ -9349,6 +9652,8 @@ export interface components {
             readonly rejection?: string | null;
             readonly selection: components["schemas"]["AgentWorkSelection"];
             readonly session_id: string;
+            readonly status_fence: number;
+            readonly status_moved: boolean;
         readonly PageWorkPrerequisite: {
             readonly latest_report?: components["schemas"]["PageWorkReport"] | null;
             readonly page: components["schemas"]["DatabaseWorkPage"];
@@ -9359,7 +9664,24 @@ export interface components {
             readonly outcome: components["schemas"]["WorkReportOutcome"];
             /** Format: int64 */
             readonly revision: number;
+            readonly status_moved?: boolean | null;
             readonly summary: string;
+        /** @description A Page's stable Git identity; checkout files may be removed independently. */
+        readonly PageWorkspace: {
+            readonly allocation_operation_id: string;
+            readonly base_commit_oid: string;
+            readonly branch_name: string;
+            readonly failure?: string | null;
+            readonly lifecycle: components["schemas"]["PageWorkspaceLifecycle"];
+            readonly page_id: string;
+            readonly project_id: string;
+            readonly repository_root: string;
+            readonly repository_url?: string | null;
+            /** Format: int64 */
+            readonly revision: number;
+            readonly workspace_id: string;
+            readonly worktree_path?: string | null;
+        readonly PageWorkspaceLifecycle: "preparing" | "ready" | "cleanup_requested" | "removed" | "failed";
         readonly PreparedBlobReceipt: {
             readonly blob_etag: string;
             /** Format: int64 */
@@ -9384,7 +9706,7 @@ export interface components {
             readonly name: string;
         };
         /** @enum {string} */
-        readonly ProjectedPropertyTypeV1: "text" | "number" | "checkbox" | "select" | "multi_select" | "date" | "datetime" | "relation";
+        readonly ProjectedPropertyTypeV1: "assignment" | "text" | "number" | "checkbox" | "select" | "multi_select" | "date" | "datetime" | "relation";
         readonly ProjectedPropertyV1: {
             readonly name: string;
             readonly property_id: string;
@@ -9392,6 +9714,10 @@ export interface components {
             readonly value_type: components["schemas"]["ProjectedPropertyTypeV1"];
         };
         readonly ProjectedPropertyValueV1: {
+            /** @enum {string} */
+            readonly kind: "assignment";
+            readonly value: components["schemas"]["PageAssignee"];
+        } | {
             /** @enum {string} */
             readonly kind: "null";
         } | {
@@ -9894,7 +10220,7 @@ export interface components {
              */
             readonly body_editable: boolean;
             readonly body_truncated: boolean;
-            readonly firing?: components["schemas"]["ProjectWorkspaceInboxFiring"] | null;
+            readonly handback?: components["schemas"]["InboxHandback"] | null;
             /** @description The user marked the message important, so it stays in view while it waits. */
             readonly important: boolean;
             readonly kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
@@ -9907,6 +10233,7 @@ export interface components {
             readonly reply_to_page_id?: string | null;
             /** Format: int64 */
             readonly revision: number;
+            readonly row_kind: components["schemas"]["InboxRowKind"];
             readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
             readonly source: components["schemas"]["ProjectWorkspaceInboxSource"];
             readonly state: components["schemas"]["ProjectWorkspaceInboxEntryState"];
@@ -9914,6 +10241,7 @@ export interface components {
             readonly suggestion_error?: string | null;
             readonly suggestion_state: components["schemas"]["ProjectWorkspaceInboxSuggestionState"];
             readonly title: string;
+            readonly turn?: components["schemas"]["InboxTurn"] | null;
         };
         /** @description Where a message's Page lives, relative to the Inbox that received it. */
         readonly ProjectWorkspaceInboxLocation: {
@@ -10020,6 +10348,9 @@ export interface components {
             readonly kind: "library";
         } | {
             /** @enum {string} */
+            readonly kind: "all";
+        } | {
+            /** @enum {string} */
             readonly kind: "project";
             readonly project_id: string;
         };
@@ -10069,6 +10400,7 @@ export interface components {
             readonly basis: components["schemas"]["ProjectWorkspaceInboxPageBasis"];
             /** @description Exact body Markdown with numbered Library image markers. */
             readonly body: string;
+            readonly handback?: components["schemas"]["InboxHandback"] | null;
             readonly images: readonly components["schemas"]["ProjectWorkspaceInboxMessageImage"][];
             readonly kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
             readonly page_id: string;
@@ -10133,9 +10465,66 @@ export interface components {
         /** @enum {string} */
         readonly ProjectWorkspaceInboxWindowFilter: "inbox" | "processed";
         readonly ProjectWorkspaceIntent: {
+            readonly kind: "pause_work";
+            readonly scope: components["schemas"]["ExecutionHoldScope"];
+            readonly kind: "resume_work";
+            readonly scope: components["schemas"]["ExecutionHoldScope"];
+            readonly events: readonly components["schemas"]["CoordinatorWorkEventInput"][];
+            /** Format: int64 */
+            readonly expected_revision: number;
+            readonly kind: "record_session_execution";
+            readonly observation: components["schemas"]["SessionExecutionObservation"];
+            readonly resolved_request_ids: readonly string[];
+            readonly session_id: string;
+            readonly base_commit_oid: string;
+            readonly branch_name: string;
+            readonly kind: "claim_page_workspace";
+            readonly page_id: string;
+            readonly repository_root: string;
+            readonly repository_url?: string | null;
+            readonly session_id: string;
+            readonly workspace_id: string;
+            readonly worktree_path: string;
+            readonly kind: "bind_page_workspace";
+            readonly session_id: string;
+            readonly workspace_id: string;
+            readonly allocation_operation_id: string;
+            readonly branch_name: string;
+            readonly kind: "record_page_workspace_ready";
+            readonly workspace_id: string;
+            readonly worktree_path: string;
+        } | {
+            readonly allocation_operation_id: string;
+            readonly failure: string;
+            /** @enum {string} */
+            readonly kind: "record_page_workspace_failed";
+            readonly workspace_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "request_page_workspace_cleanup";
+            readonly workspace_id: string;
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "mark_page_workspace_removed";
+            readonly workspace_id: string;
+        } | {
+            readonly head_branch: string;
+            /** @enum {string} */
+            readonly kind: "upsert_page_pull_request";
+            /** Format: int64 */
+            readonly number: number;
+            readonly observed_at: string;
+            readonly repository: string;
+            readonly state: string;
+            readonly url: string;
+            readonly workspace_id: string;
+        } | {
             readonly again: boolean;
             readonly brief: string;
             readonly expected_readiness_epoch?: string | null;
+            readonly expected_turn_episode?: string | null;
             /** @enum {string} */
             readonly kind: "start_page_work";
             readonly launch_id: string;
@@ -10162,6 +10551,11 @@ export interface components {
             readonly kind: "set_session_managed";
             readonly managed: boolean;
             readonly session_id: string;
+        } | {
+            readonly expected_turn_episode?: string | null;
+            /** @enum {string} */
+            readonly kind: "accept_page_work";
+            readonly page_id: string;
         } | {
             /** @enum {string} */
             readonly kind: "report_page_work";
@@ -10344,6 +10738,7 @@ export interface components {
             readonly session_id: string;
             readonly title: string;
         } | {
+            readonly agent_selection?: components["schemas"]["AgentWorkSelection"] | null;
             /** @description Host-only role binding, atomic with Session/execution admission. */
             readonly coordinator?: boolean;
             /** @description Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress. */
@@ -10605,7 +11000,56 @@ export interface components {
             readonly body: string;
             readonly event_ids: readonly string[];
             /** @enum {string} */
+            readonly kind: "write_turn_note";
+            readonly note_id: string;
+            readonly notify: boolean;
             readonly page_id: string;
+        } | {
+            readonly body: string;
+            readonly document_id: string;
+            /** @enum {string} */
+            readonly kind: "answer_inbox_question";
+            readonly page_id: string;
+            readonly question_page_id: string;
+        } | {
+            readonly body: string;
+            readonly dispatch?: components["schemas"]["InboxReplyDispatch"] | null;
+            readonly episode: string;
+            /** @enum {string} */
+            readonly kind: "reply_to_page_turn";
+            readonly page_id: string;
+        } | {
+            readonly episode: string;
+            /** @enum {string} */
+            readonly kind: "claim_turn_notification";
+            readonly page_id: string;
+        } | {
+            /** Format: int32 */
+            readonly attachment_count: number;
+            readonly author: components["schemas"]["ProjectWorkspaceInboxSource"];
+            readonly body_hash: string;
+            readonly delivery_id: string;
+            /** @enum {string} */
+            readonly kind: "record_chat_delivery";
+            readonly question_answer_run_id?: string | null;
+            readonly session_id: string;
+        } | {
+            /** Format: int32 */
+            readonly attachment_count: number;
+            readonly author: components["schemas"]["ProjectWorkspaceInboxSource"];
+            readonly body_hash: string;
+            readonly delivery_id: string;
+            /** @enum {string} */
+            readonly kind: "bind_chat_inbound";
+            readonly run_id: string;
+            readonly session_id: string;
+        } | {
+            readonly document_id: string;
+            /** @enum {string} */
+            readonly kind: "hand_back_message";
+            readonly message?: components["schemas"]["HandbackMessage"] | null;
+            readonly page_id: string;
+            readonly reason: string;
         } | {
             readonly coordinator_session_id: string;
             /** Format: int64 */
@@ -11407,6 +11851,7 @@ export interface components {
         };
         readonly ReadyWorkPage: {
             readonly page_id: string;
+            readonly page_work: components["schemas"]["PageWork"];
             readonly prerequisites: readonly components["schemas"]["WorkPrerequisite"][];
             readonly project_id: string;
             readonly readiness_epoch: string;
@@ -12058,6 +12503,7 @@ export interface components {
                     readonly created_page?: components["schemas"]["ProjectWorkspaceCreatedPage"] | null;
                     readonly inbox_created_page_ids?: readonly string[];
                     readonly inbox_undo_token?: string | null;
+                    readonly inbox_write?: components["schemas"]["InboxWriteResult"] | null;
                 };
                 readonly receipt: components["schemas"]["ModuleMutationReceipt"] & {
                     readonly affected_project_ids: readonly string[];
@@ -12074,6 +12520,7 @@ export interface components {
                     readonly created_page?: components["schemas"]["ProjectWorkspaceCreatedPage"] | null;
                     readonly inbox_created_page_ids?: readonly string[];
                     readonly inbox_undo_token?: string | null;
+                    readonly inbox_write?: components["schemas"]["InboxWriteResult"] | null;
                 };
                 readonly receipt: components["schemas"]["ModuleMutationReceipt"] & {
                     readonly affected_project_ids: readonly string[];
@@ -12325,6 +12772,14 @@ export interface components {
                 readonly contract_version: number;
                 readonly store_epoch: components["schemas"]["StoreEpoch"];
                 readonly value: {
+                    readonly items: readonly components["schemas"]["Member"][];
+                    /** @enum {string} */
+                    readonly kind: "members";
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "local_member";
+                    readonly value: components["schemas"]["Member"];
+                } | {
                     /** @enum {string} */
                     readonly kind: "page_file_inventory";
                     readonly value: components["schemas"]["LibraryPageFileInventory"];
@@ -12623,6 +13078,36 @@ export interface components {
                 readonly contract_version: number;
                 readonly store_epoch: components["schemas"]["StoreEpoch"];
                 readonly value: {
+                    readonly kind: "held_session_window";
+                    readonly session_ids: readonly string[];
+                    readonly holds: readonly components["schemas"]["ExecutionHold"][];
+                    readonly kind: "effective_execution_hold";
+                    readonly holds: readonly components["schemas"]["ExecutionHold"][];
+                    readonly kind: "execution_holds";
+                    readonly next_key?: string | null;
+                    readonly active_chat?: components["schemas"]["PageActiveChat"] | null;
+                    readonly kind: "page_turn";
+                    readonly turn: components["schemas"]["PageTurn"];
+                    readonly kind: "page_turns";
+                    readonly turns: readonly components["schemas"]["PageTurn"][];
+                    readonly kind: "session_execution_observer";
+                    readonly observer?: components["schemas"]["SessionExecutionObserver"] | null;
+                    readonly kind: "session_execution_observers";
+                    readonly observers: readonly components["schemas"]["SessionExecutionObserver"][];
+                    readonly has_agent_work: boolean;
+                    readonly kind: "page_workspace";
+                    readonly page: components["schemas"]["DatabaseWorkPage"];
+                    readonly pull_request?: components["schemas"]["PagePullRequest"] | null;
+                    readonly workspace?: components["schemas"]["PageWorkspace"] | null;
+                    readonly kind: "session_workspace";
+                    readonly workspace?: components["schemas"]["PageWorkspace"] | null;
+                    readonly kind: "session_work_page";
+                    readonly page_id?: string | null;
+                    readonly kind: "page_workspace_window";
+                    readonly workspaces: readonly components["schemas"]["PageWorkspace"][];
+                    readonly kind: "page_workspace_consumers";
+                    readonly session_ids: readonly string[];
+                } | {
                     /** @enum {string} */
                     readonly kind: "page_work_launch";
                     readonly launch?: components["schemas"]["PageWorkLaunch"] | null;
@@ -12828,6 +13313,14 @@ export interface components {
                     readonly kind: "managed_worktree_lifecycle_snapshot";
                     readonly snapshot: components["schemas"]["ProjectWorkspaceManagedWorktreeLifecycleSnapshot"];
                 } | {
+                    readonly inbound?: components["schemas"]["ChatMessageInbound"] | null;
+                    /** @enum {string} */
+                    readonly kind: "chat_message_inbound";
+                } | {
+                    readonly intents: readonly components["schemas"]["InboxTurnNotification"][];
+                    /** @enum {string} */
+                    readonly kind: "inbox_turn_notifications";
+                } | {
                     readonly item?: components["schemas"]["ProjectWorkspaceInboxItem"] | null;
                     /** @enum {string} */
                     readonly kind: "inbox_entry";
@@ -12877,6 +13370,74 @@ export interface components {
                     readonly kind: "inbox_message_edit";
                 } | {
                     /** @enum {string} */
+        readonly SessionExecutionObservation: {
+            readonly agent?: components["schemas"]["AgentWorkSelection"] | null;
+            readonly failureReason?: string | null;
+            readonly pendingRequestIds: readonly string[];
+            readonly pendingRequests: readonly components["schemas"]["SessionExecutionRequest"][];
+            readonly personStopped: boolean;
+            readonly progressFingerprint?: string | null;
+            /** Format: int64 */
+            readonly progressSince: number;
+            readonly queue?: components["schemas"]["SessionExecutionQueue"] | null;
+            readonly runId?: string | null;
+            /** Format: int64 */
+            readonly runStartedAt?: number | null;
+            readonly stalled: boolean;
+            readonly state: components["schemas"]["SessionExecutionState"];
+            readonly terminalStatus?: components["schemas"]["SessionExecutionTerminalStatus"] | null;
+        };
+        readonly SessionExecutionObserver: {
+            readonly managed?: components["schemas"]["CoordinatorManagedSession"] | null;
+            readonly observation?: components["schemas"]["SessionExecutionObservation"] | null;
+            /** Format: int64 */
+            readonly revision: number;
+            readonly session_id: string;
+            readonly since: string;
+        };
+        readonly SessionExecutionQueue: {
+            readonly class: components["schemas"]["SessionExecutionQueueClass"];
+            /** Format: int32 */
+            readonly position: number;
+            readonly runId: string;
+            readonly waitingSince: string;
+        };
+        /** @enum {string} */
+        readonly SessionExecutionQueueClass: "person" | "continuation" | "start";
+        readonly SessionExecutionRequest: {
+            readonly id: string;
+            readonly kind: components["schemas"]["SessionExecutionRequestKind"];
+            readonly options?: readonly string[];
+            readonly question?: string | null;
+        };
+        /** @enum {string} */
+        readonly SessionExecutionRequestKind: "question" | "approval";
+        /** @enum {string} */
+        readonly SessionExecutionState: "working" | "queued" | "waiting" | "idle" | "failed" | "unavailable";
+        /** @enum {string} */
+        readonly SessionExecutionTerminalStatus: "completed" | "failed" | "interrupted";
+        readonly TurnActor: {
+            /** @enum {string} */
+            readonly kind: "member";
+            readonly member_id: string;
+        } | {
+            readonly assignee: components["schemas"]["PageAssignee"];
+            /** @enum {string} */
+            readonly kind: "agent";
+        } | {
+            readonly key?: string | null;
+            /** @enum {string} */
+            readonly kind: "page";
+            readonly page_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "queue";
+            /** Format: int32 */
+            readonly position: number;
+        } | {
+            /** @enum {string} */
+            readonly kind: "none";
+        };
         };
                 };
             };

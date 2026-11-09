@@ -130,7 +130,7 @@ const projectPageSearchSnapshot = () => ({
         status: { option_id: "doing" as const, label: "In progress" },
         priority: "p1-high",
         tags: [],
-        assignee: "Ada",
+        assignee: { kind: "member" as const, member_id: "Ada" },
         location_label: "Product / Editor",
         title_parts: [
           { text: "Page", highlighted: true },
@@ -169,7 +169,7 @@ const projectPageSearchFacetsSnapshot = () => ({
           label: "Search",
         },
       ],
-      assignees: ["Ada"],
+      assignees: [{ kind: "member" as const, member_id: "Ada" }],
     },
   },
 });
@@ -189,7 +189,7 @@ const projectPageSearchMetadataSnapshot = () => ({
         status: { option_id: "doing" as const, label: "In progress" },
         priority: "p1-high" as const,
         tags: [],
-        assignee: "Ada",
+        assignee: { kind: "member" as const, member_id: "Ada" },
         location_label: "Product / Editor",
         updated_at: "2026-07-19T18:12:00.000Z",
         properties: [{ property_id: "summary", property_name: "Summary", text: "Canonical" }],
@@ -951,7 +951,6 @@ describe("Core Library Module Adapter", () => {
         intent: {
           kind: "apply_block_property_mutation",
           mutation: {
-            actor: request.actor,
             client_session_id: request.clientSessionId,
             fields: [
               {
@@ -1085,7 +1084,6 @@ describe("Core Library Module Adapter", () => {
             },
           ],
           intrinsic_mutation: {
-            actor: { kind: "page_metadata" },
             client_session_id: "window:one",
             fields: [
               {
@@ -1181,7 +1179,7 @@ describe("Core Library Module Adapter", () => {
         recurrence: null,
         reminders: [],
         scheduleTimezone: "Asia/Shanghai",
-        assignee: "asc",
+        assignee: { kind: "member" as const, member_id: "asc" },
         runInTarget: "localProject",
         runInLocalPath: "/tmp/nodex",
         runInBaseBranch: "main",
@@ -1227,7 +1225,7 @@ describe("Core Library Module Adapter", () => {
             recurrence: null,
             reminders: [],
             schedule_timezone: "Asia/Shanghai",
-            assignee: "asc",
+            assignee: { kind: "member" as const, member_id: "asc" },
             run_in_target: "localProject",
             run_in_local_path: "/tmp/nodex",
             run_in_base_branch: "main",
@@ -1325,7 +1323,8 @@ describe("Core Library Module Adapter", () => {
           status: { optionId: "doing", label: "In progress" },
           priority: "p1-high",
           tags: [],
-          assignee: "Ada",
+          assignee: { kind: "member" as const, member_id: "Ada" },
+          owner: null,
           locationLabel: "Product / Editor",
           titleParts: [
             { text: "Page", highlighted: true },
@@ -1394,7 +1393,8 @@ describe("Core Library Module Adapter", () => {
           label: "Search",
         },
       ],
-      assignees: ["Ada"],
+      assignees: [{ kind: "member" as const, member_id: "Ada" }],
+      owners: [],
     });
     expect(client.reads).toEqual([
       {

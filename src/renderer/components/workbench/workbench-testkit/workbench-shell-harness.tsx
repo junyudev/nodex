@@ -1,3 +1,4 @@
+import { DEFAULT_WORKFLOW_STATUS_LABELS } from "../../../../shared/workflow-status";
 import {
   composerDraftIntents,
   useComposerDraftIntent,
@@ -1975,7 +1976,7 @@ vi.mock("@/lib/use-board", () => ({
         {
           id: "doing",
           groupKey: "doing",
-          name: "Doing",
+          name: DEFAULT_WORKFLOW_STATUS_LABELS.doing,
           scopeKey: 'key:"doing"',
           rows,
         },
@@ -2029,7 +2030,7 @@ vi.mock("@/lib/use-board", () => ({
         columns: [
           {
             id: "doing",
-            name: "Doing",
+            name: DEFAULT_WORKFLOW_STATUS_LABELS.doing,
             cards: visibleCards,
           },
         ],
@@ -2563,7 +2564,7 @@ export function renderWorkbench({
         recurrence: row.recurrence as never,
         reminders: Array.isArray(row.reminders) ? (row.reminders as never) : [],
         scheduleTimezone: row.scheduleTimezone as string | undefined,
-        assignee: row.assignee as string | undefined,
+        assignee: row.assignee as import("../../../../shared/work-graph").PageAssignee | undefined,
         runInTarget: row.runInTarget as never,
         runInLocalPath: row.runInLocalPath as string | undefined,
         runInBaseBranch: row.runInBaseBranch as string | undefined,
@@ -3258,11 +3259,14 @@ export function renderWorkbench({
           pageKey: document.pageKey,
           title: document.title,
           preview: document.title,
-          status: { optionId: document.status as "doing", label: "Doing" },
+          status: {
+            optionId: document.status as "doing",
+            label: DEFAULT_WORKFLOW_STATUS_LABELS.doing,
+          },
           priority: null,
           tags: [],
           assignee: null,
-          locationLabel: `${document.projectId} / Doing`,
+          locationLabel: `${document.projectId} / ${DEFAULT_WORKFLOW_STATUS_LABELS.doing}`,
           updatedAt: "2026-08-14T00:00:00.000Z",
           properties: [],
           projectIds: [document.projectId],
@@ -3290,11 +3294,11 @@ export function renderWorkbench({
                 pageId: "card-beta",
                 pageKey: "BETA-1",
                 title: "Beta Card",
-                status: { optionId: "doing" as const, label: "Doing" },
+                status: { optionId: "doing" as const, label: DEFAULT_WORKFLOW_STATUS_LABELS.doing },
                 priority: null,
                 tags: [],
                 assignee: null,
-                locationLabel: "Beta / Doing",
+                locationLabel: `Beta / ${DEFAULT_WORKFLOW_STATUS_LABELS.doing}`,
                 titleParts: [],
                 excerpt: "Beta Card",
                 excerptParts: [],
@@ -3364,6 +3368,7 @@ export function renderWorkbench({
           errorCount: 0,
           unreadCount: 0,
           soleSessionId: null,
+          work: { activeChat: null, latestReport: null, managedSessionCount: 0 },
           runtimeSessionIds: [],
         })),
         projectionRevision: 1,
@@ -3674,7 +3679,7 @@ export function renderWorkbench({
               columns: [
                 {
                   id: "doing",
-                  name: "Doing",
+                  name: DEFAULT_WORKFLOW_STATUS_LABELS.doing,
                   cards: [
                     {
                       id: "card-beta",
@@ -3698,7 +3703,7 @@ export function renderWorkbench({
               columns: [
                 {
                   id: "doing",
-                  name: "Doing",
+                  name: DEFAULT_WORKFLOW_STATUS_LABELS.doing,
                   cards: [
                     {
                       id: "card-1",

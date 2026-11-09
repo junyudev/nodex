@@ -2567,7 +2567,7 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
           assert.equal(reclaimed.value.attemptCount, 2);
           yield* outbox.succeed({ effectId: reclaimed.value.id, workerId: "recovery-worker" });
         }
-      }),
+      }).pipe(Effect.provide(layerIsolatedOutbox)),
   );
 
   it.effect("atomically cancels stale runs and their process-bound effects", () =>

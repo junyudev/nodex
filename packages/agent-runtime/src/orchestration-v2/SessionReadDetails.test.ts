@@ -80,3 +80,23 @@ it.effect("reads pending question identities and choices without loading transcr
     ]);
   }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );
+
+it.effect("keeps the failure explanation with its indexed Run", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`INSERT INTO orchestration_v2_projection_runs
+      (run_id,thread_id,ordinal,provider,provider_instance_id,status,requested_at,payload_json)
+      VALUES('failed','thread:a',1,'codex','codex','failed','2026-11-05','{}')`;
+    for (const [id, run, ordinal, message] of [
+      ["first", "failed", 1, "First attempt failed"],
+      ["latest", "failed", 2, "Credentials were rejected"],
+      ["other", "another-run", 3, "An unrelated failure"],
+    ] as const)
+      yield* sql`INSERT INTO orchestration_v2_projection_turn_items
+        (turn_item_id,thread_id,run_id,ordinal,type,status,updated_at,payload_json)
+        VALUES(${id},'thread:a',${run},${ordinal},'error','failed','2026-11-05',
+          ${JSON.stringify({ failure: { message } })})`;
+    const details = yield* readSessionDetails("thread:a", 1);
+    assert.equal(details.recentRuns[0]?.failureMessage, "Credentials were rejected");
+  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);

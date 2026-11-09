@@ -21,6 +21,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
@@ -302,6 +303,229 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         assert.equal(Option.getOrUndefined(change)?.responseStreamingMode, "paragraph");
       }),
     ).pipe(TestClock.withLive, Effect.provide(layerServerSettings())),
+  );
+
+  it.effect.each(["settings directory", "link destination"] as const)(
+    "waits for the %s watcher before reporting readiness",
+    (delayedWatch) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const watchAttempted = yield* Deferred.make<void>();
+        const allowWatch = yield* Deferred.make<void>();
+        let delayedDirectory: string;
+        const delayedFileSystem = FileSystem.FileSystem.of({
+          ...fs,
+          watch: (directory, options) =>
+            Stream.unwrap(
+              Effect.gen(function* () {
+                if (directory === delayedDirectory) {
+                  yield* Deferred.succeed(watchAttempted, undefined);
+                  yield* Deferred.await(allowWatch);
+                }
+                return fs.watch(directory, options);
+              }),
+            ),
+        });
+
+        yield* Effect.gen(function* () {
+          const config = yield* ServerConfig.ServerConfig;
+          const service = yield* ServerSettingsModule.ServerSettingsService;
+          const target = path.join(dotfiles, "settings.json");
+          delayedDirectory =
+            delayedWatch === "settings directory" ? path.dirname(config.settingsPath) : dotfiles;
+          yield* fs.writeFileString(
+            target,
+            '{"responseStreamingMode":"turn","projectSettingsFolded":true}',
+          );
+          yield* fs.symlink(target, config.settingsPath);
+
+          const starting = yield* service.start.pipe(Effect.forkChild);
+          yield* Deferred.await(watchAttempted);
+          yield* service.getSettings;
+          yield* Effect.yieldNow;
+          assert.isUndefined(starting.pollUnsafe());
+          const readiness = yield* service.ready.pipe(Effect.forkChild);
+          yield* Effect.yieldNow;
+          assert.isUndefined(readiness.pollUnsafe());
+          yield* Deferred.succeed(allowWatch, undefined);
+          yield* Fiber.join(starting);
+          yield* Fiber.join(readiness);
+
+          const changes = yield* service.subscribeChanges;
+          yield* writeFileStringAtomically({
+            filePath: target,
+            contents: '{"responseStreamingMode":"paragraph","projectSettingsFolded":true}',
+          });
+          const change = yield* changes.pipe(Stream.runHead, Effect.timeout("2 seconds"));
+          assert.equal(Option.getOrUndefined(change)?.responseStreamingMode, "paragraph");
+        }).pipe(
+          Effect.provide(
+            layerServerSettings().pipe(
+              Layer.provideMerge(Layer.succeed(FileSystem.FileSystem, delayedFileSystem)),
+            ),
+          ),
+        );
+      }).pipe(Effect.scoped, TestClock.withLive),
+  );
+
+  it.effect("reloads edits made while attaching a repointed settings destination", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const watchAttempted = yield* Deferred.make<void>();
+      const allowWatch = yield* Deferred.make<void>();
+      const watches = new Map<string, Array<Queue.Queue<FileSystem.WatchEvent>>>();
+      let delayedDirectory: string;
+      const controlledFileSystem = FileSystem.FileSystem.of({
+        ...fs,
+        watch: (directory, options) =>
+          Stream.unwrap(
+            Effect.gen(function* () {
+              if (directory === delayedDirectory) {
+                yield* Deferred.succeed(watchAttempted, undefined);
+                yield* Deferred.await(allowWatch);
+              }
+              const events = yield* Queue.unbounded<FileSystem.WatchEvent>();
+              watches.set(directory, [...(watches.get(directory) ?? []), events]);
+              options?.onReady?.();
+              return Stream.fromQueue(events);
+            }),
+          ),
+      });
+
+      yield* Effect.gen(function* () {
+        const config = yield* ServerConfig.ServerConfig;
+        const service = yield* ServerSettingsModule.ServerSettingsService;
+        const first = path.join(dotfiles, "first", "settings.json");
+        const second = path.join(dotfiles, "second", "settings.json");
+        delayedDirectory = path.dirname(second);
+        yield* fs.makeDirectory(path.dirname(first), { recursive: true });
+        yield* fs.makeDirectory(delayedDirectory, { recursive: true });
+        yield* fs.writeFileString(
+          first,
+          '{"responseStreamingMode":"turn","projectSettingsFolded":true}',
+        );
+        yield* fs.writeFileString(
+          second,
+          '{"responseStreamingMode":"paragraph","projectSettingsFolded":true}',
+        );
+        yield* fs.symlink(first, config.settingsPath);
+        yield* service.start;
+        const changes = yield* service.subscribeChanges;
+
+        yield* fs.remove(config.settingsPath);
+        yield* fs.symlink(second, config.settingsPath);
+        const linkEvents = watches.get(path.dirname(config.settingsPath));
+        assert.isDefined(linkEvents);
+        yield* Effect.forEach(linkEvents!, (events) =>
+          Queue.offer(events, { _tag: "Create", path: path.basename(config.settingsPath) }),
+        );
+        yield* TestClock.adjust("100 millis");
+        yield* Deferred.await(watchAttempted);
+
+        // This edit has no watch event: the destination watcher is still
+        // acquiring. Only a snapshot taken after attachment can observe it.
+        yield* fs.writeFileString(
+          second,
+          '{"responseStreamingMode":"turn","projectSettingsFolded":true}',
+        );
+        yield* Deferred.succeed(allowWatch, undefined);
+        const change = yield* changes.pipe(
+          Stream.runHead,
+          Effect.timeout("2 seconds"),
+          TestClock.withLive,
+        );
+        assert.equal(Option.getOrUndefined(change)?.responseStreamingMode, "turn");
+      }).pipe(
+        Effect.provide(
+          layerServerSettings().pipe(
+            Layer.provideMerge(Layer.succeed(FileSystem.FileSystem, controlledFileSystem)),
+          ),
+        ),
+      );
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    "in-place edit",
+    "atomic replacement",
+    "repointed link",
+    "dangling link",
+  ] as const)("reconciles a %s even when native watch notifications are lost", (edit) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const polled = yield* Deferred.make<void>();
+      let observeReads = false;
+      const silentFileSystem = FileSystem.FileSystem.of({
+        ...fs,
+        readFileString: (file, options) =>
+          fs
+            .readFileString(file, options)
+            .pipe(
+              Effect.tap(() => (observeReads ? Deferred.succeed(polled, undefined) : Effect.void)),
+            ),
+        watch: (_directory, options) =>
+          Stream.unwrap(
+            Effect.sync(() => {
+              options?.onReady?.();
+              return Stream.never;
+            }),
+          ),
+      });
+
+      yield* Effect.gen(function* () {
+        const config = yield* ServerConfig.ServerConfig;
+        const service = yield* ServerSettingsModule.ServerSettingsService;
+        const first = path.join(dotfiles, "settings.json");
+        const second = path.join(dotfiles, "second", "settings.json");
+        const contents = '{"responseStreamingMode":"paragraph","projectSettingsFolded":true}';
+        yield* fs.writeFileString(
+          first,
+          '{"responseStreamingMode":"turn","projectSettingsFolded":true}',
+        );
+        yield* fs.symlink(first, config.settingsPath);
+        yield* service.start;
+        const changes = yield* service.subscribeChanges;
+        if (edit === "repointed link" || edit === "dangling link") {
+          if (edit === "repointed link") {
+            yield* writeFileStringAtomically({ filePath: second, contents });
+          }
+          yield* fs.remove(config.settingsPath);
+          yield* fs.symlink(second, config.settingsPath);
+          if (edit === "dangling link") {
+            yield* writeFileStringAtomically({ filePath: second, contents });
+          }
+        } else if (edit === "atomic replacement") {
+          yield* writeFileStringAtomically({ filePath: first, contents });
+        } else {
+          yield* fs.writeFileString(first, contents);
+        }
+
+        observeReads = true;
+        yield* TestClock.adjust("500 millis");
+        yield* Deferred.await(polled);
+        yield* TestClock.adjust("100 millis");
+        const change = yield* changes.pipe(
+          Stream.runHead,
+          Effect.timeout("2 seconds"),
+          TestClock.withLive,
+        );
+        assert.equal(Option.getOrUndefined(change)?.responseStreamingMode, "paragraph");
+
+        const unchanged = yield* service.subscribeChanges;
+        const waiting = yield* unchanged.pipe(Stream.runHead, Effect.forkChild);
+        yield* TestClock.adjust("1 second");
+        assert.isUndefined(waiting.pollUnsafe());
+      }).pipe(
+        Effect.provide(
+          layerServerSettings().pipe(
+            Layer.provideMerge(Layer.succeed(FileSystem.FileSystem, silentFileSystem)),
+          ),
+        ),
+      );
+    }).pipe(Effect.scoped),
   );
 
   it.effect("preserves context when reading a provider environment secret fails", () => {

@@ -595,6 +595,30 @@ fn list_group_values(
     .collect::<BTreeSet<_>>();
     let mut values = BTreeMap::new();
     for property_id in property_ids {
+        if matches!(property_id, "owner" | "assignee") {
+            let expression = group_expression(
+                &ViewGroup {
+                    property_id: property_id.to_owned(),
+                },
+                &mut Vec::new(),
+            )?;
+            let sql = format!(
+                "SELECT membership.id,{expression} FROM data_source_page_memberships membership WHERE membership.data_source_id=?1"
+            );
+            for row in connection
+                .prepare(&sql)?
+                .query_map([&view.data_source_id], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+                })?
+            {
+                let (id, key) = row?;
+                values.insert(
+                    (id, property_id.to_owned()),
+                    key.map(Value::String).unwrap_or(Value::Null),
+                );
+            }
+            continue;
+        }
         let rows = connection
             .prepare(
                 "SELECT membership_id, value_json FROM data_source_property_values \
@@ -2736,13 +2760,14 @@ fn resolve_agent_projection_property_ids(
     data_source_id: &str,
     requested: Option<&[String]>,
 ) -> Result<BTreeSet<String>, StoreError> {
-    let active = connection
+    let mut active = connection
         .prepare(
             "SELECT id FROM data_source_properties \
              WHERE data_source_id = ?1 AND lifecycle = 'active' ORDER BY id",
         )?
         .query_map([data_source_id], |row| row.get::<_, String>(0))?
         .collect::<rusqlite::Result<BTreeSet<_>>>()?;
+    active.extend(["owner".to_owned(), "assignee".to_owned()]);
     if active
         .iter()
         .any(|property_id| !super::property_semantics::is_canonical_property_id(property_id))
@@ -2798,7 +2823,7 @@ fn refresh_effective_presentation(
     connection: &Connection,
     view: &mut ResolvedView,
 ) -> Result<(), StoreError> {
-    let properties = connection
+    let mut properties = connection
         .prepare(
             "SELECT id, value_type FROM data_source_properties \
              WHERE data_source_id = ?1 AND lifecycle = 'active' ORDER BY rank_key, id",
@@ -2807,6 +2832,10 @@ fn refresh_effective_presentation(
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
+    properties.extend([
+        ("owner".to_owned(), "assignment".to_owned()),
+        ("assignee".to_owned(), "assignment".to_owned()),
+    ]);
     let property_ids = properties
         .iter()
         .map(|(id, _)| id.clone())
@@ -3365,6 +3394,11 @@ fn group_expression(
     parameters: &mut Vec<SqlValue>,
 ) -> Result<String, StoreError> {
     let raw_json = canonical_property_value_json_expression(&group.property_id, parameters)?;
+    if matches!(group.property_id.as_str(), "owner" | "assignee") {
+        return Ok(format!(
+            "CASE json_extract({raw_json},'$.kind') WHEN 'member' THEN 'member:' || json_extract({raw_json},'$.member_id') WHEN 'agent' THEN 'agent:' || json_array(json_extract({raw_json},'$.instance_id'),json_extract({raw_json},'$.model')) END"
+        ));
+    }
     let raw = format!("json_extract({raw_json}, '$')");
     let raw_type = format!("json_type({raw_json}, '$')");
     Ok(format!(
@@ -3383,7 +3417,7 @@ fn group_expression(
 fn completed_status_expression(parameters: &mut Vec<SqlValue>) -> String {
     let raw_json = canonical_property_value_json_expression("status", parameters)
         .expect("built-in status Property identity");
-    format!("json_extract({raw_json}, '$') IS 'done'")
+    format!("COALESCE(json_extract({raw_json}, '$') IN ('done', 'canceled'), 0)")
 }
 
 fn compile_completion_predicate(
@@ -3526,7 +3560,11 @@ fn sort_components(
             ViewSortField::Created => "model.created_at".to_owned(),
             ViewSortField::Property { property_id } => {
                 let raw_json = canonical_property_value_json_expression(property_id, parameters)?;
-                format!("json_extract({raw_json}, '$')")
+                if matches!(property_id.as_str(), "owner" | "assignee") {
+                    assignment_display_expression(&raw_json)
+                } else {
+                    format!("json_extract({raw_json}, '$')")
+                }
             }
         });
         let null_rank = match rule.nulls {
@@ -3643,6 +3681,16 @@ fn compile_filter(
                 ),
             );
             let expected_scalar = format!("json_extract({expected}, '$')");
+            if matches!(property_id.as_str(), "owner" | "assignee") {
+                let equal = format!(
+                    "(json_extract({raw_json},'$.kind') IS json_extract({expected},'$.kind') AND json_extract({raw_json},'$.member_id') IS json_extract({expected},'$.member_id') AND json_extract({raw_json},'$.instance_id') IS json_extract({expected},'$.instance_id') AND json_extract({raw_json},'$.model') IS json_extract({expected},'$.model') AND json_extract({raw_json},'$.effort') IS json_extract({expected},'$.effort'))"
+                );
+                return match operator {
+                    FilterOperator::Equals => Ok(equal),
+                    FilterOperator::NotEquals => Ok(format!("NOT {equal}")),
+                    _ => Err(invalid("Assignment supports is, is not and empty filters")),
+                };
+            }
             let equals = format!("({current} IS {expected_scalar})");
             let text_contains = format!(
                 "({current_type} = 'text' AND instr(lower(CAST({current} AS TEXT)), \
@@ -3844,6 +3892,12 @@ fn canonical_property_value_json_expression(
     property_id: &str,
     parameters: &mut Vec<SqlValue>,
 ) -> Result<String, StoreError> {
+    if property_id == "owner" {
+        return Ok("(SELECT json_object('kind','member','member_id',json_extract(work.value_json,'$.owner')) FROM block_properties work WHERE work.block_id=membership.page_block_id AND work.property_key='work')".to_owned());
+    }
+    if property_id == "assignee" {
+        return Ok("(SELECT json_quote(json_extract(work.value_json,'$.assignee')) FROM block_properties work WHERE work.block_id=membership.page_block_id AND work.property_key='work')".to_owned());
+    }
     validate_property_id(property_id)?;
     let property = bind(parameters, SqlValue::Text(property_id.to_owned()));
     Ok(format!(
@@ -3938,4 +3992,10 @@ fn not_found(message: &str) -> StoreError {
 
 fn corrupt(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::StoreCorrupt, message, false)
+}
+
+fn assignment_display_expression(raw: &str) -> String {
+    format!(
+        "CASE json_extract({raw},'$.kind') WHEN 'member' THEN (SELECT member.display_name FROM members member WHERE member.id=json_extract({raw},'$.member_id')) WHEN 'agent' THEN json_extract({raw},'$.instance_id') || ' ' || json_extract({raw},'$.model') END COLLATE NOCASE"
+    )
 }

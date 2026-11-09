@@ -111,6 +111,7 @@ The canonical vocabulary and full domain invariants live in [CONTEXT.md](../CONT
 ```text
 Profile
 └── Library                         durable content scope
+    ├── Member                      person identity + local Profile binding
     ├── Block                       persistent content identity
     ├── Page                        document-bearing Block
     │   └── Document                synchronized title/body authority
@@ -129,6 +130,13 @@ Project                              execution context
 
 One Profile owns one Library. Library owns durable content; Project owns execution and presentation context. Archiving or deleting a Project never owns, moves, or deletes Library content.
 
+Library owns Member identity and the local Profile binding. Each Page owns its
+Member Owner, typed person-or-Agent Assignee, and consent to start automatically.
+Data Source Views project those fields without owning another assignment value.
+Core enforces assignment references and person-granted consent; the Host resolves
+Agent availability when starting work. See
+[Database Pages and Views](product-specs/database-pages-and-views-behavior.md#work-prerequisites-and-agent-work).
+
 Core owns each Session's nullable chat reminder, exact-value consumption, and
 unfinished delivery receipts. One
 Profile-scoped Desktop scheduler observes that authority, uses the existing native
@@ -144,9 +152,14 @@ execution bindings are mutually exclusive. The execution runtime owns its separa
 transaction for history, delegated work, receipts and pending effects; it does not open
 Core's content database or infer execution identity from its workspace. Runtime metadata
 owns local execution location; Main owns the physical worktree transaction and durable
-handoff journal, while Core retains product Session placement and binding. See
+handoff journal. Core also owns each Page Workspace's stable repository/branch identity, lifecycle and normalized Session consumers; Runtime's Thread remains the cwd owner. Core retains product Session placement and binding. See
 [Agent Runtime behavior](product-specs/agent-runtime-behavior.md) and
 [ADR 0068](adr/0068-agent-runtime-execution-authority.md).
+
+Core owns person-only execution holds over Page, Project and Space scopes. Main resolves
+that union at start and delivery boundaries and supplies held roots before Runtime recovery.
+Runtime owns native retirement, the durable execution fence and permit release; monitoring
+continues to record facts. See [Coordinator Pause](product-specs/coordinator-behavior.md#pause).
 
 Stock-Node programs and their dependencies live as detached Resources, outside
 Electron ASAR and its unpacked companion. The standalone Agent Runtime owns the
@@ -897,9 +910,9 @@ resources, which follow request interruption and process shutdown. [Page selecti
 use this boundary and leave Document mutation with the editor.
 
 The Agent Runtime owns each bound Session's execution root, Runs, provider sessions,
-history, delegated descendants and durable result delivery. Its projections are that durable
-history; the event log is a bounded delivery tail that cannot rebuild them, as
-[ADR 0077](adr/0077-bounded-execution-history.md) records. It also owns admission receipts
+history, delegated descendants, machine-wide Run admission and durable result delivery. Main
+supplies capacity configuration; the Runtime owns durable priority and native-lifetime permits
+([admission contract](product-specs/agent-runtime-behavior.md#machine-admission-and-queue)).
 for remote Native messages; the Native execution owner performs producer writes and resolves
 uncertain delivery through producer evidence. Immutable staged launch input and owned resources
 belong to the Runtime; execution begins only after Core admits the product binding. Core owns the product
@@ -955,6 +968,7 @@ configuration in memory and cannot persist a second configuration source. See
 Inbox routing enters the Profile's persistent Coordinator through queued Host messages.
 Core owns each request's fence, retained routing recipient and deadline; Runtime
 admission prevents duplicate delivery. Coordinator-only tools validate suggestions
+through the Inbox application Interface and author Page Turn notes and quiet
 automatic confirmations. See [Inbox behavior](product-specs/inbox-behavior.md).
 
 Inbox confirmation freezes the reviewed message, its Markdown and images, target and execution

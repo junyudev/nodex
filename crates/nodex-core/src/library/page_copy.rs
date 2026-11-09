@@ -423,6 +423,7 @@ pub(super) fn execute_page_copy(
     let now = committed_at.to_owned();
     stage_copy_authority(
         connection,
+        Some(context),
         library_id,
         &resolved_parent,
         source_page_id,
@@ -706,6 +707,7 @@ pub(crate) fn clone_page_for_occurrence(
     };
     stage_copy_authority(
         connection,
+        None,
         library_id,
         &resolved_parent,
         input.source_page_id,
@@ -1340,6 +1342,7 @@ pub(super) fn page_copy_closure_document_heads(
 #[allow(clippy::too_many_arguments)]
 fn stage_copy_authority(
     connection: &Connection,
+    context: Option<&BoundModuleContext>,
     library_id: &str,
     parent: &super::mutation::ResolvedWriteParent,
     source_page_id: &str,
@@ -1483,6 +1486,10 @@ fn stage_copy_authority(
                 now,
             ],
         )?;
+        if let Some(context) = context {
+            connection.execute("UPDATE block_properties SET value_json=json_set(value_json,'$.owner',(SELECT member_id FROM local_profile_members WHERE library_id=?2)) WHERE block_id=?1 AND property_key='work'",params![document.target_owner_id,library_id])?;
+            super::members::initialize_owner(connection, context, &document.target_owner_id, None)?;
+        }
     }
     Ok(())
 }
@@ -1603,9 +1610,12 @@ fn require_copy_work_consent(
         .map_err(|_| internal("Copied Page identities cannot be encoded"))?;
     let work_values = connection.prepare(
         "SELECT property.value_json FROM json_each(?1) source \
+         JOIN block_properties property ON property.block_id = source.value AND property.property_key = 'work'"
     )?.query_map([source_ids], |row| row.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
     for value in work_values {
         let value = serde_json::from_str(&value)
+            .map_err(|_| corrupt("Copied Page work JSON is invalid"))?;
+        super::page_property_mutation::require_work_launch_consent(
             context,
             &serde_json::Value::Null,
             &value,
@@ -3635,7 +3645,7 @@ mod tests {
                     "INSERT INTO data_source_properties(\
                        data_source_id, id, name, value_type, config_json, rank_key, lifecycle, \
                        schema_revision, created_at, updated_at\
-                     ) VALUES (?1, ?2, 'Blocked by', 'relation', '{}', \
+                     ) VALUES (?1, ?2, 'Waits for', 'relation', '{}', \
                        'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz', 'active', 1, ?3, ?3)",
                     params![data_source_id, property_id, NOW],
                 )?;

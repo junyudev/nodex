@@ -160,6 +160,7 @@ const makeSnapshot = (
             revision: 1,
           },
         },
+        work: { unsatisfiedCount: 0, blockers: [], owner: null, assignee: null, autoStart: false },
         taskParent: { parentPageId: null, siblingRank: null, valueRevision: 1 },
         position: { rankKey: "a", revision: 2 },
         effectiveGroupKey: input.groupedByStatus === false ? null : "doing",
@@ -193,6 +194,14 @@ describe("Database View render model", () => {
               { pageId: "prerequisite", pageKey: "NODEX-12", title: "Set up", status: "plan" },
               { pageId: "other", pageKey: null, title: "Other", status: "triage" },
             ],
+            owner: "person",
+            assignee: {
+              kind: "agent",
+              instance_id: agent.instanceId,
+              model: agent.model,
+              effort: agent.effort,
+            },
+            autoStart: launch === "automatic",
           },
         },
         query.properties,
@@ -200,12 +209,35 @@ describe("Database View render model", () => {
       expect(projected.work).toEqual({
         unsatisfiedCount: 4,
         firstBlocker: { pageKey: "NODEX-12", title: "Set up" },
+        assignee: {
+          kind: "agent",
+          instance_id: agent.instanceId,
+          model: agent.model,
+          effort: agent.effort,
+        },
+        autoStart: launch === "automatic",
       });
     }
     expect(
       projectDataSourcePageRowToDatabaseViewRenderRow(
+        {
+          ...row,
+          work: {
+            unsatisfiedCount: 0,
+            blockers: [],
+            owner: null,
+            assignee: null,
+            autoStart: false,
+          },
+        },
         query.properties,
       ).work,
+    ).toEqual({
+      unsatisfiedCount: 0,
+      firstBlocker: null,
+      assignee: null,
+      autoStart: false,
+    });
   });
 
   test("maps durable option colors onto conditional surface colors", () => {

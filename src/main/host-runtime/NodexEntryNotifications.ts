@@ -7,12 +7,34 @@ import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { DesktopNotificationRuntime } from "./DesktopNotificationRuntime";
 import { RendererClientRuntime } from "./RendererClientRuntime";
 
+export const turnNotification = (
+  input: {
+    memberId: string;
+    pageId: string;
+    episode: string;
+    title: string;
+    body: string;
+    blocking: boolean;
+  },
   mode: ThreadNotificationTurnMode,
+  requestEnabled: boolean,
   foreground: boolean,
 ): DesktopNotificationPayload | null => {
+  if (
+    input.blocking
+      ? !requestEnabled || foreground
+      : mode === "off" || (mode === "unfocused" && foreground)
+  )
     return null;
   return {
     kind: "nodex",
+    title: input.title,
+    body: input.body,
     actions: [{ id: "open", title: "Open", actionType: "open" }],
   };
 };
+            {
+              pageId: intent.page_id,
+            },
+  }),
+);

@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 58;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 81;
 
 /// Host-only admission: the model chooses an opaque key, never a clock or operation envelope.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -52,7 +52,81 @@ pub enum ProjectWorkspaceTaskPlacementScope {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AgentRuntimeBindingScope {
+    All,
+    Project { project_id: Option<String> },
+    Temporary,
+}
+
+/// Person-owned durable execution policy. Space names the current Library.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ExecutionHoldScope {
+    Page { page_id: String },
+    Project { project_id: String },
+    Space,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ExecutionHoldTarget {
+    Page { page_id: String },
+    Session { session_id: String },
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ExecutionHold {
+    pub scope: ExecutionHoldScope,
+    pub actor: String,
+    pub revision: i64,
+    pub paused_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceRead {
+    HeldSessionWindow {
+        after_session_id: Option<String>,
+        limit: u32,
+    },
+    EffectiveExecutionHold {
+        target: ExecutionHoldTarget,
+    },
+    ExecutionHolds {
+        after_key: Option<String>,
+        limit: u32,
+    },
+    PageTurn {
+        page_id: String,
+    },
+    PageTurns {
+        page_ids: Vec<String>,
+    },
+    SessionExecutionObserver {
+        session_id: String,
+    },
+    SessionExecutionObservers {
+        after_session_id: Option<String>,
+        limit: u32,
+    },
+    PageWorkspace {
+        page_id: String,
+    },
+    SessionWorkspace {
+        session_id: String,
+    },
+    /// Existing Workspace owner, otherwise the Session's sole active work Page.
+    /// Ordinary related Pages never select a work directory.
+    SessionWorkPage {
+        session_id: String,
+    },
+    PageWorkspaceWindow {
+        after_workspace_id: Option<String>,
+        limit: u32,
+    },
+    PageWorkspaceConsumers {
+        workspace_id: String,
+        after_session_id: Option<String>,
+        limit: u32,
+    },
     PageWorkLaunch {
         launch_id: String,
     },
@@ -178,9 +252,7 @@ pub enum ProjectWorkspaceRead {
     /// Bounded execution placement metadata, including archived Sessions and Projects.
     AgentRuntimeSessionBindingWindow {
         runtime_id: String,
-        project_id: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        temporary_only: Option<bool>,
+        scope: AgentRuntimeBindingScope,
         window: CollectionWindowRequest,
     },
     /// Host-owned durable cleanup after a product Session has been deleted.
@@ -244,6 +316,11 @@ pub enum ProjectWorkspaceRead {
         window: CollectionWindowRequest,
     },
     ManagedWorktreeLifecycleSnapshot,
+    ChatMessageInbound {
+        session_id: String,
+        run_id: String,
+    },
+    InboxTurnNotifications,
     InboxEntry {
         page_id: String,
     },
@@ -305,6 +382,47 @@ pub enum ProjectWorkspaceRead {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceReadValue {
+    HeldSessionWindow {
+        session_ids: Vec<String>,
+    },
+    EffectiveExecutionHold {
+        holds: Vec<ExecutionHold>,
+    },
+    ExecutionHolds {
+        holds: Vec<ExecutionHold>,
+        next_key: Option<String>,
+    },
+    PageTurn {
+        turn: PageTurn,
+        active_chat: Option<PageActiveChat>,
+    },
+    PageTurns {
+        turns: Vec<PageTurn>,
+    },
+    SessionExecutionObserver {
+        observer: Option<SessionExecutionObserver>,
+    },
+    SessionExecutionObservers {
+        observers: Vec<SessionExecutionObserver>,
+    },
+    PageWorkspace {
+        workspace: Option<PageWorkspace>,
+        pull_request: Option<PagePullRequest>,
+        page: crate::database::DatabaseWorkPage,
+        has_agent_work: bool,
+    },
+    SessionWorkspace {
+        workspace: Option<PageWorkspace>,
+    },
+    SessionWorkPage {
+        page_id: Option<String>,
+    },
+    PageWorkspaceWindow {
+        workspaces: Vec<PageWorkspace>,
+    },
+    PageWorkspaceConsumers {
+        session_ids: Vec<String>,
+    },
     PageWorkLaunch {
         launch: Option<PageWorkLaunch>,
     },
@@ -454,6 +572,12 @@ pub enum ProjectWorkspaceReadValue {
     },
     ManagedWorktreeLifecycleSnapshot {
         snapshot: ProjectWorkspaceManagedWorktreeLifecycleSnapshot,
+    },
+    ChatMessageInbound {
+        inbound: Option<crate::inbox::ChatMessageInbound>,
+    },
+    InboxTurnNotifications {
+        intents: Vec<crate::inbox::InboxTurnNotification>,
     },
     InboxEntry {
         item: Option<Box<ProjectWorkspaceInboxItem>>,
@@ -1404,6 +1528,7 @@ pub enum WorkReportOutcome {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct PageWorkReport {
+    pub status_moved: Option<bool>,
     pub outcome: WorkReportOutcome,
     pub summary: String,
     pub at: String,
@@ -1412,6 +1537,7 @@ pub struct PageWorkReport {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct PageLatestWorkReport {
+    pub status_moved: Option<bool>,
     pub session_id: String,
     pub outcome: WorkReportOutcome,
     pub at: String,
@@ -1419,7 +1545,17 @@ pub struct PageLatestWorkReport {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct PageActiveChat {
+    pub session_id: String,
+    pub revision: i64,
+    pub set_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct PageWorkDescriptor {
+    #[serde(default)]
+    pub effective_hold: Vec<ExecutionHold>,
+    pub active_chat: Option<PageActiveChat>,
     pub latest_report: Option<PageLatestWorkReport>,
     pub managed_session_count: u32,
 }
@@ -1453,6 +1589,7 @@ pub struct CoordinatorObservationInput {
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct CoordinatorManagedSession {
+    pub active_page_ids: Vec<String>,
     pub session_id: String,
     pub since: String,
     pub observed_json: Option<serde_json::Value>,
@@ -1713,6 +1850,61 @@ pub struct ProjectWorkspaceCreatedPage {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceIntent {
+    PauseWork {
+        scope: ExecutionHoldScope,
+    },
+    ResumeWork {
+        scope: ExecutionHoldScope,
+    },
+    RecordSessionExecution {
+        session_id: String,
+        expected_revision: i64,
+        observation: SessionExecutionObservation,
+        events: Vec<CoordinatorWorkEventInput>,
+        resolved_request_ids: Vec<String>,
+    },
+    ClaimPageWorkspace {
+        workspace_id: String,
+        page_id: String,
+        project_id: String,
+        session_id: String,
+        repository_url: Option<String>,
+        repository_root: String,
+        branch_name: String,
+        base_commit_oid: String,
+        worktree_path: String,
+    },
+    BindPageWorkspace {
+        workspace_id: String,
+        session_id: String,
+    },
+    RecordPageWorkspaceReady {
+        workspace_id: String,
+        allocation_operation_id: String,
+        branch_name: String,
+        worktree_path: String,
+    },
+    RecordPageWorkspaceFailed {
+        workspace_id: String,
+        allocation_operation_id: String,
+        failure: String,
+    },
+    RequestPageWorkspaceCleanup {
+        workspace_id: String,
+    },
+    MarkPageWorkspaceRemoved {
+        workspace_id: String,
+        expected_revision: i64,
+    },
+    UpsertPagePullRequest {
+        workspace_id: String,
+        head_branch: String,
+        repository: String,
+        number: i64,
+        url: String,
+        state: String,
+        observed_at: String,
+    },
     /// Host renders and freezes the brief. Automatic admission also fences the current ready epoch.
     StartPageWork {
         page_id: String,
@@ -1723,6 +1915,8 @@ pub enum ProjectWorkspaceIntent {
         brief: String,
         again: bool,
         expected_readiness_epoch: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expected_turn_episode: Option<String>,
     },
     SettlePageWorkLaunch {
         launch_id: String,
@@ -1738,6 +1932,12 @@ pub enum ProjectWorkspaceIntent {
     SetSessionManaged {
         session_id: String,
         managed: bool,
+    },
+    /// Only a person accepts reviewed work.
+    AcceptPageWork {
+        page_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expected_turn_episode: Option<String>,
     },
     ReportPageWork {
         page_id: Option<String>,
@@ -1896,6 +2096,9 @@ pub enum ProjectWorkspaceIntent {
         title: String,
         /// Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress.
         initial_page_ids: Vec<String>,
+        /// The admitted Agent choice; execution remains unavailable until the Host observes it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        agent_selection: Option<crate::library::AgentWorkSelection>,
         runtime_id: String,
         runtime_thread_id: String,
         launch_request_id: String,
@@ -2124,10 +2327,52 @@ pub enum ProjectWorkspaceIntent {
     /// The body is message text with the message shape, text followed by images, and
     /// becomes the Page body as canonical Nodex Markdown. Without a sender title, Core gives the Page a provisional
     /// title that the suggestion Agent may later replace.
+    WriteTurnNote {
         page_id: String,
+        note_id: String,
         body: String,
         event_ids: Vec<String>,
+        notify: bool,
     },
+    AnswerInboxQuestion {
+        question_page_id: String,
+        page_id: String,
+        document_id: String,
+        body: String,
+    },
+    ReplyToPageTurn {
+        page_id: String,
+        episode: String,
+        body: String,
+        dispatch: Option<crate::inbox::InboxReplyDispatch>,
+    },
+    ClaimTurnNotification {
+        page_id: String,
+        episode: String,
+    },
+    RecordChatDelivery {
+        session_id: String,
+        delivery_id: String,
+        body_hash: String,
+        author: crate::inbox::ProjectWorkspaceInboxSource,
+        attachment_count: u32,
+        question_answer_run_id: Option<String>,
+    },
+    BindChatInbound {
+        session_id: String,
+        run_id: String,
+        delivery_id: String,
+        body_hash: String,
+        attachment_count: u32,
+        author: crate::inbox::ProjectWorkspaceInboxSource,
+    },
+    HandBackMessage {
+        reason: String,
+        page_id: String,
+        document_id: String,
+        message: Option<crate::inbox::HandbackMessage>,
+    },
+
     BeginInboxRouting {
         request_id: String,
         generation: i64,
@@ -2395,6 +2640,7 @@ pub struct ProjectWorkspaceCodexThreadObservation {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxWriteResult {
     pub page_id: String,
     pub replay: bool,
 }
@@ -2402,6 +2648,7 @@ pub struct ProjectWorkspaceCodexThreadObservation {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceCommitValue {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inbox_write: Option<InboxWriteResult>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub inbox_created_page_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2641,6 +2888,8 @@ pub struct ThreadUnreadEntry {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct PageWorkLaunch {
+    pub status_fence: i64,
+    pub status_moved: bool,
     pub launch_id: String,
     pub page_id: String,
     pub project_id: String,
@@ -2652,4 +2901,160 @@ pub struct PageWorkLaunch {
     pub created_at: String,
     pub accepted_at: Option<String>,
     pub rejection: Option<String>,
+}
+
+/// A Page's stable Git identity; checkout files may be removed independently.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct PageWorkspace {
+    pub workspace_id: String,
+    pub page_id: String,
+    pub project_id: String,
+    pub repository_url: Option<String>,
+    pub repository_root: String,
+    pub branch_name: String,
+    pub base_commit_oid: String,
+    pub lifecycle: PageWorkspaceLifecycle,
+    pub revision: i64,
+    pub allocation_operation_id: String,
+    pub worktree_path: Option<String>,
+    pub failure: Option<String>,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PageWorkspaceLifecycle {
+    Preparing,
+    Ready,
+    CleanupRequested,
+    Removed,
+    Failed,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct PagePullRequest {
+    pub page_id: String,
+    pub workspace_id: String,
+    pub repository: String,
+    pub number: i64,
+    pub url: String,
+    pub state: String,
+    pub observed_at: String,
+}
+
+/// Core's answer to whose Turn it is; never an editable Page Property.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct PageTurn {
+    pub page_id: String,
+    pub actor: TurnActor,
+    pub reason: Option<TurnReason>,
+    pub since: String,
+    pub episode: String,
+    pub hold: Option<ExecutionHold>,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TurnActor {
+    Member {
+        member_id: String,
+    },
+    Agent {
+        assignee: crate::library::PageAssignee,
+    },
+    Page {
+        page_id: String,
+        key: Option<String>,
+    },
+    Queue {
+        position: u32,
+    },
+    None,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnReason {
+    Paused,
+    Working,
+    Queued,
+    Question,
+    Approval,
+    Blocked,
+    Failed,
+    Stalled,
+    Review,
+    ReadyToStart,
+    Starting,
+    WaitingOnPrerequisite,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionExecutionState {
+    Working,
+    Queued,
+    Waiting,
+    Idle,
+    Failed,
+    Unavailable,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionExecutionRequest {
+    pub id: String,
+    pub kind: SessionExecutionRequestKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<String>,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionExecutionRequestKind {
+    Question,
+    Approval,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionExecutionQueue {
+    pub run_id: String,
+    pub class: SessionExecutionQueueClass,
+    pub position: u32,
+    pub waiting_since: String,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionExecutionQueueClass {
+    Person,
+    Continuation,
+    Start,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionExecutionTerminalStatus {
+    Completed,
+    Failed,
+    Interrupted,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionExecutionObservation {
+    pub state: SessionExecutionState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<crate::library::AgentWorkSelection>,
+    pub run_id: Option<String>,
+    pub run_started_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
+    pub pending_request_ids: Vec<String>,
+    pub pending_requests: Vec<SessionExecutionRequest>,
+    pub queue: Option<SessionExecutionQueue>,
+    pub terminal_status: Option<SessionExecutionTerminalStatus>,
+    pub person_stopped: bool,
+    pub stalled: bool,
+    pub progress_fingerprint: Option<String>,
+    pub progress_since: i64,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct SessionExecutionObserver {
+    pub session_id: String,
+    pub since: String,
+    pub revision: i64,
+    pub observation: Option<SessionExecutionObservation>,
+    pub managed: Option<CoordinatorManagedSession>,
 }

@@ -1,3 +1,4 @@
+import { parsePageAssignee, type PageAssignee } from "./work-graph";
 import {
   canonicalizeTagName,
   parseDataSourceId,
@@ -10,7 +11,6 @@ import {
   type BlockPropertyJsonValue,
 } from "./block-property-mutations";
 import {
-  MAX_PAGE_ASSIGNEE_LENGTH,
   MAX_PAGE_DESCRIPTION_LENGTH,
   MAX_PAGE_TAG_COUNT,
   MAX_PAGE_TAG_LENGTH,
@@ -122,7 +122,7 @@ export interface CreatePageOperationV2 {
   readonly recurrence: RecurrenceConfig | null;
   readonly reminders: readonly ReminderConfig[];
   readonly scheduleTimezone: string | null;
-  readonly assignee: string | null;
+  readonly assignee: PageAssignee | null;
   readonly runInTarget: PageRunInTarget;
   readonly runInLocalPath: string | null;
   readonly runInBaseBranch: string | null;
@@ -717,7 +717,7 @@ const parseCreateOperationV2 = (value: unknown): CreatePageOperationV2 => {
     recurrence: readRecurrence(operation.recurrence),
     reminders: readReminders(operation.reminders),
     scheduleTimezone,
-    assignee: readNullableString(operation, "assignee", label, MAX_PAGE_ASSIGNEE_LENGTH),
+    assignee: parsePageAssignee(operation.assignee ?? null),
     runInTarget: runInTarget as PageRunInTarget,
     runInLocalPath: readNullableString(operation, "runInLocalPath", label, MAX_PATH_LENGTH),
     runInBaseBranch: readNullableString(operation, "runInBaseBranch", label, MAX_PATH_LENGTH),

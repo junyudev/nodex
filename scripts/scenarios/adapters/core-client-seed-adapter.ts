@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   createCoreDocumentSyncAdapter,
   createCoreLibraryModuleAdapter,
@@ -33,6 +34,7 @@ import type {
   ScenarioLibraryFileSeed,
   ScenarioPageObservation,
   ScenarioPageFileEntrySeed,
+  ScenarioPageWorkspaceSeed,
   ScenarioPageSeed,
   ScenarioRecoveryDraftSeed,
   ScenarioRelatedChatSeed,
@@ -59,8 +61,8 @@ import {
   DEFAULT_INBOX_SETTINGS,
   type InboxScope,
   type InboxWindow,
-  type InboxWindowFilter,
 } from "../../../src/shared/inbox";
+import { parsePageWork } from "../../../src/shared/work-graph";
 import type { ProjectWorkspaceApplyInput } from "../../../src/main/core-client/types";
 import { inboxDispatchActionToCore } from "../../../src/main/core-client/inbox-adapter";
 import { inboxPageBasisFromCore } from "../../../src/main/core-client/inbox-adapter";
@@ -110,6 +112,9 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     return sessionId;
   }
 
+  async setPageWork(...[projectId, pageId, work]: Parameters<ScenarioSeedPort["setPageWork"]>) {
+    const detail = await this.readPage(projectId, pageId);
+    if (!detail.pageWork) throw new Error("Seed Page has no work authority");
     requireSuccess(
       await this.#library(projectId).applyBlockPropertyMutation({
         mutationId: createUuidV7(),
@@ -120,7 +125,10 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
           {
             scope: "intrinsic",
             blockId: pageId,
+            propertyKey: "work",
             operation: "set",
+            expectedRevision: 1,
+            value: { ...work, owner: detail.pageWork.owner },
           },
         ],
       }),
@@ -128,6 +136,36 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     );
   }
 
+  async recordSessionExecution(
+    sessionId: string,
+    observation: import("@nodex/core-protocol").components["schemas"]["SessionExecutionObservation"],
+  ): Promise<void> {
+    const snapshot = await this.#runtime.rootClient.workspaceRead({
+      kind: "session_execution_observer",
+      session_id: sessionId,
+    });
+    if (snapshot.value.kind !== "session_execution_observer")
+      throw new Error("Missing execution observer");
+    await this.#runtime.rootClient.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "record_session_execution",
+        session_id: sessionId,
+        expected_revision: snapshot.value.observer?.revision ?? 0,
+        observation,
+        events: [],
+        resolved_request_ids: [],
+      },
+    });
+  }
+  async readPageTurn(pageId: string) {
+    const snapshot = await this.#runtime.rootClient.workspaceRead({
+      kind: "page_turn",
+      page_id: pageId,
+    });
+    if (snapshot.value.kind !== "page_turn") throw new Error("Missing Page Turn");
+    return snapshot.value.turn;
+  }
   async setSessionManaged(sessionId: string, managed: boolean) {
     await this.#runtime.rootClient.workspaceApply({
       operationId: createUuidV7(),
@@ -145,9 +183,205 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     });
   }
 
+  async handBackChatMessage(input: Parameters<ScenarioSeedPort["handBackChatMessage"]>[0]) {
     const client = this.#runtime.rootClient;
+    const sessionId = createUuidV7(),
+      deliveryId = createUuidV7(),
+      runId = createUuidV7(),
+      pageId = createUuidV7();
+    await client.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "create_agent_runtime_session",
+        session_id: sessionId,
+        project_id: null,
+        title: "Documentation",
+        initial_page_ids: [],
+        runtime_id: "scenario:handback",
+        runtime_thread_id: createUuidV7(),
+        launch_request_id: createUuidV7(),
+      },
+    });
+    await this.setSessionManaged(sessionId, true);
+    const bodyHash = createHash("sha256").update(input.body).digest("hex");
+    await client.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "record_chat_delivery",
+        session_id: sessionId,
+        delivery_id: deliveryId,
+        body_hash: bodyHash,
+        author: { kind: "user" },
+        attachment_count: 0,
+        question_answer_run_id: null,
+      },
+    });
+    await client.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "bind_chat_inbound",
+        session_id: sessionId,
+        run_id: runId,
+        delivery_id: deliveryId,
+        body_hash: bodyHash,
+        attachment_count: 0,
+        author: { kind: "user" },
+      },
+    });
+    await this.#agentCommand(
+      sessionId,
+      {
+        kind: "hand_back_message",
+        reason: input.reason,
+        page_id: pageId,
+        document_id: createUuidV7(),
+        message: { text: input.body, files: [] },
+      },
+      runId,
+    );
+    return { pageId, sessionId };
+  }
+
+  async createWorkChat(input: Parameters<ScenarioSeedPort["createWorkChat"]>[0]) {
+    const sessionId = createUuidV7();
+    await this.#runtime.rootClient.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "create_agent_runtime_session",
+        session_id: sessionId,
+        project_id: input.projectId,
+        title: input.title,
+        initial_page_ids: [input.pageId],
+        runtime_id: "scenario:work",
+        runtime_thread_id: createUuidV7(),
+        launch_request_id: createUuidV7(),
+      },
+    });
+    // An Agent chat has no native thread of its own.
+    return { sessionId, threadId: null };
+  }
+
+  async pauseWork(scope: Parameters<ScenarioSeedPort["pauseWork"]>[0]) {
+    await this.#runtime.rootClient.workspaceApply({
+      operationId: createUuidV7(),
+      intent: { kind: "pause_work", scope },
+    });
+  }
+
+  async recordPageWorkspace(input: ScenarioPageWorkspaceSeed) {
+    const client = this.#runtime.rootClient;
+    const workspaceId = createUuidV7();
+    const allocation = createUuidV7();
+    // A GitHub-hosted repository identity, so the pull request below can belong to the branch.
+    const repository = "https://github.com/nodex-scenario/workspace";
+    const worktreePath = `${input.repositoryRoot}/.worktrees/${input.branchName}`;
+    await client.workspaceApply({
+      operationId: allocation,
+      intent: {
+        kind: "claim_page_workspace",
+        workspace_id: workspaceId,
+        page_id: input.pageId,
+        project_id: input.projectId,
+        session_id: input.sessionId,
+        repository_url: repository,
+        repository_root: input.repositoryRoot,
+        branch_name: input.branchName,
+        base_commit_oid: "0".repeat(40),
+        worktree_path: worktreePath,
+      },
+    });
+    await client.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "record_page_workspace_ready",
+        workspace_id: workspaceId,
+        allocation_operation_id: allocation,
+        branch_name: input.branchName,
+        worktree_path: worktreePath,
+      },
+    });
+    if (!input.pullRequest) return;
+    await client.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "upsert_page_pull_request",
+        workspace_id: workspaceId,
+        head_branch: input.branchName,
+        repository,
+        number: input.pullRequest.number,
+        url: `${repository}/pull/${input.pullRequest.number}`,
+        state: input.pullRequest.state,
+        observed_at: new Date().toISOString(),
+      },
+    });
+  }
+
+  async writeTurnNote(input: Parameters<ScenarioSeedPort["writeTurnNote"]>[0]) {
+    const client = this.#runtime.rootClient;
+    const dedupe = createUuidV7();
+    await client.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "record_work_events",
+        observed: [],
+        events: [
+          {
+            kind: "attention",
+            session_id: input.sessionId ?? null,
+            page_id: input.pageId,
+            payload: {},
+            dedupe_key: dedupe,
           },
+        ],
+      },
+    });
+    const pending = await client.workspaceRead({ kind: "read_pending_work_events", limit: 100 });
+    if (pending.value.kind !== "read_pending_work_events") throw new Error("Expected Work updates");
+    const event = pending.value.events.find((e) => e.dedupe_key === dedupe);
+    if (!event) throw new Error("Missing note event");
+    const batch = createUuidV7();
+    await client.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "create_event_batch",
+        batch_id: batch,
+        coordinator_session_id: input.coordinatorSessionId,
+        event_ids: [event.event_id],
+        message_id: createUuidV7(),
+        body: "Scenario Work updates",
+        fingerprint: "a".repeat(64),
+      },
+    });
+    await client.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "settle_event_batch",
+        batch_id: batch,
+        accepted_at: new Date().toISOString(),
+      },
+    });
     await this.#agentCommand(input.coordinatorSessionId, {
+      kind: "write_turn_note",
+      note_id: createUuidV7(),
+      page_id: input.pageId,
+      event_ids: [event.event_id],
+      body: input.body,
+      notify: input.notify,
+    });
+  }
+  async answerInboxQuestion(input: Parameters<ScenarioSeedPort["answerInboxQuestion"]>[0]) {
+    const pageId = createUuidV7();
+    await this.#runtime.rootClient.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "set_inbox_entry_kind",
+        page_id: input.questionPageId,
+        entry_kind: "question",
+      },
+    });
+    await this.#agentCommand(input.coordinatorSessionId, {
+      kind: "answer_inbox_question",
+      question_page_id: input.questionPageId,
       page_id: pageId,
       document_id: createUuidV7(),
       body: input.body,
@@ -250,6 +484,11 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
   }
 
   /** The Host supplies only the execution identity an actual Agent would have produced. */
+  async #agentCommand(
+    sessionId: string,
+    intent: ProjectWorkspaceApplyInput["intent"],
+    turnId = createUuidV7(),
+  ) {
     const session = await this.readSession(sessionId);
     const threadId = session?.executionRef?.threadId ?? session?.thread?.threadId;
     if (!session || !threadId) throw new Error("Scenario Agent requires an execution identity");
@@ -621,6 +860,8 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
       title: detail.page.title,
       descriptionPreview: detail.page.preview,
       documentReadiness: detail.document.readiness,
+      pageWork: parsePageWork(
+        detail.intrinsicProperties.find((item) => item.key === "work")?.value ?? null,
       ),
       commitSeq: detail.commitSeq,
     };
@@ -660,7 +901,8 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
           },
         });
         for (const pageId of input.relatedPageIds) {
-          yield* workspace.linkPageToProjectSession(session.id, { pageId });
+          if (input.handOff) yield* workspace.handOffPageToProjectSession(session.id, { pageId });
+          else yield* workspace.linkPageToProjectSession(session.id, { pageId });
         }
         if (input.pinned) {
           yield* workspace.setProjectSessionPinned({

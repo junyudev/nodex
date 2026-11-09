@@ -93,6 +93,10 @@ explicit text output. Skill installation still requires its explicit confirmatio
 `nodex --help` opens with task-specific default routes, then groups commands
 by task and describes each entry. SQL is the first read entry for filtering,
 joins and aggregation; `read` remains the direct route for one known Page.
+`nodex page show <page>` shows Page metadata and its Core-derived Turn, including
+actor, reason, start time and episode. Work briefs include the
+current Turn and name any blocking Prerequisite.
+
 Related multi-Page or multi-field writes favor atomic operations, and SQL-selected
 Property edits use prepare/apply to retain observed targets and versions. These
 preferences guide task selection without requiring discovery before every call.
@@ -223,6 +227,19 @@ shared clause/group grammar. Updating `filter` replaces all saved filters;
 omission preserves them and `null` clears them. Public catalogs and Source bindings replace the
 separate Source/View read command families.
 
+`members list` reads the Library's Members; `members me` reads the local Profile's
+Member. Both include stable identity, display name, lifecycle and revision.
+
+`page properties set PAGE --assignee me --if-revision REVISION` assigns a Page to
+the local Member. Assignee accepts `member:<id>`, `me`,
+`agent:<instanceId>/<model>[/<effort>]`, or `none`. Owner accepts
+`--owner member:<id>` or `--owner me`. Owner and Assignee use the observed Page
+work revision and can be changed together. They belong to the Page, including
+standalone Pages; no Data Source selector or Property ID is needed. Changing the
+Assignee revokes its consent to start automatically.
+For Owner and Assignee, omitting `--if-revision` uses the revision observed by the
+command's Page read; a concurrent edit still fails the revision precondition.
+
 `page properties set` performs a narrow select/text/number replacement with
 `--option`, `--text` or `--number` and observed `--if-revision`. Read versions from
 `property_values`, or query a Source's `value_revisions` and `membership_revision`
@@ -262,6 +279,10 @@ Pending retries replay the exact saved edit plan and operation identity.
 `draft discard` removes only a validated generated draft.
 
 `page insert PAGE` defaults to the end; explicit anchors select another position.
+`page accept PAGE` accepts work in In Review and moves it to Done. Only a person may
+accept work; Agent credentials cannot. Other stages stay unchanged. A prerequisite
+waits for Done, including when its chat has reported ready.
+
 `page rename PAGE TITLE --if-match ETAG` changes only the title. Structured
 `read` and SQL provide title/body validators from the observed state. Use
 `page prepare PAGE --operation move|delete [--view VIEW_ID]` for operation-specific
@@ -293,6 +314,14 @@ key: an opaque string of 1–128 characters, omitted on first attempts and reuse
 arguments after an unseen outcome. Their host-issued `operationId` values are returned
 receipt or progress handles. CLI content mutations continue to expose their existing
 `--idempotency-key` flag and draft apply identities.
+
+## Pause Agent work
+
+`nodex work pause --page <selector>`, `--project <selector>`, or `--space` creates a
+durable person-owned hold. `nodex work resume` with the same scope clears only that
+hold; parent holds continue to apply. `nodex work holds` lists scope, person, revision
+and pause time. Use `--idempotency-key <key>` to retry the same pause or resume.
+Verified Agents cannot pause or resume work.
 
 ## Library Files and Page relations
 

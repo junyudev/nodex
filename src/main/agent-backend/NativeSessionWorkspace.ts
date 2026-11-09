@@ -12,6 +12,7 @@ import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
 import { ManagedWorktreeRuntime } from "../codex-application/ManagedWorktreeRuntime";
 import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
+import { resolveNodexProjectsDirectory } from "../nodex-projects-directory";
 import {
   loadCodexWorktreeShellEnvironmentAtGitPath,
   persistCodexWorktreeShellEnvironmentAtGitPath,
@@ -31,6 +32,9 @@ export interface NativeSessionWorkspaceInput {
   readonly worktreeStartingState?: CodexPendingWorktreeStartingState | null;
   readonly localEnvironmentConfigPath?: string | null;
   readonly operationId: string;
+  readonly pageWorkspacePath?: string;
+  readonly reusePageWorkspace?: { readonly worktreeGitRoot: string; readonly branchName: string };
+  readonly pageWorkspace?: import("../codex/codex-worktree-worker-protocol").CodexWorktreeWorkerCreateInput["pageWorkspace"];
 }
 
 export interface NativeSessionWorkspaceLocation {
@@ -43,6 +47,7 @@ export interface NativeSessionWorkspaceLocation {
 
 export interface NativeSessionWorkspaceLease {
   readonly location: NativeSessionWorkspaceLocation;
+  readonly branchName?: string | null;
   /** Prevent cleanup when a Core admission may have committed but cannot yet be verified. */
   readonly retain: Effect.Effect<void>;
   /** Call immediately after the durable Thread link is admitted. */
@@ -51,6 +56,7 @@ export interface NativeSessionWorkspaceLease {
 
 export interface NativeSessionWorkspaceReconcileInput {
   readonly cwd: string;
+  readonly sharedWorkspace?: boolean;
   readonly threadId: string;
 }
 
@@ -137,6 +143,10 @@ export const make = Effect.gen(function* () {
         catch: (cause) =>
           new NativeSessionWorkspaceError({ operation: "workspace.reconcile", cause }),
       });
+      if (previous !== null && input.sharedWorkspace) {
+        yield* worktrees.releaseNewborn({ hostId: "local", worktreeGitRoot });
+        return;
+      }
       if (previous !== null && previous !== input.threadId)
         return yield* new NativeSessionWorkspaceError({
           operation: "workspace.reconcile",
@@ -170,7 +180,7 @@ export const make = Effect.gen(function* () {
               createCodexProjectlessWorkspace({
                 createSplitDirectories: true,
                 prompt: input.prompt,
-                homeDirectory: config.homeDirectory,
+                workspaceRoot: workspace.projectlessRoot ?? resolveNodexProjectsDirectory(config),
               }),
             catch: (cause) =>
               new NativeSessionWorkspaceError({ operation: "projectless.create", cause }),
@@ -204,6 +214,35 @@ export const make = Effect.gen(function* () {
           operation: "workspace.resolve",
           cause: new Error("Project folder is unavailable"),
         });
+      if (input.reusePageWorkspace) {
+        const worktreeGitRoot = input.reusePageWorkspace.worktreeGitRoot;
+        const prefix = yield* git.readPath(sourceCwd, ["rev-parse", "--show-prefix"]);
+        const cwd = path.resolve(worktreeGitRoot, prefix ?? "");
+        const relative = path.relative(worktreeGitRoot, cwd);
+        if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
+          return yield* new NativeSessionWorkspaceError({
+            operation: "workspace.reuse",
+            cause: new Error("Page Workspace directory is outside its checkout"),
+          });
+        return {
+          branchName: input.reusePageWorkspace.branchName,
+          location: {
+            cwd,
+            workspaceRoots: [
+              ...new Set([
+                cwd,
+                worktreeGitRoot,
+                ...(input.sourceRoots ?? []).filter((root) => root !== sourceCwd),
+              ]),
+            ],
+            managedWorktreePath: worktreeGitRoot,
+            projectlessOutputDirectory: null,
+            projectlessWorkspaceBrowserRoot: null,
+          },
+          retain: Effect.void,
+          attach: () => Effect.void,
+        };
+      }
       if (runInTarget !== "newWorktree")
         return {
           location: {
@@ -227,7 +266,7 @@ export const make = Effect.gen(function* () {
         ? null
         : yield* git.readPath(sourceCwd, ["branch", "--show-current"]);
       let allocated: string | null = null;
-      let attached = false;
+      let attached = input.pageWorkspace !== undefined;
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
           if (!allocated || attached) return;
@@ -243,10 +282,13 @@ export const make = Effect.gen(function* () {
             operation: "create",
             input: {
               requestId: operationId,
+              pageWorkspace: input.pageWorkspace,
               hostId: "local",
               repositoryPath: sourceCwd,
               nodexHome: config.nodexHome,
-              managedRoot: host.descriptor.managedRoot,
+              managedRoot: input.pageWorkspacePath
+                ? path.dirname(path.dirname(path.resolve(input.pageWorkspacePath)))
+                : host.descriptor.managedRoot,
               projectId: input.projectId,
               targetId: input.targetId,
               threadTitle: input.title,
@@ -307,6 +349,7 @@ export const make = Effect.gen(function* () {
       const commonDir = yield* git.readPath(cwd, ["rev-parse", "--git-common-dir"]);
       if (commonDir) roots.push(path.resolve(cwd, commonDir));
       return {
+        branchName: worker.branchName,
         location: {
           cwd,
           workspaceRoots: [...new Set(roots)],
@@ -321,15 +364,26 @@ export const make = Effect.gen(function* () {
           Effect.gen(function* () {
             // Core already owns this directory; a metadata repair failure must never delete it.
             attached = true;
-            yield* worktrees
-              .setOwner({ hostId: "local", worktreeGitRoot: allocated!, ownerThreadId: threadId })
-              .pipe(
-                Effect.catchCause((cause) =>
-                  Effect.logWarning("Worktree owner metadata could not be saved").pipe(
-                    Effect.annotateLogs({ threadId, cause }),
-                  ),
+            const owner = input.pageWorkspace
+              ? yield* Effect.tryPromise(() => readManagedWorktreeOwnerThread(allocated!)).pipe(
+                  Effect.orElseSucceed(() => null),
+                )
+              : null;
+            yield* (
+              owner
+                ? Effect.void
+                : worktrees.setOwner({
+                    hostId: "local",
+                    worktreeGitRoot: allocated!,
+                    ownerThreadId: threadId,
+                  })
+            ).pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("Worktree owner metadata could not be saved").pipe(
+                  Effect.annotateLogs({ threadId, cause }),
                 ),
-              );
+              ),
+            );
             yield* worktrees.releaseNewborn({ hostId: "local", worktreeGitRoot: allocated! });
           }),
       };

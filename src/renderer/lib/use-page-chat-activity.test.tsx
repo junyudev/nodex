@@ -43,6 +43,7 @@ describe("usePageChatActivity", () => {
       errorCount: 0,
       unreadCount: 0,
       soleSessionId: "session:linked",
+      work: { activeChat: null, latestReport: null, managedSessionCount: 0 },
       runtimeSessionIds: ["session:linked"],
     };
     let renders = 0;

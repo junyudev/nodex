@@ -20,6 +20,7 @@ pub(super) fn launch(
     id: &str,
 ) -> Result<Option<PageWorkLaunch>, StoreError> {
     validate_id("launch_id", id)?;
+    Ok(connection.query_row("SELECT launch_id,page_id,project_id,session_id,message_id,selection_json,brief,again,created_at,accepted_at,rejection,status_fence,status_moved FROM page_work_launches WHERE launch_id=?1", [id], |r| {
         let selection: String = r.get(5)?;
     }).optional()?)
 }
@@ -58,8 +59,12 @@ pub(super) fn apply(
     if !matches!(
         context.adapter,
         AdapterKind::ElectronHost | AdapterKind::Test
+    ) && !(context.adapter == AdapterKind::RemoteMember
+        && matches!(intent, ProjectWorkspaceIntent::StartPageWork { .. }))
+    {
         return Err(StoreError::new(
             StoreErrorCode::Unauthorized,
+            "Work launch settlement belongs to the Desktop Host",
             false,
         ));
     }
@@ -119,10 +124,13 @@ pub(super) fn apply(
         brief,
         again,
         expected_readiness_epoch,
+        expected_turn_episode,
     } = intent
     else {
         return Err(invalid("Not a work start"));
     };
+    if let Some(episode) = expected_turn_episode {
+    }
     if let Some(stored) = launch(connection, launch_id)? {
         if stored.page_id != *page_id
             || stored.session_id != *session_id
@@ -145,6 +153,9 @@ pub(super) fn apply(
             &now,
         );
     }
+    super::mutation::run_mutation(connection, context, epoch, operation, hash, &now, |scope| {
+            scope.evidence(),
+    commit: &crate::infrastructure::local_commit::CommitContext,
     let work = crate::database::work_graph::work_context(connection, library, page_id)?;
     if let Some(expected) = expected_readiness_epoch {
         let ready = crate::database::work_graph::ready_page(connection, library, page_id)?;
@@ -153,15 +164,27 @@ pub(super) fn apply(
     }
     if !again
         && connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM page_active_chats WHERE page_id=?1)",
             [page_id],
             |r| r.get::<_, bool>(0),
         )?
     {
         return Err(conflict(
+            "Page already has an active chat; use again to start another attempt",
         ));
     }
     let selection = selection
+        .or_else(|| {
+            work.page_work
+                .as_ref()
+                .and_then(|w| w.assignee.as_ref())
+                .and_then(|a| a.agent_selection())
+        })
         .ok_or_else(|| invalid("Work requires an Agent selection"))?;
+    crate::library::validate_agent_selection(&selection)?;
+    crate::library::members::assign_agent_if_unassigned(
+        connection, library, context, commit, page_id, &selection,
+    )?;
     let page_ids = vec![page_id.clone()];
     super::session_lifecycle::prepare_session(
         connection,
@@ -188,4 +211,5 @@ pub(super) fn apply(
         },
         now,
     )?;
+        connection, library, context, commit, operation, &page_ids, effects,
 }

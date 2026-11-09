@@ -1,5 +1,14 @@
 import { execFile } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { parse } from "node-html-parser";
@@ -15,7 +24,7 @@ mkdirSync(generated, { recursive: true });
 const outputDir = mkdtempSync(join(generated, "landing-build-"));
 const execFileAsync = promisify(execFile);
 
-beforeAll(async () => {
+async function buildSite(root: string, outDir: string) {
   // Build the way the site ships, through the package's astro bin: it is what lets Astro resolve
   // its own tsconfig presets, whatever environment the tests run in. Its own process also keeps
   // Vite's module loader outside Vitest.
@@ -24,15 +33,17 @@ beforeAll(async () => {
     "astro",
     "build",
     "--root",
-    landingRoot,
+    root,
     "--outDir",
-    outputDir,
+    outDir,
   ]);
   await execFileAsync(invocation.command, invocation.args, {
-    cwd: landingRoot,
+    cwd: root,
     env: { ...process.env, ASTRO_TELEMETRY_DISABLED: "1" },
   });
-}, 60_000);
+}
+
+beforeAll(() => buildSite(landingRoot, outputDir), 60_000);
 
 afterAll(() => {
   rmSync(outputDir, { force: true, recursive: true });
@@ -41,6 +52,37 @@ afterAll(() => {
 function readPage(route: string) {
   return parse(readFileSync(join(outputDir, route, "index.html"), "utf8"));
 }
+
+test("builds independently of unrelated ancestor TypeScript projects", async () => {
+  const parent = mkdtempSync(join(tmpdir(), "nodex-landing-tsconfig-"));
+  const root = join(parent, "site");
+  const outDir = join(root, "dist");
+  try {
+    mkdirSync(join(parent, "mobile"));
+    writeFileSync(
+      join(parent, "tsconfig.json"),
+      JSON.stringify({ files: [], references: [{ path: "./mobile" }] }),
+    );
+    writeFileSync(
+      join(parent, "mobile/tsconfig.json"),
+      JSON.stringify({ extends: "uninstalled-platform/tsconfig.json" }),
+    );
+    mkdirSync(join(root, "src/pages"), { recursive: true });
+    symlinkSync(join(landingRoot, "node_modules"), join(root, "node_modules"), "junction");
+    copyFileSync(resolve(landingRoot, "../../.node-version"), join(root, ".node-version"));
+    for (const file of ["astro.config.mjs", "tsconfig.json", "package.json"])
+      copyFileSync(join(landingRoot, file), join(root, file));
+    writeFileSync(join(root, "src/pages/index.astro"), "<h1>Isolated site</h1>");
+
+    await buildSite(root, outDir);
+
+    expect(
+      parse(readFileSync(join(outDir, "index.html"), "utf8")).querySelector("h1")?.textContent,
+    ).toBe("Isolated site");
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+  }
+}, 60_000);
 
 test("the static build emits each public page with its canonical URL", () => {
   for (const [route, heading] of [

@@ -59,9 +59,25 @@ pub(super) fn admit<'a>(
     }
     if matches!(
         intent.as_ref(),
+            | ProjectWorkspaceIntent::BindChatInbound { .. }
+            | ProjectWorkspaceIntent::RecordSessionExecution { .. }
             | ProjectWorkspaceIntent::SettlePageWorkLaunch { .. }
+            | ProjectWorkspaceIntent::ClaimPageWorkspace { .. }
+            | ProjectWorkspaceIntent::BindPageWorkspace { .. }
+            | ProjectWorkspaceIntent::RecordPageWorkspaceReady { .. }
+            | ProjectWorkspaceIntent::RecordPageWorkspaceFailed { .. }
+            | ProjectWorkspaceIntent::RequestPageWorkspaceCleanup { .. }
+            | ProjectWorkspaceIntent::MarkPageWorkspaceRemoved { .. }
+            | ProjectWorkspaceIntent::UpsertPagePullRequest { .. }
     ) {
         return Err(denied("Work launches belong to the Desktop Host"));
+    }
+    if matches!(
+        intent.as_ref(),
+            | ProjectWorkspaceIntent::PauseWork { .. }
+            | ProjectWorkspaceIntent::ResumeWork { .. }
+    ) {
+        return Err(denied("Only a person may accept Page work"));
     }
     if matches!(intent.as_ref(), ProjectWorkspaceIntent::AgentCommand { .. }) {
         return Err(denied("Agent command envelopes cannot be nested"));
@@ -69,6 +85,7 @@ pub(super) fn admit<'a>(
     if matches!(
         intent.as_ref(),
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            agent_selection: None,
             coordinator: true,
             ..
         }

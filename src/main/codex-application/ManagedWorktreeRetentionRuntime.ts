@@ -45,6 +45,7 @@ export class ManagedWorktreeRetentionRuntimeError extends Schema.TaggedError<Man
 export interface ManagedWorktreeRetentionRuntimeOptions {
   readonly debounce?: Duration.Input;
   readonly handoffJournal: CodexThreadHandoffJournalStorage;
+  readonly pageWorkspacePaths?: Effect.Effect<readonly string[], unknown>;
 }
 
 interface RetentionCommand {
@@ -179,7 +180,17 @@ export const live = (
             { concurrency: "unbounded" },
           ),
         );
-        const pathProtections: CodexManagedWorktreeRetentionPathProtection[] = [];
+        const pageWorkspacePaths = options.pageWorkspacePaths
+          ? yield* options.pageWorkspacePaths.pipe(
+              Effect.mapError((cause) => error(`${phase}-page-workspaces`, cause)),
+            )
+          : [];
+        const pathProtections: CodexManagedWorktreeRetentionPathProtection[] =
+          pageWorkspacePaths.map((worktreeGitRoot) => ({
+            hostId: "local",
+            worktreeGitRoot,
+            reason: "page-workspace",
+          }));
         for (const handoff of handoffs) {
           if (isTerminalCodexThreadHandoff(handoff)) continue;
           const paths = [

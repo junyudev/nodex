@@ -202,8 +202,17 @@ export const projectWorkspacePageChatActivitySummaryFromCore = (
   summary: CorePageChatActivitySummary,
 ): PageChatActivitySummary => ({
   work: {
+    effectiveHold: summary.work.effective_hold ?? [],
+    activeChat: summary.work.active_chat
+      ? {
+          sessionId: summary.work.active_chat.session_id,
+          revision: summary.work.active_chat.revision,
+          setAt: summary.work.active_chat.set_at,
+        }
+      : null,
     latestReport: summary.work.latest_report
       ? {
+          statusMoved: summary.work.latest_report.status_moved ?? null,
           sessionId: summary.work.latest_report.session_id,
           outcome: summary.work.latest_report.outcome,
           at: summary.work.latest_report.at,

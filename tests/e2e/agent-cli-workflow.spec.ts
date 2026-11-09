@@ -174,8 +174,8 @@ test("direct Agent commands update the same Page, properties, and attachments sh
         (column) => column.name.toLowerCase() === "status",
       );
       if (!status?.property_id) throw new Error("Scenario status schema was not discovered");
-      const target = status.options.find((option) => option.name.toLowerCase() === "review");
-      if (!target) throw new Error("Review option was not discovered");
+      const target = status.options.find((option) => option.id === "review");
+      if (!target) throw new Error("In Review stage was not discovered");
       const [observed] = await sql<{ value_revision: number }>(
         "SELECT value_revision FROM property_values WHERE page_id=:page AND property_id=:property",
         { page: pageId, property: status.property_id },
@@ -200,7 +200,7 @@ test("direct Agent commands update the same Page, properties, and attachments sh
         bindings,
       );
       expect(query.some((row) => row.page_id === pageId)).toBe(true);
-      await expect(stage.getByText("Review", { exact: true }).first()).toBeVisible();
+      await expect(stage.getByText("In Review", { exact: true }).first()).toBeVisible();
       const group = await sql<{ page_id: string }>(
         "SELECT page_id FROM view_rows(:view) WHERE group_key=:group ORDER BY ordinal",
         { view: source.default_view_id, group: target.id },

@@ -292,6 +292,13 @@ export interface ConversationBackgroundTasks {
 
 /** Capabilities vary by provider; the stage, timeline, editor and request UI are shared. */
 export interface ConversationProviderPresentation {
+  readonly admissionQueue?: {
+    readonly runId: string;
+    readonly read: () => Promise<{
+      readonly position: number;
+      readonly waitingSince: string;
+    } | null>;
+  };
   readonly runtimeMode?: import("@nodex/agent-runtime/contracts").RuntimeMode | null;
   readonly supportedRuntimeModes?: readonly import("@nodex/agent-runtime/contracts").RuntimeMode[];
   readonly defaultRuntimeMode?: import("@nodex/agent-runtime/contracts").RuntimeMode;

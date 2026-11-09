@@ -1,3 +1,5 @@
+import { pageAssigneeFromKey, pageAssigneeName } from "../../../shared/work-graph";
+import { useMembers } from "@/lib/members-runtime";
 import type { ComponentPropsWithoutRef } from "react";
 import {
   DEFAULT_WORKFLOW_STATUS_LABELS,
@@ -133,6 +135,7 @@ export function CommandPalettePageFilterPopover({
   onChange: (update: (prev: CommandPalettePageFilters) => CommandPalettePageFilters) => void;
   children: React.ReactNode;
 }) {
+  const members = useMembers();
   const filterActive = hasActiveCommandPalettePageFilters(filters);
 
   return (
@@ -233,6 +236,25 @@ export function CommandPalettePageFilterPopover({
           )}
         </FilterValueRow>
 
+        {(members.data?.length ?? 0) > 1 ? (
+          <FilterValueRow label="Owner">
+            {members.data
+              ?.filter((member) => member.lifecycle === "active")
+              .map((member) => (
+                <FilterChip
+                  key={member.id}
+                  label={member.display_name}
+                  active={filters.owners?.includes(member.id) ?? false}
+                  onClick={() =>
+                    onChange((prev) => ({
+                      ...cloneCommandPalettePageFilters(prev),
+                      owners: toggleString(prev.owners ?? [], member.id),
+                    }))
+                  }
+                />
+              ))}
+          </FilterValueRow>
+        ) : null}
         <FilterValueRow label="Assignee">
           {availableAssignees.length === 0 ? (
             <span className="pt-1 text-xs text-token-description-foreground italic">
@@ -243,7 +265,7 @@ export function CommandPalettePageFilterPopover({
               <FilterChip
                 key={`assignee:${assignee}`}
                 active={filters.assignees.includes(assignee)}
-                label={assignee}
+                label={pageAssigneeName(pageAssigneeFromKey(assignee), members.data)}
                 onClick={() =>
                   onChange((prev) => ({
                     ...cloneCommandPalettePageFilters(prev),
@@ -292,7 +314,13 @@ export function CommandPalettePageFiltersSummaryRow({
   tagNameById?: ReadonlyMap<string, string>;
   onOpenFilter: () => void;
 }) {
-  const summaries = summarizeCommandPalettePageFilters(filters, projectNameById, tagNameById);
+  const members = useMembers();
+  const summaries = summarizeCommandPalettePageFilters(
+    filters,
+    projectNameById,
+    tagNameById,
+    members.data,
+  );
   if (summaries.length === 0) {
     return null;
   }

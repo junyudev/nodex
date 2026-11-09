@@ -333,6 +333,7 @@ The `[server]` table currently owns these product setting families:
 
 - `home` for Profile selection;
 - `codex_home` for the selected native Codex directory;
+- `agents_running_at_once` for machine Agent Run capacity (1–16, default 4), controlled by Settings → Agents;
 - automatic backup enablement, interval, count retention, and automatic-snapshot byte budget;
 - deleted-content history retention compatibility setting;
 - automatic app-update checks;

@@ -1665,6 +1665,7 @@ mod tests {
             module,
             "side-chat",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                agent_selection: None,
                 coordinator: false,
                 session_id: "session:side".into(),
                 project_id: Some("project:default".into()),

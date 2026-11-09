@@ -38,7 +38,7 @@ export const requireBoardDenseScenarioFacts = (value: unknown): BoardDenseScenar
     typeof candidate.totalRows !== "number" ||
     candidate.totalRows < 0 ||
     !isRecord(groups) ||
-    !["triage", "plan", "doing", "review", "done"].every(
+    !["triage", "plan", "doing", "review", "done", "canceled"].every(
       (status) => typeof groups[status] === "number" && groups[status] >= 0,
     ) ||
     typeof candidate.listViewId !== "string" ||

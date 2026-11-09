@@ -81,7 +81,7 @@ const BOARD_MAP = new Map<string, BoardSummary>([
             makePage("command-palette", "Command palette polish", "triage", 2, {
               pageKey: "LAB-13",
               tags: ["secret-tag"],
-              assignee: "alex",
+              assignee: { kind: "member", member_id: "alex" },
               descriptionPreview: "Hidden body-only OCR pipeline note.",
               descriptionLength: "Hidden body-only OCR pipeline note.".length,
               hasDescription: true,
@@ -102,7 +102,7 @@ const BOARD_MAP = new Map<string, BoardSummary>([
       columns: [
         {
           id: "plan",
-          name: "Plan",
+          name: "Todo",
           cards: [makePage("runtime", "Runtime polish", "plan", 0)],
         },
       ],
@@ -171,7 +171,7 @@ describe("markdown move-to menu model", () => {
 
     expect(sections.map((section) => section.label).join(",")).toBe("DB,Page");
     expect(rows.map((row) => row.id).join(",")).toBe(
-      "db:alpha,db-column:alpha:triage,db-column:alpha:plan,db-column:alpha:doing,db-column:alpha:review,db-column:alpha:done,db:beta,page:alpha:draft-spec,page:alpha:command-palette,page:alpha:ship-plan",
+      "db:alpha,db-column:alpha:triage,db-column:alpha:plan,db-column:alpha:doing,db-column:alpha:review,db-column:alpha:done,db-column:alpha:canceled,db:beta,page:alpha:draft-spec,page:alpha:command-palette,page:alpha:ship-plan",
     );
     expect(rows[0]?.kind).toBe("db");
     const firstRow = rows[0];
@@ -222,11 +222,12 @@ describe("markdown move-to menu model", () => {
       "db-column:beta:doing",
       "db-column:beta:review",
       "db-column:beta:done",
+      "db-column:beta:canceled",
     ]);
   });
 
   test("filters DB, column, and page rows while excluding the source page", () => {
-    const runtime = pageHit("beta", "runtime", "Runtime polish", "plan", "Plan");
+    const runtime = pageHit("beta", "runtime", "Runtime polish", "plan", "Todo");
     const ship = pageHit("alpha", "ship-plan", "Ship plan", "done", "Done");
     const pageRows = flattenNfmMoveToRows(buildSections("runtime", undefined, [runtime]));
     const columnRows = flattenNfmMoveToRows(buildSections("done", undefined, [ship]));
@@ -238,7 +239,7 @@ describe("markdown move-to menu model", () => {
       "db:alpha,db-column:alpha:done,db:beta,db-column:beta:done,page:alpha:ship-plan",
     );
     expect(projectRows.map((row) => row.id).join(",")).toBe(
-      "db:beta,db-column:beta:triage,db-column:beta:plan,db-column:beta:doing,db-column:beta:review,db-column:beta:done,page:beta:runtime",
+      "db:beta,db-column:beta:triage,db-column:beta:plan,db-column:beta:doing,db-column:beta:review,db-column:beta:done,db-column:beta:canceled,page:beta:runtime",
     );
     expect(sourceRows.map((row) => row.id).join(",")).toBe("");
   });
@@ -268,7 +269,7 @@ describe("markdown move-to menu model", () => {
     expect(pageTitleSections.map((section) => section.label).join(",")).toBe("DB");
     expect(pageTitleRows.map((row) => row.id).join(",")).toBe("");
     expect(dbRows.map((row) => row.id).join(",")).toBe(
-      "db:beta,db-column:beta:triage,db-column:beta:plan,db-column:beta:doing,db-column:beta:review,db-column:beta:done",
+      "db:beta,db-column:beta:triage,db-column:beta:plan,db-column:beta:doing,db-column:beta:review,db-column:beta:done,db-column:beta:canceled",
     );
   });
 
@@ -284,7 +285,7 @@ describe("markdown move-to menu model", () => {
         normalizedQuery: "runtime",
         matchedProjectIds: new Set(),
         matchedColumnIdsByProjectId: new Map(),
-        pageHits: [pageHit("beta", "runtime", "Runtime polish", "plan", "Plan")],
+        pageHits: [pageHit("beta", "runtime", "Runtime polish", "plan", "Todo")],
       },
       resultScope: "page-only",
     });
@@ -342,7 +343,7 @@ describe("markdown move-to menu model", () => {
 
 test("destination stages show and match only the destination Source's name", () => {
   const statusOptionsByProjectId = new Map([
-    ["alpha", [{ id: "doing", name: "In progress" }]],
+    ["alpha", [{ id: "doing", name: "Building" }]],
     ["beta", []],
   ]);
   const input = {
@@ -356,19 +357,21 @@ test("destination stages show and match only the destination Source's name", () 
   const rows = flattenNfmMoveToRows(buildNfmMoveToSections({ ...input, query: "" }));
   expect(rows.find((row) => row.id === "db-column:alpha:doing")).toMatchObject({
     columnId: "doing",
-    columnName: "In progress",
+    columnName: "Building",
   });
   expect(rows.find((row) => row.id === "db-column:beta:doing")).toMatchObject({
     columnId: "doing",
-    columnName: "Doing",
+    columnName: "In Progress",
   });
   expect(
-    flattenNfmMoveToRows(buildNfmMoveToSections({ ...input, query: "In progress" })).map(
+    flattenNfmMoveToRows(buildNfmMoveToSections({ ...input, query: "Building" })).map(
       (row) => row.id,
     ),
   ).toEqual(["db:alpha", "db-column:alpha:doing"]);
   expect(
-    flattenNfmMoveToRows(buildNfmMoveToSections({ ...input, query: "Doing" })).map((row) => row.id),
+    flattenNfmMoveToRows(buildNfmMoveToSections({ ...input, query: "In Progress" })).map(
+      (row) => row.id,
+    ),
   ).toEqual(["db:beta", "db-column:beta:doing"]);
 });
 

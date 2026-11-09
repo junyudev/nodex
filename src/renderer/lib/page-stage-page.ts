@@ -1,3 +1,4 @@
+import { parsePageWork, type PageWork } from "../../shared/work-graph";
 import type { LibraryPageDetail, PageDetail } from "../../shared/page-detail";
 import type { DatabasePageLayoutV2 } from "../../shared/database-module-v2";
 import type { PageRunInTarget, RecurrenceConfig, ReminderConfig } from "../../shared/types";
@@ -21,6 +22,7 @@ export interface PageStageCorePage {
   readonly recurrence?: RecurrenceConfig;
   readonly reminders: readonly ReminderConfig[];
   readonly scheduleTimezone?: string;
+  readonly pageWork: PageWork | null;
   readonly runInTarget?: PageRunInTarget;
   readonly runInLocalPath?: string;
   readonly runInBaseBranch?: string;
@@ -169,6 +171,8 @@ export const projectPageDetailToStageModel = (
       requireIntrinsic(detail, "run.environmentPath").value,
       "Page environment path",
     ),
+    pageWork: parsePageWork(
+      detail.intrinsicProperties.find((property) => property.key === "work")?.value ?? null,
     ),
     revision: detail.page.metadataRevision,
     created,

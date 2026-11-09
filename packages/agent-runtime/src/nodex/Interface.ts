@@ -140,6 +140,8 @@ export interface AgentSubagentOverview {
 export interface AgentRuntimeConfiguration {
   /** Absolute, dedicated writable directory owned by this Profile's execution runtime. */
   readonly home: string;
+  readonly agentsRunningAtOnce?: number;
+  readonly pausedThreadIds?: ReadonlyArray<string>;
   readonly cwd: string;
   readonly modelPolicy?: ModelPolicy;
   readonly providers: Readonly<Record<string, AgentWire<ProviderInstanceConfig>>>;
@@ -453,6 +455,10 @@ export interface AgentRuntimeOperations
     >;
     readonly output: AgentWire<PersistChatAttachmentsResult>;
   };
+  readonly "thread.admission-context": {
+    readonly input: { readonly threadId: string; readonly pageId: string };
+    readonly output: { readonly bound: boolean };
+  };
   readonly "thread.send": {
     readonly input: {
       readonly threadId: string;
@@ -558,6 +564,7 @@ export interface AgentRuntimeOperations
   readonly "providers.configure": {
     readonly input: {
       readonly providers: AgentRuntimeConfiguration["providers"];
+      readonly agentsRunningAtOnce?: number;
       readonly modelPolicy?: ModelPolicy;
     };
     readonly output: {
@@ -648,6 +655,14 @@ export interface AgentRuntimeOperations
   readonly "thread.stop-host-input": {
     readonly input: { readonly threadId: string; readonly messageId: string };
     readonly output: null;
+  };
+  readonly "thread.pause": {
+    readonly input: { readonly threadId: string; readonly revision: string };
+    readonly output: { readonly status: "requested" | "stopped" };
+  };
+  readonly "thread.resume": {
+    readonly input: { readonly threadId: string };
+    readonly output: { readonly status: "requested" | "resumed" };
   };
   readonly "thread.stop": {
     readonly input: {
@@ -773,6 +788,14 @@ export interface AgentRuntimeOperations
       readonly sourceThreadId?: string;
     };
     readonly output: AgentTurnItem | null;
+  };
+  readonly "thread.message-attachment": {
+    readonly input: {
+      readonly threadId: string;
+      readonly messageId: string;
+      readonly attachmentId: string;
+    };
+    readonly output: AgentRuntimeOperations["thread.attachment"]["output"];
   };
   readonly "thread.attachment": {
     readonly input: {

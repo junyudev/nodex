@@ -22,7 +22,7 @@ function makeCard(overrides: Partial<DatabasePageSummary> = {}): DatabasePageSum
     hasDescription: true,
     priority: "p2-medium",
     tags: ["o_AAAAAAAA", "o_BBBBBBBB"],
-    assignee: "alice",
+    assignee: { kind: "member", member_id: "alice" },
     created: new Date("2026-02-10T00:00:00.000Z"),
     order: 0,
     ...overrides,
@@ -45,7 +45,19 @@ describe("card search", () => {
 
   test("buildPageSearchText includes ordinary searchable card fields", () => {
     const card = makeCard({ pageKey: "LAB-13" });
-    const searchable = buildPageSearchText(card, ["Editor", "Search"]);
+    const searchable = buildPageSearchText(
+      card,
+      ["Editor", "Search"],
+      [
+        {
+          id: "alice",
+          library_id: "library",
+          display_name: "Alice",
+          lifecycle: "active",
+          revision: 1,
+        },
+      ],
+    );
 
     expect(searchable.includes("abc1234")).toBe(true);
     expect(searchable.includes("lab-13")).toBe(false);

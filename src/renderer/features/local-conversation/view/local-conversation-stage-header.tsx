@@ -1,3 +1,4 @@
+import { QueuedRunStatus } from "./queued-run-label";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { toastFailure } from "@/lib/failure-toast";
 import { memo, useCallback, useRef, useState } from "react";
@@ -17,7 +18,6 @@ import {
   MoveToLeftPaneIcon,
   MoveToRightPaneIcon,
 } from "@/components/shared/icons";
-import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
 import {
   NodexDropdownFlyoutSubmenuItem,
   NodexDropdownItem,
@@ -234,9 +234,6 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
           ).map((destination) => (
             <NodexDropdownItem
               key={destination.target}
-              leftSlot={
-                <NativeMenuIcon iconKey={destination.iconKey} className={menuIconClassName} />
-              }
               disabled={forking}
               onSelect={() => {
                 if (forkInFlight.current) return;
@@ -370,7 +367,16 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
     </NodexDropdownMenu>
   ) : null;
 
-  if (variant === "chat-tab") return actionsMenu;
+  const queueLabel = provider?.admissionQueue ? (
+    <QueuedRunStatus queue={provider.admissionQueue} />
+  ) : null;
+  if (variant === "chat-tab")
+    return (
+      <>
+        {queueLabel}
+        {actionsMenu}
+      </>
+    );
 
   return (
     <div className="flex w-full min-w-0 items-center gap-2 electron:h-toolbar extension:py-row-y">
@@ -386,6 +392,7 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
           </span>
         ) : null}
       </span>
+      {queueLabel}
       {actionsMenu}
     </div>
   );

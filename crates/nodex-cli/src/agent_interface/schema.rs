@@ -72,7 +72,8 @@ pub(super) fn result(path: &[&str]) -> Value {
         ["ls"] => document::<crate::browse::BrowseOutput>(),
         ["search"] => document::<crate::search::SearchOutput>(),
         ["page", "properties", "prepare-batch"] => document::<crate::selection_batch::BatchEdits>(),
-        ["data-source", "configure"] | ["page", "properties", "apply" | "set"] => combine(
+        ["page", "properties", "set"] => document::<crate::page_properties::PropertySetResult>(),
+        ["data-source", "configure"] | ["page", "properties", "apply"] => combine(
             document::<nodex_core_contracts::ApplyResponse<DatabaseCommitValue, DatabaseReceipt>>(),
             [
                 document::<DatabaseCommitValue>(),
@@ -81,8 +82,13 @@ pub(super) fn result(path: &[&str]) -> Value {
         ),
         ["page", "create-batch"] => document::<crate::page_batch::PageBatchOutput>(),
         ["context"] => document::<crate::runtime::ContextOutput>(),
+        ["work", "holds"] => document::<Vec<nodex_core_contracts::workspace::ExecutionHold>>(),
+        ["work", "pause"] | ["work", "resume"] => document::<crate::work::WorkHoldChange>(),
+        ["members", "list"] => document::<Vec<Member>>(),
+        ["members", "me"] => document::<Member>(),
         ["tree"] => document::<crate::runtime::TreeRoot>(),
         ["read"] => document::<LibraryPageProjectionFile>(),
+        ["page", "show"] => document::<crate::runtime::PageShowResult>(),
         ["page", "prepare"] => document::<LibraryPageOperationPreparation>(),
         ["sed"] => document::<crate::runtime::SedOutput>(),
         ["docs", "markdown"] => document::<String>(),
@@ -91,6 +97,7 @@ pub(super) fn result(path: &[&str]) -> Value {
         ["patch"] | ["page", "insert" | "replace" | "rename"] | ["block", _] => {
             document::<crate::page_mutation::SemanticMutationResult>()
         }
+        ["page", "accept"] => document::<crate::page_lifecycle::PageAcceptanceResult>(),
         ["page", "create"] => document::<crate::page_lifecycle::PageCreationResult>(),
         ["page", "move"] => document::<crate::page_lifecycle::PageMoveResult>(),
         ["page", "duplicate"] => document::<crate::page_lifecycle::PageCopyResult>(),

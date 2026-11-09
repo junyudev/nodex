@@ -13,7 +13,7 @@ import {
   parsePageDetailResult,
   type PageDetailResult,
 } from "./page-detail";
-import { testPropertyManagement } from "./testing/database-property-record";
+import { testPropertyManagement, testPropertySemantics } from "./testing/database-property-record";
 
 const timestamp = "2026-07-16T00:00:00.000Z";
 const databaseId = parseDatabaseId("019f714b-0000-7000-8000-000000000001");
@@ -122,6 +122,73 @@ const memberResult = (): PageDetailResult => ({
 });
 
 describe("Page Detail contract", () => {
+  test("accepts Page assignment fields and keeps Owner restricted to a person", () => {
+    const result = memberResult();
+    if (!result.ok || result.value.dataSourceContext.kind !== "member")
+      throw new Error("Member fixture");
+    const context = result.value.dataSourceContext;
+    const person = { kind: "member", member_id: "person" } as const;
+    const agent = { kind: "agent", instance_id: "codex", model: "model", effort: null } as const;
+    const detail = {
+      ...result.value,
+      dataSourceContext: {
+        ...context,
+        properties: [
+          ...context.properties,
+          ...(
+            [
+              ["owner", "page_owner"],
+              ["assignee", "page_assignee"],
+            ] as const
+          ).map(([id, role]) => ({
+            ...context.properties[0]!,
+            ...testPropertySemantics("assignment"),
+            propertyId: parseDataSourcePropertyId(id),
+            name: id,
+            schema: { kind: "assignment" } as const,
+            valueType: "assignment" as const,
+            systemRole: role,
+          })),
+        ],
+        values: {
+          ...context.values,
+          owner: {
+            propertyId: parseDataSourcePropertyId("owner"),
+            valueType: "assignment" as const,
+            value: person,
+            revision: 1,
+          },
+          assignee: {
+            propertyId: parseDataSourcePropertyId("assignee"),
+            valueType: "assignment" as const,
+            value: agent,
+            revision: 1,
+          },
+        },
+      },
+    };
+    expect(parsePageDetailResult({ ok: true, value: detail })).toMatchObject({
+      ok: true,
+      value: {
+        dataSourceContext: { values: { owner: { value: person }, assignee: { value: agent } } },
+      },
+    });
+    expect(() =>
+      parsePageDetailResult({
+        ok: true,
+        value: {
+          ...detail,
+          dataSourceContext: {
+            ...detail.dataSourceContext,
+            values: {
+              ...detail.dataSourceContext.values,
+              owner: { ...detail.dataSourceContext.values.owner, value: agent },
+            },
+          },
+        },
+      }),
+    ).toThrow("Owner requires a Member");
+  });
   test("accepts nullable string and JSON intrinsic values", () => {
     const result = memberResult();
     if (!result.ok) throw new Error("Expected Page Detail fixture");

@@ -55,6 +55,7 @@ const runtime = (id: string, day: number): RuntimeItem => ({
   providerInstanceId: "arbitrary-custom-id",
   providerDriver: "claudeAgent",
   model: "model",
+  effort: null,
   recencyAt: at(day),
   createdAt: at(1),
   latestUserAuthoredMessageAt: null,

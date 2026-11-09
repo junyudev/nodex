@@ -4,6 +4,7 @@ export const CODEX_OWNERLESS_WORKTREE_GRACE_MS = 60 * 60 * 1_000;
 export const CODEX_OWNER_METADATA_MIGRATION_CUTOFF_MS = Date.parse("2026-02-21T00:00:00.000Z");
 
 export type CodexManagedWorktreeProtectionReason =
+  | "page-workspace"
   | "permanent"
   | "pinned"
   | "pending"

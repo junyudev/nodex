@@ -218,10 +218,7 @@ export const live: Layer.Layer<
             "projects:create",
             command,
             createProjectWithDefaultSource(command.payload.input, {
-              projectsDirectory: resolveNodexProjectsDirectory({
-                configuredDirectory: config.projectsDirectory,
-                documentsDirectory: config.documentsPath,
-              }),
+              projectsDirectory: resolveNodexProjectsDirectory(config),
               createProject: (input) =>
                 projects.createProject({
                   ...command,

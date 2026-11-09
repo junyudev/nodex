@@ -1,3 +1,4 @@
+import { NodexLogoMarkIcon } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
 
 export function NodexAuthor({ className }: { readonly className?: string }) {

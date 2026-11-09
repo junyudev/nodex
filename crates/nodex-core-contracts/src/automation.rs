@@ -336,7 +336,7 @@ pub struct ScheduledPageOccurrence {
     pub recurrence: Option<PageRecurrenceConfig>,
     pub reminders: Vec<PageReminderConfig>,
     pub schedule_timezone: Option<String>,
-    pub assignee: Option<String>,
+    pub assignee: Option<crate::library::PageAssignee>,
     pub run_in_target: Option<String>,
     pub run_in_local_path: Option<String>,
     pub run_in_base_branch: Option<String>,

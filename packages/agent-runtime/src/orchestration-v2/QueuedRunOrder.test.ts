@@ -3,10 +3,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { isRuntimeDeliveryRun, queuedRunsInDeliveryOrder } from "./QueuedRunOrder.ts";
 
 describe("queued run delivery order", () => {
-  it("keeps automatic completion delivery ahead of visible queued messages", () => {
+  it("delivers person messages before delegated completions and Host wakes", () => {
     const projection = {
       messages: [
-        { id: "message:visible-first" },
+        { id: "message:visible-first", createdBy: "user" },
         {
           id: "message:automatic",
           delegatedCompletion: {
@@ -15,7 +15,7 @@ describe("queued run delivery order", () => {
             taskIds: ["task:child"],
           },
         },
-        { id: "message:visible-second" },
+        { id: "message:visible-second", createdBy: "user" },
         { id: "message:notice", notification: { summary: "Background work" } },
         { id: "message:host-input", createdBy: "system", creationSource: "server" },
       ],
@@ -59,19 +59,36 @@ describe("queued run delivery order", () => {
     } as never;
 
     expect(queuedRunsInDeliveryOrder(projection).map((run) => run.id)).toEqual([
-      "run:automatic",
       "run:visible-first",
       "run:visible-second",
+      "run:automatic",
       "run:notice",
       "run:host-input",
     ]);
     const ordered = queuedRunsInDeliveryOrder(projection);
     expect(ordered.map((run) => isRuntimeDeliveryRun(projection, run))).toEqual([
+      false,
+      false,
       true,
-      false,
-      false,
       true,
       true,
     ]);
   });
+});
+
+it("puts a later person message ahead of an ordinary Agent-authored follow-up", () => {
+  const projection = {
+    messages: [
+      { id: "agent", createdBy: "agent", creationSource: "mcp" },
+      { id: "person", createdBy: "user", creationSource: "web" },
+    ],
+    runs: [
+      { id: "automatic", ordinal: 1, queuePosition: 1, status: "queued", userMessageId: "agent" },
+      { id: "person", ordinal: 2, queuePosition: 2, status: "queued", userMessageId: "person" },
+    ],
+  } as never;
+  expect(queuedRunsInDeliveryOrder(projection).map((run) => run.id)).toEqual([
+    "person",
+    "automatic",
+  ]);
 });

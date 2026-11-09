@@ -1,3 +1,4 @@
+import { effectiveHolds, scopeHeld, spaceHeld } from "../work-application/execution-holds";
 import { inboxRoutingDeadline, inboxRoutingIdentity } from "./inbox-suggestions";
 import { decideInboxReply, inboxReplyDestination, type ReplyDispatch } from "./inbox-replies";
 import type { components } from "@nodex/core-protocol";
@@ -124,6 +125,10 @@ export interface InboxRoutingStatus {
 export class InboxApplication extends Context.Service<
   InboxApplication,
   {
+    readonly executionHeld: (input?: {
+      readonly pageIds?: readonly string[];
+      readonly sessionId?: string;
+    }) => InboxEffect<boolean>;
     readonly chatTargets: (input: InboxChatTargetsInput) => InboxEffect<InboxChatTargets>;
     readonly entry: (pageId: string) => InboxEffect<import("../../shared/inbox").InboxItem | null>;
     readonly summary: (input: InboxSummaryInput) => InboxEffect<InboxSummary>;
@@ -253,6 +258,20 @@ export const make = Effect.gen(function* () {
   const fail = (operation: string) => (cause: unknown) =>
     new InboxApplicationError({ operation, message: errorMessage(cause), cause });
 
+  const executionHeld = Effect.fn("InboxApplication.executionHeld")(
+    function* (input?: { readonly pageIds?: readonly string[]; readonly sessionId?: string }) {
+      if (yield* spaceHeld(core)) return true;
+      if (
+        input?.sessionId &&
+        (yield* effectiveHolds(core, { kind: "session", session_id: input.sessionId })).length
+      )
+        return true;
+      for (const page of input?.pageIds ?? [])
+        if ((yield* effectiveHolds(core, { kind: "page", page_id: page })).length) return true;
+      return false;
+    },
+    Effect.mapError(fail("execution-hold")),
+  );
   const parse = <A>(operation: string, run: () => A): InboxEffect<A> =>
     Effect.try({ try: run, catch: fail(operation) });
 
@@ -354,6 +373,9 @@ export const make = Effect.gen(function* () {
     pageId: string,
     body: string,
   ) {
+    const row = yield* entry(pageId);
+    const sessionId = row?.rowKind === "turn" ? row.turn?.active_chat?.session_id : null;
+    if (!sessionId) return { chat: null, dispatch: null };
     const session = yield* read("reply-session", { kind: "session", session_id: sessionId }).pipe(
       Effect.map((snapshot) => expectVariant(snapshot, "session").session),
       Effect.catchIf(isNotFound, () => Effect.succeed(null)),
@@ -382,16 +404,58 @@ export const make = Effect.gen(function* () {
       .observeSessionMetadata({ sessionId })
       .pipe(Effect.orElseSucceed(() => null));
     const dispatch: ReplyDispatch | null = metadata
+      ? decideInboxReply(
+          row?.turn?.turn.reason === "question" ? "attention" : "result",
+          body,
+          control.success,
+          metadata.details,
+        )
       : null;
     return { chat, dispatch };
   });
   const replyDestination = (pageId: string, body: string) =>
+    Effect.gen(function* () {
+      const row = yield* entry(pageId);
+      const { chat, dispatch } = yield* resolveReply(pageId, body);
+      if (row?.rowKind === "turn" && !dispatch) return { kind: "unavailable" as const, chat };
+      return inboxReplyDestination(chat, dispatch);
+    });
 
   const send = Effect.fn("InboxApplication.send")(function* (input: InboxSendInput) {
     const parsed = yield* parse("send", () => InboxSendInputSchema.parse(input));
     const reply = parsed.replyToPageId
       ? yield* resolveReply(parsed.replyToPageId, parsed.body)
       : null;
+    if (parsed.turnEpisode) {
+      if (!parsed.replyToPageId)
+        return yield* new InboxApplicationError({
+          operation: "send",
+          cause: null,
+          message: "This reply cannot be delivered. Open the active chat to continue.",
+        });
+      const applied = yield* apply(
+        "turn-reply",
+        {
+          kind: "reply_to_page_turn",
+          page_id: parsed.replyToPageId,
+          episode: parsed.turnEpisode,
+          body: parsed.body,
+          dispatch: reply?.dispatch ?? null,
+        },
+        parsed.operationId,
+      );
+      return { value: { pageId: parsed.pageId, state: "saved" as const }, apply: applied };
+    }
+    if (parsed.replyToPageId) {
+      const target = yield* entry(parsed.replyToPageId);
+      if (target?.rowKind === "turn")
+        return yield* new InboxApplicationError({
+          operation: "send",
+          cause: null,
+          message: "The Turn changed; refresh the Inbox before replying.",
+        });
+    }
+    const replyTarget = parsed.replyToPageId ? yield* entry(parsed.replyToPageId) : null;
     const applied = yield* apply(
       "send",
       {
@@ -401,6 +465,12 @@ export const make = Effect.gen(function* () {
         body: parsed.body,
         reply_to_page_id: parsed.replyToPageId ?? null,
         ...(parsed.title === undefined ? {} : { title: parsed.title }),
+        project_id:
+          replyTarget?.scope.kind === "project"
+            ? replyTarget.scope.projectId
+            : parsed.scope.kind === "project"
+              ? parsed.scope.projectId
+              : null,
         expected_store_epoch: parsed.storeEpoch,
       },
       parsed.operationId,
@@ -828,6 +898,7 @@ export const make = Effect.gen(function* () {
   const autoLane = yield* Semaphore.make(1);
   const autoConfirm = autoLane.withPermits(1)(
     Effect.gen(function* () {
+      if (yield* spaceHeld(core).pipe(Effect.mapError(fail("automatic-dispatch")))) return;
       const snapshot = yield* read("automatic-dispatches", {
         kind: "inbox_automatic_dispatches",
         limit: 100,
@@ -841,6 +912,30 @@ export const make = Effect.gen(function* () {
           (action.type !== "new_chat" && action.type !== "send_to_chat")
         )
           continue;
+        let held = false;
+        for (const basis of proposal.basis)
+          if (
+            (yield* effectiveHolds(core, { kind: "page", page_id: basis.page_id }).pipe(
+              Effect.mapError(fail("automatic-dispatch")),
+            )).length
+          )
+            held = true;
+        if (
+          action.type === "send_to_chat" &&
+          (yield* effectiveHolds(core, { kind: "session", session_id: action.sessionId }).pipe(
+            Effect.mapError(fail("automatic-dispatch")),
+          )).length
+        )
+          held = true;
+        if (
+          action.type === "new_chat" &&
+          action.projectId &&
+          (yield* scopeHeld(core, { kind: "project", project_id: action.projectId }).pipe(
+            Effect.mapError(fail("automatic-dispatch")),
+          ))
+        )
+          held = true;
+        if (held) continue;
         const at = Date.parse(proposal.created_at);
         const operationId = createStableOperationId("inbox.auto-confirm", at, [
           proposal.proposal_id,
@@ -1085,6 +1180,7 @@ export const make = Effect.gen(function* () {
     beginRouting,
     routingStatus,
     recordRoutingRefusal,
+    executionHeld,
     autoConfirm,
     retryDispatch,
     delete: deleteMessages,

@@ -414,6 +414,7 @@ fn workflow_status(value: &Value) -> Result<LibraryPageWorkflowStatus, StoreErro
         Some("doing") => Ok(LibraryPageWorkflowStatus::Doing),
         Some("review") => Ok(LibraryPageWorkflowStatus::Review),
         Some("done") => Ok(LibraryPageWorkflowStatus::Done),
+        Some("canceled") => Ok(LibraryPageWorkflowStatus::Canceled),
         _ => Err(corrupt("Page membership status is invalid")),
     }
 }

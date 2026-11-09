@@ -17,6 +17,8 @@ import { CodexThreadHandoffRuntime } from "../codex-application/CodexThreadHando
 import { SessionWaiter } from "./SessionWaiter";
 import { ProjectSessionCommands } from "../project-application/ProjectSessionCommands";
 import { SessionObservation } from "./SessionObservation";
+import * as FileSystem from "effect/FileSystem";
+import { CoreSessionAccess } from "../core-runtime/CoreAuthority";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { AutomationApplication } from "../automation-application/AutomationApplication";
@@ -128,6 +130,10 @@ const interpreter = (options: { hostId?: string; afterRead?: () => void } = {}) 
             errorMessage: params.cwd === "/missing" ? "Missing directory" : null,
           }),
       } as GitWorkerRuntime["Service"]),
+    )
+    .pipe(
+      Effect.provide(FileSystem.layerNoop({})),
+      Effect.provideService(CoreSessionAccess, {} as never),
     );
 
 it.effect("rejects substituted hosts, extra identity arguments, and withdrawn calls", () =>

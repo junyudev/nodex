@@ -25,6 +25,7 @@ it.effect.each(["suggest", "act_on_requests"] as const)(
     Effect.scoped(
       Effect.gen(function* () {
         let current: InboxSettings = { ...DEFAULT_INBOX_SETTINGS, dispatchMode: mode };
+        const { inbox, client, core, projectId } = yield* inboxOverRealCore(
           Effect.void,
           () => Effect.succeed([provider]),
           () => current,
@@ -48,6 +49,7 @@ it.effect.each(["suggest", "act_on_requests"] as const)(
               page_ids: [captured.pageId],
               action: {
                 type: "new_chat",
+                project_id: projectId,
                 prompt: "Handle the attached request",
                 additions: ["Optional extra lookup"],
               },
@@ -68,6 +70,28 @@ it.effect.each(["suggest", "act_on_requests"] as const)(
         assert.equal(candidates.value.kind, "inbox_automatic_dispatches");
         if (candidates.value.kind === "inbox_automatic_dispatches")
           assert.lengthOf(candidates.value.proposals, mode === "act_on_requests" ? 1 : 0);
+        if (mode === "act_on_requests") {
+          const scopes = [
+            { kind: "page", page_id: captured.pageId },
+            { kind: "project", project_id: projectId },
+            { kind: "space" },
+          ] as const;
+          for (const scope of scopes) {
+            yield* core.workspace.apply(
+              { operationId: `hold:${scope.kind}`, intent: { kind: "pause_work", scope } },
+              undefined,
+              null,
+            );
+            yield* inbox.autoConfirm;
+            assert.equal((yield* inbox.entry(captured.pageId))!.proposal?.state, "open");
+            assert.isEmpty(yield* inbox.outbox(16));
+            yield* core.workspace.apply(
+              { operationId: `resume:${scope.kind}`, intent: { kind: "resume_work", scope } },
+              undefined,
+              null,
+            );
+          }
+        }
         yield* inbox.autoConfirm;
         yield* inbox.autoConfirm;
         const entry = (yield* inbox.entry(captured.pageId))!;

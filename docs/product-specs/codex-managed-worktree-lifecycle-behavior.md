@@ -243,11 +243,39 @@ per-Chat cleanup, then asks the lifecycle owner to remove the physical
 worktree once. The Chat records and execution locations remain available for
 inspection and restoration.
 
+## Page Workspaces
+
+A Page with an Agent Assignee in a git Project uses one Workspace per Page. Core owns its repository,
+branch, starting commit, allocation identity and lifecycle, plus each consuming
+Session's binding. Runtime remains the owner of each Thread's execution location.
+The physical owner Thread is registration metadata; it is never the complete
+consumer set of a shared Workspace. A deleted Session remains a consumer until
+its Runtime execution cleanup is acknowledged.
+
+Allocation records its intended checkout before creation. The host creates a
+clean attached branch at the default branch's recorded commit, validates the
+name with Git and retries unrelated name collisions with a numeric suffix. An
+atomic Git reservation pairs the new branch with Workspace ownership evidence.
+A retry rejoins that allocation and does not adopt an unrelated branch merely
+
+Done or Canceled records a cleanup request in the same transaction as the Status change.
+Cleanup waits for every consuming Session's root, delegated and background work
+snapshot, Environment cleanup and validated worktree deletion. Unavailable
+consumer facts defer deletion. Active Page Workspaces are protected from generic
+retention even while idle and throughout preparation. Worktree Settings leaves
+these checkouts with their Page lifecycle rather than deleting them independently.
+
+Checkout removal retains the branch and the Page's verified PR link. Reopened
+work uses that same branch. A PR link is accepted only for the Workspace's head
+branch in its head repository; later observations update its state, and forge or
+network failures never clear a known link.
+
 ## Automatic retention
 
 Automatic retention constructs one consistent plan before deleting anything.
 It protects:
 
+- active Page Workspace checkouts, including preparation and pending cleanup;
 - permanent or stable Project roots;
 - roots used by pinned Chats;
 - pending worktree roots;

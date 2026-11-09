@@ -584,7 +584,7 @@ describe("Core Database Module Adapter", () => {
               },
               non_empty_value_count: 1,
               referenced_view_ids: [],
-              option_count: 1,
+              option_count: 6,
               rank_key: "a",
               lifecycle: "active",
               revision: 2,
@@ -663,7 +663,14 @@ describe("Core Database Module Adapter", () => {
       value: {
         kind: "option_window",
         options: {
-          items: [{ id: "doing", name: "In progress", color: null, selected_page_count: 1 }],
+          items: [
+            { id: "triage", name: "Triage", color: null, selected_page_count: 0 },
+            { id: "plan", name: "Todo", color: null, selected_page_count: 0 },
+            { id: "doing", name: "In progress", color: null, selected_page_count: 1 },
+            { id: "review", name: "In Review", color: null, selected_page_count: 0 },
+            { id: "done", name: "Done", color: null, selected_page_count: 0 },
+            { id: "canceled", name: "Canceled", color: null, selected_page_count: 0 },
+          ],
           next_cursor: null,
           authority: { projection_revision: 19 },
         },
@@ -692,13 +699,26 @@ describe("Core Database Module Adapter", () => {
               {
                 propertyId: "status",
                 schema: { kind: "select" },
-                config: { options: [{ id: "doing", name: "In progress" }] },
+                config: {
+                  options: [
+                    { id: "triage", name: "Triage" },
+                    { id: "plan", name: "Todo" },
+                    { id: "doing", name: "In progress" },
+                    { id: "review", name: "In Review" },
+                    { id: "done", name: "Done" },
+                    { id: "canceled", name: "Canceled" },
+                  ],
+                },
               },
               { propertyId: "p_abcdefgh", config: {} },
             ],
           },
         },
       },
+    });
+    expect(client.databaseReads.at(-1)).toMatchObject({
+      kind: "option_window",
+      window: { first: 6 },
     });
     expect(client.databaseReads.map((read) => read.kind)).toEqual([
       "data_source",
@@ -1385,6 +1405,10 @@ test("reads work graph windows and readiness through the typed Database adapter"
         {
           page_id: "page:dependent",
           project_id: "project:work",
+          page_work: {
+            owner: "person",
+            assignee: { kind: "agent", instance_id: "codex", model: "gpt-6-luna", effort: null },
+            auto_start: false,
           },
           prerequisites: [
             {

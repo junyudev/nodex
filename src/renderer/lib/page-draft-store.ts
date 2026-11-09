@@ -1,6 +1,6 @@
 import type { PageInput } from "./types";
 
-export type PageDraftOverlay = Pick<Partial<PageInput>, "title" | "assignee">;
+export type PageDraftOverlay = Pick<Partial<PageInput>, "title">;
 
 type StoreListener = () => void;
 
@@ -14,7 +14,6 @@ function normalizeDraftOverlay(overlay: PageDraftOverlay): PageDraftOverlay {
   const next: PageDraftOverlay = {};
 
   if (typeof overlay.title === "string") next.title = overlay.title;
-  if (typeof overlay.assignee === "string") next.assignee = overlay.assignee;
 
   return next;
 }
@@ -24,7 +23,7 @@ function hasDraftOverlay(overlay: PageDraftOverlay): boolean {
 }
 
 function areDraftOverlaysEqual(left: PageDraftOverlay, right: PageDraftOverlay): boolean {
-  return left.title === right.title && left.assignee === right.assignee;
+  return left.title === right.title;
 }
 
 class PageDraftStore {

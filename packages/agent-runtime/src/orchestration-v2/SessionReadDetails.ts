@@ -5,6 +5,7 @@ import {
 import type { AgentWire } from "../nodex/Interface.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { readWaiting, type WaitingAdmission } from "./RunAdmission.ts";
 import { readSessionAttention } from "./SessionAttention.ts";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as NodeSqliteClient from "@nodex/runtime-shared/nodeSqliteClient";
@@ -12,8 +13,14 @@ import * as NodeSqliteClient from "@nodex/runtime-shared/nodeSqliteClient";
 export type SessionRunSummary = Pick<
   AgentWire<OrchestrationV2Run>,
   "ordinal" | "status" | "providerInstanceId" | "requestedAt" | "startedAt" | "completedAt"
-> & { readonly runId: string; readonly model: string };
+> & {
+  readonly runId: string;
+  readonly model: string;
+  readonly interruptRequested: boolean;
+  readonly failureMessage?: string | null;
+};
 export interface SessionReadDetails {
+  readonly waitingAdmissions: readonly WaitingAdmission[];
   readonly runCount: number;
   readonly pendingRequestCount: number;
   readonly recentRuns: readonly SessionRunSummary[];
@@ -42,6 +49,11 @@ export const readSessionDetails = Effect.fn("SessionReadDetails.read")(function*
       requested_at AS requestedAt,
       json_extract(payload_json, '$.startedAt') AS startedAt,
       completed_at AS completedAt,
+      CASE WHEN status = 'failed' THEN (SELECT json_extract(item.payload_json, '$.failure.message')
+        FROM orchestration_v2_projection_turn_items item
+        WHERE item.thread_id = runs.thread_id AND item.run_id = runs.run_id
+          AND item.type = 'error' AND item.status = 'failed'
+        ORDER BY item.ordinal DESC, item.turn_item_id DESC LIMIT 1) END AS failureMessage,
       EXISTS(SELECT 1 FROM orchestration_v2_projection_turn_items item
         WHERE item.thread_id = runs.thread_id AND item.run_id = runs.run_id
           AND item.type = 'run_interrupt_request') AS interruptRequested
@@ -79,6 +91,7 @@ export const readSessionDetails = Effect.fn("SessionReadDetails.read")(function*
         }),
       );
       return {
+        waitingAdmissions: yield* readWaiting(threadId),
         runCount: counts[0]?.runCount ?? 0,
         pendingRequestCount: counts[0]?.pendingRequestCount ?? 0,
         pendingRequests,

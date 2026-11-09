@@ -12,7 +12,8 @@ export const BUILT_IN_DATA_SOURCE_PROPERTY_DEFINITIONS = {
   due_date: { valueType: "date" },
   scheduled_start: { valueType: "datetime" },
   scheduled_end: { valueType: "datetime" },
-  assignee: { valueType: "text" },
+  assignee: { valueType: "assignment" },
+  owner: { valueType: "assignment" },
   task_parent: { valueType: "relation" },
   blocked_by: { valueType: "relation" },
 } as const satisfies Readonly<

@@ -225,6 +225,8 @@ pub(super) fn delete_session(
         session_id,
         authority.project_id.as_deref(),
     )?;
+    // Runtime consumers remain until native execution cleanup is acknowledged.
+    connection.execute("DELETE FROM session_workspaces WHERE session_id=?1 AND NOT EXISTS(SELECT 1 FROM project_session_execution_bindings WHERE session_id=?1)",[session_id])?;
     let changed = connection.execute("DELETE FROM project_sessions WHERE id = ?1", [session_id])?;
     if changed != 1 {
         return Err(corrupt("Project Session disappeared during deletion"));
@@ -264,6 +266,18 @@ pub(super) fn move_session(
         require_project(connection, library_id, project_id, true)?;
     }
     let authority = require_session(connection, library_id, session_id)?;
+    let workspace_project: Option<String> = connection.query_row("SELECT w.project_id FROM session_workspaces binding JOIN page_workspaces w ON w.workspace_id=binding.workspace_id WHERE binding.session_id=?1",[session_id],|r|r.get(0)).optional()?;
+    if workspace_project
+        .as_deref()
+        .is_some_and(|owner| Some(owner) != project_id)
+    {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "A Page Workspace chat stays in its Project",
+            false,
+        ));
+    }
+
     let now = sqlite_now(connection)?;
     if authority.project_id.as_deref() == project_id && placement.is_none() {
         return finish_session_mutation(
@@ -542,11 +556,12 @@ pub(super) fn finish_lifecycle_mutation(
         operation_id,
         request_hash,
         &committed_at,
-        |_| {
+        |scope| {
             super::page_chat::advance_handed_off_pages(
                 connection,
                 library_id,
                 context,
+                scope.evidence(),
                 operation_id,
                 handed_off_page_ids,
                 effects,

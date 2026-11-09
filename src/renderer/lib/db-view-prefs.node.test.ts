@@ -24,7 +24,7 @@ function makeCard(overrides: Partial<DbViewCardRecord>): DbViewCardRecord {
     priority: "p2-medium",
     estimate: "m",
     tags: [],
-    assignee: "",
+    assignee: null,
     created: new Date("2026-02-10T00:00:00.000Z"),
     order: 0,
     columnId: "plan",
@@ -310,9 +310,9 @@ describe("db view prefs", () => {
 
     const sorted = sortDbViewCards(
       [
-        makeCard({ id: "c", assignee: "zoe", boardIndex: 2 }),
-        makeCard({ id: "a", assignee: "anna", boardIndex: 0 }),
-        makeCard({ id: "b", assignee: "mika", boardIndex: 1 }),
+        makeCard({ id: "c", assignee: { kind: "member", member_id: "zoe" }, boardIndex: 2 }),
+        makeCard({ id: "a", assignee: { kind: "member", member_id: "anna" }, boardIndex: 0 }),
+        makeCard({ id: "b", assignee: { kind: "member", member_id: "mika" }, boardIndex: 1 }),
       ],
       prefs.rules,
     );

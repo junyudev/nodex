@@ -2388,7 +2388,7 @@ test.describe("parallel functional Electron smoke", () => {
       const statusItem = page.getByRole("menuitem", { name: /Status/ });
       await expect(statusItem).toBeVisible();
       await statusItem.click();
-      const doingOption = page.getByRole("option", { name: "Doing", exact: true });
+      const doingOption = page.getByRole("option", { name: "In Progress", exact: true });
       await expect(doingOption).toBeVisible();
       await doingOption.click();
 

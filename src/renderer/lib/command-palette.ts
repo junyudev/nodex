@@ -1,3 +1,5 @@
+import { pageAssigneeFromKey, pageAssigneeName } from "../../shared/work-graph";
+import type { Member } from "../../shared/work-graph";
 import type { CodexAccentPreset } from "./codex-theme-variant";
 import type { FileSearchMatch } from "../../shared/file-search";
 import { matchesSearchTokens, tokenizeSearchQuery } from "./page-search";
@@ -95,7 +97,8 @@ export interface CommandPalettePage {
         status: WorkflowStatus | null;
         priority: Priority | null;
         tags: string[];
-        assignee: string | null;
+        assignee: import("../../shared/work-graph").PageAssignee | null;
+        owner?: string | null;
       };
   /** Registry-resolved display labels; canonical option IDs stay on page.tags. */
   tagLabels: string[];
@@ -165,10 +168,11 @@ export interface CommandPalettePageFilters {
   tags: string[];
   tagMode: ToggleListTagFilterMode;
   assignees: string[];
+  owners?: string[];
   projectIds: string[];
 }
 
-export const COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY = "nodex-command-palette-page-filters-v2";
+export const COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY = "nodex-command-palette-page-filters-v3";
 export const LEGACY_COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY =
   "nodex-command-palette-page-filters-v1";
 const TAG_FILTER_MODES = new Set<ToggleListTagFilterMode>(["any", "all", "none"]);
@@ -212,6 +216,7 @@ export function getDefaultCommandPalettePageFilters(): CommandPalettePageFilters
     tags: [],
     tagMode: "any",
     assignees: [],
+    owners: [],
     projectIds: [],
   };
 }
@@ -226,6 +231,7 @@ export function cloneCommandPalettePageFilters(
     tags: [...filters.tags],
     tagMode: filters.tagMode,
     assignees: [...filters.assignees],
+    owners: [...(filters.owners ?? [])],
     projectIds: [...filters.projectIds],
   };
 }
@@ -245,6 +251,7 @@ export function areCommandPalettePageFiltersEqual(
     left.tags.every((value, index) => value === right.tags[index]) &&
     left.assignees.length === right.assignees.length &&
     left.assignees.every((value, index) => value === right.assignees[index]) &&
+    (left.owners ?? []).join("\0") === (right.owners ?? []).join("\0") &&
     left.projectIds.length === right.projectIds.length &&
     left.projectIds.every((value, index) => value === right.projectIds[index])
   );
@@ -305,6 +312,7 @@ export function normalizeCommandPalettePageFilters(
       TAG_FILTER_MODES.has(candidate.tagMode as ToggleListTagFilterMode)
         ? (candidate.tagMode as ToggleListTagFilterMode)
         : fallback.tagMode,
+    owners: normalizeSelectableStrings(candidate.owners, fallback.owners ?? []),
     assignees: normalizeSelectableStrings(
       candidate.assignees,
       fallback.assignees,
@@ -385,13 +393,19 @@ export function hasActiveCommandPalettePageFilters(filters: CommandPalettePageFi
     return true;
   }
 
-  return filters.tags.length > 0 || filters.assignees.length > 0 || filters.projectIds.length > 0;
+  return (
+    filters.tags.length > 0 ||
+    filters.assignees.length > 0 ||
+    (filters.owners?.length ?? 0) > 0 ||
+    filters.projectIds.length > 0
+  );
 }
 
 export function summarizeCommandPalettePageFilters(
   filters: CommandPalettePageFilters,
   projectNameById: ReadonlyMap<string, string>,
   tagNameById: ReadonlyMap<string, string> = new Map(),
+  members: readonly Member[] = [],
 ): Array<{ key: string; label: string; value: string }> {
   const summaries: Array<{ key: string; label: string; value: string }> = [];
 
@@ -430,9 +444,20 @@ export function summarizeCommandPalettePageFilters(
     summaries.push({
       key: "assignees",
       label: "Assignee",
-      value: filters.assignees.join(", "),
+      value: filters.assignees
+        .map((key) => pageAssigneeName(pageAssigneeFromKey(key), members))
+        .join(", "),
     });
   }
+
+  if (filters.owners?.length)
+    summaries.push({
+      key: "owners",
+      label: "Owner",
+      value: filters.owners
+        .map((id) => members.find((member) => member.id === id)?.display_name ?? "Member")
+        .join(", "),
+    });
 
   if (filters.projectIds.length > 0) {
     summaries.push({

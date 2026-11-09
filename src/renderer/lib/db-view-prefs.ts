@@ -1,3 +1,4 @@
+import { pageAssigneeName } from "../../shared/work-graph";
 import type { DatabasePageSummary, Estimate, Priority } from "@/lib/types";
 import {
   WORKFLOW_STATUS_ORDER,
@@ -538,7 +539,7 @@ function compareBySortKey(
         normalizeTagSortValue(left.tags).localeCompare(normalizeTagSortValue(right.tags)) * sign
       );
     case "assignee":
-      return (left.assignee ?? "").localeCompare(right.assignee ?? "") * sign;
+      return pageAssigneeName(left.assignee).localeCompare(pageAssigneeName(right.assignee)) * sign;
     default:
       return 0;
   }

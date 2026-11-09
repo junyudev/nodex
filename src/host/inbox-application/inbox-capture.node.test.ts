@@ -5,7 +5,6 @@ import { LIBRARY_INBOX, type InboxSendInput } from "../../shared/inbox";
 import { createBoundedOperationId } from "../../shared/operation-identity";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { MAX_INBOX_TITLE_LENGTH } from "../../shared/schemas/inbox";
-import { CoreModuleResponseError } from "../core-client/core-client";
 import { inboxOverRealCore } from "./InboxApplication.test-support";
 
 it.effect(
@@ -70,12 +69,18 @@ it.effect("replays a capture after a lost reply and retires it when its Page was
       yield* inbox.send(input);
       const recovered = yield* inbox.send(input);
       assert.deepEqual(recovered.value, { pageId: input.pageId, state: "saved" });
-      assert.strictEqual((yield* inbox.summary({ scope: LIBRARY_INBOX })).entryCount, 1);
+      assert.strictEqual(
+        (yield* inbox.summary({ scope: LIBRARY_INBOX })).entryCount,
+        summary.entryCount + 1,
+      );
 
       yield* inbox.delete({ pageIds: [input.pageId] });
       const afterDeletion = yield* inbox.send(input);
       assert.deepEqual(afterDeletion.value, { pageId: input.pageId, state: "deleted" });
-      assert.strictEqual((yield* inbox.summary({ scope: LIBRARY_INBOX })).entryCount, 0);
+      assert.strictEqual(
+        (yield* inbox.summary({ scope: LIBRARY_INBOX })).entryCount,
+        summary.entryCount,
+      );
     }),
   ),
 );
@@ -106,10 +111,16 @@ it.effect("keeps a post-commit visibility refusal uncertain and recovers the sam
         .send(input)
         .pipe(Effect.flip, Effect.ensuring(Effect.sync(() => read.mockRestore())));
       assert.isTrue(error.mayHaveCommitted);
-      assert.strictEqual((yield* inbox.summary({ scope: LIBRARY_INBOX })).entryCount, 1);
+      assert.strictEqual(
+        (yield* inbox.summary({ scope: LIBRARY_INBOX })).entryCount,
+        summary.entryCount + 1,
+      );
       const recovered = yield* inbox.send(input);
       assert.deepEqual(recovered.value, { pageId: input.pageId, state: "saved" });
-      assert.strictEqual((yield* inbox.summary({ scope: LIBRARY_INBOX })).entryCount, 1);
+      assert.strictEqual(
+        (yield* inbox.summary({ scope: LIBRARY_INBOX })).entryCount,
+        summary.entryCount + 1,
+      );
     }),
   ),
 );
@@ -119,6 +130,7 @@ it.effect("refuses to change a captured intent while reusing its identity", () =
     Effect.gen(function* () {
       const { inbox } = yield* inboxOverRealCore();
       const summary = yield* inbox.summary({ scope: LIBRARY_INBOX });
+      const before = yield* inbox.window({ scope: LIBRARY_INBOX, filter: "inbox" });
       const input: InboxSendInput = {
         operationId: createBoundedOperationId("test.inbox.capture"),
         pageId: createUuidV7(),
@@ -131,8 +143,14 @@ it.effect("refuses to change a captured intent while reusing its identity", () =
       yield* inbox.send(input);
       yield* Effect.flip(inbox.send({ ...input, body: "A different thought" }));
       const window = yield* inbox.window({ scope: LIBRARY_INBOX, filter: "inbox" });
-      assert.strictEqual(window.items.length, 1);
-      assert.strictEqual(window.items[0]?.body, input.body);
+      assert.deepEqual(
+        window.items.map((item) => item.pageId).sort(),
+        [...before.items.map((item) => item.pageId), input.pageId].sort(),
+      );
+      assert.strictEqual(
+        window.items.find((item) => item.pageId === input.pageId)?.body,
+        input.body,
+      );
     }),
   ),
 );

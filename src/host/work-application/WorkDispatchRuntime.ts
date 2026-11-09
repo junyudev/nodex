@@ -1,3 +1,4 @@
+import { effectiveHolds } from "./execution-holds";
 import { createHash } from "node:crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -48,6 +49,7 @@ export const make = Effect.gen(function* () {
   });
   const deliver = Effect.fn("WorkDispatchRuntime.deliver")(function* (launch: Launch) {
     if (yield* reconcile(launch)) return;
+    if ((yield* effectiveHolds(core, { kind: "page", page_id: launch.page_id })).length) return;
     const session = yield* core.workspace.read(
       { kind: "session", session_id: launch.session_id },
       undefined,
@@ -74,6 +76,7 @@ export const make = Effect.gen(function* () {
       title: session.value.session.display_title,
       modelSelection,
       interactionMode: "default",
+      workPage: { pageId: launch.page_id },
       messageOrigin: "host",
       messageFingerprint: createHash("sha256")
         .update(

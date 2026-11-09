@@ -122,6 +122,15 @@ export function readAgentRuntimeEffort(
   return typeof value === "string" ? value : null;
 }
 
+/** The Page assignment carried by a chat handoff and its execution observations. */
+export function agentRuntimeWorkSelection(selection: AgentWire<ModelSelection>) {
+  return {
+    instanceId: selection.instanceId,
+    model: selection.model,
+    effort: readAgentRuntimeEffort(selection.options),
+  };
+}
+
 /** The selected speed tier, or `null` for standard; undefined when the selection has none. */
 export function readAgentRuntimeServiceTier(
   options: AgentWire<ModelSelection>["options"],

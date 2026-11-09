@@ -91,10 +91,13 @@ fn property_descriptor(
         super::property_semantics::TASK_PARENT_PROPERTY_ID => {
             Some(DatabasePropertySystemRole::TaskParent)
         }
+        "owner" => Some(DatabasePropertySystemRole::PageOwner),
+        "assignee" => Some(DatabasePropertySystemRole::PageAssignee),
         _ => None,
     };
     let active = row.lifecycle == "active";
     let custom = super::property_semantics::is_custom_property_id(&row.property_id);
+    let virtual_field = matches!(row.property_id.as_str(), "owner" | "assignee");
     let removable = system_role.is_none();
     let option_backed = matches!(row.value_type.as_str(), "select" | "multi_select");
     let mut blocked_reasons = Vec::new();
@@ -108,13 +111,15 @@ fn property_descriptor(
         blocked_reasons.push("Clear all Property values before changing its type".to_owned());
     }
     let management_policy = DatabasePropertyManagementPolicy {
-        can_rename: active,
-        can_reorder: active,
+        can_rename: active && !virtual_field,
+        can_reorder: active && !virtual_field,
         // The same schema intent owns presentation-only Number/Date formats,
         // which remain editable with values. Core still rejects structural
         // type or Relation changes until values are empty.
         can_change_type: active && custom,
-        can_duplicate: active && system_role != Some(DatabasePropertySystemRole::TaskParent),
+        can_duplicate: active
+            && !virtual_field
+            && system_role != Some(DatabasePropertySystemRole::TaskParent),
         can_delete: active && removable,
         can_restore: !active && removable,
         can_permanently_delete: !active && removable && referenced_view_ids.is_empty(),
@@ -1947,9 +1952,14 @@ fn property_records(
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    rows.into_iter()
+    let mut descriptors = rows
+        .into_iter()
         .map(|row| property_descriptor(connection, row))
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+    for id in ["owner", "assignee"] {
+        descriptors.push(page_work_descriptor(connection, data_source_id, id)?);
+    }
+    Ok(descriptors)
 }
 
 fn read_property_configs(
@@ -1968,6 +1978,11 @@ fn read_property_configs(
             ))
         })?
         .collect::<rusqlite::Result<BTreeMap<_, _>>>()
+        .map(|mut configs| {
+            configs.insert("owner".into(), json!({}));
+            configs.insert("assignee".into(), json!({}));
+            configs
+        })
         .map_err(StoreError::from)
 }
 
@@ -1976,6 +1991,9 @@ fn property_record(
     data_source_id: &str,
     property_id: &str,
 ) -> Result<DatabasePropertyDescriptor, StoreError> {
+    if matches!(property_id, "owner" | "assignee") {
+        return page_work_descriptor(connection, data_source_id, property_id);
+    }
     let row = connection
         .query_row(
             "SELECT id, data_source_id, name, value_type, config_json, rank_key, lifecycle, \
@@ -2186,7 +2204,8 @@ fn read_values(
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    rows.into_iter()
+    let mut values = rows
+        .into_iter()
         .map(|(property_id, value_type, value_json, revision)| {
             Ok((
                 property_id.clone(),
@@ -2198,7 +2217,14 @@ fn read_values(
                 }),
             ))
         })
-        .collect()
+        .collect::<Result<Vec<_>, StoreError>>()?;
+    let work=connection.query_row("SELECT work.value_json,work.revision FROM data_source_page_memberships membership JOIN block_properties work ON work.block_id=membership.page_block_id AND work.property_key='work' WHERE membership.id=?1",[membership_id],|r|Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?))).optional()?;
+    if let Some((encoded, revision)) = work {
+        let work = crate::library::parse_page_work(&parse_json(encoded, "Page work")?)?;
+        values.push(("owner".into(),json!({"propertyId":"owner","valueType":"assignment","value":{"kind":"member","member_id":work.owner},"revision":revision})));
+        values.push(("assignee".into(),json!({"propertyId":"assignee","valueType":"assignment","value":work.assignee,"revision":revision})));
+    }
+    Ok(values.into_iter().collect())
 }
 
 pub(crate) fn page_record(connection: &Connection, page_id: &str) -> Result<Value, StoreError> {
@@ -2277,4 +2303,36 @@ fn not_found(message: &str) -> StoreError {
 
 fn corrupt(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::StoreCorrupt, message, false)
+}
+
+fn page_work_descriptor(
+    connection: &Connection,
+    source: &str,
+    id: &str,
+) -> Result<DatabasePropertyDescriptor, StoreError> {
+    let (created_at, updated_at) = connection.query_row(
+        "SELECT created_at,updated_at FROM data_sources WHERE id=?1",
+        [source],
+        |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+    )?;
+    property_descriptor(
+        connection,
+        PropertyDescriptorRow {
+            property_id: id.into(),
+            data_source_id: source.into(),
+            name: if id == "owner" { "Owner" } else { "Assignee" }.into(),
+            value_type: "assignment".into(),
+            config_json: "{}".into(),
+            rank_key: if id == "owner" {
+                "zz-owner"
+            } else {
+                "zz-assignee"
+            }
+            .into(),
+            lifecycle: "active".into(),
+            revision: 1,
+            created_at,
+            updated_at,
+        },
+    )
 }

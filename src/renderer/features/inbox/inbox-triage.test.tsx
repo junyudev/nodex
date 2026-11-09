@@ -9,7 +9,6 @@ import type { Project } from "../../../shared/types";
 import { InboxDeleteDialog } from "./inbox-delete-dialog";
 import { draftForInboxItem } from "./inbox-dispatch-editor";
 import { describeInboxDecision } from "./inbox-presentation";
-import { InboxHistory } from "./inbox-history";
 import { InboxMessage, InboxMessageMenu, type InboxMessageMenuHandlers } from "./inbox-message";
 import { NO_ROW_OFFERS } from "./inbox-presentation";
 import { InboxTriage } from "./inbox-triage";
@@ -51,6 +50,8 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
 
 const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   pageId: "page:1",
+  rowKind: "intake",
+  turn: null,
   outcome: null,
   basis: { pageId: "page:1", contentHash: "content:1" },
   pageKey: "IN-1",
@@ -892,11 +893,21 @@ describe("A plan", () => {
   });
 });
 
+describe("A Nodex answer", () => {
+  test("continues with Nodex through Reply", async () => {
     const onReply = vi.fn();
     renderTriage({
+      item: item({
+        rowKind: "answer",
+        source: { kind: "nodex", purpose: "answer", subjectSessionId: null, subjectPageId: null },
+        suggestionState: "none",
+        proposal: null,
       }),
+      onReply,
     });
     expect(lastButtonName()).toBe("Reply");
+    await click("Reply");
+    expect(onReply).toHaveBeenCalledOnce();
   });
 });
 
@@ -966,156 +977,6 @@ describe("Importance", () => {
     render(message(false, { onOpenPage }));
     await click("Open page");
     expect(onOpenPage).toHaveBeenCalledOnce();
-  });
-});
-
-const historyChat = (overrides: Partial<InboxChat> = {}): InboxChat => ({
-  sessionId: "session:1",
-  projectId: "project:nodex",
-  projectName: "Nodex",
-  displayTitle: "Homepage positioning",
-  threadId: "thread:1",
-  executionRef: null,
-  status: { statusType: "idle", activeFlags: [] },
-  unread: false,
-  archived: false,
-  ...overrides,
-});
-
-const delivered = (pageId: string, title: string, chat: InboxChat, done = false) =>
-  item({
-    pageId,
-    title,
-    state: done ? "done" : "open",
-    outcome: "chat",
-    proposal: proposal({ state: "completed", chat }),
-  });
-
-const historyHandlers = () => ({
-  onOpenTarget: vi.fn(),
-  onOpenPage: vi.fn(),
-  onReturn: vi.fn(),
-  onSetDone: vi.fn(),
-  onDelete: vi.fn(),
-});
-
-const rowIds = (container: HTMLElement = document.body) =>
-  within(container)
-    .getAllByTestId("inbox-history-row")
-    .map((row) => row.getAttribute("data-inbox-page-id"));
-
-const historyRow = (pageId: string) =>
-  screen
-    .getAllByTestId("inbox-history-row")
-    .find((row) => row.getAttribute("data-inbox-page-id") === pageId)!;
-
-describe("InboxHistory", () => {
-  test("a delivered chat shows its live status and opens the conversation", async () => {
-    const handlers = historyHandlers();
-    render(
-      <TestQueryProvider>
-        <InboxHistory
-          items={[
-            delivered(
-              "page:1",
-              "Homepage positioning",
-              historyChat({ status: { statusType: "active", activeFlags: ["waitingOnApproval"] } }),
-            ),
-          ]}
-          {...handlers}
-        />
-      </TestQueryProvider>,
-    );
-    expect(screen.getByText("Started “Homepage positioning”")).toBeTruthy();
-    expect(screen.getByText("Needs approval")).toBeTruthy();
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { expanded: false }));
-      await Promise.resolve();
-    });
-    await click("Open chat");
-    expect(handlers.onOpenTarget).toHaveBeenCalledWith({ kind: "session", sessionId: "session:1" });
-  });
-
-  test("work still under way leads, and the user closes a finished chat's work", async () => {
-    const handlers = historyHandlers();
-    render(
-      <TestQueryProvider>
-        <InboxHistory
-          items={[
-            delivered(
-              "page:working",
-              "Fix the Board header",
-              historyChat({ status: { statusType: "active", activeFlags: [] } }),
-            ),
-            delivered("page:read", "Rename the tab", historyChat()),
-            delivered("page:reply", "Audit empty states", historyChat({ unread: true })),
-            delivered("page:closed", "Ship the digest", historyChat({ unread: true }), true),
-            item({ pageId: "page:kept", title: "A note", state: "kept", outcome: "kept" }),
-          ]}
-          {...handlers}
-        />
-      </TestQueryProvider>,
-    );
-    // A chat that is working or has a reply the user has not read is still in progress; one
-    // that went quiet after they read it, or whose work they closed, is finished.
-    const inProgress = rowIds(screen.getByRole("region", { name: "In progress" }));
-    expect(inProgress).toEqual(["page:working", "page:reply"]);
-    expect(rowIds().filter((id) => !inProgress.includes(id))).toEqual([
-      "page:read",
-      "page:closed",
-      "page:kept",
-    ]);
-    expect(within(historyRow("page:reply")).getByText("New reply")).toBeTruthy();
-
-    const reply = historyRow("page:reply");
-    await act(async () => {
-      fireEvent.click(within(reply).getByRole("button", { expanded: false }));
-      await Promise.resolve();
-    });
-    // Dispatched work cannot return to the Inbox; it can only be closed.
-    expect(within(reply).queryByRole("button", { name: "Return to Inbox" })).toBeNull();
-    await act(async () => {
-      fireEvent.click(within(reply).getByRole("button", { name: "Mark done" }));
-      await Promise.resolve();
-    });
-    expect(handlers.onSetDone).toHaveBeenCalledWith("page:reply", true);
-
-    const closed = historyRow("page:closed");
-    expect(within(closed).getByText("Done")).toBeTruthy();
-    await act(async () => {
-      fireEvent.click(within(closed).getByRole("button", { expanded: false }));
-      await Promise.resolve();
-    });
-    await act(async () => {
-      fireEvent.click(within(closed).getByRole("button", { name: "Reopen" }));
-      await Promise.resolve();
-    });
-    expect(handlers.onSetDone).toHaveBeenCalledWith("page:closed", false);
-  });
-
-  test("a kept message can return to the Inbox or be deleted", async () => {
-    const handlers = historyHandlers();
-    const kept = item({
-      state: "kept",
-      outcome: "kept",
-      proposal: proposal({ state: "dismissed" }),
-    });
-    render(
-      <TestQueryProvider>
-        <InboxHistory items={[kept]} {...handlers} />
-      </TestQueryProvider>,
-    );
-    expect(screen.queryByRole("region", { name: "In progress" })).toBeNull();
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { expanded: false }));
-      await Promise.resolve();
-    });
-    expect(screen.getByText("Homepage feels like a dev tool")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Mark done" })).toBeNull();
-    await click("Return to Inbox");
-    expect(handlers.onReturn).toHaveBeenCalledWith("page:1");
-    await click("Delete");
-    expect(handlers.onDelete).toHaveBeenCalledWith(kept);
   });
 });
 
@@ -1213,4 +1074,47 @@ describe("InboxMessage source navigation", () => {
     await click("From Research Agent");
     expect(onOpenChat).not.toHaveBeenCalled();
   });
+});
+
+test("a handed-back intake keeps the original words and opens its previous chat", async () => {
+  const onOpenChat = vi.fn();
+  render(
+    <TestQueryProvider>
+      <InboxMessage
+        item={item({
+          body: "Please fix only the README typo.",
+          handback: {
+            receipt_id: "receipt",
+            reason: "This belongs to the documentation chat.",
+            returned_at: "2026-11-05T00:00:00.000Z",
+            chat: {
+              session_id: "previous",
+              display_title: "Search indexing",
+              project_id: null,
+              project_name: null,
+              thread_id: null,
+              status: null,
+              unread: false,
+              archived: false,
+            },
+          },
+        })}
+        selected={false}
+        selectionActive={false}
+        onToggleSelected={vi.fn()}
+        linkedChats={null}
+        onOpenChat={onOpenChat}
+        onOpenPage={vi.fn()}
+        onUnmarkImportant={vi.fn()}
+        editor={null}
+        messageActions={null}
+        strip={null}
+        actions={null}
+      />
+    </TestQueryProvider>,
+  );
+  expect(screen.getByText("Please fix only the README typo.")).toBeTruthy();
+  expect(screen.getByText(/This belongs to the documentation chat\./u)).toBeTruthy();
+  await click("Search indexing");
+  expect(onOpenChat).toHaveBeenCalledExactlyOnceWith("previous");
 });

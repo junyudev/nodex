@@ -1,4 +1,4 @@
-import { createElement, useMemo, useState } from "react";
+import { createElement, useMemo, useState, type ReactNode } from "react";
 
 import { ThreadsIcon } from "@/components/workbench/threads-icon";
 import { NodexDropdown } from "@/components/ui/dropdown";
@@ -17,6 +17,7 @@ import {
   CloseIcon,
   PageMenuOpenNewChatIcon,
   PlusIcon,
+  StatusIcon,
   ThreadIcon,
 } from "@/components/shared/icons";
 import { PageChatActivityGlyph } from "@/components/shared/page-chat-activity-glyph";
@@ -37,12 +38,16 @@ import {
 import { CURRENT_CHAT_LABEL } from "@/lib/page-chat-actions";
 import { selectLinkableChatCandidates } from "@/lib/page-stage-related-chat-candidates";
 import { usePageFiles } from "@/lib/use-page-files";
+import { usePageTurn } from "@/lib/page-turn-runtime";
+import { resolveDataSourcePropertyPresentationRole } from "@/lib/data-source-property-presentation-role";
 import { cn } from "@/lib/utils";
 import { PageStageDataSourcePropertyControl } from "./data-source-property-control";
 import type { PageStageController } from "./use-page-stage-controller";
 import type { PageStageRelatedChat } from "./types";
 import { PageFilesRow } from "./page-files-row";
-import { PageScheduledTasksRow } from "./scheduled-tasks-row";
+import { PageStatusTurn } from "./status-turn";
+import { PageWorkspaceRow } from "./page-workspace-row";
+import { PageAssigneeRow, PageOwnerRow } from "./assignee-row";
 import { PageStagePropertyRow } from "./property-row";
 import { pageStagePropertyAddControl } from "./property-value-styles";
 
@@ -326,9 +331,12 @@ function RelatedChatsPropertyRow({ controller }: PageStagePropertiesSectionProps
 function DataSourcePropertyRow({
   item,
   controls,
+  trailing,
 }: {
   readonly item: PageStageController["propertyControls"]["properties"][number];
   readonly controls: PageStageController["propertyControls"];
+  /** Content after a content-sized value, such as the Status row's turn. */
+  readonly trailing?: ReactNode;
 }) {
   return (
     <PageStagePropertyRow
@@ -336,8 +344,38 @@ function DataSourcePropertyRow({
       label={item.property.name}
       data-page-stage-property-id={item.property.propertyId}
     >
-      <PageStageDataSourcePropertyControl item={item} controls={controls} className="flex-1" />
+      {trailing ? (
+        // A narrow Page moves the trailing content to a line of its own instead of truncating it.
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 *:min-h-7.5">
+          <div className="flex shrink-0 items-center">
+            <PageStageDataSourcePropertyControl item={item} controls={controls} />
+          </div>
+          {trailing}
+        </div>
+      ) : (
+        <PageStageDataSourcePropertyControl item={item} controls={controls} className="flex-1" />
+      )}
     </PageStagePropertyRow>
+  );
+}
+
+const isStatusRow = (row: PageStagePropertyRowModel) =>
+  row.kind === "property" &&
+  resolveDataSourcePropertyPresentationRole(row.item.property).kind === "status";
+
+/** Whose move the Page waits for joins its Status, so stage and turn read as one fact. */
+function PageStatusTurnSlot({ controller }: PageStagePropertiesSectionProps) {
+  const { onOpenPage, contentRoutingContext } = controller;
+  return (
+    <PageStatusTurn
+      pageId={controller.page?.id ?? ""}
+      onOpenChat={controller.onOpenRelatedChat}
+      onOpenPage={
+        onOpenPage
+          ? (pageId) => void onOpenPage({ routingContext: contentRoutingContext, pageId })
+          : undefined
+      }
+    />
   );
 }
 
@@ -346,7 +384,13 @@ function PropertyListRow({
   controller,
 }: PageStagePropertiesSectionProps & { readonly row: PageStagePropertyRowModel }) {
   if (row.kind === "property") {
-    return <DataSourcePropertyRow item={row.item} controls={controller.propertyControls} />;
+    return (
+      <DataSourcePropertyRow
+        item={row.item}
+        controls={controller.propertyControls}
+        trailing={isStatusRow(row) ? <PageStatusTurnSlot controller={controller} /> : undefined}
+      />
+    );
   }
   if (!controller.schedulePage) return null;
   return (
@@ -391,7 +435,15 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
       : createPageStageQuietPropertiesState(quietPropertiesInput);
   const [expandedState, setExpandedState] = useState({ pageId, expanded: false });
   const propertiesExpanded = expandedState.pageId === pageId ? expandedState.expanded : false;
-  const { rows } = controller.propertyControls;
+  const turn = usePageTurn(pageId).data?.turn;
+  const hasTurn = Boolean(turn?.reason && turn.actor.kind !== "none");
+  // A Page with work always shows its Status row, which carries whose move it is.
+  const rows = controller.propertyControls.rows
+    .filter(
+      (row) =>
+        row.kind !== "property" || !["owner", "assignee"].includes(row.item.property.propertyId),
+    )
+    .map((row) => (hasTurn && isStatusRow(row) ? { ...row, shownByLayout: true } : row));
   const [disclosure, setDisclosure] = useState<PageStagePropertyDisclosureState | null>(null);
   const nextDisclosure = advancePageStagePropertyDisclosure(disclosure, {
     pageId,
@@ -415,14 +467,21 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
     controller.hasRelatedChatsRow &&
     linkedChatsSignal !== "attention" &&
     !currentQuietPropertiesState.linkedChats.visible;
+  const pageWorkCollapsed = Boolean(controller.page.pageWork && !controller.page.pageWork.assignee);
   const collapsedPropertyCount =
     hiddenRows.length +
+    [filesCollapsed, relatedChatsCollapsed, pageWorkCollapsed].filter(Boolean).length;
   const collapsedPropertyLabel = formatPageStageQuietPropertyCountLabel(
     collapsedPropertyCount,
     propertiesExpanded,
   );
   const page = controller.page;
+  const pageWorkRow = (
+    <PageAssigneeRow
+      pageWork={page.pageWork}
+      onChange={(pageWork) => controller.savePage({ pageWork })}
     />
+  );
   const linkedChatsRow = controller.hasRelatedChatsRow ? (
     <RelatedChatsPropertyRow controller={controller} />
   ) : null;
@@ -446,10 +505,21 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
       className="mt-2.5 flex flex-col border-b-[0.5px] border-(--table-border) pb-3"
       aria-label="Properties"
     >
+      {hasTurn && !rows.some(isStatusRow) ? (
+        <PageStagePropertyRow icon={<StatusIcon />} label="Status">
+          <PageStatusTurnSlot controller={controller} />
+        </PageStagePropertyRow>
+      ) : null}
       {shownRows.map((row) => (
         <PropertyListRow key={row.key} row={row} controller={controller} />
       ))}
-      <PageScheduledTasksRow pageId={pageId} />
+      <PageWorkspaceRow pageId={pageId} />
+
+      <PageOwnerRow
+        pageWork={page.pageWork}
+        onChange={(pageWork) => controller.savePage({ pageWork })}
+      />
+      {pageWorkCollapsed ? null : pageWorkRow}
       {relatedChatsCollapsed ? null : linkedChatsRow}
       {filesCollapsed ? null : filesRow}
 
@@ -458,6 +528,7 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
             <PropertyListRow key={row.key} row={row} controller={controller} />
           ))
         : null}
+      {pageWorkCollapsed && propertiesExpanded ? pageWorkRow : null}
       {relatedChatsCollapsed && propertiesExpanded ? linkedChatsRow : null}
       {filesCollapsed ? filesRow : null}
 

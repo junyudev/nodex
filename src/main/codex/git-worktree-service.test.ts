@@ -1323,3 +1323,99 @@ describe("createManagedWorktree cancellation", () => {
     expect(worktreeTokens.length).toBe(1);
   });
 });
+
+describe("Page Workspaces", () => {
+  test("creates a clean attached branch, avoids collisions, rejoins preparation and restores the same branch", async () => {
+    const { repositoryPath, root } = await createRepository();
+    const base = (await runCommand("git", ["rev-parse", "HEAD"], repositoryPath)).stdout.trim();
+    await runCommand("git", ["branch", "nodex-12-fix-login"], repositoryPath);
+    await writeFile(path.join(repositoryPath, "README.md"), "dirty source\n");
+    const input = {
+      repositoryPath,
+      nodexHome: path.join(root, "home"),
+      managedRoot: path.join(root, "trees"),
+      projectId: "project",
+      targetId: "one",
+      threadTitle: "Fix login",
+      mode: "detachedHead" as const,
+      pageWorkspace: {
+        workspaceId: "workspace:one",
+        operationId: "allocation:one",
+        branchName: "nodex-12-fix-login",
+        baseCommitOid: base,
+      },
+    };
+    const created = await createManagedWorktree(input);
+    expect(created.branchName).toBe("nodex-12-fix-login-2");
+    expect(
+      (
+        await runCommand("git", ["branch", "--show-current"], created.worktreeGitRoot)
+      ).stdout.trim(),
+    ).toBe(created.branchName);
+    expect(await readFile(path.join(created.worktreeGitRoot, "README.md"), "utf8")).toBe("base\n");
+    const retry = await createManagedWorktree(input);
+    expect(retry).toEqual(created);
+    await writeFile(path.join(created.worktreeGitRoot, "feature.txt"), "work\n");
+    await runCommand("git", ["add", "feature.txt"], created.worktreeGitRoot);
+    await runCommand("git", ["commit", "-m", "feat: work"], created.worktreeGitRoot);
+    const tip = (
+      await runCommand("git", ["rev-parse", "HEAD"], created.worktreeGitRoot)
+    ).stdout.trim();
+    await removeManagedWorktree(created.worktreeGitRoot);
+    const reopened = await createManagedWorktree({
+      ...input,
+      pageWorkspace: { ...input.pageWorkspace, branchName: created.branchName! },
+    });
+    expect(reopened.branchName).toBe(created.branchName);
+    expect(
+      (await runCommand("git", ["rev-parse", "HEAD"], reopened.worktreeGitRoot)).stdout.trim(),
+    ).toBe(tip);
+  });
+
+  test("reconciles a crash after atomic branch reservation and before checkout", async () => {
+    const { repositoryPath, root } = await createRepository();
+    const base = (await runCommand("git", ["rev-parse", "HEAD"], repositoryPath)).stdout.trim();
+    const input = {
+      repositoryPath,
+      nodexHome: path.join(root, "home"),
+      managedRoot: path.join(root, "trees"),
+      projectId: "project",
+      targetId: "one",
+      mode: "detachedHead" as const,
+      pageWorkspace: {
+        workspaceId: "workspace:crash",
+        operationId: "allocation:crash",
+        branchName: "nodex-42-retry",
+        baseCommitOid: base,
+      },
+    };
+    const command = vi.mocked(runCodexGitCommand);
+    command.mockImplementationOnce(async (...args) => {
+      const actual =
+        await vi.importActual<typeof import("./codex-git-command")>("./codex-git-command");
+      return actual.runCodexGitCommand(...args);
+    });
+    const actual =
+      await vi.importActual<typeof import("./codex-git-command")>("./codex-git-command");
+    let interrupted = false;
+    command.mockImplementation(async (args, cwd, options) => {
+      if (args[0] === "checkout" && args[1] === "nodex-42-retry" && !interrupted) {
+        interrupted = true;
+        throw new Error("process ended before checkout");
+      }
+      return actual.runCodexGitCommand(args, cwd, options);
+    });
+    try {
+      await expect(createManagedWorktree(input)).rejects.toThrow("process ended");
+      const retry = await createManagedWorktree(input);
+      expect(retry.branchName).toBe("nodex-42-retry");
+      expect(
+        (
+          await runCommand("git", ["branch", "--show-current"], retry.worktreeGitRoot)
+        ).stdout.trim(),
+      ).toBe("nodex-42-retry");
+    } finally {
+      command.mockImplementation(actual.runCodexGitCommand);
+    }
+  });
+});

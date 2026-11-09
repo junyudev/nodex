@@ -1,3 +1,5 @@
+import { CoreModules } from "../core-runtime/CoreModules";
+import { workspaceWindow } from "../agent-backend/PageWorkspaceApplication";
 import { nodeLive as openCodeSdkLive } from "../platform/node/OpenCodeSdk";
 import { live as openCodeModelCatalogLive } from "../agent-backend/opencode/OpenCodeModelCatalog";
 import { live as claudeSdkLive } from "../platform/node/ClaudeSdk";
@@ -29,7 +31,6 @@ import { live as coreEventHubLive } from "../core-runtime/CoreEventHub";
 import { live as sessionReminderLive } from "../host-runtime/SessionReminderRuntime";
 import { live as reminderSchedulerLive } from "../host-runtime/ReminderSchedulerRuntime";
 import { live as unreadBadgeLive } from "../host-runtime/UnreadBadgeRuntime";
-import { CodexPlatform } from "./CodexApplicationLive";
 import { MainConfig } from "./MainConfig";
 import { live as agentBackendApplicationLive } from "../agent-backend/AgentBackendApplication";
 import { live as agentBackendRegistryLive } from "../agent-backend/AgentBackendRegistry";
@@ -72,9 +73,19 @@ const projectSessions = projectSessionCommandsLive.pipe(Layer.provideMerge(proje
 const managedWorktreeCatalog = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
+    const core = yield* CoreModules;
     return Layer.effect(
       ManagedWorktreeCatalog,
-      makeManagedWorktreeCatalog({ defaultManagedRoot: `${config.nodexHome}/worktrees` }),
+      makeManagedWorktreeCatalog({
+        defaultManagedRoot: `${config.nodexHome}/worktrees`,
+        pageWorkspacePaths: workspaceWindow(core).pipe(
+          Effect.map((values) =>
+            values
+              .filter((value) => value.lifecycle !== "removed")
+              .flatMap((value) => (value.worktree_path ? [value.worktree_path] : [])),
+          ),
+        ),
+      }),
     );
   }),
 ).pipe(Layer.provideMerge(projectSessions));

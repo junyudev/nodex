@@ -316,9 +316,9 @@ export async function readGhPrStatus(input: GhPrStatusRequest): Promise<GhPrStat
       [
         "pr",
         "view",
-        ...makePrArg(input.prNumber),
+        ...(input.headBranch ? [input.headBranch] : makePrArg(input.prNumber)),
         "--json",
-        "number,title,url,state,mergeStateStatus",
+        "number,title,url,state,mergeStateStatus,headRefName,headRepository,headRepositoryOwner",
       ],
       cwd,
     );
@@ -333,6 +333,18 @@ export async function readGhPrStatus(input: GhPrStatusRequest): Promise<GhPrStat
       url: asString(data?.url),
       state: asString(data?.state),
       mergeStateStatus: asString(data?.mergeStateStatus),
+      headBranch: asString(data?.headRefName),
+      headRepositoryUrl: (() => {
+        const repository = asRecord(data?.headRepository);
+        const owner = asRecord(data?.headRepositoryOwner);
+        const name =
+          asString(repository?.nameWithOwner) ??
+          (asString(owner?.login) && asString(repository?.name)
+            ? `${asString(owner?.login)}/${asString(repository?.name)}`
+            : null);
+        const url = asString(data?.url);
+        return name && url ? `${new URL(url).origin}/${name}` : null;
+      })(),
       message: null,
     };
   } catch (error) {

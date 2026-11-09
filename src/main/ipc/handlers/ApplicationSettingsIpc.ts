@@ -686,7 +686,7 @@ export const live: Layer.Layer<
             "update-agent-runtime-settings",
             { type: "update-agent-runtime", input: parsed },
             (value) => value.agentRuntime,
-          ),
+          ).pipe(Effect.tap(() => runtimeProviders.refresh)),
         ),
       ),
     );

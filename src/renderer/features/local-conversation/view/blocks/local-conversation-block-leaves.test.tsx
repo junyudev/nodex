@@ -534,6 +534,20 @@ describe("UserMessageBubble collapse", () => {
       });
     });
 
+    test("reads a message delivered from the queue as an ordinary message", async () => {
+      const view = renderMessage((block) => {
+        block.entry.userMessageOrigin = { kind: "nodex" };
+        block.entry.userInputIntent = "queued";
+      });
+      const marker = view.container.querySelector('[data-user-message-origin="nodex"]')!;
+      expect(marker.textContent).toBe("Sent by Nodex");
+      const plain = renderMessage((block) => {
+        block.entry.userInputIntent = "queued";
+      });
+      expect(plain.queryByText("Queued")).toBeNull();
+      expect(plain.container.querySelector("[data-user-message-intent]")).toBeNull();
+    });
+
     test("names the Agent that answered a question reply instead of claiming it sent a message", async () => {
       vi.spyOn(agentRuntimeRuntime, "identify").mockResolvedValue(sender());
       const view = renderMessage((block) => {

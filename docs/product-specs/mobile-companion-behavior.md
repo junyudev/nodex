@@ -98,6 +98,8 @@ line whose placeholder names where a message goes. In use it opens to show its p
   `Ask for a suggestion` and `Delete`. Decisions that can be undone offer `Undo` for a few seconds.
 - The history control switches between waiting and handled messages.
 
+Turns say whose move it is in the desktop's words, such as `Needs your answer` or
+`Ready for your review`. Questions
 ### Chats
 
 - The list covers every Project. Chats asking for something come first under `Needs you` with the

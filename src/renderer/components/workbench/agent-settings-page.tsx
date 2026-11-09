@@ -7,6 +7,7 @@ import {
   useNodexSettingsDisclosures,
 } from "../ui/settings";
 import { ClaudeAgentSettingsControl } from "./claude-agent-settings-control";
+import { AgentCapacitySettingControl } from "./agent-capacity-setting-control";
 import { DefaultPermissionsSettingControl } from "./default-permissions-setting-control";
 import { CodexAgentSettingsSection } from "./codex-home-settings-control";
 import { OpenCodeAgentSettingsControl } from "./opencode-agent-settings-control";
@@ -27,6 +28,9 @@ export function AgentSettingsPage({ open, settingsAnchor }: SettingsSectionPageP
             description="What new chats can do on this computer without asking."
           >
             <DefaultPermissionsSettingControl />
+          </SettingRow>
+          <SettingRow label="Agents running at once">
+            <AgentCapacitySettingControl />
           </SettingRow>
         </SectionBlock>
         <CodexAgentSettingsSection open={open} disclosure={disclosure("codex")} />

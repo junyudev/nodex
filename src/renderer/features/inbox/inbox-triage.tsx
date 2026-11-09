@@ -936,11 +936,15 @@ export function InboxTriage({
             </Row>
           ),
         };
+      case "answer":
         return {
           strip: null,
+          opensChat: false,
           actions: (
             <Row>
+              <InboxIconActions>{menuNode}</InboxIconActions>
               {onReply ? (
+                <Decision label="Reply" target={null} icon={Reply} onClick={onReply} />
               ) : null}
             </Row>
           ),
@@ -980,6 +984,7 @@ export function InboxTriage({
     !decided &&
     model.kind !== "handled" &&
     model.kind !== "dispatch-failed" &&
+    model.kind !== "answer";
   return children({
     editor: null,
     opensChat: false,

@@ -6,7 +6,6 @@ const DEFAULT_FEATURED_LIMIT = 7;
 const FEATURED_ROLE_RANK: Readonly<Partial<Record<string, number>>> = {
   status: 0,
   priority: 1,
-  assignee: 2,
   due_date: 3,
   tags: 4,
   estimate: 5,
@@ -49,7 +48,10 @@ export const buildPagePropertyContextMenuModel = (
     readonly featuredLimit?: number;
   } = {},
 ): PagePropertyContextMenuModel => {
-  const active = bindings.filter((binding) => binding.property.lifecycle === "active");
+  const active = bindings.filter(
+    (binding) =>
+      binding.property.lifecycle === "active" && binding.property.valueType !== "assignment",
+  );
   const normalizedQuery = normalizedSearchText(query);
   if (normalizedQuery) {
     const matches = active.filter((binding) =>

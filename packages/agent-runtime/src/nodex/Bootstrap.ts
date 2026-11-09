@@ -8,6 +8,8 @@ import type { AgentRuntimeConfiguration } from "./Interface.ts";
  */
 export interface AgentRuntimeBootstrap {
   readonly type: "bootstrap";
+  readonly agentsRunningAtOnce?: number;
+  readonly pausedThreadIds?: ReadonlyArray<string>;
   readonly modelPolicy?: ModelPolicy;
   readonly providers: AgentRuntimeConfiguration["providers"];
   readonly hostTools?: NonNullable<AgentRuntimeConfiguration["host"]>["tools"];
@@ -16,7 +18,12 @@ export interface AgentRuntimeBootstrap {
 /** Reads exactly one bootstrap line; later lines remain on the iterator for requests. */
 export async function readAgentRuntimeBootstrap(
   lines: AsyncIterator<string>,
-): Promise<Pick<AgentRuntimeConfiguration, "providers" | "host" | "modelPolicy">> {
+): Promise<
+  Pick<
+    AgentRuntimeConfiguration,
+    "providers" | "host" | "agentsRunningAtOnce" | "pausedThreadIds" | "modelPolicy"
+  >
+> {
   const first = await lines.next();
   if (first.done) throw new Error("Agent Runtime stdin closed before its bootstrap frame.");
   const frame: unknown = JSON.parse(first.value);
@@ -31,6 +38,10 @@ export async function readAgentRuntimeBootstrap(
   const bootstrap = frame as unknown as AgentRuntimeBootstrap;
   return {
     providers: bootstrap.providers,
+    ...(bootstrap.pausedThreadIds ? { pausedThreadIds: bootstrap.pausedThreadIds } : {}),
+    ...(bootstrap.agentsRunningAtOnce === undefined
+      ? {}
+      : { agentsRunningAtOnce: bootstrap.agentsRunningAtOnce }),
     ...(bootstrap.modelPolicy === undefined
       ? {}
       : { modelPolicy: ModelPolicySchema.parse(bootstrap.modelPolicy) }),

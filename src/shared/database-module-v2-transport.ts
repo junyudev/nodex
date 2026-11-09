@@ -237,6 +237,7 @@ const readOptionId = (
 
 const readPropertyValueType = (value: unknown, label: string): DatabasePropertyValueType => {
   if (
+    value === "assignment" ||
     value === "text" ||
     value === "number" ||
     value === "checkbox" ||
@@ -291,7 +292,7 @@ const parseStoredPropertyConfig = (
     assertExactKeys(parsed, label, []);
     return {};
   }
-  // Only the fixed five-stage registry can accompany a Property read descriptor.
+  // Only the fixed six-stage registry can accompany a Property read descriptor.
   assertExactKeys(parsed, label, ["options"]);
   if (!Array.isArray(parsed.options) || parsed.options.length > WORKFLOW_STATUS_ORDER.length) {
     throw new TypeError(`${label}.options must be a bounded Status registry`);
@@ -409,7 +410,13 @@ const parsePropertySchema = (
     }
     return { kind, dateFormat, timeFormat };
   }
-  if (kind === "text" || kind === "checkbox" || kind === "select" || kind === "multi_select") {
+  if (
+    kind === "assignment" ||
+    kind === "text" ||
+    kind === "checkbox" ||
+    kind === "select" ||
+    kind === "multi_select"
+  ) {
     assertExactKeys(schema, label, ["kind"]);
     return { kind };
   }
@@ -602,7 +609,7 @@ const parseDatabaseDataEditUndoRecipe = (
     assertExactKeys(address, `${stateLabel}.address`, ["pageId", "dataSourceId", "propertyId"]);
     const propertyId = readPropertyId(address.propertyId, `${stateLabel}.address.propertyId`);
     const propertyType = readPropertyValueType(state.propertyType, `${stateLabel}.propertyType`);
-    if (propertyType === "relation")
+    if (propertyType === "relation" || propertyType === "assignment")
       throw new TypeError(`${stateLabel} requires a scalar Property`);
     return {
       address: {
@@ -2271,7 +2278,9 @@ const parsePropertyRecord = (value: unknown, label: string): DataSourcePropertyR
   if (
     record.systemRole !== null &&
     record.systemRole !== "status" &&
-    record.systemRole !== "task_parent"
+    record.systemRole !== "task_parent" &&
+    record.systemRole !== "page_owner" &&
+    record.systemRole !== "page_assignee"
   ) {
     throw new TypeError(`${label}.systemRole is unsupported`);
   }
