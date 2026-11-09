@@ -34,7 +34,14 @@ public full-transcript snapshot operation.
 Authority includes the Thread's resolved execution directory, branch and workspace path.
 `tasks.overview` pages active and completed task metadata independently, starting with four active
 and ten completed tasks; prompts, progress and result bodies are never read for this overview.
-`execution.observe` emits only Run status and Thread deletion metadata; filtered observers use
+`execution.activity` exposes the active Run's durable Readback: its first complete root-execution
+opening statement, capped at 4,000 characters. Explicit commentary qualifies immediately; unknown
+phase requires a later normalized action. Reasoning and proposed plan text alone do not qualify.
+Structured questions, explicit final answers, children and superseded executions are excluded. The Run retains
+its explicit person-admission fact across queues and restart continuations; steering never changes it.
+The write-once projection survives Runtime restarts and activity reads never scan transcripts.
+`execution.observe` emits Run status and Thread deletion metadata plus compact root-activity changes,
+including the committed item that first records a Readback (coalesced within 50 ms); filtered observers use
 type-specific SQL queries and live channels before retaining events. Every subscription returns
 its explicit ownership token for scoped cancellation.
 

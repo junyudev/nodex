@@ -16,6 +16,7 @@ import {
   ProviderInstanceId,
   ProviderThreadId,
   ProviderTurnId,
+  ScheduledTaskId,
   ThreadId,
   TurnItemId,
   type OrchestrationV2DomainEvent,
@@ -79,6 +80,7 @@ const withRecovery = <A, E>(
     readonly interrupt?: boolean;
     readonly restartSession?: boolean;
     readonly automatic?: boolean;
+    readonly automation?: boolean;
     readonly restart?: boolean;
   } = {},
 ) =>
@@ -256,6 +258,9 @@ const withRecovery = <A, E>(
           dispatchMode: { type: "start_immediately" },
           createdBy: options.automatic ? "system" : "user",
           creationSource: options.automatic ? "server" : "web",
+          ...(options.automation
+            ? { scheduledTaskId: ScheduledTaskId.make("automation:definition") }
+            : {}),
         });
         yield* worker.drain();
         yield* waitEvent(
@@ -931,6 +936,12 @@ it.effect(
         );
         yield* orchestrator.recoverDelegatedTasks;
         const final = yield* orchestrator.getThreadProjection(threadId);
+        const wakeMessage = final.messages.find(
+          (message) => message.delegatedCompletion !== undefined,
+        )!;
+        const wakeRun = final.runs.find((run) => run.id === wakeMessage.runId)!;
+        assert.equal(wakeRun.startedByPerson, wakeRun.id === parent.runId);
+        assert.isTrue(final.runs.find((run) => run.id === parent.runId)?.startedByPerson);
         assert.equal(
           final.messages.filter((message) => message.delegatedCompletion !== undefined).length,
           1,
@@ -1408,6 +1419,218 @@ it.effect(
           );
           assert.equal(started.length, 1);
         }),
+      ).pipe(Effect.provideService(RuntimeModelPolicy, owner));
+    }),
+);
+
+it.effect.each([false, true])(
+  "captures initial admission and keeps it through steering (automatic=%s)",
+  (automatic) =>
+    withRecovery(
+      ({ threadId, started }) =>
+        Effect.gen(function* () {
+          const orchestrator = yield* Orchestrator.OrchestratorV2;
+          const before = (yield* orchestrator.getThreadProjection(threadId)).runs[0]!;
+          assert.equal(before.startedByPerson, !automatic);
+          yield* orchestrator.dispatch({
+            type: "message.dispatch",
+            commandId: CommandId.make("origin-steer"),
+            threadId,
+            messageId: MessageId.make("origin-steer"),
+            text: "Keep working",
+            attachments: [],
+            createdBy: automatic ? "user" : "system",
+            creationSource: automatic ? "web" : "server",
+            dispatchMode: { type: "steer_active", targetRunId: started[0]!.runId },
+          });
+          const after = (yield* orchestrator.getThreadProjection(threadId)).runs.find(
+            (run) => run.id === before.id,
+          )!;
+          assert.equal(after.startedByPerson, !automatic);
+        }),
+      { automation: automatic },
+    ),
+);
+
+it.effect.each([
+  {
+    name: "person follow-up",
+    createdBy: "user" as const,
+    senderThreadId: undefined,
+    expected: true,
+  },
+  {
+    name: "heartbeat",
+    createdBy: "user" as const,
+    senderThreadId: undefined,
+    scheduledTaskId: ScheduledTaskId.make("automation:heartbeat"),
+    expected: false,
+  },
+  {
+    name: "automation",
+    createdBy: "user" as const,
+    senderThreadId: undefined,
+    scheduledTaskId: ScheduledTaskId.make("automation:definition"),
+    expected: false,
+  },
+  {
+    name: "host delivery",
+    createdBy: "system" as const,
+    senderThreadId: undefined,
+    expected: false,
+  },
+  {
+    name: "agent-authored",
+    createdBy: "agent" as const,
+    senderThreadId: undefined,
+    expected: false,
+  },
+  {
+    name: "forwarded agent",
+    createdBy: "user" as const,
+    senderThreadId: ThreadId.make("sender-thread"),
+    expected: false,
+  },
+])(
+  "queued $name retains its own admission origin when it starts",
+  ({ name, createdBy, senderThreadId, scheduledTaskId, expected }) =>
+    withRecovery(({ threadId, started, emit }) =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const messageId = MessageId.make(`origin:${name}`);
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make(`origin:${name}`),
+          threadId,
+          messageId,
+          text: "Next request",
+          attachments: [],
+          createdBy,
+          creationSource: createdBy === "system" ? "server" : createdBy === "agent" ? "mcp" : "web",
+          ...(senderThreadId === undefined ? {} : { senderThreadId, senderRunId: null }),
+          ...(scheduledTaskId === undefined ? {} : { scheduledTaskId }),
+          dispatchMode: { type: "queue_after_active" },
+        });
+        const queued = (yield* orchestrator.getThreadProjection(threadId)).runs.find(
+          (run) => run.userMessageId === messageId,
+        )!;
+        assert.equal(queued.status, "queued");
+        assert.equal(queued.startedByPerson, expected);
+        yield* complete(emit, started[0]!);
+        yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain();
+        const next = (yield* orchestrator.getThreadProjection(threadId)).runs.find(
+          (run) => run.id === queued.id,
+        )!;
+        assert.equal(next.startedByPerson, expected);
+        assert.notEqual(next.status, "queued");
+        const message = (yield* orchestrator.getThreadProjection(threadId)).messages.find(
+          (message) => message.id === messageId,
+        )!;
+        assert.equal(message.scheduledTaskId, scheduledTaskId);
+      }),
+    ),
+);
+
+it.effect.each([false, true])(
+  "restart continuation retains the original admission (automatic=%s)",
+  (automatic) =>
+    withRecovery(
+      ({ threadId, started }) =>
+        Effect.gen(function* () {
+          const orchestrator = yield* Orchestrator.OrchestratorV2;
+          const source = started[0]!.runId;
+          // Runtime recovery records cancellation without a person's Stop fence.
+          const original = (yield* orchestrator.getThreadProjection(threadId)).runs[0]!;
+          const now = yield* DateTime.now;
+          yield* (yield* EventSink.EventSinkV2).write({
+            events: [
+              {
+                id: EventId.make("origin-runtime-cut"),
+                type: "run.updated",
+                threadId,
+                runId: source,
+                occurredAt: now,
+                payload: { ...original, status: "cancelled", completedAt: now },
+              },
+            ],
+          });
+          yield* orchestrator.dispatch({
+            type: "message.dispatch",
+            commandId: CommandId.make("origin-continuation"),
+            threadId,
+            messageId: MessageId.make("origin-continuation"),
+            text: "Continue where you left off.",
+            attachments: [],
+            createdBy: "system",
+            creationSource: "server",
+            restartContinuationOfRunId: source,
+            dispatchMode: { type: "start_immediately" },
+          });
+          const continuation = (yield* orchestrator.getThreadProjection(threadId)).runs.find(
+            (run) => run.restartContinuationOfRunId === source,
+          )!;
+          assert.equal(continuation.startedByPerson, !automatic);
+        }),
+      { automation: automatic },
+    ),
+);
+
+it.effect("a delegated-result wake after the person's Run ends is not person-started", () =>
+  withRecovery(({ started, emit, threadId }) =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+      const parent = started[0]!;
+      yield* orchestrator.dispatch({
+        type: "delegated_task.request",
+        commandId: CommandId.make("origin-delegate"),
+        parentThreadId: threadId,
+        parentRunId: parent.runId,
+        parentNodeId: parent.rootNodeId,
+        task: "Review the tests",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        completionWake: "always",
+        createdBy: "agent",
+        creationSource: "mcp",
+      });
+      yield* worker.drain();
+      const child = started[1]!;
+      yield* complete(emit, parent);
+      yield* complete(emit, child);
+      yield* waitEvent(
+        (event) =>
+          event.type === "message.updated" &&
+          event.threadId === threadId &&
+          event.payload.delegatedCompletion !== undefined,
+      );
+      const projection = yield* orchestrator.getThreadProjection(threadId);
+      const wake = projection.messages.find(
+        (message) => message.delegatedCompletion !== undefined,
+      )!;
+      assert.notEqual(wake.runId, parent.runId);
+      assert.isFalse(projection.runs.find((run) => run.id === wake.runId)?.startedByPerson);
+    }),
+  ),
+);
+
+it.effect.each(["automation", "host"] as const)(
+  "a %s delivery with a saved Nodex model retains person model authority",
+  (kind) =>
+    Effect.gen(function* () {
+      const providers = { [instanceId]: { driver, source: "nodex" as const, config: {} } };
+      const owner = yield* makeModelPolicy(DEFAULT_MODEL_POLICY, providers);
+      return yield* withRecovery(
+        ({ threadId, started }) =>
+          Effect.gen(function* () {
+            const run = (yield* (yield* Orchestrator.OrchestratorV2).getThreadProjection(threadId))
+              .runs[0]!;
+            assert.equal(run.modelPolicyOrigin, "person");
+            assert.isFalse(run.startedByPerson);
+            assert.equal(started.length, 1, "the saved credit model reaches provider execution");
+          }),
+        { automation: kind === "automation", automatic: kind === "host" },
       ).pipe(Effect.provideService(RuntimeModelPolicy, owner));
     }),
 );

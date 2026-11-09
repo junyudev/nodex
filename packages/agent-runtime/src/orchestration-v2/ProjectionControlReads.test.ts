@@ -703,7 +703,14 @@ it.effect.each(storageCases)(
                 completedAt: now,
                 updatedAt: now,
                 type: "assistant_message",
-                responseKind: reply.id === "commentary-after-answer" ? "commentary" : "final",
+                ...(reply.id === "final-root-reply"
+                  ? {}
+                  : {
+                      responseKind:
+                        reply.id === "commentary-after-answer"
+                          ? ("commentary" as const)
+                          : ("final" as const),
+                    }),
                 messageId: MessageId.make(`message:${reply.id}`),
                 text: reply.id,
                 streaming: false,
@@ -1385,5 +1392,115 @@ it.effect.each(storageCases)(
         DateTime.formatIso(now),
       );
       assert.equal((yield* store.getMessageTurnOutcome(threadId, siblingId))?.runId, runId);
+    }).pipe(Effect.provide(storeLayer)),
+);
+
+it.effect.each(
+  storageCases.flatMap((entry) => [
+    { ...entry, responseKind: "commentary" as const },
+    { ...entry, responseKind: undefined },
+  ]),
+)(
+  "$storage: punctuation never disqualifies the first $responseKind opening statement",
+  ({ storeLayer, responseKind }) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      yield* Effect.forEach(fixtureEvents(now), (event) => store.apply(event), { discard: true });
+      yield* store.apply({
+        id: EventId.make("readback:node"),
+        type: "node.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: nodeId,
+          threadId,
+          runId,
+          parentNodeId: null,
+          rootNodeId: nodeId,
+          kind: "assistant_message",
+          status: "completed",
+          countsForRun: false,
+          providerThreadId,
+          providerTurnId,
+          nativeItemRef: null,
+          runtimeRequestId: null,
+          checkpointScopeId: null,
+          startedAt: now,
+          completedAt: now,
+        },
+      });
+      const opening = {
+        id: TurnItemId.make("readback:opening"),
+        threadId,
+        runId,
+        nodeId,
+        providerThreadId,
+        providerTurnId,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal: 1,
+        status: "completed" as const,
+        title: null,
+        startedAt: now,
+        completedAt: now,
+        updatedAt: now,
+        type: "assistant_message" as const,
+        messageId: MessageId.make("readback:opening"),
+        text: "Why did the build fail?",
+        streaming: false,
+        ...(responseKind === undefined ? {} : { responseKind }),
+      };
+      yield* store.apply({
+        id: EventId.make("readback:first"),
+        type: "turn-item.updated",
+        threadId,
+        occurredAt: now,
+        payload: opening,
+      });
+      const read = store
+        .getThreadRecords(threadId, ["runs"])
+        .pipe(Effect.map((records) => records.runs[0]?.readback));
+      if (responseKind === undefined) assert.equal(yield* read, undefined);
+      else assert.equal((yield* read)?.itemId, opening.id);
+      yield* store.apply({
+        id: EventId.make("readback:second"),
+        type: "turn-item.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          ...opening,
+          id: TurnItemId.make("readback:later"),
+          messageId: MessageId.make("readback:later"),
+          ordinal: 2,
+          text: "I'll inspect it.",
+        },
+      });
+      yield* store.apply({
+        id: EventId.make("readback:action"),
+        type: "turn-item.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: TurnItemId.make("readback:action"),
+          threadId,
+          runId,
+          nodeId,
+          providerThreadId,
+          providerTurnId,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: 3,
+          status: "running",
+          title: null,
+          startedAt: now,
+          completedAt: null,
+          updatedAt: now,
+          type: "command_execution",
+          input: "pwd",
+        },
+      });
+      assert.equal((yield* read)?.itemId, opening.id);
+      assert.equal((yield* read)?.text, opening.text);
     }).pipe(Effect.provide(storeLayer)),
 );

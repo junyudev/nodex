@@ -397,6 +397,8 @@ function projectRunForWire(run: OrchestrationV2Run): OrchestrationV2Run {
   const {
     delegatedCompletion: _completion,
     restartCancelledBackgroundWork: _work,
+    // Activity owns the bounded statement; history needs only its canonical assistant item.
+    readback: _readback,
     ...metadata
   } = run;
   return metadata;

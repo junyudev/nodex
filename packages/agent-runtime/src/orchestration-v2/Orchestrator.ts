@@ -5514,6 +5514,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               authenticated?.providerInstanceId ?? callerSelection?.instanceId,
             ));
 
+      // Capture admission once, independently of later steering and execution attempts.
+      // Message provenance determines who started work; model authority remains independent.
+      const startedByPerson = policySourceRun
+        ? policySourceRun.startedByPerson === true
+        : command.createdBy === "user" &&
+          authenticated === undefined &&
+          command.senderThreadId === undefined &&
+          command.delegatedCompletion === undefined &&
+          command.scheduledTaskId === undefined;
+
       if (command.manualContinuationOfRunId !== undefined) {
         const source = projection.runs.find((run) => run.id === command.manualContinuationOfRunId);
         const limited = latestRootProviderFailure(source ?? null, projection.turnItems);
@@ -5997,6 +6007,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 ),
               );
         const run: OrchestrationV2Run = {
+          startedByPerson,
           modelPolicyOrigin,
           id: runId,
           threadId: command.threadId,
@@ -6388,6 +6399,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                   mapDispatchError(command),
                 );
         const run: OrchestrationV2Run = {
+          startedByPerson,
           modelPolicyOrigin,
           id: runId,
           threadId: command.threadId,
@@ -7092,6 +7104,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ),
         );
       const run: OrchestrationV2Run = {
+        startedByPerson,
         modelPolicyOrigin,
         id: runId,
         threadId: command.threadId,

@@ -1,3 +1,6 @@
+import * as FileSystem from "effect/FileSystem";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { capReadback, READBACK_ACTION_TYPES } from "./RunReadback.ts";
 import { assert, it } from "@effect/vitest";
 import {
   EventId,
@@ -843,4 +846,264 @@ it.effect("rolls approval flags and action prompts through delegated tasks and s
     assert.deepEqual((yield* read())?.activeFlags, ["waitingOnUserInput"]);
     assert.isNull((yield* read())?.approvalPrompt);
   }).pipe(Effect.provide(layer)),
+);
+
+/** Committed provider items, with a distinct message node sharing the current execution root. */
+const readbackFixture = Effect.gen(function* () {
+  const f = yield* fixture;
+  const threadId = yield* f.thread("root:readback");
+  const run = yield* f.run(threadId, "running", {
+    startedByPerson: true,
+    modelPolicyOrigin: "person",
+  });
+  const node = (id: string, root = run.rootNodeId, owner = threadId) =>
+    f.apply({
+      type: "node.updated",
+      threadId: owner,
+      payload: {
+        id: NodeId.make(id),
+        threadId: owner,
+        runId: run.id,
+        rootNodeId: root,
+        parentNodeId: root,
+        kind: "assistant_message",
+        status: "completed",
+        countsForRun: false,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        ordinalWithinParent: 1,
+        runtimeRequestId: null,
+        checkpointScopeId: null,
+        startedAt: f.now,
+        completedAt: f.now,
+      },
+    });
+  const item = Effect.fnUntraced(function* (
+    id: string,
+    ordinal: number,
+    fields: Record<string, unknown> = {},
+    root = run.rootNodeId,
+    owner = threadId,
+  ) {
+    yield* node(`node:${id}`, root, owner);
+    yield* f.apply({
+      type: "turn-item.updated",
+      threadId: owner,
+      payload: {
+        id: TurnItemId.make(id),
+        threadId: owner,
+        runId: run.id,
+        nodeId: NodeId.make(`node:${id}`),
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal,
+        status: "completed",
+        title: null,
+        startedAt: f.now,
+        completedAt: f.now,
+        updatedAt: f.now,
+        type: "assistant_message",
+        messageId: MessageId.make(`message:${id}`),
+        text: "I'll inspect the failing boundary first.",
+        streaming: false,
+        ...fields,
+      },
+    });
+  });
+  const read = readRootActivity({ rootThreadIds: [threadId] }).pipe(
+    Effect.map((page) => page.items[0]?.readback ?? null),
+  );
+  return { ...f, threadId, ownerRun: run, item, read };
+});
+
+it.effect(
+  "readback accepts completed commentary, preserves the first statement and clears with the active Run",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* readbackFixture;
+      yield* f.item("opening", 1, {
+        responseKind: "commentary",
+        streaming: true,
+        status: "running",
+      });
+      assert.isNull(yield* f.read);
+      yield* f.item("opening", 1, { responseKind: "commentary" });
+      const first = yield* f.read;
+      assert.deepEqual(first, {
+        runId: f.ownerRun.id,
+        itemId: "opening",
+        text: "I'll inspect the failing boundary first.",
+        startedByPerson: true,
+      });
+      yield* f.item("second", 2, { responseKind: "commentary", text: "A different statement." });
+      yield* f.item("opening", 1, { responseKind: "commentary", text: "Revised provider text" });
+      assert.deepEqual(yield* f.read, first);
+      // Lifecycle snapshots planned before the item committed cannot erase its readback.
+      yield* f.run(f.threadId, "waiting", { startedByPerson: true });
+      assert.deepEqual(yield* f.read, first);
+      yield* f.run(f.threadId, "completed");
+      assert.isNull(yield* f.read);
+      yield* f.run(f.threadId, "running", { ordinal: 2 });
+      assert.isNull(yield* f.read);
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "unknown messages need later root action evidence; reasoning and proposed plans do not qualify",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* readbackFixture;
+      yield* f.item("unknown", 1);
+      yield* f.item("reasoning", 2, { type: "reasoning", text: "Think carefully." });
+      yield* f.item("plan", 3, { type: "proposed_plan", planId: "plan", markdown: "Inspect it." });
+      assert.isNull(yield* f.read);
+      yield* f.item("action", 6, { type: "command_execution", status: "running", input: "pwd" });
+      assert.equal((yield* f.read)?.itemId, "unknown");
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "readback excludes final answers, structured questions, whitespace and late terminal messages",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* readbackFixture;
+      yield* f.item("final", 1, { responseKind: "final" });
+      yield* f.item("blank", 2, { responseKind: "commentary", text: " \n\t" });
+      yield* f.item("structured-question", 4, {
+        type: "user_input_request",
+        requestId: "question",
+        questions: [],
+      });
+      yield* f.item("action", 5, { type: "command_execution", input: "pwd" });
+      assert.isNull(yield* f.read);
+      yield* f.run(f.threadId, "completed");
+      yield* f.item("late", 6, { responseKind: "commentary" });
+      yield* f.run(f.threadId, "running");
+      assert.isNull(yield* f.read);
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect("an answer-only Run has no readback", () =>
+  Effect.gen(function* () {
+    const f = yield* readbackFixture;
+    yield* f.item("answer", 1);
+    yield* f.run(f.threadId, "completed");
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    assert.equal(
+      (yield* store.getThreadRecords(f.threadId, ["runs"])).runs[0]?.readback,
+      undefined,
+    );
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "child, provider-native child and superseded execution items cannot speak for the Run",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* readbackFixture;
+      const child = yield* f.thread("child:readback", f.threadId);
+      yield* f.item("delegated", 1, { responseKind: "commentary" }, f.ownerRun.rootNodeId, child);
+      yield* f.item(
+        "native-child",
+        2,
+        { responseKind: "commentary" },
+        NodeId.make("native-child-root"),
+      );
+      yield* f.item(
+        "superseded",
+        3,
+        { responseKind: "commentary" },
+        NodeId.make("old-attempt-root"),
+      );
+      yield* f.item("root-opening", 4);
+      yield* f.item(
+        "child-action",
+        5,
+        { type: "command_execution", input: "pwd" },
+        NodeId.make("native-child-root"),
+      );
+      assert.isNull(yield* f.read);
+      yield* f.item("root-action", 6, {
+        type: "dynamic_tool",
+        toolName: "delegate_task",
+        input: {},
+      });
+      assert.equal((yield* f.read)?.itemId, "root-opening");
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect("readback caps Markdown at a word boundary and never splits a surrogate pair", () =>
+  Effect.gen(function* () {
+    const f = yield* readbackFixture;
+    yield* f.item("long", 1, { responseKind: "commentary", text: "First inspect. ".repeat(400) });
+    const text = (yield* f.read)!.text;
+    assert.isAtMost(text.length, 4_000);
+    assert.isTrue(text.endsWith("…"));
+    assert.isTrue("First inspect. ".repeat(400).startsWith(text.slice(0, -1)));
+    assert.equal(capReadback("a".repeat(3_998) + "😀" + "b".repeat(20)), "a".repeat(3_998) + "…");
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("readback survives closing and reopening the execution database mid-Run", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-readback-" });
+      const onDatabase = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+        Effect.scoped(
+          effect.pipe(
+            Effect.provide(
+              Layer.fresh(
+                ProjectionStore.layer.pipe(
+                  Layer.provideMerge(SqlitePersistence.layerFromPath(`${home}/runtime.sqlite`)),
+                ),
+              ),
+            ),
+          ),
+        );
+      const expected = yield* onDatabase(
+        Effect.gen(function* () {
+          const f = yield* readbackFixture;
+          yield* f.item("durable-opening", 1);
+          yield* f.item("durable-action", 2, { type: "command_execution", input: "pwd" });
+          return yield* f.read;
+        }),
+      );
+      const page = yield* onDatabase(readRootActivity({ rootThreadIds: ["root:readback"] }));
+      assert.deepEqual(page.items[0]?.readback, expected);
+      assert.equal(expected?.itemId, "durable-opening");
+    }),
+  ).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect.each(READBACK_ACTION_TYPES)(
+  "%s is action evidence for an unknown opening statement",
+  (type) =>
+    Effect.gen(function* () {
+      const f = yield* readbackFixture;
+      yield* f.item("unknown", 1);
+      yield* f.item("action", 2, {
+        type,
+        input: type === "command_execution" ? "pwd" : {},
+        fileName: "file.ts",
+        subagentId: "task",
+        origin: "app_owned",
+        driver: "codex",
+        providerInstanceId: "codex",
+        childThreadId: null,
+        prompt: "Review",
+        result: null,
+        targetThreadId: "other",
+        targetRunId: null,
+        targetProviderInstanceId: "codex",
+        targetModel: "gpt",
+        toolName: "tool",
+        planId: "plan",
+        steps: [],
+      });
+      assert.equal((yield* f.read)?.itemId, "unknown");
+    }).pipe(Effect.provide(layer)),
 );

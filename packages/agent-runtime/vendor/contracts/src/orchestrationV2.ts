@@ -638,6 +638,14 @@ export const OrchestrationV2NativeInput = Schema.Struct({
   nativeTurnId: Schema.String,
 });
 export const OrchestrationV2Run = Schema.Struct({
+  /** Immutable message-admission fact; continuations retain it and steering never changes it. */
+  startedByPerson: Schema.optional(Schema.Boolean),
+  /** Write-once projection of the opening statement; eventId identifies its activity trigger. */
+  readback: Schema.optional(Schema.Struct({
+    itemId: TurnItemId,
+    text: Schema.String,
+    eventId: EventId,
+  })),
   /** Captured admission origin is rechecked against the current Profile policy on every attempt. */
   modelPolicyOrigin: Schema.optional(Schema.Literals(["person", "nodex-agent", "agent", "automatic"])),
   /** Durable recovery keeps the reply running between failed provider attempts. */

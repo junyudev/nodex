@@ -2445,6 +2445,24 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
         const deferredRootTerminals = yield* Ref.make(new Map<string, DeferredCodexRootTerminal>());
         const offeredContinuationItemsByTurn = yield* Ref.make(new Map<string, Set<string>>());
         const finalAnswerItemIdsByTurn = yield* Ref.make(new Map<string, Set<string>>());
+        // Answer deduplication also covers unknown phases; semantic phase evidence stays separate.
+        const responseKindsByTurn = new Map<string, Map<string, "commentary" | "final">>();
+        const retainResponseKind = (
+          turnId: string,
+          item: Pick<
+            Extract<
+              CodexSchema.V2ItemCompletedNotification["item"],
+              { readonly type: "agentMessage" }
+            >,
+            "id" | "phase"
+          >,
+        ) => {
+          const kinds =
+            responseKindsByTurn.get(turnId) ?? new Map<string, "commentary" | "final">();
+          if (item.phase == null) kinds.delete(item.id);
+          else kinds.set(item.id, item.phase === "commentary" ? "commentary" : "final");
+          responseKindsByTurn.set(turnId, kinds);
+        };
         const completedFinalAnswerTextsByTurn = yield* Ref.make(new Map<string, Set<string>>());
         // Native completion and the interrupt timeout share one finalization
         // path. Serialize the race so only one can publish terminal events.
@@ -3091,6 +3109,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               updated.delete(nativeTurnId);
               return updated;
             });
+            responseKindsByTurn.delete(nativeTurnId);
             yield* Ref.update(finalAnswerItemIdsByTurn, (current) => {
               if (!current.has(nativeTurnId)) {
                 return current;
@@ -4357,6 +4376,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                   return;
                 }
               }
+              const responseKind = responseKindsByTurn.get(update.turnId)?.get(update.itemId);
               const memoryCitation = update.completed
                 ? memoryCitationsByItem.get(update.itemId)
                 : undefined;
@@ -4390,7 +4410,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 driver: CODEX_PROVIDER,
                 turnItem: {
                   ...artifacts.turnItem,
-                  responseKind: finalAnswerItem ? "final" : "commentary",
+                  ...(responseKind === undefined ? {} : { responseKind }),
                 },
               });
               if (finalAnswerItem && update.completed) {
@@ -6044,6 +6064,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             }
 
             if (payload.item.type === "agentMessage") {
+              retainResponseKind(payload.turnId, payload.item);
               if (payload.item.phase !== "commentary") {
                 yield* Ref.update(finalAnswerItemIdsByTurn, (current) => {
                   const updated = new Map(current);
@@ -6470,6 +6491,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               return;
             }
 
+            retainResponseKind(payload.turnId, payload.item);
             const finalAnswer = payload.item.phase !== "commentary";
             if (finalAnswer) {
               yield* Ref.update(finalAnswerItemIdsByTurn, (current) => {
@@ -7288,6 +7310,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                   updated.delete(input.nativeTurnId);
                   return updated;
                 });
+                responseKindsByTurn.delete(input.nativeTurnId);
                 yield* Ref.update(finalAnswerItemIdsByTurn, (current) => {
                   if (!current.has(input.nativeTurnId)) {
                     return current;

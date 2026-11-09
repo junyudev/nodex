@@ -219,6 +219,30 @@ export type AgentExecutionLocation = AgentWire<
 export type AgentBackgroundTask =
   import("../orchestration-v2/ExecutionActivity.ts").RootActivityBackgroundTask;
 
+/**
+ * The agent's opening statement for a foreground Run: its first assistant message that
+ * comments on the work rather than answering it. It is the agent's own words, unedited, so a
+ * person can check how their request was understood before the agent acts on it.
+ *
+ * A message qualifies when its provider marks it as commentary, or when an action (command,
+ * file change, tool call or delegation) follows it in the same Run. A message that ends the Run
+ * is its answer, never its readback. Only the Run's root execution speaks for it; delegated and
+ * provider-native children do not. Once chosen, it never changes for that Run.
+ */
+export interface AgentRunReadback {
+  readonly runId: string;
+  /** The assistant message the text came from. */
+  readonly itemId: string;
+  /** Markdown, at most 4,000 characters; a longer statement is cut and ends in `…`. */
+  readonly text: string;
+  /**
+   * A person's own message started the Run, from any surface. Automations, heartbeats,
+   * scheduled tasks, other agents and automatic wakes after delegated results did not.
+   * Steering never changes it, and a restarted Run keeps the origin of the Run it continues.
+   */
+  readonly startedByPerson: boolean;
+}
+
 /** Live execution facts for one non-idle root Thread. */
 export interface AgentRootActivity {
   readonly rootThreadId: string;
@@ -235,6 +259,8 @@ export interface AgentRootActivity {
   readonly activeFlags?: readonly import("@nodex/codex-app-server-protocol/v2").ThreadActiveFlag[];
   readonly approvalPrompt?: string | null;
   readonly backgroundTasks: ReadonlyArray<AgentBackgroundTask>;
+  /** The active Run's readback once it has one; absent without an active Run. */
+  readonly readback?: AgentRunReadback | null;
   readonly providerInstanceId: string;
   readonly model: string;
   readonly updatedAt: string;

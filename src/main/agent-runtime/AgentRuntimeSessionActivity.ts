@@ -56,6 +56,11 @@ export interface AgentRuntimeActivityTransition {
   readonly after: SessionActivity | null;
   /** The foreground Run that ended in this change and its terminal status when observed. */
   readonly endedRun: { readonly runId: string; readonly status: string | null } | null;
+  /**
+   * Announced by the reread that recovers from a delivery gap, not observed as it happened.
+   * Consumers that interrupt the person, such as Readback, ignore it.
+   */
+  readonly replay?: true;
 }
 
 /** Root Thread to product Session; roots without a Session binding are absent. */
@@ -94,6 +99,10 @@ const sameActivity = (left: SessionActivity | null, right: SessionActivity | nul
     left.status === right.status &&
     left.sideChatSourceThreadId === right.sideChatSourceThreadId &&
     left.activeRunId === right.activeRunId &&
+    left.readback?.runId === right.readback?.runId &&
+    left.readback?.itemId === right.readback?.itemId &&
+    left.readback?.text === right.readback?.text &&
+    left.readback?.startedByPerson === right.readback?.startedByPerson &&
     left.pendingRequestCount === right.pendingRequestCount &&
     JSON.stringify(left.activeFlags ?? []) === JSON.stringify(right.activeFlags ?? []) &&
     left.approvalPrompt === right.approvalPrompt &&
@@ -122,6 +131,7 @@ const toSessionActivity = (sessionId: string, root: AgentRootActivity): SessionA
   threadId: root.rootThreadId,
   status: root.status,
   activeRunId: root.activeRunId,
+  ...(root.readback === undefined ? {} : { readback: root.readback }),
   pendingRequestCount: root.pendingRequestCount,
   ...(root.activeFlags === undefined ? {} : { activeFlags: root.activeFlags }),
   ...(root.approvalPrompt === undefined ? {} : { approvalPrompt: root.approvalPrompt }),
@@ -257,6 +267,7 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
         roots: Iterable<string>,
         afterOf: (current: State, rootThreadId: string) => SessionActivity | null,
         sessionOf: (rootThreadId: string) => string | null,
+        replay = false,
       ) =>
       (before: State) =>
         Effect.gen(function* () {
@@ -280,6 +291,7 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
               before: previous,
               after: next,
               endedRun: endedRunId ? { runId: endedRunId, status } : null,
+              ...(replay ? { replay: true as const } : {}),
             });
           }
         });
@@ -332,6 +344,7 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
                 },
                 (rootThreadId) =>
                   roots.get(rootThreadId) ?? previous.roots.get(rootThreadId) ?? null,
+                true,
               )
             : null,
         );

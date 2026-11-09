@@ -1,3 +1,4 @@
+import { projectRunReadback, recordRunReadback } from "./RunReadback.ts";
 import * as ExecutionPauseState from "./ExecutionPauseState.ts";
 import { isRuntimeDeliveryRun, queuedRunsInDeliveryOrder } from "./QueuedRunOrder.ts";
 import { isNativeCompactCommand } from "./nativeMaintenanceCommand.ts";
@@ -1556,6 +1557,7 @@ function preserveRunRecordedFields(
   if (current === undefined) return next;
   return {
     ...next,
+    ...(current.readback === undefined ? {} : { readback: current.readback }),
     ...(next.delegatedCompletion === undefined && current.delegatedCompletion !== undefined
       ? { delegatedCompletion: current.delegatedCompletion }
       : {}),
@@ -1901,10 +1903,14 @@ export function applyToProjection(
         messages: upsertById(base.messages, event.payload),
       };
     case "turn-item.updated":
-      return withLocalVisibleTurnItems({
-        ...base,
-        turnItems: upsertById(base.turnItems, event.payload),
-      });
+      return projectRunReadback(
+        withLocalVisibleTurnItems({
+          ...base,
+          turnItems: upsertById(base.turnItems, event.payload),
+        }),
+        event.payload,
+        event.id,
+      );
     case "plan.updated":
       return {
         ...base,
@@ -3280,7 +3286,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 requested_at = excluded.requested_at,
                 completed_at = excluded.completed_at,
                 payload_json = ${keepRecordedRunField(
-                  keepRecordedRunField(sql`excluded.payload_json`, "$.delegatedCompletion"),
+                  keepRecordedRunField(
+                    keepRecordedRunField(sql`excluded.payload_json`, "$.readback"),
+                    "$.delegatedCompletion",
+                  ),
                   "$.restartCancelledBackgroundWork",
                 )}
             `;
@@ -4054,6 +4063,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   ELSE excluded.output_bytes END,
                 payload_json = excluded.payload_json
             `;
+            yield* recordRunReadback(event.payload, event.id).pipe(
+              Effect.provideService(SqlClient.SqlClient, sql),
+            );
             if (event.payload.type === "dynamic_tool" && event.payload.status === "completed") {
               if (event.payload.attachments !== undefined)
                 yield* sql`DELETE FROM orchestration_v2_projection_attachment_refs WHERE owner_id = ${event.payload.id}`;

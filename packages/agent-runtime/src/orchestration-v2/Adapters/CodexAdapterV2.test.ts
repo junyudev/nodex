@@ -6396,7 +6396,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     answers: ReadonlyArray<{
       readonly id: string;
       readonly text: string;
-      readonly phase?: "commentary" | "final_answer" | null;
+      readonly phase?: "commentary" | "partial_answer" | "final_answer" | null;
       readonly omitPhase?: boolean;
       readonly streamed?: boolean;
       readonly completionDelayMs?: number;
@@ -6799,6 +6799,45 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           assistantMessages(harness.events).map((event) => event.message.text),
           [""],
         );
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
+
+  it.effect.each([
+    { phase: null, expected: undefined },
+    { phase: "commentary" as const, expected: "commentary" },
+    { phase: "partial_answer" as const, expected: "final" },
+    { phase: "final_answer" as const, expected: "final" },
+  ])("preserves Codex phase $phase as $expected", ({ phase, expected }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const transcript = finalAnswerTranscript(`codex-phase-${phase}`, [
+          { id: "phase-item", text: "I'll review the branch.", phase },
+        ]);
+        const harness = yield* makeCodexReplayHarness(transcript);
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make(`attempt-phase-${phase}`),
+            text: "Reply with the requested recovery marker.",
+          }),
+        );
+        yield* awaitUntil(() => harness.terminalEvents().length === 1, "root turn terminal");
+        const items = harness.events.flatMap((event) =>
+          event.type === "turn_item.updated" &&
+          event.turnItem.type === "assistant_message" &&
+          !event.turnItem.streaming
+            ? [event.turnItem]
+            : [],
+        );
+        assert.isNotEmpty(items);
+        assert.equal(items.at(-1)?.responseKind, expected);
       }).pipe(
         Effect.provide(
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),

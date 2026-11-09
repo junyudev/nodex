@@ -14,7 +14,11 @@ import {
   type CoreScenarioContext,
 } from "../../../scripts/scenarios/harness/core-scenario-harness";
 import { AGENT_CLI_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/agent-cli-workflow";
-import type { AgentRuntimeLaunch, AgentRuntimeMessage } from "../../shared/agent-runtime-api";
+import type {
+  AgentRuntimeLaunch,
+  AgentRuntimeMessage,
+  AgentRuntimeMessageInput,
+} from "../../shared/agent-runtime-api";
 import type { Automation, AutomationRun } from "../../shared/types";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
@@ -108,6 +112,7 @@ const setup = (
   const admissions: Array<{ dispatchId?: string }> = [];
   const confirmations: string[] = [];
   const messages: AgentRuntimeMessage[] = [];
+  const messageInputs: AgentRuntimeMessageInput[] = [];
   const layer = live.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -320,8 +325,10 @@ const setup = (
                 pendingRuntimeRequest: state.waitingForInput ? { kind: "user_input" } : null,
               },
             }),
-          queueMessage: ({ message }: { message: AgentRuntimeMessage }) =>
+          queueMessage: (input: AgentRuntimeMessageInput) =>
             Effect.gen(function* () {
+              const { message } = input;
+              messageInputs.push(input);
               if (state.denyMessage)
                 return yield* Effect.fail(new Error("Read-only Turn cannot dispatch"));
               messages.push(message);
@@ -396,6 +403,7 @@ const setup = (
     completions,
     stops,
     messages,
+    messageInputs,
     admissions,
     confirmations,
     layer,
@@ -430,6 +438,11 @@ it.effect.each(["cron", "heartbeat"] as const)(
     return Effect.gen(function* () {
       const execution = yield* AutomationExecution;
       yield* execution.executeClaimed(fixture.state.definition, { ...context, admission });
+      const attempt =
+        kind === "cron"
+          ? fixture.launches[0]!.automationExecution
+          : fixture.messageInputs[0]!.automationExecution;
+      assert.equal(attempt?.automationId, definition.id);
       const submitted = kind === "cron" ? fixture.launches[0]!.message : fixture.messages[0]!;
       const selection =
         kind === "cron" ? fixture.launches[0]!.modelSelection : fixture.messages[0]!.modelSelection;

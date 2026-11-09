@@ -524,7 +524,7 @@ export const live: Layer.Layer<
           if (!previous)
             yield* application.queueMessage({
               sessionId,
-              automationExecution: { runId, leaseId, dispatchId },
+              automationExecution: { automationId: definition.id, runId, leaseId, dispatchId },
               message: {
                 messageId,
                 text: buildAutomationHeartbeatPrompt(
@@ -618,7 +618,7 @@ export const live: Layer.Layer<
           if (!run || run.status !== "IN_PROGRESS") return;
           const changes = yield* subscribeExecutionChanges(supervisor.get());
           yield* application.launch({
-            automationExecution: { runId, leaseId, dispatchId },
+            automationExecution: { automationId: definition.id, runId, leaseId, dispatchId },
             messageOrigin: "automation",
             launchId: identity("launch", [definition.id, dispatchId, index]),
             acceptedAt: run.createdAt,

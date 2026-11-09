@@ -290,6 +290,11 @@ it.live("a delivery gap rereads every live root and still announces what changed
       f.transitions.map((transition) => transition.after?.status),
       ["running", "waiting"],
     );
+    // Only the change observed live is first-hand; the gap's reread is a replay.
+    assert.deepEqual(
+      f.transitions.map((transition) => transition.replay ?? false),
+      [false, true],
+    );
   }).pipe(Effect.scoped),
 );
 
@@ -434,5 +439,71 @@ it.live(
       });
       yield* f.until(() => f.changes.length === 4);
       assert.deepEqual((yield* f.activity.read).items[0]?.activeFlags, ["waitingOnUserInput"]);
+    }).pipe(Effect.scoped),
+);
+
+it.live(
+  "maps readback in snapshots and publishes every readback field change without scalar activity changes",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture({ "thread:a": "session:a" });
+      const runtime = yield* fakeRuntime("1");
+      const base = root("thread:a", "running");
+      yield* runtime.commit("thread:a", base);
+      yield* f.attach(runtime.connection);
+      yield* f.until(() => f.changes.some((change) => change.type === "reset"));
+      const readbacks = [
+        {
+          runId: base.activeRunId!,
+          itemId: "opening",
+          text: "I'll inspect the build.",
+          startedByPerson: true,
+        },
+        {
+          runId: base.activeRunId!,
+          itemId: "opening",
+          text: "I'll inspect the build.",
+          startedByPerson: false,
+        },
+        {
+          runId: base.activeRunId!,
+          itemId: "opening",
+          text: "I'll inspect the tests.",
+          startedByPerson: false,
+        },
+        {
+          runId: base.activeRunId!,
+          itemId: "other",
+          text: "I'll inspect the tests.",
+          startedByPerson: false,
+        },
+        {
+          runId: "other-run",
+          itemId: "other",
+          text: "I'll inspect the tests.",
+          startedByPerson: false,
+        },
+        null,
+      ];
+      for (const [index, readback] of readbacks.entries()) {
+        yield* runtime.commit("thread:a", { ...base, readback });
+        yield* f.until(() => f.changes.length === index + 2);
+        assert.deepEqual((yield* f.activity.read).items[0]?.readback, readback);
+        const change = f.changes.at(-1);
+        assert.equal(change?.type, "upsert");
+        if (change?.type === "upsert") assert.deepEqual(change.activity.readback, readback);
+      }
+      // Structurally equal facts cause no extra transition.
+      yield* runtime.commit("thread:a", { ...base, readback: { ...readbacks[0]! } });
+      yield* f.until(() => f.changes.length === 8);
+      const before = f.transitions.length;
+      yield* runtime.commit("thread:a", { ...base, readback: { ...readbacks[0]! } });
+      yield* runtime.commit("thread:a", {
+        ...base,
+        status: "waiting",
+        readback: { ...readbacks[0]! },
+      });
+      yield* f.until(() => f.changes.length === 9);
+      assert.equal(f.transitions.length, before + 1);
     }).pipe(Effect.scoped),
 );

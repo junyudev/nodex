@@ -1,3 +1,4 @@
+import { canAdvanceReadback } from "../orchestration-v2/RunReadback.ts";
 import * as SessionPause from "./SessionPause.ts";
 import type { AgentRuntimeOperations } from "./Interface.ts";
 import { RuntimeModelPolicy, executionProviders } from "./ModelPolicy.ts";
@@ -1864,11 +1865,22 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         const consume: Effect.Effect<void, unknown> =
           input.method === "execution.observe"
             ? stream.pipe(
-                // Only secret cards change attention; transcript updates never enter the burst.
-                Stream.filter(
-                  (stored) =>
-                    stored.event.type !== "turn-item.updated" ||
-                    stored.event.payload.type === "secret_request",
+                // Only secret cards and the write-once opening statement affect activity.
+                Stream.filterEffect((stored) =>
+                  Effect.gen(function* () {
+                    const event = stored.event;
+                    if (
+                      event.type !== "turn-item.updated" ||
+                      event.payload.type === "secret_request"
+                    )
+                      return true;
+                    if (event.payload.runId === null || !canAdvanceReadback(event.payload))
+                      return false;
+                    const rows = yield* sql<{ readonly found: number }>`SELECT 1 AS found
+                    FROM orchestration_v2_projection_runs WHERE run_id = ${event.payload.runId}
+                      AND json_extract(payload_json, '$.readback.eventId') = ${event.id}`;
+                    return rows.length > 0;
+                  }),
                 ),
                 Stream.groupedWithin(64, Duration.millis(50)),
                 Stream.runForEach(observeExecution),

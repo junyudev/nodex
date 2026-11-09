@@ -7561,6 +7561,12 @@ it.effect("only person-authored accepted Runtime sends confirm reminder cancella
       message: { messageId: "forwarded", text: "Forwarded update" },
     });
     assert.deepEqual(accepted(), [launch.message.messageId, "person", "inbox"]);
+    const sent = f.calls.find(
+      (call) =>
+        call.method === "thread.send" &&
+        (call.input as { messageId?: string }).messageId === "forwarded",
+    );
+    assert.equal((sent?.input as { createdBy?: string }).createdBy, "user");
   }),
 );
 
@@ -7568,9 +7574,22 @@ it.effect("automatic launches do not confirm a person-authored message", () =>
   Effect.gen(function* () {
     const f = setup();
     const owner = yield* f.owner;
-    yield* owner.launch({ ...launch, messageOrigin: "automation" });
+    yield* owner.launch({
+      ...launch,
+      messageOrigin: "automation",
+      automationExecution: {
+        automationId: "automation:definition",
+        runId: "automation:run",
+        leaseId: "automation:lease",
+        dispatchId: "automation:dispatch",
+      },
+    });
     const initial = [...f.commands.values()].find((command) => command.type === "message.dispatch");
-    assert.deepInclude(initial, { createdBy: "system", creationSource: "server" });
+    assert.deepInclude(initial, {
+      createdBy: "system",
+      creationSource: "server",
+      scheduledTaskId: "automation:definition",
+    });
     assert.deepEqual(f.acceptedUserMessages, []);
   }),
 );
@@ -7991,6 +8010,7 @@ it.effect("a withdrawn Automation cannot dispatch after blocked workspace prepar
           ...launch,
           workPage: { pageId: "page:automation" },
           automationExecution: {
+            automationId: "automation:definition",
             runId: "automation:run",
             leaseId: "automation:lease",
             dispatchId: "automation:dispatch",
@@ -8070,6 +8090,7 @@ it.effect("a withdrawn heartbeat claim cannot queue its native message", () =>
           sessionId: launch.sessionId,
           message: { messageId: "automation:heartbeat", text: "Continue this Automation" },
           automationExecution: {
+            automationId: "automation:definition",
             runId: "automation:run",
             leaseId: "automation:lease",
             dispatchId: "automation:dispatch",
@@ -8142,5 +8163,83 @@ it.effect(
       assert.isAtLeast(persisted, 0);
       assert.isAbove(rollback, persisted);
       assert.isAbove(dispatch, rollback);
+    }),
+);
+
+it.effect(
+  "heartbeat provenance is independent of queued message authorship and reminder acceptance",
+  () =>
+    Effect.gen(function* () {
+      const f = setup();
+      const owner = yield* f.owner;
+      yield* owner.launch(launch);
+      yield* owner.queueMessage({
+        sessionId: launch.sessionId,
+        message: { messageId: "heartbeat", text: "Continue" },
+        automationExecution: {
+          automationId: "automation:definition",
+          runId: "automation:run",
+          leaseId: "automation:lease",
+          dispatchId: "automation:dispatch",
+        },
+      });
+      yield* owner.queueMessage({
+        sessionId: launch.sessionId,
+        message: { messageId: "person-followup", text: "Also review the tests" },
+      });
+      const admissions = [...f.commands.values()].filter(
+        (command) => command.type === "message.dispatch",
+      );
+      assert.equal(
+        admissions.find((command) => command.messageId === "heartbeat")?.createdBy,
+        "user",
+      );
+      assert.equal(
+        admissions.find((command) => command.messageId === "person-followup")?.createdBy,
+        "user",
+      );
+      assert.equal(
+        admissions.find((command) => command.messageId === "heartbeat")?.scheduledTaskId,
+        "automation:definition",
+      );
+      assert.equal(
+        admissions.find((command) => command.messageId === "person-followup")?.scheduledTaskId,
+        undefined,
+      );
+      assert.deepEqual(f.acceptedUserMessages, [
+        launch.message.messageId,
+        "heartbeat",
+        "person-followup",
+      ]);
+    }),
+);
+
+it.effect(
+  "Automation message admission retains scheduled provenance without changing authorship",
+  () =>
+    Effect.gen(function* () {
+      const f = setup();
+      const owner = yield* f.owner;
+      yield* owner.launch(launch);
+      yield* owner.message({
+        sessionId: launch.sessionId,
+        automationExecution: {
+          automationId: "automation:definition",
+          runId: "automation:run",
+          leaseId: "automation:lease",
+          dispatchId: "automation:dispatch",
+        },
+        message: { messageId: "automation:message", text: "Continue the saved work" },
+      });
+      const command = [...f.commands.values()].find(
+        (command) =>
+          command.type === "message.dispatch" && command.messageId === "automation:message",
+      );
+      assert.equal(
+        command?.type === "message.dispatch" && command.scheduledTaskId,
+        "automation:definition",
+      );
+      assert.equal(command?.type === "message.dispatch" && command.createdBy, "user");
+      assert.isTrue(f.acceptedUserMessages.includes("automation:message"));
     }),
 );

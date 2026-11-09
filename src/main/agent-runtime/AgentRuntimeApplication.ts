@@ -1589,6 +1589,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ...(input.messageOrigin === "host" || input.messageOrigin === "automation"
         ? { createdBy: "system" as const, creationSource: "server" as const }
         : {}),
+      ...(input.automationExecution === undefined
+        ? {}
+        : {
+            scheduledTaskId: input.automationExecution.automationId,
+          }),
     };
     const firstLaunch = !existing && !previousBinding;
     yield* requireAutomationExecution(input.automationExecution);
@@ -2843,13 +2848,20 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       yield* requireAutomationExecution(input.automationExecution);
       const result = yield* dispatch(
         connection,
-        messageCommand(
-          loaded.threadId,
-          outgoing,
-          input.intent,
-          agent,
-          queueAfterActive || prepared.hasConfig,
-        ),
+        {
+          ...messageCommand(
+            loaded.threadId,
+            outgoing,
+            input.intent,
+            agent,
+            queueAfterActive || prepared.hasConfig,
+          ),
+          ...(input.automationExecution === undefined
+            ? {}
+            : {
+                scheduledTaskId: input.automationExecution.automationId,
+              }),
+        },
         input.modeLimit,
       );
       if (!agent)

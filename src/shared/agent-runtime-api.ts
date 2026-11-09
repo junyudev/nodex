@@ -40,6 +40,8 @@ export interface AgentRuntimeMessageUpload {
 
 /** The Host rechecks this exact Automation attempt after preparation, immediately before dispatch. */
 export interface AgentRuntimeAutomationExecution {
+  /** Automation identity retained as scheduled-task provenance at message admission. */
+  readonly automationId: string;
   readonly runId: string;
   readonly leaseId: string;
   readonly dispatchId: string;
@@ -337,6 +339,8 @@ export interface AgentRuntimeSessionActivity {
   readonly activeFlags?: AgentRootActivity["activeFlags"];
   readonly approvalPrompt?: string | null;
   readonly backgroundTasks: AgentRootActivity["backgroundTasks"];
+  /** The active Run's opening statement once the agent has made one; see `AgentRunReadback`. */
+  readonly readback?: AgentRootActivity["readback"];
   readonly providerInstanceId: string;
   readonly model: string;
   readonly updatedAt: string;

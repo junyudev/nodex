@@ -1,5 +1,6 @@
 import {
   MessageId,
+  RunId,
   ContextHandoffId,
   ProviderThreadId,
   NodeId,
@@ -764,4 +765,41 @@ describe("orchestration V2 wire projection", () => {
     };
     expect(projectTurnItemForWire({ ...base, output })).not.toHaveProperty("output");
   });
+});
+
+it("keeps Run observations compact when activity has already recorded the opening statement", () => {
+  const runId = RunId.make("readback-run");
+  const event = projectDomainEventForWire({
+    type: "run.updated",
+    id: EventId.make("run-updated"),
+    threadId: base.threadId,
+    occurredAt: base.updatedAt,
+    payload: {
+      id: runId,
+      threadId: base.threadId,
+      ordinal: 1,
+      startedByPerson: true,
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt" },
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      providerThreadId: null,
+      userMessageId: MessageId.make("user"),
+      rootNodeId: null,
+      activeAttemptId: null,
+      status: "running",
+      requestedAt: base.updatedAt,
+      startedAt: base.updatedAt,
+      completedAt: null,
+      checkpointId: null,
+      contextHandoffId: null,
+      readback: {
+        itemId: TurnItemId.make("opening"),
+        text: "x".repeat(4_000),
+        eventId: EventId.make("readback"),
+      },
+    },
+  });
+  expect(event.type).toBe("run.updated");
+  if (event.type !== "run.updated") return;
+  expect(event.payload.readback).toBeUndefined();
+  expect(event.payload.startedByPerson).toBe(true);
 });

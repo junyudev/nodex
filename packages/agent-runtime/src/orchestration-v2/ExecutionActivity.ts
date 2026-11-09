@@ -1,3 +1,4 @@
+import type { AgentRunReadback } from "../nodex/Interface.ts";
 import type { ThreadActiveFlag } from "@nodex/codex-app-server-protocol/v2";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -47,6 +48,7 @@ export interface RootActivity {
   readonly sideChatSourceThreadId?: string;
   readonly status: "running" | "waiting" | "background";
   readonly activeRunId: string | null;
+  readonly readback?: AgentRunReadback | null;
   readonly pendingRequestCount: number;
   readonly activeFlags?: readonly ThreadActiveFlag[];
   readonly approvalPrompt?: string | null;
@@ -290,6 +292,33 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
                   ORDER BY run.ordinal DESC LIMIT 1) AS active_run_id
               FROM orchestration_v2_projection_threads AS thread
               WHERE thread.thread_id IN ${sql.in(page.map((row) => row.root_thread_id))}`;
+      const readbacks = heads.flatMap((head) =>
+        head.active_run_id === null ? [] : [head.active_run_id],
+      );
+      const readbackRows =
+        readbacks.length === 0
+          ? []
+          : yield* sql<{
+              readonly run_id: string;
+              readonly item_id: string;
+              readonly text: string;
+              readonly started_by_person: number;
+            }>`SELECT run_id, json_extract(payload_json, '$.readback.itemId') AS item_id,
+          json_extract(payload_json, '$.readback.text') AS text,
+          COALESCE(json_extract(payload_json, '$.startedByPerson'), 0) AS started_by_person
+        FROM orchestration_v2_projection_runs WHERE run_id IN ${sql.in(readbacks)}
+          AND json_extract(payload_json, '$.readback') IS NOT NULL`;
+      const readbackOf = new Map(
+        readbackRows.map((row) => [
+          row.run_id,
+          {
+            runId: row.run_id,
+            itemId: row.item_id,
+            text: row.text,
+            startedByPerson: row.started_by_person === 1,
+          },
+        ]),
+      );
       const headOf = new Map(heads.map((head) => [head.thread_id, head]));
       const items: Array<RootActivity> = [];
       for (const row of page) {
@@ -303,6 +332,8 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           status:
             row.pending_requests > 0 ? "waiting" : row.active_runs > 0 ? "running" : "background",
           activeRunId: head.active_run_id,
+          readback:
+            head.active_run_id === null ? null : (readbackOf.get(head.active_run_id) ?? null),
           pendingRequestCount: row.pending_requests,
           activeFlags: sessionAttentionFlags([
             { kind: ATTENTION_KINDS.approval, awaitsPerson: row.has_approval > 0 },
