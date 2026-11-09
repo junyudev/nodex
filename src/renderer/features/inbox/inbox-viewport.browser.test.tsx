@@ -1,18 +1,15 @@
 import { act, render, screen } from "@testing-library/react";
 import { useRef } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
-import type { InboxItem, InboxWindowFilter } from "../../../shared/inbox";
+import type { InboxView } from "./inbox-viewport";
 import { initiallyFollowsInbox, useInboxViewport } from "./use-inbox-viewport";
 
 const ROW_PX = 100;
 const VIEWPORT_PX = 300;
 
-/** Newest first, as Core windows return them. */
+/** Row identities newest first, as Core windows return them. */
 const messages = (count: number, prefix = "m") =>
-  Array.from(
-    { length: count },
-    (_, index) => ({ pageId: `${prefix}${count - index}` }) as InboxItem,
-  );
+  Array.from({ length: count }, (_, index) => `${prefix}${count - index}`);
 
 const fetchNoMorePages = async () => undefined;
 
@@ -25,8 +22,8 @@ function Stream({
   fetchNextPage = fetchNoMorePages,
 }: {
   scopeKey: string;
-  items: readonly InboxItem[];
-  view?: InboxWindowFilter;
+  items: readonly string[];
+  view?: InboxView;
   hasNextPage?: boolean;
   fetchNextPage?: () => Promise<unknown>;
 }) {
@@ -35,9 +32,10 @@ function Stream({
   const viewport = useInboxViewport({
     scopeKey,
     view,
+    activityFilter: "all",
     scrollRef,
     stickToBottomRef,
-    items,
+    anchorIds: items,
     ready: true,
     hasNextPage,
     isFetchingNextPage: false,
@@ -51,11 +49,17 @@ function Stream({
       onScroll={viewport.onScroll}
       style={{ height: VIEWPORT_PX, overflowY: "auto" }}
     >
-      {ordered.map((item) => (
-        <div key={item.pageId} data-inbox-page-id={item.pageId} style={{ height: ROW_PX }}>
-          {item.pageId}
-        </div>
-      ))}
+      {ordered.map((id) =>
+        view === "inbox" ? (
+          <div key={id} data-inbox-page-id={id} style={{ height: ROW_PX }}>
+            {id}
+          </div>
+        ) : (
+          <div key={id} data-activity-id={id} style={{ height: ROW_PX }}>
+            {id}
+          </div>
+        ),
+      )}
     </div>
   );
 }
@@ -86,10 +90,7 @@ describe("an Inbox's place", () => {
 
     // Two older messages were handled while the reader was away.
     render(
-      <Stream
-        scopeKey="test:anchor"
-        items={items.filter((item) => !["m1", "m2"].includes(item.pageId))}
-      />,
+      <Stream scopeKey="test:anchor" items={items.filter((id) => !["m1", "m2"].includes(id))} />,
     );
     expect(offsetOf("m8")).toBe(50);
   });
@@ -107,7 +108,7 @@ describe("an Inbox's place", () => {
     const first = render(<Stream scopeKey="test:handled" items={items} />);
     await scrollTo(650);
     first.unmount();
-    render(<Stream scopeKey="test:handled" items={items.filter((item) => item.pageId !== "m8")} />);
+    render(<Stream scopeKey="test:handled" items={items.filter((id) => id !== "m8")} />);
     expect(atBottom()).toBe(true);
   });
 
@@ -115,13 +116,13 @@ describe("an Inbox's place", () => {
     const items = messages(20);
     const view = render(<Stream scopeKey="test:views" items={items} />);
     await scrollTo(650);
-    view.rerender(<Stream scopeKey="test:views" items={items} view="processed" />);
-    // History opens at its newest message, at the top.
+    view.rerender(<Stream scopeKey="test:views" items={items} view="activity" />);
+    // Activity opens at its newest fact, at the top.
     expect(scroller().scrollTop).toBe(0);
     await scrollTo(420);
     view.rerender(<Stream scopeKey="test:views" items={items} />);
     expect(offsetOf("m8")).toBe(50);
-    view.rerender(<Stream scopeKey="test:views" items={items} view="processed" />);
+    view.rerender(<Stream scopeKey="test:views" items={items} view="activity" />);
     expect(scroller().scrollTop).toBe(420);
   });
 

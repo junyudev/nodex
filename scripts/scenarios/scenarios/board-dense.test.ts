@@ -67,6 +67,12 @@ class RecordingSeedPort implements ScenarioSeedPort {
   async recordPageWorkspace(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }
+  async recordSourceProblem(): Promise<never> {
+    throw new Error("Source problems are seeded through Core");
+  }
+  async readActivity(): Promise<never> {
+    throw new Error("Activity inspection requires Core");
+  }
   async writeTurnNote(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }
@@ -394,6 +400,9 @@ class RecordingSeedPort implements ScenarioSeedPort {
   }
 
   async readInbox(): Promise<never> {
+    throw new Error("Inbox inspection is not part of this scenario");
+  }
+  async readHandledMessages(): Promise<never> {
     throw new Error("Inbox inspection is not part of this scenario");
   }
 

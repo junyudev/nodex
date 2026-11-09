@@ -86,6 +86,41 @@ const SKILL_ERRORS: &[&str] = &[
 
 const COMMANDS: &[CommandMetadata] = &[
     CommandMetadata {
+        path: &["sources", "list"],
+        capability: "sources",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "source_list",
+        errors: READ_ERRORS,
+        example: "nodex sources list",
+        example_argv: &["sources", "list"],
+    },
+    CommandMetadata {
+        path: &["sources", "status"],
+        capability: "sources",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "source_status",
+        errors: READ_ERRORS,
+        example: "nodex sources status",
+        example_argv: &["sources", "status"],
+    },
+    CommandMetadata {
+        path: &["sources", "triggers"],
+        capability: "sources",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "source_trigger_window",
+        errors: READ_ERRORS,
+        example: "nodex sources triggers --thread https://github.com/owner/repo/issues/1",
+        example_argv: &[
+            "sources",
+            "triggers",
+            "--thread",
+            "https://github.com/owner/repo/issues/1",
+        ],
+    },
+    CommandMetadata {
         path: &["work", "pause"],
         capability: "work.holds",
         effect: CommandEffect::Write,

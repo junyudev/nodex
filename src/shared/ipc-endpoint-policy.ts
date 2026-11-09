@@ -57,6 +57,7 @@ export type IpcCommand<
 
 /** Exact owner-audited groups. Never replace one group with an `Exclude<keyof IpcApi, ...>` remainder. */
 type QueryEndpointPolicy =
+  | "sources:settings"
   | "work:workspace"
   | "work:holds"
   | "work:effective-hold"
@@ -245,6 +246,7 @@ type QueryEndpointPolicy =
   | "inbox:summary"
   | "inbox:counts"
   | "inbox:window"
+  | "inbox:activity"
   | "inbox:prepare-confirmation"
   | "inbox:chat-targets"
   | "files:read"
@@ -455,6 +457,8 @@ type CoreLocalCommitCommandEndpointPolicy =
   | "inbox:dispatch"
   | "work:start"
   | "work:accept"
+  | "sources:connect"
+  | "sources:update"
   | "work:set-hold"
   | "inbox:keep"
   | "inbox:delete"
@@ -464,6 +468,7 @@ type CoreLocalCommitCommandEndpointPolicy =
   | "inbox:request-suggestion"
   | "inbox:stop-suggestion"
   | "inbox:retry-dispatch"
+  | "inbox:retry-problem"
   | "inbox:undo"
   | "document-recovery:apply"
   | "block-documents:command"
@@ -518,6 +523,7 @@ type MainRevisionCommandEndpointPolicy =
   | "codex:visualization:interaction:write";
 
 type PlainResultCommandEndpointPolicy =
+  | "sources:retry"
   | "work:refresh-workspace"
   | "windows-startup:open-settings"
   | "inbox:open-nodex"

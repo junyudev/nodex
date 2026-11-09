@@ -3198,6 +3198,7 @@
     "schemas": {
         "type": "string",
         "enum": [
+          "messages",
         ]
       },
       "ApplyResponse_LibraryCommitValue_LibraryReceipt": {
@@ -3205,43 +3206,50 @@
           {
             "type": "object",
             "required": [
-              "outcome",
-              "receipt",
-              "commit",
-              "status"
+              "label",
+              "kind"
             ],
             "properties": {
               "automation_id": {
+                "type": "string"
               },
-              "delivery": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-          },
+              "kind": {
                 "type": "string",
                 "enum": [
-                  "committed"
                 ]
+              },
+              "label": {
+                "type": "string"
               }
             }
           },
           {
             "type": "object",
             "required": [
-              "outcome",
-              "receipt",
-              "observed",
-              "status"
+              "kind"
             ],
             "properties": {
-              "observed": {
-                "$ref": "#/components/schemas/StoreObservation"
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "committed"
+                ]
+              },
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "chat"
+                ]
               },
               "outcome": {
                 "type": "object",
@@ -3394,87 +3402,28 @@
                   }
                 }
               },
-              "receipt": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/ModuleMutationReceipt"
-                  },
-                  {
-                    "type": "object",
-                    "required": [
-                      "operation_kind",
-                      "did_mutate",
-                      "affected_parent_keys",
-                      "affected_page_ids",
-                      "affected_database_ids",
-                      "affected_view_ids",
-                      "committed_revisions",
-                      "commit_seq",
-                      "committed_at"
-                    ],
-                    "properties": {
-                      "affected_database_ids": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      },
-                      "affected_page_ids": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      },
-                      "affected_parent_keys": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      },
-                      "affected_view_ids": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      },
-                      "commit_seq": {
-                        "type": "integer",
-                        "format": "int64"
-                      },
-                      "committed_at": {
-                        "type": "string"
-                      },
-                      "committed_revisions": {
-                        "type": "object",
-                        "additionalProperties": {
-                          "type": "integer",
-                          "format": "int64"
-                        },
-                        "propertyNames": {
-                          "type": "string"
-                        }
-                      },
-                      "created_target": {
-                        "oneOf": [
-                          {
-                            "$ref": "#/components/schemas/LibraryResourceTarget"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "did_mutate": {
-                        "type": "boolean"
-                      },
-                      "operation_kind": {
-                        "type": "string"
-                      }
-                    }
-                  }
+              "session_id": {
+                "type": "string"
+              }
+            }
+          {
+            "type": "object",
+            "required": [
+              "label",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
                 ]
               },
-              "status": {
+              "label": {
+                "type": "string"
+              },
+                "type": "string"
+              }
+            }
                 "type": "string",
                 "enum": [
                   "no_op"
@@ -3499,15 +3448,17 @@
               "commit": {
                 "$ref": "#/components/schemas/CommitIdentity"
               },
-              "delivery": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
-                  },
-                  {
-                    "type": "null"
-                  }
+                "type": "string",
+                "enum": [
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+            ],
+            "properties": {
               },
               "outcome": {
                 "type": "object",
@@ -3662,7 +3613,8 @@
                   }
                 ]
               },
-              "status": {
+                "type": "string"
+              },
                 "type": "string",
                 "enum": [
                   "committed"
@@ -3679,161 +3631,7 @@
               "status"
             ],
             "properties": {
-              "observed": {
-                "$ref": "#/components/schemas/StoreObservation"
-              },
-              "outcome": {
-                "type": "object",
-                "required": [
-                  "document_id",
-                  "generation",
-                  "head_seq",
-                  "outcome"
-                ],
-                "properties": {
-                  "canvas": {},
-                  "checkpoint_effect": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/DocumentCheckpointEffect"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "committed_at": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "document_id": {
-                    "type": "string"
-                  },
-                  "generation": {
-                    "type": "integer",
-                    "format": "int64"
-                  },
-                  "head_seq": {
-                    "type": "integer",
-                    "format": "int64"
-                  },
-                  "mutation_effect": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/DocumentMutationEffect"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "outcome": {
-                    "$ref": "#/components/schemas/DocumentCommitOutcome"
-                  },
-                  "owner_effect": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/DocumentOwnerEffect"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "recovery": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/RecoveryDraftSummary"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "recovery_capture": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/RecoveryCaptureReceipt"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "semantic_block_etags": {
-                    "type": [
-                      "object",
-                      "null"
-                    ],
-                    "additionalProperties": {
-                      "$ref": "#/components/schemas/DocumentSemanticBlockEtags"
-                    },
-                    "propertyNames": {
-                      "type": "string"
-                    }
-                  },
-                  "semantic_deleted_owner_block_ids": {
-                    "type": [
-                      "array",
-                      "null"
-                    ],
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "semantic_etags": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/DocumentSemanticEtags"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "semantic_local_block_ids": {
-                    "type": [
-                      "object",
-                      "null"
-                    ],
-                    "additionalProperties": {
-                      "type": "string"
-                    },
-                    "propertyNames": {
-                      "type": "string"
-                    }
-                  }
-                }
-              },
-              "receipt": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/ModuleMutationReceipt"
-                  },
-                  {
-                    "type": "object",
-                    "required": [
-                      "document_id",
-                      "generation",
-                      "head_seq"
-                    ],
-                    "properties": {
-                      "document_id": {
-                        "type": "string"
-                      },
-                      "generation": {
-                        "type": "integer",
-                        "format": "int64"
-                      },
-                      "head_seq": {
-                        "type": "integer",
-                        "format": "int64"
-                      }
-                    }
-                  }
-                ]
+              "kind": {
               },
               "status": {
                 "type": "string",
@@ -6232,6 +6030,7 @@
       "AutomationAssessmentResource": {
         "type": "string",
         "enum": [
+          "thread",
           "automations",
       "AutomationCondition": {
           {
@@ -6465,337 +6264,99 @@
           }
         }
       },
-      "BackupJobRecord": {
-        "type": "object",
-        "required": [
-          "job_id",
-          "operation_id",
-          "state",
-          "phase",
-          "completed_units",
-          "total_units",
-          "started_at_ms",
-          "updated_at_ms",
-          "include_assets",
-          "trigger",
-          "backup_id",
-          "progress"
-        ],
-        "properties": {
-          "backup_id": {
-            "type": "string"
-          },
-          "completed_units": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-            "type": [
-            "items": {
-          },
-            "oneOf": [
-          },
-          "label": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-            "oneOf": [
-                "$ref": "#/components/schemas/AutomationMode",
-                "type": "null"
-          },
-          "model": {
-          },
-          "operation_id": {
-            "type": "string"
-          }
-        }
-      },
-      "BackupTrigger": {
-        "type": "string",
-        "enum": [
-          "manual",
-          "auto",
-          "pre-restore"
-        ]
-      },
-      "CanvasCompactionStats": {
-        "type": "object",
-        "required": [
-          "document_id",
-          "generation",
-          "head_seq",
-          "scene_hash",
-          "tombstone_count",
-          "tombstone_bytes",
-          "eligible"
-        ],
-        "properties": {
-          "document_id": {
-            "type": "string"
-          },
-          "eligible": {
-            "type": "boolean"
-          },
-          "generation": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "head_seq": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "scene_hash": {
-            "type": "string"
-          },
-          "tombstone_bytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "tombstone_count": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
-      "ClientIdentity": {
+      "AutomationInput": {
         "type": "object",
         "required": [
           "kind",
-          "build_id"
+          "name"
         ],
         "properties": {
-          "build_id": {
-            "type": "string"
+          "backend_binding": {
+            "$ref": "#/components/schemas/AgentBackendBinding"
           },
-          "kind": {
-            "$ref": "#/components/schemas/ClientKind"
-          }
-        },
-        "additionalProperties": false
-      },
-      "ClientKind": {
-        "type": "string",
-        "enum": [
-          "electron_host",
-          "native_cli",
-          "test"
-        ]
-      },
-      "CodexThreadActiveFlag": {
-        "type": "string",
-        "enum": [
-          "waitingOnApproval",
-          "waitingOnUserInput"
-        ]
-      },
-      "CodexThreadStatusType": {
-        "type": "string",
-        "enum": [
-          "notLoaded",
-          "idle",
-          "systemError",
-          "active"
-        ]
-      },
-      "CollectionWindowAuthority": {
-        "type": "object",
-        "required": [
-          "projection_revision"
-        ],
-        "properties": {
-          "projection_revision": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
-      "CollectionWindowRequest": {
-        "type": "object",
-        "properties": {
-          "after": {
+          "condition_text": {
             "type": [
               "string",
               "null"
             ]
           },
-          "first": {
+          "cwds": {
+            "type": [
+            "items": {
+              "type": "string"
+          },
+          "execution_environment": {
+            "oneOf": [
+                "type": "null"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AutomationExecutionKind"
+          },
+          "local_environment_config_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "oneOf": [
+                "$ref": "#/components/schemas/AutomationMode",
+                "description": "Absent preserves the current mode on update. A new Automation uses `Run` when the\nDesktop Host creates it and `AskFirst` when an Agent does."
+                "type": "null"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "notification_policy": {
+            "$ref": "#/components/schemas/AutomationNotificationPreference"
+          },
+          "owner_member_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prompt": {
+            "type": [
+              "string",
+              "null"
+          },
+          "reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+          },
+          "rrule": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runbook_page_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "int32",
-            "minimum": 0
-          }
-        },
-        "additionalProperties": false
-      },
-      "CollectionWindow_AutomationDefinition": {
-        "type": "object",
-        "required": [
-          "items",
-          "authority"
-        ],
-        "properties": {
-          "authority": {
-            "$ref": "#/components/schemas/CollectionWindowAuthority"
+            "description": "A Page whose current content every run follows as standing instructions, and which\neach run's chat links to. Absent clears it, like other optional fields."
           },
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": [
-                "automation_id",
-                "definition_revision",
-                "kind",
-                "status",
-                "launch",
-                "name",
-                "prompt",
-                "rrule",
-                "backend_binding",
-                "cwds",
-                "execution_environment",
-                "created_at_ms",
-                "updated_at_ms"
-              ],
-              "properties": {
-                "automation_id": {
-                  "type": "string"
-                },
-                "backend_binding": {
-                  "$ref": "#/components/schemas/AgentBackendBinding"
-                },
-                "created_at_ms": {
-                  "type": "integer",
-                  "format": "int64"
-                },
-                "cwds": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "definition_revision": {
-                  "type": "integer",
-                  "format": "int64"
-                },
-                "execution_environment": {
-                  "$ref": "#/components/schemas/AutomationExecutionEnvironment"
-                },
-                "held_firing": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/AutomationHeldFiring",
-                      "description": "The firing of an `Ask` task waiting in the Inbox, if any. At most one waits per task."
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "kind": {
-                  "$ref": "#/components/schemas/AutomationDefinitionKind"
-                },
-                "last_run_at_ms": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "int64"
-                },
-                "launch": {
-                  "$ref": "#/components/schemas/AutomationLaunch"
-                },
-                "local_environment_config_path": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "model": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "name": {
-                  "type": "string"
-                },
-                "next_run_at_ms": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "int64"
-                },
-                "notification_policy": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/AutomationNotificationPolicy"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "project_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "prompt": {
-                  "type": "string"
-                },
-                "reasoning_effort": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "rrule": {
-                  "type": "string"
-                },
-                "runbook_page_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "runbook_title": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "The runbook Page's current title; None without a runbook or when the Page is no longer active."
-                },
-                "service_tier": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "status": {
-                  "$ref": "#/components/schemas/AutomationDefinitionStatus"
-                },
-                "target_session_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "updated_at_ms": {
-                  "type": "integer",
-                  "format": "int64"
-                }
+          "scope": {
+            "oneOf": [
+                "$ref": "#/components/schemas/AutomationScope"
+              },
+              {
+                "type": "null"
               }
             }
           },
@@ -6821,6 +6382,7 @@
               "null"
             ]
           },
+          "timezone": {
             "type": [
               "string",
               "null"
@@ -7062,6 +6624,8 @@
                 "type": "string"
               },
               "retry_delay_ms": {
+                "type": [
+                  "integer",
                 "format": "int64",
                 "minimum": 0
               }
@@ -7086,6 +6650,7 @@
                 ]
               },
               "automation_id": {
+                "type": "string"
               "dispatch_id": {
                 "type": [
                   "string",
@@ -7365,6 +6930,7 @@
               "occurrence_start_ms": {
                 "type": "integer",
                 "format": "int64"
+              "page_id": {
                 "type": "string"
               "snooze_minutes": {
                 "type": "integer",
@@ -7432,6 +6998,7 @@
               "occurrence_start_ms": {
                 "type": "integer",
                 "format": "int64"
+              "page_id": {
                 "type": "string"
             "type": "object",
             "required": [
@@ -7445,6 +7012,7 @@
               "occurrence_start_ms": {
                 "type": "integer",
                 "format": "int64"
+              "page_id": {
                 "type": "string"
             "type": "object",
             "required": [
@@ -8060,6 +7628,7 @@
           "document_id": {
             "type": "string"
           },
+          "eligible": {
             "type": "boolean"
           },
           "generation": {
@@ -8079,14 +7648,21 @@
           }
         }
       },
-      "CollectionWindow_ProjectWorkspaceSidebarSectionItem": {
+      "ChannelOutboxItem": {
         "type": "object",
         "required": [
           "page_id",
           "source",
           "thread",
+          "body_hash",
+          "marker",
+          "episode",
+          "thread_order",
+          "attempts",
+          "retry_at_ms"
         ],
         "properties": {
+          "attempts": {
             "type": "integer",
             "format": "int64"
           },
@@ -8102,6 +7678,7 @@
               "integer",
               "null"
             "format": "int64"
+          "lease_token": {
             "type": [
               "string",
           "marker": {
@@ -8118,13 +7695,17 @@
             "type": "integer",
             "format": "int64"
           "source": {
+            "$ref": "#/components/schemas/Source"
           "state": {
             "type": "string"
+          "terminal_reason": {
             "type": [
               "string",
               "null"
             ]
           "thread": {
+            "$ref": "#/components/schemas/ExternalThreadReference"
+          "thread_order": {
             "type": "integer",
             "format": "int64"
           }
@@ -8281,11 +7862,21 @@
                 "description": {
                   "type": "string"
                 },
+                "evidence": {},
                 "id": {
                   "type": "string"
                 },
+                "message": {
                   "oneOf": [
                     {
+                      "$ref": "#/components/schemas/ProjectWorkspaceInboxItem",
+                      "description": "The handled message a message fact is about, as it stands now; only on message facts."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "page_id": {
                   "type": [
                     "string",
@@ -8305,6 +7896,7 @@
                   ]
                 },
                 "subject": {
+                  "oneOf": [
                       "$ref": "#/components/schemas/ActivitySubject"
                     },
                     {
@@ -9703,6 +9295,7 @@
                 "page_status": {
                   "oneOf": [
                       "$ref": "#/components/schemas/ProjectWorkspaceInboxPageStatus"
+                "problem": {
                   "oneOf": [
                       "$ref": "#/components/schemas/SourceProblem"
                   ]
@@ -11547,6 +11140,7 @@
         "type": "object",
         "required": [
           "selection_version",
+          "disposition",
           "reason",
           "descriptor"
         "properties": {
@@ -17218,6 +16812,7 @@
               "type": "string"
             }
           "unset_content": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -17277,7 +16872,11 @@
           "resource_kind": {
             "$ref": "#/components/schemas/DocumentEffectResourceKind"
           "result_head_seq": {
+            "type": "integer",
+            "format": "int64"
           "update_byte_length": {
+            "type": "integer",
+            "format": "int64"
           "update_hash": {
             "type": "string"
           "update_id": {
@@ -17320,16 +16919,22 @@
         ],
         "properties": {
           "blockIds": {
+            "type": "array",
             "items": {
+              "type": "string"
           },
           "documentWide": {
             "type": "boolean"
           },
           "headSeq": {
+            "type": "integer",
+            "format": "int64"
           }
-        }
+        "additionalProperties": false
       },
       "DocumentInvalidationReason": {
+        "type": "string",
+        "enum": [
           "owner_deleted",
           "generation_changed",
           "restored"
@@ -17419,6 +17024,8 @@
         }
       },
       "DocumentMutationCoordination": {
+        "type": "string",
+        "enum": [
           "merge_friendly",
           "write_fence"
       "DocumentMutationEffect": {
@@ -17436,6 +17043,8 @@
         ],
         "properties": {
           "base_head_seq": {
+            "type": "integer",
+            "format": "int64"
           },
           "coordination": {
             "$ref": "#/components/schemas/DocumentMutationCoordination"
@@ -18600,227 +18209,165 @@
           }
         ]
       },
-      "LibraryBlockTransferTransformationEvidence": {
+      "ExternalThread": {
         "type": "object",
         "required": [
-          "sourceBlockId",
-          "resultPageId",
+          "id",
+          "host",
+          "repository_id",
+          "repository",
+          "number",
           "kind",
-          "sourceBlockType",
-          "semanticTitleHash",
-          "consumedPropertyKeys",
-          "bodyRootBlockIds",
-          "sourceToResultBlockIds",
-          "promotion"
+          "url",
+          "title",
+          "state",
+          "observation_revision",
+          "observations"
         ],
         "properties": {
-          "bodyRootBlockIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          "draft": {
+            "type": "boolean"
           },
-          "consumedPropertyKeys": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "kind": {
-            "type": "string"
-          },
-          "promotion": {
-            "$ref": "#/components/schemas/LibraryBlockTransferPromotionEvidence"
-          },
-          "resultPageId": {
-            "type": "string"
-          },
-          "semanticTitleHash": {
-            "type": "string"
-          },
-          "sourceBlockId": {
-            "type": "string"
-          },
-          "sourceBlockType": {
-            "type": "string"
-          },
-          "sourceToResultBlockIds": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "string"
-            },
-            "propertyNames": {
-              "type": "string"
-            }
-          },
-          "wrapperReason": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "LibraryBlockTransferUndoResult": {
-        "type": "object",
-        "required": [
-          "transfer_operation_id",
-          "restored_source_root_ids",
-          "removed_page_ids",
-          "document_commits"
-        ],
-        "properties": {
-          "document_commits": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LibraryBlockTransferDocumentCommit"
-            }
-          },
-          "history": {
+          "head": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/LibraryStructuralHistoryToken"
+                "$ref": "#/components/schemas/SourcePullRequestHead"
               },
               {
                 "type": "null"
               }
             ]
           },
-          "removed_page_ids": {
-            "type": "array",
-            "items": {
+          "host": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ExternalThreadKind"
+          },
+          "number": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "observation_revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Shared observation fence across every Source watching this external thread."
+          },
+          "observations": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SourceObservation"
+            },
+            "propertyNames": {
               "type": "string"
             }
           },
-          "restored_source_root_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          "repository": {
+            "type": "string"
           },
-          "transfer_operation_id": {
+          "repository_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
             "type": "string"
           }
         }
       },
-      "LibraryBlockTransferUndoToken": {
+      "ExternalThreadKind": {
+        "type": "string",
+        "enum": [
+          "issue",
+          "pull_request"
+        ]
+      },
+      "ExternalThreadReference": {
         "type": "object",
+        "description": "Presentation and delivery reference; polling observations remain on the Source's thread read.",
         "required": [
-          "transfer_operation_id",
-          "recipe_hash",
-          "store_epoch"
+          "id",
+          "host",
+          "repository_id",
+          "repository",
+          "number",
+          "kind",
+          "url",
+          "title",
+          "state"
         ],
         "properties": {
-          "recipe_hash": {
+          "host": {
             "type": "string"
           },
-          "store_epoch": {
+          "id": {
             "type": "string"
           },
-          "transfer_operation_id": {
+          "kind": {
+            "$ref": "#/components/schemas/ExternalThreadKind"
+          },
+          "number": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "repository": {
+            "type": "string"
+          },
+          "repository_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
             "type": "string"
           }
         }
       },
-      "LibraryCanvasDestination": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "before": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/LibraryPlacementAnchor"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "library"
-                ]
-              }
-            }
+      "GitHubSourceConfig": {
+        "type": "object",
+        "required": [
+          "host",
+          "account_login",
+          "account_id",
+          "credential_ref",
+          "repositories",
+          "discovery"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "string"
           },
-          {
-            "type": "object",
-            "required": [
-              "page_id",
-              "expected_document_generation",
-              "expected_document_head_seq",
-              "insertion",
-              "kind"
-            ],
-            "properties": {
-              "expected_document_generation": {
-                "type": "integer",
-                "format": "int64"
-              },
-              "expected_document_head_seq": {
-                "type": "integer",
-                "format": "int64"
-              },
-              "insertion": {
-                "$ref": "#/components/schemas/LibraryPageInsertion"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "page"
-                ]
-              },
-              "page_id": {
-                "type": "string"
-              }
+          "account_login": {
+            "type": "string"
+          },
+          "credential_ref": {
+            "type": "string"
+          },
+          "discovery": {
+            "$ref": "#/components/schemas/SourceDiscovery"
+          },
+          "host": {
+            "type": "string"
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRepository"
             }
           }
-        ]
-      },
-      "LibraryCanvasLocation": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "library"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "page_id",
-              "document_id",
-              "kind"
-            ],
-            "properties": {
-              "document_id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "page"
-                ]
-              },
-              "page_id": {
-                "type": "string"
-              }
-            }
-          }
-        ]
+        },
+        "additionalProperties": false
       },
       "HandbackMessage": {
         "type": "object",
@@ -19411,6 +18958,7 @@
         "type": "string",
         "description": "Membership comes from Core's current Turn, independently of its explanatory note.",
         "enum": [
+          "problem",
           "intake",
           "turn",
           "answer"
@@ -32049,16 +31597,17 @@
               {
                 "type": "object",
                 "required": [
-                  "target",
-                  "window",
+                  "command",
                   "kind"
                 ],
                 "properties": {
+                  "command": {
+                    "$ref": "#/components/schemas/SourceCommand"
                   },
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "list_window"
+                      "source"
                     ]
                   }
                 }
@@ -39582,14 +39131,23 @@
               {
                 "type": "object",
                 "required": [
+                  "scope",
+                  "filter",
                   "window",
                   "kind"
                 ],
                 "properties": {
+                  "filter": {
+                    "$ref": "#/components/schemas/ActivityFilter"
+                  },
                   "kind": {
                     "type": "string",
                     "enum": [
+                      "activity_window"
                     ]
+                  },
+                  "scope": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxScope"
                   },
                   "window": {
                     "$ref": "#/components/schemas/CollectionWindowRequest"
@@ -39599,13 +39157,18 @@
               {
                 "type": "object",
                 "required": [
+                  "read",
                   "kind"
                 ],
                 "properties": {
                   "kind": {
                     "type": "string",
                     "enum": [
+                      "sources"
                     ]
+                  },
+                  "read": {
+                    "$ref": "#/components/schemas/SourceRead"
                   }
                 }
               },
@@ -42467,10 +42030,30 @@
           }
         }
       },
+      "PageThreadFollow": {
+        "type": "object",
+        "required": [
+          "page_id",
+          "thread",
+          "role",
+          "provenance",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string"
           },
+          "page_id": {
+            "type": "string"
           },
+          "provenance": {
+            "type": "string"
           },
+          "role": {
+            "$ref": "#/components/schemas/ThreadFollowRole"
           },
+          "thread": {
+            "$ref": "#/components/schemas/ExternalThreadReference"
           }
         }
       },
@@ -43046,6 +42629,14 @@
             "type": "string"
           }
         }
+      },
+      "ProblemFix": {
+        "type": "string",
+        "enum": [
+          "reconnect",
+          "retry",
+          "open_card"
+        ]
       },
       "ProjectAppearance": {
         "type": "object",
@@ -44840,6 +44431,16 @@
               }
             ]
           },
+          "problem": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SourceProblem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "proposal": {
             "oneOf": [
               {
@@ -45332,20 +44933,38 @@
           {
             "type": "object",
             "required": [
+              "external_thread_id",
+              "actor_login",
+              "repository",
+              "number",
+              "title",
+              "url",
               "kind"
             ],
             "properties": {
+              "actor_login": {
+                "type": "string"
+              },
+              "external_thread_id": {
+                "type": "string"
               },
               "kind": {
                 "type": "string",
                 "enum": [
+                  "github"
                 ]
               },
+              "number": {
+                "type": "integer",
+                "format": "int64"
               },
+              "repository": {
                 "type": "string"
               },
+              "title": {
                 "type": "string"
               },
+              "url": {
                 "type": "string"
               }
             }
@@ -45827,13 +45446,17 @@
           {
             "type": "object",
             "required": [
+              "command",
               "kind"
             ],
             "properties": {
+              "command": {
+                "$ref": "#/components/schemas/SourceCommand"
               },
               "kind": {
                 "type": "string",
                 "enum": [
+                  "source"
                 ]
               }
             }
@@ -58204,24 +57827,18 @@
                       {
                         "type": "object",
                         "required": [
+                          "rows",
                           "kind"
                         ],
                         "properties": {
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "view_location"
+                              "activity_window"
                             ]
                           },
-                          "value": {
-                            "oneOf": [
-                              {
-                                "$ref": "#/components/schemas/LibraryViewLocation"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
+                          "rows": {
+                            "$ref": "#/components/schemas/CollectionWindow_ActivityRow"
                           }
                         }
                       },
@@ -58235,11 +57852,11 @@
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "page_lifecycle_preflight"
+                              "sources"
                             ]
                           },
                           "value": {
-                            "$ref": "#/components/schemas/LibraryPageLifecyclePreflight"
+                            "$ref": "#/components/schemas/SourceReadValue"
                           }
                         }
                       },
@@ -58414,6 +58031,12 @@
                           "kind"
                         ],
                         "properties": {
+                          "follows": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/PageThreadFollow"
+                            }
+                          },
                           "has_agent_work": {
                             "type": "boolean"
                           },
@@ -60153,493 +59776,146 @@
           "incompatible"
         ]
       },
-          },
-            ],
-          }
-        ]
-      },
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-            ],
-            "properties": {
-              },
-                "type": "string",
-                "enum": [
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-            ],
-            "properties": {
-              },
-                "type": "string",
-                "enum": [
-                ]
-              }
-            }
-          {
-            "type": "object",
-            "required": [
-            ],
-            "properties": {
-              },
-                "type": "string",
-                "enum": [
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-            ],
-            "properties": {
-                "type": "string",
-                "enum": [
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                ]
-              },
-                "type": "string",
-                "enum": [
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-            ],
-            "properties": {
-                "type": "string",
-                "enum": [
-                ]
-              }
-            }
-          {
-            "type": "object",
-            "required": [
-            ],
-            "properties": {
-              },
-                "type": "string",
-                "enum": [
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-            ],
-            "properties": {
-              },
-                "type": "string",
-                "enum": [
-                ]
-              }
-            }
-          {
-            "type": "object",
-            "required": [
-            ],
-            "properties": {
-              },
-                "type": "string",
-                "enum": [
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-            ],
-            "properties": {
-              },
-                "type": "string",
-                "enum": [
-                "type": "string",
-                "enum": [
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-            ],
-            "properties": {
-              },
-                "type": "string",
-                "enum": [
-                ]
-              }
-            }
-          {
-            "type": "object",
-            "required": [
-            ],
-            "properties": {
-              },
-                "type": "string",
-                "enum": [
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-            ],
-            "properties": {
-              },
-                "type": "string",
-                "enum": [
-                "type": "string",
-                "enum": [
-                  "ok"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "payload",
-              "status"
-            ],
-            "properties": {
-              "payload": {
-                "$ref": "#/components/schemas/CoreError"
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "error"
-                ]
-              }
-            }
-          }
-        ]
-      },
-      "ResponseEnvelope_ModuleReadSnapshot_QueryReadValue": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "payload",
-              "status"
-            ],
-            "properties": {
-              "payload": {
-                "type": "object",
-                "required": [
-                  "contract_version",
-                  "store_epoch",
-                  "commit_head",
-                  "value"
-                ],
-                "properties": {
-                  "commit_head": {
-                    "type": "integer",
-                    "format": "int64"
-                  },
-                  "contract_version": {
-                    "type": "integer",
-                    "format": "int32",
-                    "minimum": 0
-                  },
-                  "store_epoch": {
-                    "$ref": "#/components/schemas/StoreEpoch"
-                  },
-                  "value": {
-                    "oneOf": [
-                      {
-                        "type": "object",
-                        "required": [
-                          "value",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "schema"
-                            ]
-                          },
-                          "value": {
-                            "$ref": "#/components/schemas/SqlSchema"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "value",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "query"
-                            ]
-                          },
-                          "value": {
-                            "$ref": "#/components/schemas/SqlResult"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "value",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "displayed_view_query"
-                            ]
-                          },
-                          "value": {
-                            "$ref": "#/components/schemas/DatabaseDisplayedViewQueryResult"
-                          }
-                        }
-                      }
-                    ]
-                  }
-                }
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "ok"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "payload",
-              "status"
-            ],
-            "properties": {
-                }
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "error"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "payload",
-              "status"
-            ],
-            "properties": {
-              },
-          },
-                }
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "ok"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "payload",
-              "status"
-            ],
-            "properties": {
-              "payload": {
-                "$ref": "#/components/schemas/CoreError"
-              },
-          },
-                "type": "string",
-                "enum": [
-          },
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                ]
-              },
-              }
-            }
-          }
-        ]
-      },
-      "RuntimeDescriptor": {
+      "Source": {
         "type": "object",
         "required": [
-          "manifest",
-          "manifest_digest",
-          "artifact",
-          "actual_store_format",
-          "pid",
-          "start_nonce",
-          "endpoint",
-          "profile_id",
-          "store_epoch",
-          "readiness_generation"
+          "id",
+          "library_id",
+          "kind",
+          "revision",
+          "enabled",
+          "config"
         ],
         "properties": {
-          "actual_store_format": {
-            "$ref": "#/components/schemas/StoreFormatIdentity"
+          "config": {
+            "$ref": "#/components/schemas/GitHubSourceConfig"
           },
-          "artifact": {
-            "$ref": "#/components/schemas/CoreArtifactIdentity"
+          "enabled": {
+            "type": "boolean"
           },
-          "endpoint": {
+          "enabled_at_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "id": {
             "type": "string"
           },
-          "manifest": {
-            "$ref": "#/components/schemas/CoreCompatibilityManifest"
-          },
-          "manifest_digest": {
+          "kind": {
             "type": "string"
           },
-          "pid": {
+          "library_id": {
+            "type": "string"
+          },
+          "revision": {
             "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "profile_id": {
-            "type": "string"
-          },
-          "readiness_generation": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "start_nonce": {
-            "type": "string"
-          },
-          "store_epoch": {
-            "type": "string"
+            "format": "int64"
           }
-        },
-        "additionalProperties": false
+        }
       },
-      "RuntimeGenerationIdentity": {
-        "type": "object",
-        "required": [
-          "manifest_digest",
-          "artifact_sha256",
-          "pid",
-          "start_nonce",
-          "profile_id",
-          "store_epoch",
-          "readiness_generation"
-        ],
-        "properties": {
-          "artifact_sha256": {
-            "type": "string"
-          },
-          "manifest_digest": {
-            "type": "string"
-          },
-          "pid": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "profile_id": {
-            "type": "string"
-          },
-          "readiness_generation": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "start_nonce": {
-            "type": "string"
-          },
-          "store_epoch": {
-            "type": "string"
-          }
-        },
-        "additionalProperties": false
-      },
-      "SchemaOwner": {
+      "SourceActorClass": {
         "type": "string",
         "enum": [
-          "type_script",
-          "rust"
+          "person",
+          "bot",
+          "ci"
         ]
       },
-      "ShutdownRequest": {
+      "SourceCommand": {
         "oneOf": [
           {
             "type": "object",
             "required": [
+              "page_id",
+              "body",
               "kind"
             ],
             "properties": {
+              "body": {
+                "type": "string"
+              },
               "kind": {
                 "type": "string",
                 "enum": [
-                  "shutdown"
+                  "reply_to_origin"
+                ]
+              },
+              "page_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "lease_token",
+              "lease_duration_ms",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "claim_channel_send"
+                ]
+              },
+              "lease_duration_ms": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "lease_token": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "lease_token",
+              "permanent",
+              "credential_invalid",
+              "kind"
+            ],
+            "properties": {
+              "credential_invalid": {
+                "type": "boolean"
+              },
+              "failure": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "settle_channel_send"
+                ]
+              },
+              "lease_token": {
+                "type": "string"
+              },
+              "permanent": {
+                "type": "boolean"
+              },
+              "receipt": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ChannelReceipt"
+                  },
+                  {
+                    "type": "null"
+                  }
                 ]
               }
             }
@@ -60647,22 +59923,1227 @@
           {
             "type": "object",
             "required": [
-              "request",
+              "message_id",
+              "reason",
               "kind"
             ],
             "properties": {
               "kind": {
                 "type": "string",
                 "enum": [
-                  "replacement"
+                  "record_thread_delivery_failure"
                 ]
               },
-              "request": {
-                "$ref": "#/components/schemas/CoreReplacementRequest"
+              "message_id": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "problem_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "retry_problem"
+                ]
+              },
+              "problem_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Only a verified managed-chat tool may request a context follow. The Host supplies remote evidence.",
+            "required": [
+              "source_id",
+              "config_revision",
+              "thread",
+              "kind"
+            ],
+            "properties": {
+              "config_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "follow_thread"
+                ]
+              },
+              "source_id": {
+                "type": "string"
+              },
+              "thread": {
+                "$ref": "#/components/schemas/ExternalThread"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message_id",
+              "delivery_ids",
+              "body",
+              "kind"
+            ],
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "delivery_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "prepare_thread_delivery_batch"
+                ]
+              },
+              "message_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "begin_thread_delivery_batch"
+                ]
+              },
+              "message_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message_id",
+              "accepted",
+              "receipt",
+              "kind"
+            ],
+            "properties": {
+              "accepted": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "settle_thread_delivery_batch"
+                ]
+              },
+              "message_id": {
+                "type": "string"
+              },
+              "receipt": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "delivery_id",
+              "reason",
+              "kind"
+            ],
+            "properties": {
+              "delivery_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "invalidate_thread_delivery"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "source_id",
+              "expected_revision",
+              "enabled",
+              "config",
+              "kind"
+            ],
+            "properties": {
+              "config": {
+                "$ref": "#/components/schemas/GitHubSourceConfig"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "configure_source"
+                ]
+              },
+              "source_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "source_id",
+              "config_revision",
+              "partition",
+              "lease_token",
+              "lease_duration_ms",
+              "kind"
+            ],
+            "properties": {
+              "config_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "claim_source_partition"
+                ]
+              },
+              "lease_duration_ms": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "lease_token": {
+                "type": "string"
+              },
+              "partition": {
+                "type": "string"
+              },
+              "source_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "source_id",
+              "config_revision",
+              "partition",
+              "expected_position",
+              "lease_token",
+              "threads",
+              "triggers",
+              "next_position",
+              "next_poll_at_ms",
+              "quarantine",
+              "kind"
+            ],
+            "properties": {
+              "config_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "expected_position": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ingest_source_batch"
+                ]
+              },
+              "lease_token": {
+                "type": "string"
+              },
+              "next_poll_at_ms": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "next_position": {
+                "$ref": "#/components/schemas/SourceCursor"
+              },
+              "partition": {
+                "type": "string"
+              },
+              "quarantine": {
+                "type": "array",
+                "items": {}
+              },
+              "source_id": {
+                "type": "string"
+              },
+              "threads": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExternalThread"
+                }
+              },
+              "triggers": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SourceTriggerInput"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "source_id",
+              "config_revision",
+              "problem_kind",
+              "evidence",
+              "retry_at_ms",
+              "kind"
+            ],
+            "properties": {
+              "config_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "evidence": {},
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "record_source_failure"
+                ]
+              },
+              "lease_token": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "partition": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "problem_kind": {
+                "type": "string"
+              },
+              "retry_at_ms": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "source_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "source_id",
+              "config_revision",
+              "kind"
+            ],
+            "properties": {
+              "config_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "record_source_success"
+                ]
+              },
+              "lease_token": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "partition": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source_id": {
+                "type": "string"
               }
             }
           }
         ]
+      },
+      "SourceCursor": {
+        "type": "object",
+        "required": [
+          "baseline_at_ms",
+          "watermark_ms",
+          "validators"
+        ],
+        "properties": {
+          "baseline_at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "continuation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "validators": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "watermark_ms": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "SourceDiscovery": {
+        "type": "object",
+        "required": [
+          "assigned",
+          "review_requests",
+          "mentions"
+        ],
+        "properties": {
+          "assigned": {
+            "type": "boolean"
+          },
+          "mentions": {
+            "type": "boolean"
+          },
+          "review_requests": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SourceObservation": {
+        "type": "object",
+        "required": [
+          "fingerprint",
+          "revision"
+        ],
+        "properties": {
+          "fingerprint": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "SourcePosition": {
+        "type": "object",
+        "required": [
+          "source_id",
+          "partition",
+          "revision",
+          "baseline",
+          "cursor",
+          "next_poll_at_ms",
+          "consecutive_failures"
+        ],
+        "properties": {
+          "baseline": {
+            "type": "boolean"
+          },
+          "consecutive_failures": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "cursor": {
+            "$ref": "#/components/schemas/SourceCursor"
+          },
+          "last_success_at_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "lease_expires_at_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "lease_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "next_poll_at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "partition": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "source_id": {
+            "type": "string"
+          }
+        }
+      },
+      "SourceProblem": {
+        "type": "object",
+        "required": [
+          "id",
+          "library_id",
+          "scope",
+          "kind",
+          "first_failure_at_ms",
+          "last_failure_at_ms",
+          "consecutive_failures",
+          "summary",
+          "fix",
+          "evidence"
+        ],
+        "properties": {
+          "consecutive_failures": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "evidence": {},
+          "first_failure_at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fix": {
+            "$ref": "#/components/schemas/ProblemFix"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "last_failure_at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "library_id": {
+            "type": "string"
+          },
+          "opened_at_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "page_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolved_at_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      },
+      "SourcePullRequestHead": {
+        "type": "object",
+        "required": [
+          "repository_id",
+          "repository",
+          "branch",
+          "sha"
+        ],
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "repository": {
+            "type": "string"
+          },
+          "repository_id": {
+            "type": "string"
+          },
+          "sha": {
+            "type": "string"
+          }
+        }
+      },
+      "SourceRead": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "limit",
+              "kind"
+            ],
+            "properties": {
+              "after_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "include_terminal": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "channel_outbox"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "page_id",
+              "limit",
+              "kind"
+            ],
+            "properties": {
+              "after_thread_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "page_follows"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "page_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "limit",
+              "kind"
+            ],
+            "properties": {
+              "after_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "deliveries"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "page_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "state": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "limit",
+              "kind"
+            ],
+            "properties": {
+              "after_message_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "delivery_batches"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "limit",
+              "kind"
+            ],
+            "properties": {
+              "after_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "sources"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "source_id",
+              "limit",
+              "kind"
+            ],
+            "properties": {
+              "after_partition": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "positions"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "source_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "host",
+              "repository_id",
+              "limit",
+              "kind"
+            ],
+            "properties": {
+              "after_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "host": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "threads"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "repository_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_url",
+              "limit",
+              "kind"
+            ],
+            "properties": {
+              "before_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "triggers"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "thread_url": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "limit",
+              "kind"
+            ],
+            "properties": {
+              "after_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "open_problems"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "source_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "limit",
+              "kind"
+            ],
+            "properties": {
+              "after_page_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "known_pull_requests"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      },
+      "SourceReadValue": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "payload",
+              "status"
+            ],
+            "properties": {
+          {
+            "type": "object",
+            "required": [
+              "items",
+              "kind"
+            ],
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ChannelOutboxItem"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "channel_outbox"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "follows",
+              "kind"
+            ],
+            "properties": {
+              "follows": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PageThreadFollow"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "page_follows"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "deliveries",
+              "kind"
+            ],
+            "properties": {
+              "deliveries": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadDelivery"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "deliveries"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "batches",
+              "kind"
+            ],
+            "properties": {
+              "batches": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadDeliveryBatch"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "delivery_batches"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sources",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "sources"
+                ]
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Source"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "positions",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "positions"
+                ]
+              },
+              "positions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SourcePosition"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "threads",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "threads"
+                ]
+              },
+              "threads": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExternalThread"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "triggers",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "triggers"
+                ]
+              },
+              "triggers": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SourceTrigger"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "problems",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "open_problems"
+                ]
+              },
+              "problems": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SourceProblem"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "pull_requests",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "known_pull_requests"
+                ]
+              },
+              "pull_requests": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PagePullRequest"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "SourceRepository": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SourceTrigger": {
+        "type": "object",
+        "required": [
+          "id",
+          "source_id",
+          "received_at_ms",
+          "disposition",
+          "event"
+        ],
+        "properties": {
+          "disposition": {
+            "type": "string"
+          },
+          "event": {
+            "$ref": "#/components/schemas/SourceTriggerInput"
+          },
+          "id": {
+            "type": "string"
+          },
+          "received_at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "source_id": {
+            "type": "string"
+          }
+        }
+      },
+      "SourceTriggerInput": {
+        "type": "object",
+        "required": [
+          "semantic_key",
+          "kind",
+          "occurred_at_ms",
+          "actor_login",
+          "actor_class",
+          "thread_id",
+          "metadata",
+          "url"
+        ],
+        "properties": {
+          "actor_class": {
+            "$ref": "#/components/schemas/SourceActorClass"
+          },
+          "actor_login": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "metadata": {},
+          "occurred_at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "semantic_key": {
+            "type": "string"
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thread_id": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
       },
       "ShutdownResponse": {
         "type": "object",
@@ -61091,6 +61572,129 @@
           "consumed",
           "superseded",
           "unavailable"
+        ]
+      },
+      "ThreadDelivery": {
+        "type": "object",
+        "required": [
+          "target_current",
+          "id",
+          "trigger",
+          "page_id",
+          "thread",
+          "state"
+        ],
+        "properties": {
+          "binding_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "execution_ref": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceSessionExecutionRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "target_current": {
+            "type": "boolean"
+          },
+          "thread": {
+            "$ref": "#/components/schemas/ExternalThreadReference"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/SourceTrigger"
+          }
+        }
+      },
+      "ThreadDeliveryBatch": {
+        "type": "object",
+        "required": [
+          "attempts",
+          "eligible",
+          "held",
+          "message_id",
+          "session_id",
+          "execution_ref",
+          "body",
+          "body_hash",
+          "created_at_ms",
+          "state"
+        ],
+        "properties": {
+          "attempts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "body": {
+            "type": "string"
+          },
+          "body_hash": {
+            "type": "string"
+          },
+          "created_at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "eligible": {
+            "type": "boolean"
+          },
+          "execution_ref": {
+            "$ref": "#/components/schemas/ProjectWorkspaceSessionExecutionRef"
+          },
+          "held": {
+            "type": "boolean"
+          },
+          "message_id": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        }
+      },
+      "ThreadFollowRole": {
+        "type": "string",
+        "enum": [
+          "own_pr",
+          "origin",
+          "context"
         ]
       },
       "TurnActor": {

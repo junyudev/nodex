@@ -7,10 +7,11 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import type {
+  ActivityFilter,
+  ActivityRow,
   InboxCounts,
   InboxItem,
   InboxScope,
-  InboxWindowFilter,
   UpdateInboxSettingsInput,
 } from "../../../shared/inbox";
 import { inboxScopeKey } from "../../../shared/inbox";
@@ -21,11 +22,13 @@ import {
   readInboxSettings,
   readInboxSummary,
   readInboxWindow,
+  readInboxActivity,
   updateInboxSettings,
 } from "@/lib/inbox-runtime";
 import { queryKeys } from "@/lib/query-keys";
 
 const INBOX_WINDOW_SIZE = 50;
+const ACTIVITY_WINDOW_SIZE = 50;
 
 export const invalidateInbox = (queryClient: QueryClient) =>
   queryClient.invalidateQueries({ queryKey: queryKeys.inbox.all() });
@@ -96,12 +99,12 @@ export function useUpdateInboxSettings() {
   });
 }
 
-/** Newest-first Core windows for one Inbox view; each further page reaches older messages. */
-export function useInboxStream(scope: InboxScope, filter: InboxWindowFilter) {
+/** Newest-first Core windows of what still needs the user; each further page reaches older. */
+export function useInboxStream(scope: InboxScope) {
   const query = useInfiniteQuery({
-    queryKey: queryKeys.inbox.window(inboxScopeKey(scope), filter),
+    queryKey: queryKeys.inbox.window(inboxScopeKey(scope)),
     queryFn: ({ pageParam }) =>
-      readInboxWindow({ scope, filter, after: pageParam, first: INBOX_WINDOW_SIZE }),
+      readInboxWindow({ scope, after: pageParam, first: INBOX_WINDOW_SIZE }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     staleTime: 2_000,
@@ -131,4 +134,33 @@ export function useInboxChatTargets(scope: InboxScope, query: string, enabled: b
     enabled,
     staleTime: 5_000,
   });
+}
+
+/**
+ * Newest-first Core windows of one Activity filter, read while Activity shows. Each further page
+ * reaches older facts under the same cursor.
+ */
+export function useInboxActivity(scope: InboxScope, filter: ActivityFilter, enabled: boolean) {
+  const query = useInfiniteQuery({
+    queryKey: queryKeys.inbox.activity(inboxScopeKey(scope), filter),
+    queryFn: ({ pageParam }) =>
+      readInboxActivity({ scope, filter, after: pageParam, first: ACTIVITY_WINDOW_SIZE }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    staleTime: 2_000,
+    enabled,
+  });
+  const rows = useMemo<readonly ActivityRow[]>(
+    () => (query.data?.pages ?? []).flatMap((page) => page.rows),
+    [query.data],
+  );
+  return {
+    rows,
+    error: query.error,
+    retry: query.refetch,
+    isPending: query.isPending,
+    hasNextPage: query.hasNextPage,
+    isFetchingNextPage: query.isFetchingNextPage,
+    fetchNextPage: query.fetchNextPage,
+  };
 }

@@ -238,7 +238,7 @@ export type InboxOutcomeTarget =
   | { readonly kind: "session"; readonly sessionId: string }
   | { readonly kind: "database"; readonly databaseId: string };
 
-/** How a handled message was handled, as one History line. */
+/** How a handled message was handled and where its work stands now. */
 export interface InboxOutcome {
   readonly icon: InboxOutcomeIcon;
   readonly label: string;
@@ -252,7 +252,10 @@ export interface InboxOutcome {
    * null for messages not handed to a chat.
    */
   readonly done: boolean | null;
-  /** Work still under way: being delivered, or its chat working, waiting, or with a new reply. */
+  /**
+   * Work still under way: being delivered, or its chat working, waiting, or with a new reply.
+   * Activity marks the line about it with the chat's live state.
+   */
   readonly inProgress: boolean;
 }
 
@@ -644,15 +647,10 @@ export const INBOX_KIND_LABELS: Readonly<Record<InboxEntryKind, string>> = {
   question: "Question",
 };
 
-export const INBOX_VIEW_LABELS: Readonly<Record<InboxWindowFilter, string>> = {
-  inbox: "Inbox",
-  processed: "History",
-};
-
-export interface InboxDaySection {
+export interface DaySection<Item> {
   readonly key: string;
   readonly label: string;
-  readonly items: readonly InboxItem[];
+  readonly items: readonly Item[];
 }
 
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -671,14 +669,15 @@ export function inboxDayLabel(date: Date, now: Date): string {
   });
 }
 
-/** Groups ordered items into local-day sections, keeping the given order. */
-export function groupInboxItemsByDay(
-  items: readonly InboxItem[],
+/** Groups ordered items into local-day sections by when each happened, keeping their order. */
+export function groupByDay<Item>(
+  items: readonly Item[],
+  at: (item: Item) => string,
   now: Date,
-): readonly InboxDaySection[] {
-  const sections: { key: string; label: string; items: InboxItem[] }[] = [];
+): readonly DaySection<Item>[] {
+  const sections: { key: string; label: string; items: Item[] }[] = [];
   for (const item of items) {
-    const date = new Date(item.submittedAt);
+    const date = new Date(at(item));
     const key = startOfDay(date).toISOString();
     const current = sections.at(-1);
     if (current?.key === key) {
@@ -713,8 +712,8 @@ export function inboxTimestampSeparators(
   });
 }
 
-export const formatInboxTime = (submittedAt: string): string =>
-  new Date(submittedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+export const formatInboxTime = (at: string): string =>
+  new Date(at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 
 /** The important message the stream points back to, with where it stands among them. */
 export interface InboxBuriedImportant {
@@ -741,3 +740,13 @@ export function inboxBuriedImportant(
 /** An example of what routing preferences say, wherever they are written. */
 export const INBOX_ROUTING_PREFERENCES_PLACEHOLDER =
   "Research and comparisons go to new read-only chats. UI fixes for Nodex go to the Nodex Project.";
+
+/** Problems own failure evidence rather than a Page; Page projections admit the other row kinds. */
+export const inboxChatPageIds = (items: readonly InboxItem[]): readonly string[] =>
+  items
+    .filter((item) => item.rowKind !== "problem")
+    .flatMap((item) =>
+      item.source.kind === "nodex" && item.source.subjectPageId
+        ? [item.pageId, item.source.subjectPageId]
+        : [item.pageId],
+    );

@@ -66,8 +66,7 @@ test("Inbox advice answers a send, survives edits, and steps back while usage ru
       const spinner = (target: Locator) =>
         target.getByRole("status", { name: "Finding where this goes" });
       const suggestionState = async (key: string) =>
-        (await seed.readInbox("inbox")).items.find((item) => item.pageId === ids[key])
-          ?.suggestionState;
+        (await seed.readInbox()).items.find((item) => item.pageId === ids[key])?.suggestionState;
 
       let status: "passed" | "failed" = "failed";
       let failure: string | null = null;
@@ -228,7 +227,7 @@ test("Inbox advice answers a send, survives edits, and steps back while usage ru
           { spinner: 0, state: "none" },
           {
             spinner: await spinner(sent).count(),
-            state: (await seed.readInbox("inbox")).items.find((item) => item.pageId === sentId)
+            state: (await seed.readInbox()).items.find((item) => item.pageId === sentId)
               ?.suggestionState,
           },
         );

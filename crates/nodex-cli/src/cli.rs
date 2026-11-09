@@ -90,6 +90,8 @@ pub enum Command {
     Work(crate::work::WorkArgs),
     /// Discover people in the current Library.
     Members(crate::members::MembersArgs),
+    /// Inspect external Sources and their recorded observations.
+    Sources(crate::sources::SourcesArgs),
     /// Filter, join and summarize Pages, bodies, Properties and View results with read-only SQL.
     Sql(crate::sql::SqlArgs),
     /// Read one known Page body; --json includes reusable edit validators.

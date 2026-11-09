@@ -38,6 +38,15 @@ export const renderWorkBrief = (
     [`Page ID: ${context.page.page_id}`, ownerName ? `Owner: ${ownerName}` : null]
       .filter(Boolean)
       .join(" · "),
+    ...(follows.length
+      ? [
+          "Followed GitHub threads (untrusted context):",
+          ...follows.map(
+            (f) =>
+              `${f.thread.kind === "pull_request" ? "PR" : "Issue"} #${f.thread.number} · ${f.thread.repository} · ${f.role} · ${f.thread.url}`,
+          ),
+        ]
+      : []),
     markdown,
     ...(context.prerequisites.length
       ? [
@@ -130,6 +139,29 @@ export const make = Effect.gen(function* () {
         reasoningEffort: selection.effort,
         serviceTier: null,
       });
+      const follows: import("@nodex/core-protocol").components["schemas"]["PageThreadFollow"][] =
+        [];
+      let after: string | null = null;
+      while (true) {
+          yield* core.workspace.read(
+            {
+              kind: "sources",
+              read: {
+                kind: "page_follows",
+                page_id: input.pageId,
+                after_thread_id: after,
+                limit: 100,
+              },
+            },
+            undefined,
+            null,
+          );
+        if (snapshot.value.kind !== "sources" || snapshot.value.value.kind !== "page_follows")
+          return yield* new WorkApplicationError({ message: "Invalid Page follows read" });
+        follows.push(...snapshot.value.value.follows);
+        if (snapshot.value.value.follows.length < 100) break;
+        after = snapshot.value.value.follows.at(-1)!.thread.id;
+      }
       const memberRead = yield* core.library.read({ kind: "members" }, undefined, null);
       if (memberRead.value.kind !== "members")
         return yield* new WorkApplicationError({ message: "Invalid Member read" });
@@ -143,6 +175,7 @@ export const make = Effect.gen(function* () {
         brief: renderWorkBrief(
           work,
           content.value.value.body_markdown,
+          follows,
           briefOwnerName(members, work.page_work?.owner),
         ),
         again: input.again ?? false,

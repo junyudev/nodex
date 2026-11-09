@@ -1995,6 +1995,190 @@ fn filing_by_hand_moves_and_records_the_pages_atomically() {
     );
 }
 
+fn activity_in(
+    module: &ProjectWorkspaceModule,
+    scope: ProjectWorkspaceInboxScope,
+    filter: nodex_core_contracts::sources::ActivityFilter,
+) -> Vec<nodex_core_contracts::sources::ActivityRow> {
+    let ProjectWorkspaceReadValue::ActivityWindow { rows } = read_host(
+        module,
+        ProjectWorkspaceRead::ActivityWindow {
+            scope,
+            filter,
+            window: CollectionWindowRequest {
+                after: None,
+                first: Some(100),
+            },
+        },
+    ) else {
+        panic!("Activity window");
+    };
+    rows.items
+}
+
+fn confirm_proposal(module: &ProjectWorkspaceModule, proposal_id: &str, session: Option<&str>) {
+    apply_host(
+        module,
+        &format!("confirm:{proposal_id}"),
+        ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
+            expected_store_epoch: "epoch-1".into(),
+            basis: proposal_basis(module, proposal_id),
+            execution_selection: Some(selection()),
+            proposal_id: proposal_id.into(),
+            expected_revision: 1,
+            action: None,
+            session_id: session.map(str::to_owned),
+        },
+    );
+}
+
+#[test]
+fn activity_keeps_one_fact_per_decision_about_a_message() {
+    use nodex_core_contracts::sources::{ActivityFilter, ActivitySubject};
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    let set_state = |id: &str, page: &str, state| {
+        apply_host(
+            module,
+            id,
+            ProjectWorkspaceIntent::SetInboxEntryState {
+                page_ids: vec![page.into()],
+                state,
+            },
+        )
+    };
+    send(module, "chat", "Fix the readme typo");
+    propose(
+        module,
+        "proposal:chat",
+        &pending(module).remove(0),
+        ProjectWorkspaceInboxDispatchAction::NewChat {
+            additions: vec![],
+            project_id: Some(PROJECT.into()),
+            prompt: "Fix the typo".into(),
+            agent: None,
+        },
+    );
+    confirm_proposal(module, "proposal:chat", Some("session:readme"));
+    send(module, "file", "Document the capture shortcut");
+    propose(
+        module,
+        "proposal:file",
+        &pending(module).remove(0),
+        ProjectWorkspaceInboxDispatchAction::MoveToProject {
+            project_id: PROJECT.into(),
+        },
+    );
+    confirm_proposal(module, "proposal:file", None);
+    send(module, "note", "The changelog layout is nice");
+    propose(
+        module,
+        "proposal:note",
+        &pending(module).remove(0),
+        ProjectWorkspaceInboxDispatchAction::Keep,
+    );
+    confirm_proposal(module, "proposal:note", None);
+    set_state(
+        "done:note",
+        "page:note",
+        ProjectWorkspaceInboxEntryState::Done,
+    );
+    set_state(
+        "open:note",
+        "page:note",
+        ProjectWorkspaceInboxEntryState::Open,
+    );
+    send(module, "kept", "Remember the onboarding survey");
+    apply_host(
+        module,
+        "keep:kept",
+        ProjectWorkspaceIntent::KeepInboxEntries {
+            page_ids: vec!["page:kept".into()],
+        },
+    );
+    set_state(
+        "done:chat",
+        "page:chat",
+        ProjectWorkspaceInboxEntryState::Done,
+    );
+
+    let all = activity_in(module, ProjectWorkspaceInboxScope::All, ActivityFilter::All);
+    let messages = activity_in(
+        module,
+        ProjectWorkspaceInboxScope::All,
+        ActivityFilter::Messages,
+    );
+    assert_eq!(all, messages, "Routing advice is not a fact of its own");
+    assert_eq!(
+        messages
+            .iter()
+            .map(|row| row.description.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "Marked “Fix the readme typo” done",
+            "Kept “Remember the onboarding survey”",
+            "Returned “The changelog layout is nice” to the Inbox",
+            "Marked “The changelog layout is nice” done",
+            "Kept “The changelog layout is nice”",
+            "Filed “Document the capture shortcut” in Nodex",
+            "Sent “Fix the readme typo” to a new chat",
+        ]
+    );
+    let sent = messages.last().unwrap();
+    assert_eq!(
+        sent.reason.as_deref(),
+        Some("This is still an open question")
+    );
+    assert_eq!(
+        sent.subject,
+        Some(ActivitySubject::Chat {
+            session_id: "session:readme".into(),
+            label: "Fix the readme typo".into(),
+        })
+    );
+    // Each fact carries its message as it stands now, so it opens where History did.
+    for row in &messages {
+        let item = row.message.as_ref().expect("Handled message");
+        assert_eq!(Some(item.page_id.as_str()), row.page_id.as_deref());
+    }
+    assert_eq!(
+        sent.message.as_ref().unwrap().state,
+        ProjectWorkspaceInboxEntryState::Done
+    );
+    assert!(
+        activity_in(
+            module,
+            ProjectWorkspaceInboxScope::All,
+            ActivityFilter::Decisions
+        )
+        .is_empty(),
+        "The person's own decisions are not Nodex's"
+    );
+    assert!(
+        activity_in(module, project_scope(), ActivityFilter::Messages).is_empty(),
+        "Messages belong to the Inbox that received them"
+    );
+
+    // Deleting a message erases its facts with it.
+    apply_host(
+        module,
+        "delete:kept",
+        ProjectWorkspaceIntent::DeleteInboxMessages {
+            page_ids: vec!["page:kept".into()],
+        },
+    );
+    assert!(
+        activity_in(
+            module,
+            ProjectWorkspaceInboxScope::Library,
+            ActivityFilter::Messages
+        )
+        .iter()
+        .all(|row| row.page_id.as_deref() != Some("page:kept"))
+    );
+}
+
 #[test]
 fn a_project_inbox_routes_only_inside_its_project() {
     let workspace = seeded_workspace();

@@ -144,9 +144,7 @@ test("the Inbox composer sends pasted and picked images ahead of the text", asyn
         .toEqual([192, 192]);
       await expect(form.getByRole("button", { name: "pasted.png" })).toHaveCount(0);
 
-      const [item] = (
-        await invokeIpc(page, "inbox:window", { scope: { kind: "library" }, filter: "inbox" })
-      ).items;
+      const [item] = (await invokeIpc(page, "inbox:window", { scope: { kind: "library" } })).items;
       expect(item?.body).toMatch(
         /^!\[\]\(nodex:\/\/files\/[^)]+\)\n\n!\[\]\(nodex:\/\/files\/[^)]+\)\n\nThe toolbar is cut off on \*\*narrow\*\* windows\nwhen the sidebar is open\n\n- the gear\n- the close button$/,
       );

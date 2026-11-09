@@ -175,11 +175,7 @@ export const queryKeys = {
     status: () => ["mobile-access", "status"] as const,
   },
   inbox: {
-    all: () => ["inbox"] as const,
-    summary: (scope: string) => ["inbox", "summary", scope] as const,
-    counts: () => ["inbox", "counts"] as const,
-    window: (scope: string, filter: string) => ["inbox", "window", scope, filter] as const,
-    settings: () => ["inbox", "settings"] as const,
+    window: (scope: string) => spaceQueryKey(["inbox", "window", scope] as const),
   },
   conversationIdentity: {
     all: () => ["conversationIdentity"] as const,

@@ -586,46 +586,7 @@ export interface components {
             readonly authority: components["schemas"]["ProjectWorkspaceTurnAuthority"];
             readonly profile_id: string;
         };
-        /**
-         * @description Closed result of an authorized command. A semantic mutation returns its
-         *     immutable commit identity; a validated no-op returns only the observed
-         *     store cursor and therefore cannot masquerade as a new commit.
-         */
-        readonly ApplyResponse_LibraryCommitValue_LibraryReceipt: {
-            readonly commit: components["schemas"]["CommitIdentity"];
-            readonly delivery?: components["schemas"]["AuthorizedDeliveryPacket"] | null;
-            readonly outcome: {
-                readonly affected_resource_ids: readonly string[];
-                readonly agent_create_pages?: components["schemas"]["LibraryAgentCreatePagesResult"] | null;
-                readonly agent_move_pages?: components["schemas"]["LibraryAgentMovePagesResult"] | null;
-                readonly agent_page_copy?: components["schemas"]["LibraryAgentPageCopyResult"] | null;
-                readonly block_property_mutation?: components["schemas"]["LibraryBlockPropertyMutationReceipt"] | null;
-                readonly block_transfer?: components["schemas"]["LibraryBlockTransferResult"] | null;
-                readonly block_transfer_undo?: components["schemas"]["LibraryBlockTransferUndoResult"] | null;
-                readonly canvas_mutation?: components["schemas"]["LibraryCanvasMutationResult"] | null;
-                readonly file_mutation?: components["schemas"]["LibraryFileMutationResult"] | null;
-                readonly page_copy?: components["schemas"]["LibraryPageCopyResult"] | null;
-                readonly page_create?: components["schemas"]["LibraryPageCreateResult"] | null;
-                readonly page_file_entries: readonly components["schemas"]["LibraryPageFileEntryReceipt"][];
-                readonly page_lifecycle?: components["schemas"]["LibraryPageLifecycleMutationReceipt"] | null;
-                readonly page_relocation_undo?: components["schemas"]["LibraryPageRelocationUndoResult"] | null;
-                readonly structural_edit?: components["schemas"]["LibraryStructuralEditResult"] | null;
-            };
-            readonly receipt: components["schemas"]["ModuleMutationReceipt"] & {
-                readonly affected_database_ids: readonly string[];
-                readonly affected_page_ids: readonly string[];
-                readonly affected_parent_keys: readonly string[];
-                readonly affected_view_ids: readonly string[];
-                /** Format: int64 */
-                readonly commit_seq: number;
-                readonly committed_at: string;
-                readonly committed_revisions: {
-                    readonly [key: string]: number;
-                };
-                readonly created_target?: components["schemas"]["LibraryResourceTarget"] | null;
-                readonly did_mutate: boolean;
-                readonly operation_kind: string;
-            };
+        readonly ActivityFilter: "all" | "messages" | "decisions" | "problems";
             /** @enum {string} */
             readonly status: "committed";
         } | {
@@ -1197,6 +1158,7 @@ export interface components {
             readonly kind: "set";
             readonly value?: components["schemas"]["AutomationNotificationPolicy"] | null;
         };
+            readonly body: string;
         readonly AutomationReadRequest: components["schemas"]["ModuleReadRequest_AutomationRead"];
         readonly AutomationReadResponse: components["schemas"]["ResponseEnvelope_ModuleReadSnapshot_AutomationReadValue"];
         readonly AutomationRun: {
@@ -1318,6 +1280,29 @@ export interface components {
             /** Format: int64 */
             readonly tombstone_count: number;
         };
+        readonly ChannelOutboxItem: {
+            /** Format: int64 */
+            readonly attempts: number;
+            readonly body: string;
+            readonly body_hash: string;
+            readonly episode: string;
+            readonly id: string;
+            /** Format: int64 */
+            readonly lease_expires_at_ms?: number | null;
+            readonly lease_token?: string | null;
+            readonly marker: string;
+            readonly page_id: string;
+            readonly remote_comment_id?: string | null;
+            readonly remote_url?: string | null;
+            /** Format: int64 */
+            readonly retry_at_ms: number;
+            readonly source: components["schemas"]["Source"];
+            readonly state: string;
+            readonly terminal_reason?: string | null;
+            readonly thread: components["schemas"]["ExternalThreadReference"];
+            /** Format: int64 */
+            readonly thread_order: number;
+        };
         readonly ClientIdentity: {
             readonly build_id: string;
             readonly kind: components["schemas"]["ClientKind"];
@@ -1328,7 +1313,7 @@ export interface components {
         readonly CodexThreadActiveFlag: "waitingOnApproval" | "waitingOnUserInput";
         /** @enum {string} */
         readonly CodexThreadStatusType: "notLoaded" | "idle" | "systemError" | "active";
-        readonly CollectionWindow_AutomationDefinition: {
+                readonly message?: components["schemas"]["ProjectWorkspaceInboxItem"] | null;
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
                 readonly automation_id: string;
@@ -1778,6 +1763,7 @@ export interface components {
                 readonly page_id: string;
                 readonly page_key?: string | null;
                 readonly page_status?: components["schemas"]["ProjectWorkspaceInboxPageStatus"] | null;
+                readonly problem?: components["schemas"]["SourceProblem"] | null;
                 readonly proposal?: components["schemas"]["ProjectWorkspaceInboxProposal"] | null;
                 readonly reply_to_page_id?: string | null;
                 /** Format: int64 */
@@ -4228,6 +4214,51 @@ export interface components {
             readonly kind: "session";
             readonly session_id: string;
         };
+        readonly ExternalThread: {
+            readonly draft?: boolean;
+            readonly head?: components["schemas"]["SourcePullRequestHead"] | null;
+            readonly host: string;
+            readonly id: string;
+            readonly kind: components["schemas"]["ExternalThreadKind"];
+            /** Format: int64 */
+            readonly number: number;
+            /**
+             * Format: int64
+             * @description Shared observation fence across every Source watching this external thread.
+             */
+            readonly observation_revision: number;
+            readonly observations: {
+                readonly [key: string]: components["schemas"]["SourceObservation"];
+            };
+            readonly repository: string;
+            readonly repository_id: string;
+            readonly state: string;
+            readonly title: string;
+            readonly url: string;
+        };
+        /** @enum {string} */
+        readonly ExternalThreadKind: "issue" | "pull_request";
+        /** @description Presentation and delivery reference; polling observations remain on the Source's thread read. */
+        readonly ExternalThreadReference: {
+            readonly host: string;
+            readonly id: string;
+            readonly kind: components["schemas"]["ExternalThreadKind"];
+            /** Format: int64 */
+            readonly number: number;
+            readonly repository: string;
+            readonly repository_id: string;
+            readonly state: string;
+            readonly title: string;
+            readonly url: string;
+        };
+        readonly GitHubSourceConfig: {
+            readonly account_id: string;
+            readonly account_login: string;
+            readonly credential_ref: string;
+            readonly discovery: components["schemas"]["SourceDiscovery"];
+            readonly host: string;
+            readonly repositories: readonly components["schemas"]["SourceRepository"][];
+        };
         /** @description Host-supplied original text and prepared binary attachments, read from Runtime. */
         readonly HandbackMessage: {
             readonly files: readonly components["schemas"]["LibraryFileChange"][];
@@ -4342,6 +4373,7 @@ export interface components {
          * @description Membership comes from Core's current Turn, independently of its explanatory note.
          * @enum {string}
          */
+        readonly InboxRowKind: "problem" | "intake" | "turn" | "answer";
         readonly InboxTurn: {
             readonly active_chat?: components["schemas"]["ProjectWorkspaceInboxChat"] | null;
             readonly delivery_error?: string | null;
@@ -7332,12 +7364,9 @@ export interface components {
                     readonly [key: string]: readonly unknown[];
                 };
             } | {
-                readonly execution_host_keys: {
-                    readonly [key: string]: string;
-                };
-                readonly identity_key?: string | null;
+                readonly command: components["schemas"]["SourceCommand"];
                 /** @enum {string} */
-                readonly kind: "select_thread_read_state_identity";
+                readonly kind: "source";
             } | {
                 readonly execution_host_key: string;
                 readonly identity_key: string;
@@ -8962,6 +8991,11 @@ export interface components {
             /** Format: int32 */
             readonly contract_version: number;
             readonly read: {
+                readonly filter: components["schemas"]["ActivityFilter"];
+                readonly kind: "activity_window";
+                readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
+                readonly kind: "sources";
+                readonly read: components["schemas"]["SourceRead"];
                 readonly after_session_id?: string | null;
                 readonly kind: "held_session_window";
                 /** Format: int32 */
@@ -9610,6 +9644,13 @@ export interface components {
             /** Format: int32 */
             readonly offsetMinutes: number;
         };
+        readonly PageThreadFollow: {
+            readonly created_at: string;
+            readonly page_id: string;
+            readonly provenance: string;
+            readonly role: components["schemas"]["ThreadFollowRole"];
+            readonly thread: components["schemas"]["ExternalThreadReference"];
+        };
         /** @description Core's answer to whose Turn it is; never an editable Page Property. */
         readonly PageTurn: {
             readonly actor: components["schemas"]["TurnActor"];
@@ -9695,6 +9736,8 @@ export interface components {
             readonly operation_id: string;
             readonly store_epoch: string;
         };
+        /** @enum {string} */
+        readonly ProblemFix: "reconnect" | "retry" | "open_card";
         readonly ProjectAppearance: {
             readonly color: components["schemas"]["ProjectMarkerColor"];
             readonly marker: components["schemas"]["ProjectMarker"];
@@ -10229,6 +10272,7 @@ export interface components {
             readonly page_id: string;
             readonly page_key?: string | null;
             readonly page_status?: components["schemas"]["ProjectWorkspaceInboxPageStatus"] | null;
+            readonly problem?: components["schemas"]["SourceProblem"] | null;
             readonly proposal?: components["schemas"]["ProjectWorkspaceInboxProposal"] | null;
             readonly reply_to_page_id?: string | null;
             /** Format: int64 */
@@ -10355,6 +10399,16 @@ export interface components {
             readonly project_id: string;
         };
         readonly ProjectWorkspaceInboxSource: {
+            readonly actor_login: string;
+            readonly external_thread_id: string;
+            /** @enum {string} */
+            readonly kind: "github";
+            /** Format: int64 */
+            readonly number: number;
+            readonly repository: string;
+            readonly title: string;
+            readonly url: string;
+        } | {
             /** @enum {string} */
             readonly kind: "user";
         } | {
@@ -10465,6 +10519,8 @@ export interface components {
         /** @enum {string} */
         readonly ProjectWorkspaceInboxWindowFilter: "inbox" | "processed";
         readonly ProjectWorkspaceIntent: {
+            readonly command: components["schemas"]["SourceCommand"];
+            readonly kind: "source";
             readonly kind: "pause_work";
             readonly scope: components["schemas"]["ExecutionHoldScope"];
             readonly kind: "resume_work";
@@ -13078,6 +13134,10 @@ export interface components {
                 readonly contract_version: number;
                 readonly store_epoch: components["schemas"]["StoreEpoch"];
                 readonly value: {
+                    readonly kind: "activity_window";
+                    readonly rows: components["schemas"]["CollectionWindow_ActivityRow"];
+                    readonly kind: "sources";
+                    readonly value: components["schemas"]["SourceReadValue"];
                     readonly kind: "held_session_window";
                     readonly session_ids: readonly string[];
                     readonly holds: readonly components["schemas"]["ExecutionHold"][];
@@ -13094,6 +13154,7 @@ export interface components {
                     readonly observer?: components["schemas"]["SessionExecutionObserver"] | null;
                     readonly kind: "session_execution_observers";
                     readonly observers: readonly components["schemas"]["SessionExecutionObserver"][];
+                    readonly follows?: readonly components["schemas"]["PageThreadFollow"][];
                     readonly has_agent_work: boolean;
                     readonly kind: "page_workspace";
                     readonly page: components["schemas"]["DatabaseWorkPage"];
@@ -13416,6 +13477,363 @@ export interface components {
         readonly SessionExecutionState: "working" | "queued" | "waiting" | "idle" | "failed" | "unavailable";
         /** @enum {string} */
         readonly SessionExecutionTerminalStatus: "completed" | "failed" | "interrupted";
+        readonly Source: {
+            readonly config: components["schemas"]["GitHubSourceConfig"];
+            readonly enabled: boolean;
+            /** Format: int64 */
+            readonly enabled_at_ms?: number | null;
+            readonly id: string;
+            readonly kind: string;
+            readonly library_id: string;
+            /** Format: int64 */
+            readonly revision: number;
+        };
+        /** @enum {string} */
+        readonly SourceActorClass: "person" | "bot" | "ci";
+        readonly SourceCommand: {
+            readonly body: string;
+            /** @enum {string} */
+            readonly kind: "reply_to_origin";
+            readonly page_id: string;
+        } | {
+            readonly id: string;
+            /** @enum {string} */
+            readonly kind: "claim_channel_send";
+            /** Format: int64 */
+            readonly lease_duration_ms: number;
+            readonly lease_token: string;
+        } | {
+            readonly credential_invalid: boolean;
+            readonly failure?: string | null;
+            readonly id: string;
+            /** @enum {string} */
+            readonly kind: "settle_channel_send";
+            readonly lease_token: string;
+            readonly permanent: boolean;
+            readonly receipt?: components["schemas"]["ChannelReceipt"] | null;
+        } | {
+            /** @enum {string} */
+            readonly kind: "record_thread_delivery_failure";
+            readonly message_id: string;
+            readonly reason: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "retry_problem";
+            readonly problem_id: string;
+        } | {
+            /** Format: int64 */
+            readonly config_revision: number;
+            /** @enum {string} */
+            readonly kind: "follow_thread";
+            readonly source_id: string;
+            readonly thread: components["schemas"]["ExternalThread"];
+        } | {
+            readonly body: string;
+            readonly delivery_ids: readonly string[];
+            /** @enum {string} */
+            readonly kind: "prepare_thread_delivery_batch";
+            readonly message_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "begin_thread_delivery_batch";
+            readonly message_id: string;
+        } | {
+            readonly accepted: boolean;
+            /** @enum {string} */
+            readonly kind: "settle_thread_delivery_batch";
+            readonly message_id: string;
+            readonly receipt: string;
+        } | {
+            readonly delivery_id: string;
+            /** @enum {string} */
+            readonly kind: "invalidate_thread_delivery";
+            readonly reason: string;
+        } | {
+            readonly config: components["schemas"]["GitHubSourceConfig"];
+            readonly enabled: boolean;
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "configure_source";
+            readonly source_id: string;
+        } | {
+            /** Format: int64 */
+            readonly config_revision: number;
+            /** @enum {string} */
+            readonly kind: "claim_source_partition";
+            /** Format: int64 */
+            readonly lease_duration_ms: number;
+            readonly lease_token: string;
+            readonly partition: string;
+            readonly source_id: string;
+        } | {
+            /** Format: int64 */
+            readonly config_revision: number;
+            /** Format: int64 */
+            readonly expected_position: number;
+            /** @enum {string} */
+            readonly kind: "ingest_source_batch";
+            readonly lease_token: string;
+            /** Format: int64 */
+            readonly next_poll_at_ms: number;
+            readonly next_position: components["schemas"]["SourceCursor"];
+            readonly partition: string;
+            readonly quarantine: readonly unknown[];
+            readonly source_id: string;
+            readonly threads: readonly components["schemas"]["ExternalThread"][];
+            readonly triggers: readonly components["schemas"]["SourceTriggerInput"][];
+        } | {
+            /** Format: int64 */
+            readonly config_revision: number;
+            readonly evidence: unknown;
+            /** @enum {string} */
+            readonly kind: "record_source_failure";
+            readonly lease_token?: string | null;
+            readonly partition?: string | null;
+            readonly problem_kind: string;
+            /** Format: int64 */
+            readonly retry_at_ms: number;
+            readonly source_id: string;
+        } | {
+            /** Format: int64 */
+            readonly config_revision: number;
+            /** @enum {string} */
+            readonly kind: "record_source_success";
+            readonly lease_token?: string | null;
+            readonly partition?: string | null;
+            readonly source_id: string;
+        };
+        readonly SourceCursor: {
+            /** Format: int64 */
+            readonly baseline_at_ms: number;
+            readonly continuation?: string | null;
+            readonly validators: {
+                readonly [key: string]: string;
+            };
+            /** Format: int64 */
+            readonly watermark_ms: number;
+        };
+        readonly SourceDiscovery: {
+            readonly assigned: boolean;
+            readonly mentions: boolean;
+            readonly review_requests: boolean;
+        };
+        readonly SourceObservation: {
+            readonly fingerprint: string;
+            /** Format: int64 */
+            readonly revision: number;
+        };
+        readonly SourcePosition: {
+            readonly baseline: boolean;
+            /** Format: int64 */
+            readonly consecutive_failures: number;
+            readonly cursor: components["schemas"]["SourceCursor"];
+            /** Format: int64 */
+            readonly last_success_at_ms?: number | null;
+            /** Format: int64 */
+            readonly lease_expires_at_ms?: number | null;
+            readonly lease_token?: string | null;
+            /** Format: int64 */
+            readonly next_poll_at_ms: number;
+            readonly partition: string;
+            /** Format: int64 */
+            readonly revision: number;
+            readonly source_id: string;
+        };
+        readonly SourceProblem: {
+            /** Format: int64 */
+            readonly consecutive_failures: number;
+            readonly evidence: unknown;
+            /** Format: int64 */
+            readonly first_failure_at_ms: number;
+            readonly fix: components["schemas"]["ProblemFix"];
+            readonly id: string;
+            readonly kind: string;
+            /** Format: int64 */
+            readonly last_failure_at_ms: number;
+            readonly library_id: string;
+            /** Format: int64 */
+            readonly opened_at_ms?: number | null;
+            readonly page_id?: string | null;
+            readonly project_id?: string | null;
+            /** Format: int64 */
+            readonly resolved_at_ms?: number | null;
+            readonly scope: string;
+            readonly source_id?: string | null;
+            readonly summary: string;
+        };
+        readonly SourcePullRequestHead: {
+            readonly branch: string;
+            readonly repository: string;
+            readonly repository_id: string;
+            readonly sha: string;
+        };
+        readonly SourceRead: {
+            readonly after_id?: string | null;
+            readonly include_terminal?: boolean;
+            /** @enum {string} */
+            readonly kind: "channel_outbox";
+            /** Format: int32 */
+            readonly limit: number;
+        } | {
+            readonly after_thread_id?: string | null;
+            /** @enum {string} */
+            readonly kind: "page_follows";
+            /** Format: int32 */
+            readonly limit: number;
+            readonly page_id: string;
+        } | {
+            readonly after_id?: string | null;
+            /** @enum {string} */
+            readonly kind: "deliveries";
+            /** Format: int32 */
+            readonly limit: number;
+            readonly page_id?: string | null;
+            readonly state?: string | null;
+        } | {
+            readonly after_message_id?: string | null;
+            /** @enum {string} */
+            readonly kind: "delivery_batches";
+            /** Format: int32 */
+            readonly limit: number;
+        } | {
+            readonly after_id?: string | null;
+            /** @enum {string} */
+            readonly kind: "sources";
+            /** Format: int32 */
+            readonly limit: number;
+        } | {
+            readonly after_partition?: string | null;
+            /** @enum {string} */
+            readonly kind: "positions";
+            /** Format: int32 */
+            readonly limit: number;
+            readonly source_id: string;
+        } | {
+            readonly after_id?: string | null;
+            readonly host: string;
+            /** @enum {string} */
+            readonly kind: "threads";
+            /** Format: int32 */
+            readonly limit: number;
+            readonly repository_id: string;
+        } | {
+            readonly before_id?: string | null;
+            /** @enum {string} */
+            readonly kind: "triggers";
+            /** Format: int32 */
+            readonly limit: number;
+            readonly thread_url: string;
+        } | {
+            readonly after_id?: string | null;
+            /** @enum {string} */
+            readonly kind: "open_problems";
+            /** Format: int32 */
+            readonly limit: number;
+            readonly source_id?: string | null;
+        } | {
+            readonly after_page_id?: string | null;
+            /** @enum {string} */
+            readonly kind: "known_pull_requests";
+            /** Format: int32 */
+            readonly limit: number;
+        };
+        readonly SourceReadValue: {
+            readonly items: readonly components["schemas"]["ChannelOutboxItem"][];
+            /** @enum {string} */
+            readonly kind: "channel_outbox";
+        } | {
+            readonly follows: readonly components["schemas"]["PageThreadFollow"][];
+            /** @enum {string} */
+            readonly kind: "page_follows";
+        } | {
+            readonly deliveries: readonly components["schemas"]["ThreadDelivery"][];
+            /** @enum {string} */
+            readonly kind: "deliveries";
+        } | {
+            readonly batches: readonly components["schemas"]["ThreadDeliveryBatch"][];
+            /** @enum {string} */
+            readonly kind: "delivery_batches";
+        } | {
+            /** @enum {string} */
+            readonly kind: "sources";
+            readonly sources: readonly components["schemas"]["Source"][];
+        } | {
+            /** @enum {string} */
+            readonly kind: "positions";
+            readonly positions: readonly components["schemas"]["SourcePosition"][];
+        } | {
+            /** @enum {string} */
+            readonly kind: "threads";
+            readonly threads: readonly components["schemas"]["ExternalThread"][];
+        } | {
+            /** @enum {string} */
+            readonly kind: "triggers";
+            readonly triggers: readonly components["schemas"]["SourceTrigger"][];
+        } | {
+            /** @enum {string} */
+            readonly kind: "open_problems";
+            readonly problems: readonly components["schemas"]["SourceProblem"][];
+        } | {
+            /** @enum {string} */
+            readonly kind: "known_pull_requests";
+            readonly pull_requests: readonly components["schemas"]["PagePullRequest"][];
+        };
+        readonly SourceRepository: {
+            readonly enabled: boolean;
+            readonly id: string;
+            readonly name: string;
+        };
+        readonly SourceTrigger: {
+            readonly disposition: string;
+            readonly event: components["schemas"]["SourceTriggerInput"];
+            readonly id: string;
+            /** Format: int64 */
+            readonly received_at_ms: number;
+            readonly source_id: string;
+        };
+        readonly SourceTriggerInput: {
+            readonly actor_class: components["schemas"]["SourceActorClass"];
+            readonly actor_login: string;
+            readonly kind: string;
+            readonly metadata: unknown;
+            /** Format: int64 */
+            readonly occurred_at_ms: number;
+            readonly semantic_key: string;
+            readonly text?: string | null;
+            readonly thread_id: string;
+            readonly url: string;
+        };
+        readonly ThreadDelivery: {
+            /** Format: int64 */
+            readonly binding_revision?: number | null;
+            readonly execution_ref?: components["schemas"]["ProjectWorkspaceSessionExecutionRef"] | null;
+            readonly id: string;
+            readonly message_id?: string | null;
+            readonly page_id: string;
+            readonly reason?: string | null;
+            readonly session_id?: string | null;
+            readonly state: string;
+            readonly target_current: boolean;
+            readonly thread: components["schemas"]["ExternalThreadReference"];
+            readonly trigger: components["schemas"]["SourceTrigger"];
+        };
+        readonly ThreadDeliveryBatch: {
+            /** Format: int64 */
+            readonly attempts: number;
+            readonly body: string;
+            readonly body_hash: string;
+            /** Format: int64 */
+            readonly created_at_ms: number;
+            readonly eligible: boolean;
+            readonly execution_ref: components["schemas"]["ProjectWorkspaceSessionExecutionRef"];
+            readonly held: boolean;
+            readonly message_id: string;
+            readonly session_id: string;
+            readonly state: string;
+        };
+        /** @enum {string} */
+        readonly ThreadFollowRole: "own_pr" | "origin" | "context";
         readonly TurnActor: {
             /** @enum {string} */
             readonly kind: "member";

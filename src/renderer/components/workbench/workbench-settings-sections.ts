@@ -7,7 +7,6 @@ import {
   InboxIcon,
   KeyboardShortcutsIcon,
   MicIcon,
-  MobileIcon,
   PageIcon,
   PluginsIcon,
   SettingsAgentIcon,
@@ -22,10 +21,12 @@ import {
   SlashModelIcon,
 } from "../shared/icons";
 import { UserRound } from "../shared/icons/generic-icons";
+import { WebsiteGitHubIcon } from "../shared/icons/website-icons";
 import { SETTINGS_SEARCH_CATALOG, settingsSearchAnchor } from "./workbench-settings-search-catalog";
 import type { SettingsPageKey } from "./workbench-settings-page-registry";
 
 export type SettingsSectionId =
+  | "github"
   | "account"
   | "general-settings"
   | "agent-import"
@@ -35,7 +36,6 @@ export type SettingsSectionId =
   | "models"
   | "keyboard-shortcuts"
   | "inbox-settings"
-  | "mobile-settings"
   | "plugins-settings"
   | "browser"
   | "computer-use"
@@ -186,6 +186,21 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     searchMessages: SETTINGS_SEARCH_CATALOG["computer-use"].messages,
   },
   {
+    id: "github",
+    label: "GitHub",
+    pageKey: "github",
+    icon: WebsiteGitHubIcon,
+    groupKey: "integrations",
+    searchMessages: [
+      "GitHub",
+      "Sources",
+      "Assigned to me",
+      "Review requests",
+      "Mentions",
+      "Repositories",
+    ],
+  },
+  {
     id: "git",
     label: "Git",
     pageKey: "git",
@@ -225,14 +240,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     icon: InboxIcon,
     groupKey: "workspace",
     searchMessages: SETTINGS_SEARCH_CATALOG["inbox-settings"].messages,
-  },
-  {
-    id: "mobile-settings",
-    label: "Mobile",
-    pageKey: "mobile",
-    icon: MobileIcon,
-    groupKey: "workspace",
-    searchMessages: SETTINGS_SEARCH_CATALOG["mobile-settings"].messages,
   },
   {
     id: "data-controls",

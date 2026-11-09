@@ -154,12 +154,7 @@ const mobileAccess = MobileAccessIpc.live.pipe(
   ),
   ApplicationOperationsLive.tools,
 );
-const applicationGraph = Layer.mergeAll(
-  RendererIngressLive.live,
-  windowsTrayIntegrationLive,
-  mobileAccess,
-).pipe(
-  Layer.provideMerge(inboxWorkersGraph),
+  Layer.provideMerge(sourcesGraph),
   Layer.provide(CodexConversationPeerRuntime.live),
   Layer.provideMerge(shellEnvironment),
   Layer.provideMerge(

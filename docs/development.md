@@ -549,6 +549,7 @@ never starts an Agent:
 ```
 
 `nodex-coordinator` shows Nodex's posts, a three-card plan, and a request Nodex
+already started in Inbox Activity. Its Nodex Project has managed work in every
 state, including a chat second in line on its own checkout, a paused card and a
 card with an open pull request, plus an Ask card, two Waits for edges, and an
 automatic step waiting for its prerequisite. Seeded checkouts and pull requests
@@ -566,6 +567,7 @@ same command as `inbox_suggest`; the completed request uses Nodex confirmation
 and outbox completion without launching an Agent. Native chat status uses the
 same seed adapter as `sidebar/chat-status`. The bootstrap Project is archived,
 leaving one active Project. `tests/e2e/nodex-coordinator.spec.ts` captures the
+Inbox, Activity, Board, Page Agent row, settings and reply composer in light theme
 at the default window size. Screenshots go to Playwright's output and
 `notes.local/artifacts/work-router/screenshots/` in the primary checkout.
 

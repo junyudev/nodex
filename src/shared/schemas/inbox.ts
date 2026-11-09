@@ -9,6 +9,7 @@ import {
   type UpdateInboxSettingsInput,
 } from "../inbox";
 import type {
+  ActivityWindowInput,
   InboxConfirmInput,
   InboxConfirmationDraft,
   InboxPreparedConfirmation,
@@ -336,3 +337,8 @@ export const UpdateInboxSettingsInputSchema = z
 export const InboxProposalInputSchema = z
   .object({ proposalId: id })
   .strict() satisfies z.ZodType<InboxProposalInput>;
+
+export const ActivityWindowInputSchema = InboxWindowInputSchema.extend({
+  filter: z.enum(["all", "messages", "decisions", "problems"]),
+}) satisfies z.ZodType<ActivityWindowInput>;
+export const RetryProblemInputSchema = z.strictObject({ operationId, problemId: id });

@@ -41,11 +41,9 @@ test("a chat the Inbox starts opens with its message's Page beside it unless tur
         // Core has accepted the decision once the message links to its chat.
         await expect(row.getByRole("button", { name: "Open chat", exact: true })).toBeVisible();
       };
-      const openChatFromHistory = async (pageId: string, title: string) => {
-        await inbox.getByRole("tab", { name: /^History/ }).click();
-        const row = page.locator(
-          `[data-testid="inbox-history-row"][data-inbox-page-id="${pageId}"]`,
-        );
+      const openChatFromActivity = async (pageId: string, title: string) => {
+        await inbox.getByRole("tab", { name: "Activity", exact: true }).click();
+        const row = inbox.locator(`[data-activity-id][data-inbox-page-id="${pageId}"]`).first();
         await row.locator("button[aria-expanded]").click();
         await row.getByRole("button", { name: "Open chat", exact: true }).click();
         // The chat, titled after its message, is the one now shown.
@@ -73,7 +71,7 @@ test("a chat the Inbox starts opens with its message's Page beside it unless tur
         // Starting the chat keeps the Inbox in view.
         claim("Starting a chat stays in the Inbox", true, await inbox.isVisible());
 
-        await openChatFromHistory(shown.pageId, shownText);
+        await openChatFromActivity(shown.pageId, shownText);
         await expect(rightTabs().filter({ hasText: shownText })).toHaveCount(1);
         await expect(
           page.getByTestId("session-right-panel").getByText(shownText).first(),
@@ -90,7 +88,7 @@ test("a chat the Inbox starts opens with its message's Page beside it unless tur
         await openInbox();
         await inbox.getByRole("tab", { name: /^Inbox/ }).click();
         await startChat(hidden.pageId);
-        await openChatFromHistory(hidden.pageId, hiddenText);
+        await openChatFromActivity(hidden.pageId, hiddenText);
         await expect(rightTabs().filter({ hasText: hiddenText })).toHaveCount(0);
         claim(
           "With the preference off, the new chat opens without the Page",

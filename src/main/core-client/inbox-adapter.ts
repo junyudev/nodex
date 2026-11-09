@@ -1,5 +1,6 @@
 import type { components } from "@nodex/core-protocol";
 import type {
+  ActivityWindow,
   InboxChat,
   InboxAgentChoice,
   InboxCounts,
@@ -193,8 +194,16 @@ export const inboxScopeToCore = (scope: InboxScope): CoreInboxScope =>
 
 export const inboxSourceFromCore = (source: CoreInboxSource): InboxSource => {
   switch (source.kind) {
-    case "scheduled_task":
+    case "github":
       return {
+        kind: "github",
+        externalThreadId: source.external_thread_id,
+        actorLogin: source.actor_login,
+        repository: source.repository,
+        number: source.number,
+        title: source.title,
+        url: source.url,
+      };
       return {
         automationId: source.automation_id,
         dispatchId: source.dispatch_id,
@@ -286,6 +295,7 @@ const proposalFromCore = (proposal: CoreInboxProposal): InboxProposal => ({
 export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
   handback: item.handback ?? null,
   rowKind: item.row_kind,
+  problem: item.problem ?? null,
   turn: item.turn ?? null,
   pageId: item.page_id,
   pageKey: item.page_key ?? null,
@@ -319,6 +329,20 @@ export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
     : null,
   revision: item.revision,
   basis: inboxPageBasisFromCore(item.basis),
+});
+
+/** One Activity window; a message fact's message reads as the Inbox reads its messages. */
+export const activityWindowFromCore = (
+  rows: Schemas["CollectionWindow_ActivityRow"],
+  storeEpoch: string,
+): ActivityWindow => ({
+  rows: rows.items.map((row) => ({
+    ...row,
+    message: row.message ? inboxItemFromCore(row.message) : null,
+  })),
+  nextCursor: rows.next_cursor ?? null,
+  projectionRevision: rows.authority.projection_revision,
+  storeEpoch,
 });
 
 export const inboxSummaryFromCore = (

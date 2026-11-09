@@ -19,7 +19,30 @@ pub(super) fn admit<'a>(
         }
         return Ok(intent);
     };
+    if matches!(intent.as_ref(), ProjectWorkspaceIntent::Source { command } if !matches!(command,nodex_core_contracts::sources::SourceCommand::FollowThread{..}|nodex_core_contracts::sources::SourceCommand::ReplyToOrigin{..}))
+    {
+        return Err(denied("Sources belong to a person and the Desktop Host"));
+    }
     admit_read_caller(connection, library_id, context, provenance)?;
+    if matches!(intent.as_ref(), ProjectWorkspaceIntent::Source { .. }) {
+        if !matches!(
+            context.adapter,
+            AdapterKind::ElectronHost | AdapterKind::Test
+        ) || context.agent_attribution.is_some()
+        {
+            return Err(denied(
+                "Follow verification belongs to the Host's managed-chat tool",
+            ));
+        }
+        if matches!(
+            intent.as_ref(),
+            ProjectWorkspaceIntent::Source {
+                command: nodex_core_contracts::sources::SourceCommand::FollowThread { .. }
+            }
+        ) {
+            super::thread_follows::managed_page(connection, library_id, provenance)?;
+        }
+    }
     if let ProjectWorkspaceIntent::StartPageWork {
         page_id,
         selection,

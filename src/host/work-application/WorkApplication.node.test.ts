@@ -126,6 +126,24 @@ it.effect(
           read: (read: ProjectWorkspaceRead) =>
             Effect.sync(() => ({
               value:
+                read.kind === "sources"
+                  ? { kind: "sources", value: { kind: "page_follows", follows: [] } }
+                  : read.kind === "effective_execution_hold"
+                    ? { kind: read.kind, holds: [] }
+                    : read.kind === "page_work_launch"
+                      ? { kind: read.kind, launch: outbox.get(read.launch_id) ?? null }
+                      : read.kind === "session"
+                        ? {
+                            kind: read.kind,
+                            session: {
+                              project_id: "project",
+                              archived: false,
+                              display_title: "Dependent",
+                            },
+                          }
+                        : {
+                            kind: "page_work_outbox",
+                            launches: [...outbox.values()].filter((l) => !l.accepted_at),
                           },
             })),
           apply: (input: ProjectWorkspaceApplyInput) =>
@@ -303,9 +321,29 @@ it.effect(
       });
     }),
 );
+const follows: components["schemas"]["PageThreadFollow"][] = [
+  {
+    page_id: context.page.page_id,
+    role: "context",
+    provenance: "managed_chat_verified_url",
+    created_at: "2026-11-06T00:00:00Z",
+    thread: {
+      id: "github:github.com:10:42",
+      host: "github.com",
+      repository_id: "10",
+      repository: "owner/repo",
+      number: 42,
+      kind: "pull_request",
+      url: "https://github.com/owner/repo/pull/42",
+      title: "Review",
+      state: "open",
+    },
+  },
+];
 it("renders prerequisite Status and latest reports beside the canonical Page body", () => {
   const brief = renderWorkBrief(context, "**Exact body**", follows, "Alice");
   assert.include(brief, `Page ID: ${context.page.page_id} · Owner: Alice`);
+  assert.include(brief, "PR #42 · owner/repo · context · https://github.com/owner/repo/pull/42");
   assert.include(brief, "Status: done");
   assert.include(brief, "Latest report (ready):\nImplemented and tested.");
   assert.include(brief, "**Exact body**");
@@ -320,6 +358,13 @@ it.effect("starts the assigned Agent and freezes an explicit replacement in the 
         read: libraryRead("Work body"),
       },
       workspace: {
+        read: (read: ProjectWorkspaceRead) =>
+          Effect.succeed({
+            value:
+              read.kind === "sources"
+                ? { kind: "sources", value: { kind: "page_follows", follows } }
+                : { kind: "page_work_launch", launch: null },
+          }),
         apply: (input: ProjectWorkspaceApplyInput) =>
           Effect.sync(() => {
             if (input.intent.kind === "start_page_work") starts.push(input.intent);
@@ -356,6 +401,10 @@ it.effect("starts the assigned Agent and freezes an explicit replacement in the 
     );
     // One person needs no attribution; the chat itself names the Agent.
     assert.notInclude(starts[1]!.brief, "Owner:");
+    assert.include(
+      starts[1]!.brief,
+      "PR #42 · owner/repo · context · https://github.com/owner/repo/pull/42",
+    );
   }),
 );
 

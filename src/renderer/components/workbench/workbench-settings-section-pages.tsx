@@ -3,6 +3,9 @@ import type { SettingsPageComponentRegistry } from "./workbench-settings-page-re
 
 /** Each section loads independently of Settings navigation and every other page. */
 export const SETTINGS_PAGE_COMPONENTS: SettingsPageComponentRegistry = {
+  github: lazy(async () => ({
+    default: (await import("./github-settings-page")).GitHubSettingsPage,
+  })),
   account: lazy(async () => ({
     default: (await import("@/features/nodex-account/account-settings-page")).AccountSettingsPage,
   })),

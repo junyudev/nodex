@@ -1,8 +1,10 @@
+mod activity;
 mod agent_command;
 mod agent_runtime_authority;
 mod agent_runtime_binding;
 mod agent_runtime_cleanup;
 mod app_tool_operation;
+mod channels;
 mod child_thread_window;
 mod codex_thread_navigation;
 mod coordinator;
@@ -22,6 +24,11 @@ mod page_work_tests;
 pub(crate) mod page_workspace;
 #[cfg(test)]
 mod page_workspace_tests;
+mod problems;
+mod sources;
+#[cfg(test)]
+mod sources_tests;
+mod thread_follows;
 pub(crate) use inbox::reliable::discard_replaced_dispatches as discard_replaced_inbox_dispatches;
 pub(crate) mod inbox_content;
 mod inbox_projection;

@@ -80,6 +80,7 @@ fn delivery_pages(
 ) -> Result<Vec<(String, Option<String>, String)>, StoreError> {
     Ok(connection.prepare("SELECT page_id,proposal_id,content_fingerprint FROM chat_message_delivery_pages WHERE delivery_id=?1 ORDER BY page_id")?.query_map([id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?)))?.collect::<rusqlite::Result<Vec<_>>>()?)
 }
+pub(in crate::workspace) fn record(
     connection: &Connection,
     library: &str,
     intent: &ProjectWorkspaceIntent,
@@ -113,6 +114,11 @@ fn delivery_pages(
     let source = serde_json::to_string(author).map_err(|_| invalid("Invalid message author"))?;
     let old:Option<(String,String,String,u32)>=connection.query_row("SELECT session_id,body_hash,author_json,attachment_count FROM chat_message_deliveries WHERE delivery_id=?1",[delivery_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?;
     if let Some(old) = old {
+        let github_batch:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM thread_delivery_batches WHERE message_id=?1 AND session_id=?2 AND body_hash=?3 AND library_id=?4)",params![delivery_id,session_id,body_hash,library],|r|r.get(0))?;
+        if github_batch && old.0 == *session_id && old.1 == *body_hash && old.3 == *attachment_count
+        {
+            return Ok(simple_effects("chat_delivery_replay", now));
+        }
         if old
             != (
                 session_id.clone(),
@@ -372,6 +378,7 @@ fn hand_back(
         };
         let author: ProjectWorkspaceInboxSource =
             serde_json::from_str(&author).map_err(|_| corrupt("Invalid inbound author"))?;
+        let source = source_for_capture(author.clone())?;
         effects = capture_message_in_scope(
             connection,
             library,
@@ -386,6 +393,8 @@ fn hand_back(
             project.as_deref(),
             now,
         )?;
+        super::github::register(connection, page, &author)?;
+        super::github::register_delivery_origins(connection, library, &input.delivery_id, page)?;
     }
     let receipt = stable_uuid_v7("inbox-handback", "delivery", &input.delivery_id);
     connection.execute(
@@ -426,6 +435,11 @@ fn hand_back(
 }
 fn source_for_capture(source: ProjectWorkspaceInboxSource) -> Result<EntrySource, StoreError> {
     Ok(match source {
+        ProjectWorkspaceInboxSource::Github { actor_login, .. } => EntrySource {
+            kind: "github",
+            label: Some(actor_login),
+            ..Default::default()
+        },
         ProjectWorkspaceInboxSource::User => EntrySource {
             kind: "user",
             ..EntrySource::default()

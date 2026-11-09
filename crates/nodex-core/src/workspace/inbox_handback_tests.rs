@@ -149,6 +149,15 @@ fn handback_receipts_preserve_words_and_author_and_bound_rerouting_to_two_return
     }
     assert_eq!(count(&w, "SELECT count(*) FROM chat_message_handbacks"), 2);
     assert_eq!(count(&w, "SELECT count(*) FROM inbox_entries"), 1);
+    assert_eq!(
+        crate::workspace::test_support::activity_rows(&w.module)
+            .iter()
+            .filter(|row| row.id.starts_with("handback:")
+                && row.session_id.is_some()
+                && row.reason.is_some())
+            .count(),
+        2
+    );
 }
 #[test]
 fn handback_preserves_original_page_images_without_granting_new_consent() {

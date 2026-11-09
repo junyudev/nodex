@@ -158,7 +158,7 @@ const inspect = async (
   port: ScenarioSeedPort,
   manifest: ScenarioManifest,
 ): Promise<InboxSuggestionSpendScenarioFacts> => {
-  const { items } = await port.readInbox("inbox");
+  const { items } = await port.readInbox();
   const proposals = [
     ...new Map(
       items.flatMap((item) =>

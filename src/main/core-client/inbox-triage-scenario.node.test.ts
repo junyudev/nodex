@@ -30,6 +30,8 @@ describe("inbox/triage scenario", () => {
         }),
       ).toThrow("inbox/triage facts are invalid");
       const [all, project] = await Promise.all([
+        context.seed.readInbox(),
+        context.seed.readInbox(projectInbox(context.manifest.projectId)),
       ]);
       expect(all.items.filter((item) => item.rowKind === "intake")).toHaveLength(14);
       expect(
@@ -51,6 +53,7 @@ describe("inbox/triage scenario", () => {
     await withCoreScenario({ scenarioId: INBOX_TRIAGE_SCENARIO_ID }, async (context) => {
       const facts = requireInboxTriageScenarioFacts(context.facts);
       const scope = projectInbox(context.manifest.projectId);
+      const items = (await context.seed.readInbox(scope)).items.filter(
         (item) => item.rowKind === "intake",
       );
       expect(items.map((item) => item.scope)).toEqual(Array.from({ length: 8 }, () => scope));
@@ -136,6 +139,7 @@ describe("inbox/triage scenario", () => {
     await withCoreScenario({ scenarioId: INBOX_TRIAGE_SCENARIO_ID }, async (context) => {
       const pageId = context.manifest.pageIdsByKey.picturedMessage;
       const fileId = context.manifest.entityIdsByKey?.screenshotFile;
+      const item = (await context.seed.readInbox()).items.find(
         (entry) => entry.rowKind === "intake" && entry.pageId === pageId,
       );
       expect(item).toMatchObject({

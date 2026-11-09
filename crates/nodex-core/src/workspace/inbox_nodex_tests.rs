@@ -213,6 +213,36 @@ fn automatic_inbox_confirmation_enforces_source_intent_basis_and_action_in_the_t
                 entry(m, "page:request").proposal.unwrap().confirmed_by,
                 Some(InboxConfirmedBy::Nodex)
             );
+            // The start is the message's one handled fact, and one of Nodex's decisions.
+            let activity = crate::workspace::test_support::activity_rows(m);
+            let started = activity
+                .iter()
+                .filter(|row| row.page_id.as_deref() == Some("page:request"))
+                .collect::<Vec<_>>();
+            assert_eq!(started.len(), 1);
+            assert_eq!(started[0].category, "messages");
+            assert!(started[0].description.ends_with(" on your request"));
+            let ProjectWorkspaceReadValue::ActivityWindow { rows: decisions } = m
+                .read(
+                    &host(),
+                    nodex_core_contracts::ModuleReadRequest {
+                        contract_version: nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        read: ProjectWorkspaceRead::ActivityWindow {
+                            scope: nodex_core_contracts::inbox::ProjectWorkspaceInboxScope::All,
+                            filter: nodex_core_contracts::sources::ActivityFilter::Decisions,
+                            window: nodex_core_contracts::collection::CollectionWindowRequest {
+                                after: None,
+                                first: Some(100),
+                            },
+                        },
+                    },
+                )
+                .unwrap()
+                .value
+            else {
+                panic!("Activity window")
+            };
+            assert!(decisions.items.iter().any(|row| row.id == started[0].id));
             // Another Member reads whose request it was, not their own.
             let owner = local_member(&w);
             let name: String = w
@@ -257,6 +287,8 @@ fn automatic_inbox_confirmation_enforces_source_intent_basis_and_action_in_the_t
             else {
                 panic!("Activity window")
             };
+            assert!(rows.items.iter().any(|row| row.id.starts_with("message:")
+                && row.description.ends_with(&format!(" on {name}’s request"))));
             assert_eq!(outbox(m).len(), 1);
             assert!(
                 !outbox(m)[0]
@@ -845,6 +877,11 @@ fn turn_notes_bind_delivered_page_events_to_current_episode_and_retry_exactly() 
         .find(|r| r.page_id == "019d0000-0000-7000-8000-000000000091")
         .unwrap();
     assert!(row.turn.unwrap().note_id.is_none());
+    assert!(
+        crate::workspace::test_support::activity_rows(&w.module)
+            .iter()
+            .any(|row| row.id.starts_with("note:") && row.reason.is_some())
+    );
 }
 #[test]
 fn turn_reply_is_durable_unchanged_and_never_creates_intake_and_stale_episode_fails() {

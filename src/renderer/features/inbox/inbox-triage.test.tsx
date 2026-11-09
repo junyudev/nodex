@@ -4,7 +4,7 @@ import { describe, expect, test, vi } from "vite-plus/test";
 
 import { openNodexMenu, render } from "@/test/dom";
 import { TestQueryProvider } from "@/test/query";
-import type { InboxChat, InboxItem, InboxProposal } from "../../../shared/inbox";
+import type { InboxItem, InboxProposal } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import { InboxDeleteDialog } from "./inbox-delete-dialog";
 import { draftForInboxItem } from "./inbox-dispatch-editor";
@@ -1114,6 +1114,7 @@ test("a handed-back intake keeps the original words and opens its previous chat"
     </TestQueryProvider>,
   );
   expect(screen.getByText("Please fix only the README typo.")).toBeTruthy();
+  expect(screen.getByText(/sent this back:/u)).toBeTruthy();
   expect(screen.getByText(/This belongs to the documentation chat\./u)).toBeTruthy();
   await click("Search indexing");
   expect(onOpenChat).toHaveBeenCalledExactlyOnceWith("previous");

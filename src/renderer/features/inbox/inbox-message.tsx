@@ -1,3 +1,5 @@
+import { WebsiteGitHubIcon } from "@/components/shared/icons/website-icons";
+import { openExternalUrl } from "@/lib/file-system-operations";
 import {
   INBOX_ENTRY_KINDS,
   type InboxEntryKind,
@@ -316,10 +318,27 @@ export function InboxMessage({
             onClick={() => onOpenChat(item.handback!.chat.session_id)}
           >
             {item.handback.chat.display_title}
+          </button>{" "}
+          sent this back: {item.handback.reason}
         </p>
       ) : null}
       {item.source.kind === "nodex" ? (
         <NodexAuthor />
+      ) : item.source.kind === "github" ? (
+        <a
+          href={item.source.url}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (item.source.kind === "github") void openExternalUrl(item.source.url);
+          }}
+          className="inline-flex max-w-[80%] min-w-0 items-center gap-1 pl-1 text-xs text-token-description-foreground hover:text-token-foreground"
+        >
+          <WebsiteGitHubIcon className="icon-2xs shrink-0" />
+          <span className="truncate">
+            {item.source.repository} #{item.source.number} · @{item.source.actorLogin}
+          </span>
+        </a>
       ) : item.source.kind === "agent" ? (
         <button
           type="button"

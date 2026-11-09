@@ -1,3 +1,5 @@
+import type { ActivityWindowInput, ActivityWindow, RetryProblemInput } from "../../shared/inbox";
+import { ActivityWindowInputSchema, RetryProblemInputSchema } from "../../shared/schemas/inbox";
 import { effectiveHolds, scopeHeld, spaceHeld } from "../work-application/execution-holds";
 import { inboxRoutingDeadline, inboxRoutingIdentity } from "./inbox-suggestions";
 import { decideInboxReply, inboxReplyDestination, type ReplyDispatch } from "./inbox-replies";
@@ -61,6 +63,7 @@ import {
   inboxPageBasisToCore,
   inboxExecutionSelectionToCore,
   inboxDispatchActionToCore,
+  activityWindowFromCore,
   inboxItemFromCore,
   inboxScopeToCore,
   inboxStopSuggestionToCore,
@@ -135,6 +138,8 @@ export class InboxApplication extends Context.Service<
     /** Messages waiting in the Library Inbox and in each Project's Inbox. */
     readonly counts: InboxEffect<InboxCounts>;
     readonly window: (input: InboxWindowInput) => InboxEffect<InboxWindow>;
+    readonly activity: (input: ActivityWindowInput) => InboxEffect<ActivityWindow>;
+    readonly retryProblem: (input: RetryProblemInput) => InboxMutation;
     readonly replyDestination: (
       pageId: string,
       body: string,
@@ -318,6 +323,28 @@ export const make = Effect.gen(function* () {
     ),
   );
 
+  const activity = Effect.fn("InboxApplication.activity")(function* (input: ActivityWindowInput) {
+    const parsed = yield* parse("activity", () => ActivityWindowInputSchema.parse(input));
+    const snapshot = yield* read("activity", {
+      kind: "activity_window",
+      scope: inboxScopeToCore(parsed.scope),
+      filter: parsed.filter,
+      window: { after: parsed.after ?? null, first: parsed.first ?? 50 },
+    });
+    return yield* parse("activity", () =>
+      activityWindowFromCore(expectVariant(snapshot, "activity_window").rows, snapshot.store_epoch),
+    );
+  });
+  const retryProblem = Effect.fn("InboxApplication.retryProblem")(function* (
+    input: RetryProblemInput,
+  ) {
+    const parsed = yield* parse("retry-problem", () => RetryProblemInputSchema.parse(input));
+    return yield* mutate(
+      "retry-problem",
+      { kind: "source", command: { kind: "retry_problem", problem_id: parsed.problemId } },
+      parsed.operationId,
+    );
+  });
   const window = Effect.fn("InboxApplication.window")(function* (input: InboxWindowInput) {
     const parsed = yield* parse("window", () => InboxWindowInputSchema.parse(input));
     const snapshot = yield* read("window", {
@@ -1151,6 +1178,8 @@ export const make = Effect.gen(function* () {
     }).pipe(Effect.asVoid);
 
   return InboxApplication.of({
+    activity,
+    retryProblem,
     summary,
     chatTargets,
     counts,

@@ -1,7 +1,14 @@
 import { useSyncExternalStore } from "react";
+import { inboxScopeKey, type InboxScope } from "../../shared/inbox";
+
+/** An Inbox's two views: what still needs the reader, and what was handled or done. */
+export type InboxView = "inbox" | "activity";
+
+/** Opens a message where it is: waiting in the Inbox, or handled in Activity. */
 interface InboxEntryOpen {
   readonly pageId: string;
   readonly scope: InboxScope;
+  readonly view: InboxView;
 }
 let pending: InboxEntryOpen | null = null;
 const listeners = new Set<() => void>();

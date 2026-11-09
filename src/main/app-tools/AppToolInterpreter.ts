@@ -1,3 +1,4 @@
+import { make as makeFollowThread } from "./FollowThreadAppTools";
 import { make as makeMessageHandback } from "./MessageHandbackAppTools";
 import { sessionControlSchemas } from "../../shared/nodex-app-tools/session-control-schemas";
 import { make as makeSessionControls } from "./SessionControlAppTools";
@@ -60,6 +61,7 @@ export const make = Effect.gen(function* () {
   const sessionTools = yield* makeSessionTools;
   const inboxTools = yield* makeInboxTools;
   const workTools = yield* makeWorkTools;
+  const followThread = yield* makeFollowThread;
   const messageHandback = yield* makeMessageHandback;
   const coordinatorTools = yield* makeCoordinatorTools;
   const sessionCommands = yield* makeSessionCommands;
@@ -100,8 +102,10 @@ export const make = Effect.gen(function* () {
       input.name !== "send_to_inbox" &&
       input.name !== "report_work" &&
       input.name !== "hand_back_message" &&
+      input.name !== "follow_thread" &&
       input.name !== "inbox_suggest" &&
       input.name !== "write_turn_note" &&
+      input.name !== "reply_to_origin" &&
       input.name !== "answer_inbox_question" &&
       input.name !== "start_work" &&
       input.name !== "fork_session" &&
@@ -136,10 +140,12 @@ export const make = Effect.gen(function* () {
     if (input.name === "get_handoff_status") return yield* handoffStatusTools(input);
     if (
       input.name === "inbox_suggest" ||
+      input.name === "reply_to_origin" ||
       input.name === "write_turn_note" ||
       input.name === "answer_inbox_question"
     )
       return yield* coordinatorTools(input);
+    if (input.name === "follow_thread") return yield* followThread(input);
     if (input.name === "hand_back_message") return yield* messageHandback(input);
     if (input.name === "report_work" || input.name === "start_work") return yield* workTools(input);
     if (input.name === "send_to_inbox") return yield* inboxTools(input);

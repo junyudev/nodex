@@ -1,3 +1,4 @@
+import { replyToOriginTool } from "./coordinator-schema";
 import { sessionQuestionTool } from "./session-question-schema";
 import { sessionControlToolCatalog } from "./session-control-schemas";
 import { sessionHandoffTool, handoffStatusTool } from "./session-handoff-schemas";
@@ -15,6 +16,12 @@ import { sessionForkTool } from "./session-fork-schema";
 import { sessionMergeTool } from "./session-merge-schema";
 import { sessionMessageTool } from "./session-message-schema";
 import { coordinatorToolCatalog } from "./coordinator-schema";
+import {
+  reportWorkTool,
+  startWorkTool,
+  handBackMessageTool,
+  followThreadTool,
+} from "./work-schema";
 import { sendToInboxTool } from "./inbox-schema";
 import { automationTool } from "./automation-schema";
 import { workbenchObservationToolCatalog } from "./workbench-observation-schemas";

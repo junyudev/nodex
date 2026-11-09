@@ -784,7 +784,7 @@ test("reads the image in an explicit Inbox suggestion @paid-agent-inbox-image", 
     await page.screencast.showActions({ position: "bottom" });
     await composer.getByRole("button", { name: "Send to Inbox", exact: true }).click();
     await expect(inbox.getByTestId("inbox-message").filter({ hasText: text })).toBeVisible();
-    item = (await seed.readInbox("inbox")).items[0];
+    item = (await seed.readInbox()).items[0];
     if (!item) throw new Error("The sent Inbox message is missing");
     const row = inbox.locator(`[data-inbox-page-id="${item.pageId}"]`);
     claim(
@@ -830,7 +830,7 @@ test("reads the image in an explicit Inbox suggestion @paid-agent-inbox-image", 
     await expect
       .poll(
         async () => {
-          const items = (await seed.readInbox("inbox")).items;
+          const items = (await seed.readInbox()).items;
           item = items[0];
           if (item?.suggestionState === "failed")
             throw new Error(item.suggestionError ?? "Inbox suggestion failed");

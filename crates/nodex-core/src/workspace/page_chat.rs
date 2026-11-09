@@ -104,6 +104,7 @@ pub(super) fn set_active_chats(
         // handling that arrives after its active chat has been archived.
         connection.execute("UPDATE inbox_entries SET status_fence=(SELECT status_fence FROM project_session_pages WHERE page_id=?1 AND session_id=?2) WHERE page_id=?1",params![page,session])?;
         connection.execute("INSERT INTO page_active_chats(page_id,session_id,revision,set_at) VALUES(?1,?2,1,?3) ON CONFLICT(page_id) DO UPDATE SET session_id=excluded.session_id,revision=page_active_chats.revision+1,set_at=excluded.set_at",params![page,session,now])?;
+        super::thread_follows::route_unresolved(connection, page, session)?;
     }
     Ok(())
 }

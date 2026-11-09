@@ -331,6 +331,9 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         yield* Effect.gen(function* () {
           const config = yield* ServerConfig.ServerConfig;
           const service = yield* ServerSettingsModule.ServerSettingsService;
+          const dotfiles = yield* fs.makeTempDirectoryScoped({
+            prefix: "nodex-settings-dotfiles-",
+          });
           const target = path.join(dotfiles, "settings.json");
           delayedDirectory =
             delayedWatch === "settings directory" ? path.dirname(config.settingsPath) : dotfiles;
@@ -397,6 +400,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       yield* Effect.gen(function* () {
         const config = yield* ServerConfig.ServerConfig;
         const service = yield* ServerSettingsModule.ServerSettingsService;
+        const dotfiles = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-settings-dotfiles-" });
         const first = path.join(dotfiles, "first", "settings.json");
         const second = path.join(dotfiles, "second", "settings.json");
         delayedDirectory = path.dirname(second);
@@ -478,6 +482,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       yield* Effect.gen(function* () {
         const config = yield* ServerConfig.ServerConfig;
         const service = yield* ServerSettingsModule.ServerSettingsService;
+        const dotfiles = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-settings-dotfiles-" });
         const first = path.join(dotfiles, "settings.json");
         const second = path.join(dotfiles, "second", "settings.json");
         const contents = '{"responseStreamingMode":"paragraph","projectSettingsFolded":true}';

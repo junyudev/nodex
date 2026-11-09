@@ -35,7 +35,7 @@ pub(super) fn context() -> BoundModuleContext {
     }
 }
 
-pub(super) fn seeded_workspace() -> TestWorkspace {
+pub(super) fn library_only_workspace() -> TestWorkspace {
     let directory = tempdir().expect("Profile");
     let home = directory.path().canonicalize().expect("absolute Profile");
     nodex_platform::private_fs::create_dir(home.join("assets")).expect("assets root");
@@ -65,12 +65,17 @@ pub(super) fn seeded_workspace() -> TestWorkspace {
         .expect("seed Workspace identity");
     let module =
         ProjectWorkspaceModule::new("profile-1", "library-1", &kernel).expect("Workspace module");
-    module.seed_rootless_default_project_for_test();
     TestWorkspace {
         _directory: directory,
         kernel,
         module,
     }
+}
+
+pub(super) fn seeded_workspace() -> TestWorkspace {
+    let workspace = library_only_workspace();
+    workspace.module.seed_rootless_default_project_for_test();
+    workspace
 }
 
 pub(super) fn request(
@@ -273,4 +278,23 @@ pub(super) fn create_session_thread(
             },
         },
     );
+}
+
+pub(super) fn activity_rows(
+    module: &ProjectWorkspaceModule,
+) -> Vec<nodex_core_contracts::sources::ActivityRow> {
+    let ProjectWorkspaceReadValue::ActivityWindow { rows } = read(
+        module,
+        ProjectWorkspaceRead::ActivityWindow {
+            scope: nodex_core_contracts::inbox::ProjectWorkspaceInboxScope::All,
+            filter: nodex_core_contracts::sources::ActivityFilter::All,
+            window: nodex_core_contracts::collection::CollectionWindowRequest {
+                after: None,
+                first: Some(100),
+            },
+        },
+    ) else {
+        panic!("Activity window")
+    };
+    rows.items
 }

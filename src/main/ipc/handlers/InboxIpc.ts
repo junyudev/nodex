@@ -88,7 +88,10 @@ export const live: Layer.Layer<
     yield* query("inbox:entry", (_, pageId) => inbox.entry(pageId));
     yield* query("inbox:summary", (_, input) => inbox.summary(input));
     yield* query("inbox:counts", () => inbox.counts);
-    yield* query("inbox:window", (_, input) => inbox.window(input));
+    yield* query("inbox:activity", (_, input) => inbox.activity(input));
+    yield* command("inbox:retry-problem", (_, input) => committed(inbox.retryProblem(input)));
+    // A window reads only what still needs the user; handled messages are Activity's.
+    yield* query("inbox:window", (_, input) => inbox.window({ ...input, filter: "inbox" }));
     yield* query("inbox:prepare-confirmation", (_, input) => inbox.prepareConfirmation(input));
     yield* query("inbox:chat-targets", (_, input) => inbox.chatTargets(input));
     yield* command("inbox:send", (_, input) => committed(inbox.send(input)));

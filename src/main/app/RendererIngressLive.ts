@@ -1,3 +1,4 @@
+import * as SourcesIpc from "../ipc/handlers/SourcesIpc";
 import * as WorkIpc from "../ipc/handlers/WorkIpc";
 import * as ChatSearchIpc from "../ipc/handlers/ChatSearchIpc";
 import * as InsightsIpc from "../ipc/handlers/InsightsIpc";
@@ -82,6 +83,7 @@ const terminalIngress = TerminalIpc.live.pipe(Layer.provideMerge(TerminalProject
 
 /** Electron callback ingress that translates platform events into typed application capabilities. */
 export const live = Layer.mergeAll(
+  SourcesIpc.live,
   WorkIpc.live,
   WorkbenchAgentIpc.live,
   AppUpdateIpc.live,

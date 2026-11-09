@@ -62,6 +62,11 @@ import {
   type InboxScope,
   type InboxWindow,
 } from "../../../src/shared/inbox";
+import {
+  handledMessagesOf,
+  type ScenarioInboxDispatchSeed,
+  type ScenarioInboxProposalSeed,
+} from "../contracts";
 import { parsePageWork } from "../../../src/shared/work-graph";
 import type { ProjectWorkspaceApplyInput } from "../../../src/main/core-client/types";
 import { inboxDispatchActionToCore } from "../../../src/main/core-client/inbox-adapter";
@@ -316,6 +321,65 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     });
   }
 
+  async recordSourceProblem() {
+    const client = this.#runtime.rootClient;
+    const sourceId = "github:scenario";
+    const config = {
+      host: "github.com",
+      account_id: "1",
+      account_login: "scenario",
+      credential_ref: "gh:github.com:scenario",
+      repositories: [],
+      discovery: { assigned: false, mentions: false, review_requests: false },
+    };
+    const apply = (
+      command: import("@nodex/core-protocol").components["schemas"]["SourceCommand"],
+    ) =>
+      client.workspaceApply({ operationId: createUuidV7(), intent: { kind: "source", command } });
+    await apply({
+      kind: "configure_source",
+      source_id: sourceId,
+      expected_revision: 0,
+      enabled: true,
+      config,
+    });
+    for (let n = 0; n < 3; n++)
+      await apply({
+        kind: "record_source_failure",
+        source_id: sourceId,
+        config_revision: 1,
+        partition: null,
+        lease_token: null,
+        problem_kind: "poll_failed",
+        evidence: { reason: "GitHub could not be reached" },
+        retry_at_ms: 0,
+      });
+    await apply({
+      kind: "configure_source",
+      source_id: sourceId,
+      expected_revision: 1,
+      enabled: false,
+      config,
+    });
+    const result = await client.workspaceRead({
+      kind: "sources",
+      read: { kind: "open_problems", source_id: sourceId, after_id: null, limit: 1 },
+    });
+    if (
+      result.value.kind !== "sources" ||
+      result.value.value.kind !== "open_problems" ||
+      !result.value.value.problems[0]
+    )
+      throw new Error("Expected Source problem");
+    return result.value.value.problems[0].id;
+  }
+  async readActivity() {
+    return (
+      await runScenarioInbox(this.#runtime, (inbox) =>
+        inbox.activity({ scope: { kind: "all" }, filter: "all", first: 100 }),
+      )
+    ).rows;
+  }
   async writeTurnNote(input: Parameters<ScenarioSeedPort["writeTurnNote"]>[0]) {
     const client = this.#runtime.rootClient;
     const dedupe = createUuidV7();
@@ -1069,12 +1133,19 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     );
   }
 
-  async readInbox(
-    filter: InboxWindowFilter,
-    scope: InboxScope = LIBRARY_INBOX,
-  ): Promise<InboxWindow> {
+  async readInbox(scope: InboxScope = LIBRARY_INBOX): Promise<InboxWindow> {
     return await runScenarioInbox(this.#runtime, (inbox) =>
-      inbox.window({ scope, filter, first: 200 }),
+      inbox.window({ scope, filter: "inbox", first: 200 }),
+    );
+  }
+
+  async readHandledMessages(scope: InboxScope = LIBRARY_INBOX) {
+    return handledMessagesOf(
+      (
+        await runScenarioInbox(this.#runtime, (inbox) =>
+          inbox.activity({ scope, filter: "messages", first: 100 }),
+        )
+      ).rows,
     );
   }
 

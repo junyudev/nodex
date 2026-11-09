@@ -1,3 +1,5 @@
+import { InboxActivity, InboxActivityFilters } from "./inbox-activity";
+import { InboxProblemRow } from "./inbox-problem-row";
 import { SpaceExecutionHoldControl } from "@/components/workbench/execution-hold-controls";
 import { useInboxClock } from "./use-inbox-clock";
 import { consumeInboxEntryOpen, useInboxEntryOpen } from "../../lib/inbox-entry-navigation";
@@ -18,8 +20,8 @@ import {
   inboxScopeProjectId,
   type InboxItem,
   type InboxScope,
+  type ActivityFilter,
   type InboxSendInput,
-  type InboxWindowFilter,
 } from "../../../shared/inbox";
 import {
   inboxSuggestionPolicy,
@@ -36,7 +38,7 @@ import {
   CloseIcon,
   DeleteIcon,
   DispatchIcon,
-  HistoryIcon,
+  ListLayoutIcon,
   InboxIcon,
   RefreshIcon,
 } from "@/components/shared/icons";
@@ -58,13 +60,12 @@ import {
   type InboxDispatchDraft,
 } from "./inbox-dispatch-editor";
 import { InboxDeleteDialog, type InboxDeleteRequest } from "./inbox-delete-dialog";
-import { InboxHistory } from "./inbox-history";
 import { InboxIconAction } from "./inbox-icon-action";
 import { InboxImportantBar } from "./inbox-important";
 import { InboxMessage, InboxMessageMenu } from "./inbox-message";
 import { INBOX_EASE_OUT, InboxStreamItem } from "./inbox-stream-item";
 import {
-  INBOX_VIEW_LABELS,
+  inboxChatPageIds,
   inboxBuriedImportant,
   inboxTimestampSeparators,
   type InboxOutcomeTarget,
@@ -82,11 +83,15 @@ import { useInboxJump, useInboxMessagesInView } from "./use-inbox-important";
 import { useInboxActions } from "./use-inbox-actions";
 import { useCodexScheduledAutomations } from "@/lib/use-codex-scheduled-automations";
 import { useInboxDepartures } from "./use-inbox-departures";
-import { useInboxStream, useInboxSummary } from "./use-inbox";
-import { INBOX_STICK_TO_BOTTOM_PX } from "./inbox-viewport";
-import { initialInboxView, initiallyFollowsInbox, useInboxViewport } from "./use-inbox-viewport";
+import { useInboxActivity, useInboxStream, useInboxSummary } from "./use-inbox";
+import { INBOX_STICK_TO_BOTTOM_PX, type InboxView } from "./inbox-viewport";
+import { initialInboxPlace, initiallyFollowsInbox, useInboxViewport } from "./use-inbox-viewport";
 
-const INBOX_VIEW_ICONS = { inbox: InboxIcon, processed: HistoryIcon } as const;
+/** The Inbox holds what still needs the reader; Activity holds what was handled or done. */
+const INBOX_VIEWS = {
+  inbox: { label: "Inbox", icon: InboxIcon },
+  activity: { label: "Activity", icon: ListLayoutIcon },
+} as const satisfies Record<InboxView, { label: string; icon: unknown }>;
 
 export interface InboxRouteProps {
   /**
@@ -105,6 +110,7 @@ export interface InboxRouteProps {
   readonly onShowPagesInChat: (input: ShowPagesInChatInput) => Promise<void>;
   readonly onOpenDatabase: (databaseId: string) => void;
   readonly onOpenSettings: () => void;
+  readonly onOpenGitHubSettings: () => void;
   /** Whether this Inbox is the visible surface; only then does its first load hold startup. */
   readonly visible?: boolean;
 }
@@ -120,13 +126,13 @@ function InboxHeader({
   onOpenSettings,
   onOpenNodex,
 }: {
-  readonly view: InboxWindowFilter;
+  readonly view: InboxView;
   readonly inboxCount: number;
   readonly databaseId: string | null;
   /** What the Database button opens: the Inbox's own Database or the Project's Board. */
   readonly databaseLabel: string;
   readonly agents: InboxAgents;
-  readonly onViewChange: (view: InboxWindowFilter) => void;
+  readonly onViewChange: (view: InboxView) => void;
   readonly onOpenDatabase: (databaseId: string) => void;
   readonly onOpenSettings: () => void;
   /** Opens Nodex's own conversation, where the reader can talk to it directly. */
@@ -136,8 +142,8 @@ function InboxHeader({
     // An Inbox is its Scene's Home tab, so it tops the tab like a Board's views do.
     <header className={cn(SURFACE_TOOLBAR_ROW_CLASS, "shrink-0")}>
       <div role="tablist" aria-label="Inbox view" className="-ml-1 flex min-w-0 items-center">
-        {(["inbox", "processed"] as const).map((option) => {
-          const ViewIcon = INBOX_VIEW_ICONS[option];
+        {(["inbox", "activity"] as const).map((option) => {
+          const ViewIcon = INBOX_VIEWS[option].icon;
           return (
             <button
               key={option}
@@ -148,7 +154,7 @@ function InboxHeader({
               className={cn(surfaceViewPillClassName({ active: view === option }), "mx-0.5")}
             >
               <ViewIcon className="size-4 shrink-0 text-current" />
-              <span className="ml-1.5">{INBOX_VIEW_LABELS[option]}</span>
+              <span className="ml-1.5">{INBOX_VIEWS[option].label}</span>
               {option === "inbox" && inboxCount > 0 ? (
                 <span className="ml-1.5 font-normal text-token-text-tertiary tabular-nums">
                   {inboxCount}
@@ -171,28 +177,16 @@ function InboxHeader({
 }
 
 function EmptyState({
-  view,
   everUsed,
   projectName,
   planning,
 }: {
-  readonly view: InboxWindowFilter;
   readonly everUsed: boolean;
   /** Set for a Project's Inbox. */
   readonly projectName: string | null;
   /** How the Inbox plans the next messages, beneath an empty Inbox. */
   readonly planning: ReactNode;
 }) {
-  if (view === "processed") {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-        <p className="text-base font-medium text-token-foreground">Nothing handled yet</p>
-        <p className="max-w-sm text-sm text-balance text-token-description-foreground">
-          Messages you send to chats, file, keep, or finish collect here.
-        </p>
-      </div>
-    );
-  }
   if (!everUsed) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-6">
@@ -284,6 +278,7 @@ export function InboxRoute({
   onShowPagesInChat,
   onOpenDatabase,
   onOpenSettings,
+  onOpenGitHubSettings,
   visible = true,
 }: InboxRouteProps) {
   const entryOpen = useInboxEntryOpen(scope);
@@ -292,8 +287,11 @@ export function InboxRoute({
   const projectName = inboxProjectId
     ? (projects.find((project) => project.id === inboxProjectId)?.name ?? "this Project")
     : null;
-  // Returning to an Inbox lands in the view, and at the place, the reader left.
-  const [view, setView] = useState<InboxWindowFilter>(() => initialInboxView(scopeKey));
+  // Returning to an Inbox lands in the view, the Activity filter, and at the place, the reader
+  // left.
+  const [initialPlace] = useState(() => initialInboxPlace(scopeKey));
+  const [view, setView] = useState<InboxView>(initialPlace.view);
+  const [activityFilter, setActivityFilter] = useState<ActivityFilter>(initialPlace.activityFilter);
   const [followsInitially] = useState(() => initiallyFollowsInbox(scopeKey));
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
   const [manualDrafts, setManualDrafts] = useState<Readonly<Record<string, InboxDispatchDraft>>>(
@@ -301,12 +299,27 @@ export function InboxRoute({
   );
   const [bulkDraft, setBulkDraft] = useState<InboxDispatchDraft | null>(null);
   const [deleteRequest, setDeleteRequest] = useState<InboxDeleteRequest | null>(null);
+  // An external navigation request changes the view before rendering it. A handled message is
+  // found among the messages Activity holds.
+  if (visible && entryOpen && view !== entryOpen.view) {
     setSelected(new Set());
     setBulkDraft(null);
     setView(entryOpen.view);
   }
+  if (
+    visible &&
+    entryOpen?.view === "activity" &&
+    activityFilter !== "all" &&
+    activityFilter !== "messages"
+  ) {
+    setActivityFilter("messages");
+  }
+  const stream = useInboxStream(scope);
+  const activity = useInboxActivity(scope, activityFilter, view === "activity");
   const summary = useInboxSummary(scope);
-  useApplicationPending(visible && (stream.isPending || summary.isPending));
+  // The view shown pages through its own window.
+  const shown = view === "inbox" ? stream : activity;
+  useApplicationPending(visible && (shown.isPending || summary.isPending));
   // The Inbox's preferences arrive with the Agents they name.
   const agents = useInboxAgents();
   const settings = agents.settings;
@@ -345,9 +358,10 @@ export function InboxRoute({
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(followsInitially);
   const contentRef = useRef<HTMLDivElement>(null);
-  // The Inbox reads like a conversation, oldest first; History reads newest first.
+  // The Inbox reads like a conversation, oldest first; Activity reads newest first.
   const inboxItems = view === "inbox" ? departures.items.toReversed() : [];
   // A Nodex post about a card that no chat works on yet can start it from the post.
+  const linkedChats = usePageChatActivitySummaries(inboxChatPageIds(inboxItems));
   const nowMs = useInboxClock();
   const policy = inboxSuggestionPolicy(settings, agents.providers, nowMs);
   const suggestionsOffered = inboxSuggestionsOffered(policy);
@@ -363,13 +377,17 @@ export function InboxRoute({
   const viewport = useInboxViewport({
     scopeKey,
     view,
+    activityFilter,
     scrollRef,
     stickToBottomRef,
-    items: stream.items,
-    ready: !stream.isPending,
-    hasNextPage: stream.hasNextPage,
-    isFetchingNextPage: stream.isFetchingNextPage,
-    fetchNextPage: stream.fetchNextPage,
+    anchorIds:
+      view === "inbox"
+        ? stream.items.map((item) => item.pageId)
+        : activity.rows.map((row) => row.id),
+    ready: !shown.isPending,
+    hasNextPage: shown.hasNextPage,
+    isFetchingNextPage: shown.isFetchingNextPage,
+    fetchNextPage: shown.fetchNextPage,
   });
 
   // An important message out of view is pointed back to, however far back it waits, once the
@@ -387,14 +405,16 @@ export function InboxRoute({
   const jump = useInboxJump({
     scrollRef,
     stickToBottomRef,
-    hasNextPage: stream.hasNextPage,
-    isFetchingNextPage: stream.isFetchingNextPage,
-    fetchNextPage: stream.fetchNextPage,
+    hasNextPage: shown.hasNextPage,
+    isFetchingNextPage: shown.isFetchingNextPage,
+    fetchNextPage: shown.fetchNextPage,
   });
   const jumpToEntry = jump.jump;
   useLayoutEffect(() => {
+    if (!visible || !entryOpen || view !== entryOpen.view || shown.isPending) return;
     jumpToEntry(entryOpen.pageId);
     consumeInboxEntryOpen(entryOpen);
+  }, [visible, entryOpen, view, shown.isPending, jumpToEntry]);
 
   const following = view === "inbox" && inboxItems.length > 0;
   // While the reader is at the bottom, the Inbox follows new content like a conversation.
@@ -412,10 +432,16 @@ export function InboxRoute({
     return () => observer.disconnect();
   }, [following]);
 
-  const changeView = (next: InboxWindowFilter) => {
+  const changeView = (next: InboxView) => {
     setSelected(new Set());
     setBulkDraft(null);
     setView(next);
+  };
+  const changeActivityFilter = (next: ActivityFilter) => {
+    if (next === activityFilter) return;
+    // Another filter is another timeline: it opens at its newest facts.
+    viewport.followLatest("activity", next);
+    setActivityFilter(next);
   };
   const toggleSelected = (pageId: string) =>
     setSelected((current) => {
@@ -470,6 +496,14 @@ export function InboxRoute({
     target.kind === "session" ? onOpenSession(target.sessionId) : onOpenDatabase(target.databaseId);
 
   const renderMessage = (item: InboxItem) => {
+    if (item.rowKind === "problem")
+      return (
+        <InboxProblemRow
+          item={item}
+          onOpenPage={onOpenPage}
+          onOpenGitHubSettings={onOpenGitHubSettings}
+        />
+      );
     if (item.rowKind === "turn" && item.turn) {
       const data = item.turn;
       const reply = (body: string) =>
@@ -580,23 +614,29 @@ export function InboxRoute({
 
   const selectedPageIds = selectedItems.map((item) => item.pageId);
   const combinedText = selectedItems.map((item) => messageTextOf(item.body)).join("\n\n");
-  const loadEarlier = stream.hasNextPage ? (
+  const loadEarlier = shown.hasNextPage ? (
     <button
       type="button"
-      disabled={stream.isFetchingNextPage}
+      disabled={shown.isFetchingNextPage}
       onClick={() => {
         stickToBottomRef.current = false;
-        void stream.fetchNextPage();
+        void shown.fetchNextPage();
       }}
       className="cursor-interaction self-center rounded-lg px-2 py-1 text-xs text-token-description-foreground hover:text-token-foreground"
     >
-      {stream.isFetchingNextPage
+      {shown.isFetchingNextPage
         ? "Loading…"
         : view === "inbox"
           ? "Show earlier messages"
           : "Show more"}
     </button>
   ) : null;
+  const failed = shown.error ?? (view === "inbox" ? summary.error : null);
+  const retry = () => {
+    void shown.retry();
+    void summary.refetch();
+  };
+  const loaded = view === "inbox" ? stream.items.length > 0 : activity.rows.length > 0;
 
   const header = (
     <InboxHeader
@@ -623,7 +663,13 @@ export function InboxRoute({
       className="flex h-full min-h-0 w-full flex-col"
     >
       {header}
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        data-testid={view === "activity" ? "inbox-activity" : undefined}
+        className="relative flex min-h-0 flex-1 flex-col"
+      >
+        {view === "activity" ? (
+          <InboxActivityFilters filter={activityFilter} onChange={changeActivityFilter} />
+        ) : null}
         <InboxImportantBar buried={buriedImportant} nowMs={nowMs} onJump={jump.jump} />
         <div
           ref={scrollRef}
@@ -640,46 +686,28 @@ export function InboxRoute({
           // Both gutters stay reserved, so a scrollbar appearing never nudges the stream sideways.
           className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable_both-edges]"
         >
-          {stream.error || summary.error ? (
+          {failed ? (
             <div
               role="status"
               className="mx-auto flex w-full max-w-(--thread-content-max-width) items-center gap-2 px-toolbar py-2 text-sm text-token-description-foreground"
             >
-              <span>{stream.items.length ? "Couldn’t refresh Inbox" : "Couldn’t load Inbox"}</span>
-              <NodexButton
-                size="xs"
-                variant="ghost"
-                onClick={() => {
-                  void stream.retry();
-                  void summary.refetch();
-                }}
-              >
+              <span>{`Couldn’t ${loaded ? "refresh" : "load"} ${INBOX_VIEWS[view].label}`}</span>
+              <NodexButton size="xs" variant="ghost" onClick={retry}>
                 Retry
               </NodexButton>
             </div>
           ) : null}
-          {stream.isPending ? null : shownItems.length === 0 ? (
-            stream.error || summary.error ? null : (
-              <EmptyState
-                view={view}
-                everUsed={(summary.data?.entryCount ?? 0) > 0}
-                projectName={projectName}
-                planning={
-                  <InboxPlanningSummary
-                    agents={agents}
-                    policy={policy}
-                    nowMs={nowMs}
-                    projectName={projectName}
-                  />
-                }
-              />
-            )
-          ) : view === "processed" ? (
-            <div className="mx-auto flex w-full max-w-(--thread-content-max-width) flex-col gap-3 px-toolbar py-6">
-              <InboxHistory
-                items={stream.items}
-                onOpenTarget={openTarget}
+          {shown.isPending || (failed && !loaded) ? null : view === "activity" ? (
+            <div className="mx-auto flex w-full max-w-(--thread-content-max-width) flex-1 flex-col gap-3 px-toolbar pt-2 pb-6">
+              <InboxActivity
+                rows={activity.rows}
+                filter={activityFilter}
+                arrival={jump.arrival}
                 onOpenPage={onOpenPage}
+                onOpenSession={onOpenSession}
+                onOpenAutomation={onOpenAutomation}
+                onOpenGitHubSettings={onOpenGitHubSettings}
+                onOpenTarget={openTarget}
                 onReturn={(pageId) => void actions.setState([pageId], "open")}
                 onSetDone={(pageId, done) =>
                   void actions.setState([pageId], done ? "done" : "open")
@@ -688,6 +716,19 @@ export function InboxRoute({
               />
               {loadEarlier}
             </div>
+          ) : inboxItems.length === 0 ? (
+            <EmptyState
+              everUsed={(summary.data?.entryCount ?? 0) > 0}
+              projectName={projectName}
+              planning={
+                <InboxPlanningSummary
+                  agents={agents}
+                  policy={policy}
+                  nowMs={nowMs}
+                  projectName={projectName}
+                />
+              }
+            />
           ) : (
             <div
               ref={contentRef}
@@ -715,7 +756,13 @@ export function InboxRoute({
           )}
         </div>
       </div>
-      <div className="relative mx-auto flex w-full max-w-(--thread-content-max-width) shrink-0 flex-col px-toolbar pb-6">
+      <div
+        className={cn(
+          "relative mx-auto flex w-full max-w-(--thread-content-max-width) shrink-0 flex-col px-toolbar pb-6",
+          // Activity has no composer; the draft stays as it was for the Inbox.
+          view === "activity" && "hidden",
+        )}
+      >
         {/* Selection tools float over the stream, so selecting never resizes or shifts it. */}
         <AnimatePresence>
           {selectedItems.length > 0 ? (

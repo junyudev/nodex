@@ -1,3 +1,4 @@
+import type { ActivityWindowInput, RetryProblemInput } from "../../shared/inbox";
 import type {
   InboxConfirmInput,
   InboxConfirmationDraft,
@@ -14,7 +15,7 @@ import type {
   InboxSetKindInput,
   InboxSetStateInput,
   InboxSummaryInput,
-  InboxWindowInput,
+  InboxStreamInput,
   UpdateInboxSettingsInput,
 } from "../../shared/inbox";
 import {
@@ -50,6 +51,7 @@ type InboxCommandChannel =
   | "inbox:request-suggestion"
   | "inbox:stop-suggestion"
   | "inbox:retry-dispatch"
+  | "inbox:retry-problem"
   | "inbox:undo";
 
 const sendCommand = inboxCommand("inbox.send", "inbox:send");
@@ -81,7 +83,7 @@ const settingsCommand = defineRendererCommand({
 export const readInboxSummary = (input: InboxSummaryInput) =>
   invokeRendererQuery("inbox:summary", input);
 export const readInboxCounts = () => invokeRendererQuery("inbox:counts");
-export const readInboxWindow = (input: InboxWindowInput) =>
+export const readInboxWindow = (input: InboxStreamInput) =>
   invokeRendererQuery("inbox:window", input);
 export const sendInboxMessage = (input: InboxSendInput) =>
   invokeLocalCommitCommand(sendCommand, input);
@@ -140,3 +142,9 @@ export const readInboxEntry = (pageId: string) => invokeRendererQuery("inbox:ent
 
 export const readInboxReplyDestination = (pageId: string, body: string) =>
   invokeRendererQuery("inbox:reply-destination", pageId, body);
+
+const retryProblemCommand = inboxCommand("inbox.retry-problem", "inbox:retry-problem");
+export const retryInboxProblem = (input: RetryProblemInput) =>
+  invokeLocalCommitCommand(retryProblemCommand, input);
+export const readInboxActivity = (input: ActivityWindowInput) =>
+  invokeRendererQuery("inbox:activity", input);

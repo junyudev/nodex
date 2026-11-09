@@ -4,6 +4,7 @@ import { countWords } from "../../shared/word-count";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import {
   InboxSuggestionOutput,
+  replyToOriginSchema,
   writeTurnNoteSchema,
   answerInboxQuestionSchema,
 } from "../../shared/nodex-app-tools/coordinator-schema";
@@ -72,6 +73,45 @@ export const makeWithCapture = (
             "coordinator_only",
             "Only Nodex's Coordinator Session can use this tool.",
           );
+        if (input.name === "reply_to_origin") {
+          const parsed = parseAppToolArguments(replyToOriginSchema, input.arguments);
+          if (!parsed.success) return parsed.result;
+          const words = countWords(parsed.data.body);
+          if (words === 0 || words > 100)
+            return toolFailure("body_too_long", `Reply has ${words} words; use 1 to 100.`);
+          if (parsed.data.body.includes("<!-- nodex:")) return toolFailure("reserved_marker");
+          const operation = yield* admit(
+            input,
+            authority,
+            identity.identity.profileId,
+            parsed.data,
+          );
+          if (!operation.success) return operation.result;
+          const sent = yield* core.workspace
+            .apply(
+              {
+                operationId: operation.operationId,
+                intent: {
+                  kind: "agent_command",
+                  provenance: toCoreAgentTurnProvenance(identity.identity.profileId, authority),
+                  intent: {
+                    kind: "source",
+                    command: {
+                      kind: "reply_to_origin",
+                      page_id: parsed.data.pageId,
+                      body: parsed.data.body,
+                    },
+                  },
+                },
+              },
+              undefined,
+              null,
+            )
+            .pipe(Effect.result);
+          if (sent._tag === "Failure")
+            return toolFailure("origin_reply_unavailable", failureMessage(sent.failure));
+          return toolSuccess({ pageId: parsed.data.pageId, queued: true });
+        }
         if (input.name === "write_turn_note" || input.name === "answer_inbox_question") {
           const parsed =
             input.name === "write_turn_note"

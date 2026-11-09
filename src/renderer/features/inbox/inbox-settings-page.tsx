@@ -129,8 +129,10 @@ export function InboxSettingsPage() {
           />
         </SettingRow>
         <SettingRow
+          label="Let Nodex start chats for me"
         >
           <NodexSwitch
+            ariaLabel="Let Nodex start chats for me"
             checked={settings.dispatchMode === "act_on_requests"}
             disabled={settings.suggestions === "off"}
             onCheckedChange={(start) =>

@@ -94,14 +94,14 @@ test("preserves capture and filing decisions while Project counts share the acti
         );
         await page.screenshot({ path: path.join(artifacts, "decided-in-place.png") });
         await expect(page.getByTestId("inbox-message")).toHaveCount(0);
-        const history = await invokeIpc(page, "inbox:window", {
+        const activity = await invokeIpc(page, "inbox:activity", {
           scope: { kind: "library" },
-          filter: "processed",
+          filter: "messages",
         });
         claim(
-          "One decision records both captures as moved",
+          "One decision records both captures as moved, once each",
           ["moved", "moved"],
-          history.items.map((item) => item.outcome),
+          activity.rows.map((row) => row.message?.outcome),
         );
         // Filing belongs to the original Inbox; the target Project must not get a second capture.
         claim(
@@ -115,10 +115,7 @@ test("preserves capture and filing decisions while Project counts share the acti
         );
         await page.getByRole("button", { name: "Undo", exact: true }).click();
         await expect(page.getByTestId("inbox-message")).toHaveCount(2);
-        const restored = await invokeIpc(page, "inbox:window", {
-          scope: { kind: "library" },
-          filter: "inbox",
-        });
+        const restored = await invokeIpc(page, "inbox:window", { scope: { kind: "library" } });
         claim(
           "One Undo returns both captures to the original Inbox",
           ["inbox", "inbox"],

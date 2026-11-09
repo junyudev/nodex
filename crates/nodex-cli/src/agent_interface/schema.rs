@@ -65,6 +65,9 @@ fn localize_references(value: &mut Value) {
 
 pub(super) fn result(path: &[&str]) -> Value {
     let mut schema = match path {
+        ["sources", "list"] => document::<Vec<nodex_core_contracts::sources::Source>>(),
+        ["sources", "status"] => document::<Vec<crate::sources::SourceStatus>>(),
+        ["sources", "triggers"] => document::<crate::sources::SourceTriggerWindow>(),
         ["sql", "schema"] => document::<nodex_core_contracts::sql::SqlSchema>(),
         ["sql", "query"] => document::<nodex_core_contracts::sql::SqlResult>(),
         ["capabilities"] => document::<super::AgentCapabilitiesV1>(),

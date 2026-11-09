@@ -12,6 +12,7 @@ describe("Inbox notification navigation", () => {
     const request = {
       pageId: "page:result",
       scope: projectInbox("project"),
+      view: "activity" as const,
     };
     requestInboxEntryOpen(request);
     const other = renderHook(() => useInboxEntryOpen(LIBRARY_INBOX));

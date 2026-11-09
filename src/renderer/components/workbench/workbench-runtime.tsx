@@ -3622,6 +3622,7 @@ export function WorkbenchRuntime({
       requestInboxEntryOpen({
         pageId: entry.pageId,
         scope: inboxScope,
+        view: entry.state === "open" && !entry.outcome ? "inbox" : "activity",
       });
       openInboxScope(inboxScope);
       return;
@@ -4470,6 +4471,7 @@ export function WorkbenchRuntime({
             });
           }}
           onOpenSettings={() => openSettingsAt("inbox-settings")}
+          onOpenGitHubSettings={() => openSettingsAt("github")}
         />
       );
     }
@@ -4826,6 +4828,7 @@ export function WorkbenchRuntime({
             openInSourceGroup({ kind: "database", databaseId: parseDatabaseId(databaseId) })
           }
           onOpenSettings={() => openSettingsAt("inbox-settings")}
+          onOpenGitHubSettings={() => openSettingsAt("github")}
         />
       );
     }

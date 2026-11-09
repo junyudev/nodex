@@ -119,9 +119,7 @@ test("the Inbox Composer pastes rich text as its Markdown and sends every line",
       const message = page.getByTestId("inbox-message").filter({ hasText: "second line" });
       await expect(message.getByText("Release", { exact: true })).toBeVisible();
       await expect(message.getByRole("listitem")).toHaveText(["one", "two"]);
-      const [item] = (
-        await invokeIpc(page, "inbox:window", { scope: { kind: "library" }, filter: "inbox" })
-      ).items;
+      const [item] = (await invokeIpc(page, "inbox:window", { scope: { kind: "library" } })).items;
       expect(item?.body).toBe("**Release** notes\nsecond line\n\n- one\n- two");
     },
   );

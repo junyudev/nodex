@@ -29,6 +29,7 @@ describe("nodex-coordinator over the real Core transport", () => {
             ready_to_start: 1,
             none: 2,
           },
+          inboxRowCounts: { intake: 2, turn: 5, answer: 1, problem: 1 },
           planSteps: [
             { key: "audit", blockedBy: [] },
             { key: "simplify", blockedBy: ["audit"] },
@@ -63,6 +64,30 @@ describe("nodex-coordinator over the real Core transport", () => {
         if (workspace.value.kind !== "page_workspace") throw new Error("Expected a Page Workspace");
         expect(workspace.value.workspace?.branch_name).toBe("nodex-2-add-team-invitations");
         expect(workspace.value.pull_request).toMatchObject({ number: 2, state: "OPEN" });
+        const library = (await seed.readInbox()).items;
+        const activity = await seed.readActivity();
+        for (const prefix of ["message:", "note:", "handback:", "problem-open:"])
+          expect(activity.some((row) => row.id.startsWith(prefix))).toBe(true);
+        expect(facts.activityCount).toBe(activity.length);
+        // Routing advice is not a fact of its own; each handled message is one line per decision.
+        expect(activity.some((row) => /^(proposal|confirmation|intake):/u.test(row.id))).toBe(
+          false,
+        );
+        expect(
+          activity.find((row) => row.message?.pageId === manifest.pageIdsByKey.startedRequest)
+            ?.description,
+        ).toMatch(/^Sent “.+” to a new chat on your request$/u);
+        // Nodex's answer handles its question, and Activity says so.
+        expect(
+          activity.find((row) => row.message?.pageId === manifest.pageIdsByKey.question)
+            ?.description,
+        ).toMatch(/^Answered “.+”$/u);
+        expect(library.find((item) => item.rowKind === "problem")?.problem).toMatchObject({
+          id: manifest.entityIdsByKey?.sourceProblem,
+          kind: "source_failing",
+          fix: "reconnect",
+        });
+
         const review = library.find((item) => item.pageId === manifest.pageIdsByKey.ready);
         expect(review?.rowKind).toBe("turn");
         expect(review?.turn?.turn.reason).toBe("review");
@@ -76,12 +101,14 @@ describe("nodex-coordinator over the real Core transport", () => {
         const answer = library.find((item) => item.pageId === manifest.pageIdsByKey.answer);
         expect(answer?.rowKind).toBe("answer");
         expect(answer?.replyToPageId).toBe(manifest.pageIdsByKey.question);
+        const history = await seed.readHandledMessages();
         expect(history.find((item) => item.pageId === manifest.pageIdsByKey.question)?.state).toBe(
           "done",
         );
         expect(
           history.find((item) => item.pageId === manifest.pageIdsByKey.startedRequest)?.proposal,
         ).toMatchObject({ confirmedBy: "nodex", state: "completed", explicitRequest: true });
+        expect((await seed.readInbox(projectInbox(manifest.projectId))).items).toHaveLength(5);
         const readyChats = await seed.readPageChats(manifest.pageIdsByKey.ready!);
         expect(readyChats.items[0]?.report).toMatchObject({
           outcome: "ready",

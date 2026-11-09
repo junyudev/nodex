@@ -141,6 +141,7 @@ pub(super) fn item(
         None
     };
     Ok(ProjectWorkspaceInboxItem {
+        problem: None,
         handback: None,
         row_kind: if kind == "turn" {
             InboxRowKind::Turn

@@ -21,7 +21,7 @@ describe("inbox/suggestion-spend scenario", () => {
         groupedMemberCount: 2,
         failedCount: 1,
       });
-      const items = (await context.seed.readInbox("inbox")).items;
+      const items = (await context.seed.readInbox()).items;
       const message = (key: string) =>
         items.find((item) => item.pageId === context.manifest.pageIdsByKey[key]);
       expect(message("current")).toMatchObject({

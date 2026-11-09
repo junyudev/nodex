@@ -16,7 +16,7 @@ const TONE_DOT: Readonly<Record<InboxChatTone, string>> = {
   quiet: "bg-token-description-foreground/50",
 };
 
-export function InboxOutcomeGlyph({
+function InboxOutcomeGlyph({
   icon,
   className,
 }: {
@@ -38,6 +38,13 @@ export function InboxOutcomeGlyph({
     case "inbox":
       return <InboxIcon className={shared} />;
   }
+}
+
+/** The receiving chat's live state as one dot, beside whatever names the chat. */
+export function InboxChatStatusDot({ tone }: { readonly tone: InboxChatTone }) {
+  return (
+    <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", TONE_DOT[tone])} />
+  );
 }
 
 /** Where a handled message went, with the receiving chat's live state when there is one. */
@@ -63,10 +70,7 @@ export function InboxOutcomeLine({
       {outcome.status ? (
         <span className="flex shrink-0 items-center gap-1">
           <span aria-hidden="true">·</span>
-          <span
-            aria-hidden="true"
-            className={cn("size-1.5 rounded-full", TONE_DOT[outcome.status.tone])}
-          />
+          <InboxChatStatusDot tone={outcome.status.tone} />
           {outcome.status.label}
         </span>
       ) : null}

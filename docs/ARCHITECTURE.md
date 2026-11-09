@@ -82,9 +82,15 @@ Desktop Host runs. See
 The phone's own runtime is an Effect application behind a presentation edge; see
 [ADR 0076](adr/0076-mobile-runtime-effect-boundary.md).
 
-The separately hosted Push Relay forwards encrypted iOS notifications to APNs. It owns no content,
-pairing state or database; it opens sealed device routing handles but has no notification decryption
-key. See the [relay delivery and deployment contract](../packages/push-relay/README.md).
+### External Sources
+
+Core owns Library-scoped Source configuration, leased read positions, immutable
+Triggers, external threads, Page follows, delivery intent, frozen Channel replies,
+supervisor, GitHub network reads and writes, verified CLI credential lifetime, sender
+reconciliation, and delivery through Runtime admission. Poll results commit
+facts and their read position through one typed transaction; renderer and CLI
+consume semantic reads. See [Sources](product-specs/sources-behavior.md).
+
 
 ### Optional Nodex account connection
 

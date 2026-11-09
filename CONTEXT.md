@@ -57,6 +57,54 @@ Threads while retaining inputs, recovery intent and delegated results. Work fact
 to accumulate; starts, wakes and delivery wait for Resume. A Space Hold includes Nodex.
 A Hold survives restart and is independent of Status and Stop.
 
+### Source
+
+A Source can be paused without discarding its observations.
+
+### Trigger
+
+A Trigger is an immutable observed external event with a semantic identity,
+author, time, text and provenance. Re-reading an event does not create another
+Trigger. Recording a Trigger alone grants no authority to start work or send a reply.
+
+### External thread
+
+An External thread is a discussion owned by another service, such as a GitHub
+issue or pull request. Its stable service/repository identity survives renaming.
+It is distinct from a Thread, which is an Agent execution conversation.
+
+### Follow
+
+A Follow connects a Page to an External thread as its own PR, its request's origin,
+or supporting context. Several Pages may follow one discussion; only the Page's
+verified own PR supplies lifecycle milestones.
+
+### Delivery
+
+A Delivery carries one followed Trigger to one Page's active chat, fixed when the
+Trigger is observed. It supplies external context for existing work and never
+consents to new work; an unavailable destination leaves it unresolved.
+
+### Channel
+
+A Channel is a Page's fixed reply address on its originating External thread.
+A Channel reply is Nodex's acknowledgement or result for that requester, distinct
+from the work chat's discussion with reviewers.
+
+### Problem
+
+A Problem is a durable condition that needs a person's action: repeated Source,
+Delivery or Channel failures, an unresolved Delivery, or an invalid credential.
+It has one fix and remains open until its scope succeeds.
+
+### Activity
+
+Activity is the shared account of what was handled or done: each decision about a
+handled message, Nodex's and Automations' decisions, external updates, work milestones,
+deliveries, replies, Turn notes, handbacks and Problem changes. It explains what happened
+and why, with links to the affected work and evidence. A routing suggestion is not part of
+it until a decision settles it.
+
 ### Agent Runtime
 
 The Agent Runtime coordinates execution conversations and their work. It owns Runs,
@@ -665,8 +713,8 @@ An Inbox entry is the Workspace-owned record beside a message Page. It holds:
 - a triage state: open, kept, or done.
 
 An entry is in the Inbox while it still needs the user. A confirmed chat
-dispatch, filing in another Project, Keep, or Done hands it to History; where
-its Page lives never does.
+dispatch, filing in another Project, Keep, or Done handles it, and Activity
+records each such decision; where its Page lives never does.
 Work handed to a chat stays in progress until the user marks it done; a chat
 finishing never does. The message Page's workflow status follows the handling,
 Triage while waiting, In Progress once handed to a chat, Todo when kept or filed,
@@ -674,7 +722,7 @@ Done when done, but only while it still shows the status the previous handling
 gave it, so a status set by hand is never overwritten.
 Deleting a message erases it: the entry, every suggestion naming it, the Page,
 and its revisions go, with no restore path.
-The entry survives relocation, so History still shows where a message filed into
+The entry survives relocation, so Activity still shows where a message filed into
 a Project went, while the Project's own Properties apply to the Page.
 
 ### Dispatch proposal
@@ -1262,4 +1310,5 @@ idempotency, projections, and post-commit events behind `read` and `apply`.
   and scene-native Canvas authority.
 - `docs/adr/0014-document-revision-history.md`: semantic revisions and forward
   restore.
+
 

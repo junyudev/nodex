@@ -229,6 +229,8 @@ pub(super) fn read_window(
             )?;
             let home = scope_home(connection, library_id, project.as_deref())?;
             read_item(connection, library_id, home.as_ref(), &page, &mut cache)?.0
+        } else if kind == "problem" {
+            super::problems::inbox_item(connection, library_id, &page)?
         } else {
             super::inbox_projection::item(connection, library_id, &page, &kind)?
         };
@@ -501,7 +503,13 @@ fn bounded_utf8(value: &str, maximum: usize) -> (String, bool) {
     (value[..boundary].to_owned(), true)
 }
 
+fn source(
+    connection: &Connection,
+    page: &str,
+    row: &EntryRow,
+) -> Result<ProjectWorkspaceInboxSource, StoreError> {
     Ok(match row.source_kind.as_str() {
+        "github" => return super::inbox::github::read_source(connection, page),
             automation_id: row.source_automation_id.clone().unwrap_or_default(),
             dispatch_id: row.source_dispatch_id.clone().unwrap_or_default(),
             project_id: row.source_project_id.clone(),
@@ -540,6 +548,9 @@ pub(super) fn read_single_entry(
             |r| r.get(0),
         )
         .optional()?;
+    if row_kind.as_deref() == Some("problem") {
+        return super::problems::inbox_item(connection, library, id).map(Some);
+    }
     if let Some(kind) = row_kind.filter(|kind| kind != "intake") {
     }
     let project=connection.query_row("SELECT entry.scope_project_id FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.page_id=?1 AND entry.library_id=?2",params![id,library],|r|r.get::<_,Option<String>>(0)).optional()?;
@@ -557,7 +568,34 @@ pub(super) fn read_single_entry(
         id,
         &mut InboxReadCache::default(),
     )
+/// The messages an Activity window's message facts are about, as each stands now and as the
+/// reader sees its chat. A message deleted or no longer a Page in active use is absent.
+pub(super) fn read_message_items<'a>(
+    connection: &Connection,
+    library: &str,
+    member: &str,
+    page_ids: impl IntoIterator<Item = &'a str>,
+) -> Result<HashMap<String, ProjectWorkspaceInboxItem>, StoreError> {
+    let mut cache = InboxReadCache::default();
+    let mut items = HashMap::new();
+    for page_id in page_ids {
+        if items.contains_key(page_id) {
+            continue;
         }
+        let project = connection.query_row("SELECT entry.scope_project_id FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.page_id=?1 AND entry.library_id=?2",params![page_id,library],|r|r.get::<_,Option<String>>(0)).optional()?;
+        let Some(project) = project else {
+            continue;
+        };
+        let home = scope_home(connection, library, project.as_deref())?;
+        let (item, _) = read_item(connection, library, home.as_ref(), page_id, &mut cache)?;
+        items.insert(
+            page_id.to_owned(),
+            project_member_chat(connection, member, item)?,
+        );
+    }
+    Ok(items)
+}
+
     }
     Ok(item)
 }
@@ -587,6 +625,7 @@ fn read_item(
     )?;
     Ok((
         ProjectWorkspaceInboxItem {
+            problem: None,
             basis: cache.basis(connection, page_id)?,
             handback: super::inbox::handback::context(connection, library_id, page_id)?,
             row_kind: InboxRowKind::Intake,
@@ -605,6 +644,7 @@ fn read_item(
             body,
             body_truncated,
             submitted_at: row.submitted_at.clone(),
+            source: source(connection, page_id, &row)?,
             reply_to_page_id: row.reply_to_page_id.clone(),
             kind: parse_kind(row.kind.as_deref())?,
             important: connection.query_row(
@@ -1005,7 +1045,7 @@ pub(crate) fn frozen_input_for_content(
         page_key: crate::database::current_page_key_for_page(connection, library_id, page_id)?,
         body: agent_markdown(&content, &image_numbers(&content, image_offset), usize::MAX)?,
         images: content.images.clone(),
-        source: source(&row),
+        source: source(connection, page_id, &row)?,
         kind: parse_kind(row.kind.as_deref())?,
         submitted_at: row.submitted_at.clone(),
         scope: scope_of(row.scope_project_id.clone()),

@@ -52,17 +52,21 @@ same. It receives the Project's Page key, appears on its Board and follows the
 handling's Status while keeping Owner, Assignee, Workspace and thread follows.
 Plan steps are created in their chosen Projects' Databases. Projectless chats keep
 their Pages in the Library Inbox Database. The original entry keeps its intake
+provenance, and Activity records where the work went.
 
 Nodex marks each new-chat or send-to-chat suggestion that answers a request the person themselves
 clearly made. For those, its prompt is only a short routing note: the chat receives the person's
 own words unchanged. A routing note has at most thirty words and no additions; Nodex corrects
 an overlong note or any additions before its suggestion can be recorded.
 
+### Let Nodex start chats for me
 
+`Let Nodex start chats for me`, beside Nodex's other settings in the Inbox panel and in Settings, decides
 what happens to Nodex's advice. It is off by default, so every suggestion waits for the person.
 When it is on, a new-chat or send-to-chat suggestion that Nodex marked as the person's own clear
 request, for a message the person wrote and has not changed since, starts at once, without its
 optional additions. The card says where the work went, such as `Nodex is starting a chat in
+Nodex`, and Activity says `Sent “<message>” to a new chat on your request`. Every other suggestion — notes, filing, plans,
 are off the switch is unavailable.
 
 Turning it on never starts messages sent before it.
@@ -230,6 +234,8 @@ title, Owner, Assignee and body, and for each Prerequisite its key, title, Statu
 again` opens another attempt and selects its chat as the Page's active chat. Ordinary
 related links do not select an active chat. Archiving or unlinking that chat clears the
 selection; restoring it does not take work back from a newer attempt. Replies and follow-ups
+use the active chat. The brief names that chat as the work destination and lists its followed GitHub
+threads.
 
 In a git Project, starting a Page's work creates its own Workspace on an attached
 branch based on the default branch's current commit. Work starts, Inbox new-chat
@@ -247,7 +253,17 @@ after execution and on request, retaining known links when GitHub is unavailable
 Done or Canceled requests checkout cleanup after every consuming chat is idle; the branch
 and PR link survive. Starting reopened work restores the same branch.
 
+**GitHub updates.** Sources deliver followed-thread Triggers straight to the Page's
+active chat as untrusted Host input, using Runtime continuation admission and the
+same execution holds. They are never reassessed as new work. Human updates remain
+eligible after completion; bot and CI updates wake only open work. A verified own
+PR supplies guarded lifecycle milestones; context follows never move Status.
+Unfollowed assignments, review requests and mentions enter the Inbox with GitHub
+provenance and require the person's dispatch decision. See [Sources](sources-behavior.md).
+
 **Acceptance.** The person accepts reviewed work with `nodex page accept <page>`, which moves
+In Review to Done. A verified merge of its own PR also records Done. Agents cannot
+accept work themselves. Done and Canceled share terminal View filtering,
 sorting and `completed_at` behavior, but only Done records acceptance.
 
 **When Prerequisites are satisfied**, a Page that starts automatically starts once, and one that
@@ -290,6 +306,7 @@ different Projects, Nodex may propose a plan instead of one chat. Its strip list
 Project, title, Agent and what it waits for. Confirming the plan creates each step as a Page in its
 Project's Database, with its Agent Assignee, person-granted Start automatically and Waits for edges, and
 starts the steps that wait for nothing; the rest wait until their Prerequisites are Done. A plan never
+starts on the `Let Nodex start chats for me` consent.
 
 A plan has 2–8 steps with unique local keys. Every prerequisite names another step and the
 complete graph must be acyclic. A Project Inbox plans only in its own Project; the Library
@@ -298,6 +315,8 @@ has a title of at most 120 characters and a Nodex Markdown body of at most 4,000
 Its Agent is an offered choice or the Inbox chat default frozen when the person confirms.
 
 Confirmation creates all cards, bodies, automatic grants and edges together, with Status Todo.
+A failure creates none of them and leaves the message waiting. Activity records
+`Planned N cards from “<message>”`, and the plan keeps the created Pages in step order; retrying the same confirmation returns the same Pages.
 Ready steps start through the Host scheduler after this transaction commits.
 
 ## Application tools

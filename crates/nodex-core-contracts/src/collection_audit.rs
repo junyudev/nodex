@@ -72,6 +72,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::SidebarSectionItemWindow { .. }
         | ProjectWorkspaceRead::BuiltinSidebarOrder { .. }
         | ProjectWorkspaceRead::SidebarSectionHostLinkWindow { .. }
+        | ProjectWorkspaceRead::ActivityWindow { .. }
         | ProjectWorkspaceRead::InboxWindow { .. }
         | ProjectWorkspaceRead::InboxChatTargets { .. }
         | ProjectWorkspaceRead::AgentRuntimeExecutionCleanupWindow { .. }

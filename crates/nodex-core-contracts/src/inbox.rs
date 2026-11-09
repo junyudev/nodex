@@ -182,6 +182,14 @@ pub struct ProjectWorkspaceInboxPageBasis {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceInboxSource {
+    Github {
+        external_thread_id: String,
+        actor_login: String,
+        repository: String,
+        number: i64,
+        title: String,
+        url: String,
+    },
     User,
     Nodex {
         purpose: NodexEntryPurpose,
@@ -369,6 +377,8 @@ pub struct ProjectWorkspaceInboxItem {
     pub outcome: Option<ProjectWorkspaceInboxOutcome>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub handback: Option<InboxHandback>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub problem: Option<crate::sources::SourceProblem>,
     pub row_kind: InboxRowKind,
     pub turn: Option<InboxTurn>,
     pub page_id: String,
@@ -654,6 +664,7 @@ pub struct ProjectWorkspaceInboxSuggestedDispatch {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum InboxRowKind {
+    Problem,
     Intake,
     Turn,
     Answer,

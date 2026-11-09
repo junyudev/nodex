@@ -1068,8 +1068,16 @@ export interface IpcApi
     result: import("./inbox").InboxSummary;
   };
   "inbox:counts": { args: []; result: import("./inbox").InboxCounts };
+  "inbox:activity": {
+    args: [input: import("./inbox").ActivityWindowInput];
+    result: import("./inbox").ActivityWindow;
+  };
+  "inbox:retry-problem": {
+    args: [input: import("./inbox").RetryProblemInput];
+    result: import("./core-result").CoreLocalCommitResult<void>;
+  };
   "inbox:window": {
-    args: [input: import("./inbox").InboxWindowInput];
+    args: [input: import("./inbox").InboxStreamInput];
     result: import("./inbox").InboxWindow;
   };
   "inbox:prepare-confirmation": {
@@ -1675,6 +1683,13 @@ export interface IpcApi
     result: import("./terminal-shell-settings").TerminalShellSettings;
   };
   "settings:window-restore:get": { args: []; result: WindowRestoreSettings };
+  "sources:settings": { args: []; result: import("./sources").SourcesSettingsSnapshot };
+  "sources:connect": { args: []; result: import("./core-result").CoreLocalCommitResult<void> };
+  "sources:update": {
+    args: [input: import("./sources").UpdateSourceSettingsInput];
+    result: import("./core-result").CoreLocalCommitResult<void>;
+  };
+  "sources:retry": { args: [sourceId: string]; result: void };
   "settings:inbox:get": { args: []; result: import("./inbox").InboxSettings };
   "settings:inbox:update": {
     args: [input: import("./inbox").UpdateInboxSettingsInput];

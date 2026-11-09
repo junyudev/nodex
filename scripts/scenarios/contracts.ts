@@ -1,8 +1,10 @@
 import type { AgentSelection } from "../../src/shared/work-graph";
 import type { PageDocumentEnvelope } from "../../src/shared/block-documents/page-document";
 import type {
+  ActivityRow,
   InboxDispatchAction,
   InboxEntryKind,
+  InboxItem,
   InboxScope,
   InboxWindow,
 } from "../../src/shared/inbox";
@@ -40,6 +42,16 @@ import type {
 import type { PageWork } from "../../src/shared/work-graph";
 
 export const SCENARIO_MANIFEST_VERSION = 1 as const;
+
+/** The messages an Activity window's message facts are about, newest decision first. */
+export const handledMessagesOf = (rows: readonly ActivityRow[]): readonly InboxItem[] => {
+  const seen = new Set<string>();
+  return rows.flatMap((row) => {
+    if (!row.message || seen.has(row.message.pageId)) return [];
+    seen.add(row.message.pageId);
+    return [row.message];
+  });
+};
 
 /** A committed Block's identity, type and place, enough to seed against an existing Document. */
 export interface ScenarioBlockNode {
@@ -192,6 +204,7 @@ export interface ScenarioPageWorkspaceSeed {
 }
 
 export interface ScenarioSeedPort {
+  recordSourceProblem(): Promise<string>;
   /** Holds Agent work for a scope as a person's Pause does. Core seeding only. */
   pauseWork(
     scope: import("@nodex/core-protocol").components["schemas"]["ExecutionHoldScope"],
@@ -210,6 +223,8 @@ export interface ScenarioSeedPort {
    * the pull request GitHub would report for its branch. Core seeding only; nothing is checked out.
    */
   recordPageWorkspace(input: ScenarioPageWorkspaceSeed): Promise<void>;
+  /** Every Inbox's Activity, newest first. */
+  readActivity(): Promise<readonly ActivityRow[]>;
   recordSessionExecution(
     sessionId: string,
     observation: import("@nodex/core-protocol").components["schemas"]["SessionExecutionObservation"],
@@ -299,15 +314,10 @@ export interface ScenarioSeedPort {
   recordInboxSuggestionFailure(pageIds: readonly string[], message: string): Promise<void>;
   /** Marks a confirmed chat dispatch delivered without launching a runtime. Core seeding only. */
   completeInboxDispatch(proposalId: string, threadId: string | null): Promise<void>;
-  readInbox(filter: InboxWindowFilter, scope?: InboxScope): Promise<InboxWindow>;
-  /** Scheduled task transitions use Core and the Inbox application without starting Agents. */
-  createScheduledTask(
-    input: CodexScheduledAutomationCreateInput,
-  ): Promise<CodexScheduledAutomation>;
-  holdScheduledTaskNow(automationId: string): Promise<{ readonly pageId: string }>;
-  failScheduledRunNow(automationId: string): Promise<void>;
-  skipScheduledFiring(pageId: string): Promise<void>;
-  readScheduledTasks(): Promise<readonly CodexScheduledAutomation[]>;
+  /** What still needs the user in one Inbox, newest first. */
+  readInbox(scope?: InboxScope): Promise<InboxWindow>;
+  /** One Inbox's handled messages as Activity holds them: by their newest decision, once each. */
+  readHandledMessages(scope?: InboxScope): Promise<readonly InboxItem[]>;
 }
 
 export interface ScenarioManifest {

@@ -38,3 +38,53 @@ it.effect.each(["word", "工作", "仕事"])(
       assert.lengthOf(f.commands, 1);
     }),
 );
+
+it.effect.each(["word", "工作", "仕事"])("validates origin reply word limits for %s", (word) =>
+  Effect.gen(function* () {
+    const f = yield* routingFixture();
+    const separator = word === "word" ? " " : "、";
+    const rejected = yield* f.tool(
+      invocation(
+        { pageId: "page:work", body: Array(101).fill(word).join(separator) },
+        "reply_to_origin",
+      ),
+    );
+    assert.isTrue(rejected.isError);
+    assert.deepEqual(rejected.structuredContent?.error, { code: "body_too_long" });
+    assert.isEmpty(f.commands);
+    const accepted = yield* f.tool(
+      invocation(
+        { pageId: "page:work", body: Array(100).fill(word).join(separator) },
+        "reply_to_origin",
+        "reply-valid",
+      ),
+    );
+    assert.isUndefined(accepted.isError);
+    assert.equal(f.commands[0]?.intent.kind, "agent_command");
+  }),
+);
+it.effect("origin replies cannot choose an address or inject a reserved marker", () =>
+  Effect.gen(function* () {
+    const f = yield* routingFixture();
+    for (const args of [
+      { pageId: "page", body: "Hi", url: "https://github.com/other/repo/issues/1" },
+      { pageId: "page", body: "Hi <!-- nodex:fake -->" },
+    ]) {
+      const result = yield* f.tool(invocation(args, "reply_to_origin"));
+      assert.isTrue(result.isError);
+    }
+    assert.isEmpty(f.commands);
+  }),
+);
+
+it.effect("only the Coordinator can acknowledge an origin", () =>
+  Effect.gen(function* () {
+    const f = yield* routingFixture();
+    f.setCaller("work-chat");
+    const refused = yield* f.tool(
+      invocation({ pageId: "page", body: "Started" }, "reply_to_origin"),
+    );
+    assert.isTrue(refused.isError);
+    assert.isEmpty(f.commands);
+  }),
+);

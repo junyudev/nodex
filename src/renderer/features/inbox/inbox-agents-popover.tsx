@@ -104,12 +104,14 @@ export function InboxAgentsPopover({
             />
             <label className="flex items-center justify-between gap-3 text-xs text-token-text-secondary">
               <span className="min-w-0">
+                Let Nodex start chats for me
                 <span className="block text-token-description-foreground">
                   What you clearly ask for starts without a click.
                 </span>
               </span>
               <NodexSwitch
                 size="compact"
+                ariaLabel="Let Nodex start chats for me"
                 checked={agents.settings.dispatchMode === "act_on_requests"}
                 disabled={!suggestions}
                 onCheckedChange={(start) =>

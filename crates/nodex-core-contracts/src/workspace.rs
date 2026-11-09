@@ -83,6 +83,14 @@ pub struct ExecutionHold {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceRead {
+    ActivityWindow {
+        scope: ProjectWorkspaceInboxScope,
+        filter: crate::sources::ActivityFilter,
+        window: CollectionWindowRequest,
+    },
+    Sources {
+        read: crate::sources::SourceRead,
+    },
     HeldSessionWindow {
         after_session_id: Option<String>,
         limit: u32,
@@ -382,6 +390,12 @@ pub enum ProjectWorkspaceRead {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceReadValue {
+    ActivityWindow {
+        rows: crate::collection::CollectionWindow<crate::sources::ActivityRow>,
+    },
+    Sources {
+        value: crate::sources::SourceReadValue,
+    },
     HeldSessionWindow {
         session_ids: Vec<String>,
     },
@@ -406,6 +420,8 @@ pub enum ProjectWorkspaceReadValue {
         observers: Vec<SessionExecutionObserver>,
     },
     PageWorkspace {
+        #[serde(default)]
+        follows: Vec<crate::sources::PageThreadFollow>,
         workspace: Option<PageWorkspace>,
         pull_request: Option<PagePullRequest>,
         page: crate::database::DatabaseWorkPage,
@@ -1850,6 +1866,9 @@ pub struct ProjectWorkspaceCreatedPage {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceIntent {
+    Source {
+        command: crate::sources::SourceCommand,
+    },
     PauseWork {
         scope: ExecutionHoldScope,
     },

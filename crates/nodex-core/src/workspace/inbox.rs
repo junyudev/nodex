@@ -8,6 +8,8 @@
 //! `DispatchInboxEntries` can turn it into dispatch work, and confirmed chat
 //! work is delivered by the Desktop Host through the dispatch outbox.
 
+#[path = "inbox_github.rs"]
+pub(super) mod github;
 #[path = "inbox_handback.rs"]
 pub(super) mod handback;
 #[path = "inbox_nodex.rs"]
@@ -925,7 +927,10 @@ fn inbox_effects(
     }
 }
 
-fn simple_effects(operation_kind: &'static str, now: &str) -> WorkspaceMutationEffects {
+pub(in crate::workspace) fn simple_effects(
+    operation_kind: &'static str,
+    now: &str,
+) -> WorkspaceMutationEffects {
     inbox_effects(operation_kind, InboxEffectResources::default(), now)
 }
 
@@ -1423,6 +1428,7 @@ fn apply_confirmation(
             // started for as long as the chat exists.
             super::page_chat::insert_initial_page_links(connection, session_id, page_ids, now)?;
             super::page_chat::set_active_chats(connection, session_id, page_ids, now)?;
+            super::thread_follows::origin_on_dispatch(connection, library_id, page_ids, now)?;
             start_dispatch(
                 connection,
                 proposal_id,
@@ -1446,6 +1452,7 @@ fn apply_confirmation(
                 super::session_mutation::require_session(connection, library_id, target)?;
             super::page_chat::link_pages(connection, target, page_ids, now)?;
             super::page_chat::set_active_chats(connection, target, page_ids, now)?;
+            super::thread_follows::origin_on_dispatch(connection, library_id, page_ids, now)?;
             start_dispatch(
                 connection,
                 proposal_id,

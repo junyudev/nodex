@@ -191,6 +191,21 @@ and application shutdown revoke admission and interrupt pending reads. Closing a
 preview discards its origin storage; a later preview always gets a fresh Session.
 JavaScript can still consume CPU/memory or display deceptive report content.
 
+## GitHub Source credentials
+
+Remote authors and remote text cannot change Source policy or authorize work.
+
+Main obtains a token only through `gh auth token --hostname <host> --user <login>`
+for the selected account, with GitHub token environment overrides and debug output
+disabled. A missing selected login never falls back to another account. The
+initial connection may use the active CLI account, which is verified through
+GitHub before its login and stable id are saved. Every poll re-verifies that
+identity under a host-pinned redacted credential. Core stores the CLI reference,
+verified account and observation data; tokens, process stdout/stderr and token
+fingerprints are never persisted or sent to the renderer. Credential failures
+retain only a categorical reason. Only same-host HTTPS API pagination is accepted.
+GitHub Source ingestion performs read-only network operations.
+
 ## Agent attribution credentials
 
 Content changes name an Agent only through a credential Core issued. When Main

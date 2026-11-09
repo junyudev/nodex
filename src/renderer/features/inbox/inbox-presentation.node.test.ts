@@ -3,13 +3,12 @@ import type { InboxItem, InboxProposal } from "../../../shared/inbox";
 import type { InboxSuggestionPolicy } from "../../../shared/inbox-suggestion-policy";
 import {
   describeInboxAction,
+  inboxChatPageIds,
   describeInboxChatStatus,
   describeInboxDecision,
   describeInboxFiring,
   describeInboxOutcome,
-  formatInboxTime,
-  formatInboxWhen,
-  groupInboxItemsByDay,
+  groupByDay,
   inboxBuriedImportant,
   inboxPageStatusMark,
   describeInboxSuggestionPause,
@@ -535,29 +534,20 @@ describe("describeInboxDecision", () => {
   });
 });
 
-describe("formatInboxWhen", () => {
-  it("shows a time today and the day otherwise", () => {
-    const now = new Date(2026, 9, 11, 18);
-    expect(formatInboxWhen(new Date(2026, 9, 11, 9, 5).toISOString(), now)).toBe(
-      formatInboxTime(new Date(2026, 9, 11, 9, 5).toISOString()),
-    );
-    expect(formatInboxWhen(new Date(2026, 9, 10, 9).toISOString(), now)).toBe("Yesterday");
-  });
-});
-
-describe("groupInboxItemsByDay", () => {
+describe("groupByDay", () => {
   it("keeps the given order and labels recent days", () => {
     const now = new Date(2026, 9, 11, 18);
-    const sections = groupInboxItemsByDay(
+    const sections = groupByDay(
       [
-        item({ pageId: "a", submittedAt: new Date(2026, 9, 10, 9).toISOString() }),
-        item({ pageId: "b", submittedAt: new Date(2026, 9, 11, 9).toISOString() }),
-        item({ pageId: "c", submittedAt: new Date(2026, 9, 11, 10).toISOString() }),
+        { id: "a", at: new Date(2026, 9, 10, 9).toISOString() },
+        { id: "b", at: new Date(2026, 9, 11, 9).toISOString() },
+        { id: "c", at: new Date(2026, 9, 11, 10).toISOString() },
       ],
+      (entry) => entry.at,
       now,
     );
     expect(sections.map((section) => section.label)).toEqual(["Yesterday", "Today"]);
-    expect(sections[1]?.items.map((entry) => entry.pageId)).toEqual(["b", "c"]);
+    expect(sections[1]?.items.map((entry) => entry.id)).toEqual(["b", "c"]);
   });
 });
 
@@ -833,4 +823,18 @@ describe("inboxRowAction", () => {
       additions: [],
     });
   });
+});
+
+it("admits only Page rows to the chat projection", () => {
+  const rows = [
+    item({ pageId: "intake" }),
+    item({ pageId: "problem", rowKind: "problem" }),
+    item({ pageId: "turn", rowKind: "turn" }),
+    item({
+      pageId: "answer",
+      rowKind: "answer",
+      source: { kind: "nodex", purpose: "answer", subjectSessionId: null, subjectPageId: "card" },
+    }),
+  ];
+  expect(inboxChatPageIds(rows)).toEqual(["intake", "turn", "answer", "card"]);
 });

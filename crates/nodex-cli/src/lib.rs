@@ -35,6 +35,7 @@ pub mod sed;
 mod selection_batch;
 mod service;
 pub mod skills;
+mod sources;
 mod sql;
 mod view;
 mod work;

@@ -27,6 +27,12 @@ const VERSION_SURFACES: readonly Surface[] = [
     "negotiate the native MCP protocol",
   ],
   [
+    "packages/agent-runtime/src/nodex/github/GitHubApi.ts:API_VERSION",
+    "runtimeCompatibility",
+    "GitHub REST API",
+    "request the pinned GitHub REST API version",
+  ],
+  [
     "packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts:ORCHESTRATION_V2_PROJECTION_SCHEMA_VERSION",
     "durableFormat",
     "Agent projection store",

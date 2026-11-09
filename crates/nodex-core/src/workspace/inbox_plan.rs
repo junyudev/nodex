@@ -157,6 +157,23 @@ pub(super) fn confirm(
             members.first().map(String::as_str),
         )?;
         crate::library::initialize_agent_work(connection, context, page_id, &selection, now)?;
+        for member in members {
+            let threads = connection
+                .prepare("SELECT external_thread_id FROM github_intakes WHERE page_id=?1")?
+                .query_map([member], |r| r.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            for id in threads {
+                super::super::thread_follows::add_follow(
+                    connection,
+                    library_id,
+                    page_id,
+                    &super::super::thread_follows::thread(connection, library_id, &id)?,
+                    "origin",
+                    "github_intake_plan",
+                    now,
+                )?;
+            }
+        }
         effects.project_ids.push(step.project_id.clone());
         effects.page_ids.push(page_id.clone());
         effects.block_ids.push(page_id.clone());

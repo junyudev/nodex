@@ -152,6 +152,77 @@ test("shows Nodex's Inbox, managed work and the work graph", async ({}, testInfo
         })
         .toBe(true);
       await screenshot("01-library-inbox");
+      await expect(page.getByText("GitHub could not be checked", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Reconnect", exact: true })).toBeVisible();
+      await screenshot("10-inbox-problem");
+      await page
+        .getByRole("tablist", { name: "Inbox view" })
+        .getByRole("tab", { name: "Activity", exact: true })
+        .click();
+      const activity = page.getByTestId("inbox-activity");
+      await expect(activity).toBeVisible();
+      await page.getByRole("button", { name: "Problems", exact: true }).click();
+      await expect(
+        activity.getByText("GitHub could not be checked", { exact: true }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: /GitHub could not be checked/ }).click();
+      await expect(
+        activity.getByText("Unreachable for 3 checks", { exact: true }).last(),
+      ).toBeVisible();
+      await screenshot("11-activity-problems");
+      await page.getByRole("button", { name: "Nodex & automations", exact: true }).click();
+      await expect(activity.getByText(/ on your request$/u).first()).toBeVisible();
+      await screenshot("12-activity-decisions");
+      await page.getByRole("button", { name: "All", exact: true }).click();
+      await expect(
+      ).toHaveAttribute("data-nodex-logo-mark", "monochrome");
+      await expect(
+        activity.getByRole("button", { name: "NODEX-3", exact: true }).first(),
+      ).toBeVisible();
+      const tabs = page.getByRole("tablist", { name: "Inbox view" });
+      const iconGeometry = async (name: RegExp) =>
+        tabs
+          .getByRole("tab", { name })
+          .locator("svg")
+          .evaluate((svg) => svg.innerHTML);
+      expect(await iconGeometry(/^Activity$/u)).not.toBe(await iconGeometry(/^Inbox/u));
+      // Collapsed facts occupy one line, and every actor shares the tertiary time tone.
+      expect(
+        await activity.locator("button[aria-expanded=false]").evaluateAll((rows) =>
+          rows.every((row) => {
+            const style = getComputedStyle(row);
+            return (
+              row.getBoundingClientRect().height <=
+              parseFloat(style.lineHeight) +
+                parseFloat(style.paddingTop) +
+                parseFloat(style.paddingBottom) +
+                1
+            );
+          }),
+        ),
+      ).toBe(true);
+      expect(
+        await activity.evaluate((root) => {
+          const tone = getComputedStyle(root.querySelector("time")!).color;
+          const glyphs = [...root.querySelectorAll('[role="img"] svg')].map((svg) =>
+            getComputedStyle(svg),
+          );
+          return (
+            glyphs.length > 0 &&
+            new Set(glyphs.map((style) => `${style.width}/${style.height}/${style.color}`)).size ===
+              1 &&
+            glyphs.every((style) => style.width === style.height && style.color === tone)
+          );
+        }),
+      ).toBe(true);
+      await screenshot("13-activity-all");
+      // A handled message is one line, which opens to its words and the way to its chat.
+      await page.getByRole("button", { name: "Messages", exact: true }).click();
+      const started = message("startedRequest").first();
+      await expect(started).toContainText(/Sent “.+” to a new chat on your request/u);
+      await started.locator("button[aria-expanded]").click();
+      await expect(started.getByRole("button", { name: "Open chat", exact: true })).toBeVisible();
+      await screenshot("02-activity-messages");
       await page
         .getByRole("tablist", { name: "Inbox view" })
         .getByRole("tab", { name: /^Inbox/u })
@@ -161,6 +232,7 @@ test("shows Nodex's Inbox, managed work and the work graph", async ({}, testInfo
       const settings = page.getByRole("dialog", { name: "Inbox settings" });
       await expect(settings.getByRole("heading", { name: "Nodex", exact: true })).toBeVisible();
       await expect(
+        settings.getByRole("switch", { name: "Let Nodex start chats for me", exact: true }),
       ).toBeVisible();
       await screenshot("05-inbox-settings");
       await page.keyboard.press("Escape");

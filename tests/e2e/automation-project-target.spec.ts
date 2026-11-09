@@ -65,6 +65,7 @@ test("selects one Automation Project even when Projects share a folder", async (
       await page.getByRole("menuitem", { name: "No project", exact: true }).click();
       await expect(project).toHaveText("No project");
       await expect(dialog.getByRole("button", { name: "Workspace", exact: true })).toHaveCount(0);
+      await activity.getByRole("button", { name: "Nodex & automations", exact: true }).click();
     },
   );
 });

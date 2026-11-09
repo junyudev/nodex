@@ -131,6 +131,7 @@ pub(super) fn read(
                 status: None,
             };
             Ok(ProjectWorkspaceReadValue::PageWorkspace {
+                follows: super::thread_follows::follows(connection, library, &page_id, None, 100)?,
                 workspace: value,
                 pull_request,
                 page,
@@ -385,6 +386,12 @@ pub(super) fn apply(
                     return Err(invalid("Invalid pull request"));
                 }
                 connection.execute("INSERT INTO page_pull_requests(page_id,workspace_id,repository,number,url,state,observed_at) VALUES(?1,?2,?3,?4,?5,?6,?7) ON CONFLICT(page_id) DO UPDATE SET workspace_id=excluded.workspace_id,repository=excluded.repository,number=excluded.number,url=excluded.url,state=excluded.state,observed_at=excluded.observed_at WHERE excluded.observed_at>=page_pull_requests.observed_at",params![value.page_id,id,repository,number,url,state,observed_at])?;
+                super::thread_follows::follow_linked_pr(
+                    connection,
+                    library,
+                    &value.page_id,
+                    &sqlite_now(connection)?,
+                )?;
             }
             _ => return Err(invalid("Not a Workspace command")),
         }

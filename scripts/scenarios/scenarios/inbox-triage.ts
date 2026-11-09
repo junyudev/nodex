@@ -248,8 +248,8 @@ const materializeInboxTriage = async (
       prompt: "Compare three assistant onboarding flows in one page. Do not change code.",
     },
   });
-  // A confirmed dispatch is handled, so it is already in History.
-  const delivered = (await port.readInbox("processed")).items.find(
+  // A confirmed dispatch is handled, so Activity already holds it.
+  const delivered = (await port.readHandledMessages()).find(
     (item) => item.pageId === dispatched.pageId,
   )?.proposal;
   if (!delivered) throw new Error("inbox/triage dispatched message has no proposal");
@@ -548,10 +548,10 @@ const inspectInboxTriage = async (
   port: ScenarioSeedPort,
   manifest: ScenarioManifest,
 ): Promise<InboxTriageScenarioFacts> => {
-  const inbox = (await port.readInbox("inbox")).items;
+  const inbox = (await port.readInbox()).items;
   const projectScope = projectInbox(manifest.projectId);
-  const projectItems = (await port.readInbox("inbox", projectScope)).items;
-  const items = [...inbox, ...(await port.readInbox("processed")).items];
+  const projectItems = (await port.readInbox(projectScope)).items;
+  const items = [...inbox, ...(await port.readHandledMessages())];
   const inspectOpenMessage = async (
     key: string,
     status: string,

@@ -11,10 +11,11 @@ All notable changes to this project will be documented in this file.
 - Each Page’s Agent work in a Git Project gets its own branch and worktree, shared by its later chats. The Page shows its pull request and the GitHub threads it follows, the Board shows its pull request, and completing or canceling the Page removes the idle checkout while keeping the branch and PR link.
 - Agent work queues behind a limit you choose in Agents settings, initially four. Your messages and answers go first, and waiting chats show their place in the queue.
 - Pause Agent work for a Page, a Project, or the whole Space. Running work stops while queued messages and results wait for you to resume, including across restarts.
+- Watch GitHub from Settings → GitHub. Choose repositories and discover assignments, review requests and mentions. Updates on followed threads reach the Page's active chat, verified PR milestones move its stage, and new GitHub requests arrive in the Inbox for your decision. Nodex can acknowledge a request and post its result back to its GitHub origin. Problems in the Inbox offer a fix, and Activity explains routing, milestones, delivery and recovery. Polling, delivery and replies resume safely after restart.
 
 ### Changed
 
-- Clicking a file attached in a Page now opens it, instead of a small details popup. A file saved in the Page opens in a tab beside the Page, just like from the Page's Files list, so Markdown renders, HTML reports show as pages, and images, PDFs and media play. A linked file opens in Files. Right-click a file for Open in new tab, Save… and Copy reference, and press Enter on a selected file to open it. In Page history and other read-only previews, a file opens in a viewer that shows the version that was captured.
+- The Inbox's History is now part of Activity, one timeline of everything handled in that Inbox. Each message you send to a chat, file, keep or finish is a single line beside what Nodex, your Automations and GitHub did, and All, Messages, Nodex & automations and Problems narrow it down. Expand a message's line to read it, see why it went where it did, and open its chat, return it to the Inbox, mark it done or delete it. A chat it went to shows its live state on the line while the work is under way.
 
 ### Fixed
 

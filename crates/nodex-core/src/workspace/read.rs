@@ -59,6 +59,9 @@ pub(super) fn read(
     request: ProjectWorkspaceRead,
 ) -> Result<ProjectWorkspaceReadValue, StoreError> {
     match request {
+        ProjectWorkspaceRead::Sources { read } => Ok(ProjectWorkspaceReadValue::Sources {
+            value: super::sources::read(connection, library_id, read)?,
+        }),
         request @ (ProjectWorkspaceRead::HeldSessionWindow { .. }
         | ProjectWorkspaceRead::EffectiveExecutionHold { .. }
         | ProjectWorkspaceRead::ExecutionHolds { .. }) => {
@@ -241,13 +244,20 @@ pub(super) fn read(
         ProjectWorkspaceRead::InboxCounts => Ok(ProjectWorkspaceReadValue::InboxCounts {
             counts: super::inbox_read::read_counts(connection, context, library_id)?,
         }),
-        ProjectWorkspaceRead::InboxMessage { page_id } => {
-            Ok(ProjectWorkspaceReadValue::InboxMessage {
-                item: Box::new(super::inbox_read::read_message(
-                    connection, library_id, &page_id,
-                )?),
-            })
-        }
+        ProjectWorkspaceRead::ActivityWindow {
+            scope,
+            filter,
+            window,
+        } => Ok(ProjectWorkspaceReadValue::ActivityWindow {
+            rows: super::activity::window(
+                connection,
+                library_id,
+                commit_head,
+                &scope,
+                filter,
+                &window,
+            )?,
+        }),
         ProjectWorkspaceRead::InboxWindow {
             scope,
             filter,

@@ -100,6 +100,13 @@ fn page_work_start_is_atomic_replayed_and_again_is_explicit() {
     );
     apply(&w.module, "start:after-settlement", start("launch", false));
     assert_eq!(counts(&w), (2, 2, 2, 2, 2, "doing".into()));
+    assert_eq!(
+        activity_rows(&w.module)
+            .iter()
+            .filter(|row| row.id.starts_with("launch:") && row.session_id.is_some())
+            .count(),
+        2
+    );
 }
 #[test]
 fn page_work_start_requires_host_and_rechecks_automatic_epoch_before_creating() {

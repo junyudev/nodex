@@ -89,8 +89,10 @@ export interface NodexCoordinatorScenarioFacts extends ScenarioFacts {
   readonly managedChatCount: number;
   readonly reportCounts: Readonly<Record<"ready" | "blocked" | "failed" | "dropped", number>>;
   readonly turnCounts: Readonly<Record<string, number>>;
+  readonly inboxRowCounts: Readonly<Record<"intake" | "turn" | "answer" | "problem", number>>;
   readonly planSteps: readonly { readonly key: string; readonly blockedBy: readonly string[] }[];
   readonly nodexStartedCount: number;
+  readonly activityCount: number;
   /** The Project filters the same mixed Inbox projection. */
   readonly projectTurnCount: number;
   readonly automaticBlockedCount: number;
@@ -404,6 +406,7 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
     summary: "A smoother first run",
     rationale: null,
   });
+  entities.sourceProblem = await port.recordSourceProblem();
   return {
     version: 1,
     scenarioId: NODEX_COORDINATOR_SCENARIO_ID,
@@ -418,6 +421,7 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
 };
 
 const rowCounts = (items: readonly InboxItem[]) => {
+  const counts = { intake: 0, turn: 0, answer: 0, problem: 0 };
   for (const item of items) counts[item.rowKind]++;
   return counts;
 };
@@ -425,6 +429,9 @@ const inspect = async (
   port: ScenarioSeedPort,
   manifest: ScenarioManifest,
 ): Promise<NodexCoordinatorScenarioFacts> => {
+  const library = (await port.readInbox()).items;
+  const history = await port.readHandledMessages();
+  const project = (await port.readInbox(projectInbox(manifest.projectId))).items;
   const plan = library.find((item) => item.pageId === manifest.pageIdsByKey.planRequest)?.proposal;
   const dispatched = await port.readPage(
     manifest.projectId,
@@ -485,6 +492,7 @@ const inspect = async (
     reportCounts: counts,
     turnCounts: states,
     inboxRowCounts: rowCounts(library),
+    activityCount: (await port.readActivity()).length,
     planSteps: plan.action.steps.map(({ key, blockedBy }) => ({ key, blockedBy })),
     nodexStartedCount: history.filter(
       (item) => item.proposal?.confirmedBy === "nodex" && item.proposal.state === "completed",

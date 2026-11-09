@@ -224,6 +224,7 @@ pub(crate) fn execute_with_presentation(
     match cli.command {
         Command::Work(args) => crate::work::execute(&client, args, cli.project.as_deref(), &cwd),
         Command::Members(args) => crate::members::execute(&client, args),
+        Command::Sources(args) => crate::sources::execute(&client, args),
         Command::Sql(args) => crate::sql::execute(
             &client,
             cli.project.as_deref(),
@@ -772,6 +773,8 @@ fn read_page(
 pub(crate) struct PageShowResult {
     pub page: nodex_core_contracts::library::LibraryPageProjectionFile,
     pub turn: nodex_core_contracts::workspace::PageTurn,
+    pub follows: Vec<nodex_core_contracts::sources::PageThreadFollow>,
+    pub unresolved_deliveries: Vec<nodex_core_contracts::sources::ThreadDelivery>,
 }
 fn show_page(
     client: &CoreClient,
@@ -795,16 +798,76 @@ fn show_page(
     };
     let snapshot = unwrap_workspace(client.workspace_read(
         Some(&project.id),
+        ProjectWorkspaceRead::PageTurn {
+            page_id: page_id.clone(),
+        },
     ))?;
     let ProjectWorkspaceReadValue::PageTurn { turn, .. } = snapshot.value else {
         return Err(internal("Core returned the wrong Page Turn"));
     };
+    let mut follows = Vec::new();
+    let mut after = None;
+    loop {
+        let snapshot = unwrap_workspace(client.workspace_read(
+            Some(&project.id),
+            ProjectWorkspaceRead::Sources {
+                read: nodex_core_contracts::sources::SourceRead::PageFollows {
+                    page_id: page_id.clone(),
+                    after_thread_id: after,
+                    limit: 100,
+                },
+            },
+        ))?;
+        let ProjectWorkspaceReadValue::Sources {
+            value: nodex_core_contracts::sources::SourceReadValue::PageFollows { follows: items },
+        } = snapshot.value
+        else {
+            return Err(internal("Core returned the wrong Page follows"));
+        };
+        let complete = items.len() < 100;
+        after = items.last().map(|f| f.thread.id.clone());
+        follows.extend(items);
+        if complete {
+            break;
+        }
+    }
+    let snapshot = unwrap_workspace(client.workspace_read(
+        Some(&project.id),
+        ProjectWorkspaceRead::Sources {
+            read: nodex_core_contracts::sources::SourceRead::Deliveries {
+                page_id: Some(page_id),
+                state: Some("unresolved".into()),
+                after_id: None,
+                limit: 100,
+            },
+        },
+    ))?;
+    let ProjectWorkspaceReadValue::Sources {
+        value:
+            nodex_core_contracts::sources::SourceReadValue::Deliveries {
+                deliveries: unresolved_deliveries,
+            },
+    } = snapshot.value
+    else {
+        return Err(internal("Core returned the wrong Page deliveries"));
+    };
     if json_output {
         return Ok(CommandOutput::Json(
+            serde_json::to_value(PageShowResult {
+                page: *page,
+                turn,
+                follows,
+                unresolved_deliveries,
+            })
+            .map_err(internal)?,
         ));
     }
     Ok(CommandOutput::Text(format!(
+        "{}\nturn: {}\nfollowing: {}\nunresolved_deliveries: {}\n",
         page.content,
+        serde_json::to_string(&turn).map_err(internal)?,
+        serde_json::to_string(&follows).map_err(internal)?,
+        serde_json::to_string(&unresolved_deliveries).map_err(internal)?
     )))
 }
 
@@ -1896,7 +1959,7 @@ pub(crate) fn operation_id(explicit: Option<&str>) -> Result<String, CliError> {
     Ok(key)
 }
 
-fn unwrap_workspace(
+pub(crate) fn unwrap_workspace(
     result: Result<ProjectWorkspaceReadResponse, ClientError>,
 ) -> Result<nodex_core_contracts::ModuleReadSnapshot<ProjectWorkspaceReadValue>, CliError> {
     match result.map_err(map_client_error)?.0 {

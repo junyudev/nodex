@@ -95,6 +95,17 @@ pub(super) struct WorkspaceMutationEffects {
 }
 
 impl WorkspaceMutationEffects {
+    pub(super) fn absorb_workspace(&mut self, other: Self) {
+        self.project_ids.extend(other.project_ids);
+        self.session_ids.extend(other.session_ids);
+        self.block_ids.extend(other.block_ids);
+        self.document_ids.extend(other.document_ids);
+        self.database_ids.extend(other.database_ids);
+        self.page_ids.extend(other.page_ids);
+        self.data_source_ids.extend(other.data_source_ids);
+        self.view_ids.extend(other.view_ids);
+        self.document_heads.extend(other.document_heads);
+    }
     pub(super) fn absorb_database(
         &mut self,
         receipt: nodex_core_contracts::database::DatabaseReceipt,
@@ -238,6 +249,7 @@ pub(super) fn apply(
                 ));
             }
             validate_id("operation_id", &request.operation_id)?;
+            }
             let admitted_intent = super::agent_command::admit(
                 transaction,
                 &library_id,
@@ -251,6 +263,10 @@ pub(super) fn apply(
             // person's immutable input; receipt replay preserves the first durable decision.
             let mut capture_intent = request.intent.clone();
 
+            if let ProjectWorkspaceIntent::AgentCommand{intent,..}=&mut capture_intent
+                && let ProjectWorkspaceIntent::Source{command:nodex_core_contracts::sources::SourceCommand::FollowThread{thread,..}}=intent.as_mut() {
+                    thread.title.clear();thread.state.clear();thread.head=None;thread.draft=false;thread.observation_revision=0;thread.observations.clear();
+                }
             if let ProjectWorkspaceIntent::ReplyToPageTurn { dispatch, .. } = &mut capture_intent { *dispatch=None; }
             let fingerprint_intent = match &capture_intent {
                 ProjectWorkspaceIntent::AgentCommand { provenance, intent } => {
@@ -309,6 +325,7 @@ pub(super) fn apply(
                 intent @ (ProjectWorkspaceIntent::RecordChatDelivery{..}|ProjectWorkspaceIntent::BindChatInbound{..}|ProjectWorkspaceIntent::HandBackMessage{..}) => super::inbox::handback::apply(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, agent_provenance, intent),
 
                 intent @ (ProjectWorkspaceIntent::PauseWork { .. } | ProjectWorkspaceIntent::ResumeWork { .. }) => super::execution_holds::apply(transaction, &context, &library_id, &store_epoch, &request.operation_id, &request_hash, intent),
+                ProjectWorkspaceIntent::Source { command } => super::sources::apply(transaction, &context, &library_id, super::sources::SourceReceiptIdentity { epoch: &store_epoch, operation: &request.operation_id, hash: &request_hash }, command, agent_provenance),
                 intent @ (ProjectWorkspaceIntent::ClaimPageWorkspace { .. } | ProjectWorkspaceIntent::BindPageWorkspace { .. } | ProjectWorkspaceIntent::RecordPageWorkspaceReady { .. } | ProjectWorkspaceIntent::RecordPageWorkspaceFailed { .. } | ProjectWorkspaceIntent::RequestPageWorkspaceCleanup { .. } | ProjectWorkspaceIntent::MarkPageWorkspaceRemoved { .. } | ProjectWorkspaceIntent::UpsertPagePullRequest { .. }) => super::page_workspace::apply(transaction, &context, &library_id, &store_epoch, &request.operation_id, &request_hash, intent),
                 ProjectWorkspaceIntent::BindCoordinator { .. } | ProjectWorkspaceIntent::UnbindCoordinator { .. } | ProjectWorkspaceIntent::SetSessionManaged { .. } | ProjectWorkspaceIntent::AcceptPageWork { .. } | ProjectWorkspaceIntent::ReportPageWork { .. } | ProjectWorkspaceIntent::RecordWorkEvents { .. } | ProjectWorkspaceIntent::RecordSessionExecution { .. } | ProjectWorkspaceIntent::CreateEventBatch { .. } | ProjectWorkspaceIntent::SettleEventBatch { .. } | ProjectWorkspaceIntent::DiscardEventBatch { .. } => super::coordinator::apply(transaction, &context, &library_id, &store_epoch, &request.operation_id, &request_hash, admitted_intent, agent_provenance),
                 ProjectWorkspaceIntent::CreatePageFor { target, page_id, document_id, title } => {

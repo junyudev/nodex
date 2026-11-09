@@ -132,6 +132,7 @@ const interpreter = (options: { hostId?: string; afterRead?: () => void } = {}) 
       } as GitWorkerRuntime["Service"]),
     )
     .pipe(
+      Effect.provideService(GitHubSourceAdapter, {} as never),
       Effect.provide(FileSystem.layerNoop({})),
       Effect.provideService(CoreSessionAccess, {} as never),
     );

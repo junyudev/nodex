@@ -198,6 +198,10 @@ pub(super) fn apply(
     super::coordinator::set_managed(connection, session_id, true, now)?;
     let retired = super::inbox::nodex::retire_page_start(connection, library, page_id, now)?;
     let inbox_changed = !retired.is_empty();
+    connection.execute(
+        "UPDATE page_work_launches SET automatic=?2 WHERE launch_id=?1",
+        params![launch_id, expected_readiness_epoch.is_some()],
+    )?;
     super::coordinator::insert_event(
         connection,
         operation,

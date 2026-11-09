@@ -1263,7 +1263,15 @@ fn settle_request(
     for suggestion in suggestions {
         if suggestion.explicit_request {
             for page in &suggestion.page_ids {
+                if super::handback::context(connection, library_id, page)?.is_some()
+                    || connection.query_row(
+                        "SELECT source_kind='github' FROM inbox_entries WHERE page_id=?1",
+                        [page],
+                        |r| r.get::<_, bool>(0),
+                    )?
+                {
                     return Err(invalid(
+                        "External and handed-back messages require a new decision from the person; explicit_request must be false",
                     ));
                 }
             }

@@ -89,7 +89,7 @@ test("recovers Core loss while three Inbox chats run without repeating dispatch 
     const messages: Awaited<ReturnType<RendererIpcSeedAdapter["sendInboxMessage"]>>[] = [];
     for (let index = 0; index < agents.length; index += 1)
       messages.push(await seed.sendInboxMessage(`${prefix} ${index}`));
-    const inbox = await seed.readInbox("inbox");
+    const inbox = await seed.readInbox();
     const prepared = await Promise.all(
       messages.map(async (message, index) => {
         const item = inbox.items.find((value) => value.pageId === message.pageId);
@@ -162,9 +162,9 @@ test("recovers Core loss while three Inbox chats run without repeating dispatch 
     expect(await activity()).toEqual(before);
     const retries = await Promise.all(prepared.map(dispatch));
     expect(retries.every((result) => result.ok)).toBe(true);
-    const processed = await seed.readInbox("processed");
+    const handled = await seed.readHandledMessages();
     expect(
-      processed.items
+      handled
         .filter((item) => messages.some((message) => message.pageId === item.pageId))
         .map((item) => ({ state: item.proposal?.state, sessionId: item.proposal?.chat?.sessionId }))
         .sort((a, b) => String(a.sessionId).localeCompare(String(b.sessionId))),

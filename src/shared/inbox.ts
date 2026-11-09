@@ -28,7 +28,10 @@ export type InboxProposalState =
   | "dispatching"
   | "completed"
   | "failed";
-/** `inbox` holds what still needs the user; `processed` is the handled history. */
+/**
+ * `inbox` holds what still needs the user; `processed` holds the messages already handled, which
+ * the phone lists on request. The desktop shows handled messages in Activity instead.
+ */
 export type InboxWindowFilter = "inbox" | "processed";
 
 /**
@@ -122,6 +125,15 @@ export const inboxPromptWithAdditions = (prompt: string, additions: readonly str
 export type NodexEntryPurpose = "answer";
 
 export type InboxSource =
+  | {
+      readonly kind: "github";
+      readonly externalThreadId: string;
+      readonly actorLogin: string;
+      readonly repository: string;
+      readonly number: number;
+      readonly title: string;
+      readonly url: string;
+    }
   | { readonly kind: "user" }
   | {
       readonly kind: "nodex";
@@ -242,6 +254,8 @@ export interface InboxPageStatus {
 export interface InboxItem {
   readonly handback?: components["schemas"]["InboxHandback"] | null;
   readonly outcome: "kept" | "done" | "moved" | "chat" | null;
+  readonly rowKind: "intake" | "turn" | "answer" | "problem";
+  readonly problem?: components["schemas"]["SourceProblem"] | null;
   readonly turn: components["schemas"]["InboxTurn"] | null;
   readonly pageId: string;
   readonly pageKey: string | null;
@@ -339,6 +353,9 @@ export interface InboxWindowInput {
   readonly after?: string | null;
   readonly first?: number;
 }
+
+/** A desktop Inbox reads only what still needs the user; what was handled is in Activity. */
+export type InboxStreamInput = Omit<InboxWindowInput, "filter">;
 
 export interface InboxReplyDestination {
   readonly kind: "send" | "answer" | "nodex" | "unavailable";
@@ -741,3 +758,30 @@ export const decodeInboxAgentBinding = (value: unknown): InboxAgentBinding | nul
   }
   return value.trim() === value && value.length <= 512 ? { instanceId: value } : null;
 };
+
+/**
+ * Activity's filters over one Core timeline. `messages` are the handled messages; `decisions`
+ * are what Nodex, Automations and Sources decided, messages Nodex handled included.
+ */
+export type ActivityFilter = components["schemas"]["ActivityFilter"];
+export interface ActivityWindowInput {
+  readonly scope: InboxScope;
+  readonly filter: ActivityFilter;
+  readonly after?: string | null;
+  readonly first?: number;
+}
+type CoreActivityRow = components["schemas"]["CollectionWindow_ActivityRow"]["items"][number];
+/** One Activity fact; a message fact carries its handled message as it stands now. */
+export type ActivityRow = Omit<CoreActivityRow, "message"> & {
+  readonly message: InboxItem | null;
+};
+export interface ActivityWindow {
+  readonly rows: readonly ActivityRow[];
+  readonly nextCursor: string | null;
+  readonly projectionRevision: number;
+  readonly storeEpoch: string;
+}
+export interface RetryProblemInput {
+  readonly operationId: string;
+  readonly problemId: string;
+}

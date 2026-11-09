@@ -80,6 +80,7 @@ describe("the Inbox's settings panel", () => {
     const agents = inboxAgentsFixture();
     render(<InboxAgentsPopover agents={agents} onOpenSettings={vi.fn()} />);
     await click(screen.getByRole("button", { name: "Inbox settings" }));
+    await click(await screen.findByRole("switch", { name: "Let Nodex start chats for me" }));
     expect(agents.save).toHaveBeenLastCalledWith({ dispatchMode: "act_on_requests" });
   });
 
@@ -89,6 +90,7 @@ describe("the Inbox's settings panel", () => {
     });
     render(<InboxAgentsPopover agents={agents} onOpenSettings={vi.fn()} />);
     await click(screen.getByRole("button", { name: "Inbox settings" }));
+    const start = await screen.findByRole("switch", { name: "Let Nodex start chats for me" });
     expect(start.hasAttribute("disabled") || start.getAttribute("aria-disabled") === "true").toBe(
       true,
     );

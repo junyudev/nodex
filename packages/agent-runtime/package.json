@@ -9,6 +9,7 @@
     "./src/testUtils/*.setup.ts"
   ],
   "exports": {
+    "./github-source": "./src/nodex/GitHubSource.ts",
     "./windows-shell": "./vendor/shared/src/windowsShell.ts",
     "./windows-pty": "./src/nodex/WindowsPty.ts",
     "./side-chat": "./src/nodex/SideChat.ts",

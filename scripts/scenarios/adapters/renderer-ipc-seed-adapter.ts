@@ -4,12 +4,7 @@ import * as Y from "yjs";
 import { encodeRecoveryBundle } from "../../../src/shared/block-documents/recovery-bundle";
 import { buildRecoveryDraftCapture } from "../seed/recovery-draft";
 import { readPageBlockOutline } from "./page-block-outline";
-import {
-  LIBRARY_INBOX,
-  type InboxScope,
-  type InboxWindow,
-  type InboxWindowFilter,
-} from "../../../src/shared/inbox";
+import { LIBRARY_INBOX, type InboxScope, type InboxWindow } from "../../../src/shared/inbox";
 
 import type { CoreResult } from "../../../src/shared/core-result";
 import type { IpcApi } from "../../../src/shared/ipc-api";
@@ -36,6 +31,7 @@ import type {
   ScenarioSeedPort,
   ScenarioStandalonePageSeed,
 } from "../contracts";
+import { handledMessagesOf } from "../contracts";
 import type {
   SidebarSectionCreateInput,
   SidebarSectionMoveItemInput,
@@ -523,6 +519,9 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
   async reportPageWork(): Promise<never> {
     throw new Error("Agent reports are seeded only through Core");
   }
+  async recordSourceProblem(): Promise<never> {
+    throw new Error("Source problems are seeded through Core");
+  }
   async createWorkChat(): Promise<never> {
     throw new Error("Work chats are seeded only through Core");
   }
@@ -531,6 +530,11 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
   }
   async recordPageWorkspace(): Promise<never> {
     throw new Error("Page Workspaces are seeded only through Core");
+  }
+  async readActivity() {
+    return (
+      await this.#invoke("inbox:activity", { scope: { kind: "all" }, filter: "all", first: 100 })
+    ).rows;
   }
   async writeTurnNote(): Promise<never> {
     throw new Error("Turn notes are seeded only through Core");
@@ -558,7 +562,7 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
   }
 
   async dispatchInboxEntries(input: ScenarioInboxDispatchSeed): Promise<void> {
-    const window = await this.readInbox("inbox", input.scope ?? LIBRARY_INBOX);
+    const window = await this.readInbox(input.scope ?? LIBRARY_INBOX);
     const basis = input.pageIds.map((id) => {
       const item = window.items.find((item) => item.pageId === id);
       if (!item) throw new Error("Scenario message is missing from its Inbox");
@@ -619,11 +623,14 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     return (await this.#invoke("codex:scheduled-automations:list")).items;
   }
 
-  async readInbox(
-    filter: InboxWindowFilter,
-    scope: InboxScope = LIBRARY_INBOX,
-  ): Promise<InboxWindow> {
-    return await this.#invoke("inbox:window", { scope, filter, first: 200 });
+  async readInbox(scope: InboxScope = LIBRARY_INBOX): Promise<InboxWindow> {
+    return await this.#invoke("inbox:window", { scope, first: 200 });
+  }
+
+  async readHandledMessages(scope: InboxScope = LIBRARY_INBOX) {
+    return handledMessagesOf(
+      (await this.#invoke("inbox:activity", { scope, filter: "messages", first: 100 })).rows,
+    );
   }
 
   async createRelatedChat(input: ScenarioRelatedChatSeed): Promise<ScenarioRelatedChatSeedResult> {

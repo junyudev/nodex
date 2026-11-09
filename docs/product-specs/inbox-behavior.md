@@ -3,6 +3,7 @@
 ## Intent and authority
 
 The Inbox is what is yours: waiting messages to route, Pages whose current Turn
+needs you, Nodex's answers to your Inbox questions, and open Problems. The Library Inbox includes
 all Projects and messages without a Project; each Project Inbox filters the same
 set. Captured messages remain ordinary Pages and keep today's routing, suggestion
 and dispatch rules.
@@ -45,6 +46,75 @@ question options, Accept or Start, plus Open chat. Answers link their chat.
 Problems retain their own identity and one exact fix; desktop-only fixes state
 that limitation on the phone. A Turn has no independent Done or dismissal state.
 
+## Problems
+
+A fourth Inbox row kind, `problem`, shows a warning glyph, one-line summary and
+one fix. It shares the scope, chronological ordering, counts and sidebar badge
+of intake, Turn and answer rows. A Problem is durable failure evidence, not a
+message Page; it has no suggestion, message menu or selection actions.
+
+Reconnect opens GitHub settings. Retry re-arms the exact failing delivery or
+reply without changing its destination; success removes the problem. Open card
+opens an unresolved delivery's Page so the person can start or select a chat.
+Resolved problems remain in Activity. The [Sources contract](sources-behavior.md#health-and-problems) defines
+problem kinds and their opening thresholds.
+
+## Activity
+
+Activity, the header's second tab beside Inbox, is the one timeline of everything handled or
+done in its scope, newest first and grouped by local calendar day. Its filters read the same
+Core projection, each with one cursor bound to the scope and filter:
+
+- **All:** every fact below, with deliveries, Channel replies and Turn notes.
+- **Messages:** handled messages. Each decision about a message is one fact: sent to a chat,
+  filed in a Project, kept, marked done, or returned to the Inbox. A routing suggestion is not a
+  fact of its own: one still open belongs to the Inbox, and the decision that settles it is the
+  message's fact, carrying Nodex's reason.
+- **Nodex & automations:** what Nodex, Automations and Sources decided: starts, Automation
+  decisions, Trigger dispositions and their reason, own-PR milestone moves and skipped moves,
+  handbacks, and the messages Nodex handled on someone's behalf.
+- **Problems:** Problems opening and resolving.
+
+Rows are dense single lines: time, actor glyph, a past-tense description, a quiet reason when
+one exists, and a trailing link naming its subject. Clicking a row expands it on the same
+surface, without nested cards. Activity has no message composer. Actors are Nodex, a Source, a
+Member or a chat, as supported by each committed fact. Pages, chats and remote URLs remain links
+to their own evidence. Windows are bounded and newest first. Project Activity shows the
+associated Project's facts; a message belongs to the Inbox that received it.
+
+Descriptions name the committed event with a past-tense verb and a quoted message or chat,
+retaining the reason separately. Actor glyphs use the monochrome Nodex mark, GitHub, person or
+chat glyph in the same tertiary tone; Activity's tab glyph is a list. A trailing link names its
+subject: the Page key (or title), Automation name, chat title, or `owner/repo #number`.
+Automation links open that Automation's detail. Only Source-level problems name `GitHub`, which
+opens GitHub settings. Reasons truncate before descriptions; rows stay on one line. Skipped
+milestones retain the stage at observation time and why it did not move.
+
+A handled message reads `Sent “<message>” to “<chat>”`, `Sent “<message>” to a new chat`,
+`Filed “<message>” in <Project>`, `Kept “<message>”`, `Marked “<message>” done`,
+`Planned N cards from “<message>”`, or `Returned “<message>” to the Inbox`; an Automation's run
+the person started reads `Started “<Automation>”`, and a question Nodex answered reads
+`Answered “<message>”`. A chat's handback reads `Sent “<message>” back`, by that chat, with
+its reason. A start Nodex made reads `on your request` to the person who asked, and
+`on Alice’s request` to everyone else. The reason is Nodex's routing reason. A message sent to a
+chat links that chat, with a dot for its live state while its work is under way; any other
+message links its Page. Expanding the line shows the message
+as its Page holds it now, the full reason, who decided, the Page key, and icon buttons:
+
+- `Open chat` or `Open in Project`;
+- `Open page`;
+- `Copy`;
+- `Mark done` or `Reopen`, for work handed to a chat;
+- `Return to Inbox`, for kept or done messages;
+- `Delete`, while the Page is still in its Inbox's Database.
+
+Each line records its decision as it was made; its buttons act on the message as it stands now.
+Deleting a message erases its lines, and a message whose Page is no longer in use leaves
+Activity. An empty filter reads `Nothing here yet` and says what collects under it.
+
+Automation decisions appear under Nodex & automations and All. Dry run says `Would have started
+routing proposal does not duplicate its Proposed row; the person's confirmed start is the
+message's own fact. The original decision keeps its name when the Automation
 
 ## Messages are Pages
 
@@ -62,6 +132,7 @@ that limitation on the phone. A Turn has no independent Done or dismissal state.
   Assignee, Workspace and thread follows stay with the Page. A projectless chat
   keeps the Page in the Library Inbox Database. A plan creates each step's card
   directly in its chosen Project's Database.
+  separate from this authorship. Library Activity still shows the message and the
 - The whole message, read as message text, becomes the Page body, and the stream
   bubble renders that body as the Page holds it now, images included; see
   [Message Content Behavior](./message-content-behavior.md). An edit made in the
@@ -108,6 +179,9 @@ that limitation on the phone. A Turn has no independent Done or dismissal state.
   - **Agent:** sent by a verified Agent Session, with its Run recorded when the
     Provider proves it. Renders left-aligned and labeled
     `From <chat>`; the label opens that chat.
+  - **GitHub:** an external request found by a Source, with a quiet glyph,
+    `owner/repo #n` and its author linking to the thread. It retains external
+    authorship and requires a routing decision; see [Sources](sources-behavior.md).
   - **Command line:** sent with `nodex inbox send`. Renders left-aligned and
     labeled `From Command line`. The label names the Project only when a message
     sent from inside one could not land in that Project's Inbox.
@@ -147,32 +221,32 @@ is rewritten, what Nodex made of the old text steps aside.
   as its Page:
   its row offers `Edit as Page` instead.
 - Handled messages are a record of what was decided and are not edited from
-  History.
+  Activity.
 
-## Inbox and History
+## Inbox and Activity
 
 The goal is an empty Inbox. A message stays in the Inbox only while it still
-needs the user; once handled, it moves to History.
+needs the user; once handled, it leaves the Inbox, and Activity records the decision.
 
 - **Inbox:** open messages with no confirmed chat dispatch or an uncertain delivery. This covers
   messages awaiting advice, with a concrete suggestion to decide, with a failed
   suggestion, with no advice asked for, or whose delivery failed.
-- **History:** every handled message: a confirmed chat dispatch (including one
-  still being delivered), a message filed in a Project, Keep, or Done.
+- **Handled:** a confirmed chat dispatch (including one still being delivered), a message
+  filed in a Project, Keep, or Done. [Activity](#activity) holds each of these decisions.
 
 Where a message's Page lives never decides this. Moving the Page by other means,
 such as dragging it on a Board, leaves the message in its Inbox until it is
 handled. Failed or uncertain delivery and an undone move bring a message back to the
 Inbox. Core applies the same membership to the stream windows and to every
-Inbox count.
 
-Returning to an Inbox, after switching tabs or relaunching, lands in the view the
-reader left and at their place in it. Each view keeps its own place: its newest
-messages if the reader was following them, otherwise the message that was at the
-top of the view, even when messages around it were handled or loaded meanwhile.
-A message further back than the first windows loads them to find it; one handled
-since opens the view at its newest messages. Sending a message always shows the
-newest.
+Returning to an Inbox, after switching tabs or relaunching, lands in the view and
+Activity filter the reader left and at their place in it. Each view keeps its own place: its
+newest rows if the reader was following them, otherwise the message or Activity line that was
+at the top of the view, even when rows around it were handled or loaded meanwhile. A row
+further back than the first windows loads them to find it; one gone since opens the view at
+its newest rows. Choosing another Activity filter opens it at its newest lines, and sending a
+message always shows the newest messages. Opening a handled message from elsewhere, such as a
+notification, shows its newest line in Activity, expanded.
 
 Each entry has a user-editable kind and a triage state.
 
@@ -182,10 +256,10 @@ Each entry has a user-editable kind and a triage state.
   - Keep dismisses open suggestions and marks the entry `kept`.
   - Done means its work is finished: handled elsewhere, or, for work handed to a
     chat, closed by the user. A chat finishing never marks it done.
-  - `Return to Inbox` in History sets a kept or done entry back to `open`.
+  - `Return to Inbox` in Activity sets a kept or done entry back to `open`.
     Work handed to a chat cannot return; `Reopen` only takes back its Done.
 
-History describes the recorded decision. A Page moved elsewhere and then kept
+Activity describes each recorded decision. A Page moved elsewhere and then kept
 or marked done still shows Keep or Done and can return to its original Inbox;
 returning does not move its Page.
 
@@ -255,7 +329,7 @@ The user can mark a message important so it stays within reach while it waits.
   in gold for a moment, loading earlier messages to find it. The pill then names
   the next important message out of view, or leaves once every one is in view.
 - Each Inbox points only at its own important messages. Handling a message takes
-  it off that list, and `Return to Inbox` brings it back with its mark. History
+  it off that list, and `Return to Inbox` brings it back with its mark. Activity
   does not show the mark.
 
 ## Turns, notes and answers
@@ -271,6 +345,7 @@ review, blocked, failed or stalled. Ready-to-start appears only for a Page with
 Prerequisites that are all now Done. Backlog cards without Prerequisites and
 paused Pages stay out. The row is ordered by the current episode's start time;
 a new episode enters at its own time. It has no dismissed or done state and
+leaves as soon as the Turn belongs elsewhere. Activity retains handled messages
 and answered conversations, never the complement of all Page Turns.
 
 The first line shows the Page key, title and whose move the Page waits for, in
@@ -350,7 +425,7 @@ Messages sent while advice does not run on its own keep no claim on it: they
 never receive it later because the mode changed or usage recovered. Every
 other change leaves advice where it is. Editing a message's Page makes its
 suggestion outdated without asking again. Reopening a message, returning it
-from History, or removing another member of its group leaves it with no
+from Activity, or removing another member of its group leaves it with no
 advice until the user asks. Undoing a decision restores the suggestion it
 decided.
 
@@ -584,8 +659,8 @@ Every action that asks for advice, `Suggest`, `Suggest together`, `Suggest
 again` and a failed suggestion's `Retry`, uses the refresh glyph wherever it
 appears, the message menu included: asking first and asking again are one
 action. Suggestions themselves carry no AI mark. Retrying a delivery keeps its
-own retry glyph. Each dispatch kind has one glyph, the same in the strip, the
-dispatch editor, and History. A grouped
+own retry glyph. Each dispatch kind has one glyph, the same in the strip and the
+dispatch editor. A grouped
 suggestion renders once, on the newest message in its group; the others say
 which message carries it. A missing sign-in is reported as
 `Sign in to the suggestion agent first`.
@@ -650,6 +725,7 @@ Work starts when the user confirms a proposal or submits the dispatch editor.
 Confirmation is fenced by the message the user reviewed, including for an
 outdated suggestion.
 
+With `Let Nodex start chats for me` on, Nodex confirms a new suggestion on the user's behalf
 only when it is a new chat or a send to a chat, every message it covers is the
 user's own, Nodex marked it as the user's clear request for work now, and the
 message still reads as it did when Nodex wrote the suggestion. Core checks all
@@ -697,8 +773,8 @@ instructions.
   the Inbox.
 - **Move to Project:** Core moves every member and records the filing in one
   transaction. A conflict leaves every Page and Inbox state unchanged. Filing
-  is final: the message is kept in History as
-  `Moved to <Project>` and never opens again in that Project's Inbox. The move's
+  is final: Activity keeps it as `Filed “<message>” in <Project>`, and it
+  never opens again in that Project's Inbox. The move's
   single `Undo` restores the entire group and its original Inbox state, or
   refuses the whole undo when a member has changed since.
 - **Keep:** marks the entries `kept`.
@@ -715,9 +791,9 @@ An explicit remote Codex chat retains its remote execution owner. When a send's
 result cannot be established, it remains awaiting confirmation and is not
 automatically sent again. Other local handoffs can continue.
 
-A delivered message's History line shows the chat's title and live status; a
+A delivered message's Activity line links the chat with its live status; a
 chat run by Agent Runtime reports its live Session activity.
-Before admission it shows that Nodex is starting or sending to the chat and
+Before admission it shows that Nodex is delivering to the chat and
 already links to its Session. Failed or uncertain delivery returns to the Inbox
 with its reason and the recovery action appropriate to that result.
 
@@ -748,11 +824,10 @@ its menu offers no `Suggest again`, and no suggestion can write a run decision.
   schedule change for every run. Choosing another action hands the message on
   as any message and withdraws the run.
 
-Running it shows `Starting “<task>”` until the run reaches a chat, then
-`Ran “<task>”` with that chat's live status, in History's `In progress` until
-the user marks it done. A run that fails before reaching a chat returns with
-`Couldn’t run — <reason>` and `Retry`. A skipped run reads `Skipped` in History.
-A run whose task was deleted says `Its scheduled task was deleted, so it can’t run`
+Running it reads `Started “<Automation>”` in Activity, linking the run's chat with
+its live status once the run reaches one, until the user marks it done. A run that
+fails before reaching a chat returns with `Couldn’t run — <reason>` and `Retry`.
+Skipping a run marks its message done, and Activity says `Skipped “<Automation>”`.
 and offers `Mark done` and `Handle manually`.
 
 A run that needs the user after it starts says so with `send_to_inbox`; a
@@ -765,7 +840,7 @@ can be deleted:
 
 - from the message menu (`Delete`);
 - for the whole selection, from the selection bar;
-- from an expanded History line, while its Page is still in its Inbox's
+- from an expanded Activity line, while its Page is still in its Inbox's
   Database.
 
 A message filed in another Project is that Project's Page now and is deleted
@@ -813,7 +888,7 @@ Grouped suggestions and dispatches accept at most 16 messages.
 ## Agent and command-line drop-in
 
 The Agent and command-line Inbox interfaces append messages. Triage and dispatch
-remain explicit Inbox workflows, and a suggestion never confirms itself. Inbox
+remain fenced Inbox workflows; only the user, or the user's own `Let Nodex start chats for me`, confirms work. Inbox
 messages are ordinary Pages and retain the Profile's full content access, including
 for parent, child and background Agents and planning interactions.
 
@@ -856,13 +931,14 @@ creates a second message, and does not count against the Agent budget again.
   capture is never linked to the chat it was written in: the Inbox is for
   deciding later where it belongs.
 - The Inbox header offers:
-  - the `Inbox` and `History` views, as pills with their glyphs like a
+  - the `Inbox` and `Activity` views, as pills with their glyphs like a
     Database's views, the Inbox showing its count;
   - `Open Inbox as a Database` in the Library Inbox, or `Open Board` in a
     Project's Inbox;
   - `Open Nodex`, the Nodex mark, which opens Nodex's own conversation;
   - `Inbox settings`, a panel that changes in place what routes and what new
     chats run on: under `Nodex`, when suggestions run, what Nodex runs on, and
+    `Let Nodex start chats for me`; then whether suggestions choose each new chat's models
     and the model new chats otherwise run on, each with the composer's model
     menu. `Routing preferences and more` opens `Settings → Inbox`.
 
@@ -871,6 +947,7 @@ creates a second message, and does not count against the Agent budget again.
 
 - `Settings → Inbox` holds these Profile preferences:
   - under `Nodex`: when suggestions run (automatically, when the user asks, or
+    never), `Let Nodex start chats for me` (off by default), and `Nodex runs on` (the Agent,
     model, effort and speed selected in the model menu);
   - how many suggestions can await Nodex at once, five by default;
   - `Start fresh` archives Nodex's conversation;
@@ -916,6 +993,8 @@ creates a second message, and does not count against the Agent budget again.
 
 ### Remote Member admission
 
+Authenticated remote Members may read Activity and the mixed Inbox projection,
+retry Problems, and use its
 person actions: answer an option, Reply, Accept and Start. Commands retain their
 current episode and request fences, and receipt replay belongs to the initiating
 Member. Turn notes and Inbox answers require the Coordinator's Agent authority;
@@ -930,6 +1009,7 @@ for its current inbound message. The Host supplies that identity from the proved
 execution; the model cannot choose a message ID. Core returns the original intake
 Pages, or creates one envelope for a direct-chat message, preserving words, images,
 author and dispatch history. A receipt makes exact retries return the same result.
+The row shows `<chat> sent this back: <reason>` and re-enters at the return time.
 
 Handback never grants consent to start work. Nodex routes with `explicit_request`
 false and excludes the previous chat; the person may explicitly reconsider that

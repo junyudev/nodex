@@ -1,3 +1,5 @@
+import { replyToOriginSchema } from "./coordinator-schema";
+import { followThreadSchema } from "./work-schema";
 import { sessionControlSchemas } from "./session-control-schemas";
 import { sessionQuestionSchema } from "./session-question-schema";
 import { z } from "zod";
@@ -49,6 +51,8 @@ export const appToolArgumentSchemas: Readonly<Record<string, z.ZodType>> = {
   inbox_suggest: InboxSuggestionOutput,
   write_turn_note: writeTurnNoteSchema,
   answer_inbox_question: answerInboxQuestionSchema,
+  follow_thread: followThreadSchema,
+  reply_to_origin: replyToOriginSchema,
   report_work: reportWorkSchema,
   hand_back_message: handBackMessageSchema,
   start_work: startWorkSchema,
