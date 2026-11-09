@@ -42,8 +42,8 @@ test("two Member desktops recover from disconnect and committed response loss, t
         "/core/v1/admin/space/invite",
         { role },
       );
-      await page.getByRole("button", { name: "Switch Space", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Join a Space…", exact: true }).click();
+      await page.getByRole("button", { name: "Spaces and settings", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Join a Space", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Join a Space" });
       await dialog.getByLabel("Invite URL").fill(`${url}?fingerprint=${listener.fingerprint}`);
       await dialog.getByLabel("One-time code").fill(invite.code);
@@ -218,7 +218,9 @@ test("two Member desktops recover from disconnect and committed response loss, t
               const personal = (await invokeIpc(bob.page, "spaces:list")).find(
                 (space) => space.kind === "personal",
               )!;
-              await bob.page.getByRole("button", { name: "Switch Space", exact: true }).click();
+              await bob.page
+                .getByRole("button", { name: "Spaces and settings", exact: true })
+                .click();
               await bob.page.getByRole("menuitem").filter({ hasText: personal.name }).click();
               await expect
                 .poll(async () => (await invokeIpc(bob.page, "spaces:context")).kind)

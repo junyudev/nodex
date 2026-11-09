@@ -20,7 +20,6 @@ export const WORKBENCH_RAIL_BUTTON_CLASS =
   "no-drag rounded-lg text-(--color-text-secondary-ghost) hover:text-(--color-text-secondary-ghost-hover)";
 
 export interface WorkbenchAppRailProps {
-  spaceSwitcher?: ReactNode;
   contentOnly?: boolean;
   destination: WorkbenchPrimaryDestination;
   onHome: () => void;
@@ -48,7 +47,6 @@ export function WorkbenchAppRail({
   onInsights,
   onPlugins,
   footer,
-  spaceSwitcher,
   contentOnly = false,
 }: WorkbenchAppRailProps) {
   const destinations: readonly WorkbenchRailEntry[] = [
@@ -95,7 +93,6 @@ export function WorkbenchAppRail({
       data-app-navigation-rail
       className="flex h-full min-h-0 w-13 shrink-0 flex-col items-center gap-2 bg-transparent px-2 pt-2 pb-1 select-none"
     >
-      {spaceSwitcher}
       {destinations
         // A team window offers what its Space shares; Automations run on its host, and Plugins and
         // Insights are this desktop's own Agents.

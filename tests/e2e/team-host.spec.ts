@@ -325,8 +325,8 @@ test("a joined desktop starts host work, answers its question and accepts it acr
       },
       async ({ page }) => {
         await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
-        await page.getByRole("button", { name: "Switch Space", exact: true }).click();
-        await page.getByRole("menuitem", { name: "Join a Space…", exact: true }).click();
+        await page.getByRole("button", { name: "Spaces and settings", exact: true }).click();
+        await page.getByRole("menuitem", { name: "Join a Space", exact: true }).click();
         const join = page.getByRole("dialog", { name: "Join a Space" });
         await join
           .getByLabel("Invite URL")
@@ -350,7 +350,7 @@ test("a joined desktop starts host work, answers its question and accepts it acr
             .getByRole("navigation", { name: "Home", exact: true })
             .getByText("Host Crew", { exact: true }),
         ).toBeVisible();
-        await page.getByRole("button", { name: "Switch Space", exact: true }).click();
+        await page.getByRole("button", { name: "Spaces and settings", exact: true }).click();
         await expect(page.getByRole("menuitem", { name: "Host Crew", exact: true })).toBeVisible();
         await page.keyboard.press("Escape");
         await page.evaluate(() => {

@@ -307,7 +307,7 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
         ),
       );
     }
-    await page.getByRole("button", { name: "Account and settings", exact: true }).click();
+    await page.getByRole("button", { name: "Spaces and settings", exact: true }).click();
     await page.getByRole("menuitem", { name: "Sign out", exact: true }).click();
     await expectNodexAccount(page, { status: "signed-out", credit: null });
     expect((await catalog()).filter((provider) => provider.source === "nodex")).toEqual([]);

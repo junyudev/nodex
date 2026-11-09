@@ -12,6 +12,7 @@ test("switches persist independently and update an already-open rail in another 
   const listeners = new Set<(settings: UsageMeterSettings) => void>();
   const invoke = vi.fn(async (channel: string, input?: UsageMeterSettings) => {
     if (channel === "settings:usage-meters:get") return saved;
+    if (channel === "spaces:list") return [];
     if (channel === "settings:usage-meters:update" && input) {
       saved = input;
       listeners.forEach((listener) => listener(saved));
@@ -88,7 +89,7 @@ test("switches persist independently and update an already-open rail in another 
       expect(view.queryByRole("button", { name: "Loading Claude usage" })).toBeNull();
       expect(view.queryByRole("button", { name: "Sign in to Codex" })).toBeNull();
     });
-    expect(view.getByRole("button", { name: "Account and settings" })).not.toBeNull();
+    expect(view.getByRole("button", { name: "Spaces and settings" })).not.toBeNull();
     await act(async () => {
       fireEvent.click(section.getByRole("switch", { name: "Codex" }));
       await Promise.resolve();

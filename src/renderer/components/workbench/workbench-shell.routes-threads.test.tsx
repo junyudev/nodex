@@ -160,7 +160,7 @@ describe("workbench session shell / routes-threads", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    await openNodexMenu(screen.getByRole("button", { name: "Account and settings" }));
+    await openNodexMenu(screen.getByRole("button", { name: "Spaces and settings" }));
     const settingsButton = screen.getByRole("menuitem", { name: "Settings" });
     expect(screen.container.querySelector('[aria-label="Manage workspaces"]')).toBe(null);
 
@@ -397,7 +397,7 @@ describe("workbench session shell / routes-threads", () => {
       });
       const fullWidthBeforeSettings = rightPanel.style.width;
 
-      await openNodexMenu(screen.getByRole("button", { name: "Account and settings" }));
+      await openNodexMenu(screen.getByRole("button", { name: "Spaces and settings" }));
       await act(async () => {
         fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
         await Promise.resolve();

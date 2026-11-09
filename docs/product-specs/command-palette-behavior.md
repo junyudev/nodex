@@ -68,6 +68,7 @@ All uses the same catalog for non-empty queries.
 - Command rows omit explanatory subtitles unless needed to explain an unavailable action.
 - The application catalog contains only working capabilities in development and production. Every action uses its owning command handler; unavailable context may temporarily disable a supported action.
 - Visible, enabled Settings sections are directly searchable in the Settings group and navigate through the Settings route owner, opening the group or Agent card the query names, as Settings search does.
+- Navigation offers `Switch to <Space>` for every connected Space other than the window's own, through the same switch as the account menu's Space list.
 - Theme opens a nested page with a search field, a Back row, light/dark switching, and the existing per-appearance accent presets. Previews and the current-preset check reflect the same persisted appearance owner as Settings. Entering or leaving this page clears its query; scope tabs are hidden while it is open. Escape or an outside dismissal returns one level before closing the root menu.
 - `Toggle browser panel` and `Open Page Stage` are intentionally not part of the command catalog.
 
@@ -332,7 +333,7 @@ Executing a chat result:
 
 Supported actions currently include:
 
-- go back / go forward
+- go back / go forward, and switch to another Space
 - new chat, rename chat, archive chat, pin/unpin chat, and open chat in a new window
 - toggle sidebar, side panel, and bottom panel
 - open Files, Browser, Review, Terminal, and DB View panel tabs

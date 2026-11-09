@@ -129,7 +129,7 @@ test("each window is named after what it shows, and follows its content live", a
       await capture(page, "space-page");
 
       // Destinations without an owner use their own name, and leaving restores the content.
-      await page.getByRole("button", { name: "Account and settings", exact: true }).click();
+      await page.getByRole("button", { name: "Spaces and settings", exact: true }).click();
       await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
       await expectNativeTitle(application, page, nativeTitle("Settings"));
       await capture(page, "settings");

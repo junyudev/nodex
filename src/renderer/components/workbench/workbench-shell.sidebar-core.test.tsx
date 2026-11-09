@@ -609,7 +609,7 @@ describe("workbench session shell / sidebar-core", () => {
       within(rail)
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label")),
-    ).toEqual(expect.arrayContaining(["Switch Space", "Home", "Space", "Automations", "Plugins"]));
+    ).toEqual(expect.arrayContaining(["Home", "Space", "Automations", "Plugins"]));
     expect(scrollArea.getAttribute("data-content-below")).toBe("false");
     expect(scrollChrome.style.getPropertyValue("--sidebar-scroll-footer-edge-offset")).toBe(
       "calc(var(--spacing) * 10)",

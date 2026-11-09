@@ -84,12 +84,23 @@ export function useFollowSpaceConnections(): void {
   useEffect(() => followSpaceConnections(client), [client]);
 }
 
-/** Identity stays document-bound; host-owned display metadata follows connection refreshes. */
-export function useCurrentSpace() {
+/**
+ * Every connected Space and this window's own. Identity stays document-bound; host-owned names
+ * and availability follow connection refreshes.
+ */
+export function useSpaces(): {
+  readonly spaces: readonly SpaceConnectionSummary[];
+  readonly current: SpaceConnectionSummary;
+} {
   const bound = rendererSpace();
-  const spaces = useSpaceConnections();
-  return spaces.data?.find((space) => space.spaceId === bound.spaceId) ?? bound;
+  const spaces = useSpaceConnections().data ?? [bound];
+  return {
+    spaces,
+    current: spaces.find((space) => space.spaceId === bound.spaceId) ?? bound,
+  };
 }
+
+export const useCurrentSpace = (): SpaceConnectionSummary => useSpaces().current;
 
 export const joinSpace = (input: JoinSpaceInput) => invokePlainCommand(joinCommand, input);
 export const leaveSpace = (spaceId: string) => invokePlainCommand(leaveCommand, spaceId);

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, expect, it, test, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, test, vi } from "vite-plus/test";
 const modelStatusFixture = {
   creditsPerUsd: 25,
   models: [],
@@ -22,9 +22,52 @@ import {
 import { WorkbenchRailAccountControls } from "@/components/workbench/workbench-rail-account-controls";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { installWindowApi } from "@/test/browser-globals";
-import { openNodexMenu } from "@/test/dom";
+import { hoverWithMouse, openNodexMenu } from "@/test/dom";
+import type { SpaceConnectionSummary } from "../../../shared/space-connection";
 import { AccountSettingsPage } from "./account-settings-page";
 import { describeCreditGauge, nextCreditGauge } from "./nodex-credit-meter";
+
+const spaces = vi.hoisted(() => {
+  const personal = {
+    spaceId: "personal",
+    kind: "personal",
+    name: "Personal",
+    memberId: null,
+    deviceId: null,
+    availability: "ready",
+  } as const;
+  const team = {
+    spaceId: "team",
+    kind: "team",
+    name: "Final Crew",
+    memberId: "member",
+    deviceId: "device",
+    availability: "ready",
+  } as const;
+  return {
+    personal,
+    team,
+    switch: vi.fn<(spaceId: string) => Promise<void>>(),
+    openJoin: vi.fn<() => void>(),
+    state: {
+      spaces: [personal] as readonly SpaceConnectionSummary[],
+      current: personal as SpaceConnectionSummary,
+    },
+  };
+});
+vi.mock("@/features/spaces/spaces-runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/features/spaces/spaces-runtime")>()),
+  useSpaces: () => spaces.state,
+  switchSpace: spaces.switch,
+}));
+vi.mock("@/features/spaces/join-space-dialog", () => ({
+  useOpenJoinSpace: () => spaces.openJoin,
+}));
+beforeEach(() => {
+  spaces.switch.mockReset().mockResolvedValue(undefined);
+  spaces.openJoin.mockReset();
+  spaces.state = { spaces: [spaces.personal], current: spaces.personal };
+});
 
 const signedOut: NodexAccountSnapshot = {
   revision: 0,
@@ -113,7 +156,7 @@ function renderAccountControls(snapshot: NodexAccountSnapshot, settingsShortcutL
         await Promise.resolve();
       });
     },
-    trigger: () => screen.getByRole("button", { name: "Account and settings" }),
+    trigger: () => screen.getByRole("button", { name: "Spaces and settings" }),
   };
 }
 
@@ -131,7 +174,9 @@ describe("Nodex account menu", () => {
     const controls = renderAccountControls({ ...signedOut, configured: false }, "⇧⌘,");
     await screen.findByText("Not available in this build.");
     await openNodexMenu(controls.trigger());
-    expect(screen.getAllByRole("menuitem")).toHaveLength(1);
+    // With only the personal Space there is nothing to switch to, only a Space to join.
+    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
+    expect(screen.getByRole("menuitem", { name: "Join a Space" })).toBeDefined();
     const settings = screen.getByRole("menuitem", { name: "Settings" });
     expect(within(settings).getByText("⇧⌘,")).toBeDefined();
     await selectMenuItem("Settings");
@@ -195,6 +240,82 @@ describe("Nodex account menu", () => {
     expect(controls.container.querySelector("img")).toBeNull();
     expect(controls.invoke).toHaveBeenLastCalledWith("nodex-account:sign-out");
     expect(controls.nativeAction).not.toHaveBeenCalled();
+  });
+
+  test("lists every Space once there is a choice, switches, and joins after the menu closes", async () => {
+    spaces.state = {
+      spaces: [spaces.personal, { ...spaces.team, availability: "reconnecting" }],
+      current: spaces.personal,
+    };
+    const controls = renderAccountControls(signedOut);
+    await screen.findByText("Not signed in");
+    // Another Space reconnecting is its own business; this window's face stays quiet.
+    expect(controls.trigger().querySelector("[data-attention]")).toBeNull();
+    await openNodexMenu(controls.trigger());
+    expect(screen.getByRole("menuitem", { name: /^Personal/ }).getAttribute("aria-current")).toBe(
+      "true",
+    );
+    const team = screen.getByRole("menuitem", { name: /^Final Crew/ });
+    expect(team.hasAttribute("aria-current")).toBe(false);
+    expect(within(team).getByText("Reconnecting…")).toBeDefined();
+    // Dismissing the menu returns focus to its control.
+    await act(async () => {
+      fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(document.activeElement).toBe(controls.trigger()));
+    await openNodexMenu(controls.trigger());
+    await selectMenuItem(/^Final Crew/);
+    await waitFor(() => expect(spaces.switch).toHaveBeenCalledWith("team"));
+
+    await openNodexMenu(controls.trigger());
+    await selectMenuItem("Join a Space");
+    // The dialog opens once the menu has closed, so it never mounts inside the menu.
+    await waitFor(() => expect(spaces.openJoin).toHaveBeenCalledOnce());
+    expect(controls.settings).not.toHaveBeenCalled();
+  });
+
+  test("wears a team Space's face, whose availability outranks the account's attention", async () => {
+    const revoked = { ...spaces.team, availability: "access-revoked" } as const;
+    spaces.state = { spaces: [spaces.personal, revoked], current: revoked };
+    const reauthentication: NodexAccountSnapshot = {
+      ...signedIn,
+      status: "reauthentication-required",
+    };
+    const team = renderAccountControls(reauthentication);
+    await waitFor(() =>
+      expect(team.trigger().getAttribute("data-nodex-account-status")).toBe(
+        "reauthentication-required",
+      ),
+    );
+    expect(within(team.trigger()).getByText("FC")).toBeDefined();
+    expect(team.trigger().querySelector("img")).toBeNull();
+    expect(team.trigger().querySelector("[data-attention]")?.getAttribute("data-attention")).toBe(
+      "access-revoked",
+    );
+    await act(async () => {
+      hoverWithMouse(team.trigger());
+      await Promise.resolve();
+    });
+    const tooltip = await screen.findByRole("tooltip");
+    expect(within(tooltip).getByText("Final Crew · Access revoked")).toBeDefined();
+    expect(within(tooltip).getByText("Nodex Scenario · Session ended")).toBeDefined();
+    // Losing a team never strands its window: the personal Space stays one choice away.
+    await openNodexMenu(team.trigger());
+    await selectMenuItem(/^Personal/);
+    await waitFor(() => expect(spaces.switch).toHaveBeenCalledWith("personal"));
+    team.unmount();
+
+    spaces.state = { spaces: [spaces.personal, revoked], current: spaces.personal };
+    const personal = renderAccountControls(reauthentication);
+    await waitFor(() =>
+      expect(
+        personal.trigger().querySelector("[data-attention]")?.getAttribute("data-attention"),
+      ).toBe("account"),
+    );
+    expect(personal.trigger().querySelector("img")?.getAttribute("src")).toBe(
+      signedIn.account?.imageUrl,
+    );
   });
 });
 

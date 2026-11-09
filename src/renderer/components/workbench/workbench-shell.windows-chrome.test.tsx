@@ -24,7 +24,7 @@ test("Windows mounts one navigation group in the application row above workspace
     expect(header.contains(menu)).toBe(false);
     expect(within(header).queryByRole("button", { name: "Back" })).toBeNull();
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Account and settings" }));
+      fireEvent.click(view.getByRole("button", { name: "Spaces and settings" }));
       await Promise.resolve();
     });
     const settings = await view.findByRole("menuitem", { name: /Settings/ });

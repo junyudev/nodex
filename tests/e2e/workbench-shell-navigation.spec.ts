@@ -332,13 +332,12 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
             {
               rail: { width: 52, top: 44 },
               buttons: [
-                { label: "Switch Space", width: 36, height: 36 },
                 { label: "Home", width: 36, height: 36 },
                 { label: "Space", width: 36, height: 36 },
                 { label: "Automations", width: 36, height: 36 },
                 { label: "Insights", width: 36, height: 36 },
                 { label: "Plugins", width: 36, height: 36 },
-                { label: "Account and settings", width: 36, height: 36 },
+                { label: "Spaces and settings", width: 36, height: 36 },
               ],
               railFootBottomInset: 8,
               headerHeight: 44,

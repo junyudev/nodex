@@ -6,7 +6,7 @@ export async function openWorkbenchSettings(page: Page): Promise<void> {
   const home = page.getByRole("button", { name: "Home", exact: true });
   await expect(settings.or(home).first()).toBeVisible();
   if (await settings.isVisible()) return;
-  await page.getByRole("button", { name: "Account and settings", exact: true }).click();
+  await page.getByRole("button", { name: "Spaces and settings", exact: true }).click();
   await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
   await expect(settings).toBeVisible();
 }

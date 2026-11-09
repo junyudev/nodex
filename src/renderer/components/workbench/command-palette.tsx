@@ -28,6 +28,7 @@ import {
   type CommandPaletteShellCommandHandlers,
 } from "@/lib/command-palette-commands";
 import { configureInteractivePageSearch } from "@/lib/interactive-page-search";
+import type { SpaceSwitchCommands } from "@/features/spaces/space-switching";
 import type { Project } from "@/lib/types";
 import type { RecentPageSession } from "@/lib/use-workbench-profile-preferences";
 import { useCommandPaletteTheme } from "./command-palette-theme";
@@ -55,6 +56,8 @@ interface CommandPaletteProps {
   recentPageSessions: readonly RecentPageSession[];
   commandContext: Omit<CommandPaletteShellCommandContext, "isMac">;
   commandHandlers: CommandPaletteShellCommandHandlers;
+  /** Opens each Space other than this window's. */
+  spaceCommands?: SpaceSwitchCommands;
   onOpenChange: (open: boolean) => void;
   onOpenPage: (projectId: string, pageId: string, titleSnapshot?: string) => void;
   onOpenChat: (sessionId: string) => void;
@@ -81,6 +84,7 @@ export function CommandPalette({
   recentPageSessions,
   commandContext,
   commandHandlers,
+  spaceCommands,
   onOpenChange,
   onOpenPage,
   onOpenChat,
@@ -172,6 +176,7 @@ export function CommandPalette({
             priority: 700,
           }))
       : []),
+    ...(spaceCommands?.commands ?? []),
   ];
 
   const handleChangeMode = (nextMode: CommandMenuMode) => {
@@ -196,6 +201,7 @@ export function CommandPalette({
       return;
     }
     if (item.disabled) return;
+    if (spaceCommands?.execute(item.id)) return;
     if (item.id.startsWith("settings:")) {
       const target = resolveSettingsCommandTarget(item.id, query);
       if (target) onOpenSettingsSection?.(target.sectionId, target.anchor);

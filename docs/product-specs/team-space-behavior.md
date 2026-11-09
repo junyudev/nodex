@@ -10,11 +10,11 @@ A Space has one host-owned name in Core. An Owner sets it with
 `nodex serve init --name` and renames it with `nodex serve rename NAME`
 (or `nodex space rename NAME`). Until an Owner names it, a Space reads as what it
 is: “Personal” while its one Owner keeps it on their own desktop, and “Team
-Space” once it is shared or hosted. The switcher, Settings, Device-link offers
+Space” once it is shared or hosted. The account menu, Settings, Device-link offers
 and phones all show Core's name. Enrollment and each
 successful connection return that name, and a rename reaches every connected
 desktop at once through its live event stream. Desktops persist the name with the
-encrypted credential and refresh the switcher, menu and Home title.
+encrypted credential and refresh the account menu and Home title.
 An endpoint is a transport address and never supplies a display name.
 
 ## Listening and trust
@@ -179,8 +179,14 @@ private file per Space. There is no plaintext fallback; session renewal stays in
 memory. Leave removes the local credential and closes that connection without
 removing shared content or revoking another device.
 
-The rail's Space switcher selects the current Space. Every Space keeps its own
-sidebar, Home, Library, Boards and Inbox. Each window restores that Space's last
+The account menu at the foot of the rail selects the current Space; the command
+palette also offers `Switch to <Space>` for each other Space. The menu's face is
+the current Space: a team Space's initials, or your Nodex Account in the
+personal Space. One dot on it reports a team Space that is reconnecting (orange),
+unavailable or revoked (red), ahead of a Nodex Account that needs signing in
+again (yellow). Once there is more than one Space, the menu lists them all,
+checks the current one and notes beneath its name any that is not connected;
+Join a Space always follows. Every Space keeps its own sidebar, Home, Library, Boards and Inbox. Each window restores that Space's last
 route, Scenes, surfaces and navigation history in the existing Window Session
 catalog. New windows cloned from a team window retain that Space. Switching
 flushes local owners before opening a renderer document bound to the selected

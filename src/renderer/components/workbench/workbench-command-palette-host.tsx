@@ -44,6 +44,7 @@ import {
 
 import type { SettingsSectionId } from "./workbench-settings-sections";
 import { useWorkspaceFileActiveLineBlame } from "@/features/workspace-files/workspace-file-preferences";
+import { useSpaceSwitchCommands } from "@/features/spaces/space-switching";
 
 type ProjectSession = WorkbenchSessionRenderProjection;
 type SessionCommands = Pick<
@@ -139,6 +140,7 @@ export function WorkbenchCommandPaletteHost({
   const fileRouter = useFileReferenceRouter();
   const skillsReloadControl = useSelectedConversationSkillsReloadControl();
   const { runSetupAgain } = useFirstRunEntry();
+  const spaceCommands = useSpaceSwitchCommands();
   const openingFolder = useRef(false);
   const openFolder = async () => {
     if (openingFolder.current) return;
@@ -379,6 +381,7 @@ export function WorkbenchCommandPaletteHost({
       onOpenSettingsSection={openSettingsSection}
       commandContext={commandContext}
       commandHandlers={commandHandlers}
+      spaceCommands={spaceCommands}
       onOpenChange={setOpen}
       onOpenPage={(projectId, pageId, titleSnapshot) => {
         void panelOpeners.openPageTab(projectId, pageId, titleSnapshot);

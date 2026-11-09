@@ -26,7 +26,9 @@ function renderRail(ui: ReactElement) {
     invoke: async (channel: string) =>
       channel === "settings:usage-meters:get"
         ? { claude: true, codex: true, nodexCredit: true }
-        : snapshot,
+        : channel === "spaces:list"
+          ? []
+          : snapshot,
     on: () => () => undefined,
   });
   const client = new QueryClient({
@@ -413,7 +415,7 @@ describe("WorkbenchRailAccountControls", () => {
     );
 
     expect(view.container.querySelector("[data-usage-meter]")).toBe(null);
-    expect(Boolean(view.getByRole("button", { name: "Account and settings" }))).toBe(true);
+    expect(Boolean(view.getByRole("button", { name: "Spaces and settings" }))).toBe(true);
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Sign in to Codex" }));
       await Promise.resolve();
@@ -460,17 +462,17 @@ describe("WorkbenchRailAccountControls", () => {
     expect(labels()).toEqual([
       "Loading Claude usage",
       "Loading Codex account",
-      "Account and settings",
+      "Spaces and settings",
     ]);
 
     // Codex and the Nodex menu always hold the lowest slots, so Claude coming and going never moves them.
     view.rerender(renderControls(signedOutAccount, readClaude([])));
-    expect(labels()).toEqual(["Sign in to Codex", "Account and settings"]);
+    expect(labels()).toEqual(["Sign in to Codex", "Spaces and settings"]);
     view.rerender(renderControls(signedOutAccount, readClaude([claudeProvider()])));
     expect(labels()).toEqual([
       "Claude usage: 12% left in 5-hour window, read 2 h ago",
       "Sign in to Codex",
-      "Account and settings",
+      "Spaces and settings",
     ]);
   });
 
@@ -537,7 +539,7 @@ describe("WorkbenchRailAccountControls", () => {
     expect(view.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
       "Claude usage: 12% left in 5-hour window, read 2 h ago",
       "Codex usage: 61% left in weekly window",
-      "Account and settings",
+      "Spaces and settings",
     ]);
     const claude = view.container.querySelector<HTMLElement>('[data-usage-meter="claude"]');
     if (!claude) throw new Error("Expected the Claude usage meter");

@@ -1,7 +1,7 @@
 # Nodex Account Login Behavior
 
 - Status: Active
-- Last updated: 2026-10-30
+- Last updated: 2026-11-09
 
 ## Scope
 
@@ -25,16 +25,21 @@ build/runtime configuration belong in [Configuration](../CONFIGURATION.md#nodex-
 
 ## Account entry points
 
-The bottom rail avatar opens an account menu beside the rail. Settings remains
-available in every account state, including an unconfigured or offline build.
-When an identity is remembered, the menu begins with that identity and opens
-Account settings from its header. Its account actions follow the current
-connection: sign in, cancel the pending browser login, sign in again, or sign
-out. These actions only affect the Nodex connection.
+The control at the foot of the rail, named “Spaces and settings”, opens the
+account menu beside the rail. Its first group switches and joins Spaces, as
+[Team Spaces](team-space-behavior.md) describes. Below it, a remembered identity
+opens Account settings, then Settings, which remains available in every account
+state, including an unconfigured or offline build. The account actions follow
+the current connection: sign in, cancel the pending browser login, sign in
+again, or sign out. These actions only affect the Nodex connection.
 
 The menu and Account page use the same identity and avatar presentation. An
 available HTTPS profile image is preferred; an unavailable image falls back to
-initials. The rail shows the Nodex icon when no account identity is available.
+initials. In the personal Space the control shows this avatar, or the Nodex icon
+when no account identity is available; in a team Space it shows that Space's
+avatar. Its tooltip names the Space, then the account. A yellow dot marks an
+account that needs signing in again, unless the team Space's availability dot
+takes its place.
 Sign-out removes the prior identity from both surfaces. The menu supports keyboard navigation,
 outside dismissal, Escape and focus restoration through the shared menu
 primitive. Settings navigation preserves the Workbench return route.

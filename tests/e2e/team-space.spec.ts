@@ -95,8 +95,8 @@ test("joins a team Space, collaborates live and keeps personal work isolated thr
         await expect(
           page.locator(`[data-board-uuid-v7="${manifest.pageIdsByKey.source}"]:visible`),
         ).toBeVisible();
-        await page.getByRole("button", { name: "Switch Space", exact: true }).click();
-        await page.getByRole("menuitem", { name: "Join a Space…", exact: true }).click();
+        await page.getByRole("button", { name: "Spaces and settings", exact: true }).click();
+        await page.getByRole("menuitem", { name: "Join a Space", exact: true }).click();
         const dialog = page.getByRole("dialog", { name: "Join a Space" });
         await dialog
           .getByLabel("Invite URL")
@@ -108,7 +108,9 @@ test("joins a team Space, collaborates live and keeps personal work isolated thr
         await page.screenshot({ path: path.join(screenshots, "01-join.png") });
         await dialog.getByRole("button", { name: "Join", exact: true }).click();
         await expect.poll(() => page.url(), { timeout: 20_000 }).toContain("spaceId=");
-        await expect(page.getByRole("button", { name: "Switch Space", exact: true })).toBeVisible();
+        await expect(
+          page.getByRole("button", { name: "Spaces and settings", exact: true }),
+        ).toBeVisible();
         await expect
           .poll(
             async () =>
@@ -172,7 +174,7 @@ test("joins a team Space, collaborates live and keeps personal work isolated thr
             .getByRole("navigation", { name: "Home", exact: true })
             .getByText("Team Research", { exact: true }),
         ).toBeVisible();
-        await page.getByRole("button", { name: "Switch Space", exact: true }).click();
+        await page.getByRole("button", { name: "Spaces and settings", exact: true }).click();
         await expect(
           page.getByRole("menuitem", { name: "Team Research", exact: true }),
         ).toBeVisible();
@@ -219,10 +221,10 @@ test("joins a team Space, collaborates live and keeps personal work isolated thr
           const entry = (await invokeIpc(page, "spaces:list")).find(
             (space) => space.spaceId === spaceId,
           )!;
-          await page.getByRole("button", { name: "Switch Space", exact: true }).click();
+          await page.getByRole("button", { name: "Spaces and settings", exact: true }).click();
           await page.getByRole("menuitem").filter({ hasText: entry.name }).click();
           await expect(
-            page.getByRole("button", { name: "Switch Space", exact: true }),
+            page.getByRole("button", { name: "Spaces and settings", exact: true }),
           ).toBeVisible();
         };
         const team = (await invokeIpc(page, "spaces:list")).find((entry) => entry.kind === "team")!;

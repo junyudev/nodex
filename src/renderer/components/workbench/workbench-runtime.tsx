@@ -1,7 +1,6 @@
 import { localProjectSourceRoots } from "../../../shared/project-sources";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { isHostedChat } from "@/lib/hosted-chat";
-import { SpaceSwitcher } from "@/features/spaces/space-switcher";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { requestInboxEntryOpen } from "../../lib/inbox-entry-navigation";
 import { readInboxEntry } from "../../lib/inbox-runtime";
@@ -5814,7 +5813,6 @@ export function WorkbenchRuntime({
                     widthClass={shellWidthClass}
                     rail={
                       <WorkbenchAppRail
-                        spaceSwitcher={<SpaceSwitcher />}
                         contentOnly={isRemoteSpace()}
                         destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}
                         onHome={workbenchWindow.selectHome}

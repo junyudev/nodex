@@ -20,7 +20,7 @@ import { openWorkbenchSettings } from "./support/workbench-settings";
 
 const imageUrl = "https://images.nodex.invalid/account-review.svg";
 const menuTrigger = (page: Page) =>
-  page.getByRole("button", { name: "Account and settings", exact: true });
+  page.getByRole("button", { name: "Spaces and settings", exact: true });
 const openMenu = async (page: Page) => {
   await menuTrigger(page).click();
   await expect(page.getByRole("menu")).toBeVisible();
@@ -170,12 +170,13 @@ test("shares the account menu and Settings identity while native login and local
     await expect(page.getByRole("menu")).toBeVisible();
     const signedOutActions = async () => ({
       count: await page.getByRole("menuitem").count(),
+      join: await page.getByRole("menuitem", { name: "Join a Space", exact: true }).isVisible(),
       settings: await page.getByRole("menuitem", { name: "Settings", exact: true }).isVisible(),
       signIn: await page.getByRole("menuitem", { name: "Sign in", exact: true }).isVisible(),
     });
     claim(
-      "Signed-out menu offers Settings and first-party sign-in",
-      { count: 2, settings: true, signIn: true },
+      "Signed-out menu offers joining a Space, Settings and first-party sign-in",
+      { count: 3, join: true, settings: true, signIn: true },
       await signedOutActions(),
     );
     const geometry = await page.getByRole("menu").boundingBox();
@@ -277,7 +278,7 @@ test("shares the account menu and Settings identity while native login and local
     await openMenu(page);
     claim(
       "Sign out clears the menu identity",
-      { count: 2, settings: true, signIn: true },
+      { count: 3, join: true, settings: true, signIn: true },
       await signedOutActions(),
     );
     await page.getByRole("menuitem", { name: "Settings", exact: true }).click();

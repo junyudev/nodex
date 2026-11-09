@@ -42,8 +42,8 @@ export async function proveTwoDesktopBudget(input: {
   await withElectronScenario(
     { label: "budget-bob", scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID, seedThrough: "core" },
     async ({ page: bob }) => {
-      await bob.getByRole("button", { name: "Switch Space", exact: true }).click();
-      await bob.getByRole("menuitem", { name: "Join a Space…", exact: true }).click();
+      await bob.getByRole("button", { name: "Spaces and settings", exact: true }).click();
+      await bob.getByRole("menuitem", { name: "Join a Space", exact: true }).click();
       const dialog = bob.getByRole("dialog", { name: "Join a Space" });
       await dialog
         .getByLabel("Invite URL")

@@ -245,8 +245,9 @@ function ClaudeUsageMeter({
 }
 
 /**
- * App-wide controls at the foot of the navigation rail, read from the bottom up: the Nodex
- * Account menu, its prepaid credit meter while signed in, then the Codex account control (its usage meter when signed in, an open Codex
+ * App-wide controls at the foot of the navigation rail, read from the bottom up: the account
+ * menu, which shows the current Space and the Nodex Account, the Nodex credit meter while signed
+ * in, then the Codex account control (its usage meter when signed in, an open Codex
  * ring that signs in when signed out, an unread Codex meter while the account is unknown), then
  * one usage meter per Claude subscription account (an unread Claude meter until Main has read
  * any). The slots that always exist sit lowest, so Claude meters coming and going never move

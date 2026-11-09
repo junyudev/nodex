@@ -99,6 +99,8 @@ import {
   CommandPalettePageFiltersSummaryRow,
 } from "./command-palette-filters";
 import { ThreadsIcon } from "./threads-icon";
+import { WorkbenchSpaceIcon } from "@/components/shared/icons/workbench-navigation-icons";
+import { isSpaceSwitchCommandId } from "@/features/spaces/space-switching";
 import { NodexIconButton } from "@/components/ui/button";
 import { NodexTabsRoot, NodexTabsList, NodexTabsTab, NodexTabsPanel } from "@/components/ui/tabs";
 import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
@@ -204,6 +206,7 @@ function resolveSelectableIndex(
 
 function CommandGlyph({ id, className }: { id: string; className: string }) {
   if (id === "captureToInbox") return <InboxIcon className={className} />;
+  if (isSpaceSwitchCommandId(id)) return <WorkbenchSpaceIcon className={className} />;
   if (id === "newPage") return <NewPageIcon className={className} />;
   if (id === TOGGLE_SIDEBAR_COMMAND_ID) return <SidebarVisibleIcon className={className} />;
   if (id === "clearThreadReminder" || isRemindThreadCommandId(id))

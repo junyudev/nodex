@@ -5,10 +5,10 @@ import type { SpaceConnectionSummary } from "../../../shared/space-connection";
 
 const BOX = {
   menu: "size-5 rounded-[6px] text-[10px]",
-  rail: "size-7 rounded-[8px] text-xs",
+  rail: "size-6 rounded-[7px] text-[11px]",
   page: "size-9 rounded-[10px] text-sm",
 } as const;
-const MARK = { menu: "size-3.5", rail: "size-4.5", page: "size-5.5" } as const;
+const MARK = { menu: "size-3.5", rail: "size-4", page: "size-5.5" } as const;
 
 /** Spaces are rounded squares, so they never read as a person's round avatar.
  * The personal Space is the person's own Nodex and carries its mark. */
