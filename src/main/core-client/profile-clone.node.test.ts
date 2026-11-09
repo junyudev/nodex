@@ -12,6 +12,8 @@ import { parseProfileExecutionSnapshot } from "../../../scripts/profile-executio
 
 const exec = promisify(execFile);
 const python = process.platform === "win32" ? "python" : "python3";
+// Each child process ends with its test, whose signal stops it on timeout or cancellation.
+// A shorter kill budget of its own would only time interpreter startup on a loaded runner.
 
 // Execution schema and pressure are the subject here; Core content uses public operations.
 const writerProgram = `
@@ -75,24 +77,28 @@ const withExecutionWriter = async (
   if (failures.length === 1) throw failures[0];
 };
 
-const readDatabase = async (path: string) => {
-  const { stdout } = await exec(python, [
-    "-c",
-    `
+const readDatabase = async (path: string, signal: AbortSignal) => {
+  const { stdout } = await exec(
+    python,
+    [
+      "-c",
+      `
 import json, sqlite3, sys
 c=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True)
 print(json.dumps({'integrity':c.execute('PRAGMA integrity_check').fetchone()[0], 'sequence':c.execute('SELECT value FROM watermark').fetchone()[0], 'values':[r[0] for r in c.execute('SELECT value FROM history ORDER BY id')]}))
 `,
-    path,
-  ]);
+      path,
+    ],
+    { signal },
+  );
   return JSON.parse(stdout) as { integrity: string; sequence: number; values: number[] };
 };
 
-const clone = async (source: string, target: string) => {
+const clone = async (source: string, target: string, signal: AbortSignal) => {
   const { stdout } = await exec(
     requiredNativeExecutable("cli"),
     ["--json", "profile", "clone", "--from", source, "--to", target],
-    { timeout: 30_000, maxBuffer: 1024 * 1024 },
+    { signal, maxBuffer: 1024 * 1024 },
   );
   return JSON.parse(stdout).result;
 };
@@ -110,7 +116,7 @@ print('ready', flush=True)
 sys.stdin.readline()
 `,
     ],
-    { timeout: 10_000 },
+    { signal },
   );
   let ready = false;
   const readiness = awaitExecutionWriterReady(writing, signal).then(() => {
@@ -139,7 +145,7 @@ test("retains both an operation failure and the execution writer's cleanup failu
   const writing = exec(
     python,
     ["-c", "import sys; sys.stdin.readline(); raise RuntimeError('writer shutdown failed')"],
-    { timeout: 10_000 },
+    { signal },
   );
   await expect(
     withExecutionWriter(
@@ -169,7 +175,7 @@ test("retains an execution writer's startup failure instead of reading a partial
   signal,
 }) => {
   const writing = exec(python, ["-c", "raise RuntimeError('writer initialization failed')"], {
-    timeout: 10_000,
+    signal,
   });
   await expect(awaitExecutionWriterReady(writing, signal)).rejects.toMatchObject({
     code: 1,
@@ -204,18 +210,21 @@ test("clones online execution while its owner keeps writing, without reading pro
         profile.codexHome,
         process.platform === "win32" ? "junction" : "dir",
       );
-      const writing = exec(python, ["-u", "-c", writerProgram, execution], { timeout: 45_000 });
+      const writing = exec(python, ["-u", "-c", writerProgram, execution], { signal });
       await withExecutionWriter(
         writing,
         async () => {
           await awaitExecutionWriterReady(writing, signal);
           const sourceDatabase = join(execution, "agent-runtime.sqlite");
-          const before = await readDatabase(sourceDatabase);
+          const before = await readDatabase(sourceDatabase, signal);
           const target = join(profile.runRoot, "cloned-profile");
-          const receipt = await clone(profile.nodexHome, target);
-          const after = await readDatabase(sourceDatabase);
+          const receipt = await clone(profile.nodexHome, target, signal);
+          const after = await readDatabase(sourceDatabase, signal);
           expect(after.sequence).toBeGreaterThan(before.sequence);
-          const captured = await readDatabase(join(target, "agent-runtime/agent-runtime.sqlite"));
+          const captured = await readDatabase(
+            join(target, "agent-runtime/agent-runtime.sqlite"),
+            signal,
+          );
           expect(captured.integrity).toBe("ok");
           expect(captured.sequence).toBeGreaterThanOrEqual(before.sequence);
           expect(captured.sequence).toBeLessThanOrEqual(after.sequence);
@@ -256,16 +265,19 @@ test("clones online execution while its owner keeps writing, without reading pro
   );
 }, 60_000);
 
-test("clones content when the source has never opened an execution store", async () => {
-  await withCoreScenario({ scenarioId: "nfm-code-block-actions" }, async ({ client, profile }) => {
-    await client.administrationApply({
-      operationId: randomUUID(),
-      intent: { kind: "create_backup", label: null, include_assets: true, trigger: "manual" },
-    });
-    const target = join(profile.runRoot, "content-profile");
-    expect((await clone(profile.nodexHome, target)).execution).toBeNull();
-    await expect(stat(join(target, "agent-runtime/imported-execution.json"))).rejects.toMatchObject(
-      { code: "ENOENT" },
-    );
-  });
+test("clones content when the source has never opened an execution store", async ({ signal }) => {
+  await withCoreScenario(
+    { scenarioId: "nfm-code-block-actions", signal },
+    async ({ client, profile }) => {
+      await client.administrationApply({
+        operationId: randomUUID(),
+        intent: { kind: "create_backup", label: null, include_assets: true, trigger: "manual" },
+      });
+      const target = join(profile.runRoot, "content-profile");
+      expect((await clone(profile.nodexHome, target, signal)).execution).toBeNull();
+      await expect(
+        stat(join(target, "agent-runtime/imported-execution.json")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
 });
