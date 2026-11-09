@@ -356,7 +356,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(screen.getByRole("button", { name: "Close Side chat tab" })).toBeTruthy();
   });
 
-  test("discards side context that finishes materializing after its loading tab closes", async () => {
+  test("retains side context that finishes materializing after its loading tab closes", async () => {
     const source = makeAttachedSession({ id: "source:late-side", tabs: [] });
     const screen = renderWorkbench({
       sessionsByProject: { alpha: [source] },
@@ -390,11 +390,12 @@ describe("workbench session shell / layout-panel-actions", () => {
       release();
       await opening;
     });
-    await waitFor(() =>
-      expect(
-        invokeCalls.filter(([channel]) => channel === "agent-runtime:session:discard-side-chat"),
-      ).toHaveLength(1),
-    );
+    const creation = invokeCalls.find(
+      ([channel]) => channel === "agent-runtime:session:create-side-chat",
+    )?.[1] as import("../../../shared/agent-runtime-api").AgentRuntimeSideChatCreateInput;
+    expect(await base("project-sessions:get", creation.sessionId)).toMatchObject({
+      id: creation.sessionId,
+    });
     expect(screen.queryByRole("tab", { name: "Side chat" })).toBeNull();
     expect(
       invokeCalls.filter(([channel]) => channel === "agent-runtime:session:message"),
@@ -3140,9 +3141,12 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
 
     expect(discardSideChatCalls).toHaveLength(0);
-    expect(
-      invokeCalls.filter(([channel]) => channel === "agent-runtime:session:discard-side-chat"),
-    ).toHaveLength(1);
+    const creation = invokeCalls.find(
+      ([channel]) => channel === "agent-runtime:session:create-side-chat",
+    )?.[1] as import("../../../shared/agent-runtime-api").AgentRuntimeSideChatCreateInput;
+    expect(await mockInvokeImpl!("project-sessions:get", creation.sessionId)).toMatchObject({
+      id: creation.sessionId,
+    });
     expect(invokeCalls.filter(([channel]) => channel === "project-sessions:delete")).toHaveLength(
       0,
     );

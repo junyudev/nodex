@@ -262,9 +262,6 @@ const setup = (
     holdMessages: false,
     failTitleWrite: false,
     failThreadCreate: false,
-    refuseSideChatSave: false,
-    failSideChatSave: false,
-    loseSideChatSaveReply: false,
     failCodexImportBeforeCommit: false,
     nativeSession: null as ProjectSession | null,
     nativeBackendSession: null as Awaited<
@@ -744,10 +741,6 @@ const setup = (
           state.failMessage = false;
           return yield* Effect.fail(new Error("Connection closed after Thread creation"));
         }
-        if (command.type === "thread.fork" && command.saveSideChat && state.failSideChatSave) {
-          state.failSideChatSave = false;
-          return yield* Effect.fail(new Error("Save transport unavailable"));
-        }
         if (commands.has(command.commandId))
           return { sequence: commands.size } as AgentRuntimeOperations[M]["output"];
         commands.set(command.commandId, command);
@@ -939,7 +932,7 @@ const setup = (
                 sideChat: command.sideChat
                   ? { sourceThreadId: command.sourceThreadId, sourceRunId: null, nativeFork: false }
                   : undefined,
-                capturedContext: command.sideChat || command.saveSideChat ? true : undefined,
+                capturedContext: command.sideChat ? true : undefined,
                 lineage: {
                   rootThreadId: independent
                     ? command.targetThreadId
@@ -956,10 +949,6 @@ const setup = (
               runs: [],
             },
           });
-          if (command.saveSideChat && state.loseSideChatSaveReply) {
-            state.loseSideChatSaveReply = false;
-            return yield* Effect.fail(new Error("Save reply lost after commit"));
-          }
         }
         return { sequence: commands.size } as AgentRuntimeOperations[M]["output"];
       }
@@ -1018,14 +1007,6 @@ const setup = (
             ["completed", "waiting", "failed", "interrupted", "cancelled"].includes(run.status),
         )?.id ?? null) as AgentRuntimeOperations[M]["output"];
       }
-      if (method === "thread.side-chat-save-source") {
-        if (state.refuseSideChatSave)
-          return yield* Effect.fail(new Error("Side chat has pending work"));
-        const { threadId } =
-          input as AgentRuntimeOperations["thread.side-chat-save-source"]["input"];
-        return (snapshots.get(threadId)?.projection.runs.at(-1)?.id ??
-          null) as AgentRuntimeOperations[M]["output"];
-      }
       if (method === "thread.rollback") {
         const request = input as AgentRuntimeOperations["thread.rollback"]["input"];
         const current = snapshots.get(request.threadId)!;
@@ -1071,7 +1052,7 @@ const setup = (
         const request = input as { cursor?: string; limit?: number };
         const roots = [...snapshots.values()]
           .map((value) => value.projection.thread)
-          .filter((thread) => thread.lineage.rootThreadId === thread.id)
+          .filter((thread) => thread.lineage.rootThreadId === thread.id && !thread.sideChat)
           .sort((a, b) => a.id.localeCompare(b.id));
         const items = roots
           .filter((thread) => !request.cursor || thread.id > request.cursor)
@@ -6462,7 +6443,7 @@ it.effect(
 );
 
 it.effect(
-  "side chats create an idle independent binding, replay without recapturing and discard only their own execution",
+  "side chats replay without recapturing and delete only their own execution through their Runtime owner",
   () =>
     Effect.gen(function* () {
       const f = setup();
@@ -6486,21 +6467,100 @@ it.effect(
       assert.isFalse(f.calls.slice(before).some((c) => c.method === "thread.fork-source"));
       assert.equal([...f.commands.values()].filter((c) => c.type === "thread.fork").length, 1);
       yield* owner.createSideChat({ ...input, requestId: "changed" }).pipe(Effect.flip);
-      yield* owner
-        .discardSideChat({ sessionId: source.sessionId, requestId: "not-side" })
+      const refused = yield* owner
+        .deleteSideChat({ sessionId: source.sessionId, requestId: "not-side" })
         .pipe(Effect.flip);
+      assert.equal(refused.message, "Only a side chat can be deleted this way");
       assert.deepEqual(
-        yield* owner.discardSideChat({ sessionId: side.sessionId, requestId: "discard" }),
-        { discarded: true },
+        yield* owner.deleteSideChat({ sessionId: side.sessionId, requestId: "delete-side" }),
+        { deleted: true },
       );
       assert.deepEqual(
-        yield* owner.discardSideChat({ sessionId: side.sessionId, requestId: "discard" }),
-        { discarded: false },
+        yield* owner.deleteSideChat({ sessionId: side.sessionId, requestId: "delete-side" }),
+        { deleted: false },
       );
       assert.isTrue(f.bindings.has(source.sessionId));
+      assert.isFalse(f.bindings.has(side.sessionId));
+      assert.equal(f.cleanups.size, 0);
       assert.isNotNull(f.snapshots.get(side.threadId)!.projection.thread.deletedAt);
       assert.deepEqual(f.snapshots.get(source.threadId), sourceBefore);
     }),
+);
+
+it.effect("retrying a deleted side chat settles its pending execution cleanup", () =>
+  Effect.gen(function* () {
+    const f = setup();
+    const owner = yield* f.owner;
+    const source = yield* owner.launch(launch);
+    const side = yield* owner.createSideChat({
+      source: { sessionId: source.sessionId },
+      sessionId: "side:delete-retry",
+      requestId: "side:create",
+      acceptedAt: launch.acceptedAt,
+    });
+    const input = { sessionId: side.sessionId, requestId: "side:delete" };
+    f.state.failEngineDelete = true;
+    yield* owner.deleteSideChat(input).pipe(Effect.flip);
+    assert.isFalse(f.bindings.has(side.sessionId));
+    assert.equal(f.cleanups.size, 1);
+    assert.isNull(f.snapshots.get(side.threadId)!.projection.thread.deletedAt);
+    f.state.failEngineDelete = false;
+    assert.deepEqual(yield* owner.deleteSideChat(input), { deleted: false });
+    assert.equal(f.cleanups.size, 0);
+    assert.isNotNull(f.snapshots.get(side.threadId)!.projection.thread.deletedAt);
+    assert.isTrue(f.bindings.has(source.sessionId));
+  }),
+);
+
+it.effect("a missing side-chat Thread never becomes a new ordinary conversation", () =>
+  Effect.gen(function* () {
+    const f = setup();
+    const owner = yield* f.owner;
+    const source = yield* owner.launch(launch);
+    const side = yield* owner.createSideChat({
+      source: { sessionId: source.sessionId },
+      sessionId: "side:missing",
+      requestId: "side:missing:create",
+      acceptedAt: launch.acceptedAt,
+    });
+    f.snapshots.delete(side.threadId);
+    const before = f.commands.size;
+    yield* owner.read({ sessionId: side.sessionId }).pipe(Effect.flip);
+    assert.equal(f.commands.size, before);
+    assert.equal(f.bindings.get(side.sessionId)?.runtime_thread_id, side.threadId);
+  }),
+);
+
+it.effect("settles every Core deletion receipt for a source and its attached side chat", () =>
+  Effect.gen(function* () {
+    const f = setup();
+    const owner = yield* f.owner;
+    const source = yield* owner.launch(launch);
+    const side = yield* owner.createSideChat({
+      source: { sessionId: source.sessionId },
+      sessionId: "side:cleanup",
+      requestId: "side:cleanup:create",
+      acceptedAt: launch.acceptedAt,
+    });
+    // Core enqueues one cleanup per deleted Session, including cascaded children.
+    for (const session of [side, source]) {
+      const binding = f.bindings.get(session.sessionId)!;
+      f.cleanups.set(session.sessionId, {
+        cleanup_id: session.sessionId,
+        session_id: session.sessionId,
+        project_id: binding.project_id ?? null,
+        runtime_id: binding.runtime_id,
+        runtime_thread_id: binding.runtime_thread_id,
+        created_at: "2026-10-14T00:00:00Z",
+      });
+      f.bindings.delete(session.sessionId);
+    }
+    assert.deepEqual(yield* owner.cleanupDeletedSessions, { completed: 2 });
+    assert.equal(f.cleanups.size, 0);
+    assert.isNotNull(f.snapshots.get(side.threadId)!.projection.thread.deletedAt);
+    assert.isNotNull(f.snapshots.get(source.threadId)!.projection.thread.deletedAt);
+    assert.deepEqual(yield* owner.cleanupDeletedSessions, { completed: 0 });
+  }),
 );
 
 const sideChatTitleFixture = Effect.fnUntraced(function* (instanceId = "claude") {
@@ -6545,133 +6605,121 @@ const acquireTitleCoreScenario = Effect.acquireRelease(
     }),
 );
 
-it.effect(
-  "persists the first side title through the real Core boundary and retains it when saved",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { scenario } = yield* acquireTitleCoreScenario;
-        const access = CoreSessionAccess.of({
-          handshake: Effect.die("unused handshake"),
-          use: (operation, run, options) =>
-            Effect.tryPromise({
-              try: (signal) =>
-                run(
-                  options?.projectId
-                    ? scenario.client.forProject(options.projectId)
-                    : scenario.client,
-                  signal,
-                ),
-              catch: (cause) => classifyCoreOperationFailure(operation, cause),
-            }),
-        });
-        const modules = yield* Layer.build(
-          coreModulesLive.pipe(Layer.provide(Layer.succeed(CoreSessionAccess, access))),
-        );
-        const core = Context.get(modules, CoreModules);
-        // Runtime admission stays deterministic; all Session writes and reads cross real Core.
-        const f = setup({}, [], undefined, core.workspace);
-        f.state.admitMessageRuns = true;
-        f.state.generatedTitle = "Task";
-        const owner = yield* f.owner;
-        const projectId = scenario.manifest.projectId;
-        const acceptedAt = Math.trunc(performance.timeOrigin + performance.now());
-        const source = yield* owner.launch({
-          ...launch,
-          acceptedAt,
-          projectId,
-          initialPageIds: [],
-          modelSelection: { instanceId: "claude", model: "model-a" },
-        });
-        yield* core.workspace.apply(
-          {
-            operationId: createOperationId("test.source-reminder"),
-            intent: {
-              kind: "mutate_session",
-              session_id: source.sessionId,
-              intent: { kind: "set_reminder", remind_at: "2020-01-01T00:00:00.000Z" },
-            },
-          },
-          undefined,
-          projectId,
-        );
-        const side = yield* owner.createSideChat({
-          source: { sessionId: source.sessionId },
-          sessionId: "side:real-core-title",
-          requestId: "create:real-core-title",
-          acceptedAt,
-        });
-        const displayTitle = (sessionId: string) =>
-          core.workspace
-            .read({ kind: "session", session_id: sessionId }, undefined, projectId)
-            .pipe(
-              Effect.map((read) =>
-                read.value.kind === "session" ? read.value.session.display_title : null,
+it.effect("persists the first side title through the real Core boundary and restart", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { scenario } = yield* acquireTitleCoreScenario;
+      const access = CoreSessionAccess.of({
+        handshake: Effect.die("unused handshake"),
+        use: (operation, run, options) =>
+          Effect.tryPromise({
+            try: (signal) =>
+              run(
+                options?.projectId
+                  ? scenario.client.forProject(options.projectId)
+                  : scenario.client,
+                signal,
               ),
-            );
-        assert.equal(yield* displayTitle(side.sessionId), "Side chat");
-        const input = {
-          sessionId: side.sessionId,
-          message: {
-            messageId: "side:real-core-first",
-            text: "**Inspect** the launch checklist",
+            catch: (cause) => classifyCoreOperationFailure(operation, cause),
+          }),
+      });
+      const modules = yield* Layer.build(
+        coreModulesLive.pipe(Layer.provide(Layer.succeed(CoreSessionAccess, access))),
+      );
+      const core = Context.get(modules, CoreModules);
+      // Runtime admission stays deterministic; all Session writes and reads cross real Core.
+      const f = setup({}, [], undefined, core.workspace);
+      f.state.admitMessageRuns = true;
+      f.state.generatedTitle = "Task";
+      const owner = yield* f.owner;
+      const projectId = scenario.manifest.projectId;
+      const acceptedAt = Math.trunc(performance.timeOrigin + performance.now());
+      const source = yield* owner.launch({
+        ...launch,
+        acceptedAt,
+        projectId,
+        initialPageIds: [],
+        modelSelection: { instanceId: "claude", model: "model-a" },
+      });
+      yield* core.workspace.apply(
+        {
+          operationId: createOperationId("test.source-reminder"),
+          intent: {
+            kind: "mutate_session",
+            session_id: source.sessionId,
+            intent: { kind: "set_reminder", remind_at: "2020-01-01T00:00:00.000Z" },
           },
-        };
-        assert.equal((yield* owner.message(input)).sideChatTitle, "Inspect the launch checklist");
-        assert.equal(yield* displayTitle(side.sessionId), "Inspect the launch checklist");
-        assert.equal((yield* owner.message(input)).sideChatTitle, "Inspect the launch checklist");
-        assert.equal(yield* displayTitle(source.sessionId), "Task");
-        const current = f.snapshots.get(side.threadId)!;
-        f.snapshots.set(side.threadId, {
-          ...current,
-          projection: {
-            ...current.projection,
-            runs: current.projection.runs.map((run) => ({ ...run, status: "completed" })),
+        },
+        undefined,
+        projectId,
+      );
+      const side = yield* owner.createSideChat({
+        source: { sessionId: source.sessionId },
+        sessionId: "side:real-core-title",
+        requestId: "create:real-core-title",
+        acceptedAt,
+      });
+      const displayTitle = (sessionId: string) =>
+        core.workspace
+          .read({ kind: "session", session_id: sessionId }, undefined, projectId)
+          .pipe(
+            Effect.map((read) =>
+              read.value.kind === "session" ? read.value.session.display_title : null,
+            ),
+          );
+      assert.equal(yield* displayTitle(side.sessionId), "Side chat");
+      const input = {
+        sessionId: side.sessionId,
+        message: {
+          messageId: "side:real-core-first",
+          text: "**Inspect** the launch checklist",
+        },
+      };
+      assert.equal((yield* owner.message(input)).sideChatTitle, "Inspect the launch checklist");
+      assert.equal(yield* displayTitle(side.sessionId), "Inspect the launch checklist");
+      assert.equal((yield* owner.message(input)).sideChatTitle, "Inspect the launch checklist");
+      assert.equal(yield* displayTitle(source.sessionId), "Task");
+      const current = f.snapshots.get(side.threadId)!;
+      f.snapshots.set(side.threadId, {
+        ...current,
+        projection: {
+          ...current.projection,
+          runs: current.projection.runs.map((run) => ({ ...run, status: "completed" })),
+        },
+      });
+      const reminderFor = (sessionId: string) =>
+        core.workspace
+          .read({ kind: "session", session_id: sessionId }, undefined, projectId)
+          .pipe(
+            Effect.map((snapshot) =>
+              snapshot.value.kind === "session" ? snapshot.value.session.remind_at : undefined,
+            ),
+          );
+      assert.equal(yield* reminderFor(source.sessionId), "2020-01-01T00:00:00.000Z");
+      assert.equal(yield* reminderFor(side.sessionId), null);
+      yield* core.workspace.apply(
+        {
+          operationId: createOperationId("test.side-chat.rename"),
+          intent: {
+            kind: "mutate_session",
+            session_id: side.sessionId,
+            intent: { kind: "rename", title: "Keep this title" },
           },
-        });
-        const saved = yield* owner.saveSideChat({
-          source: { sessionId: side.sessionId },
-          sessionId: "saved:real-core-title",
-          requestId: "save:real-core-title",
-          acceptedAt,
-        });
-        assert.equal(yield* displayTitle(saved.sessionId), "Inspect the launch checklist");
-        const reminderFor = (sessionId: string) =>
-          core.workspace
-            .read({ kind: "session", session_id: sessionId }, undefined, projectId)
-            .pipe(
-              Effect.map((snapshot) =>
-                snapshot.value.kind === "session" ? snapshot.value.session.remind_at : undefined,
-              ),
-            );
-        assert.equal(yield* reminderFor(source.sessionId), "2020-01-01T00:00:00.000Z");
-        assert.equal(yield* reminderFor(side.sessionId), null);
-        assert.equal(yield* reminderFor(saved.sessionId), null);
-        yield* core.workspace.apply(
-          {
-            operationId: createOperationId("test.side-chat.rename"),
-            intent: {
-              kind: "mutate_session",
-              session_id: side.sessionId,
-              intent: { kind: "rename", title: "Keep this title" },
-            },
-          },
-          undefined,
-          projectId,
-        );
-        yield* owner.message(input);
-        assert.equal(yield* displayTitle(side.sessionId), "Keep this title");
-        assert.equal(yield* displayTitle(saved.sessionId), "Inspect the launch checklist");
-        yield* Effect.promise(() => scenario.withStoppedCore(async () => {}));
-        assert.equal(yield* displayTitle(saved.sessionId), "Inspect the launch checklist");
-        assert.equal(yield* displayTitle(side.sessionId), "Keep this title");
-        assert.equal(yield* displayTitle(source.sessionId), "Task");
-      }),
-    ),
+        },
+        undefined,
+        projectId,
+      );
+      yield* owner.message(input);
+      assert.equal(yield* displayTitle(side.sessionId), "Keep this title");
+      yield* Effect.promise(() => scenario.withStoppedCore(async () => {}));
+      assert.equal(yield* displayTitle(side.sessionId), "Keep this title");
+      assert.equal(yield* displayTitle(source.sessionId), "Task");
+    }),
+  ),
 );
 
 it.effect.each(["codex", "claude", "opencode", "acp"])(
-  "%s side chats take their first admitted request as title before a reply and retain it when saved",
+  "%s side chats take their first admitted request as title before a reply",
   (instanceId) =>
     Effect.gen(function* () {
       const { fixture: f, owner, side, source } = yield* sideChatTitleFixture(instanceId);
@@ -6690,25 +6738,6 @@ it.effect.each(["codex", "claude", "opencode", "acp"])(
       });
       assert.isUndefined(later.sideChatTitle);
       assert.equal(f.titles.get(side.sessionId), "Inspect the request now");
-      const current = f.snapshots.get(side.threadId)!;
-      f.snapshots.set(side.threadId, {
-        ...current,
-        projection: {
-          ...current.projection,
-          runs: current.projection.runs.map((run) => ({ ...run, status: "completed" })),
-        },
-      });
-      const saved = yield* owner.saveSideChat({
-        source: { sessionId: side.sessionId },
-        sessionId: "saved:title",
-        requestId: "save:title",
-        acceptedAt: launch.acceptedAt,
-      });
-      assert.equal(f.titles.get(saved.sessionId), "Inspect the request now");
-      assert.equal(
-        f.snapshots.get(saved.threadId)!.projection.thread.title,
-        "Inspect the request now",
-      );
     }),
 );
 
@@ -7017,180 +7046,6 @@ it.effect(
     }),
 );
 
-it.effect.each(["unused", "finished"] as const)(
-  "saves an %s side chat as a durable Session and replays after source disposal",
-  (state) =>
-    Effect.gen(function* () {
-      const f = setup();
-      const owner = yield* f.owner;
-      const source = yield* owner.launch(launch);
-      const side = yield* owner.createSideChat({
-        source: { sessionId: source.sessionId },
-        sessionId: "side:save",
-        requestId: "side:create",
-        acceptedAt: launch.acceptedAt,
-      });
-      if (state === "finished") {
-        const current = f.snapshots.get(side.threadId)!;
-        f.snapshots.set(side.threadId, {
-          ...current,
-          projection: {
-            ...current.projection,
-            runs: [
-              { ...f.snapshots.get(source.threadId)!.projection.runs[0]!, status: "completed" },
-            ],
-          },
-        });
-      }
-      const before = structuredClone(f.snapshots.get(side.threadId));
-      const input = {
-        source: { sessionId: side.sessionId, threadId: side.threadId },
-        sessionId: "saved",
-        requestId: "side:save",
-        acceptedAt: launch.acceptedAt,
-      };
-      const saved = yield* owner.saveSideChat(input);
-      assert.equal(saved.sourceSessionId, side.sessionId);
-      assert.equal(saved.projectId, source.projectId);
-      assert.isUndefined(f.bindings.get(saved.sessionId)!.side_chat_source_session_id);
-      assert.deepEqual(f.snapshots.get(side.threadId), before);
-      assert.lengthOf(f.snapshots.get(saved.threadId)!.projection.runs, 0);
-      assert.isUndefined(f.snapshots.get(saved.threadId)!.projection.thread.sideChat);
-      assert.deepEqual(
-        f.snapshots.get(saved.threadId)!.projection.thread.modelSelection,
-        before!.projection.thread.modelSelection,
-      );
-      assert.equal(
-        [...f.commands.values()].filter((c) => c.type === "thread.fork" && c.saveSideChat).length,
-        1,
-      );
-      yield* owner.discardSideChat({ sessionId: side.sessionId, requestId: "discard" });
-      const calls = f.calls.length;
-      assert.deepEqual(yield* owner.saveSideChat(input), saved);
-      assert.deepEqual(
-        yield* owner.saveSideChat({ ...input, source: { sessionId: side.sessionId } }),
-        saved,
-      );
-      assert.isFalse(
-        f.calls.slice(calls).some((call) => call.method === "thread.side-chat-save-source"),
-      );
-      yield* owner.saveSideChat({ ...input, requestId: "different" }).pipe(Effect.flip);
-      yield* owner
-        .saveSideChat({ ...input, source: { sessionId: source.sessionId } })
-        .pipe(Effect.flip);
-    }),
-);
-
-it.effect("rejects non-side and pending-work saves before destination admission", () =>
-  Effect.gen(function* () {
-    const f = setup();
-    const owner = yield* f.owner;
-    const source = yield* owner.launch(launch);
-    const input = {
-      source: { sessionId: source.sessionId },
-      sessionId: "saved",
-      requestId: "save",
-      acceptedAt: launch.acceptedAt,
-    };
-    const before = { applied: f.applied.length, commands: f.commands.size };
-    yield* owner.saveSideChat(input).pipe(Effect.flip);
-    assert.equal(f.applied.length, before.applied);
-    assert.equal(f.commands.size, before.commands);
-    const side = yield* owner.createSideChat({ ...input, sessionId: "side" });
-    const sourceBefore = structuredClone(f.snapshots.get(side.threadId));
-    f.state.refuseSideChatSave = true;
-    const applied = f.applied.length;
-    const commands = f.commands.size;
-    yield* owner
-      .saveSideChat({ ...input, source: { sessionId: side.sessionId } })
-      .pipe(Effect.flip);
-    assert.equal(f.applied.length, applied);
-    assert.equal(f.commands.size, commands);
-    assert.isFalse(f.bindings.has("saved"));
-    assert.deepEqual(f.snapshots.get(side.threadId), sourceBefore);
-  }),
-);
-
-it.effect(
-  "revalidates save authority before reading execution and when replaying a saved chat",
-  () =>
-    Effect.gen(function* () {
-      const f = setup();
-      const owner = yield* f.owner;
-      const source = yield* owner.launch(launch);
-      const side = yield* owner.createSideChat({
-        source: { sessionId: source.sessionId },
-        sessionId: "side",
-        requestId: "side:create",
-        acceptedAt: launch.acceptedAt,
-      });
-      const input = {
-        source: { sessionId: side.sessionId },
-        sessionId: "saved",
-        requestId: "side:save",
-        acceptedAt: launch.acceptedAt,
-      };
-      f.state.denyAgent = true;
-      const calls = f.calls.length;
-      yield* owner
-        .saveSideChat(input)
-        .pipe(Effect.provideService(CoreApplicationAgent, agent), Effect.flip);
-      assert.isFalse(
-        f.calls.slice(calls).some((call) => call.method === "thread.side-chat-save-source"),
-      );
-      assert.isFalse(f.bindings.has(input.sessionId));
-      f.state.denyAgent = false;
-      yield* owner.saveSideChat(input);
-      f.state.denyAgent = true;
-      const afterSave = f.calls.length;
-      yield* owner
-        .saveSideChat(input)
-        .pipe(Effect.provideService(CoreApplicationAgent, agent), Effect.flip);
-      assert.isFalse(f.calls.slice(afterSave).some((call) => call.method === "thread.read"));
-    }),
-);
-
-it.effect.each(["before-commit", "lost-reply"] as const)(
-  "preserves the source and retries the same save after %s failure",
-  (failure) =>
-    Effect.gen(function* () {
-      const f = setup();
-      const owner = yield* f.owner;
-      const source = yield* owner.launch(launch);
-      const side = yield* owner.createSideChat({
-        source: { sessionId: source.sessionId },
-        sessionId: "side",
-        requestId: "side:create",
-        acceptedAt: launch.acceptedAt,
-      });
-      const before = structuredClone(f.snapshots.get(side.threadId));
-      const input = {
-        source: { sessionId: side.sessionId },
-        sessionId: "saved",
-        requestId: "side:save",
-        acceptedAt: launch.acceptedAt,
-      };
-      f.state.failSideChatSave = failure === "before-commit";
-      f.state.loseSideChatSaveReply = failure === "lost-reply";
-      yield* owner.saveSideChat(input).pipe(Effect.flip);
-      assert.deepEqual(f.snapshots.get(side.threadId), before);
-      const saved = yield* owner.saveSideChat(input);
-      assert.equal(saved.sessionId, "saved");
-      assert.equal(
-        f.applied.filter(
-          (op) =>
-            op.intent.kind === "create_agent_runtime_session" && op.intent.session_id === "saved",
-        ).length,
-        1,
-      );
-      assert.equal(
-        [...f.commands.values()].filter((c) => c.type === "thread.fork" && c.saveSideChat).length,
-        1,
-      );
-      assert.deepEqual(f.snapshots.get(side.threadId), before);
-    }),
-);
-
 it.effect.each(["stored", "live", "standard"] as const)(
   "native side capture preserves current settings without adopting its source or reopening history (%s)",
   (settings) =>
@@ -7366,7 +7221,7 @@ it.effect.each(["current", "missing", "account", "home"] as const)(
 );
 
 it.effect(
-  "startup reclaims hidden side Sessions while retaining regular chats for normal recovery",
+  "reconnection retains attached side Sessions and continues through the persisted binding",
   () =>
     Effect.gen(function* () {
       const f = setup();
@@ -7378,13 +7233,26 @@ it.effect(
         requestId: "orphan:create",
         acceptedAt: launch.acceptedAt,
       });
-      yield* owner.discardOrphanSideChats("engine");
-      assert.isTrue(f.bindings.has(source.sessionId));
-      assert.isFalse(f.bindings.has(side.sessionId));
-      assert.equal(f.cleanups.size, 1);
-      yield* owner.cleanupDeletedSessions;
-      assert.isNotNull(f.snapshots.get(side.threadId)!.projection.thread.deletedAt);
+      const persisted = structuredClone(f.bindings.get(side.sessionId));
+      const reconnected = yield* f.owner;
+      yield* reconnected.reconcileStore(f.connection(), "profile:reconnected");
+      yield* reconnected.cleanupDeletedSessions;
+      const read = yield* reconnected.read({ sessionId: side.sessionId });
+      assert.equal(read.snapshot.projection.thread.id, side.threadId);
+      yield* reconnected.message({
+        sessionId: side.sessionId,
+        message: { messageId: "side:after-reconnect", text: "Continue the side question" },
+      });
+      assert.deepEqual(f.bindings.get(side.sessionId), persisted);
+      assert.equal(f.bindings.size, 2);
+      assert.equal(f.cleanups.size, 0);
+      assert.isNull(f.snapshots.get(side.threadId)!.projection.thread.deletedAt);
       assert.isNull(f.snapshots.get(source.threadId)!.projection.thread.deletedAt);
+      assert.isTrue(
+        [...f.commands.values()].some(
+          (command) => command.type === "message.dispatch" && command.threadId === side.threadId,
+        ),
+      );
     }),
 );
 

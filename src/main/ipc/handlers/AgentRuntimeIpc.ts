@@ -158,11 +158,8 @@ export const live = Layer.effectDiscard(
     yield* ipc.handlePlainCommand("agent-runtime:session:create-side-chat", (event, value) =>
       handle(event, Inputs.AgentRuntimeSideChatCreateSchema, value, application.createSideChat),
     );
-    yield* ipc.handlePlainCommand("agent-runtime:session:discard-side-chat", (event, value) =>
-      handle(event, Inputs.AgentRuntimeSideChatDiscardSchema, value, application.discardSideChat),
-    );
-    yield* ipc.handlePlainCommand("agent-runtime:session:save-side-chat", (event, value) =>
-      handle(event, Inputs.AgentRuntimeSideChatSaveSchema, value, application.saveSideChat),
+    yield* ipc.handlePlainCommand("agent-runtime:session:delete-side-chat", (event, value) =>
+      handle(event, Inputs.AgentRuntimeSideChatDeleteSchema, value, application.deleteSideChat),
     );
     yield* ipc.handlePlainCommand("agent-runtime:session:fork", (event, value) =>
       handle(event, Inputs.AgentRuntimeForkSchema, value, application.fork),

@@ -162,7 +162,6 @@ import {
 } from "@nodex/provider-core/server/subagentProjection";
 import {
   forkThread,
-  savedSideChatCapture,
   forkableSourceRunStatuses,
   forkableSourceRunStatusError,
   isForkableSourceRunStatus,
@@ -389,9 +388,6 @@ export interface OrchestratorV2Shape {
   readonly getThreadForkSource: (
     threadId: ThreadId,
     runId?: RunId,
-  ) => Effect.Effect<RunId | null, OrchestratorV2Error>;
-  readonly getSideChatSaveSource: (
-    threadId: ThreadId,
   ) => Effect.Effect<RunId | null, OrchestratorV2Error>;
   readonly getCheckpointContext: (
     threadId: ThreadId,
@@ -3925,47 +3921,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     },
   );
 
-  const getSideChatSaveSource = Effect.fn("orchestrationV2.getSideChatSaveSource")(function* (
-    threadId: ThreadId,
-  ) {
-    const refuse = (cause: string) => new OrchestratorProjectionError({ threadId, cause });
-    const unsettled = yield* projectionStore
-      .getThreadRecords(threadId, ["runs"], {
-        runStatuses: ["preparing", "queued", "starting", "running", "waiting"],
-        runLimit: 1,
-      })
-      .pipe(Effect.mapError((cause) => new OrchestratorProjectionError({ threadId, cause })));
-    if (!unsettled.thread.sideChat || unsettled.thread.deletedAt || unsettled.thread.archivedAt)
-      return yield* refuse("Only an active temporary side chat may be saved.");
-    if (unsettled.thread.executionHandoff)
-      return yield* refuse("Wait for the conversation workspace to finish moving.");
-    if (unsettled.runs.length > 0)
-      return yield* refuse("Wait for the reply and queued messages to finish, then save the chat.");
-    const projection = yield* projectionStore
-      .getThreadRecords(threadId, ["runs", "providerThreads", "subagents", "runtimeRequests"], {
-        runStatuses: forkableSourceRunStatuses,
-        runOrder: "desc",
-        runLimit: 1,
-      })
-      .pipe(Effect.mapError((cause) => new OrchestratorProjectionError({ threadId, cause })));
-    if (projection.runtimeRequests.some((request) => request.status === "pending"))
-      return yield* refuse("Resolve pending requests before saving the chat.");
-    if (
-      projection.providerThreads.some((thread) => (thread.pendingBackgroundTasks?.length ?? 0) > 0)
-    )
-      return yield* refuse("Stop background work before saving the chat.");
-    if (
-      projection.subagents.some(
-        (task) =>
-          isOrchestrationV2WorkActive(task.status) ||
-          task.completionDelivery?.state === "pending" ||
-          task.completionDelivery?.state === "claimed",
-      )
-    )
-      return yield* refuse("Wait for subagents to report back before saving the chat.");
-    return projection.runs[0]?.id ?? null;
-  });
-
   const dispatchThreadFork = Effect.fn("orchestrationV2.dispatch.threadFork")(function* (
     command: Extract<OrchestrationV2Command, { readonly type: "thread.fork" }>,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
@@ -3978,33 +3933,24 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       "orchestration_v2.source_point_type": command.sourcePoint.type,
     });
 
-    if (command.saveSideChat) {
-      if (command.sideChat)
-        return yield* new OrchestratorDispatchError({
-          commandId: command.commandId,
-          commandType: command.type,
-          cause: "A saved chat must be an ordinary conversation.",
-        });
-    }
-    const source =
-      command.sideChat || command.saveSideChat
-        ? yield* projectionStore
-            .getThreadRecords(command.sourceThreadId, ["runs"], {
-              runLimit: 1,
-              runOrder: "desc",
-              runStatuses: [
-                "completed",
-                "waiting",
-                "failed",
-                "interrupted",
-                "cancelled",
-                "preparing",
-                "starting",
-                "running",
-              ],
-            })
-            .pipe(mapDispatchError(command))
-        : null;
+    const source = command.sideChat
+      ? yield* projectionStore
+          .getThreadRecords(command.sourceThreadId, ["runs"], {
+            runLimit: 1,
+            runOrder: "desc",
+            runStatuses: [
+              "completed",
+              "waiting",
+              "failed",
+              "interrupted",
+              "cancelled",
+              "preparing",
+              "starting",
+              "running",
+            ],
+          })
+          .pipe(mapDispatchError(command))
+      : null;
     const { projection: sourceProjection, sourceRun } =
       source === null
         ? yield* readSourcePointControl(command.sourceThreadId, command.sourcePoint, "fork")
@@ -4018,7 +3964,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               .pipe(mapDispatchError(command)),
             sourceRun: source.runs[0] ?? null,
           };
-    if (sourceRun === null && !command.sideChat && !command.saveSideChat) {
+    if (sourceRun === null && !command.sideChat) {
       return yield* new OrchestratorDispatchError({
         commandId: command.commandId,
         commandType: command.type,
@@ -4033,12 +3979,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       });
     }
     const capturedPrefix =
-      command.sideChat || command.saveSideChat || sourceProjection.thread.capturedContext
+      command.sideChat || sourceProjection.thread.capturedContext
         ? yield* readHandoffHistory(command.sourceThreadId, {
             scope: "conversation",
             includeImported: true,
             ...(sourceRun === null ? {} : { runOrdinalTo: sourceRun.ordinal }),
-            ...(command.sideChat || command.saveSideChat
+            ...(command.sideChat
               ? {}
               : {
                   asOfRunOrdinalTo: true,
@@ -4047,30 +3993,28 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           })
         : null;
     const captured =
-      command.saveSideChat && capturedPrefix !== null
-        ? savedSideChatCapture(capturedPrefix, contextHandoffService.historyBudget)
-        : capturedPrefix === null || !command.sideChat
-          ? capturedPrefix
-          : {
-              ...capturedPrefix,
-              sourceItemCount: capturedPrefix.sourceItemCount + 1,
-              history: {
-                ...capturedPrefix.history,
-                messages: [
-                  ...capturedPrefix.history.messages,
-                  {
-                    role: "user" as const,
-                    text: SIDE_CHAT_BOUNDARY_TEXT,
-                    kind: "side_chat_boundary",
-                    status: "completed",
-                    threadId: command.targetThreadId,
-                    runId: null,
-                    providerThreadId: null,
-                    itemId: TurnItemId.make(`side-chat-boundary:${command.targetThreadId}`),
-                  },
-                ],
-              },
-            };
+      capturedPrefix === null || !command.sideChat
+        ? capturedPrefix
+        : {
+            ...capturedPrefix,
+            sourceItemCount: capturedPrefix.sourceItemCount + 1,
+            history: {
+              ...capturedPrefix.history,
+              messages: [
+                ...capturedPrefix.history.messages,
+                {
+                  role: "user" as const,
+                  text: SIDE_CHAT_BOUNDARY_TEXT,
+                  kind: "side_chat_boundary",
+                  status: "completed",
+                  threadId: command.targetThreadId,
+                  runId: null,
+                  providerThreadId: null,
+                  itemId: TurnItemId.make(`side-chat-boundary:${command.targetThreadId}`),
+                },
+              ],
+            },
+          };
     const sourceProviderThread =
       sourceRun === null ? undefined : providerThreadForRun(sourceProjection, sourceRun);
     const now = command.createdAt ?? (yield* DateTime.now);
@@ -4083,13 +4027,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }),
     );
     const planned =
-      sourceRun === null ||
-      command.saveSideChat ||
-      (command.sideChat && !isForkableSourceRunStatus(sourceRun.status))
+      sourceRun === null || (command.sideChat && !isForkableSourceRunStatus(sourceRun.status))
         ? {
             targetThread: forkThread({
               sourceProjection,
-              ...(command.saveSideChat && sourceRun !== null ? { sourceRun } : {}),
               targetThreadId: command.targetThreadId,
               rootPolicy: "independent_root",
               ...(command.title === undefined ? {} : { title: command.title }),
@@ -13361,11 +13302,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         });
     }
 
-    // Save readiness can change after Main's admission read. Keep that refusal outside
-    // rejected receipts so the same destination/request can succeed once work settles.
-    if (command.type === "thread.fork" && command.saveSideChat)
-      yield* getSideChatSaveSource(command.sourceThreadId).pipe(mapDispatchError(command));
-
     const plan = yield* dispatchOnce(command).pipe(
       Effect.flatMap((planned) =>
         // A settle that finds the provider already ended everything, a stop
@@ -13908,7 +13844,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           run !== undefined && isForkableSourceRunStatus(run.status) ? run.id : null,
         ),
       ),
-    getSideChatSaveSource,
     getCheckpointContext: (threadId) =>
       projectionStore
         .getCheckpointContext(threadId)

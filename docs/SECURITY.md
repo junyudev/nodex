@@ -169,10 +169,11 @@ reaches Core; the call's JSON only names the chats. A fork requires a chat of th
 Member's Space, and the new chat's Agent Runtime binding is admitted only with the
 live fork call's exact Session and launch identity, so the forking Member owns it. A
 side chat requires a chat the Member may reply to, and its binding the live call's
-exact source chat as well. Saving or closing a side chat belongs to the Member who
-opened it; a Member deletes a Session only to close their own side chat, through that
-live call, and never on their own connection. An edit
-rewrites only the requesting Member's own message: Core knows each Run's opening
+exact source chat as well. A side chat persists when its tab closes. A Member deletes
+only their own side chat, through the Space host, which retires its execution. Core
+requires the live side-chat delete invocation for that exact Session, refuses direct
+Member deletion without it, and rechecks ownership in its writer transaction.
+An edit rewrites only the requesting Member's own message: Core knows each Run's opening
 message from the Runtime's attribution, and refuses the edit, and the rewritten
 message's acceptance, once any other Member's message was accepted after it. A Member's Inbox decision, including one that
 starts a chat, is admitted only with a live invocation proof from the Space host,

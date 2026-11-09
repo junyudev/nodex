@@ -285,7 +285,7 @@ for (const kind of ["codex", "claude"] as const) {
         await sidePanel.locator("[data-response-annotation-target]").count(),
       );
       checkTitle(
-        "The temporary Session retains the admitted title",
+        "The side Session retains the admitted title",
         sideTitle,
         (await invokeIpc(page, "project-sessions:get", sideId))?.displayTitle,
       );
@@ -381,21 +381,14 @@ for (const kind of ["codex", "claude"] as const) {
         contentType: "image/png",
       });
 
-      // A used side chat can be kept by cancelling; confirming removes its temporary Session.
+      // Closing only removes the tab; the attached Session remains available.
       const close = tab.locator('[data-app-shell-tab-close-button="true"]');
       await expect(close).toHaveAccessibleName(`Close ${sideTitle} tab`);
       await close.click();
       const confirmation = page.getByRole("dialog", { name: "Close side chat?", exact: true });
-      await expect(confirmation).toBeVisible();
-      await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(confirmation).toBeHidden();
-      await expect(composers).toHaveCount(2);
-      expect(await invokeIpc(page, "project-sessions:get", sideId)).not.toBeNull();
-      await close.click();
-      await expect(confirmation).toBeVisible();
-      await confirmation.getByRole("button", { name: "Close side chat", exact: true }).click();
       await expect(composers).toHaveCount(1);
-      await expect.poll(() => invokeIpc(page!, "project-sessions:get", sideId)).toBeNull();
+      expect(await invokeIpc(page, "project-sessions:get", sideId)).not.toBeNull();
       await expect(tab).toHaveCount(0);
 
       // Merely opening a side chat does not create local work or require a close confirmation.
@@ -411,7 +404,7 @@ for (const kind of ["codex", "claude"] as const) {
       await close.click();
       await expect(composers).toHaveCount(1);
       await expect(confirmation).toBeHidden();
-      await expect.poll(() => invokeIpc(page!, "project-sessions:get", untouchedId)).toBeNull();
+      expect(await invokeIpc(page, "project-sessions:get", untouchedId)).not.toBeNull();
       expect(prompts()).toHaveLength(5);
       expect(await readRendererErrors()).toBe("");
       passed = true;

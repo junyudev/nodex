@@ -247,11 +247,11 @@ pub fn authorize(
             .and_then(|v| v.as_str())
             .is_none_or(|v| v == "user"),
         // Core ingress additionally requires the exact live Host launch proof: a phone's new chat,
-        // or a Member's fork, side chat or saved side chat through the Space host.
+        // or a Member's fork or side chat through the Space host.
         "workspace_apply" if kind == "create_agent_runtime_session" => {
             encoded.get("coordinator").and_then(|v| v.as_bool()) != Some(true)
         }
-        // Only the Member's own side chat, through the exact live Host call that closes it.
+        // Only the Member's own side chat, through its exact live Host delete call.
         "workspace_apply" if kind == "delete_session" => true,
         // Accepted messages additionally require their exact live execution-owner delivery proof;
         // renaming and archiving require the chat's owner or a Space Owner. Unread state,

@@ -9205,7 +9205,9 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                       ? {}
                       : { lastTurnId: boundary.lastTurnId }),
                     ...(yield* threadRuntimeParams(threadInput.targetThreadId, threadInput)),
-                    ...(threadInput.ephemeral ? { ephemeral: true, excludeTurns: true } : {}),
+                    // Forks only need identity and live metadata; paginated history stays on demand.
+                    excludeTurns: true,
+                    ...(threadInput.ephemeral ? { ephemeral: true } : {}),
                   }),
                 ),
                 Effect.mapError(

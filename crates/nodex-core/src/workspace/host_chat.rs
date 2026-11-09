@@ -33,7 +33,7 @@ pub enum HostChatAction<'a> {
         session: &'a str,
         run: Option<&'a str>,
     },
-    /// Save or discard a temporary side chat: the Member who opened it, its owner.
+    /// Delete a side chat: only the Member who opened it, its owner.
     OwnSideChat { session: &'a str },
     /// Rewrite the message that opened a Run: its author, while no other Member has posted since.
     Edit { session: &'a str, run: &'a str },
@@ -121,13 +121,13 @@ pub(super) fn authorize(
         }
         HostChatAction::OwnSideChat { session } => {
             chat(session)?;
-            let temporary: bool = connection.query_row(
+            let side_chat: bool = connection.query_row(
                 "SELECT EXISTS(SELECT 1 FROM project_session_side_chats WHERE session_id=?1)",
                 [session],
                 |row| row.get(0),
             )?;
-            if !temporary {
-                return Err(denied("Only a side chat can be saved or closed this way."));
+            if !side_chat {
+                return Err(denied("Only a Member's own side chat can be deleted."));
             }
             if !super::chat_stewardship::owns(connection, library, &principal.member_id, session)? {
                 return Err(denied("This side chat belongs to another Member."));

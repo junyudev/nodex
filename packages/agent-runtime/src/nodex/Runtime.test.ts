@@ -332,3 +332,116 @@ it.live("reads durable accepted and rejected command receipts after runtime rest
     yield* use(true);
   }).pipe(Effect.provide(NodeServices.layer)),
 );
+
+it.live("retains side chats across shutdown and startup and accepts a new Turn after restart", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-persistent-side-" });
+    const path = yield* Path.Path;
+    const configuration = {
+      home,
+      cwd: home,
+      providers: {
+        codex: {
+          driver: "codex" as const,
+          config: {
+            binaryPath: path.join(home, "missing-codex"),
+            homePath: path.join(home, "codex"),
+          },
+        },
+      },
+    };
+    const use = (create: boolean) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* AgentRuntime;
+          const request = (method: string, input: unknown) =>
+            runtime.handle({ id: `${method}:${JSON.stringify(input)}`, method, input });
+          if (create) {
+            yield* request("project.upsert", {
+              id: "project:side",
+              title: "Side chats",
+              workspaceRoot: home,
+            });
+            yield* request("command.dispatch", {
+              command: {
+                type: "thread.create",
+                commandId: "persistent:create",
+                threadId: "thread:source",
+                projectId: "project:side",
+                title: "Source",
+                modelSelection: { instanceId: "codex", model: "test" },
+                runtimeMode: "full-access",
+                interactionMode: "default",
+                branch: null,
+                worktreePath: null,
+                createdBy: "user",
+                creationSource: "web",
+              },
+            });
+            yield* request("command.dispatch", {
+              command: {
+                type: "thread.fork",
+                commandId: "persistent:side",
+                sourceThreadId: "thread:source",
+                targetThreadId: "thread:side",
+                sourcePoint: { type: "latest_stable" },
+                sideChat: true,
+                rootPolicy: "independent_root",
+                createdBy: "user",
+                creationSource: "web",
+              },
+            });
+            return runtime.identity.databasePath;
+          }
+          expect(yield* request("thread.read", { threadId: "thread:side" })).toMatchObject({
+            id: "thread:side",
+            deletedAt: null,
+          });
+          expect(yield* request("thread.control", { threadId: "thread:side" })).toMatchObject({
+            projection: { thread: { sideChat: { sourceThreadId: "thread:source" } } },
+          });
+          expect(yield* request("execution.roots", {})).toMatchObject({
+            items: [{ rootThreadId: "thread:source" }],
+          });
+          yield* request("command.dispatch", {
+            command: {
+              type: "message.dispatch",
+              commandId: "persistent:continue",
+              threadId: "thread:side",
+              messageId: "message:continue",
+              text: "Continue this side question",
+              attachments: [],
+              dispatchMode: { type: "start_immediately" },
+              createdBy: "user",
+              creationSource: "web",
+            },
+          });
+          expect(
+            yield* request("command.receipt", {
+              commandId: "persistent:continue",
+              threadId: "thread:side",
+            }),
+          ).toMatchObject({ status: "accepted" });
+          return runtime.identity.databasePath;
+        }).pipe(Effect.provide(Application.layer(configuration, () => Effect.void))),
+      );
+    const databasePath = yield* use(true);
+    // Inspect between scopes so shutdown deletion cannot be hidden by startup recovery.
+    yield* Effect.sync(() => {
+      const database = new DatabaseSync(databasePath, { readOnly: true });
+      try {
+        expect(
+          database
+            .prepare(
+              "SELECT deleted_at FROM orchestration_v2_projection_threads WHERE thread_id = ?",
+            )
+            .get("thread:side")?.deleted_at,
+        ).toBeNull();
+      } finally {
+        database.close();
+      }
+    });
+    yield* use(false);
+  }).pipe(Effect.provide(NodeServices.layer)),
+);

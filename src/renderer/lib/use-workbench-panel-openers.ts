@@ -571,13 +571,7 @@ export function useWorkbenchPanelOpeners({
                 .ephemeralPanels.sideChatTabsBySession[activeSession.id]?.some(
                   (tab) => tab.id === loadingId && tab.creation?.requestId === creation.requestId,
                 );
-            if (!isCurrent()) {
-              await agentRuntimeRuntime.discardSideChat({
-                sessionId: result.sessionId,
-                requestId: createUuidV7(),
-              });
-              return;
-            }
+            if (!isCurrent()) return;
             const presentationTicket = initialSubmission
               ? await captureCodexTurnPresentation(
                   workbenchOwner,
@@ -585,13 +579,7 @@ export function useWorkbenchPanelOpeners({
                   submittedPresentation,
                 )
               : undefined;
-            if (!isCurrent()) {
-              await agentRuntimeRuntime.discardSideChat({
-                sessionId: result.sessionId,
-                requestId: createUuidV7(),
-              });
-              return;
-            }
+            if (!isCurrent()) return;
             const readyId = runtimeSideChatTabId(session.id);
             const pendingTab = workbenchOwner
               .read()

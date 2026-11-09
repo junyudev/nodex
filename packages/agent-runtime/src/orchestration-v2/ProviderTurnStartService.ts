@@ -652,7 +652,6 @@ export const layer: Layer.Layer<
       );
       const sessionResult = yield* Effect.result(
         providerSessions.open({
-          ...(projection.thread.sideChat ? { ephemeral: true } : {}),
           threadId: projection.thread.id,
           providerSessionId,
           modelSelection: run.modelSelection,
@@ -860,7 +859,6 @@ export const layer: Layer.Layer<
             effectiveHandoffs = [handoff, ...effectiveHandoffs];
             return yield* loadFromProvider(
               session.ensureThread({
-                ...(projection.thread.sideChat ? { ephemeral: true } : {}),
                 threadId: input.threadId,
                 title: projection.thread.title,
                 modelSelection: run.modelSelection,
@@ -901,7 +899,6 @@ export const layer: Layer.Layer<
                 });
               }
               const nativeFork = session.forkThread({
-                ...(projection.thread.sideChat ? { ephemeral: true } : {}),
                 sourceProviderThread,
                 sourceProviderTurns: sourceProviderTurn === null ? [] : [sourceProviderTurn],
                 sourceRollbackTurnCount: boundary.rollbackTurnCount,
@@ -1040,7 +1037,6 @@ export const layer: Layer.Layer<
           // `activeProviderThreadId` then flaps between them on every update.
           const fresh = yield* loadFromProvider(
             session.ensureThread({
-              ...(projection.thread.sideChat ? { ephemeral: true } : {}),
               threadId: projection.thread.id,
               title: projection.thread.title,
               modelSelection: run.modelSelection,
@@ -1110,7 +1106,6 @@ export const layer: Layer.Layer<
         });
         const replacement = yield* loadFromProvider(
           session.ensureThread({
-            ...(projection.thread.sideChat ? { ephemeral: true } : {}),
             threadId: projection.thread.id,
             title: projection.thread.title,
             modelSelection: run.modelSelection,

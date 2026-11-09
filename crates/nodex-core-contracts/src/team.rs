@@ -100,12 +100,10 @@ pub enum HostOperation {
     SessionStart,
     /// A new hosted chat from one the Member can read; Core makes that Member its owner.
     SessionFork,
-    /// A temporary side chat of a hosted chat the Member may reply to, requested by that Member.
+    /// A persistent side chat of a hosted chat the Member may reply to, owned by that Member.
     SessionSideChatCreate,
-    /// Keep the Member's own side chat as a hosted chat of its own.
-    SessionSideChatSave,
-    /// Close the Member's own side chat.
-    SessionSideChatDiscard,
+    /// Delete the Member's own side chat through its execution host.
+    SessionSideChatDelete,
     /// Bring a fork or side chat the Member requested back into the chat it came from.
     SessionMergeBack,
     /// Rewrite the Member's own message, while no other Member has posted after it.

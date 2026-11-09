@@ -258,7 +258,6 @@ import { projectDetailQueryOptions, projectSessionDetailQueryOptions } from "@/l
 import { projectCatalogStoreFor } from "@/lib/project-catalog";
 import { useWorkbenchPanelController } from "@/lib/use-workbench-panel-controller";
 import { useWorkbenchPanelLifecycle } from "@/lib/use-workbench-panel-lifecycle";
-import { useSaveSideChat } from "@/lib/use-save-side-chat";
 import {
   useWorkbenchPanelOpeners,
   type OpenCanvasStageHandler,
@@ -3176,15 +3175,8 @@ export function WorkbenchRuntime({
     [browserSidebarState.state.tabs],
   );
 
-  const saveSideChat = useSaveSideChat({
-    owner: workbenchWindow.owner,
-    refresh: refreshProjectSessions,
-    open: sessionCommands.openAttachedThreadSessionById,
-    execute: executeSceneCommand,
-  });
   const { panelGroupTabs, browserRetentionTabs, visibleBrowserTabIds } =
     useWorkbenchPanelProjection({
-      saveSideChat,
       activeRenderSession,
       activeSessionPanelModel,
       projects,

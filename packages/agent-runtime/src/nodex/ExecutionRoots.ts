@@ -16,7 +16,10 @@ export class ExecutionRootsError extends Schema.TaggedError<ExecutionRootsError>
   { message: Schema.String, cause: Schema.Defect() },
 ) {}
 
-/** Immutable Thread identities keep pagination stable across rename, archive and deletion. */
+/**
+ * Immutable identities keep restore pagination stable. Attached side chats recover through
+ * their existing Session bindings; root adoption must never turn them into catalog Sessions.
+ */
 export const read = Effect.fn("ExecutionRoots.read")(function* (input: typeof Input.Type) {
   const sql = yield* SqlClient.SqlClient;
   const cursor =

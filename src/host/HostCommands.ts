@@ -115,12 +115,8 @@ export const executeHostCommand = (
       // Each side chat answers to the Member who opened it; Core admitted the action for them.
       case "session_side_chat_create":
         return yield* sessions.createSideChat(Inputs.AgentRuntimeSideChatCreateSchema.parse(input));
-      case "session_side_chat_save":
-        return yield* sessions.saveSideChat(Inputs.AgentRuntimeSideChatSaveSchema.parse(input));
-      case "session_side_chat_discard":
-        return yield* sessions.discardSideChat(
-          Inputs.AgentRuntimeSideChatDiscardSchema.parse(input),
-        );
+      case "session_side_chat_delete":
+        return yield* sessions.deleteSideChat(Inputs.AgentRuntimeSideChatDeleteSchema.parse(input));
       case "session_merge_back":
         return yield* sessions.mergeBack(Inputs.AgentRuntimeMergeBackSchema.parse(input));
       // Core admitted whoever may manage the chat: its owner or a Space Owner.

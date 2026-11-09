@@ -1712,19 +1712,19 @@ async fn workspace_apply(
             ))));
         }
     }
-    // A Member closes their own side chat only through the Space host, which retires its execution.
+    // A Member deletes their own side chat through the Space host, which retires its execution.
     if context.principal.is_some()
         && let nodex_core_contracts::workspace::ProjectWorkspaceIntent::DeleteSession { session_id } =
             &request.intent
     {
         let proof = optional_header(&headers, host_bridge::INVOCATION_HEADER, "Host invocation");
-        if !proof
-            .ok()
-            .flatten()
-            .is_some_and(|token| state.host_bridge.authorizes_discard(&token, session_id))
-        {
+        if !proof.ok().flatten().is_some_and(|token| {
+            state
+                .host_bridge
+                .authorizes_side_chat_delete(&token, session_id)
+        }) {
             return Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
-                unauthorized("Side chats close through the Space host"),
+                unauthorized("Side chats are deleted through the Space host"),
             ))));
         }
     }

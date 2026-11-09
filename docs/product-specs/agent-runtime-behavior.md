@@ -407,30 +407,31 @@ carry them, Nodex sends the command as an ordinary guarded request.
 
 Selected text appends to the side composer without replacing prose or sending. An explicit
 side-chat prompt sends immediately in the captured conversation. Opening and retrying never
-starts the source task; retries retain the same child identity and context capture. Temporary
-side Sessions stay out of ordinary chat catalogs and disappear on close or application exit.
-Their Agent's native history is discarded when the Agent supports deletion.
-Closing a side chat with messages asks for confirmation, with a saved Don’t ask again choice;
-untouched side chats close immediately. Switching panel tabs preserves the conversation.
+starts the source task; retries retain the same child identity and context capture. Side
+Sessions are persistent children of their source and stay out of ordinary chat catalogs.
+Closing a tab only removes its placement; it does not confirm, stop or discard the side chat.
+Quitting and restarting retain its Session, frozen capture, transcript and provider history.
+Opening it again reads the existing binding, and a new Turn resumes its persistent provider
+thread or uses the captured portable context when native recovery is unavailable.
 
-The first own turn can name a temporary side Session when its request comes from the person,
+Deleting a side chat retires its execution and deletes its own side chats.
+The Agent Runtime owner commits ordinary Session deletion and cleans up native history where
+the Agent supports deletion. Deleting its source also deletes attached
+side chats; archiving the source keeps them attached. Existing side-chat bindings recover as
+attached children after restart. Execution-root restore reconciliation excludes side chats
+so it never adopts them as ordinary catalog Sessions. If a binding’s captured Runtime Thread
+is missing, the side chat is unavailable; it is never recreated as an empty ordinary chat.
+
+Native remote side chats attached directly to remote Codex conversations remain temporary.
+Closing one discards it, with confirmation when it has messages and a saved Don’t ask again
+choice. This lifetime does not apply to Agent Runtime side chats.
+
+The first own turn can name a side Session when its request comes from the person,
 without generating a title through an Agent or waiting for the reply. Inherited history and
 requests still in the queue do not count as sent turns. A nonempty plain-text label replaces
 only the default fallback title; an empty opening request, refused sends and later turns
 leave it intact. Admission receipts expose the full `sideChatTitle` for the owning tab, while
-durable Session metadata retains a prefix within ordinary title limits. Saving the chat
-retains that durable title.
-
-Save as chat creates an ordinary durable chat in the same Project with the side chat's
-Agent settings, working directory and complete side transcript. It freezes independent
-portable conversation context before returning, so closing the side chat, discarding its
-native history or restarting Nodex before the next Send cannot invalidate the saved chat.
-Saving starts no Run. The temporary side chat stays available until the saved chat and
-its draft are ready; successful navigation closes it without another disposal confirmation.
-The saved chat follows ordinary execution rules; temporary side-chat restrictions do not carry over. Unused side chats
-can also be saved. Replies, queued messages, pending requests and background or delegated
-work must finish before saving. Retrying the same save request and destination returns
-the same chat, including after the side chat has been discarded.
+durable Session metadata retains a prefix within ordinary title limits.
 
 Connected local native conversations use the same captured side-chat route while their
 history stays passive. Runtime forks retain the selected source Run and prepare
@@ -1191,7 +1192,7 @@ and only while their Run is live. Their questions belong to the delegating Agent
 children ask on their parent, so none of their requests roll up. Tool calls and authentication
 refreshes never count as user attention.
 
-Temporary side chats have independent execution roots and no catalog row. Their questions,
+Side chats have independent execution roots and no catalog row. Their questions,
 secret cards and approvals also reach their source Session whenever their own conversation
 would wait; nested side chats follow the source chain. Their execution activity remains
 independent. A Session is otherwise running while its root or a delegated conversation has a

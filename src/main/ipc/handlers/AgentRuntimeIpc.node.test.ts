@@ -66,6 +66,11 @@ const setup = Effect.gen(function* () {
       }),
   };
   const application = {
+    deleteSideChat: (input: unknown) =>
+      Effect.sync(() => {
+        calls.push(input);
+        return { deleted: true };
+      }),
     rewriteMessage: (input: unknown) =>
       Effect.sync(() => {
         calls.push(input);
@@ -85,16 +90,6 @@ const setup = Effect.gen(function* () {
       Effect.sync(() => {
         calls.push(input);
         return { taskId: input.taskId, status: "cancelled" };
-      }),
-    saveSideChat: (input: unknown) =>
-      Effect.sync(() => {
-        calls.push(input);
-        return {
-          sourceSessionId: "side",
-          sessionId: "saved",
-          threadId: "saved-thread",
-          projectId: null,
-        };
       }),
     launch: (input: unknown) =>
       Effect.sync(() => {
@@ -174,31 +169,26 @@ const setup = Effect.gen(function* () {
   return { handlers, received, releases, calls, event, send, backend: () => backendId };
 });
 
-it.effect("admits save-side-chat through its strict semantic boundary", () =>
+it.effect("deletes a side chat only through a trusted, validated Runtime command", () =>
   Effect.gen(function* () {
-    const f = yield* setup;
-    const save = f.handlers.get("agent-runtime:session:save-side-chat")!;
-    const input = {
-      source: { sessionId: "side" },
-      sessionId: "saved",
-      requestId: "save",
-      acceptedAt: 1,
-    };
-    assert.deepEqual(yield* save(f.event(1), input), {
-      sourceSessionId: "side",
-      sessionId: "saved",
-      threadId: "saved-thread",
-      projectId: null,
-    });
-    yield* save(f.event(1), { ...input, source: { sessionId: "side", extra: true } }).pipe(
-      Effect.flip,
-    );
-    yield* save(f.event(1), { ...input, sideChat: true }).pipe(Effect.flip);
-    yield* save(
-      { ...f.event(1), senderFrame: { url: "https://example.com" } } as IpcMainInvokeEvent,
-      input,
-    ).pipe(Effect.flip);
-    assert.deepEqual(f.calls, [input]);
+    const fixture = yield* setup;
+    const handler = fixture.handlers.get("agent-runtime:session:delete-side-chat")!;
+    const input = { sessionId: "side", requestId: "delete" };
+    const trusted = fixture.event(1);
+    assert.deepEqual(yield* handler(trusted, input), { deleted: true });
+    const foreign = {
+      ...trusted,
+      senderFrame: { url: "https://example.com" },
+    } as unknown as IpcMainInvokeEvent;
+    yield* handler(foreign, input).pipe(Effect.flip);
+    for (const malformed of [
+      { ...input, sessionId: "" },
+      { ...input, requestId: " " },
+      { sessionId: "side" },
+      { ...input, threadId: "ordinary" },
+    ])
+      yield* handler(trusted, malformed).pipe(Effect.flip);
+    assert.deepEqual(fixture.calls, [input]);
   }).pipe(Effect.scoped),
 );
 

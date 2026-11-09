@@ -918,6 +918,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           "The Page chat is preparing its Workspace. Try again shortly.",
         );
     }
+    if (binding.side_chat_source_session_id)
+      return yield* failure("thread", "The captured side conversation is unavailable");
     if (binding.launch_request_id.startsWith(NATIVE_IMPORT_LAUNCH_PREFIX))
       return yield* failure("import", "This import was interrupted. Retry it from Conversations.");
     const projectId = binding.project_id ?? null;
@@ -2403,7 +2405,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   const fork = Effect.fn("AgentRuntimeApplication.fork")(function* (
     input: import("../../shared/agent-runtime-api").AgentRuntimeForkInput & {
       readonly sideChat?: true;
-      readonly saveSideChat?: true;
     },
   ) {
     if (
@@ -2425,25 +2426,18 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       hash({
         forkRequestId: input.requestId,
         sessionId: input.sessionId,
-        ...(input.saveSideChat ? { savedSideChat: input.source.sessionId } : {}),
       }),
     );
-    const replayBinding =
-      input.sideChat || input.saveSideChat
-        ? yield* lookupDestinationBinding(input.sessionId)
-        : null;
+    const replayBinding = input.sideChat ? yield* lookupDestinationBinding(input.sessionId) : null;
     if (replayBinding) {
-      if (input.saveSideChat) yield* authorizeSession(input.sessionId);
       if (
         replayBinding.launch_request_id !== input.requestId ||
         replayBinding.runtime_id !== connection.identity.runtimeId ||
         replayBinding.runtime_thread_id !== threadId ||
-        (input.sideChat
-          ? replayBinding.side_chat_source_session_id !== input.source.sessionId
-          : replayBinding.side_chat_source_session_id != null)
+        replayBinding.side_chat_source_session_id !== input.source.sessionId
       )
         return yield* failure(
-          input.saveSideChat ? "save-side-chat" : "create-side-chat",
+          "create-side-chat",
           "This Session belongs to another creation request",
         );
       const replay = yield* connection.request("thread.read", {
@@ -2457,24 +2451,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           projectId: replayBinding.project_id ?? null,
         };
     }
-    let savedSourceRunId: string | null = null;
-    if (input.saveSideChat) {
-      yield* authorizeSession(input.source.sessionId);
-      const binding = yield* lookupDestinationBinding(input.source.sessionId);
-      if (
-        !binding?.side_chat_source_session_id ||
-        binding.runtime_id !== connection.identity.runtimeId ||
-        (input.source.threadId !== undefined && input.source.threadId !== binding.runtime_thread_id)
-      )
-        return yield* failure("save-side-chat", "Only a temporary side chat may be saved");
-      // Admission is read-only. Invalid or pending work must not create a product Session.
-      savedSourceRunId = yield* connection.request("thread.side-chat-save-source", {
-        threadId: binding.runtime_thread_id,
-      });
-    }
     const source = input.sideChat
       ? yield* sideChatSource(connection, input)
-      : yield* targetInfo(connection, input.source, !input.saveSideChat);
+      : yield* targetInfo(connection, input.source, true);
     const provenance = yield* CoreApplicationAgent;
     if (
       input.modeLimit &&
@@ -2491,11 +2470,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ),
       Effect.orElseSucceed(() => null),
     );
-    const title = input.sideChat
-      ? SIDE_CHAT_DEFAULT_TITLE
-      : input.saveSideChat
-        ? sourceTitle?.trim() || "Chat"
-        : forkTitle(sourceTitle);
+    const title = input.sideChat ? SIDE_CHAT_DEFAULT_TITLE : forkTitle(sourceTitle);
     const binding = {
       session_id: input.sessionId,
       project_id: projectId,
@@ -2520,13 +2495,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ? null
       : input.sideChat
         ? undefined
-        : input.saveSideChat
-          ? savedSourceRunId
-          : yield* connection.request("thread.fork-source", {
-              threadId: source.threadId,
-              ...(input.sourceRunId === undefined ? {} : { runId: input.sourceRunId }),
-            });
-    if (!existing && !input.sideChat && !input.saveSideChat && sourceRunId === null)
+        : yield* connection.request("thread.fork-source", {
+            threadId: source.threadId,
+            ...(input.sourceRunId === undefined ? {} : { runId: input.sourceRunId }),
+          });
+    if (!existing && !input.sideChat && sourceRunId === null)
       return yield* failure("fork", "This chat has no finished Run to fork from");
     // The product Session is admitted before any Thread or worktree exists.
     const scope = yield* lifecycle.runExclusive(
@@ -2552,7 +2525,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         return scope;
       }),
     );
-    if (!existing && (input.sideChat || input.saveSideChat || sourceRunId !== null))
+    if (!existing && (input.sideChat || sourceRunId !== null))
       yield* dispatch(
         connection,
         {
@@ -2566,7 +2539,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           sourcePoint:
             sourceRunId == null ? { type: "latest_stable" } : { type: "run", runId: sourceRunId },
           ...(input.sideChat ? { sideChat: true } : {}),
-          ...(input.saveSideChat ? { saveSideChat: true } : {}),
           rootPolicy: "independent_root",
           title,
           createdBy: provenance ? "agent" : "user",
@@ -4244,34 +4216,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           return { sessionId: input.sessionId, projectId: input.projectId };
         }),
       ),
-    discardOrphanSideChats: (runtimeId: string) =>
-      ownedWrite(
-        "discard-orphan-side-chats",
-        Effect.gen(function* () {
-          let after: string | null = null;
-          do {
-            const read: import("../core-client/types").ProjectWorkspaceReadSnapshot = yield* host(
-              core.workspace.read({
-                kind: "agent_runtime_session_binding_window",
-                runtime_id: runtimeId,
-                scope: { kind: "temporary" },
-                window: { first: 200, after },
-              }),
-            );
-            if (read.value.kind !== "agent_runtime_session_binding_window")
-              return yield* failure(
-                "discard-orphan-side-chats",
-                "Temporary Session metadata is unavailable",
-              );
-            for (const binding of read.value.bindings.items)
-              yield* workspace.deleteProjectSession({
-                operationId: createOperationId("agent-runtime.reclaim-side-chat"),
-                payload: { sessionId: binding.session_id },
-              });
-            after = read.value.bindings.next_cursor ?? null;
-          } while (after !== null);
-        }),
-      ),
     cleanupDeletedSessions: ownedWrite("cleanup", cleanupDeletedSessions()),
     closeProjectExecution: (projectId: string) =>
       ownedWrite(
@@ -4299,17 +4243,17 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           fork({ ...input, environment: "same-directory", sideChat: true }).pipe(Effect.scoped),
         ),
       ),
-    discardSideChat: (
-      input: import("../../shared/agent-runtime-api").AgentRuntimeSideChatDiscardInput,
+    deleteSideChat: (
+      input: import("../../shared/agent-runtime-api").AgentRuntimeSideChatDeleteInput,
     ) =>
       withSessionLane(
         input.sessionId,
         ownedWrite(
-          "discard-side-chat",
+          "delete-side-chat",
           Effect.gen(function* () {
             if (!validId(input.sessionId) || !validId(input.requestId))
               return yield* failure(
-                "discard-side-chat",
+                "delete-side-chat",
                 "Session and request identities are required",
               );
             yield* validateCaller();
@@ -4317,27 +4261,16 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             if (!binding) {
               if (!options.runtimeExists || (yield* options.runtimeExists))
                 yield* asExecutionOwner(cleanupDeletedSessions());
-              return { discarded: false };
+              return { deleted: false };
             }
             if (!binding.side_chat_source_session_id)
-              return yield* failure(
-                "discard-side-chat",
-                "Only a temporary side chat may be discarded",
-              );
+              return yield* failure("delete-side-chat", "Only a side chat can be deleted this way");
             yield* deleteSession({
-              operationId: createOperationId("agent-runtime.discard-side-chat"),
+              operationId: createOperationId("agent-runtime.delete-side-chat"),
               payload: { sessionId: input.sessionId },
             });
-            return { discarded: true };
+            return { deleted: true };
           }),
-        ),
-      ),
-    saveSideChat: (input: import("../../shared/agent-runtime-api").AgentRuntimeSideChatSaveInput) =>
-      withSessionLane(
-        input.sessionId,
-        ownedWrite(
-          "save-side-chat",
-          fork({ ...input, environment: "same-directory", saveSideChat: true }).pipe(Effect.scoped),
         ),
       ),
     fork: (input: Parameters<typeof fork>[0]) =>

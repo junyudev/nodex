@@ -730,7 +730,6 @@ const supervisor = Layer.effectContext(
                 ),
               ),
           ),
-          Effect.tap(() => product.discardOrphanSideChats(connection.identity.runtimeId)),
           Effect.tap(() => product.reconcileSessionActivity(connection).pipe(Effect.forkScoped)),
           Effect.tap(() =>
             Deferred.await(toolsReady).pipe(

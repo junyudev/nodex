@@ -211,8 +211,9 @@ records them when it creates the chat, and a chat without that record belongs to
 whoever asked for its first Run, otherwise to the Owner of the Page whose work it is.
 Replying never makes another Member its owner. In a team Space the chat owner and the
 Space Owners manage the chat: rename, archive or restore it, move it to another
-Project, compact or clear its context and merge it back. Only the owner saves or closes
-a side chat. A personal Space's only Member owns every chat.
+Project, compact or clear its context and merge it back. A Member deletes only their
+own side chat, through the Space host, which retires its execution; closing its tab
+keeps it. A personal Space's only Member owns every chat.
 _Avoid_: chat requester, steward.
 
 ### Run requester

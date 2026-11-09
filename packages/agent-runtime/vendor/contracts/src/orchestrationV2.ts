@@ -3619,7 +3619,6 @@ export const OrchestrationV2Command = Schema.Union([
     sourcePoint: OrchestrationV2ThreadForkSourcePoint,
     sideChat: Schema.optional(Schema.Literal(true)),
     /** Saves an idle side chat with independent portable context, never a deferred native fork. */
-    saveSideChat: Schema.optional(Schema.Literal(true)),
     /** A visible independent Session owns a new execution root while retaining captured history. */
     rootPolicy: Schema.optional(Schema.Literals(["same_root", "independent_root"])),
     title: Schema.optional(TrimmedNonEmptyString),

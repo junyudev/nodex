@@ -2965,11 +2965,6 @@ export function renderWorkbench({
       sideChatSessions.set(session.id, session);
       return { sessionId: session.id, projectId: source.projectId, threadId };
     }
-    if (channel === "agent-runtime:session:discard-side-chat") {
-      const input =
-        args[0] as import("../../../../shared/agent-runtime-api").AgentRuntimeSideChatDiscardInput;
-      return { discarded: sideChatSessions.delete(input.sessionId) };
-    }
     if (channel === "agent-runtime:session:overview")
       return {
         active: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },

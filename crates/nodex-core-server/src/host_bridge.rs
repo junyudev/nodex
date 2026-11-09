@@ -59,16 +59,14 @@ impl HostBridge {
         self.inner.lock().is_ok_and(|inner| Self::active(&inner))
     }
 
-    /// A Member's call that closes exactly this side chat of theirs.
-    pub(crate) fn authorizes_discard(&self, token: &str, session: &str) -> bool {
+    /// A Member's live delete call for exactly this side chat of theirs.
+    pub(crate) fn authorizes_side_chat_delete(&self, token: &str, session: &str) -> bool {
         let Ok(inner) = self.inner.lock() else {
             return false;
         };
         Self::live_call(&inner, token).is_some_and(|pending| {
-            matches!(
-                pending.call.operation,
-                HostOperation::SessionSideChatDiscard
-            ) && text(&pending.call.input, &["sessionId"]) == Some(session)
+            matches!(pending.call.operation, HostOperation::SessionSideChatDelete)
+                && text(&pending.call.input, &["sessionId"]) == Some(session)
         })
     }
     /// The delivered, unexpired call this exact invocation proof belongs to.
@@ -96,8 +94,7 @@ impl HostBridge {
                 && text(&pending.call.input, &["message", "messageId"]) == Some(message)
         })
     }
-    /// A Member's call that creates exactly this chat: a new chat, a fork, a side chat or a saved
-    /// side chat.
+    /// A Member's call that creates exactly this chat: a new chat, a fork or a side chat.
     pub(crate) fn authorizes_launch(
         &self,
         token: &str,
@@ -118,9 +115,7 @@ impl HostBridge {
                         && text(input, &["launchId"]) == Some(launch)
                         && side_chat_source.is_none()
                 }
-                HostOperation::SessionFork | HostOperation::SessionSideChatSave => {
-                    created && side_chat_source.is_none()
-                }
+                HostOperation::SessionFork => created && side_chat_source.is_none(),
                 HostOperation::SessionSideChatCreate => {
                     created
                         && side_chat_source.is_some()
@@ -205,10 +200,7 @@ fn authorize_call(
         HostOperation::SessionSideChatCreate => chat(HostChatAction::Reply {
             session: session(&["source", "sessionId"])?,
         }),
-        HostOperation::SessionSideChatSave => chat(HostChatAction::OwnSideChat {
-            session: session(&["source", "sessionId"])?,
-        }),
-        HostOperation::SessionSideChatDiscard => chat(HostChatAction::OwnSideChat {
+        HostOperation::SessionSideChatDelete => chat(HostChatAction::OwnSideChat {
             session: session(&["sessionId"])?,
         }),
         HostOperation::SessionMergeBack => chat(HostChatAction::Manage {

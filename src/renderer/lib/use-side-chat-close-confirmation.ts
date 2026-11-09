@@ -2,13 +2,12 @@ import { useCallback, useEffect, useRef } from "react";
 import { SideChatCloseDialog } from "@/components/workbench/side-chat-close-dialog";
 import { appScope, useScopeHandle } from "./maitai";
 import { closeModal, openModal } from "./modal-registry";
-import { agentRuntimeRuntime } from "./agent-runtime-runtime";
 import { readLocalConversation } from "@/features/local-conversation/local-conversation-store";
 import type { SideChatPanelTab } from "./workbench-panel-tab-model";
 
 const SKIP_CONFIRMATION_KEY = "nodex-skip-side-chat-close-confirmation-v1";
 
-/** One window owns the prompt even when several tab-close commands arrive together. */
+/** Native remote side chats are temporary; Runtime side chats never need close confirmation. */
 export function useSideChatCloseConfirmation() {
   const appHandle = useScopeHandle(appScope);
   const pending = useRef<{ promise: Promise<boolean>; resolve: (value: boolean) => void } | null>(
@@ -24,16 +23,8 @@ export function useSideChatCloseConfirmation() {
   );
   return useCallback(
     async (tab: SideChatPanelTab) => {
-      if (!tab.threadId) return true;
-      const hasMessages = tab.runtimeSession
-        ? (
-            await agentRuntimeRuntime.control({
-              sessionId: tab.runtimeSession.id,
-              threadId: tab.threadId,
-            })
-          ).snapshot.projection.runs.length > 0
-        : (readLocalConversation(tab.threadId)?.turns.length ?? 0) > 0;
-      if (!hasMessages) return true;
+      if (tab.runtimeSession || !tab.threadId) return true;
+      if (!(readLocalConversation(tab.threadId)?.turns.length ?? 0)) return true;
       try {
         if (localStorage.getItem(SKIP_CONFIRMATION_KEY) === "true") return Promise.resolve(true);
       } catch {

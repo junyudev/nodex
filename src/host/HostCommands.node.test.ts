@@ -50,20 +50,13 @@ it.effect("forks a hosted chat for the Member Core admitted, with the host's own
   }),
 );
 
-it.effect("opens, saves, merges back and closes a Member's side chat on the host", () =>
+it.effect("opens, merges back and deletes a Member's side chat on the host", () =>
   Effect.gen(function* () {
     const { calls, relay } = recordingHost();
     const side = { source, sessionId: "side", requestId: "side-request", acceptedAt: 1 };
-    const saved = {
-      source: { sessionId: "side" },
-      sessionId: "saved",
-      requestId: "save-request",
-      acceptedAt: 2,
-    };
     yield* relay("session_side_chat_create", side);
     yield* relay("session_merge_back", { sessionId: "side", requestId: "merge" });
-    yield* relay("session_side_chat_save", saved);
-    yield* relay("session_side_chat_discard", { sessionId: "side", requestId: "close" });
+    yield* relay("session_side_chat_delete", { sessionId: "side", requestId: "delete" });
     expect(calls).toEqual([
       { method: "createSideChat", input: side, proof: "bob-proof" },
       {
@@ -71,10 +64,9 @@ it.effect("opens, saves, merges back and closes a Member's side chat on the host
         input: { sessionId: "side", requestId: "merge" },
         proof: "bob-proof",
       },
-      { method: "saveSideChat", input: saved, proof: "bob-proof" },
       {
-        method: "discardSideChat",
-        input: { sessionId: "side", requestId: "close" },
+        method: "deleteSideChat",
+        input: { sessionId: "side", requestId: "delete" },
         proof: "bob-proof",
       },
     ]);

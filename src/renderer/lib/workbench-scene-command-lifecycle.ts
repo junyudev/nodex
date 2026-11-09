@@ -12,10 +12,7 @@ import { terminalSessionStore } from "./terminal-session-store";
 import { readWorkbenchAgentContext } from "./workbench-agent-context";
 import type { WorkbenchSceneCommandLifecycle } from "./workbench-scene-commands";
 import type { WorkbenchWindowOwner } from "./workbench-window-owner";
-import { agentRuntimeRuntime } from "./agent-runtime-runtime";
-import { createUuidV7 } from "../../shared/uuid-v7";
 import type { SideChatPanelTab } from "./workbench-panel-tab-model";
-import { sideChatSaveStore } from "./side-chat-save";
 
 const closeBrowserTab = defineRendererCommand({
   key: "workbench.close_browser_tab",
@@ -64,19 +61,13 @@ export function createWorkbenchSceneCommandLifecycle(input: {
   return {
     async prepareClose(sceneOwner, tab) {
       const sideChat = tab.auxiliary && "sideChat" in tab.auxiliary ? tab.auxiliary : null;
-      const saveDecision = () =>
-        sideChat?.runtimeSession
-          ? sideChatSaveStore.closeDecision(sideChat.runtimeSession.id, sideChat.id)
-          : "normal";
-      if (saveDecision() === "defer") return "cancelled";
       if (
         sideChat?.threadId &&
-        saveDecision() !== "saved" &&
+        !sideChat.runtimeSession &&
         input.confirmSideChatClose &&
         !(await input.confirmSideChatClose(sideChat))
       )
         return "cancelled";
-      if (saveDecision() === "defer") return "cancelled";
       return tab.surface ? prepareWorkbenchSceneSurfaceClose(sceneOwner, tab.surface) : true;
     },
     async close(sceneOwner, tab) {
@@ -108,14 +99,8 @@ export function createWorkbenchSceneCommandLifecycle(input: {
         });
       }
       const sideChat = tab.auxiliary && "sideChat" in tab.auxiliary ? tab.auxiliary : null;
-      if (sideChat?.runtimeSession) {
-        await agentRuntimeRuntime.discardSideChat({
-          sessionId: sideChat.runtimeSession.id,
-          requestId: createUuidV7(),
-        });
-        return;
-      }
-      if (sideChat?.threadId) await input.discardSideChat(sideChat.threadId);
+      if (sideChat?.threadId && !sideChat.runtimeSession)
+        await input.discardSideChat(sideChat.threadId);
     },
   };
 }

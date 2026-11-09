@@ -222,7 +222,7 @@ export type AgentBackgroundTask =
 /** Live execution facts for one non-idle root Thread. */
 export interface AgentRootActivity {
   readonly rootThreadId: string;
-  /** Temporary side chats surface user attention through their source Session. */
+  /** Attached side chats surface user attention through their source Session. */
   readonly sideChatSourceThreadId?: string;
   /**
    * `waiting`: own approvals/live input, async questions between working Runs, live secret
@@ -728,11 +728,6 @@ export interface AgentRuntimeOperations
   };
   readonly "thread.fork-source": {
     readonly input: { readonly threadId: string; readonly runId?: string };
-    readonly output: string | null;
-  };
-  /** Validates side-chat save admission without accepting a command or changing history. */
-  readonly "thread.side-chat-save-source": {
-    readonly input: { readonly threadId: string };
     readonly output: string | null;
   };
   readonly "thread.history": {

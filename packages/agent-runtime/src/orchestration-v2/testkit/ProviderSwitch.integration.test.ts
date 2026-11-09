@@ -497,14 +497,13 @@ describe("orchestration v2 provider switching", () => {
     { ownRun: false, switchAgent: true },
     { ownRun: true, switchAgent: true },
   ])(
-    "saves side context before native disposal and restart (own Run $ownRun, switch $switchAgent)",
+    "continues persistent side context after Runtime restart (own Run $ownRun, switch $switchAgent)",
     ({ ownRun, switchAgent }) =>
       Effect.scoped(
         Effect.gen(function* () {
-          const cwd = yield* checkpointWorkspace("saved-side-context");
-          const source = ThreadId.make("saved-side:source");
-          const side = ThreadId.make("saved-side:temporary");
-          const saved = ThreadId.make("saved-side:durable");
+          const cwd = yield* checkpointWorkspace("persistent-side-context");
+          const source = ThreadId.make("persistent-side:source");
+          const side = ThreadId.make("persistent-side:child");
           const sourceText = `SOURCE_FACT_ORCHID ${"complete source detail ".repeat(40)}`;
           const sideText = `SIDE_FACT_SIDECAR ${"complete side detail ".repeat(40)}`;
           const sideAnswer = "SIDE_ANSWER The source marker is ORCHID.";
@@ -519,11 +518,13 @@ describe("orchestration v2 provider switching", () => {
           const fork: ProviderAdapter.ProviderAdapterV2SessionRuntime["forkThread"] = (input) =>
             Effect.gen(function* () {
               yield* Ref.update(nativeForks, (count) => count + 1);
+              assert.isNotTrue(input.ephemeral);
               const sourceNative = input.sourceProviderThread.nativeThreadRef!.nativeId!;
               const history = nativeHistories.get(sourceNative);
               assert.isDefined(history, "a native fork cannot read a discarded source");
               const nativeId = `native-fork:${input.targetThreadId}`;
-              nativeHistories.set(nativeId, [...history!]);
+              const through = input.sourceProviderTurns?.at(-1)?.ordinal ?? history!.length;
+              nativeHistories.set(nativeId, history!.slice(0, through));
               return {
                 ...input.sourceProviderThread,
                 id: ProviderThreadId.make(nativeId),
@@ -564,7 +565,7 @@ describe("orchestration v2 provider switching", () => {
           ]);
           const runtime = () =>
             ProviderReplayHarness.layerWithRegistry(
-              { name: "saved-side-context", runtimePolicyOverride: { cwd } },
+              { name: "persistent-side-context", runtimePolicyOverride: { cwd } },
               registry,
               {
                 databaseLayer: SqlitePersistence.layerFromPath(`${cwd}/runtime.sqlite`).pipe(
@@ -599,18 +600,7 @@ describe("orchestration v2 provider switching", () => {
             assert.equal(projection.runs.at(-1)?.status, "completed");
             return projection;
           });
-          const saveCommand = {
-            type: "thread.fork" as const,
-            saveSideChat: true as const,
-            commandId: CommandId.make("save-side"),
-            sourceThreadId: side,
-            targetThreadId: saved,
-            sourcePoint: { type: "latest_stable" as const },
-            rootPolicy: "independent_root" as const,
-            createdBy: "user" as const,
-            creationSource: "web" as const,
-          };
-          const saveSequence = yield* Effect.gen(function* () {
+          const nativeBeforeShutdown = yield* Effect.gen(function* () {
             const orchestrator = yield* Orchestrator.OrchestratorV2;
             const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
             yield* orchestrator.dispatch({
@@ -629,59 +619,44 @@ describe("orchestration v2 provider switching", () => {
             });
             yield* send(source, sourceText);
             yield* orchestrator.dispatch({
-              ...saveCommand,
+              type: "thread.fork",
               commandId: CommandId.make("create-side"),
-              saveSideChat: undefined,
-              sideChat: true,
               sourceThreadId: source,
               targetThreadId: side,
+              sourcePoint: { type: "latest_stable" },
+              sideChat: true,
+              rootPolicy: "independent_root",
+              createdBy: "user",
+              creationSource: "web",
             });
             if (ownRun) yield* send(side, sideText);
-            const before = yield* orchestrator.getThreadProjection(side);
-            const turnsBefore = (yield* Ref.get(capturedTurns)).length;
-            const accepted = yield* orchestrator.dispatch(saveCommand);
-            assert.deepEqual(yield* orchestrator.getThreadProjection(side), before);
-            assert.equal((yield* Ref.get(capturedTurns)).length, turnsBefore);
-            const savedProjection = yield* orchestrator.getThreadProjection(saved);
-            assert.isUndefined(savedProjection.thread.sideChat);
-            assert.isTrue(savedProjection.thread.capturedContext);
-            assert.deepEqual(savedProjection.thread.modelSelection, before.thread.modelSelection);
-            assert.equal(savedProjection.thread.worktreePath, cwd);
-            assert.equal(savedProjection.thread.branch, "topic");
-            assert.equal(savedProjection.thread.lineage.rootThreadId, saved);
-            assert.lengthOf(savedProjection.runs, 0);
-            assert.lengthOf(savedProjection.contextTransfers, 0);
-            assert.equal((yield* orchestrator.dispatch(saveCommand)).sequence, accepted.sequence);
-            yield* orchestrator.dispatch({
-              type: "thread.delete",
-              commandId: CommandId.make("discard-side"),
-              threadId: side,
-            });
-            const sessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
-            yield* sessions.discardSideChatNative(side);
+            const projection = yield* orchestrator.getThreadProjection(side);
+            assert.isTrue(projection.thread.capturedContext);
+            assert.equal(projection.thread.worktreePath, cwd);
+            assert.equal(projection.thread.branch, "topic");
+            assert.equal(projection.thread.lineage.rootThreadId, side);
+            yield* send(source, "LATER_SOURCE must not enter the side context");
             yield* worker.drain();
-            if (ownRun) {
-              assert.include(yield* Ref.get(discardedThreads), side);
-              assert.isFalse(nativeHistories.has(`native-fork:${side}`));
-            }
-            yield* send(source, "LATER_SOURCE must not enter the saved context");
-            return accepted.sequence;
+            return projection.providerThreads.find(
+              (thread) => thread.id === projection.thread.activeProviderThreadId,
+            )?.nativeThreadRef?.nativeId;
           }).pipe(Effect.provide(runtime()));
-          // Provider memory is gone before a new Runtime generation reads the saved chat.
-          nativeHistories.clear();
+          // The native-history map models provider disk, retained across process scopes.
+          assert.deepEqual(yield* Ref.get(discardedThreads), []);
           const forkCount = yield* Ref.get(nativeForks);
           yield* Effect.gen(function* () {
             const orchestrator = yield* Orchestrator.OrchestratorV2;
             const store = yield* ProjectionStore.ProjectionStoreV2;
-            const frozen = yield* store.getSideChatContext(saved);
+            const frozen = yield* store.getSideChatContext(side);
             assert.isNotNull(frozen);
             assert.include(frozen!.history.messages.map((m) => m.text).join("\n"), sourceText);
-            assert.isFalse(frozen!.history.messages.some((m) => m.kind === "side_chat_boundary"));
-            const replay = yield* orchestrator.dispatch(saveCommand);
-            assert.equal(replay.sequence, saveSequence);
-            assert.lengthOf((yield* orchestrator.getThreadProjection(saved)).runs, 0);
+            assert.isTrue(frozen!.history.messages.some((m) => m.kind === "side_chat_boundary"));
+            const restored = yield* orchestrator.getThreadProjection(side);
+            assert.isNull(restored.thread.deletedAt);
+            assert.equal(restored.thread.sideChat?.sourceThreadId, source);
+            assert.lengthOf(restored.runs, ownRun ? 1 : 0);
             if (ownRun) {
-              const window = yield* orchestrator.getThreadSnapshotWindow(saved, { rowLimit: 100 });
+              const window = yield* orchestrator.getThreadSnapshotWindow(side, { rowLimit: 100 });
               const visible = window.projection.visibleTurnItems.map((row) => row.item);
               assert.isTrue(
                 visible.some((item) => item.type === "user_message" && item.text === sideText),
@@ -693,37 +668,41 @@ describe("orchestration v2 provider switching", () => {
               );
             }
             const projection = yield* send(
-              saved,
-              "NEW_SAVED_REQUEST recall all facts",
+              side,
+              "NEW_SIDE_REQUEST recall all facts",
               switchAgent ? CLAUDE_MODEL_SELECTION : CODEX_MODEL_SELECTION,
             );
             const provider = projection.providerThreads.find(
               (p) => p.id === projection.thread.activeProviderThreadId,
             )!;
+            if (ownRun && !switchAgent)
+              assert.equal(provider.nativeThreadRef?.nativeId, nativeBeforeShutdown);
             const native = nativeHistories.get(provider.nativeThreadRef!.nativeId!)!.join("\n");
             assert.include(native, sourceText);
             assert.notInclude(native, "LATER_SOURCE");
-            assert.notInclude(native, "Do not use subagents");
             if (ownRun) {
               assert.include(native, sideText);
-              assert.include(native, sideAnswer);
             }
-            assert.equal(yield* Ref.get(nativeForks), forkCount);
-            assert.deepEqual(
-              (yield* Ref.get(openedThreads)).filter((p) => p.threadId === saved),
-              [{ threadId: saved, ephemeral: false }],
+            assert.equal(
+              yield* Ref.get(nativeForks),
+              forkCount + (ownRun ? 0 : switchAgent ? 0 : 1),
+            );
+            assert.isTrue(
+              (yield* Ref.get(openedThreads))
+                .filter((p) => p.threadId === side)
+                .every((p) => !p.ephemeral),
             );
             yield* send(
-              saved,
-              "FOLLOW_UP remember the saved context",
+              side,
+              "FOLLOW_UP remember the side context",
               switchAgent ? CODEX_MODEL_SELECTION : CLAUDE_MODEL_SELECTION,
             );
-            const next = (yield* Ref.get(capturedTurns)).findLast((t) => t.threadId === saved)!;
+            const next = (yield* Ref.get(capturedTurns)).findLast((t) => t.threadId === side)!;
             const history = nativeHistories.get(next.nativeThreadId!)!.join("\n");
             assert.include(history, sourceText);
-            assert.include(history, "NEW_SAVED_REQUEST");
+            assert.include(history, "NEW_SIDE_REQUEST");
             if (ownRun) assert.include(history, sideText);
-            assert.notInclude(history, "Do not use subagents");
+            assert.isDefined((yield* orchestrator.getThreadProjection(side)).thread.sideChat);
           }).pipe(Effect.provide(runtime()));
         }),
       ),

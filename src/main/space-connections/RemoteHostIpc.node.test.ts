@@ -429,16 +429,17 @@ it.effect("sends a team desktop's chat messages and queue controls to the Space 
       const side = { source: target, sessionId: "side", requestId: "side", acceptedAt: 2 };
       yield* invoke("agent-runtime:session:create-side-chat", side);
       yield* invoke("agent-runtime:session:merge-back", { sessionId: "side", requestId: "merge" });
-      yield* invoke("agent-runtime:session:save-side-chat", { ...side, sessionId: "saved" });
-      yield* invoke("agent-runtime:session:discard-side-chat", {
+      yield* invoke("agent-runtime:session:delete-side-chat", {
         sessionId: "side",
-        requestId: "close",
+        requestId: "delete",
       });
-      expect(calls.slice(-4).map(({ operation }) => operation)).toEqual([
-        "session_side_chat_create",
-        "session_merge_back",
-        "session_side_chat_save",
-        "session_side_chat_discard",
+      expect(calls.slice(-3)).toEqual([
+        { operation: "session_side_chat_create", input: side },
+        { operation: "session_merge_back", input: { sessionId: "side", requestId: "merge" } },
+        {
+          operation: "session_side_chat_delete",
+          input: { sessionId: "side", requestId: "delete" },
+        },
       ]);
       // Compacting, continuing a failed reply and clearing travel as the Member's calls.
       yield* invoke("agent-runtime:session:compact", {

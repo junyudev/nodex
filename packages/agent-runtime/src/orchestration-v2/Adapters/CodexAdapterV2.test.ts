@@ -12566,7 +12566,11 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               frame: {
                 id: 3,
                 method: "thread/fork",
-                params: { threadId: nativeThreadId, config: CodexAdapterV2.CODEX_THREAD_CONFIG },
+                params: {
+                  excludeTurns: true,
+                  threadId: nativeThreadId,
+                  config: CodexAdapterV2.CODEX_THREAD_CONFIG,
+                },
               },
             },
             {
@@ -12710,7 +12714,11 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               frame: {
                 id: 3,
                 method: "thread/fork",
-                params: { threadId: nativeThreadId, config: CodexAdapterV2.CODEX_THREAD_CONFIG },
+                params: {
+                  excludeTurns: true,
+                  threadId: nativeThreadId,
+                  config: CodexAdapterV2.CODEX_THREAD_CONFIG,
+                },
               },
             },
             {
@@ -12797,7 +12805,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
   );
 
   it.effect(
-    "keeps a side fork temporary and separates inherited history from its first request",
+    "keeps a side fork persistent and separates inherited history from its first request",
     () =>
       Effect.gen(function* () {
         const sourceId = "side-source";
@@ -12826,7 +12834,6 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                   threadId: sourceId,
                   lastTurnId: "captured-turn",
                   config: CodexAdapterV2.CODEX_THREAD_CONFIG,
-                  ephemeral: true,
                   excludeTurns: true,
                 },
               },
@@ -12882,7 +12889,6 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           sourceProviderTurns: [sourceTurn],
           providerTurnId: sourceTurn.id,
           targetThreadId: ThreadId.make("side-chat-child"),
-          ephemeral: true,
         });
         assert.equal(child.nativeThreadRef?.nativeId, childId);
         assert.equal(requests.filter(({ method }) => method === "turn/start").length, 0);
@@ -12932,6 +12938,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               id: 3,
               method: "thread/fork",
               params: {
+                excludeTurns: true,
                 threadId: nativeThreadId,
                 lastTurnId: "native-turn-first",
                 config: CodexAdapterV2.CODEX_THREAD_CONFIG,

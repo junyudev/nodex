@@ -273,12 +273,10 @@ export interface AgentRuntimeSideChatCreateInput {
   readonly requestId: string;
   readonly acceptedAt: number;
 }
-export interface AgentRuntimeSideChatDiscardInput {
+export interface AgentRuntimeSideChatDeleteInput {
   readonly sessionId: string;
   readonly requestId: string;
 }
-/** Freezes an idle side chat as an ordinary Session without starting a Run. */
-export type AgentRuntimeSideChatSaveInput = AgentRuntimeSideChatCreateInput;
 export interface AgentRuntimeForkInput {
   readonly modeLimit?: AgentDispatchModeLimit;
   readonly source: AgentRuntimeSessionTarget;
@@ -439,13 +437,9 @@ export interface AgentRuntimeIpcApi {
     args: [input: AgentRuntimeSideChatCreateInput];
     result: AgentRuntimeLaunchResult;
   };
-  "agent-runtime:session:discard-side-chat": {
-    args: [input: AgentRuntimeSideChatDiscardInput];
-    result: { readonly discarded: boolean };
-  };
-  "agent-runtime:session:save-side-chat": {
-    args: [input: AgentRuntimeSideChatSaveInput];
-    result: AgentRuntimeLaunchResult & { readonly sourceSessionId: string };
+  "agent-runtime:session:delete-side-chat": {
+    args: [input: AgentRuntimeSideChatDeleteInput];
+    result: { readonly deleted: boolean };
   };
   "agent-runtime:session:fork": {
     args: [input: AgentRuntimeForkInput];

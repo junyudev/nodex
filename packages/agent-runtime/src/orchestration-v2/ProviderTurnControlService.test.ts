@@ -212,7 +212,6 @@ it.effect(
         ProjectionStore.ProjectionStoreV2.of({
           isExecutionPaused: () => Effect.succeed(false),
           apply: () => Effect.void,
-          getSideChatThreadIds: Effect.succeed([]),
           getSideChatContext: () => Effect.succeed(null),
           getMessageTurnOutcome: () => Effect.die("unused message turn"),
           getRunOutcome: () => Effect.succeed(null),

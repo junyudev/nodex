@@ -2695,7 +2695,7 @@ export const layerWithOptions = (
               yield* service.detach({
                 providerSessionId: sessionId,
                 threadId,
-                detail: "Temporary side chat discarded.",
+                detail: "Side chat deleted.",
                 revokeMcpCredential: true,
               });
             const seen = new Set<string>();

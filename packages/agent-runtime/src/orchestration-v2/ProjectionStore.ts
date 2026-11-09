@@ -1213,7 +1213,6 @@ export interface ProjectionStoreV2Shape {
     ProjectionStoreV2Error
   >;
   /** Select metadata before reading intact historical text; no Run payloads or transcript snapshots. */
-  readonly getSideChatThreadIds: Effect.Effect<readonly ThreadId[], ProjectionStoreV2Error>;
   readonly getSideChatContext: (
     threadId: ThreadId,
   ) => Effect.Effect<ProjectionHandoffHistory | null, ProjectionStoreV2Error>;
@@ -10008,15 +10007,6 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getDeliveredHandoffItemIds,
       getNativeForkBoundary,
       getRelatedNativeThread,
-      getSideChatThreadIds: sql<{
-        thread_id: string;
-      }>`SELECT thread_id FROM orchestration_v2_projection_threads
-        WHERE json_extract(payload_json, '$.sideChat') IS NOT NULL AND deleted_at IS NULL`.pipe(
-        Effect.map((rows) => rows.map((row) => ThreadId.make(row.thread_id))),
-        Effect.mapError(
-          (cause) => new ProjectionStoreReadError({ threadId: ThreadId.make("side-chats"), cause }),
-        ),
-      ),
       getSideChatContext,
       getHandoffHistory,
       getLastDeliveredRun,
@@ -10106,7 +10096,6 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getDeliveredHandoffItemIds: readOnReader(service.getDeliveredHandoffItemIds),
       getNativeForkBoundary: readOnReader(service.getNativeForkBoundary),
       getRelatedNativeThread: readOnReader(service.getRelatedNativeThread),
-      getSideChatThreadIds: service.getSideChatThreadIds.pipe(NodeSqliteClient.readOnly),
       getSideChatContext: readOnReader(service.getSideChatContext),
       getHandoffHistory: readOnReader(service.getHandoffHistory),
       getLastDeliveredRun: readOnReader(service.getLastDeliveredRun),
@@ -10172,13 +10161,6 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
 
     const sideChatContexts = new Map<ThreadId, ProjectionHandoffHistory>();
     const service: ProjectionStoreV2Shape = {
-      getSideChatThreadIds: Ref.get(replayState).pipe(
-        Effect.map((state) =>
-          [...state.projections.values()]
-            .filter((p) => p.thread.sideChat && !p.thread.deletedAt)
-            .map((p) => p.thread.id),
-        ),
-      ),
       getSideChatContext: (threadId) =>
         Ref.get(replayState).pipe(
           Effect.map((state) =>

@@ -3182,16 +3182,8 @@ fn a_hosted_side_chat_answers_to_the_member_who_opened_it() {
     assert!(chats.can_manage(alice, "alice-side"));
     assert!(!chats.can_manage(&chats.bob, "alice-side"));
 
-    // Saving and closing belong to Alice alone; merging it back, to her and the Space Owners.
-    let save = json!({"source":{"sessionId":"alice-side"},"sessionId":"saved",
-        "requestId":"saved:launch","acceptedAt":1});
+    // Merging it back belongs to Alice and the Space Owners.
     let merge = json!({"sessionId":"alice-side","requestId":"merge"});
-    let close = json!({"sessionId":"alice-side","requestId":"close"});
-    for member in [&chats.bob, &chats.olivia] {
-        let refused = chats.refused(member, "session_side_chat_save", save.clone());
-        assert!(refused.to_string().contains("another Member"), "{refused}");
-        chats.refused(member, "session_side_chat_discard", close.clone());
-    }
     let refused = chats.refused(&chats.bob, "session_merge_back", merge.clone());
     assert!(
         refused
@@ -3200,40 +3192,83 @@ fn a_hosted_side_chat_answers_to_the_member_who_opened_it() {
         "{refused}"
     );
     chats.admitted(&chats.olivia, "session_merge_back", merge.clone(), |_| ());
-    chats.admitted(alice, "session_merge_back", merge, |_| ());
-    chats.admitted(alice, "session_side_chat_save", save, |proof| {
-        let saved = chats.launch(proof, "saved", "saved:launch", None);
-        assert_eq!(saved["status"], "ok", "{saved}");
-    });
-    assert_eq!(chats.requester("saved"), alice.enrollment.member_id);
-    // A saved chat is no side chat; it closes like any other chat, which no Device deletes.
-    chats.refused(
-        alice,
-        "session_side_chat_discard",
-        json!({"sessionId":"saved","requestId":"close-saved"}),
-    );
-    chats.admitted(alice, "session_side_chat_discard", close, |proof| {
-        let shared = chats.host_apply(
-            Some(proof),
-            json!({"kind":"delete_session","session_id":"chat"}),
-        );
-        assert_eq!(shared["status"], "error", "{shared}");
-        let closed = chats.host_apply(
+    chats.admitted(alice, "session_merge_back", merge, |proof| {
+        let refused = chats.host_apply(
             Some(proof),
             json!({"kind":"delete_session","session_id":"alice-side"}),
         );
-        assert_eq!(closed["status"], "ok", "{closed}");
+        assert_eq!(refused["status"], "error", "{refused}");
+        assert!(
+            refused.to_string().contains("through the Space host"),
+            "{refused}"
+        );
     });
-    let (status, direct) = chats.core.request(
-        "/core/v1/modules/workspace/apply",
-        &alice.session.session_token,
-        Some((alice.connection.0.as_str(), alice.connection.1.as_str())),
-        json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
-            "store_epoch":chats.store_epoch,"operation_id":team_operation_id(),
-            "intent":{"kind":"delete_session","session_id":"saved"}}),
+    let delete = json!({"sessionId":"alice-side","requestId":"delete-side"});
+    // Neither another Member nor a Space Owner may delete Alice's side chat.
+    for member in [&chats.bob, &chats.olivia] {
+        let refused = chats.refused(member, "session_side_chat_delete", delete.clone());
+        assert!(refused.to_string().contains("another Member"), "{refused}");
+    }
+    // A Member cannot turn ordinary hosted chat deletion into a side-chat command.
+    for member in [alice, &chats.bob, &chats.olivia] {
+        let refused = chats.refused(
+            member,
+            "session_side_chat_delete",
+            json!({"sessionId":"chat","requestId":"delete-chat"}),
+        );
+        assert!(
+            refused
+                .to_string()
+                .contains("Only a Member's own side chat"),
+            "{refused}"
+        );
+    }
+    // Even Alice's own side chat cannot be deleted on her direct connection without the Host.
+    let direct = chats.member_apply(
+        alice,
+        json!({"kind":"delete_session","session_id":"alice-side"}),
     );
-    assert_eq!(status, 200, "{direct}");
     assert_eq!(direct["status"], "error", "{direct}");
+    assert!(
+        direct.to_string().contains("through the Space host"),
+        "{direct}"
+    );
+    chats.admitted(
+        alice,
+        "session_side_chat_create",
+        json!({"source":{"sessionId":"chat"},"sessionId":"alice-sibling",
+            "requestId":"alice-sibling:launch","acceptedAt":1}),
+        |proof| {
+            let created =
+                chats.launch(proof, "alice-sibling", "alice-sibling:launch", Some("chat"));
+            assert_eq!(created["status"], "ok", "{created}");
+        },
+    );
+    // The live invocation proof authorizes exactly the named side chat, not another Alice owns.
+    chats.admitted(alice, "session_side_chat_delete", delete, |proof| {
+        let sibling = chats.host_apply(
+            Some(proof),
+            json!({"kind":"delete_session","session_id":"alice-sibling"}),
+        );
+        assert_eq!(sibling["status"], "error", "{sibling}");
+        assert!(
+            sibling.to_string().contains("through the Space host"),
+            "{sibling}"
+        );
+        let deleted = chats.host_apply(
+            Some(proof),
+            json!({"kind":"delete_session","session_id":"alice-side"}),
+        );
+        assert_eq!(deleted["status"], "ok", "{deleted}");
+    });
+    let read = chats.member_read(alice, json!({"kind":"session","session_id":"alice-side"}));
+    assert_eq!(read["status"], "error", "{read}");
+    assert_eq!(read["payload"]["code"], "not_found", "{read}");
+    let sibling = chats.member_read(
+        alice,
+        json!({"kind":"session","session_id":"alice-sibling"}),
+    );
+    assert_eq!(sibling["status"], "ok", "{sibling}");
 
     // An archived chat takes no new side chat from anyone.
     let archived = chats.host_apply(
