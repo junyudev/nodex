@@ -553,11 +553,13 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "checkpoint.rollback.fail":
     case "thread.background-work.settle":
     case "thread.execution-pause":
+    case "delegated_task.question-handoff":
     case "thread.stop":
     case "thread.clear_context":
     case "provider.switch":
       return command.threadId;
     case "delegated_task.request":
+    case "delegated_task.attention-changed":
     case "delegated_task.question-delivery":
     case "delegated_task.question.receive":
     case "delegated_task.question-wait":
@@ -10396,6 +10398,21 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           now: input.now,
         });
       }
+      const stoppedThrough = runs.reduce(
+        (through, run) => (run.status === "queued" ? through : Math.max(through, run.ordinal)),
+        thread.executionStoppedThroughOrdinal ?? 0,
+      );
+      if (stoppedThrough <= (thread.executionStoppedThroughOrdinal ?? 0)) return;
+      yield* emitEvent({
+        type: "thread.metadata-updated",
+        threadId: thread.id,
+        occurredAt: input.now,
+        payload: {
+          ...thread,
+          pullRequests: pullRequests.map((link) => withPullRequestWatch(link, undefined)),
+          executionStoppedThroughOrdinal: stoppedThrough,
+        },
+      });
     });
 
   const dispatchBackgroundWorkSettle = (
@@ -13278,6 +13295,52 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "delegated_task.request":
         yield* dispatchDelegatedTaskRequest(command, events, effects);
         break;
+      case "delegated_task.attention-changed": {
+        const parent = yield* projectionStore
+          .getThreadRecords(command.parentThreadId, ["subagents"], {
+            subagentIds: [command.taskId],
+          })
+          .pipe(mapDispatchError(command));
+        const task = parent.subagents[0];
+        if (task === undefined) break;
+        const now = yield* DateTime.now;
+        yield* emit(
+          events,
+          command,
+        )({
+          type: "subagent.updated",
+          threadId: command.parentThreadId,
+          occurredAt: now,
+          payload: { ...task, updatedAt: now },
+        });
+        break;
+      }
+      case "delegated_task.question-handoff": {
+        const request = yield* projectionStore
+          .getRuntimeRequest(command.threadId, command.requestId)
+          .pipe(mapDispatchError(command));
+        if (
+          request?.kind !== "user_input" ||
+          request.status !== "pending" ||
+          request.questionHandoff !== undefined
+        )
+          break;
+        const now = yield* DateTime.now;
+        yield* emit(
+          events,
+          command,
+        )({
+          type: "runtime-request.updated",
+          threadId: command.threadId,
+          nodeId: request.nodeId,
+          occurredAt: now,
+          payload: {
+            ...request,
+            questionHandoff: { at: DateTime.formatIso(now), reason: command.reason },
+          },
+        });
+        break;
+      }
       case "delegated_task.question-wait": {
         const parent = yield* projectionStore
           .getThreadRecords(command.parentThreadId, ["runs"], { runIds: [command.parentRunId] })
@@ -13407,6 +13470,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           payload: {
             ...task,
             receivedQuestionIds: [...(task.receivedQuestionIds ?? []), command.requestId],
+            questionDeliveries: [
+              ...(task.questionDeliveries ?? []).filter(
+                (receipt) => receipt.requestId !== command.requestId,
+              ),
+              { requestId: command.requestId, runId: command.parentRunId },
+            ],
             unconfirmedQuestionIds: command.awaitNativeReceipt
               ? [...(task.unconfirmedQuestionIds ?? []), command.requestId]
               : (task.unconfirmedQuestionIds ?? []),
@@ -13623,6 +13692,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         // that finds nothing running, or a clear of a context that is already
         // clear has nothing to record. That is its expected outcome, not a failure.
         planned.events.length > 0 ||
+        command.type === "delegated_task.attention-changed" ||
+        command.type === "delegated_task.question-handoff" ||
         command.type === "delegated_task.question.receive" ||
         command.type === "delegated_task.question-delivery" ||
         (command.type === "message.dispatch" && command.delegatedQuestion !== undefined) ||

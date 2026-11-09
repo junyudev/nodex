@@ -16,6 +16,7 @@ import { forkParked } from "../serverActivation.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as EventSink from "./EventSink.ts";
+import { readExecutionHandoff } from "./ExecutionHandoff.ts";
 import { questionNoticeId, questionNoticeText } from "./DelegatedTaskQuestions.ts";
 
 export class DelegatedTaskQuestionReactor extends Context.Service<
@@ -35,13 +36,72 @@ export const make = Effect.gen(function* () {
   const wakeParent = Effect.fnUntraced(function* (
     task: OrchestrationV2Subagent,
     request: OrchestrationV2RuntimeRequest,
+    sourceRunOrdinal: number | undefined,
+    workStoppedThroughOrdinal: number | undefined,
   ) {
-    if (
-      task.childThreadId === null ||
-      task.receivedQuestionIds?.includes(request.id) ||
-      task.completionDelivery?.state === "disposed"
-    )
+    if (task.childThreadId === null || request.questionHandoff !== undefined) return;
+    const receipt = task.questionDeliveries?.find((receipt) => receipt.requestId === request.id);
+    const owner = yield* projections.getThreadRecords(task.threadId, ["runs", "messages"], {
+      runIds: [
+        ...new Set([
+          ...(task.runId === null ? [] : [task.runId]),
+          ...(receipt === undefined ? [] : [receipt.runId]),
+        ]),
+      ],
+      messageIds: [questionNoticeId(task.threadId, request.id)],
+    });
+    const notice = owner.messages[0];
+    const noticeRuns =
+      notice?.runId == null
+        ? []
+        : (yield* projections.getThreadRecords(task.threadId, ["runs"], { runIds: [notice.runId] }))
+            .runs;
+    const received =
+      task.receivedQuestionIds?.includes(request.id) &&
+      !task.unconfirmedQuestionIds?.includes(request.id);
+    const receivingRun = received
+      ? owner.runs.find((run) => run.id === receipt?.runId)
+      : notice?.delivery === "accepted"
+        ? noticeRuns[0]
+        : undefined;
+    const ownerRun = owner.runs.find((run) => run.id === task.runId);
+    const stopped =
+      (ownerRun !== undefined &&
+        owner.thread.executionStoppedThroughOrdinal !== undefined &&
+        ownerRun.ordinal <= owner.thread.executionStoppedThroughOrdinal) ||
+      (sourceRunOrdinal !== undefined &&
+        workStoppedThroughOrdinal !== undefined &&
+        sourceRunOrdinal <= workStoppedThroughOrdinal);
+    const unavailable =
+      stopped ||
+      owner.thread.archivedAt !== null ||
+      owner.thread.deletedAt !== null ||
+      task.completionDelivery?.state === "disposed" ||
+      owner.runs.some(
+        (run) =>
+          run.id === task.runId &&
+          ["stopped", "disposed"].includes(run.delegatedCompletion?.disposition ?? ""),
+      );
+    const terminal =
+      receivingRun !== undefined &&
+      ["completed", "failed", "interrupted", "cancelled", "rolled_back"].includes(
+        receivingRun.status,
+      );
+    const held =
+      (yield* projections.isExecutionPaused(task.threadId)) ||
+      (yield* readExecutionHandoff(projections, task.threadId)) !== null;
+    if (!unavailable && held) return;
+    if (unavailable || terminal) {
+      yield* engine.dispatch({
+        type: "delegated_task.question-handoff",
+        commandId: CommandId.make(`server:question-handoff:${task.childThreadId}:${request.id}`),
+        threadId: task.childThreadId,
+        requestId: request.id,
+        reason: unavailable ? "owner_unavailable" : "unresolved",
+      });
       return;
+    }
+    if (task.receivedQuestionIds?.includes(request.id)) return;
     const parent = yield* projections.getThreadRecords(task.threadId, ["runs", "messages"], {
       messageIds: [questionNoticeId(task.threadId, request.id)],
       runStatuses: ["preparing", "starting", "running", "waiting"],
@@ -128,7 +188,7 @@ export const make = Effect.gen(function* () {
           task.origin === "app_owned" && task.id === taskId && task.childThreadId === childId,
       );
       if (task === undefined || request.kind !== "user_input") continue;
-      yield* wakeParent(task, request);
+      yield* wakeParent(task, request, run?.ordinal, child.thread.executionStoppedThroughOrdinal);
     }
   });
 
@@ -174,8 +234,48 @@ export const make = Effect.gen(function* () {
     }
   });
 
+  /** Invalidate the task's bounded overview when a request changes, including async questions. */
+  const refreshTaskAttention = Effect.fnUntraced(function* (
+    event: Extract<OrchestrationV2DomainEvent, { type: "runtime-request.updated" }>,
+  ) {
+    const child = yield* projections.getThreadRecords(event.threadId, ["nodes"], {
+      nodeIds: [event.payload.nodeId],
+    });
+    const runIds = child.nodes.flatMap((node) => (node.runId === null ? [] : [node.runId]));
+    const records = yield* projections.getThreadRecords(event.threadId, ["runs", "subagents"], {
+      runIds,
+      subagentRunIds: runIds,
+    });
+    const taskId =
+      records.runs[0]?.delegatedTaskId ??
+      (child.thread.forkedFrom?.type === "node" ? child.thread.forkedFrom.nodeId : undefined);
+    const targets = records.subagents
+      .filter(
+        (task) =>
+          task.origin === "provider_native" &&
+          child.nodes.some(
+            (node) =>
+              node.providerThreadId !== null && node.providerThreadId === task.providerThreadId,
+          ),
+      )
+      .map((task) => ({ parentThreadId: event.threadId, taskId: task.id }));
+    if (child.thread.lineage.parentThreadId !== null && taskId !== undefined)
+      targets.push({ parentThreadId: child.thread.lineage.parentThreadId, taskId });
+    for (const target of targets)
+      yield* engine.dispatch({
+        type: "delegated_task.attention-changed",
+        commandId: CommandId.make(`server:task-attention:${event.id}:${target.taskId}`),
+        ...target,
+      });
+  });
+
   const handle: DelegatedTaskQuestionReactor["Service"]["handle"] = Effect.fnUntraced(
     function* (event) {
+      if (
+        event.type === "runtime-request.updated" &&
+        !["dynamic_tool_call", "auth_refresh"].includes(event.payload.kind)
+      )
+        yield* refreshTaskAttention(event);
       if (
         event.type === "turn-item.updated" &&
         event.payload.type === "dynamic_tool" &&
@@ -189,16 +289,22 @@ export const make = Effect.gen(function* () {
         if (item !== null) yield* acceptNativeQuestions(item);
         return;
       }
-      if (event.type === "run.updated") {
-        const parent = yield* projections.getThreadRecords(event.threadId, ["subagents"], {
-          subagentRunIds: [event.payload.id],
-        });
-        for (const childId of new Set(
-          parent.subagents
-            .filter((task) => task.origin === "app_owned")
-            .flatMap((task) => (task.childThreadId === null ? [] : [task.childThreadId])),
-        ))
-          yield* catchUpChild(childId);
+      if (
+        event.type === "run.updated" ||
+        event.type === "subagent.updated" ||
+        event.type === "thread.archived" ||
+        event.type === "thread.deleted" ||
+        event.type === "thread.metadata-updated" ||
+        event.type === "message.updated" ||
+        event.type === "message.delivery.updated" ||
+        (event.type === "turn-item.updated" && event.payload.type === "run_interrupt_request")
+      ) {
+        const children = yield* projections.getRecoveryThreadIds("delegated-questions");
+        for (const childId of children) {
+          const child = yield* projections.getThread(childId);
+          if (childId === event.threadId || child.lineage.parentThreadId === event.threadId)
+            yield* catchUpChild(childId);
+        }
         return;
       }
       if (event.type === "runtime-request.updated" && event.payload.kind === "user_input") {

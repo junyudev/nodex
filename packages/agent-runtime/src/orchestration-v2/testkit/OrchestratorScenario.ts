@@ -172,6 +172,7 @@ function commandThreadIds(command: OrchestrationV2Command): ReadonlyArray<Thread
     case "background.stop":
     case "subagent.stop":
     case "thread.execution-pause":
+    case "delegated_task.question-handoff":
     case "run.interrupt":
     case "queued-message.promote-to-steer":
     case "queue.resume":
@@ -185,6 +186,7 @@ function commandThreadIds(command: OrchestrationV2Command): ReadonlyArray<Thread
     case "provider.switch":
       return [command.threadId];
     case "delegated_task.request":
+    case "delegated_task.attention-changed":
     case "delegated_task.question-delivery":
     case "delegated_task.question.receive":
     case "delegated_task.question-wait":

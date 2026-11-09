@@ -33,10 +33,17 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as SqlClient from "effect/sql/SqlClient";
+import {
+  seedUndecodableHistory,
+  explainExecutedSql,
+  historyWideReads,
+} from "../orchestration-v2/testkit/HistoryPressure.ts";
 import * as Stream from "effect/Stream";
 import { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import * as CommandReceiptStore from "../orchestration-v2/CommandReceiptStore.ts";
+import * as ExecutionPauseState from "../orchestration-v2/ExecutionPauseState.ts";
 import * as Questions from "../orchestration-v2/DelegatedTaskQuestionReactor.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
@@ -1784,5 +1791,402 @@ it.effect("cancels a resolved queued notice even when its native wait receipt wa
     expect(
       (yield* f.notifications()).runs.find((run) => run.userMessageId === notice.id)?.status,
     ).toBe("cancelled");
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect.each(["live", "message"] as const)(
+  "hands an unanswered delivered %s question to the person durably",
+  (capability) =>
+    Effect.gen(function* () {
+      const f = yield* setup();
+      const question = yield* f.addRequest("handoff:unresolved", capability);
+      yield* f.orchestrator.dispatch({
+        type: "delegated_task.question.receive",
+        commandId: CommandId.make("receive:handoff"),
+        parentThreadId: parentId,
+        parentRunId: f.parentRun.id,
+        taskId: f.task.id,
+        requestId: question.payload.id,
+        awaitNativeReceipt: false,
+      });
+      yield* f.reactor.handle(yield* f.settleParent());
+      const request = yield* f.projections.getRuntimeRequest(
+        f.task.childThreadId!,
+        question.payload.id,
+      );
+      expect(request).toMatchObject({
+        status: "pending",
+        questionHandoff: { reason: "unresolved", at: expect.any(String) },
+      });
+      yield* f.reactor.recover();
+      expect(
+        yield* f.projections.getRuntimeRequest(f.task.childThreadId!, question.payload.id),
+      ).toEqual(request);
+      // Handoff changes attention, not the Agent's authority to supply a later answer.
+      const response = yield* f.question({
+        action: "respond",
+        requestId: question.payload.id,
+        answers: { format: "Markdown" },
+      });
+      expect(response.isError).not.toBe(true);
+      expect(
+        (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, question.payload.id))
+          ?.status,
+      ).toBe("resolved");
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect.each(["respond", "dismiss"] as const)(
+  "does not hand off a question the receiving Run chose to %s",
+  (action) =>
+    Effect.gen(function* () {
+      const f = yield* setup();
+      const question = yield* f.addRequest("handoff:answered", "message");
+      yield* f.orchestrator.dispatch({
+        type: "delegated_task.question.receive",
+        commandId: CommandId.make("receive:answered"),
+        parentThreadId: parentId,
+        parentRunId: f.parentRun.id,
+        taskId: f.task.id,
+        requestId: question.payload.id,
+        awaitNativeReceipt: false,
+      });
+      expect(
+        (yield* f.question({
+          action,
+          requestId: question.payload.id,
+          answers: { format: "Markdown" },
+        })).isError,
+      ).not.toBe(true);
+      yield* f.reactor.handle(yield* f.settleParent());
+      expect(
+        (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, question.payload.id))
+          ?.questionHandoff,
+      ).toBeUndefined();
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect.each(["stop", "archive", "delete", "dispose"] as const)(
+  "hands questions to the person on %s and immediately for later questions",
+  (action) =>
+    Effect.gen(function* () {
+      const f = yield* setup();
+      const question = yield* f.addRequest("handoff:before", "message");
+      const result = yield* f.orchestrator.dispatch(
+        action === "dispose"
+          ? {
+              type: "delegated_task.completion-delivery.dispose",
+              commandId: CommandId.make("dispose:handoff"),
+              parentThreadId: parentId,
+              taskId: f.task.id,
+            }
+          : {
+              type:
+                action === "stop"
+                  ? "thread.stop"
+                  : action === "archive"
+                    ? "thread.archive"
+                    : "thread.delete",
+              commandId: CommandId.make(`${action}:handoff`),
+              threadId: parentId,
+            },
+      );
+      for (const stored of result.storedEvents) yield* f.reactor.handle(stored.event);
+      expect(
+        (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, question.payload.id))
+          ?.questionHandoff?.reason,
+      ).toBe("owner_unavailable");
+      const later = yield* f.addRequest("handoff:later", "message");
+      yield* f.reactor.handle(later);
+      expect(
+        (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, later.payload.id))
+          ?.questionHandoff?.reason,
+      ).toBe("owner_unavailable");
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("Pause holds the answerer even when a receiving Run terminates", () =>
+  Effect.gen(function* () {
+    const f = yield* setup();
+    const question = yield* f.addRequest("handoff:paused", "message");
+    yield* f.orchestrator.dispatch({
+      type: "delegated_task.question.receive",
+      commandId: CommandId.make("receive:paused"),
+      parentThreadId: parentId,
+      parentRunId: f.parentRun.id,
+      taskId: f.task.id,
+      requestId: question.payload.id,
+      awaitNativeReceipt: false,
+    });
+    yield* ExecutionPauseState.initialize([parentId]);
+    yield* f.reactor.handle(yield* f.settleParent());
+    yield* f.reactor.recover();
+    expect(
+      (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, question.payload.id))
+        ?.questionHandoff,
+    ).toBeUndefined();
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect.each(["steer", "wake"] as const)(
+  "hands off after the %s Run that accepted a question ends",
+  (delivery) =>
+    Effect.gen(function* () {
+      const f = yield* setup();
+      const question = yield* f.addRequest(`handoff:${delivery}`, "message");
+      yield* f.reactor.handle(question);
+      const records = yield* f.notifications();
+      const notice = records.messages[0]!;
+      const receiving =
+        delivery === "steer"
+          ? f.parentRun
+          : records.runs.find((run) => run.userMessageId === notice.id)!;
+      const now = yield* DateTime.now;
+      const ended = {
+        id: EventId.make(`ended:${delivery}`),
+        type: "run.updated",
+        threadId: parentId,
+        occurredAt: now,
+        payload: { ...receiving, status: "completed", completedAt: now },
+      } satisfies OrchestrationV2DomainEvent;
+      yield* f.sink.write({
+        commandId: CommandId.make(`accepted:${delivery}`),
+        events: [
+          {
+            id: EventId.make(`accepted:${delivery}`),
+            type: "message.updated",
+            threadId: parentId,
+            occurredAt: now,
+            payload: { ...notice, runId: receiving.id },
+          },
+          ended,
+        ],
+      });
+      yield* f.reactor.handle(ended);
+      expect(
+        (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, question.payload.id))
+          ?.questionHandoff,
+      ).toBeUndefined();
+      const accepted = {
+        id: EventId.make(`receipt:${delivery}`),
+        type: "message.delivery.updated",
+        threadId: parentId,
+        occurredAt: now,
+        payload: { messageId: notice.id, delivery: "accepted" },
+      } satisfies OrchestrationV2DomainEvent;
+      yield* f.sink.write({ commandId: CommandId.make(`receipt:${delivery}`), events: [accepted] });
+      yield* f.reactor.handle(accepted);
+      expect(
+        (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, question.payload.id))
+          ?.questionHandoff?.reason,
+      ).toBe("unresolved");
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect(
+  "a grandchild question belongs to its immediate delegator until that Run leaves it unanswered",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* setup();
+      const childId = f.task.childThreadId!;
+      const childRun = (yield* f.projections.getThreadRecords(childId, ["runs"])).runs[0]!;
+      yield* f.orchestrator.dispatch({
+        type: "delegated_task.request",
+        commandId: CommandId.make("delegate:grandchild"),
+        parentThreadId: childId,
+        parentRunId: childRun.id,
+        parentNodeId: childRun.rootNodeId!,
+        task: "Research detail",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        createdBy: "agent",
+        creationSource: "mcp",
+      });
+      const nested = (yield* f.projections.getThreadRecords(childId, ["subagents"])).subagents[0]!;
+      const question = yield* f.addRequest("handoff:nested", "message", "user_input", nested);
+      yield* f.orchestrator.dispatch({
+        type: "delegated_task.question.receive",
+        commandId: CommandId.make("receive:nested"),
+        parentThreadId: childId,
+        parentRunId: childRun.id,
+        taskId: nested.id,
+        requestId: question.payload.id,
+        awaitNativeReceipt: false,
+      });
+      yield* f.reactor.handle(yield* f.settleParent());
+      expect(
+        (yield* f.projections.getRuntimeRequest(nested.childThreadId!, question.payload.id))
+          ?.questionHandoff,
+      ).toBeUndefined();
+      const now = yield* DateTime.now;
+      const ended = {
+        id: EventId.make("ended:nested"),
+        type: "run.updated",
+        threadId: childId,
+        occurredAt: now,
+        payload: { ...childRun, status: "completed", completedAt: now },
+      } satisfies OrchestrationV2DomainEvent;
+      yield* f.sink.write({ commandId: CommandId.make("ended:nested"), events: [ended] });
+      yield* f.reactor.handle(ended);
+      expect(
+        (yield* f.projections.getRuntimeRequest(nested.childThreadId!, question.payload.id))
+          ?.questionHandoff?.reason,
+      ).toBe("unresolved");
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("overview carries live question ownership with approval precedence", () =>
+  Effect.gen(function* () {
+    const f = yield* setup();
+    const attention = () =>
+      f.projections
+        .getThreadSubagentOverview({ threadId: parentId })
+        .pipe(Effect.map((read) => read.active.items[0]?.attention));
+    expect(yield* attention()).toBeNull();
+    const question = yield* f.addRequest("overview:question", "message");
+    expect(yield* attention()).toBe("question_agent");
+    yield* f.orchestrator.dispatch({
+      type: "delegated_task.question-handoff",
+      commandId: CommandId.make("overview:handoff"),
+      threadId: f.task.childThreadId!,
+      requestId: question.payload.id,
+      reason: "unresolved",
+    });
+    expect(yield* attention()).toBe("question_person");
+    yield* f.addRequest("overview:approval", "live", "permission");
+    expect(yield* attention()).toBe("approval");
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect(
+  "Stop hands off a completed task's question even after its result delivery was accepted",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* setup();
+      yield* f.settleParent();
+      yield* f.settleChild();
+      const task = (yield* f.projections.getThreadRecords(parentId, ["subagents"], {
+        subagentIds: [f.task.id],
+      })).subagents[0]!;
+      const now = yield* DateTime.now;
+      yield* f.sink.write({
+        commandId: CommandId.make("delivered:task"),
+        events: [
+          {
+            id: EventId.make("delivered:task"),
+            type: "subagent.updated",
+            threadId: parentId,
+            occurredAt: now,
+            payload: {
+              ...task,
+              completionDelivery: { state: "delivered", observedByRunId: f.parentRun.id },
+            },
+          },
+        ],
+      });
+      const question = yield* f.addRequest("handoff:delivered-task", "message");
+      const stopped = yield* f.orchestrator.dispatch({
+        type: "thread.stop",
+        commandId: CommandId.make("stop:delivered-task"),
+        threadId: parentId,
+      });
+      for (const stored of stopped.storedEvents) yield* f.reactor.handle(stored.event);
+      expect(
+        (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, question.payload.id))
+          ?.questionHandoff?.reason,
+      ).toBe("owner_unavailable");
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("a wait claim hands off only after native delivery is confirmed", () =>
+  Effect.gen(function* () {
+    const f = yield* setup();
+    const question = yield* f.addRequest("handoff:unconfirmed", "message");
+    yield* f.orchestrator.dispatch({
+      type: "delegated_task.question.receive",
+      commandId: CommandId.make("receive:unconfirmed"),
+      parentThreadId: parentId,
+      parentRunId: f.parentRun.id,
+      taskId: f.task.id,
+      requestId: question.payload.id,
+      awaitNativeReceipt: true,
+    });
+    yield* f.reactor.handle(yield* f.settleParent());
+    expect(
+      (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, question.payload.id))
+        ?.questionHandoff,
+    ).toBeUndefined();
+    const confirmed = yield* f.orchestrator.dispatch({
+      type: "delegated_task.question-delivery",
+      commandId: CommandId.make("confirm:question"),
+      parentThreadId: parentId,
+      taskId: f.task.id,
+      requestId: question.payload.id,
+      outcome: "received",
+    });
+    for (const stored of confirmed.storedEvents) yield* f.reactor.handle(stored.event);
+    expect(
+      (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, question.payload.id))
+        ?.questionHandoff?.reason,
+    ).toBe("unresolved");
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("stopping a task relinquishes its own pending and later questions", () =>
+  Effect.gen(function* () {
+    const f = yield* setup();
+    const question = yield* f.addRequest("handoff:task-stop", "message");
+    const tasks = yield* Tasks.OrchestratorMcpService;
+    yield* tasks.cancelTask(scope(), { taskId: f.task.id });
+    yield* f.reactor.recover();
+    expect(
+      (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, question.payload.id))
+        ?.questionHandoff?.reason,
+    ).toBe("owner_unavailable");
+    const later = yield* f.addRequest("handoff:task-stop-later", "message");
+    yield* f.reactor.handle(later);
+    expect(
+      (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, later.payload.id))
+        ?.questionHandoff?.reason,
+    ).toBe("owner_unavailable");
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("recovers unanswered delivery over retained history without decoding or reading it", () =>
+  Effect.gen(function* () {
+    const f = yield* setup();
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`UPDATE orchestration_v2_projection_runs SET ordinal = 10001 WHERE run_id = ${f.parentRun.id}`;
+    const question = yield* f.addRequest("handoff:pressure", "message");
+    yield* f.orchestrator.dispatch({
+      type: "delegated_task.question.receive",
+      commandId: CommandId.make("receive:pressure"),
+      parentThreadId: parentId,
+      parentRunId: f.parentRun.id,
+      taskId: f.task.id,
+      requestId: question.payload.id,
+      awaitNativeReceipt: false,
+    });
+    const now = yield* DateTime.now;
+    yield* f.sink.write({
+      commandId: CommandId.make("ended:pressure"),
+      events: [
+        {
+          id: EventId.make("ended:pressure"),
+          type: "run.updated",
+          threadId: parentId,
+          occurredAt: now,
+          payload: { ...f.parentRun, ordinal: 10001, status: "completed", completedAt: now },
+        },
+      ],
+    });
+    yield* seedUndecodableHistory({ threadId: parentId, at: DateTime.formatIso(now) });
+    const traced = yield* explainExecutedSql(f.reactor.recover());
+    expect(
+      (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, question.payload.id))
+        ?.questionHandoff?.reason,
+    ).toBe("unresolved");
+    expect(historyWideReads(traced.plans)).toEqual([]);
   }).pipe(Effect.provide(layerTest)),
 );

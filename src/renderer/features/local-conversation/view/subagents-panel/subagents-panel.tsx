@@ -76,10 +76,12 @@ function sectionHasMore(section: CodexSubagentOverviewSection, initialLimit: num
   return count > initialLimit || section.rows.length > initialLimit;
 }
 
+const attentionLabels = new Set(["Needs approval", "Needs your answer", "Asked a question"]);
+
 function resolveRowPreview(row: CodexSubagentOverviewRow): string | null {
   const objective = formatSubagentObjective(row.objective);
   if (objective) return objective;
-  if (row.statusSummary === "Needs approval") return null;
+  if (row.statusSummary && attentionLabels.has(row.statusSummary)) return null;
   if (row.statusSummary?.trim()) return row.statusSummary.trim();
   return row.status === "done" ? null : "Working";
 }
@@ -99,8 +101,10 @@ function SubagentOverviewTrailing({
 
   return (
     <span className="flex shrink-0 items-center gap-3 whitespace-nowrap text-xs text-token-text-tertiary tabular-nums">
-      {row.status === "waiting" ? (
-        <span>{row.statusSummary === "Needs approval" ? "Needs approval" : "Waiting"}</span>
+      {row.statusSummary && attentionLabels.has(row.statusSummary) ? (
+        <span>{row.statusSummary}</span>
+      ) : row.status === "waiting" ? (
+        <span>Waiting</span>
       ) : null}
       {row.status === "unknown" ? <span>Status unavailable</span> : null}
       {elapsedMs === null ? null : <span>{formatSubagentElapsedTime(elapsedMs)}</span>}

@@ -739,15 +739,22 @@ export const layer: Layer.Layer<
               }),
             ];
           }
-          case "runtime_request.updated":
+          case "runtime_request.updated": {
+            const request = input.event.runtimeRequest;
+            const previous = yield* projections.getRuntimeRequest(
+              input.event.threadId ?? input.threadId,
+              request.id,
+            );
             return [
               yield* makeDomainEvent(input, {
                 type: "runtime-request.updated",
                 ...(input.event.threadId === undefined ? {} : { threadId: input.event.threadId }),
-                payload: input.event.runtimeRequest,
-                nodeId: input.event.runtimeRequest.nodeId,
+                // Question ownership belongs to the Runtime, independently of provider refreshes.
+                payload: { ...request, questionHandoff: previous?.questionHandoff },
+                nodeId: request.nodeId,
               }),
             ];
+          }
           case "plan.updated": {
             const occurredAt = yield* DateTime.now;
             const plan = input.event.plan;

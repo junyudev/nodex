@@ -6,7 +6,7 @@ import type { AgentWire } from "../nodex/Interface.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { readWaiting, type WaitingAdmission } from "./RunAdmission.ts";
-import { readSessionAttention } from "./SessionAttention.ts";
+import { readSessionAttention, readTreeSessionAttention } from "./SessionAttention.ts";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as NodeSqliteClient from "@nodex/runtime-shared/nodeSqliteClient";
 
@@ -64,36 +64,42 @@ export const readSessionDetails = Effect.fn("SessionReadDetails.read")(function*
     ORDER BY ordinal DESC LIMIT ${limit + 1}`;
       const counts = yield* sql<{
         readonly runCount: number;
-        readonly pendingRequestCount: number;
       }>`
     SELECT
-      (SELECT COUNT(*) FROM orchestration_v2_projection_runs WHERE thread_id = ${threadId}) AS runCount,
-      (SELECT COUNT(*) FROM orchestration_v2_projection_runtime_requests
-        WHERE thread_id = ${threadId} AND status = 'pending') AS pendingRequestCount`;
-      const attention = (yield* readSessionAttention([threadId])).get(threadId);
-      const pendingRequests = yield* Effect.forEach(attention?.requests ?? [], (request) =>
+      (SELECT COUNT(*) FROM orchestration_v2_projection_runs WHERE thread_id = ${threadId}) AS runCount`;
+      const threads = yield* sql<{
+        root: string;
+      }>`SELECT json_extract(payload_json, '$.lineage.rootThreadId') AS root
+        FROM orchestration_v2_projection_threads WHERE thread_id = ${threadId}`;
+      const attention =
+        threads[0]?.root === threadId
+          ? yield* readTreeSessionAttention(threadId)
+          : ((yield* readSessionAttention([threadId])).get(threadId)?.requests ?? []).map(
+              (request) => ({ ...request, threadId }),
+            );
+      const pendingRequests = yield* Effect.forEach(attention, (request) =>
         Effect.gen(function* () {
           // Select only the question envelope, never transcript or tool-result bodies.
           const rows =
             request.kind === "question"
               ? yield* sql<{ questions: string }>`
             SELECT COALESCE(json_extract(payload_json,'$.questions'),'[]') AS questions
-            FROM orchestration_v2_projection_turn_items
-            WHERE thread_id=${threadId} AND type='user_input_request'
+            FROM orchestration_v2_projection_turn_items INDEXED BY orchestration_v2_projection_turn_items_node_ordinal_idx
+            WHERE thread_id=${request.threadId} AND type='user_input_request'
               AND node_id=(SELECT node_id FROM orchestration_v2_projection_runtime_requests
-                WHERE thread_id=${threadId} AND runtime_request_id=${request.id})
+                WHERE thread_id=${request.threadId} AND runtime_request_id=${request.id})
               AND json_extract(payload_json,'$.requestId')=${request.id} LIMIT 1`
               : [];
           const questions = yield* Schema.decodeEffect(
             Schema.fromJsonString(Schema.Array(OrchestrationV2UserInputQuestion)),
           )(rows[0]?.questions ?? "[]");
-          return { ...request, questions };
+          return { id: request.id, kind: request.kind, questions };
         }),
       );
       return {
         waitingAdmissions: yield* readWaiting(threadId),
         runCount: counts[0]?.runCount ?? 0,
-        pendingRequestCount: counts[0]?.pendingRequestCount ?? 0,
+        pendingRequestCount: pendingRequests.length,
         pendingRequests,
         recentRuns: recentRuns
           .slice(0, limit)

@@ -238,6 +238,7 @@ const task = (id: string): AgentSubagentOverviewItem => ({
   completedAt: null,
   updatedAt: "2026-10-13T20:00:00Z",
   resultAvailable: false,
+  attention: null,
 });
 beforeEach(() => {
   runtimeConnection.current = { status: "ready", generation: "generation" };
@@ -551,39 +552,36 @@ it("counts every Done task and re-reads the totals a report from an unloaded pag
   view.unmount();
 });
 
-it("names a child's pending approval using control metadata without reading its transcript", async () => {
-  const { agentRuntimeSnapshotFixture, agentRuntimeRow } =
-    await import("../../../shared/testing/agent-runtime-snapshot");
-  vi.spyOn(agentRuntimeRuntime, "overview").mockResolvedValue(
-    overviewOf([{ ...task("approval"), status: "waiting" }]),
-  );
-  vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
-  const read = vi.spyOn(agentRuntimeRuntime, "read");
-  const control = vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
-    sessionId: "session",
-    projectId: null,
-    threadId: "child:approval",
-    snapshot: agentRuntimeSnapshotFixture({
-      projection: {
-        runtimeRequests: [
-          agentRuntimeRow("runtimeRequests", {
-            id: "request",
-            nodeId: "approval-node",
-            kind: "permission",
-            status: "pending",
-          }),
-        ],
-      },
-    }),
-  });
-  const view = render(
-    <AgentRuntimeSubagentsOverviewPanel sessionId="session" threadId="root" onSelect={vi.fn()} />,
-  );
-  try {
-    expect(await screen.findByText("Needs approval")).toBeTruthy();
-    expect(control).toHaveBeenCalledWith({ sessionId: "session", threadId: "child:approval" });
-    expect(read).not.toHaveBeenCalled();
-  } finally {
-    view.unmount();
-  }
-});
+it.each([
+  ["approval", "Needs approval"],
+  ["question_person", "Needs your answer"],
+  ["question_agent", "Asked a question"],
+] as const)(
+  "reads %s attention directly from the overview and refreshes it for task reports",
+  async (attention, label) => {
+    const initial = task("attention");
+    const changed = { ...initial, attention, updatedAt: "2026-10-13T20:00:01Z" };
+    const overview = vi
+      .spyOn(agentRuntimeRuntime, "overview")
+      .mockResolvedValueOnce(overviewOf([initial]))
+      .mockResolvedValue(overviewOf([changed]));
+    const observed = observe();
+    const read = vi.spyOn(agentRuntimeRuntime, "read");
+    const control = vi.spyOn(agentRuntimeRuntime, "control");
+    const view = render(
+      <AgentRuntimeSubagentsOverviewPanel sessionId="session" threadId="root" onSelect={vi.fn()} />,
+    );
+    try {
+      await screen.findByRole("button", { name: "Open subagent Review attention" });
+      await act(async () => {
+        observed.update(changed, 1);
+      });
+      expect(await screen.findByText(label)).toBeTruthy();
+      expect(overview).toHaveBeenCalledTimes(2);
+      expect(control).not.toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+    }
+  },
+);

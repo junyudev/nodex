@@ -7,7 +7,6 @@ import {
   agentRuntimeOverviewSectionsToRefill,
   agentRuntimeOverviewWindow,
   appendAgentRuntimeOverviewPage,
-  agentRuntimeOverviewTotalsUnknown,
   applyAgentRuntimeOverviewTask,
   projectAgentRuntimeSubagent,
   projectAgentRuntimeSubagentOverview,
@@ -33,6 +32,7 @@ const task: AgentSubagentOverviewItem = {
   completedAt: null,
   updatedAt: "2026-10-13T20:00:05Z",
   resultAvailable: false,
+  attention: null,
 };
 const page = (
   items: readonly AgentSubagentOverviewItem[],
@@ -110,7 +110,6 @@ describe("Runtime subagent overview", () => {
         ]),
         terminal: page([]),
       },
-      new Set(),
       bobMayStop,
     );
     expect(view.active.rows.map(({ threadId, canStop }) => [threadId, canStop])).toEqual([
@@ -222,12 +221,6 @@ describe("Runtime subagent overview events", () => {
       terminal: page([{ ...task, id: "done", status: "completed" }], "after-done", 30),
     };
     const unseen = record({ id: "unseen", status: "running", updatedAt: "2026-10-13T21:00:00Z" });
-    expect(agentRuntimeOverviewTotalsUnknown(loaded, unseen)).toBe(true);
-    // Even with every page loaded, an unseen report may not be a new task.
-    expect(
-      agentRuntimeOverviewTotalsUnknown({ active: page([task]), terminal: page([]) }, unseen),
-    ).toBe(true);
-    expect(agentRuntimeOverviewTotalsUnknown(loaded, record())).toBe(false);
     const patched = applyAgentRuntimeOverviewTask(loaded, unseen);
     expect([patched.active.totalCount, patched.terminal.totalCount]).toEqual([1, 30]);
     const read = { active: page([], null, 2), terminal: page([], null, 29) };
@@ -346,7 +339,7 @@ describe("Runtime subagent overview events", () => {
 
 it("labels a waiting child approval without turning an information question into approval", () => {
   const waiting = { ...task, status: "waiting" as const };
-  expect(projectAgentRuntimeSubagent(waiting, true)).toMatchObject({
+  expect(projectAgentRuntimeSubagent({ ...waiting, attention: "approval" })).toMatchObject({
     status: "waiting",
     statusSummary: "Needs approval",
   });

@@ -107,6 +107,7 @@ export function existingThreadIdsForCommand(
         ? [command.sourceThreadId]
         : [command.sourceThreadId, command.targetThreadId];
     case "delegated_task.request":
+    case "delegated_task.attention-changed":
     case "delegated_task.question-delivery":
     case "delegated_task.question.receive":
     case "delegated_task.question-wait":

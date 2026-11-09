@@ -1,5 +1,3 @@
-import { queryOptions } from "@tanstack/react-query";
-import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import type {
   AgentEvent,
   AgentSubagentOverview,
@@ -34,7 +32,6 @@ const newerFirst = (left: AgentSubagentOverviewItem, right: AgentSubagentOvervie
 /** Execution metadata is enough for the overview; task bodies stay behind explicit detail reads. */
 export const projectAgentRuntimeSubagent = (
   task: AgentSubagentOverviewItem,
-  waitingOnApproval = false,
   /** Whether this reader may stop work of the Run that started the subagent. */
   canStopRun: (runId: string | null) => boolean = () => true,
 ): CodexSubagentOverviewRow => {
@@ -56,24 +53,29 @@ export const projectAgentRuntimeSubagent = (
         : ["pending", "running"].includes(task.status)
           ? "active"
           : "done",
-    statusSummary: waitingOnApproval
-      ? "Needs approval"
-      : isLive(task.status) && task.recovery
-        ? recoveryStatusLabel({
-            state: "retrying",
-            reason: task.recovery.kind,
-            attempt: task.recovery.attempt,
-            maxAttempts: task.recovery.maxAttempts,
-            retryAt: null,
-            updatedAt: null,
-          })
-        : task.status === "failed"
-          ? "Failed"
-          : task.status === "interrupted"
-            ? "Stopped"
-            : task.status === "cancelled"
-              ? "Cancelled"
-              : null,
+    statusSummary:
+      task.attention !== null
+        ? {
+            approval: "Needs approval",
+            question_person: "Needs your answer",
+            question_agent: "Asked a question",
+          }[task.attention]
+        : isLive(task.status) && task.recovery
+          ? recoveryStatusLabel({
+              state: "retrying",
+              reason: task.recovery.kind,
+              attempt: task.recovery.attempt,
+              maxAttempts: task.recovery.maxAttempts,
+              retryAt: null,
+              updatedAt: null,
+            })
+          : task.status === "failed"
+            ? "Failed"
+            : task.status === "interrupted"
+              ? "Stopped"
+              : task.status === "cancelled"
+                ? "Cancelled"
+                : null,
     startedAtMs: agentRuntimeTime(task.startedAt),
     lastActivityAtMs: agentRuntimeTime(task.updatedAt),
     completedAtMs: agentRuntimeTime(task.completedAt),
@@ -94,15 +96,10 @@ export const projectAgentRuntimeSubagent = (
 export function projectAgentRuntimeSubagentOverview(
   rootThreadId: string,
   source: AgentSubagentOverview,
-  approvalThreads: ReadonlySet<string> = new Set(),
   canStopRun: (runId: string | null) => boolean = () => true,
 ): CodexSubagentOverviewWindow {
   const project = (task: AgentSubagentOverviewItem) =>
-    projectAgentRuntimeSubagent(
-      task,
-      approvalThreads.has(task.childThreadId ?? task.id),
-      canStopRun,
-    );
+    projectAgentRuntimeSubagent(task, canStopRun);
   const rows = [...source.active.items, ...source.terminal.items].map(project);
   const section = (page: AgentSubagentOverview["active"]) => ({
     rows: page.items.map(project),
@@ -129,17 +126,6 @@ function find(overview: AgentSubagentOverview, id: string) {
 }
 const sectionOf = (item: AgentSubagentOverviewItem): Section =>
   isTerminal(item.status) ? "terminal" : "active";
-
-/**
- * Only a report for a loaded row says which section it leaves. Any other report may be a new
- * task or one from a page the user has not loaded, so the section totals are re-read.
- */
-export function agentRuntimeOverviewTotalsUnknown(
-  overview: AgentSubagentOverview,
-  task: Pick<AgentSubagentOverviewItem, "id">,
-): boolean {
-  return find(overview, task.id) === undefined;
-}
 
 /** Places one item by recency; an older or equal report never replaces a newer one. */
 function upsert(
@@ -204,6 +190,7 @@ export function applyAgentRuntimeOverviewTask(
       updatedAt: task.updatedAt,
       childRunId: existing?.childRunId ?? null,
       resultAvailable: existing?.resultAvailable ?? false,
+      attention: existing?.attention ?? null,
     },
     true,
   );
@@ -269,50 +256,4 @@ export function appendAgentRuntimeOverviewPage(
       hasMore: page[section].hasMore,
     },
   };
-}
-
-/** Waiting child rows read only control metadata; the panel never attaches their transcript. */
-export function agentRuntimeSubagentApprovalsQueryOptions(
-  sessionId: string,
-  threadId: string,
-  source: AgentSubagentOverview | null,
-) {
-  const waiting = source?.active.items.filter((task) => task.status === "waiting") ?? [];
-  return queryOptions({
-    queryKey: [
-      "agent-runtime",
-      "subagent-approvals",
-      sessionId,
-      threadId,
-      waiting.map((task) => [task.id, task.childThreadId, task.providerThreadId, task.updatedAt]),
-    ],
-    enabled: waiting.length > 0,
-    queryFn: async () => {
-      const reads = new Map<string, ReturnType<typeof agentRuntimeRuntime.control>>();
-      const threads = await Promise.all(
-        waiting.map(async (task) => {
-          const target = task.childThreadId ?? threadId;
-          let read = reads.get(target);
-          if (!read) {
-            read = agentRuntimeRuntime.control({ sessionId, threadId: target });
-            reads.set(target, read);
-          }
-          const projection = (await read).snapshot.projection;
-          const approval = projection.runtimeRequests.some((request) => {
-            if (request.status !== "pending" || request.kind === "user_input") return false;
-            if (task.childThreadId !== null) return true;
-            return (
-              task.providerThreadId !== null &&
-              projection.nodes.some(
-                (node) =>
-                  node.id === request.nodeId && node.providerThreadId === task.providerThreadId,
-              )
-            );
-          });
-          return approval ? (task.childThreadId ?? task.id) : null;
-        }),
-      );
-      return new Set(threads.filter((id): id is string => id !== null));
-    },
-  });
 }

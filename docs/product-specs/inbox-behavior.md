@@ -361,7 +361,10 @@ stay visible without increasing it. `all` includes every Project; `library`
 means messages without a Project.
 
 A Turn row belongs to the local Member and has reason question, approval,
-review, blocked, failed or stalled. Ready-to-start appears only for a Page with
+review, blocked, failed or stalled. A managed chat's attention includes live approvals
+from delegated descendants and questions handed to the person, using the same tree
+rollup as root Session activity. Questions still owned by a delegating Agent do not
+create person attention. Ready-to-start appears only for a Page with
 Prerequisites that are all now Done. Backlog cards without Prerequisites and
 paused Pages stay out. The row is ordered by the current episode's start time;
 a new episode enters at its own time. It has no dismissed or done state and

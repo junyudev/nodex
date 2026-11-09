@@ -124,7 +124,11 @@ export type AgentSubagentOverviewItem = AgentWire<
     | "completedAt"
     | "updatedAt"
   >
-> & { readonly childRunId: string | null; readonly resultAvailable: boolean };
+> & {
+  readonly childRunId: string | null;
+  readonly resultAvailable: boolean;
+  readonly attention: "approval" | "question_person" | "question_agent" | null;
+};
 export interface AgentSubagentOverviewPage {
   readonly items: ReadonlyArray<AgentSubagentOverviewItem>;
   readonly nextCursor: string | null;

@@ -627,6 +627,7 @@ export type ProjectionSubagentOverviewItem = Pick<
 > & {
   readonly childRunId: RunId | null;
   readonly resultAvailable: boolean;
+  readonly attention: "approval" | "question_person" | "question_agent" | null;
 };
 export interface ProjectionSubagentOverviewPage {
   readonly items: readonly ProjectionSubagentOverviewItem[];
@@ -2315,6 +2316,7 @@ const decodeSubagentOverview = Schema.decodeUnknownEffect(
       updatedAt: fields.updatedAt,
       childRunId: Schema.NullOr(RunId),
       resultAvailable: Schema.Boolean,
+      attention: Schema.NullOr(Schema.Literals(["approval", "question_person", "question_agent"])),
     })),
   ),
 );
@@ -4677,6 +4679,13 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         `).flatMap((row) => (row.id === null ? [] : [row.id])),
               );
 
+        const liveRunStatusesOnly =
+          filter?.runIds === undefined &&
+          filter?.runStatuses !== undefined &&
+          filter.runStatuses.every((status) =>
+            ["queued", "preparing", "starting", "running", "waiting"].includes(status),
+          );
+
         const [
           thread,
           runRows,
@@ -4701,8 +4710,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ? sql<PayloadRow>`
             SELECT payload_json
             FROM orchestration_v2_projection_runs
-              ${filter?.runOpenDelivery === true ? sql`INDEXED BY orchestration_v2_runs_open_delivery_idx` : sql``}
+              ${filter?.runOpenDelivery === true ? sql`INDEXED BY orchestration_v2_runs_open_delivery_idx` : liveRunStatusesOnly ? sql`INDEXED BY orchestration_v2_projection_runs_recovery_idx` : sql``}
             WHERE ${filter?.runIds === undefined ? sql`thread_id = ${threadId}` : sql`+thread_id = ${threadId}`}
+              ${liveRunStatusesOnly ? sql`AND status IN ('queued', 'preparing', 'starting', 'running', 'waiting')` : sql``}
               ${filter?.runIds === undefined ? sql`` : sql`AND run_id IN (SELECT value FROM json_each(${encodeIdList(filter.runIds)}))`}
               ${filter?.runStatuses === undefined ? sql`` : sql`AND status IN (SELECT value FROM json_each(${encodeIdList(filter.runStatuses)}))`}
               ${filter?.runHasCheckpoint !== true ? sql`` : sql`AND json_extract(payload_json, '$.checkpointId') IS NOT NULL`}
@@ -4751,7 +4761,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ? sql<PayloadRow>`
             SELECT payload_json
             FROM orchestration_v2_projection_nodes
-            WHERE thread_id = ${threadId}
+            WHERE ${filter?.nodeIds === undefined ? sql`thread_id = ${threadId}` : sql`+thread_id = ${threadId}`}
               ${filter?.nodeIds === undefined ? sql`` : sql`AND node_id IN (SELECT value FROM json_each(${encodeIdList(filter.nodeIds)}))`}
             ORDER BY COALESCE(started_at, ''), node_id ASC
               `
@@ -7599,6 +7609,21 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             'model', substr(json_extract(task.payload_json, '$.model'), 1, 256), 'status', task.status,
             'recovery', json_extract(task.payload_json, '$.recovery'),
             'startedAt', task.started_at, 'completedAt', task.completed_at, 'updatedAt', task.updated_at,
+            'attention', (SELECT CASE MIN(CASE WHEN request.kind <> 'user_input' THEN 0
+                WHEN json_type(request.payload_json, '$.questionHandoff') = 'object' THEN 1 ELSE 2 END)
+                WHEN 0 THEN 'approval' WHEN 1 THEN 'question_person' WHEN 2 THEN 'question_agent' ELSE NULL END
+              FROM orchestration_v2_projection_runtime_requests AS request
+              WHERE request.thread_id = COALESCE(task.child_thread_id, task.thread_id) AND request.status = 'pending'
+                AND request.kind NOT IN ('dynamic_tool_call', 'auth_refresh')
+                AND json_extract(request.payload_json, '$.responseCapability.type') IN ('live', 'message')
+                AND EXISTS (SELECT 1 FROM orchestration_v2_projection_nodes AS node
+                  WHERE node.node_id = request.node_id AND node.thread_id = request.thread_id
+                    AND ((task.child_thread_id IS NULL AND node.provider_thread_id = task.provider_thread_id)
+                      OR (task.child_thread_id IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM orchestration_v2_projection_runs AS run
+                        WHERE run.run_id = node.run_id AND COALESCE(json_extract(run.payload_json, '$.delegatedTaskId'),
+                          (SELECT json_extract(child.payload_json, '$.forkedFrom.nodeId')
+                            FROM orchestration_v2_projection_threads AS child WHERE child.thread_id = task.child_thread_id)) = task.subagent_id))))),
             'childRunId', (SELECT run_id FROM orchestration_v2_projection_runs AS run
               WHERE run.thread_id = task.child_thread_id ORDER BY ordinal DESC LIMIT 1),
             'resultAvailable', json(CASE WHEN json_type(task.payload_json, '$.result') IS NOT NULL
@@ -11845,6 +11870,32 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                 completedAt: task.completedAt,
                 updatedAt: task.updatedAt,
                 resultAvailable: task.result !== null,
+                attention: (() => {
+                  const child = projections.get(task.childThreadId ?? task.threadId);
+                  const requests =
+                    child?.runtimeRequests.filter(
+                      (request) =>
+                        request.status === "pending" &&
+                        !["dynamic_tool_call", "auth_refresh"].includes(request.kind) &&
+                        request.responseCapability.type !== "not_resumable" &&
+                        child.nodes.some((node) => {
+                          if (node.id !== request.nodeId) return false;
+                          if (task.childThreadId === null)
+                            return node.providerThreadId === task.providerThreadId;
+                          const run = child.runs.find((run) => run.id === node.runId);
+                          const owner =
+                            run?.delegatedTaskId ??
+                            (child.thread.forkedFrom?.type === "node"
+                              ? child.thread.forkedFrom.nodeId
+                              : undefined);
+                          return owner === task.id;
+                        }),
+                    ) ?? [];
+                  if (requests.some((request) => request.kind !== "user_input")) return "approval";
+                  if (requests.some((request) => request.questionHandoff !== undefined))
+                    return "question_person";
+                  return requests.length > 0 ? "question_agent" : null;
+                })(),
               }));
               const last = admitted.at(-1);
               const hasMore = candidates.length > limit;

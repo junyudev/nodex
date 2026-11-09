@@ -1,6 +1,5 @@
 import { useRunStopCapabilities } from "@/lib/use-chat-capabilities";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
-import { agentRuntimeSubagentApprovalsQueryOptions } from "@/features/local-conversation/agent-runtime-subagent-overview";
 import { composerDraftIntents } from "@/lib/composer-draft-intents";
 import { ConnectedThreadStage, type ThreadStageActions } from "@/features/local-conversation";
 import { ConversationRuntimeContext } from "@/features/local-conversation/conversation-runtime";
@@ -22,7 +21,6 @@ import {
   agentRuntimeOverviewSectionsToRefill,
   agentRuntimeOverviewWindow,
   appendAgentRuntimeOverviewPage,
-  agentRuntimeOverviewTotalsUnknown,
   applyAgentRuntimeOverviewTask,
   reconcileAgentRuntimeOverview,
   type AgentRuntimeOverviewWindow,
@@ -327,12 +325,9 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
   const [state, setState] = useState<{
     source: AgentSubagentOverview | null;
     error: string | null;
-    /** Advances when a report leaves the section totals to a re-read. */
+    /** Advances when task metadata invalidates derived attention or section totals. */
     recount: number;
   }>({ source: null, error: null, recount: 0 });
-  const approvalThreads = useQuery(
-    agentRuntimeSubagentApprovalsQueryOptions(input.sessionId, input.threadId, state.source),
-  ).data;
   // Each subagent answers for the Run that started it, as Core admits its stop.
   const canStopRun = useRunStopCapabilities(
     input.sessionId,
@@ -399,9 +394,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
                 ? {
                     ...current,
                     source: applyAgentRuntimeOverviewTask(current.source, task),
-                    recount:
-                      current.recount +
-                      Number(agentRuntimeOverviewTotalsUnknown(current.source, task)),
+                    recount: current.recount + 1,
                   }
                 : current,
             );
@@ -421,7 +414,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
         let source = read;
         let recount = false;
         for (const task of pending ?? []) {
-          recount = recount || agentRuntimeOverviewTotalsUnknown(source, task);
+          recount = true;
           source = applyAgentRuntimeOverviewTask(source, task);
         }
         pending = null;
@@ -437,7 +430,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
       release?.();
     };
   }, [input.sessionId, input.threadId, attachment]);
-  // Bursts of reports share one re-read; its totals replace the patched ones.
+  // Bursts of reports share one bounded re-read for attention and section totals.
   useEffect(() => {
     if (state.recount === 0) return;
     let active = true;
@@ -551,12 +544,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
       <div className="min-h-0 flex-1">
         <SubagentsPanelOverviewContent
           rootThreadId={input.threadId}
-          overview={projectAgentRuntimeSubagentOverview(
-            input.threadId,
-            source,
-            approvalThreads,
-            canStopRun,
-          )}
+          overview={projectAgentRuntimeSubagentOverview(input.threadId, source, canStopRun)}
           onSelect={(row) => input.onSelect(projectSubagentOverviewRowToOpenPayload(row))}
           isStopping={(row) => {
             const task = taskForRow(row);

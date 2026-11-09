@@ -27,9 +27,12 @@ import {
 } from "@nodex/runtime-shared/orchestrationV2PendingBackgroundWork";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as Layer from "effect/Layer";
 
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import { readSessionDetails } from "./SessionReadDetails.ts";
+import { readTreeSessionAttention } from "./SessionAttention.ts";
 import { readActivityRootIds, readRootActivity } from "./ExecutionActivity.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import {
@@ -1105,5 +1108,73 @@ it.effect.each(READBACK_ACTION_TYPES)(
         steps: [],
       });
       assert.equal((yield* f.read)?.itemId, "unknown");
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "rolls a grandchild handoff and live child approval into root activity and Page attention with bounded reads",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      const root = yield* f.thread("root:question-tree");
+      const child = yield* f.thread("child:question-tree", root);
+      const grandchild = yield* f.thread("grandchild:question-tree", child, {
+        lineage: { parentThreadId: child, relationshipToParent: "subagent", rootThreadId: root },
+      });
+      yield* f.run(root, "running", { ordinal: 10_001 });
+      yield* f.run(child, "running");
+      yield* f.request(grandchild, "tree:question", "pending");
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      {
+        const activity = (yield* readRootActivity({ rootThreadIds: [root] })).items[0]!;
+        assert.equal(activity.pendingRequestCount, 0);
+        assert.deepEqual((yield* readSessionDetails(root, 1)).pendingRequests, []);
+      }
+      const request = (yield* store.getRuntimeRequest(
+        grandchild,
+        RuntimeRequestId.make("tree:question"),
+      ))!;
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO orchestration_v2_projection_turn_items(turn_item_id,thread_id,node_id,ordinal,type,status,updated_at,payload_json)
+        VALUES('tree:item',${grandchild},${request.nodeId},1,'user_input_request','waiting',${DateTime.formatIso(f.now)},
+          ${JSON.stringify({ requestId: request.id, questions: [{ id: "choice", header: "Scope", question: "Which sources?", options: [] }] })})`;
+      yield* f.apply({
+        type: "runtime-request.updated",
+        threadId: grandchild,
+        payload: {
+          ...request,
+          questionHandoff: { at: DateTime.formatIso(f.now), reason: "unresolved" },
+        },
+      });
+      yield* f.request(
+        child,
+        "tree:approval",
+        "pending",
+        { type: "live", providerSessionId: ProviderSessionId.make("session:child") },
+        "command",
+      );
+      const activity = (yield* readRootActivity({ rootThreadIds: [root] })).items[0]!;
+      assert.equal(activity.pendingRequestCount, 2);
+      assert.deepEqual(activity.activeFlags, ["waitingOnApproval", "waitingOnUserInput"]);
+      const details = yield* readSessionDetails(root, 1);
+      assert.equal(details.pendingRequestCount, 2);
+      assert.equal(
+        details.pendingRequests.find((request) => request.id === "tree:question")?.questions[0]
+          ?.question,
+        "Which sources?",
+      );
+      assert.deepEqual(
+        details.pendingRequests.map(({ id, kind }) => ({ id, kind })),
+        [
+          { id: "tree:approval", kind: "approval" },
+          { id: "tree:question", kind: "question" },
+        ],
+      );
+      yield* seedUndecodableHistory({ threadId: root, at: DateTime.formatIso(f.now) });
+      const traced = yield* explainExecutedSql(readTreeSessionAttention(root));
+      assert.equal(traced.result.length, 2);
+      for (const { plan } of traced.plans)
+        assert.deepEqual(fullHistoryScans(plan, ["facts", "rooted"]), []);
+      assert.deepEqual(historyWideReads(traced.plans), []);
     }).pipe(Effect.provide(layer)),
 );

@@ -447,6 +447,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   executionLocation: Schema.optional(OrchestrationV2ExecutionLocation),
+  /** Stop relinquishes questions from work already admitted through this Run ordinal. */
+  executionStoppedThroughOrdinal: Schema.optional(NonNegativeInt),
   /** A durable workspace transaction seals execution, including after process replacement. */
   executionHandoff: Schema.optional(Schema.NullOr(ExecutionHandoff)),
   /** Pull request the user linked to this thread (#8160); optional so
@@ -914,6 +916,11 @@ export const OrchestrationV2Subagent = Schema.Struct({
   /** Wait claims awaiting a completed native tool-result receipt. */
   unconfirmedQuestionIds: Schema.optional(Schema.Array(RuntimeRequestId)),
   questionClaimRunIds: Schema.optional(Schema.Array(RunId)),
+  /** The receiving Run for each question, confirmed by the existing delivery receipt. */
+  questionDeliveries: Schema.optional(Schema.Array(Schema.Struct({
+    requestId: RuntimeRequestId,
+    runId: RunId,
+  }))),
   status: Schema.Literals([
     "idle",
     "pending",
@@ -1309,6 +1316,11 @@ export const OrchestrationV2RuntimeRequest = Schema.Struct({
   feedback: Schema.optional(Schema.String),
   answers: Schema.optional(ProviderUserInputAnswers),
   respondedBy: Schema.optional(UserInputResponder),
+  /** Present once the delegating Agent relinquishes this question to the person. */
+  questionHandoff: Schema.optional(Schema.Struct({
+    at: Schema.String,
+    reason: Schema.Literals(["unresolved", "owner_unavailable"]),
+  })),
   /** Retained with the accepted response for exact Session-tool retries. */
   responseFingerprint: Schema.optional(Schema.String),
   /** Live information requests alone may expire after host-managed inactivity. */
@@ -3681,6 +3693,19 @@ export const OrchestrationV2Command = Schema.Union([
     // run); producers that want fire-and-forget wakes must set "always".
     completionWake: Schema.optional(Schema.Literals(["always", "settled_only"])),
     createdAt: Schema.optional(Schema.DateTimeUtc),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("delegated_task.attention-changed"),
+    commandId: CommandId,
+    parentThreadId: ThreadId,
+    taskId: NodeId,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("delegated_task.question-handoff"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    requestId: RuntimeRequestId,
+    reason: Schema.Literals(["unresolved", "owner_unavailable"]),
   }),
   Schema.Struct({
     type: Schema.Literal("delegated_task.question-wait"),

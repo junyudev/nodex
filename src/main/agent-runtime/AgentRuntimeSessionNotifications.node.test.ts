@@ -579,3 +579,25 @@ it.effect.each(["completed", "interrupted", "failed"] as const)(
       );
     }),
 );
+
+it.effect("a child question handed to the person notifies and marks its root unread", () =>
+  Effect.gen(function* () {
+    const h = harness({});
+    const working = activity("running", { pendingRequestCount: 0 });
+    const handed = activity("waiting", { activeFlags: ["waitingOnUserInput"] });
+    yield* h.deliver([
+      transition(null, working),
+      transition(working, handed),
+      transition(handed, working),
+    ]);
+    assert.deepEqual(
+      h.shown.map((notification) => notification.kind),
+      ["question"],
+    );
+    assert.deepEqual(
+      h.events.map((event) => event.type),
+      ["user-input-requested", "request-resolved"],
+    );
+    assert.deepEqual(h.unread, ["session:a"]);
+  }),
+);

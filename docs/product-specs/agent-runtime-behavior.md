@@ -1046,6 +1046,19 @@ the waiting provider, while asynchronous questions send answers into the child's
 Answered or dismissed requests cannot be answered again through the tool. The answer is
 attributed to the coordinating Thread, including its asynchronous answer message or dismissal. Answering after the child Run finishes creates a follow-up task with the same ownership and completion delivery as `task_send`. The response identifies that task and explains that its result will wake the coordinator; the original result remains unchanged.
 
+Each pending question in an application-owned delegated task has one current answerer:
+its immediate delegating Agent, until the Runtime hands it to the person. A person can
+always answer from the task's chat, and the first accepted answer wins. If a Run receives
+the question through a steered notice, a wait result or a wake and ends without answering
+or dismissing it, the Runtime hands it to the person with reason `unresolved`. Stop of the
+delegator or its delegated work, archive, deletion and disposal of completion delivery
+hand off pending questions with reason `owner_unavailable`; questions raised afterwards
+in that state go directly to the person. Pause and execution holds keep the Agent as
+answerer. The request retains the hand-off time and reason across restarts, and repeated
+observations cannot hand it off twice. The Agent receives no hand-off message, and a later
+Agent answer is accepted while the question remains pending. Nested questions belong to
+their immediate delegator; a hand-off always goes to the person at the tree root.
+
 `session_question` provides the same question selection and response semantics for an
 explicit product Session, including a selected Runtime child. Its Profile-wide access is
 subject to current execution authority and the caller's runtime and Plan permissions.
@@ -1220,8 +1233,10 @@ window. Waiting takes precedence over running and background. The root's pending
 and live user-input requests wait immediately, including non-blocking live questions. Its
 asynchronous questions wait only while it has no preparing, starting or running Run; a waiting
 Run has ended its provider turn and only drains effects. A pending secret card waits only while
-its own Run is live. Delegated conversations roll up only approvals, including MCP elicitation,
-and only while their Run is live. Their questions belong to the delegating Agent. Provider-native
+its own Run is live. Delegated conversations roll up approvals, including MCP elicitation,
+while their Run is live, and pending questions handed to the person even while the task
+continues working. Agent-owned questions stay out of person attention. Root Session details,
+Page Turns and Inbox use the same tree attention policy as Session activity. Provider-native
 children's live information requests, including informational MCP elicitations, belong to the
 native tree's root conversation and Run; answers resume the originating child callback.
 Codex's synchronous question tool and optional asynchronous questions are root-only.
@@ -1237,6 +1252,14 @@ result will wake it; idle Sessions are absent. Only requests that make the Sessi
 in its pending request count. Each activity names the root Thread, active Run, provider, model,
 and up to 25 live background tasks with their owning conversation, name, command and start time.
 Core never stores these facts.
+
+The bounded subagent overview carries `attention` directly from live pending requests:
+`approval`, then `question_person`, then `question_agent`, otherwise null. Attention is
+independent of task status, including asynchronous questions from running tasks. The panel
+shows `Needs approval`, `Needs your answer` or `Asked a question` in the existing trailing
+status label; a waiting task without attention still shows `Waiting`. Attention labels do
+not repeat in the preview. The panel observes task metadata and refreshes bounded overview
+pages rather than reading every child's control state.
 
 Each Agent reports its own background tasks. Claude Code reports background shells, Monitors
 and workflows as it starts and ends them. Codex background terminals appear as command tasks

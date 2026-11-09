@@ -122,3 +122,58 @@ export const readSessionAttention = Effect.fn("SessionAttention.read")(function*
   }
   return attention;
 });
+
+/** Own approvals and live input always wait; asynchronous questions wait between working Runs. */
+export const OWN_ATTENTION_PREDICATE = `facts.thread_id = json_extract(thread.payload_json, '$.lineage.rootThreadId')
+      AND (${AWAITS_PERSON_PREDICATE})`;
+
+/** Child approvals and questions handed to the person share one tree attention policy. */
+export const CHILD_ATTENTION_PREDICATE = `json_extract(thread.payload_json, '$.lineage.relationshipToParent') = 'subagent'
+      AND json_extract(thread.payload_json, '$.creationSource') IS NOT 'provider'
+      AND ((facts.kind = '${ATTENTION_KINDS.approval}'
+      AND EXISTS (SELECT 1 FROM orchestration_v2_projection_runs AS live
+        INDEXED BY orchestration_v2_projection_runs_thread_status_idx
+        WHERE live.thread_id = facts.thread_id AND ${LIVE_RUN_PREDICATE}))
+      OR (facts.kind IN ('${ATTENTION_KINDS.input}', '${ATTENTION_KINDS.question}')
+        AND EXISTS (SELECT 1 FROM orchestration_v2_projection_runtime_requests AS handed
+          WHERE handed.thread_id = facts.thread_id AND handed.runtime_request_id = facts.request_id
+            AND json_type(handed.payload_json, '$.questionHandoff') = 'object')))`;
+
+/**
+ * A side chat has its own execution root but no catalog row. Its user attention also reaches
+ * the source's root; source lookups follow only exact Thread identities, never retained history.
+ */
+export const SIDE_CHAT_SOURCE_ROOT = `SELECT json_extract(source.payload_json, '$.lineage.rootThreadId')
+      FROM orchestration_v2_projection_threads AS source
+      WHERE source.thread_id = json_extract(owner.payload_json, '$.sideChat.sourceThreadId')
+        AND source.deleted_at IS NULL`;
+
+/** Root Session details use exactly the activity tree policy, starting only from live requests. */
+export const readTreeSessionAttention = Effect.fn("SessionAttention.readTree")(function* (
+  threadId: string,
+) {
+  const sql = yield* SqlClient.SqlClient;
+  return yield* sql<{
+    readonly id: string;
+    readonly threadId: string;
+    readonly kind: "question" | "approval";
+  }>`
+    WITH RECURSIVE facts(thread_id, request_id, kind) AS MATERIALIZED (
+      SELECT thread_id, runtime_request_id, ${sql.literal(REQUEST_ATTENTION_KIND_SQL)}
+      FROM orchestration_v2_projection_runtime_requests
+      WHERE ${sql.literal(PENDING_ATTENTION_REQUEST_PREDICATE)}
+      UNION ALL
+      SELECT secret.thread_id, secret.turn_item_id, 'input'
+      ${sql.literal(SECRET_CARD_ATTENTION_FACT_FROM_SQL)}
+    ), rooted(root_thread_id, thread_id, request_id, kind) AS (
+      SELECT json_extract(thread.payload_json, '$.lineage.rootThreadId'), facts.thread_id, facts.request_id, facts.kind
+      FROM facts CROSS JOIN orchestration_v2_projection_threads AS thread ON thread.thread_id = facts.thread_id
+      WHERE thread.deleted_at IS NULL AND ((${sql.literal(OWN_ATTENTION_PREDICATE)}) OR (${sql.literal(CHILD_ATTENTION_PREDICATE)}))
+      UNION
+      SELECT (${sql.literal(SIDE_CHAT_SOURCE_ROOT)}), rooted.thread_id, rooted.request_id, rooted.kind
+      FROM rooted CROSS JOIN orchestration_v2_projection_threads AS owner ON owner.thread_id = rooted.root_thread_id
+      WHERE json_extract(owner.payload_json, '$.sideChat.sourceThreadId') IS NOT NULL
+    ) SELECT request_id AS id, thread_id AS threadId,
+      CASE WHEN kind = 'approval' THEN 'approval' ELSE 'question' END AS kind
+    FROM rooted WHERE root_thread_id = ${threadId} ORDER BY thread_id, request_id, kind`;
+});

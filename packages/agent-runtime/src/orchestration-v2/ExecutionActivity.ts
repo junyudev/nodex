@@ -10,9 +10,11 @@ import {
 } from "./ProjectionRecoveryQueries.ts";
 import {
   sessionAttentionFlags,
+  OWN_ATTENTION_PREDICATE,
+  CHILD_ATTENTION_PREDICATE,
+  SIDE_CHAT_SOURCE_ROOT,
   ATTENTION_KINDS,
   ATTENTION_KIND_SQL_LIST,
-  AWAITS_PERSON_PREDICATE,
   LIVE_RUN_PREDICATE,
   PENDING_ATTENTION_REQUEST_PREDICATE,
   REQUEST_ATTENTION_KIND_SQL,
@@ -72,27 +74,6 @@ const WAKING_LIVE_TASK_PREDICATE = `status IN ('pending', 'running', 'waiting') 
       AND CASE WHEN json_valid(payload_json)
         THEN json_extract(payload_json, '$.completionWake') = 'always' ELSE 0 END`;
 
-/** Own approvals and live input always wait; asynchronous questions wait between working Runs. */
-const OWN_ATTENTION_PREDICATE = `facts.thread_id = json_extract(thread.payload_json, '$.lineage.rootThreadId')
-      AND (${AWAITS_PERSON_PREDICATE})`;
-
-/** Coordinators answer child questions; only live delegated approvals need user attention. */
-const CHILD_APPROVAL_PREDICATE = `facts.kind = '${ATTENTION_KINDS.approval}'
-      AND json_extract(thread.payload_json, '$.lineage.relationshipToParent') = 'subagent'
-      AND json_extract(thread.payload_json, '$.creationSource') IS NOT 'provider'
-      AND EXISTS (SELECT 1 FROM orchestration_v2_projection_runs AS live
-        INDEXED BY orchestration_v2_projection_runs_thread_status_idx
-        WHERE live.thread_id = facts.thread_id AND ${LIVE_RUN_PREDICATE})`;
-
-/**
- * A side chat has its own execution root but no catalog row. Its user attention also reaches
- * the source's root; source lookups follow only exact Thread identities, never retained history.
- */
-const SIDE_CHAT_SOURCE_ROOT = `SELECT json_extract(source.payload_json, '$.lineage.rootThreadId')
-      FROM orchestration_v2_projection_threads AS source
-      WHERE source.thread_id = json_extract(owner.payload_json, '$.sideChat.sourceThreadId')
-        AND source.deleted_at IS NULL`;
-
 /** Roots affected by a Thread change, including the visible sources of temporary side chats. */
 export const readActivityRootIds = Effect.fn("ExecutionActivity.readActivityRootIds")(function* (
   threadId: string,
@@ -114,7 +95,7 @@ export const readActivityRootIds = Effect.fn("ExecutionActivity.readActivityRoot
 /**
  * Non-idle roots from indexed live work and pending attention. Root approvals, live input and
  * live secret cards wait immediately; asynchronous root questions wait after working Runs end.
- * Only live, non-provider child approvals roll up. Side-chat attention also reaches its source.
+ * Live, non-provider child approvals and questions handed to the person roll up. Side-chat attention also reaches its source.
  * No message or result body is read; cost follows live work, never retained history.
  */
 export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(function* (input: {
@@ -195,7 +176,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           WHERE thread.deleted_at IS NULL
             AND (facts.kind NOT IN (${sql.literal(ATTENTION_KIND_SQL_LIST)})
               OR (${sql.literal(OWN_ATTENTION_PREDICATE)})
-              OR (${sql.literal(CHILD_APPROVAL_PREDICATE)}))
+              OR (${sql.literal(CHILD_ATTENTION_PREDICATE)}))
         ), attention(root_thread_id, thread_id, kind, at, amount, request_id) AS (
           SELECT root_thread_id, thread_id, kind, at, amount, request_id
           FROM rooted WHERE kind IN (${sql.literal(ATTENTION_KIND_SQL_LIST)})

@@ -96,6 +96,10 @@ Nodex hears about a managed chat when it:
 - seems stalled: still working on the same turn with no progress for twenty minutes and nothing
   waiting on the person.
 
+A managed chat's attention uses its execution tree: live delegated approvals and questions
+handed to the person count alongside root requests. Questions still owned by a delegating
+Agent stay out of person attention. Page Turns and Inbox share this rollup.
+
 A pending question remains Attention until it is answered, cancelled or can no longer be
 answered. Ending its Run alone does not resolve it. A turn that ends with a question still
 waiting on the person produces no unreported-turn update.

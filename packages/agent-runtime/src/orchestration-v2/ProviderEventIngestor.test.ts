@@ -1959,3 +1959,56 @@ layer("ProviderEventIngestorV2", (it) => {
     }),
   );
 });
+
+it.effect("provider request refreshes retain the Runtime's durable question handoff", () =>
+  Effect.gen(function* () {
+    const now = yield* DateTime.now;
+    const idAllocator = yield* IdAllocator.IdAllocatorV2;
+    const sink = yield* EventSink.EventSinkV2;
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+    const thread = yield* threadCreatedEvent(now);
+    const handoff = { at: DateTime.formatIso(now), reason: "unresolved" as const };
+    const request: OrchestrationV2RuntimeRequest = {
+      id: RuntimeRequestId.make("question:handoff-refresh"),
+      nodeId: NodeId.make("node:handoff-refresh"),
+      providerTurnId: null,
+      nativeRequestRef: null,
+      kind: "user_input",
+      status: "pending",
+      responseCapability: { type: "message" },
+      createdAt: now,
+      resolvedAt: null,
+    };
+    yield* sink.write({
+      events: [
+        thread,
+        {
+          id: yield* idAllocator.allocate.event({ threadId: thread.threadId }),
+          type: "runtime-request.updated",
+          threadId: thread.threadId,
+          occurredAt: now,
+          payload: { ...request, questionHandoff: handoff },
+        },
+      ],
+    });
+    const providerSessionId = yield* idAllocator.allocate.providerSession({
+      providerInstanceId: modelSelection.instanceId,
+      threadId: thread.threadId,
+    });
+    const stored = yield* ingestor.ingestNormalized({
+      providerSessionId,
+      providerInstanceId: modelSelection.instanceId,
+      threadId: thread.threadId,
+      event: { type: "runtime_request.updated", driver: CODEX_DRIVER, runtimeRequest: request },
+    });
+    assert.deepEqual(
+      (yield* store.getRuntimeRequest(thread.threadId, request.id))?.questionHandoff,
+      handoff,
+    );
+    const event = stored[0]?.event;
+    assert.isTrue(event?.type === "runtime-request.updated");
+    if (event?.type === "runtime-request.updated")
+      assert.deepEqual(event.payload.questionHandoff, handoff);
+  }).pipe(Effect.provide(layerTest)),
+);

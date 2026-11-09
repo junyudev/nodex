@@ -361,9 +361,10 @@ title is the Session title, and its host is the local host.
   pending request; an execution approval uses the approval family. Root approvals and live
   questions notify immediately. A waiting episode that changes between a question and an
   approval replaces its notification. An asynchronous root question notifies
-  once its Run stops working, including when the provider turn ends. Only live delegated
-  approvals roll up; delegated questions and provider-native child requests never notify the
-  user. Side-chat attention notifies through the source Session. Attention replaces
+  once its Run stops working, including when the provider turn ends. Live delegated
+  approvals and delegated questions handed to the person roll up to the root chat under
+  this same policy. Agent-owned child questions and provider-native child requests do not
+  independently notify the person. Side-chat attention notifies through the source Session. Attention replaces
   turn completion while the Session waits, so a question revealed at turn end produces one
   question notification. One identity follows the waiting episode across Run changes and is
   withdrawn when the Session stops waiting.

@@ -478,3 +478,30 @@ test("switching roots discards the previous root’s pending overview", async ()
   expect(overviewMocks.read).toHaveBeenCalledTimes(2);
   expect(onError).not.toHaveBeenCalled();
 });
+
+test.each(["Needs approval", "Needs your answer", "Asked a question"])(
+  "shows %s once on active tasks and keeps it out of the preview",
+  async (label) => {
+    let row = { ...buildRow(1, "active"), objective: null, statusSummary: label };
+    const view = render(
+      <SubagentsPanelOverviewContent
+        rootThreadId="root"
+        overview={buildOverview({ active: [row], done: [] })}
+        onSelect={() => undefined}
+      />,
+    );
+    expect(screen.getAllByText(label)).toHaveLength(1);
+    row = { ...row, status: "waiting" };
+    await act(async () => {
+      view.rerender(
+        <SubagentsPanelOverviewContent
+          rootThreadId="root"
+          overview={buildOverview({ active: [row], done: [] })}
+          onSelect={() => undefined}
+        />,
+      );
+    });
+    expect(screen.getAllByText(label)).toHaveLength(1);
+    expect(screen.queryByText("Waiting")).toBeNull();
+  },
+);
