@@ -227,7 +227,9 @@ Native DnD tests must continue to use the realistic mouse helper described in
 
 ## Caches and timing evidence
 
-Rust-bearing jobs use sccache through `.github/actions/setup-rust-ci`. Browser
+Rust-bearing jobs use sccache through `.github/actions/setup-rust-ci`, the only
+place that enables it. The cache only saves time: when sccache cannot be
+downloaded after a retry, the job builds uncached with a warning. Browser
 Vitest jobs use `.github/actions/setup-playwright`, keyed from the lockfile and
 package manifest. Mutable Stores and Cargo target directories are not treated
 as correctness caches.

@@ -89,18 +89,6 @@ export const verifyFullCiContracts = (
 export const verifyAppTestMatrixContracts = (workflow: UnknownRecord): void => {
   const jobs = requireRecord(workflow.jobs, "Application test workflow jobs");
   const testJob = requireRecord(jobs.test, "Application test matrix job");
-  const environment =
-    testJob.env === undefined
-      ? {}
-      : requireRecord(testJob.env, "Application test matrix job environment");
-  const unsafeGlobalVariables = ["RUSTC_WRAPPER", "SCCACHE_GHA_ENABLED"].filter((name) =>
-    Object.hasOwn(environment, name),
-  );
-  if (unsafeGlobalVariables.length > 0) {
-    throw new Error(
-      `Application test matrix must scope Rust cache variables to Rust-bearing steps: ${unsafeGlobalVariables.join(", ")}.`,
-    );
-  }
   if (!Array.isArray(testJob.steps)) return;
   const duplicatedBuildResources = testJob.steps.some((candidate) => {
     if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate))
@@ -193,6 +181,43 @@ export const verifyElectronE2eWorkflowContracts = (
   }
 };
 
+const RUST_CACHE_VARIABLES = ["RUSTC_WRAPPER", "SCCACHE_GHA_ENABLED"] as const;
+const RUST_CACHE_ASSIGNMENT = /\b(?:RUSTC_WRAPPER|SCCACHE_GHA_ENABLED)=/u;
+
+/**
+ * The compiler cache only makes builds faster. `.github/actions/setup-rust-ci` enables it once
+ * sccache is installed, so a workflow that sets it itself would fail when the download does.
+ */
+export const verifyRustCacheOwnership = (workflow: UnknownRecord, workflowName: string): void => {
+  const owners: string[] = [];
+  const inspectEnvironment = (environment: unknown, label: string): void => {
+    if (typeof environment !== "object" || environment === null) return;
+    for (const name of RUST_CACHE_VARIABLES)
+      if (Object.hasOwn(environment, name)) owners.push(`${label} sets ${name}`);
+  };
+  inspectEnvironment(workflow.env, workflowName);
+  const jobs =
+    workflow.jobs === undefined ? {} : requireRecord(workflow.jobs, `${workflowName} jobs`);
+  for (const [jobName, rawJob] of Object.entries(jobs)) {
+    const job = requireRecord(rawJob, `${workflowName} ${jobName} job`);
+    inspectEnvironment(job.env, `${workflowName} ${jobName}`);
+    if (!Array.isArray(job.steps)) continue;
+    job.steps.forEach((candidate: unknown, index) => {
+      if (typeof candidate !== "object" || candidate === null) return;
+      const step = candidate as UnknownRecord;
+      const label = `${workflowName} ${jobName} step ${index + 1}`;
+      inspectEnvironment(step.env, label);
+      if (typeof step.run === "string" && RUST_CACHE_ASSIGNMENT.test(step.run))
+        owners.push(`${label} assigns a Rust cache variable`);
+    });
+  }
+  if (owners.length > 0) {
+    throw new Error(
+      `Only .github/actions/setup-rust-ci enables the Rust compiler cache: ${owners.join("; ")}.`,
+    );
+  }
+};
+
 export const verifyDirectNeedsContracts = (workflow: UnknownRecord, workflowName: string): void => {
   const jobs = requireRecord(workflow.jobs, `${workflowName} jobs`);
   for (const [jobName, rawJob] of Object.entries(jobs)) {
@@ -223,6 +248,7 @@ const main = (): void => {
     const workflowName = relativeRepositoryPath(workflowPath);
     verifyElectronE2eWorkflowContracts(workflow, workflowName);
     verifyDirectNeedsContracts(workflow, workflowName);
+    verifyRustCacheOwnership(workflow, workflowName);
   }
   process.stdout.write("Verified CI matrix coverage and prerequisite isolation.\n");
 };

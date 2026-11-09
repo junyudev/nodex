@@ -6,6 +6,7 @@ import {
   verifyDirectNeedsContracts,
   verifyElectronE2eWorkflowContracts,
   verifyFullCiContracts,
+  verifyRustCacheOwnership,
 } from "./verify-ci-matrix-contracts";
 
 const nightlyWorkflow = ({
@@ -94,15 +95,30 @@ describe("CI matrix contracts", () => {
     ).toThrow("full deterministic gate plan");
   });
 
-  test("rejects Rust cache variables inherited by non-Rust matrix cells", () => {
+  test("leaves enabling the Rust compiler cache to the action that installs it", () => {
     expect(() =>
-      verifyAppTestMatrixContracts({ jobs: { test: { env: { CI_TIMING_JOB: "test" } } } }),
+      verifyRustCacheOwnership(
+        {
+          jobs: {
+            rust: {
+              env: { CI_TIMING_JOB: "rust" },
+              steps: [{ uses: "./.github/actions/setup-rust-ci" }, { run: "cargo test" }],
+            },
+          },
+        },
+        "rust.yml",
+      ),
     ).not.toThrow();
-    expect(() =>
-      verifyAppTestMatrixContracts({
-        jobs: { test: { env: { RUSTC_WRAPPER: "sccache" } } },
-      }),
-    ).toThrow("scope Rust cache variables to Rust-bearing steps");
+    for (const workflow of [
+      { env: { RUSTC_WRAPPER: "sccache" }, jobs: {} },
+      { jobs: { rust: { env: { SCCACHE_GHA_ENABLED: "true" } } } },
+      { jobs: { rust: { steps: [{ env: { RUSTC_WRAPPER: "sccache" }, run: "cargo test" }] } } },
+      { jobs: { rust: { steps: [{ run: "export RUSTC_WRAPPER=sccache\ncargo test" }] } } },
+    ]) {
+      expect(() => verifyRustCacheOwnership(workflow, "rust.yml")).toThrow(
+        "Only .github/actions/setup-rust-ci enables the Rust compiler cache",
+      );
+    }
   });
 
   test("rejects generated build resources duplicated across application cells", () => {
