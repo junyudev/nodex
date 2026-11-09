@@ -39,6 +39,49 @@ afterEach(() => {
 });
 
 describe("ApplicationSettings", () => {
+  it.effect(
+    "defaults Readback on, persists changes and preserves it in other notification updates",
+    () =>
+      Effect.gen(function* () {
+        const { root, settingsPath } = fixture();
+        const options = { environment: {}, hostHomeDirectory: root, settingsPath };
+        const settings = yield* makeApplicationSettings(options);
+        assert.isTrue((yield* settings.snapshot()).notifications.readbackEnabled);
+        const saved = yield* settings.update({
+          type: "update-thread-notifications",
+          input: {
+            turnMode: "off",
+            questionsEnabled: false,
+            readbackEnabled: false,
+          },
+        });
+        assert.deepEqual(saved.notifications, {
+          turnMode: "off",
+          questionsEnabled: false,
+          readbackEnabled: false,
+        });
+        assert.strictEqual(
+          (parseToml(readFileSync(settingsPath, "utf8")).server as Record<string, unknown>)
+            .thread_readback_enabled,
+          false,
+        );
+        const reopened = yield* makeApplicationSettings(options);
+        assert.deepEqual((yield* reopened.snapshot()).notifications, saved.notifications);
+        const changed = yield* reopened.update({
+          type: "update-thread-notifications",
+          input: {
+            turnMode: "always",
+            questionsEnabled: true,
+          },
+        });
+        assert.deepEqual(changed.notifications, {
+          turnMode: "always",
+          questionsEnabled: true,
+          readbackEnabled: false,
+        });
+      }),
+  );
+
   it.effect("persists the shell choice across reopen and rejects unsupported shells", () =>
     Effect.gen(function* () {
       const { root, settingsPath } = fixture('[plugin]\nname = "keep"\n');

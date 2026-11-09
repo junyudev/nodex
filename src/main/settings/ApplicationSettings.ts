@@ -217,6 +217,7 @@ export class ApplicationSettings extends Context.Service<
     readonly composerPredictionSettingsChanges: Stream.Stream<ComposerPredictionSettings>;
     /** Latest saved Inbox preferences, for work that waits on them. */
     readonly inboxSettingsChanges: Stream.Stream<InboxSettings>;
+    readonly threadNotificationSettingsChanges: Stream.Stream<ThreadNotificationSettings>;
     readonly telemetrySettingsChanges: Stream.Stream<TelemetrySettings>;
     readonly acpLaunchConfiguration: (
       instanceId: string,
@@ -432,6 +433,9 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   yield* Effect.addFinalizer(() => PubSub.shutdown(composerPredictionChanges));
   const inboxChanges = yield* PubSub.sliding<InboxSettings>(1);
   yield* Effect.addFinalizer(() => PubSub.shutdown(inboxChanges));
+  // Keep disable edges even if a slow observer sees an immediate re-enable; backpressure avoids loss.
+  const threadNotificationChanges = yield* PubSub.bounded<ThreadNotificationSettings>(16);
+  yield* Effect.addFinalizer(() => PubSub.shutdown(threadNotificationChanges));
   const telemetryChanges = yield* PubSub.sliding<TelemetrySettings>(1);
   yield* Effect.addFinalizer(() => PubSub.shutdown(telemetryChanges));
   // The native runtime keeps one home for this Main lifetime; saved changes apply after restart.
@@ -497,6 +501,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     linkOpeningSettingsChanges: SubscriptionRef.changes(linkOpening),
     composerPredictionSettingsChanges: Stream.fromPubSub(composerPredictionChanges),
     inboxSettingsChanges: Stream.fromPubSub(inboxChanges),
+    threadNotificationSettingsChanges: Stream.fromPubSub(threadNotificationChanges),
     telemetrySettingsChanges: Stream.fromPubSub(telemetryChanges),
     acpLaunchConfiguration: (instanceId) =>
       writes.withPermits(1)(
@@ -537,6 +542,8 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
           if (snapshot.composerPredictions.enabled !== previousComposerPredictions.enabled) {
             yield* PubSub.publish(composerPredictionChanges, snapshot.composerPredictions);
           }
+          if (command.type === "update-thread-notifications")
+            yield* PubSub.publish(threadNotificationChanges, snapshot.notifications);
           if (command.type === "update-inbox") yield* PubSub.publish(inboxChanges, snapshot.inbox);
           if (command.type === "update-telemetry")
             yield* PubSub.publish(telemetryChanges, snapshot.telemetry);

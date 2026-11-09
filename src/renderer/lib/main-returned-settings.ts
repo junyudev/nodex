@@ -33,6 +33,7 @@ export const DEFAULT_WINDOW_RESTORE_SETTINGS: WindowRestoreSettings = { policy: 
 export const DEFAULT_THREAD_NOTIFICATION_SETTINGS: ThreadNotificationSettings = {
   turnMode: "unfocused",
   questionsEnabled: true,
+  readbackEnabled: true,
 };
 
 export function normalizeWindowRestoreSettings(value: unknown): WindowRestoreSettings {
@@ -59,6 +60,8 @@ export function normalizeThreadNotificationSettings(value: unknown): ThreadNotif
   return {
     turnMode: candidate.turnMode,
     questionsEnabled: candidate.questionsEnabled,
+    readbackEnabled:
+      typeof candidate.readbackEnabled === "boolean" ? candidate.readbackEnabled : true,
   };
 }
 
@@ -70,7 +73,10 @@ const equalWindowRestoreSettings = (
 const equalThreadNotificationSettings = (
   left: ThreadNotificationSettings,
   right: ThreadNotificationSettings,
-): boolean => left.turnMode === right.turnMode && left.questionsEnabled === right.questionsEnabled;
+): boolean =>
+  left.turnMode === right.turnMode &&
+  left.questionsEnabled === right.questionsEnabled &&
+  left.readbackEnabled === right.readbackEnabled;
 
 let windowRestoreOwners = new WeakMap<
   QueryClient,

@@ -51,6 +51,7 @@ function setup(
   settings: ThreadNotificationSettings = {
     turnMode: "unfocused",
     questionsEnabled: true,
+    readbackEnabled: true,
   },
 ) {
   const source = new FakeSource();
@@ -98,7 +99,7 @@ function setup(
 
 describe("Codex thread notification handler", () => {
   test("approval requests show their action, navigate to their Session and dismiss independently of questions", () => {
-    const runtime = setup({ turnMode: "off", questionsEnabled: true });
+    const runtime = setup({ turnMode: "off", questionsEnabled: true, readbackEnabled: true });
     const facts = conversation({ runtimeSessionId: "session-1" });
     runtime.source.eventListener?.({
       type: "approval-requested",
@@ -156,7 +157,7 @@ describe("Codex thread notification handler", () => {
       turnId: "turn-1",
       prompt: null,
     } as const;
-    const disabled = setup({ turnMode: "always", questionsEnabled: false });
+    const disabled = setup({ turnMode: "always", questionsEnabled: false, readbackEnabled: true });
     disabled.source.eventListener?.(event);
     expect(disabled.shown).toEqual([]);
     const visible = setup();
@@ -191,7 +192,7 @@ describe("Codex thread notification handler", () => {
     expect(runtime.shown).toHaveLength(0);
     emit(runtime, "failed");
     expect(runtime.shown).toHaveLength(1);
-    const disabled = setup({ turnMode: "off", questionsEnabled: true });
+    const disabled = setup({ turnMode: "off", questionsEnabled: true, readbackEnabled: true });
     emit(disabled, "failed");
     expect(disabled.shown).toHaveLength(0);
   });
@@ -228,7 +229,7 @@ describe("Codex thread notification handler", () => {
     runtime.source.eventListener?.(turn("turn-3"));
     expect(runtime.shown).toHaveLength(1);
 
-    const always = setup({ turnMode: "always", questionsEnabled: true });
+    const always = setup({ turnMode: "always", questionsEnabled: true, readbackEnabled: true });
     always.setForegrounded(true);
     always.setPresented(true);
     always.source.eventListener?.(turn("turn-4"));
@@ -405,7 +406,7 @@ describe("Codex thread notification handler", () => {
 });
 
 test("chat reminders respect settings and presentation and open their exact Session", () => {
-  const runtime = setup({ turnMode: "always", questionsEnabled: true });
+  const runtime = setup({ turnMode: "always", questionsEnabled: true, readbackEnabled: true });
   const event = {
     type: "session-reminder" as const,
     hostId: "local",
@@ -425,13 +426,13 @@ test("chat reminders respect settings and presentation and open their exact Sess
   runtime.setPresented(true);
   runtime.source.eventListener!(event);
   expect(runtime.shown).toHaveLength(1);
-  const disabled = setup({ turnMode: "off", questionsEnabled: true });
+  const disabled = setup({ turnMode: "off", questionsEnabled: true, readbackEnabled: true });
   disabled.source.eventListener!(event);
   expect(disabled.shown).toHaveLength(0);
 });
 
 test("managed chat completion stays quiet while questions and approvals keep notifying", () => {
-  const runtime = setup({ turnMode: "always", questionsEnabled: true });
+  const runtime = setup({ turnMode: "always", questionsEnabled: true, readbackEnabled: true });
   const event = {
     type: "turn-completed" as const,
     hostId: "local",

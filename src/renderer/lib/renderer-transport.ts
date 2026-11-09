@@ -160,6 +160,9 @@ export interface RendererTransport {
     callback: (message: import("./types").CodexHostMessage) => void,
   ) => () => void;
   subscribeCodexEvents: (callback: (event: import("./types").CodexEvent) => void) => () => void;
+  subscribeReadbackEvents: (
+    listener: (event: import("../../shared/readback").ReadbackEvent) => void,
+  ) => () => void;
   subscribeDesktopNotificationActions: (
     callback: (payload: import("./types").DesktopNotificationActionInvocation) => void,
   ) => () => void;

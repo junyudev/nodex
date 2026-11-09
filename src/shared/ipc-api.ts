@@ -3212,6 +3212,7 @@ export interface IpcEvents {
   "usage-meter-settings-changed": import("./usage-meter-settings").UsageMeterSettings;
   "composer-prediction-settings-changed": import("./composer-prediction-settings").ComposerPredictionSettings;
   "desktop-notification:action": DesktopNotificationActionInvocation;
+  "readback:event": import("./readback").ReadbackEvent & { readonly spaceId: string };
   "electron-window:fullscreen-changed": { fullscreen: boolean };
   "electron-window:focus-changed": { isFocused: boolean };
   "electron-window-opaque-surface-changed": {

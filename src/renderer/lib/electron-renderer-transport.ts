@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { rendererSpaceId } from "./renderer-space";
 import type {
   AppUpdateStatus,
   CodexEvent,
@@ -61,6 +63,43 @@ import type { PageLifecyclePreflightResultV2 } from "../../shared/page-lifecycle
 import type { ListPageHistoryRequest } from "../../shared/page-history";
 import type { PageHistoryCommandResult } from "../../shared/page-history-transport";
 import { rendererLocalCommitIngress } from "./local-commit-ingress";
+
+const readbackEventSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      spaceId: z.string().min(1),
+      type: z.literal("show"),
+      readback: z
+        .object({
+          id: z.string().min(1),
+          sessionId: z.string().min(1),
+          threadId: z.string().min(1),
+          runId: z.string().min(1),
+          itemId: z.string().min(1),
+          text: z.string(),
+          title: z.string(),
+          createdAt: z.number().finite().nonnegative(),
+          navigation: z
+            .object({
+              hostId: z.string().trim().min(1),
+              conversationId: z.string().min(1),
+              navigationPath: z.string().min(1),
+              activateTabId: z.string().nullable(),
+            })
+            .strict(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      spaceId: z.string().min(1),
+      type: z.literal("withdraw"),
+      id: z.string().min(1),
+      reason: z.enum(["seen", "ended", "disabled", "removed"]),
+    })
+    .strict(),
+]);
 
 export type ElectronRendererBridge = NonNullable<Window["api"]>;
 
@@ -475,6 +514,14 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         const payload = args[0] as CodexEvent | undefined;
         if (!payload || typeof payload.type !== "string") return;
         callback(payload);
+      });
+    },
+    subscribeReadbackEvents(listener) {
+      return bridge.on("readback:event", (...args: unknown[]) => {
+        const parsed = readbackEventSchema.safeParse(args[0]);
+        if (!parsed.success || parsed.data.spaceId !== rendererSpaceId()) return;
+        const { spaceId: _spaceId, ...event } = parsed.data;
+        listener(event);
       });
     },
     subscribeDesktopNotificationActions(

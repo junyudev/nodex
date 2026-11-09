@@ -1,3 +1,5 @@
+import { makeSessionReader } from "./RuntimeNotificationSessions";
+import { ReadbackRuntime } from "./ReadbackRuntime";
 import { heldThreadIds } from "./work-application/execution-holds";
 import { modelPolicyCatalog } from "../main/agent-runtime/model-policy-catalog";
 import { isProviderOn } from "../shared/model-policy";
@@ -385,12 +387,12 @@ const supervisor = Layer.effectContext(
     const applicationEvents = yield* CodexApplicationEventHub;
     const projects = yield* ProjectWorkspace;
     const modules = yield* CoreModules;
-    const readSessionBinding = (sessionId: string) =>
-      modules.workspace.read({ kind: "agent_runtime_session_binding", session_id: sessionId }).pipe(
-        Effect.provideService(CoreApplicationAgent, null),
-        Effect.map((snapshot) =>
-          snapshot.value.kind === "agent_runtime_session_binding" ? snapshot.value.binding : null,
-        ),
+    const readSession = yield* makeSessionReader;
+    const readbacks = yield* Effect.serviceOption(ReadbackRuntime);
+    if (Option.isSome(readbacks))
+      yield* activity.transitions.pipe(
+        Stream.runForEach(readbacks.value.observe),
+        Effect.forkScoped({ startImmediately: true }),
       );
     yield* runSessionNotifications({
       transitions: activity.transitions,
@@ -413,28 +415,7 @@ const supervisor = Layer.effectContext(
                 : null,
             ),
           ),
-      readSession: Effect.fn("AgentRuntimeSessionNotifications.readSession")(function* (
-        sessionId: string,
-      ) {
-        const session = yield* projects.getProjectSession(sessionId);
-        if (!session) return null;
-        const binding = yield* readSessionBinding(sessionId);
-        const sourceSessionId = binding?.side_chat_source_session_id;
-        const source = sourceSessionId ? yield* projects.getProjectSession(sourceSessionId) : null;
-        const sideChatSource = sourceSessionId
-          ? {
-              sessionId: sourceSessionId,
-              // An archived Session cannot be opened, so its side chats have nowhere to return.
-              rootThreadId: (source && !source.archived && source.executionRef?.threadId) || null,
-            }
-          : null;
-        return {
-          title: session.displayTitle,
-          archived: session.archived,
-          unread: session.unread,
-          sideChatSource,
-        };
-      }),
+      readSession,
       markUnread: (sessionId) =>
         projects.markProjectSessionUnread({
           operationId: createOperationId("agent-runtime.session.unread"),

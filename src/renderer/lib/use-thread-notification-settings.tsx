@@ -39,7 +39,9 @@ export function useThreadNotificationSettings(): {
 
   const updateSettings = useCallback(
     async (input: UpdateThreadNotificationSettingsInput) => {
-      return await owner.update(normalizeThreadNotificationSettings(input));
+      return await owner.update(
+        normalizeThreadNotificationSettings({ ...owner.getSnapshot().value, ...input }),
+      );
     },
     [owner],
   );

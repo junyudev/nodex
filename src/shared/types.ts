@@ -1886,11 +1886,14 @@ export type ThreadNotificationTurnMode = "off" | "unfocused" | "always";
 export interface ThreadNotificationSettings {
   turnMode: ThreadNotificationTurnMode;
   questionsEnabled: boolean;
+  readbackEnabled: boolean;
 }
 
 export interface UpdateThreadNotificationSettingsInput {
   turnMode: ThreadNotificationTurnMode;
   questionsEnabled: boolean;
+  /** Omission preserves the saved Readback preference. */
+  readbackEnabled?: boolean;
 }
 
 export type DesktopNotificationKind = "turn-complete" | "question" | "reminder" | "nodex";

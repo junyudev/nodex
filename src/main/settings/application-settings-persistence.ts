@@ -144,6 +144,7 @@ interface ServerTomlConfig {
   backup_retention_gib?: number;
   thread_notifications_turn_mode?: ThreadNotificationTurnMode;
   thread_notifications_questions_enabled?: boolean;
+  thread_readback_enabled?: boolean;
   history_retention?: number;
   app_updates_auto_check_enabled?: boolean;
   app_updates_channel?: "stable" | "nightly";
@@ -453,6 +454,8 @@ function threadNotificationSettingsFromConfig(
       config.thread_notifications_turn_mode === "always"
         ? config.thread_notifications_turn_mode
         : THREAD_NOTIFICATIONS_TURN_MODE_DEFAULT,
+    readbackEnabled:
+      typeof config.thread_readback_enabled === "boolean" ? config.thread_readback_enabled : true,
     questionsEnabled:
       typeof config.thread_notifications_questions_enabled === "boolean"
         ? config.thread_notifications_questions_enabled
@@ -1178,7 +1181,12 @@ export function updateThreadNotificationSettings(
     throw new Error("questionsEnabled must be a boolean");
   }
 
+  if (input.readbackEnabled !== undefined && typeof input.readbackEnabled !== "boolean") {
+    throw new Error("readbackEnabled must be a boolean");
+  }
+
   const nextSettings = {
+    readbackEnabled: input.readbackEnabled ?? getThreadNotificationSettings(source).readbackEnabled,
     turnMode: input.turnMode,
     questionsEnabled: input.questionsEnabled,
   };
@@ -1189,6 +1197,7 @@ export function updateThreadNotificationSettings(
     ...(nextToml.server ?? {}),
     thread_notifications_turn_mode: nextSettings.turnMode,
     thread_notifications_questions_enabled: nextSettings.questionsEnabled,
+    thread_readback_enabled: nextSettings.readbackEnabled,
   };
 
   nextToml.server = nextServer;

@@ -1,4 +1,4 @@
-import { fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test } from "vite-plus/test";
 import { render, settleAsyncRender } from "@/test/dom";
 import { installWindowApi } from "@/test/browser-globals";
@@ -47,10 +47,12 @@ describe("settings query hooks", () => {
           throw new Error("settings unavailable");
         }
         if (channel === "settings:window-restore:update") return args[0];
+        if (channel === "settings:thread-notifications:update") return args[0];
         if (channel === "settings:thread-notifications:get") {
           return {
             turnMode: threadMode,
             questionsEnabled: true,
+            readbackEnabled: true,
           };
         }
         throw new Error(`Unexpected channel: ${channel}`);
@@ -97,4 +99,34 @@ describe("settings query hooks", () => {
       expect(view.getByTestId("thread-notifications").textContent).toBe("always");
     });
   });
+});
+
+test("notification settings retain Readback when another preference changes", async () => {
+  const updates: unknown[] = [];
+  installWindowApi({
+    invoke: async (channel: string, ...args: unknown[]) => {
+      if (channel === "settings:thread-notifications:get")
+        return { turnMode: "unfocused", questionsEnabled: true, readbackEnabled: false };
+      if (channel === "settings:thread-notifications:update") {
+        updates.push(args[0]);
+        return args[0];
+      }
+      throw new Error(`Unexpected channel: ${channel}`);
+    },
+    on: () => () => {},
+  });
+  const hook = renderHook(() => useThreadNotificationSettings(), { wrapper: TestQueryProvider });
+  await waitFor(() => expect(hook.result.current.settings.readbackEnabled).toBe(false));
+  await act(async () => {
+    await hook.result.current.updateSettings({ turnMode: "always", questionsEnabled: true });
+  });
+  expect(updates).toEqual([{ turnMode: "always", questionsEnabled: true, readbackEnabled: false }]);
+  await act(async () => {
+    await hook.result.current.updateSettings({
+      turnMode: "always",
+      questionsEnabled: true,
+      readbackEnabled: true,
+    });
+  });
+  expect(hook.result.current.settings.readbackEnabled).toBe(true);
 });

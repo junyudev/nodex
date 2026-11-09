@@ -134,6 +134,7 @@ const ThreadNotificationUpdate = z
   .object({
     turnMode: z.enum(["off", "unfocused", "always"]),
     questionsEnabled: z.boolean(),
+    readbackEnabled: z.boolean().optional(),
   })
   .strict() satisfies z.ZodType<UpdateThreadNotificationSettingsInput>;
 const DeveloperInstructionUpdate = z

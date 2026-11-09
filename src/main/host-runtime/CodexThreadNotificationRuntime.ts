@@ -1,3 +1,4 @@
+import { resolveNotificationTargetClient } from "./notification-target";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -51,13 +52,8 @@ export const live: Layer.Layer<
           hostId,
           sessionId: conversation.runtimeSessionId,
         }),
-      resolveTargetClientId: (conversationId) => {
-        const presenting = conversations.resolvePresentedSurfaceClient(conversationId);
-        if (presenting) return presenting;
-        const fallbackWindow = windows.getLastFocused();
-        if (!fallbackWindow) return null;
-        return rendererClients.getClientIdForWebContentsId(fallbackWindow.webContents.id);
-      },
+      resolveTargetClientId: (conversationId) =>
+        resolveNotificationTargetClient(conversationId, conversations, windows, rendererClients),
       showNotification: (notification, targetClientId, onAction) => {
         const webContentsId = rendererClients.getWebContentsIdForClientId(targetClientId);
         if (webContentsId === null) return;

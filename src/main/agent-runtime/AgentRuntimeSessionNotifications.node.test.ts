@@ -80,7 +80,12 @@ const harness = (options: {
   const dismissed: DesktopNotificationHideSelector[] = [];
   // The shared native owner decides policy and copy exactly as for Codex conversations.
   const handle = makeCodexThreadNotificationHandler({
-    getSettings: () => ({ turnMode: "always", questionsEnabled: true, ...options.settings }),
+    getSettings: () => ({
+      turnMode: "always",
+      questionsEnabled: true,
+      readbackEnabled: true,
+      ...options.settings,
+    }),
     isAppForegrounded: () => options.presented ?? false,
     isConversationSeen: () => options.presented ?? false,
     resolveTargetClientId: () => "client",

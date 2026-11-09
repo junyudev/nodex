@@ -197,6 +197,31 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       sender: { getType: () => "window", id: 7, mainFrame: frame },
       senderFrame: frame,
     } as unknown as IpcMainInvokeEvent;
+    assert.deepEqual(yield* handlers.get("settings:thread-notifications:get")!(event), {
+      turnMode: "unfocused",
+      questionsEnabled: true,
+      readbackEnabled: true,
+    });
+    const notificationSettings = {
+      turnMode: "always",
+      questionsEnabled: false,
+      readbackEnabled: false,
+    };
+    assert.deepEqual(
+      yield* handlers.get("settings:thread-notifications:update")!(event, notificationSettings),
+      notificationSettings,
+    );
+    assert.deepEqual(
+      yield* handlers.get("settings:thread-notifications:get")!(event),
+      notificationSettings,
+    );
+    const invalidReadback = yield* Effect.result(
+      handlers.get("settings:thread-notifications:update")!(event, {
+        ...notificationSettings,
+        readbackEnabled: "yes",
+      }),
+    );
+    assert.strictEqual(invalidReadback._tag, "Failure");
     assert.deepEqual(yield* handlers.get("settings:terminal-shell:get")!(event), {
       windowsShell: "automatic",
     });

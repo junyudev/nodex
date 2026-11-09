@@ -18,6 +18,7 @@ export function makeTestApplicationSettings(input?: {
     usageMeterSettingsChanges: Stream.succeed(DEFAULT_USAGE_METER_SETTINGS),
     composerPredictionSettingsChanges: Stream.empty,
     inboxSettingsChanges: Stream.empty,
+    threadNotificationSettingsChanges: Stream.never,
     telemetrySettingsChanges: Stream.empty,
     acpLaunchConfiguration: () => Effect.die("Unused ACP launch configuration"),
     openCodeLaunchConfiguration: () => Effect.die("Unused OpenCode launch configuration"),

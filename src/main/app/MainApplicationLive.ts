@@ -1,3 +1,4 @@
+import * as ReadbackRuntime from "../host-runtime/ReadbackRuntime";
 import * as MobileApplication from "../../host/mobile/MobileApplication";
 import { MobileRpc } from "../../host/mobile/rpc";
 import { startHostRelay } from "../../host/HostRelay";
@@ -145,7 +146,11 @@ const conversationGraph = ConversationApplicationLive.live.pipe(
 const executionGraph = AgentRuntimeApplicationLive.runtime.pipe(
   Layer.provide(HostDesktopToolsLive.live),
   Layer.provide(imageFittingLayer),
-  Layer.provideMerge(NodexAccountLive.live.pipe(Layer.provideMerge(conversationGraph))),
+  Layer.provideMerge(
+    Layer.merge(ReadbackRuntime.live, NodexAccountLive.live).pipe(
+      Layer.provideMerge(conversationGraph),
+    ),
+  ),
 );
 const interactionsGraph = ConversationApplicationLive.interactions.pipe(
   Layer.provideMerge(chatSearchLive.pipe(Layer.provideMerge(executionGraph))),
