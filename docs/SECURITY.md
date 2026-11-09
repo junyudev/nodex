@@ -736,9 +736,9 @@ has.
 - Optional background registration uses a signed nested application and its bundled `SMAppService` LaunchAgent; it never installs a root helper or writes a launchd plist outside the signed bundle. The selected absolute Profile path is the only persisted input, stored as a private regular file below the current user's Application Support directory. The controller rejects symlinked configuration and executable entries, bounds configuration and control output, and executes the fixed sibling Core without a shell.
 - Every native-Core HTTP request is authenticated by a fresh per-start
   capability and verified local peer identity. Handshake registers the
-  logical connection against peer PID and OS user identity, client build, protocol, Adapter
-  kind, and start nonce; later Module, event, and lifecycle requests require
-  that exact connection binding. The only pre-handshake lifecycle exception is
+  logical connection against the peer's process run (PID and OS start time),
+  OS user identity, client build, protocol, Adapter kind, and start nonce; later
+  Module, event, and lifecycle requests require that exact connection binding. The only pre-handshake lifecycle exception is
   incompatible-version handoff: it still requires the bearer capability,
   same-user local peer credentials, genuinely disjoint protocol ranges, and an
   exact match for every descriptor-generation identity field, and it can drain

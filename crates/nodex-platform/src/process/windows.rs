@@ -6,12 +6,15 @@ use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command};
 use std::ptr::null_mut;
-use windows_sys::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER, WAIT_TIMEOUT};
+use windows_sys::Win32::Foundation::{
+    ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER, FILETIME, STILL_ACTIVE, WAIT_TIMEOUT,
+};
 use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
 use windows_sys::Win32::System::Console::FreeConsole;
 use windows_sys::Win32::System::Threading::{
     CREATE_BREAKAWAY_FROM_JOB, CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, DETACHED_PROCESS,
-    OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject,
+    GetExitCodeProcess, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    PROCESS_SYNCHRONIZE, WaitForSingleObject,
 };
 pub type UserIdentity = String;
 pub const HOME_VARIABLE: &str = "USERPROFILE";
@@ -26,6 +29,39 @@ pub fn process_is_alive(pid: u32) -> bool {
         Ok(process) => unsafe { WaitForSingleObject(process.as_raw_handle(), 0) == WAIT_TIMEOUT },
         Err(error) => error.raw_os_error() != Some(ERROR_INVALID_PARAMETER as i32),
     }
+}
+/// The creation time of the process running under `pid`, in 100 ns FILETIME units.
+pub(super) fn process_start(pid: u32) -> io::Result<Option<u64>> {
+    if pid == 0 {
+        return Ok(None);
+    }
+    let process = match handle(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) }) {
+        Ok(process) => process,
+        Err(error) if error.raw_os_error() == Some(ERROR_INVALID_PARAMETER as i32) => {
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
+    };
+    let mut exit_code = 0;
+    if unsafe { GetExitCodeProcess(process.as_raw_handle(), &mut exit_code) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // Any open handle keeps an exited process, and its PID, from being recycled.
+    // An exit code equal to STILL_ACTIVE stays indistinguishable from running.
+    if exit_code != STILL_ACTIVE as u32 {
+        return Ok(None);
+    }
+    let mut times = [FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    }; 4];
+    let [created, exited, kernel, user] = &mut times;
+    if unsafe { GetProcessTimes(process.as_raw_handle(), created, exited, kernel, user) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(Some(
+        (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime),
+    ))
 }
 pub fn free_space(path: &Path) -> io::Result<u64> {
     let mut available = 0;

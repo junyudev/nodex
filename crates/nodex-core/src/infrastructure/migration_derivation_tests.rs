@@ -164,6 +164,7 @@ fn migration_normalizes_legacy_cleanup_time_without_changing_its_instant() {
     let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
     prepare_profile_store(&mut connection, profile.path()).unwrap();
     // v202 changes the timestamp contract without changing the SQL schema.
+    rewind_v203_to_v202(&connection).unwrap();
     connection.pragma_update(None, "user_version", 201).unwrap();
     connection
         .execute(
@@ -207,7 +208,7 @@ fn migration_rebuilds_predecessor_markdown_from_verified_document_authority() {
         )
         .unwrap();
     with_schema_rebuild_transaction(&mut connection, |transaction| {
-        rewind_v201_to_v200(transaction)?;
+        rewind_current_to_v200(transaction)?;
         transaction.pragma_update(None, "user_version", 199)?;
         transaction.execute(
             "DELETE FROM core_store_migration_history WHERE source_revision>=199",

@@ -80,7 +80,10 @@ async fn local_http_authenticates_the_os_peer_and_keeps_accepting() {
         get(
             move |ConnectInfo(peer): ConnectInfo<local_endpoint::PeerIdentity>| async move {
                 assert!(peer.is_authenticated_owner(&owner));
-                assert_eq!(peer.pid, Some(std::process::id()));
+                assert_eq!(
+                    peer.process,
+                    Some(process::ProcessInstance::of(std::process::id()).unwrap())
+                );
                 "authenticated"
             },
         ),
@@ -111,6 +114,31 @@ async fn local_http_authenticates_the_os_peer_and_keeps_accepting() {
     }
     server.abort();
     let _ = server.await;
+}
+
+#[test]
+fn a_process_instance_ends_with_its_run_even_when_its_pid_survives() {
+    let current = process::ProcessInstance::of(std::process::id()).unwrap();
+    assert_ne!(current.started, 0);
+    assert!(current.is_alive());
+    assert_eq!(process::ProcessInstance::of(current.pid).unwrap(), current);
+    // A recycled PID names a process started at another time.
+    for started in [current.started + 1, 0] {
+        assert!(!process::ProcessInstance { started, ..current }.is_alive());
+    }
+    assert!(process::ProcessInstance::of(0).is_err());
+
+    let mut child = std::process::Command::new(if cfg!(windows) { "sort" } else { "cat" })
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let instance = process::ProcessInstance::of(child.id()).unwrap();
+    assert!(instance.is_alive());
+    child.kill().unwrap();
+    child.wait().unwrap();
+    // Windows keeps the exited process object open through `child`.
+    assert!(!instance.is_alive());
 }
 
 #[test]

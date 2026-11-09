@@ -70,15 +70,18 @@ Local disposal can finish without awaiting an unavailable Core; late inverse
 tokens are released instead of re-entering a closed history.
 
 Main stamps structural writes with the application WebContents generation's
-opaque retention owner. Core binds it to the authenticated desktop peer PID and
-registers every returned recipe in the same transaction. Closing an owner
-rejects late new writes but still permits exact committed receipt replay; it
-releases only that owner's available recipes and Cut claims. Main retries this
-cleanup independently of renderer cancellation. An authoritatively expired
+opaque retention owner. Core binds it to the authenticated desktop peer's process
+run, its PID and OS start time, and registers every returned recipe in the same
+transaction. Closing an owner rejects late new writes but still permits exact
+committed receipt replay; it releases only that owner's available recipes and Cut
+claims. Main retries this cleanup independently of renderer cancellation. An authoritatively expired
 cleanup identity may be renewed because closing the same owner is monotonic;
 this exception never applies to uncertain content mutations or inverses.
 Core's bounded maintenance proves Host process death before collecting abandoned
-owners. It scans up to 1,024 PIDs in key order with a wrapping cursor and releases
+owners: no process runs under the PID, or the process there started at another
+time. Operating systems recycle PIDs, Windows within seconds, so a later process
+under a crashed Host's PID neither keeps that Host's history nor inherits it.
+Maintenance scans up to 1,024 PIDs in key order with a wrapping cursor and releases
 at most 100 owners per pass; live Hosts cannot permanently hide later dead Hosts,
 and one accumulated lifetime cannot monopolize a maintenance transaction.
 A sleeping process, connection loss or access-check uncertainty cannot

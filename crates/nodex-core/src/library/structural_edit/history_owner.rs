@@ -1,8 +1,10 @@
 //! A desktop lifetime is a retention authority, not a shared Undo stack. Main
-//! binds its opaque identity to authenticated Unix peer credentials. There is
-//! no inactivity expiry: a sleeping or disconnected live Host keeps history.
+//! binds its opaque identity to the authenticated Host process run: its PID and
+//! OS start time. There is no inactivity expiry: a sleeping or disconnected live
+//! Host keeps history, and a recycled PID never keeps a dead Host's history.
 
 use nodex_core_contracts::{AdapterKind, BoundEditorHistoryOwner, BoundModuleContext};
+use nodex_platform::process::ProcessInstance;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::*;
@@ -32,7 +34,7 @@ impl CleanupSlice {
             && started.elapsed() < CLEANUP_TIME_BUDGET
     }
 }
-// Each MIN performs one indexed seek past the previous Host. DISTINCT would
+// Each MIN performs one indexed seek past the previous PID. DISTINCT would
 // still visit every closed generation of a long-lived Host before advancing.
 const OWNER_PID_SCAN_SQL: &str = "WITH RECURSIVE hosts(peer_pid) AS (
     SELECT MIN(peer_pid) FROM editor_history_owners WHERE peer_pid > ?1
@@ -72,12 +74,15 @@ fn bind_owner(
 ) -> Result<bool, StoreError> {
     let owner = trusted_owner(context)?;
     let existing = connection.query_row(
-        "SELECT library_id, store_epoch, peer_pid, state FROM editor_history_owners WHERE owner_id = ?1",
+        "SELECT library_id, store_epoch, peer_pid, peer_started, state FROM editor_history_owners WHERE owner_id = ?1",
         [&owner.id],
-        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, u32>(2)?, row.get::<_, String>(3)?)),
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, u32>(2)?, row_started(row, 3)?, row.get::<_, String>(4)?)),
     ).optional()?;
-    if let Some((library_id, epoch, peer_pid, state)) = existing {
-        if library_id != context.library_id.0 || epoch != store_epoch || peer_pid != owner.peer_pid
+    if let Some((library_id, epoch, peer_pid, peer_started, state)) = existing {
+        if library_id != context.library_id.0
+            || epoch != store_epoch
+            || peer_pid != owner.peer_pid
+            || peer_started != owner.peer_started
         {
             return Err(StoreError::new(
                 StoreErrorCode::Unauthorized,
@@ -98,8 +103,8 @@ fn bind_owner(
         ));
     }
     connection.execute(
-        "INSERT INTO editor_history_owners(owner_id, library_id, store_epoch, peer_pid, state) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![owner.id, context.library_id.0, store_epoch, owner.peer_pid, initial_state],
+        "INSERT INTO editor_history_owners(owner_id, library_id, store_epoch, peer_pid, peer_started, state) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![owner.id, context.library_id.0, store_epoch, owner.peer_pid, sql_started(owner.peer_started)?, initial_state],
     )?;
     Ok(initial_state == "active")
 }
@@ -259,29 +264,26 @@ pub(crate) fn drain_cleanup(
     }
     let owner = connection
         .query_row(
-            "SELECT pending.owner_id, owner.peer_pid FROM editor_history_cleanup pending \
+            "SELECT pending.owner_id, owner.peer_pid, owner.peer_started FROM editor_history_cleanup pending \
          JOIN editor_history_owners owner USING(owner_id) \
          WHERE owner.state = 'closed' ORDER BY pending.owner_id LIMIT 1",
             [],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?)),
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    ProcessInstance {
+                        pid: row.get(1)?,
+                        started: row_started(row, 2)?,
+                    },
+                ))
+            },
         )
         .optional()?;
-    let Some((owner_id, peer_pid)) = owner else {
+    let Some((owner_id, host)) = owner else {
         slice.pending = cleanup_is_pending(connection)?;
         return Ok(slice);
     };
-    let context = BoundModuleContext {
-        profile_id: nodex_core_contracts::ProfileId(profile_id.to_owned()),
-        library_id: nodex_core_contracts::LibraryId(library_id.to_owned()),
-        project_id: None,
-        connection_id: "editor-history-maintenance".to_owned(),
-        adapter: AdapterKind::ElectronHost,
-        editor_history_owner: Some(BoundEditorHistoryOwner {
-            id: owner_id.clone(),
-            peer_pid,
-        }),
-        agent_attribution: None,
-    };
+    let context = maintenance_context(profile_id, library_id, &owner_id, host);
     let operation_id = crate::domain::identity::random_uuid_v7()
         .map_err(|_| internal("History cleanup operation identity is unavailable"))?;
     let epoch = crate::document::read_store_epoch(connection)?;
@@ -494,12 +496,65 @@ fn drain_local_roots(
     Ok(())
 }
 
+/// Maintenance acts for a Host lifetime after that Host's process run has ended.
+fn maintenance_context(
+    profile_id: &str,
+    library_id: &str,
+    owner_id: &str,
+    host: ProcessInstance,
+) -> BoundModuleContext {
+    BoundModuleContext {
+        profile_id: nodex_core_contracts::ProfileId(profile_id.to_owned()),
+        library_id: nodex_core_contracts::LibraryId(library_id.to_owned()),
+        project_id: None,
+        connection_id: "editor-history-maintenance".to_owned(),
+        adapter: AdapterKind::ElectronHost,
+        editor_history_owner: Some(BoundEditorHistoryOwner {
+            id: owner_id.to_owned(),
+            peer_pid: host.pid,
+            peer_started: host.started,
+        }),
+        agent_attribution: None,
+    }
+}
+
+/// The process runs recorded under one PID, in start order, one indexed seek
+/// each. A PID holds at most one live run; earlier runs are reaped as found.
+fn host_runs(connection: &Connection, pid: u32) -> Result<Vec<ProcessInstance>, StoreError> {
+    let mut next = connection.prepare_cached(
+        "SELECT MIN(peer_started) FROM editor_history_owners WHERE peer_pid = ?1 AND peer_started > ?2",
+    )?;
+    let mut runs = Vec::new();
+    let mut after = -1_i64;
+    while let Some(started) =
+        next.query_row(params![pid, after], |row| row.get::<_, Option<i64>>(0))?
+    {
+        runs.push(ProcessInstance {
+            pid,
+            started: u64::try_from(started)
+                .map_err(|_| internal("Host start time is out of range"))?,
+        });
+        after = started;
+    }
+    Ok(runs)
+}
+
+/// SQLite integers are signed; OS start times stay far below `i64::MAX`.
+fn sql_started(started: u64) -> Result<i64, StoreError> {
+    i64::try_from(started).map_err(|_| invalid("Host start time is out of range"))
+}
+
+fn row_started(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<u64> {
+    let started = row.get::<_, i64>(index)?;
+    u64::try_from(started).map_err(|_| rusqlite::Error::IntegralValueOutOfRange(index, started))
+}
+
 pub(crate) fn reap(
     connection: &Connection,
     profile_id: &str,
     library_id: &str,
     after_pid: u32,
-    is_process_alive: impl Fn(u32) -> bool,
+    is_alive: impl Fn(ProcessInstance) -> bool,
 ) -> Result<(usize, u32), StoreError> {
     const SCAN_LIMIT: usize = 1024;
     const RELEASE_LIMIT: usize = 100;
@@ -514,41 +569,37 @@ pub(crate) fn reap(
     };
     let epoch = crate::document::read_store_epoch(connection)?;
     let mut released = 0;
-    for pid in pids.into_iter().filter(|pid| !is_process_alive(*pid)) {
-        let owners = connection
-            .prepare("SELECT owner_id FROM editor_history_owners WHERE peer_pid = ?1 LIMIT 100")?
-            .query_map([pid], |row| row.get::<_, String>(0))?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        for id in owners {
-            let context = BoundModuleContext {
-                profile_id: nodex_core_contracts::ProfileId(profile_id.to_owned()),
-                library_id: nodex_core_contracts::LibraryId(library_id.to_owned()),
-                project_id: None,
-                connection_id: "editor-history-maintenance".to_owned(),
-                adapter: AdapterKind::ElectronHost,
-                editor_history_owner: Some(BoundEditorHistoryOwner {
-                    id: id.clone(),
-                    peer_pid: pid,
-                }),
-                agent_attribution: None,
-            };
-            let operation_id = crate::domain::identity::random_uuid_v7()
-                .map_err(|_| internal("History cleanup operation identity is unavailable"))?;
-            let hash = sha256(format!("close-editor-history\0{id}\0{epoch}").as_bytes());
-            close(connection, &context, &operation_id, &epoch, &hash)?;
-            // A dead Host cannot return, but cascading its remaining children
-            // here would turn bounded discovery into an unbounded cleanup.
-            if !owner_has_retention(connection, &id)? {
-                connection.execute(
-                    "DELETE FROM editor_history_owners WHERE owner_id = ?1",
-                    [&id],
-                )?;
-            }
-            released += 1;
-            if released == RELEASE_LIMIT {
-                // Visit later Hosts next time, including when this Host still
-                // has markers left. Remaining rows are revisited after wrap.
-                return Ok((released, pid));
+    for pid in pids {
+        for host in host_runs(connection, pid)?
+            .into_iter()
+            .filter(|host| !is_alive(*host))
+        {
+            let owners = connection
+                .prepare_cached(
+                    "SELECT owner_id FROM editor_history_owners WHERE peer_pid = ?1 AND peer_started = ?2 LIMIT 100",
+                )?
+                .query_map(params![host.pid, sql_started(host.started)?], |row| row.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            for id in owners {
+                let context = maintenance_context(profile_id, library_id, &id, host);
+                let operation_id = crate::domain::identity::random_uuid_v7()
+                    .map_err(|_| internal("History cleanup operation identity is unavailable"))?;
+                let hash = sha256(format!("close-editor-history\0{id}\0{epoch}").as_bytes());
+                close(connection, &context, &operation_id, &epoch, &hash)?;
+                // A dead Host cannot return, but cascading its remaining children
+                // here would turn bounded discovery into an unbounded cleanup.
+                if !owner_has_retention(connection, &id)? {
+                    connection.execute(
+                        "DELETE FROM editor_history_owners WHERE owner_id = ?1",
+                        [&id],
+                    )?;
+                }
+                released += 1;
+                if released == RELEASE_LIMIT {
+                    // Visit later Hosts next time, including when this Host still
+                    // has markers left. Remaining rows are revisited after wrap.
+                    return Ok((released, pid));
+                }
             }
         }
     }
@@ -613,7 +664,7 @@ mod tests {
                 "INSERT INTO profiles VALUES ('profile', '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z');
             INSERT INTO libraries VALUES ('library', 'profile', '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z');
             INSERT INTO block_retention_state VALUES (1, 0, 0);
-            INSERT INTO editor_history_owners VALUES ('owner', 'library', 'epoch', 42, 'active');
+            INSERT INTO editor_history_owners VALUES ('owner', 'library', 'epoch', 42, 'active', 7);
             UPDATE structural_history_payload_backfill SET complete = 0;",
             )
             .unwrap();
@@ -731,7 +782,7 @@ mod tests {
             INSERT INTO profiles VALUES ('profile', 'now', 'now');
             INSERT INTO libraries VALUES ('library', 'profile', 'now', 'now');
             INSERT INTO block_store_metadata(id, store_epoch, created_at, updated_at) VALUES (1, 'epoch', 'now', 'now');
-            INSERT INTO editor_history_owners VALUES ('owner', 'library', 'epoch', 42, 'active');
+            INSERT INTO editor_history_owners VALUES ('owner', 'library', 'epoch', 42, 'active', 7);
             WITH RECURSIVE items(n) AS (VALUES(0) UNION ALL SELECT n + 1 FROM items WHERE n < 19999)
             INSERT INTO structural_history_recipes(recipe_operation_id, library_id, project_id, store_epoch, recipe_hash, payload_ref_json, state, created_at)
             SELECT printf('recipe-%05d', n), 'library', CASE WHEN n % 2 = 0 THEN NULL ELSE 'project' END, 'epoch', printf('%064d', 0), '{}', 'available', 'now' FROM items;
@@ -751,6 +802,7 @@ mod tests {
             editor_history_owner: Some(BoundEditorHistoryOwner {
                 id: "owner".into(),
                 peer_pid: 42,
+                peer_started: 7,
             }),
             agent_attribution: None,
         };
@@ -900,7 +952,7 @@ mod tests {
             .execute_batch(
                 "INSERT INTO profiles VALUES ('profile', 'now', 'now');
             INSERT INTO libraries VALUES ('library', 'profile', 'now', 'now');
-            INSERT INTO editor_history_owners VALUES ('owner', 'library', 'epoch', 42, 'active');",
+            INSERT INTO editor_history_owners VALUES ('owner', 'library', 'epoch', 42, 'active', 7);",
             )
             .expect("owner");
         for (id, state, consumed) in [
@@ -1011,7 +1063,7 @@ mod tests {
                 INSERT INTO block_store_metadata(id, store_epoch, created_at, updated_at) VALUES (1, 'epoch', 'now', 'now');")?;
             let context = BoundModuleContext { profile_id: ProfileId("profile".into()), library_id: LibraryId("library".into()), project_id: None,
                 connection_id: "temporary-connection".into(), adapter: AdapterKind::ElectronHost,
-                editor_history_owner: Some(BoundEditorHistoryOwner { id: "surface".into(), peer_pid: 42 }), agent_attribution: None };
+                editor_history_owner: Some(BoundEditorHistoryOwner { id: "surface".into(), peer_pid: 42, peer_started: 7 }), agent_attribution: None };
             require_active(transaction, &context, "epoch")?;
             transaction.execute_batch("INSERT INTO editor_history_local_sets VALUES ('surface', 'local', '', 'former-document', 1, 1, 'hash', 0, 1);
                 INSERT INTO editor_history_local_roots VALUES ('surface', 'local', 'retained-block');
@@ -1030,6 +1082,9 @@ mod tests {
             let mut impostor = context.clone();
             impostor.editor_history_owner.as_mut().unwrap().peer_pid = 43;
             assert!(require_active(transaction, &impostor, "epoch").is_err());
+            let mut recycled = context.clone();
+            recycled.editor_history_owner.as_mut().unwrap().peer_started = 8;
+            assert!(require_active(transaction, &recycled, "epoch").is_err(), "a later run under the same PID is another Host");
             assert_eq!(reap(transaction, "profile", "library", 0, |_| false)?.0, 1);
             assert!(!drain_cleanup(transaction, "profile", "library")?.pending);
             assert_eq!(reap(transaction, "profile", "library", 0, |_| false)?.0, 1);
@@ -1038,6 +1093,35 @@ mod tests {
             assert_eq!(transaction.query_row("SELECT count(*) FROM editor_history_local_roots", [], |row| row.get::<_, i64>(0))?, 0);
             Ok(())
         })).expect("liveness contract");
+    }
+
+    #[test]
+    fn a_recycled_pid_neither_keeps_nor_ends_another_runs_history() {
+        let profile = nodex_platform::test_support::tempdir().expect("Profile");
+        let kernel = SqliteStoreKernel::open_test(profile.path()).expect("Store");
+        kernel.writer().call(|connection| with_immediate_transaction(connection, |transaction| {
+            transaction.execute_batch("INSERT INTO profiles(id, created_at, updated_at) VALUES ('profile', 'now', 'now');
+                INSERT INTO libraries(id, profile_id, created_at, updated_at) VALUES ('library', 'profile', 'now', 'now');
+                INSERT INTO block_store_metadata(id, store_epoch, created_at, updated_at) VALUES (1, 'epoch', 'now', 'now');")?;
+            for (id, peer_started) in [("crashed-host", 7), ("current-host", 9)] {
+                let context = BoundModuleContext { profile_id: ProfileId("profile".into()), library_id: LibraryId("library".into()), project_id: None,
+                    connection_id: id.into(), adapter: AdapterKind::ElectronHost,
+                    editor_history_owner: Some(BoundEditorHistoryOwner { id: id.into(), peer_pid: 42, peer_started }), agent_attribution: None };
+                require_active(transaction, &context, "epoch")?;
+            }
+            // PID 42 now belongs to the run that started at 9; the run at 7 crashed.
+            let current = ProcessInstance { pid: 42, started: 9 };
+            assert_eq!(reap(transaction, "profile", "library", 0, |host| host == current)?.0, 1);
+            let owners = transaction.prepare("SELECT owner_id, state FROM editor_history_owners")?
+                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            assert_eq!(owners, vec![("current-host".to_owned(), "active".to_owned())]);
+            // A lifetime recorded before Host runs were bound has no run to outlive.
+            transaction.execute("INSERT INTO editor_history_owners(owner_id, library_id, store_epoch, peer_pid, state) VALUES ('unbound', 'library', 'epoch', 42, 'active')", [])?;
+            assert_eq!(reap(transaction, "profile", "library", 0, |host| host == current)?.0, 1);
+            assert_eq!(transaction.query_row("SELECT count(*) FROM editor_history_owners WHERE owner_id = 'unbound'", [], |row| row.get::<_, i64>(0))?, 0);
+            Ok(())
+        })).expect("Host run contract");
     }
 
     #[test]
@@ -1055,6 +1139,7 @@ mod tests {
             editor_history_owner: Some(BoundEditorHistoryOwner {
                 id: "closed".into(),
                 peer_pid: 42,
+                peer_started: 7,
             }),
             agent_attribution: None,
         };
@@ -1079,14 +1164,14 @@ mod tests {
             for index in 0..150 {
                 transaction.execute("INSERT INTO editor_history_owners(owner_id, library_id, store_epoch, peer_pid, state) VALUES (?1, 'library', 'epoch', 1025, 'closed')", [format!("extra-{index}")])?;
             }
-            let (released, cursor) = reap(transaction, "profile", "library", 0, |pid| pid <= 1024)?;
+            let (released, cursor) = reap(transaction, "profile", "library", 0, |host| host.pid <= 1024)?;
             assert_eq!((released, cursor), (0, 1024));
-            let (released, cursor) = reap(transaction, "profile", "library", cursor, |pid| pid <= 1024)?;
+            let (released, cursor) = reap(transaction, "profile", "library", cursor, |host| host.pid <= 1024)?;
             assert_eq!((released, cursor), (100, 1025));
-            let (released, cursor) = reap(transaction, "profile", "library", cursor, |pid| pid <= 1024)?;
+            let (released, cursor) = reap(transaction, "profile", "library", cursor, |host| host.pid <= 1024)?;
             assert_eq!((released, cursor), (1, 0));
-            let (_, cursor) = reap(transaction, "profile", "library", cursor, |pid| pid <= 1024)?;
-            let (released, _) = reap(transaction, "profile", "library", cursor, |pid| pid <= 1024)?;
+            let (_, cursor) = reap(transaction, "profile", "library", cursor, |host| host.pid <= 1024)?;
+            let (released, _) = reap(transaction, "profile", "library", cursor, |host| host.pid <= 1024)?;
             assert_eq!(released, 51);
             assert_eq!(transaction.query_row("SELECT count(*) FROM editor_history_owners WHERE peer_pid > 1024", [], |row| row.get::<_, i64>(0))?, 0);
             Ok(())

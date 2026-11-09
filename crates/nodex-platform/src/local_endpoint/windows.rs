@@ -89,14 +89,11 @@ impl Listener for LocalListener {
 fn peer(stream: &NamedPipeServer) -> PeerIdentity {
     let mut pid = 0;
     if unsafe { GetNamedPipeClientProcessId(stream.as_raw_handle(), &mut pid) } == 0 || pid == 0 {
-        return PeerIdentity {
-            user: None,
-            pid: None,
-        };
+        return PeerIdentity::unavailable();
     }
     PeerIdentity {
         user: process_sid(Some(pid)).ok(),
-        pid: Some(pid),
+        process: crate::process::ProcessInstance::of(pid).ok(),
     }
 }
 impl Connected<IncomingStream<'_, LocalListener>> for PeerIdentity {

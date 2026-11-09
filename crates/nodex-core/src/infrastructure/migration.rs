@@ -426,6 +426,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 202,
         apply: migrate_v201_to_v202,
     },
+    MigrationStep {
+        from_revision: 202,
+        to_revision: 203,
+        apply: migrate_v202_to_v203,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2645,6 +2650,28 @@ fn migrate_v200_to_v201(
     Ok(())
 }
 
+/// Editor history lifetimes are bound to a Host process run, not a bare PID.
+/// Earlier lifetimes carry start time 0, which no running process reports, so
+/// maintenance reaps them as ended rather than letting a recycled PID keep them.
+fn migrate_v202_to_v203(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v202_to_v203.sql"))?;
+    let unbound: i64 =
+        connection.query_row("SELECT count(*) FROM editor_history_owners", [], |row| {
+            row.get(0)
+        })?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            json!({"editor_history_lifetimes_without_host_run": unbound}).to_string()],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v201_to_v202(
     connection: &Connection,
     context: &MigrationContext,
@@ -3602,10 +3629,18 @@ fn test_current_store_template() -> Result<&'static Mutex<Connection>, StoreErro
         .ok_or_else(|| corrupt("Test Store template was not initialized"))
 }
 
-/// Rewinds a Store built at the current schema to v200, so tests can reproduce upgrades from
+/// Rewinds a Store built at the current schema to v202, so tests can reproduce upgrades from
 /// predecessors whose data was created through current Modules.
 #[cfg(test)]
-pub(super) fn rewind_v201_to_v200(connection: &Connection) -> Result<(), StoreError> {
+pub(super) fn rewind_v203_to_v202(connection: &Connection) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../tests/fixtures/rewind-v203-to-v202.sql"))?;
+    Ok(())
+}
+
+/// Rewinds a Store built at the current schema to v200; v202 changed no schema.
+#[cfg(test)]
+pub(super) fn rewind_current_to_v200(connection: &Connection) -> Result<(), StoreError> {
+    rewind_v203_to_v202(connection)?;
     connection.execute_batch(include_str!("../../tests/fixtures/rewind-v201-to-v200.sql"))?;
     Ok(())
 }
@@ -8723,7 +8758,8 @@ mod tests {
                 (198, 199),
                 (199, 200),
                 (200, 201),
-                (201, 202)
+                (201, 202),
+                (202, 203)
             ]
         );
         let states = connection
@@ -9332,12 +9368,61 @@ mod tests {
     }
 
     #[test]
+    fn host_run_migration_keeps_earlier_editor_lifetimes_without_a_run() {
+        let profile = tempdir().unwrap();
+        let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
+        install_current_schema(&mut connection).unwrap();
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            rewind_v203_to_v202(transaction)?;
+            validate_schema_identity(transaction, 202)?;
+            transaction.execute_batch(
+                "INSERT INTO profiles(id, created_at, updated_at) VALUES ('profile', 'now', 'now');
+                 INSERT INTO libraries(id, profile_id, created_at, updated_at) VALUES ('library', 'profile', 'now', 'now');
+                 INSERT INTO editor_history_owners(owner_id, library_id, store_epoch, peer_pid, state) VALUES ('earlier', 'library', 'epoch', 42, 'active');",
+            )?;
+            migrate_v202_to_v203(
+                transaction,
+                &MigrationContext {
+                    source_revision: 202,
+                    target_revision: 203,
+                    backup_name: "host-run.db".into(),
+                    source_schema_fingerprint: published_format(202)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(203)?.schema_fingerprint,
+                    completed_at_unix_ms: 1,
+                },
+            )
+        })
+        .unwrap();
+        validate_schema_identity(&connection, 203).unwrap();
+        // No process reports start time 0, so maintenance ends this lifetime.
+        let owner: (u32, i64, String) = connection
+            .query_row(
+                "SELECT peer_pid, peer_started, state FROM editor_history_owners WHERE owner_id = 'earlier'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(owner, (42, 0, "active".to_owned()));
+        let evidence: String = connection
+            .query_row(
+                "SELECT evidence_json FROM core_store_migration_history WHERE source_revision = 202",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            evidence,
+            r#"{"editor_history_lifetimes_without_host_run":1}"#
+        );
+    }
+
+    #[test]
     fn rewinding_the_current_schema_restores_v200_and_upgrades_again() {
         let profile = tempdir().unwrap();
         let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
         install_current_schema(&mut connection).unwrap();
         with_schema_rebuild_transaction(&mut connection, |transaction| {
-            rewind_v201_to_v200(transaction)?;
+            rewind_current_to_v200(transaction)?;
             validate_schema_identity(transaction, 200)?;
             migrate_v200_to_v201(
                 transaction,

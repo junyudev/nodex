@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use nodex_core_contracts::AdapterKind;
 pub(crate) use nodex_platform::local_endpoint::PeerIdentity;
+use nodex_platform::process::ProcessInstance;
 
 const MAX_CONNECTIONS: usize = 1_024;
 const MAX_EVENT_SUBSCRIPTIONS: usize = 2_048;
@@ -14,7 +15,7 @@ const STALE_CONNECTION_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 pub(crate) struct BoundConnection {
     pub(crate) id: String,
     pub(crate) adapter: AdapterKind,
-    pub(crate) peer_pid: Option<u32>,
+    pub(crate) peer_process: Option<ProcessInstance>,
 }
 
 struct ConnectionRecord {
@@ -180,7 +181,7 @@ impl ConnectionRegistry {
         let bound = BoundConnection {
             id: connection_id.to_owned(),
             adapter: record.adapter.clone(),
-            peer_pid: record.peer.pid,
+            peer_process: record.peer.process,
         };
         Ok(bound)
     }
@@ -224,12 +225,12 @@ impl ConnectionRegistry {
     }
 
     pub(crate) fn activity(&self) -> Result<ConnectionActivity, ConnectionRegistryError> {
-        self.activity_with(peer_process_is_alive)
+        self.activity_with(|process| process.is_alive())
     }
 
     fn activity_with(
         &self,
-        mut process_is_alive: impl FnMut(Option<u32>) -> bool,
+        mut process_is_alive: impl FnMut(&ProcessInstance) -> bool,
     ) -> Result<ConnectionActivity, ConnectionRegistryError> {
         let mut state = self
             .state
@@ -239,17 +240,17 @@ impl ConnectionRegistry {
         state.records.retain(|_, record| {
             !record.event_subscriptions.is_empty()
                 || (now.duration_since(record.last_seen) <= STALE_CONNECTION_AGE
-                    && process_is_alive(record.peer.pid))
+                    && record
+                        .peer
+                        .process
+                        .as_ref()
+                        .is_some_and(&mut process_is_alive))
         });
         Ok(ConnectionActivity {
             clients: state.records.len(),
             event_subscriptions: state.event_subscriptions,
         })
     }
-}
-
-pub(crate) fn peer_process_is_alive(pid: Option<u32>) -> bool {
-    pid.is_some_and(nodex_platform::process::process_is_alive)
 }
 
 fn unauthorized(message: &'static str) -> ConnectionRegistryError {
@@ -299,7 +300,7 @@ mod tests {
     fn peer(pid: u32) -> PeerIdentity {
         PeerIdentity {
             user: Some(nodex_platform::process::current_user().unwrap()),
-            pid: Some(pid),
+            process: Some(ProcessInstance { pid, started: 1 }),
         }
     }
 
@@ -335,6 +336,19 @@ mod tests {
             registry
                 .bind("connection:one", "binding:one", &peer(11))
                 .is_err()
+        );
+        let recycled = PeerIdentity {
+            process: Some(ProcessInstance {
+                pid: 10,
+                started: 2,
+            }),
+            ..peer(10)
+        };
+        assert!(
+            registry
+                .bind("connection:one", "binding:one", &recycled)
+                .is_err(),
+            "a later process under the same PID is another peer"
         );
         assert!(
             registry
@@ -463,7 +477,7 @@ mod tests {
             .expect("streaming lease");
         assert_eq!(
             registry
-                .activity_with(|pid| pid == Some(11))
+                .activity_with(|process| process.pid == 11)
                 .expect("activity while stream is held"),
             ConnectionActivity {
                 clients: 2,
@@ -473,7 +487,7 @@ mod tests {
         drop(streaming);
         assert_eq!(
             registry
-                .activity_with(|pid| pid == Some(11))
+                .activity_with(|process| process.pid == 11)
                 .expect("dead client is reaped"),
             ConnectionActivity {
                 clients: 1,

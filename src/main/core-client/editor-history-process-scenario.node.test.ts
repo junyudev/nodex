@@ -56,6 +56,8 @@ test("Core reclaims an authenticated Host's inverse after actual process death",
       // Core or any existing Nodex process. No close callback can run.
       expect(child.kill("SIGKILL")).toBe(true);
       await exited;
+      // Idle maintenance judges Host runs every 30 seconds, so this spans one idle period.
+      // Windows may hand the dead Host's PID to another process by then; its run has still ended.
       await expect.poll(state, { timeout: 45_000, interval: 250 }).toBe("consumed");
       expect(await ctx.runtime.rootClient.health()).toBeDefined();
     } finally {

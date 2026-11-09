@@ -1,5 +1,5 @@
 //! Authenticated, local-only byte streams. HTTP and bearer capabilities belong to callers.
-use crate::process::UserIdentity;
+use crate::process::{ProcessInstance, UserIdentity};
 use std::io;
 use std::path::Path;
 #[cfg(unix)]
@@ -11,20 +11,22 @@ pub use unix::*;
 #[cfg(windows)]
 pub use windows::*;
 
+/// The OS user and process run behind a connection; a bare PID could later name
+/// an unrelated process.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PeerIdentity {
     pub user: Option<UserIdentity>,
-    pub pid: Option<u32>,
+    pub process: Option<ProcessInstance>,
 }
 impl PeerIdentity {
     pub fn unavailable() -> Self {
         Self {
             user: None,
-            pid: None,
+            process: None,
         }
     }
     pub fn is_authenticated_owner(&self, owner: &UserIdentity) -> bool {
-        self.user.as_ref() == Some(owner) && self.pid.is_some_and(|pid| pid > 0)
+        self.user.as_ref() == Some(owner) && self.process.is_some_and(|process| process.pid > 0)
     }
 }
 

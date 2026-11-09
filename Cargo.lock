@@ -1260,6 +1260,7 @@ dependencies = [
  "axum",
  "getrandom 0.4.3",
  "hex",
+ "libc",
  "rustix",
  "serde",
  "serde_json",

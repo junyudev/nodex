@@ -3250,7 +3250,7 @@ mod tests {
             // An active canonical membership remains a content root, even if
             // presentation evidence is inactive and no history owns the Page.
             assert_eq!(run_block_retention_pass(connection, 0)?.collected_candidates, 0);
-            connection.execute("INSERT INTO editor_history_owners VALUES ('order-owner', ?1, 'epoch', 42, 'active')", [LIBRARY_ID])?;
+            connection.execute("INSERT INTO editor_history_owners VALUES ('order-owner', ?1, 'epoch', 42, 'active', 7)", [LIBRARY_ID])?;
             connection.execute("INSERT INTO editor_history_local_sets VALUES ('order-owner', 'surface', ?1, 'document:owned-page', 1, 1, 'hash', 0, 1)", [PROJECT_ID])?;
             connection.execute("UPDATE data_source_page_memberships SET removed_at = ?1 WHERE id = 'membership:order-retention'", [old])?;
             connection.execute("UPDATE pages SET parent_kind = 'library', parent_id = ?1 WHERE block_id = 'block:owned-page'", [LIBRARY_ID])?;
@@ -3289,7 +3289,7 @@ mod tests {
             fixture.kernel.writer().call(move |connection| {
                 // This is deliberately a storage/collector fixture. Public command
                 // admission and ordering are covered at the Core/Provider seams.
-                connection.execute("INSERT INTO editor_history_owners VALUES ('owner', ?1, 'epoch', 42, 'active')", [LIBRARY_ID])?;
+                connection.execute("INSERT INTO editor_history_owners VALUES ('owner', ?1, 'epoch', 42, 'active', 7)", [LIBRARY_ID])?;
                 connection.execute("INSERT INTO editor_history_local_sets VALUES ('owner', 'surface', ?1, 'document:owned-page', 1, 1, 'hash', 0, ?2)", params![PROJECT_ID, retain_document])?;
                 for id in ["block:ordinary-history", OWNED_CHILD_ID] {
                     if id == OWNED_CHILD_ID && retain_document { continue; }

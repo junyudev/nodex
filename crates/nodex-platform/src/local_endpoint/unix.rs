@@ -1,4 +1,5 @@
 use super::PeerIdentity;
+use crate::process::ProcessInstance;
 use axum::extract::connect_info::Connected;
 use axum::serve::{IncomingStream, Listener};
 use std::io;
@@ -27,12 +28,12 @@ impl Connected<IncomingStream<'_, LocalListener>> for PeerIdentity {
         match stream.io().peer_cred() {
             Ok(credential) => Self {
                 user: Some(credential.uid()),
-                pid: credential.pid().and_then(|pid| u32::try_from(pid).ok()),
+                process: credential
+                    .pid()
+                    .and_then(|pid| u32::try_from(pid).ok())
+                    .and_then(|pid| ProcessInstance::of(pid).ok()),
             },
-            Err(_) => Self {
-                user: None,
-                pid: None,
-            },
+            Err(_) => Self::unavailable(),
         }
     }
 }
