@@ -229,6 +229,7 @@ import {
 } from "../../../shared/workbench-scene";
 import type { FloatingComposerPlacement } from "@/features/floating-composer/floating-composer";
 import {
+  findWorkbenchPanelLeaf,
   findWorkbenchPanelLeafForTab,
   getWorkbenchPanelActiveLeaf,
   listWorkbenchPanelLeaves,
@@ -261,6 +262,7 @@ import { useWorkbenchPanelLifecycle } from "@/lib/use-workbench-panel-lifecycle"
 import {
   useWorkbenchPanelOpeners,
   type OpenCanvasStageHandler,
+  type SideChatSurfaceOpenInput,
 } from "@/lib/use-workbench-panel-openers";
 import { FileReferenceRouterProvider } from "@/lib/file-reference-router";
 import { openWorkbenchWindow } from "@/lib/workbench-shell-operations";
@@ -404,7 +406,10 @@ import {
   buildSessionPanelRenderModel,
   collectMountedBrowserTabIds,
 } from "@/lib/workbench-panel-projection";
-import { makeWorkbenchPanelSlotKey } from "@/lib/workbench-panel-slot-key";
+import {
+  makeWorkbenchPanelSlotKey,
+  makeWorkbenchSessionPanelSlotKey,
+} from "@/lib/workbench-panel-slot-key";
 import { panelTabCycleRequestDirectionToOffset } from "@/lib/workbench-panel-tab-cycle";
 import {
   buildWorkbenchScenePanelTabShortcutProjection,
@@ -1464,6 +1469,39 @@ export function WorkbenchRuntime({
           (candidate) => candidate.id === receipt.tabId,
         ) ?? null)
       : null;
+  };
+  const openSideChatSurface = async (input: SideChatSurfaceOpenInput): Promise<string | null> => {
+    const commands = sceneCommands;
+    if (!commands) return null;
+    const sceneOwner = { kind: "session" as const, sessionId: input.sourceSessionId };
+    const scene =
+      workbenchWindow.owner.read().windowState.scenesByOwnerKey[makeWorkbenchSceneKey(sceneOwner)];
+    if (!scene) return null;
+    const panelId = input.panelId ?? "right";
+    const layout = scene.panels[panelId].layout;
+    const receipt = await commands.execute(sceneOwner, {
+      kind: "open_tab",
+      panelId,
+      groupId:
+        input.leafId && findWorkbenchPanelLeaf(layout, input.leafId)
+          ? input.leafId
+          : layout.activeLeafId,
+      surface: {
+        kind: "side_chat",
+        titleSnapshot: input.title,
+        config: { sessionId: input.sideChatSessionId },
+      },
+    });
+    if (receipt.error || !receipt.tabId) return null;
+    const placed = readWorkbenchAgentContext(workbenchWindow.owner.read(), sceneOwner)?.tabs.find(
+      (tab) => tab.tabId === receipt.tabId,
+    );
+    if (placed?.panelId)
+      panelController.updatePanelCollapsedOverrides((current) => {
+        const slotKey = makeWorkbenchSessionPanelSlotKey(input.sourceSessionId, placed.panelId!);
+        return current[slotKey] === false ? current : { ...current, [slotKey]: false };
+      });
+    return receipt.tabId;
   };
   const updateSessionViewTab = (
     tabId: string,
@@ -2807,6 +2845,7 @@ export function WorkbenchRuntime({
     rightPanelFullWidth,
     createSessionViewTab,
     updateTab: updateSessionViewTab,
+    openSideChatSurface,
     refreshProjectSessions,
     requestPageStageNavigation: openPageStage,
     presentProjectScenePage: openProjectScenePage,
@@ -3367,6 +3406,14 @@ export function WorkbenchRuntime({
       setProcessManagerOpen(true);
     },
     presentBrowserTab: browserUsePresentation.presentBrowserTab,
+    openSessionSideChat: async (sideChatSessionId) => {
+      const parentThreadId = sessionExecutionThreadId(activeSession);
+      if (!activeSession || !parentThreadId) return;
+      await openExistingSideChat(
+        { kind: "runtime", sessionId: sideChatSessionId, parentThreadId },
+        activeSession,
+      );
+    },
   }))();
   const threadSummary = useWorkbenchThreadSummary({
     activeSession,
@@ -5405,6 +5452,7 @@ export function WorkbenchRuntime({
           summaryAutomation: threadSummaryAutomation,
           summaryComputerUsePip: threadSummary.summaryComputerUsePip,
           onOpenSummarySideChatRow: openSummarySideChatRow,
+          onLoadMoreSummarySideChats: threadSummary.onLoadMoreSideChats,
           onOpenSummaryBrowserRow: openSummaryBrowserRow,
           onOpenSummaryAutomation: openSummaryAutomation,
           onOpenProcessManager: openSummaryProcessManager,

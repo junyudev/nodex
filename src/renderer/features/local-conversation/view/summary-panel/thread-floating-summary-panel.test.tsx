@@ -2482,6 +2482,46 @@ describe("ThreadFloatingSummaryPanel", () => {
     expect(idleRow.querySelector('[data-activity-spinner="true"]') === null).toBe(true);
   });
 
+  test("lists closed side chats past the first four and reads older ones on demand", async () => {
+    const opened: (string | null)[] = [];
+    let loadMoreCount = 0;
+    const actions = {
+      onOpenSummarySideChatRow: (input: { rowId: string; panelId: string | null }) => {
+        opened.push(input.panelId);
+      },
+      onLoadMoreSummarySideChats: () => {
+        loadMoreCount += 1;
+      },
+    } as Partial<ThreadStageActions> as ThreadStageActions;
+
+    const view = renderSummary(
+      <ThreadFloatingSummaryPanel
+        mounted
+        open
+        activeThreadId="thread-1"
+        cwd={null}
+        projectWorkspacePath={null}
+        turns={[]}
+        sideChatRows={Array.from({ length: 6 }, (_, index) => ({
+          id: `sidechat-session:${index}`,
+          title: `Question ${index + 1}`,
+          isResponseInProgress: false,
+        }))}
+        actions={actions}
+      />,
+    );
+
+    expect(view.queryByRole("button", { name: "Question 5" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Show more" }));
+      await Promise.resolve();
+    });
+    fireEvent.click(view.getByRole("button", { name: "Question 6" }));
+    expect(opened).toEqual([null]);
+    fireEvent.click(view.getByRole("button", { name: "Show more" }));
+    expect(loadMoreCount).toBe(1);
+  });
+
   test("renders the Computer Use PiP as a headerless toggle row when state and action exist", async () => {
     const toggles: boolean[] = [];
     const actions = {

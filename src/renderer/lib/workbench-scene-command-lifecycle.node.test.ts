@@ -115,8 +115,8 @@ function fixture(sceneOwner: WorkbenchSceneOwner, surfaces: readonly WorkbenchSu
 const common = (id: string) => ({ id, titleSnapshot: id, stateKey: 0, state: null });
 
 test.each([true, false])(
-  "closing a side tab preserves Runtime Sessions and only discards native remote chats (Runtime: %s)",
-  async (runtimeSession) => {
+  "closing a side chat tab keeps a Runtime side chat and discards only a remote one (Runtime: %s)",
+  async (durable) => {
     const sceneOwner = { kind: "session" as const, sessionId: "source" };
     const { owner } = fixture(sceneOwner, []);
     const confirm = vi.fn(async () => true);
@@ -126,19 +126,21 @@ test.each([true, false])(
       discardSideChat: runtime.discardSideChat,
       confirmSideChatClose: confirm,
     });
-    const tab = {
-      auxiliary: {
-        sideChat: true,
-        id: "side-tab",
-        threadId: "side-thread",
-        ...(runtimeSession ? { runtimeSession: { id: "side" } } : {}),
-      },
-      surface: null,
-    } as WorkbenchCommandTab;
+    const tab = (
+      durable
+        ? {
+            auxiliary: null,
+            surface: { ...common("side-tab"), kind: "side_chat", config: { sessionId: "side" } },
+          }
+        : {
+            auxiliary: { sideChat: true, id: "side-tab", threadId: "side-thread" },
+            surface: null,
+          }
+    ) as WorkbenchCommandTab;
     expect(await lifecycle.prepareClose(sceneOwner, tab)).toBe(true);
     await lifecycle.close(sceneOwner, tab);
-    expect(confirm).toHaveBeenCalledTimes(runtimeSession ? 0 : 1);
-    expect(runtime.discardSideChat).toHaveBeenCalledTimes(runtimeSession ? 0 : 1);
+    expect(confirm).toHaveBeenCalledTimes(durable ? 0 : 1);
+    expect(runtime.discardSideChat).toHaveBeenCalledTimes(durable ? 0 : 1);
   },
 );
 

@@ -6,8 +6,14 @@ import {
   buildThreadSummaryPanelBrowserRows,
   type ThreadSummaryPanelWorkbenchBrowserSource,
 } from "@/features/local-conversation/projection/thread-summary-panel-browser-row-model";
-import { buildThreadSummaryPanelSideChatRow } from "@/features/local-conversation/projection/thread-summary-panel-side-chat-row-model";
+import {
+  buildThreadSummaryPanelSessionSideChatRows,
+  buildThreadSummaryPanelSideChatRow,
+} from "@/features/local-conversation/projection/thread-summary-panel-side-chat-row-model";
 import { buildThreadSummaryPanelAutomationRow } from "@/features/local-conversation/projection/thread-summary-panel-automation-model";
+import { runtimeSideChatSessionIdFromTabId } from "../../shared/side-chat-tab";
+import { useAgentRuntimeActivities } from "./agent-runtime-session-activity";
+import { useSessionSideChats } from "./use-session-side-chats";
 import { useRemoteHostedPipSummaryControl } from "@/features/local-conversation/view/use-remote-hosted-pip-summary-control";
 import type { ThreadStageActions } from "@/features/local-conversation";
 import type {
@@ -50,6 +56,8 @@ export interface WorkbenchThreadSummaryCommands {
   ) => Promise<boolean>;
   readonly openProcessManager: () => void;
   readonly presentBrowserTab: (browserTabId: string) => Promise<void>;
+  /** Reveals a side chat's tab in the active Session, reopening it when it is closed. */
+  readonly openSessionSideChat: (sideChatSessionId: string) => Promise<void>;
 }
 
 interface WorkbenchThreadSummaryInput {
@@ -74,6 +82,8 @@ export interface WorkbenchThreadSummaryModel {
   readonly popoverOpen: boolean;
   readonly setPopoverOpen: (open: boolean) => void;
   readonly sideChatRows: ThreadSummaryPanelAuxiliaryRow[];
+  /** Reads older side chats once every listed one is shown. */
+  readonly onLoadMoreSideChats: (() => void) | null;
   readonly browserRows: ThreadSummaryPanelBrowserRow[];
   readonly clockAutomation: ThreadSummaryPanelAutomationRow | null;
   readonly summaryComputerUsePip: ReturnType<
@@ -139,15 +149,46 @@ export function useWorkbenchThreadSummary({
     [sideChatTabs],
   );
   const sideChatConversationsById = useConversationSubset(sideChatThreadIds);
+  const runtimeActivities = useAgentRuntimeActivities();
+  const {
+    sideChats: listedSideChats,
+    hasMore: moreSideChats,
+    loadMore: loadMoreSideChats,
+  } = useSessionSideChats(conversationThreadId ? activeSession!.id : null);
   const sideChatRows = useMemo<ThreadSummaryPanelAuxiliaryRow[]>(
-    () =>
-      sideChatTabs.map((tab) =>
+    () => [
+      ...buildThreadSummaryPanelSessionSideChatRows({
+        open: (activeSession?.tabs ?? []).flatMap((tab) =>
+          tab.kind === "side_chat"
+            ? [
+                {
+                  sessionId: tab.config.sessionId,
+                  title: tab.title,
+                  panelId: tab.panelId,
+                  leafId: resolveLeafIdForPanelTab(activeSession!, tab.panelId, tab.id),
+                },
+              ]
+            : [],
+        ),
+        listed: listedSideChats,
+        listComplete: !moreSideChats,
+        isResponding: (sessionId) => runtimeActivities.has(sessionId),
+      }),
+      ...sideChatTabs.map((tab) =>
         buildThreadSummaryPanelSideChatRow(
           tab,
           tab.threadId ? sideChatConversationsById[tab.threadId] : null,
         ),
       ),
-    [sideChatConversationsById, sideChatTabs],
+    ],
+    [
+      activeSession,
+      listedSideChats,
+      moreSideChats,
+      runtimeActivities,
+      sideChatConversationsById,
+      sideChatTabs,
+    ],
   );
   const browserRows = useMemo<ThreadSummaryPanelBrowserRow[]>(() => {
     if (!activeSession) return [];
@@ -219,6 +260,12 @@ export function useWorkbenchThreadSummary({
   >(
     async ({ rowId, panelId, leafId }) => {
       if (!activeSession) return;
+      const sideChatSessionId = runtimeSideChatSessionIdFromTabId(rowId);
+      if (sideChatSessionId) {
+        await commands.openSessionSideChat(sideChatSessionId);
+        return;
+      }
+      if (!panelId) return;
       await commands.setPanelCollapsed(panelId, false);
       await commands.selectPanelTab(panelId, rowId, leafId ?? undefined);
     },
@@ -276,6 +323,7 @@ export function useWorkbenchThreadSummary({
     popoverOpen,
     setPopoverOpen,
     sideChatRows,
+    onLoadMoreSideChats: moreSideChats ? loadMoreSideChats : null,
     browserRows,
     clockAutomation,
     summaryComputerUsePip: pip.summaryComputerUsePip,

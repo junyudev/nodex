@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { CodexConversationSnapshot, CodexConversationTurn } from "../../../lib/types";
 import {
+  buildThreadSummaryPanelSessionSideChatRows,
   buildThreadSummaryPanelSideChatRow,
   isThreadSummarySideChatResponseInProgress,
 } from "./thread-summary-panel-side-chat-row-model";
@@ -77,5 +78,58 @@ describe("isThreadSummarySideChatResponseInProgress", () => {
     expect(
       isThreadSummarySideChatResponseInProgress(makeConversation({ turns: inProgressTurn })),
     ).toBe(true);
+  });
+});
+
+describe("buildThreadSummaryPanelSessionSideChatRows", () => {
+  test("lists every side chat newest first, placing the open ones in their tabs", () => {
+    const rows = buildThreadSummaryPanelSessionSideChatRows({
+      open: [
+        { sessionId: "older", title: "Renamed by its request", panelId: "bottom", leafId: "b" },
+        { sessionId: "new", title: "Side chat 2", panelId: "right", leafId: "a" },
+      ],
+      listed: [
+        { sessionId: "older", title: "Side chat" },
+        { sessionId: "closed", title: "Closed question" },
+      ],
+      listComplete: true,
+      isResponding: (sessionId) => sessionId === "closed",
+    });
+    expect(rows).toEqual([
+      {
+        id: "sidechat-session:new",
+        title: "Side chat 2",
+        isResponseInProgress: false,
+        panelId: "right",
+        leafId: "a",
+      },
+      {
+        id: "sidechat-session:older",
+        title: "Renamed by its request",
+        isResponseInProgress: false,
+        panelId: "bottom",
+        leafId: "b",
+      },
+      {
+        id: "sidechat-session:closed",
+        title: "Closed question",
+        isResponseInProgress: true,
+        panelId: undefined,
+        leafId: null,
+      },
+    ]);
+  });
+
+  test("keeps an open side chat the read has not reached after the listed ones", () => {
+    const rows = buildThreadSummaryPanelSessionSideChatRows({
+      open: [{ sessionId: "old-open", title: "Old question", panelId: "right", leafId: "a" }],
+      listed: [{ sessionId: "newest", title: "Newest question" }],
+      listComplete: false,
+      isResponding: () => false,
+    });
+    expect(rows.map((row) => row.id)).toEqual([
+      "sidechat-session:newest",
+      "sidechat-session:old-open",
+    ]);
   });
 });

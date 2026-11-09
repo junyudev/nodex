@@ -148,10 +148,13 @@ published. The request captures one app-server host generation and revalidates t
 host immediately before dispatch. Execution-location commits use the same per-Thread causal lane,
 so a concurrent handoff either waits for that fork or makes the stale fork fail before RPC.
 
-A Side chat is a temporary excluded-history fork for a focused question. It
-inherits the parent workspace identity and exact execution host, lives only in
-a right/bottom panel tab, is excluded from durable Chat navigation, and is
-discarded when closed. Creation uses parent metadata plus the stable source identity and is
+A Side chat is an excluded-history fork for a focused question, attached to the
+chat it came from. It inherits the parent workspace identity and exact execution
+host, opens in a right/bottom panel tab, and is excluded from durable Chat
+navigation. An Agent Runtime side chat persists until it or its source is deleted;
+closing its tab keeps it, and the source's summary reopens it. A side chat of an
+explicitly attached remote conversation is temporary and is discarded when its tab
+closes. Creation uses parent metadata plus the stable source identity and is
 independent of the parent's resident history size. It may not recursively create another Side chat.
 Selected transcript text may prefill its composer without submitting.
 

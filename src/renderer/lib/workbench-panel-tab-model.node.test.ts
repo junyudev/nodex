@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   buildSideChatParentNavigationPath,
+  getPanelTabPlacement,
   isAutomationPanelTab,
   isBackgroundAgentPanelTab,
   isImageEditorPanelTab,
@@ -16,7 +17,6 @@ import {
   makeProcessOutputPanelTabId,
   routeDeletedSelectedSubagentsToOverview,
   settlePendingSubagentsPanelTab,
-  settleSideChatInitialSubmission,
   updateImageEditorPanelTabTitle,
   updateSideChatPanelTabTitle,
   type ImageEditorPanelTab,
@@ -53,26 +53,6 @@ describe("workbench panel tab model", () => {
     expect(updateSideChatPanelTabTitle(updated, second.id, title)).toBe(updated);
     expect(updateSideChatPanelTabTitle(updated, "closed-side", "Late request")).toBe(updated);
     expect(updateSideChatPanelTabTitle(updated, second.id, "  ")).toBe(updated);
-  });
-  test("settles only the addressed side chat's opening message, once", () => {
-    const opening = {
-      launchId: "launch-1",
-      clientUserMessageId: "message-1",
-      acceptedAt: 1,
-    };
-    const first = {
-      ...(transient("sideChat") as SideChatPanelTab),
-      initialSubmission: opening,
-      draftPrompt: "Explain this",
-    };
-    const second = { ...first, id: "other-side" };
-    const tabs = [first, second];
-    const settled = settleSideChatInitialSubmission(tabs, first.id);
-    expect(settled[0]).not.toHaveProperty("initialSubmission");
-    expect(settled[0]).toMatchObject({ id: first.id, draftPrompt: "Explain this" });
-    expect(settled[1]).toBe(second);
-    expect(settleSideChatInitialSubmission(settled, first.id)).toBe(settled);
-    expect(settleSideChatInitialSubmission(settled, "closed-side")).toBe(settled);
   });
   test.each([
     ["sideChat", isSideChatPanelTab],
@@ -111,7 +91,7 @@ describe("workbench panel tab model", () => {
     ).toBe(false);
   });
 
-  test("allows cancelling a side capture only when its pending identity is retained", () => {
+  test("keeps a remote side chat open until its native Thread exists", () => {
     const sideChat = {
       sideChat: true,
       id: "side-chat",
@@ -125,20 +105,31 @@ describe("workbench panel tab model", () => {
       stateKey: 0,
     } satisfies SideChatPanelTab;
     expect(isPanelTabClosable(sideChat)).toBe(false);
-    expect(
-      isPanelTabClosable({
-        ...sideChat,
-        creation: {
-          source: { sessionId: "source" },
-          sessionId: "side",
-          requestId: "capture",
-          acceptedAt: 0,
-        },
-      }),
-    ).toBe(true);
     expect(isPanelTabClosable({ ...sideChat, status: "ready" })).toBe(true);
     expect(isPanelTabClosable({ ...sideChat, status: "expired" })).toBe(true);
     expect(isPanelTabClosable({ ...sideChat, status: "failed" })).toBe(true);
+  });
+
+  test("places durable tabs and conversations anywhere, and right-panel tools in the right panel", () => {
+    expect(getPanelTabPlacement(makeTestWorkbenchTab({ id: "browser", kind: "browser" }))).toEqual([
+      "right",
+      "bottom",
+    ]);
+    expect(getPanelTabPlacement(transient("mcpApp"))).toEqual(["right", "bottom"]);
+    expect(
+      getPanelTabPlacement({ ...(transient("sideChat") as SideChatPanelTab), status: "ready" }),
+    ).toEqual(["right", "bottom"]);
+    for (const discriminant of [
+      "planPanel",
+      "automationPanel",
+      "backgroundAgent",
+      "subagentsPanel",
+      "processOutputPanel",
+    ])
+      expect(getPanelTabPlacement(transient(discriminant))).toEqual(["right"]);
+    expect(
+      getPanelTabPlacement({ ...(transient("sideChat") as SideChatPanelTab), status: "loading" }),
+    ).toEqual([]);
   });
 
   test("limits root composer overlay eligibility to durable surfaces", () => {

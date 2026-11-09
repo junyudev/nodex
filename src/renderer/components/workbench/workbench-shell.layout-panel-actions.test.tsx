@@ -3081,7 +3081,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     ).toBe(true);
   });
 
-  test("bottom Side chat action starts an ephemeral side tab instead of a durable preview", async () => {
+  test("bottom Side chat action opens a durable side chat tab that closing keeps", async () => {
     localStorage.setItem(THREAD_QUEUE_FOLLOW_UPS_STORAGE_KEY, "false");
     localStorage.setItem(COMPOSER_ENTER_BEHAVIOR_STORAGE_KEY, "cmdIfMultiline");
     const screen = renderWorkbench({
@@ -3119,9 +3119,9 @@ describe("workbench session shell / layout-panel-actions", () => {
       invokeCalls.filter(([channel]) => channel === "agent-runtime:session:create-side-chat"),
     ).toHaveLength(1);
     expect(agentRuntimeLaunchCalls).toHaveLength(0);
-    expect(invokeCalls.filter((call) => call[0] === "window-session-view:tab-create")).toHaveLength(
-      durableTabCreateCount,
-    );
+    const tabCreates = invokeCalls.filter((call) => call[0] === "window-session-view:tab-create");
+    expect(tabCreates).toHaveLength(durableTabCreateCount + 1);
+    expect((tabCreates.at(-1)?.[1] as { kind?: string } | undefined)?.kind).toBe("side_chat");
     expect(screen.getByRole("textbox", { name: "Prompt" })).toBeTruthy();
     const stageProps = (globalThis as { __lastConnectedThreadStageProps?: Record<string, unknown> })
       .__lastConnectedThreadStageProps;

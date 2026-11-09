@@ -273,9 +273,9 @@ Every native callback carries `hostId`, actual `conversationId`,
 - A root notification navigates to its attached task session.
 - A side chat never opens as a Scene of its own. Its notification navigates to
   the conversation it was opened from and selects its side-chat tab there:
-  `sidechat:${conversationId}` for a native side Thread, and
-  `sidechat-session:${sessionId}` for a Runtime side chat's temporary Session.
-  If the tab is not mounted, Workbench rebuilds it without starting a new side
+  `sidechat:${conversationId}` names a remote native side Thread, and
+  `sidechat-session:${sessionId}` names a Runtime side chat's Session.
+  If its tab is closed, Workbench reopens it without starting a new side
   conversation; a side chat that no longer exists leaves the source selected.
   A reply goes to the side chat, not to its source.
 - Navigation must complete before reply or question execution.
@@ -362,7 +362,7 @@ title is the Session title, and its host is the local host.
   approval replaces its notification. An asynchronous root question notifies
   once its Run stops working, including when the provider turn ends. Only live delegated
   approvals roll up; delegated questions and provider-native child requests never notify the
-  user. Temporary side-chat attention notifies through the source Session. Attention replaces
+  user. Side-chat attention notifies through the source Session. Attention replaces
   turn completion while the Session waits, so a question revealed at turn end produces one
   question notification. One identity follows the waiting episode across Run changes and is
   withdrawn when the Session stops waiting.
@@ -378,7 +378,7 @@ the notification selects that Session directly rather than resolving a native
 Thread, and a reply is an ordinary follow-up through the Session's execution
 owner.
 
-A temporary side chat's completion uses its own conversation, title and reply,
+A side chat's completion uses its own conversation, title and reply,
 but its navigation path names the source Session it was opened from and it
 selects the side chat's tab there, so the reply is read beside the source
 conversation. Whether a Session is a side chat and which Session it came from

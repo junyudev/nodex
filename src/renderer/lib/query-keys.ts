@@ -183,6 +183,8 @@ export const queryKeys = {
       ] as const),
     detail: (sessionId: string) => spaceQueryKey(["projectSessions", "detail", sessionId] as const),
     start: (sessionId: string) => spaceQueryKey(["projectSessions", "start", sessionId] as const),
+    sideChats: (sourceSessionId: string) =>
+      spaceQueryKey(["projectSessions", "sideChats", sourceSessionId] as const),
   },
   projectActivity: {
     all: () => spaceQueryKey(["projectActivity"] as const),

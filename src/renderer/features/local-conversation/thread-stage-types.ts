@@ -529,6 +529,8 @@ export interface ThreadStageActions {
   onOpenSummarySideChatRow?: (
     input: ThreadSummaryPanelAuxiliaryRowOpenInput,
   ) => void | Promise<void>;
+  /** Present while the chat has side chats the summary has not read yet. */
+  onLoadMoreSummarySideChats?: () => void;
   onOpenSummaryBrowserRow?: (input: ThreadSummaryPanelBrowserRowOpenInput) => void | Promise<void>;
   onOpenSummaryAutomation?: (input: ThreadSummaryPanelAutomationOpenInput) => void | Promise<void>;
   onOpenSummaryGitReview?: (input: ThreadSummaryPanelGitReviewOpenInput) => void | Promise<void>;
@@ -657,7 +659,8 @@ export type ThreadStageHostActions = Pick<
 
 export interface ThreadSummaryPanelAuxiliaryRowOpenInput {
   rowId: string;
-  panelId: PanelId;
+  /** Null for a side chat whose tab is closed; opening it reopens the tab. */
+  panelId: PanelId | null;
   leafId?: string | null;
 }
 

@@ -144,6 +144,11 @@ export const WorkbenchSurfaceReferenceSchema = z.discriminatedUnion("kind", [
       initialImageId: z.string().min(1).max(4_096),
     }),
   }),
+  z.strictObject({
+    ...referenceBase,
+    kind: z.literal("side_chat"),
+    config: z.strictObject({ sessionId: identity }),
+  }),
 ]);
 export type WorkbenchSurfaceReference = z.infer<typeof WorkbenchSurfaceReferenceSchema>;
 
@@ -460,6 +465,7 @@ function observedTargetKey(surface: WorkbenchSurfaceReference): string {
     ]);
   if (kind === "image_editor")
     return JSON.stringify([kind, config.projectId, config.threadId, config.initialImageId]);
+  if (kind === "side_chat") return JSON.stringify([kind, config.sessionId]);
   const access = contentRoutingContextKey(config.routingContext);
   if (kind === "page_stage") return JSON.stringify([kind, access, config.pageId]);
   if (kind === "page_file") return JSON.stringify([kind, access, config.pageId, config.fileId]);

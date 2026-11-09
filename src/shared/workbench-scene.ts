@@ -159,7 +159,8 @@ export type WorkbenchSurfaceKind =
   | "browser"
   | "review"
   | "files"
-  | "image_editor";
+  | "image_editor"
+  | "side_chat";
 
 export interface WorkbenchConversationSurfaceConfig {
   readonly sessionId: string;
@@ -242,6 +243,11 @@ export interface WorkbenchFilesSurfaceConfig {
   readonly path?: string;
 }
 
+/** A side chat attached to the Scene's Session, presented as one of that Session's panel tabs. */
+export interface WorkbenchSideChatSurfaceConfig {
+  readonly sessionId: string;
+}
+
 export interface WorkbenchSurfaceConfigByKind {
   readonly conversation: WorkbenchConversationSurfaceConfig;
   readonly inbox: WorkbenchInboxSurfaceConfig;
@@ -254,6 +260,7 @@ export interface WorkbenchSurfaceConfigByKind {
   readonly review: WorkbenchReviewSurfaceConfig;
   readonly files: WorkbenchFilesSurfaceConfig;
   readonly image_editor: WorkbenchImageEditorSurfaceConfig;
+  readonly side_chat: WorkbenchSideChatSurfaceConfig;
 }
 
 type WorkbenchSurfaceVariant = {
@@ -618,7 +625,12 @@ export function isLibrarySceneSurfaceAllowed(surface: WorkbenchSurfaceDescriptor
 }
 
 export function isProjectScenePanelSurfaceAllowed(surface: WorkbenchSurfaceDescriptor): boolean {
-  return surface.kind !== "conversation" && surface.kind !== "review" && surface.kind !== "inbox";
+  return (
+    surface.kind !== "conversation" &&
+    surface.kind !== "review" &&
+    surface.kind !== "inbox" &&
+    surface.kind !== "side_chat"
+  );
 }
 
 export function isWorkbenchScenePanelSurfaceAllowed(
@@ -1424,6 +1436,8 @@ export function getWorkbenchSurfaceReuseKey(
       return `terminal:${surface.config.terminalSessionId}`;
     case "image_editor":
       return null;
+    case "side_chat":
+      return `side_chat:${surface.config.sessionId}`;
   }
 }
 

@@ -217,6 +217,13 @@ export async function invalidateProjectSessionScope(
     }),
   );
 
+  // A side chat's creation, rename, or deletion lists under its source, which no scope names.
+  if (event.summaryScopes.length > 0)
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: [...queryKeys.projectSessions.all(), "sideChats"],
+      }),
+    );
   for (const scope of event.summaryScopes) {
     if (scope.kind === "all") {
       invalidations.push(

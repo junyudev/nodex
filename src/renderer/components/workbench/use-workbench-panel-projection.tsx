@@ -56,7 +56,6 @@ import {
   isSubagentsPanelTab,
   isTransientPanelTab,
   updateImageEditorPanelTabTitle,
-  settleSideChatInitialSubmission,
   updateSideChatPanelTabTitle,
   type ProjectSessionRenderableTab,
 } from "@/lib/workbench-panel-tab-model";
@@ -81,6 +80,10 @@ import { McpAppSessionTab, ProcessOutputPanelTabView } from "./workbench-runtime
 import { PlanSidePanelTab } from "./plan-side-panel-tab";
 import type { PanelTabPresentationRegistry } from "./panel-tab-presentation-registry";
 import { ReviewRouteOpenAdapter } from "./workbench-review-route-adapter";
+import { SideChatSurfacePanel } from "./workbench-side-chat-surface";
+import { toast } from "@/components/ui/toast";
+import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
+import { createUuidV7 } from "../../../shared/uuid-v7";
 import { SideChatTabIcon } from "./side-chat-tab-icon";
 import type { SideChatPanelTab } from "@/lib/workbench-panel-tab-model";
 
@@ -102,6 +105,7 @@ type PanelOpeners = Pick<
   | "openPageFileTab"
   | "openWorkspaceFileTab"
   | "recreateSideChatPanelTab"
+  | "retrySideChatCreation"
 >;
 type SessionCommands = Pick<
   ReturnType<typeof useWorkbenchSessionCommands>,
@@ -192,6 +196,12 @@ interface WorkbenchPanelProjectionInput {
   readonly onUpdateSessionViewTab: SurfaceProps["onUpdateTab"];
 }
 
+const SIDE_CHAT_DELETE_CONFIRMATION = {
+  title: "Delete side chat?",
+  description: "Its messages are deleted permanently.",
+  confirmLabel: "Delete",
+};
+
 function getTabIcon(kind: WorkbenchTabProjection["kind"]): ComponentType<{ className?: string }> {
   if (kind === "image_editor") return ImageEditorTabIcon;
   if (kind === "page_file") return resolveFileResourceIcon();
@@ -263,6 +273,7 @@ export function useWorkbenchPanelProjection({
     openPageFileTab,
     openWorkspaceFileTab,
     recreateSideChatPanelTab,
+    retrySideChatCreation,
   } = openers;
   const {
     activateReviewTab,
@@ -290,6 +301,19 @@ export function useWorkbenchPanelProjection({
     onRefreshSessions,
   } = conversation;
   const { chats: automationChats, onOpenAutomations, onOpenLocalEnvironmentsSettings } = automation;
+
+  const deleteSideChat = async (tabId: string, sideChatSessionId: string) => {
+    try {
+      await agentRuntimeRuntime.deleteSideChat({
+        sessionId: sideChatSessionId,
+        requestId: createUuidV7(),
+      });
+    } catch {
+      toast.danger("Failed to delete side chat", { id: `side-chat-delete:${sideChatSessionId}` });
+      return;
+    }
+    await closeTab(tabId);
+  };
 
   const presentedPageIds = useMemo<ReadonlySet<string>>(() => {
     if (!activeRenderSession || !activeSessionPanelModel) return new Set();
@@ -392,7 +416,9 @@ export function useWorkbenchPanelProjection({
                           ? ImageEditorTabIcon
                           : (filesIcon ?? getTabIcon(tab.kind)),
         iconElement: isSideChatPanelTab(tab) ? (
-          <SideChatTabIcon sessionId={tab.runtimeSession?.id ?? null} />
+          <SideChatTabIcon sessionId={null} />
+        ) : !transientPanelTab && tab.kind === "side_chat" ? (
+          <SideChatTabIcon sessionId={tab.config.sessionId} />
         ) : !transientPanelTab && tab.kind === "browser" ? (
           <BrowserTabFavicon
             className="icon-xs"
@@ -408,8 +434,7 @@ export function useWorkbenchPanelProjection({
             ? undefined
             : tab.preview,
         pinBehavior: isImageEditorPanelTab(tab) ? tab.pinBehavior : undefined,
-        // A preview is pinned before it moves; everything else follows its kind's placement.
-        placement: "preview" in tab && tab.preview === true ? undefined : getPanelTabPlacement(tab),
+        placement: getPanelTabPlacement(tab),
         contextMenuItems:
           !transientPanelTab && tab.kind === "browser"
             ? [
@@ -444,7 +469,18 @@ export function useWorkbenchPanelProjection({
                     },
                   },
                 ]
-              : undefined,
+              : !transientPanelTab && tab.kind === "side_chat"
+                ? [
+                    {
+                      id: "side-chat-delete",
+                      label: "Delete side chat",
+                      iconKey: "trash",
+                      tone: "destructive",
+                      confirmation: SIDE_CHAT_DELETE_CONFIRMATION,
+                      onSelect: () => void deleteSideChat(tab.id, tab.config.sessionId),
+                    },
+                  ]
+                : undefined,
         renderPanel: (_closeTab, panelContext) => {
           if (isSideChatPanelTab(tab)) {
             const updateSideChatTabs = (update: (tabs: SideChatPanelTab[]) => SideChatPanelTab[]) =>
@@ -462,9 +498,6 @@ export function useWorkbenchPanelProjection({
                     tab={tab}
                     onTitleChange={(title) =>
                       updateSideChatTabs((tabs) => updateSideChatPanelTabTitle(tabs, tab.id, title))
-                    }
-                    onInitialSubmissionSettled={() =>
-                      updateSideChatTabs((tabs) => settleSideChatInitialSubmission(tabs, tab.id))
                     }
                     activeSession={session}
                     projects={projects}
@@ -710,6 +743,42 @@ export function useWorkbenchPanelProjection({
                     onOpenTurnDiffReview={onOpenTurnDiffReview}
                     onOpenTurnDiffFileInSidePanel={openTurnDiffFileInSidePanel}
                     turnDiffHoverPreviewDisabled={model.sidePanelOpen}
+                  />
+                )}
+              </ReviewRouteOpenAdapter>
+            );
+          }
+          if (tab.kind === "side_chat") {
+            const sideChatSessionId = tab.config.sessionId;
+            return (
+              <ReviewRouteOpenAdapter activateReviewTab={activateReviewTab}>
+                {({ onOpenTurnDiffReview }) => (
+                  <SideChatSurfacePanel
+                    key={`${session.id}:${tab.id}`}
+                    sideChatSessionId={sideChatSessionId}
+                    sourceSession={session}
+                    title={tab.title}
+                    creation={controller.sideChatCreations[sideChatSessionId] ?? null}
+                    projects={projects}
+                    composerEnterBehavior={composerEnterBehavior}
+                    turnDiffHoverPreviewDisabled={model.sidePanelOpen}
+                    onTitleChange={(title) => {
+                      if (title.trim() && title !== tab.title)
+                        onUpdateSessionViewTab(tab.id, { title });
+                    }}
+                    onInitialSubmissionSettled={() =>
+                      controller.updateSideChatCreations((current) => {
+                        if (!current[sideChatSessionId]) return current;
+                        const { [sideChatSessionId]: _settled, ...rest } = current;
+                        return rest;
+                      })
+                    }
+                    onRetry={() => void retrySideChatCreation(sideChatSessionId)}
+                    onClose={() => void closeTab(tab.id)}
+                    onRefreshSessions={onRefreshSessions}
+                    onOpenThread={openAttachedThreadSession}
+                    onOpenTurnDiffReview={onOpenTurnDiffReview}
+                    onOpenTurnDiffFileInSidePanel={openTurnDiffFileInSidePanel}
                   />
                 )}
               </ReviewRouteOpenAdapter>

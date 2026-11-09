@@ -426,6 +426,14 @@ export function updateSessionTab(
           ? {}
           : { config: parseWorkbenchProjectionTabConfig(tab.kind, input.config) }),
       };
+    case "side_chat":
+      return {
+        ...tab,
+        ...common,
+        ...(input.config === undefined
+          ? {}
+          : { config: parseWorkbenchProjectionTabConfig(tab.kind, input.config) }),
+      };
   }
 }
 

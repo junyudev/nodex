@@ -140,7 +140,7 @@ export interface AppShellTabItem {
   pinBehavior?: "automatic" | "disabled";
   /**
    * The panels this tab may be dragged, moved, or split into. Omitted keeps it in place, as for a
-   * protected primary, a preview, or a side chat that is still starting.
+   * protected primary or a remote side chat that is still starting.
    */
   placement?: readonly PanelId[];
   isLabel?: boolean;
@@ -292,7 +292,15 @@ export interface AppShellTabContextMenuActionItem {
   iconKey?: NativeContextMenuIconKey;
   disabled?: boolean;
   tone?: "default" | "destructive";
+  /** Asked before `onSelect` runs, for an action that cannot be undone. */
+  confirmation?: AppShellTabActionConfirmation;
   onSelect: () => void;
+}
+
+export interface AppShellTabActionConfirmation {
+  readonly title: string;
+  readonly description: string;
+  readonly confirmLabel: string;
 }
 
 export interface AppShellTabContextMenuSeparatorItem {
@@ -1052,7 +1060,10 @@ function AppShellTab({
       onClose?.(candidate.id);
     }
   };
-  const [confirmingCloseAll, setConfirmingCloseAll] = useState(false);
+  const [confirming, setConfirming] = useState<
+    | (AppShellTabActionConfirmation & { readonly onConfirm: () => void; readonly danger: boolean })
+    | null
+  >(null);
   const targetPanelId = controllerId.includes("bottom") ? "right" : "bottom";
   const contentPane = useContext(AppShellContentPaneContext);
   const contentPanelSide = contentPane?.presentation.contentSide ?? "right";
@@ -1282,7 +1293,19 @@ function AppShellTab({
   }
 
   const contextMenuItems = buildAppShellTabContextMenuItems({
-    customItems: tab.contextMenuItems,
+    customItems: tab.contextMenuItems?.map((item) => {
+      if (item.type === "separator" || !item.confirmation) return item;
+      const confirmation = item.confirmation;
+      return {
+        ...item,
+        onSelect: () =>
+          setConfirming({
+            ...confirmation,
+            danger: item.tone === "destructive",
+            onConfirm: item.onSelect,
+          }),
+      };
+    }),
     canCloseOtherTabs: hasOtherClosableTabs,
     canCloseTabsToRight: hasClosableTabsToRight,
     canCloseAllTabs,
@@ -1299,7 +1322,12 @@ function AppShellTab({
     onClose: closeCurrentTab,
     onCloseOtherTabs: closeOtherTabs,
     onCloseTabsToRight: closeTabsToRight,
-    onCloseAllTabs: () => setConfirmingCloseAll(true),
+    onCloseAllTabs: () =>
+      setConfirming({
+        ...CLOSE_ALL_TABS_CONFIRMATION,
+        danger: false,
+        onConfirm: closeAllTabs,
+      }),
     onPin: pinCurrentTab,
     paneMoves,
     onMove: moveCurrentTab,
@@ -1311,12 +1339,14 @@ function AppShellTab({
       <AppShellTabContextMenu items={contextMenuItems} onOpen={onCloseModeExit}>
         {chrome}
       </AppShellTabContextMenu>
-      {confirmingCloseAll ? (
-        <CloseAllTabsDialog
-          onCancel={() => setConfirmingCloseAll(false)}
+      {confirming ? (
+        <AppShellTabConfirmationDialog
+          confirmation={confirming}
+          danger={confirming.danger}
+          onCancel={() => setConfirming(null)}
           onConfirm={() => {
-            setConfirmingCloseAll(false);
-            closeAllTabs();
+            setConfirming(null);
+            confirming.onConfirm();
           }}
         />
       ) : null}
@@ -1325,10 +1355,20 @@ function AppShellTab({
 }
 
 /** Closing every tab at once is confirmed, as one stray click would otherwise clear the group. */
-function CloseAllTabsDialog({
+const CLOSE_ALL_TABS_CONFIRMATION: AppShellTabActionConfirmation = {
+  title: "Close all tabs?",
+  description: "All tabs in this group will close.",
+  confirmLabel: "Close",
+};
+
+function AppShellTabConfirmationDialog({
+  confirmation,
+  danger,
   onCancel,
   onConfirm,
 }: {
+  readonly confirmation: AppShellTabActionConfirmation;
+  readonly danger: boolean;
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
 }) {
@@ -1342,15 +1382,15 @@ function CloseAllTabsDialog({
       <NodexDialogContent size="narrow" showCloseButton={false}>
         <NodexDialogFrame>
           <NodexDialogHeader>
-            <NodexDialogTitle>Close all tabs?</NodexDialogTitle>
+            <NodexDialogTitle>{confirmation.title}</NodexDialogTitle>
           </NodexDialogHeader>
           <NodexDialogBody>
-            <NodexDialogDescription>All tabs in this group will close.</NodexDialogDescription>
+            <NodexDialogDescription>{confirmation.description}</NodexDialogDescription>
           </NodexDialogBody>
           <NodexDialogFooter>
             <NodexDialogAction onClick={onCancel}>Cancel</NodexDialogAction>
-            <NodexDialogAction tone="primary" onClick={onConfirm} autoFocus>
-              Close
+            <NodexDialogAction tone={danger ? "danger" : "primary"} onClick={onConfirm} autoFocus>
+              {confirmation.confirmLabel}
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogFrame>

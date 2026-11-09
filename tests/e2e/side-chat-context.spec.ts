@@ -181,7 +181,13 @@ for (const kind of ["codex", "claude"] as const) {
       await page.getByRole("button", { name: "Ask in side chat", exact: true }).click();
       await expect(composers).toHaveCount(2);
       const sideComposer = composers.last().describe("Side chat message");
-      const sidePanel = page.locator('[role="tabpanel"][data-tab-id^="sidechat-session:"]');
+      const initialTab = page.locator("[data-panel-tab-id]").filter({
+        has: page.getByRole("tab", { name: "Side chat", exact: true }),
+      });
+      const tabId = await initialTab.getAttribute("data-panel-tab-id");
+      if (!tabId) throw new Error("The side chat has no surface identity");
+      const tab = page.locator(`[data-panel-tab-id="${tabId}"]`);
+      const sidePanel = page.locator(`[role="tabpanel"][data-tab-id="${tabId}"]`);
       const fadeSelector = "[data-app-shell-main-content-top-fade]";
       const mainFade = scene.getByTestId("session-thread-page").locator(fadeSelector);
       const sideFade = sidePanel.locator(fadeSelector);
@@ -197,11 +203,10 @@ for (const kind of ["codex", "claude"] as const) {
       await expect(mainComposer).toHaveText("Keep my main draft");
       await expect(sideComposer).toHaveText("");
       await expect(page.getByRole("button", { name: "1 selection", exact: true })).toBeVisible();
-      const tab = page.locator('[data-panel-tab-id^="sidechat-session:"]').first();
       await expect(tab).toBeVisible();
-      const sideId = (await tab.getAttribute("data-panel-tab-id"))?.slice(
-        "sidechat-session:".length,
-      );
+      const attached = await invokeIpc(page, "project-sessions:side-chats", sourceId);
+      expect(attached.items).toHaveLength(1);
+      const sideId = attached.items[0]?.sessionId;
       if (!sideId) throw new Error("The side chat has no bound Session");
       const child = await invokeIpc(page, "project-sessions:get", sideId);
       expect(child?.executionRef?.threadId).toBeTruthy();
@@ -395,13 +400,17 @@ for (const kind of ["codex", "claude"] as const) {
       await selectReply(page, response, selectedText);
       await page.getByRole("button", { name: "Ask in side chat", exact: true }).click();
       await expect(composers).toHaveCount(2);
-      await expect(tab).toBeVisible();
-      const untouchedId = (await tab.getAttribute("data-panel-tab-id"))?.slice(
-        "sidechat-session:".length,
-      );
+      const untouchedTab = page.locator("[data-panel-tab-id]").filter({
+        has: page.getByRole("tab", { name: "Side chat", exact: true }),
+      });
+      await expect(untouchedTab).toBeVisible();
+      const untouchedId = (
+        await invokeIpc(page, "project-sessions:side-chats", sourceId)
+      ).items.find((item) => item.sessionId !== sideId)?.sessionId;
       if (!untouchedId) throw new Error("The untouched side chat has no Session");
-      await expect(close).toHaveAccessibleName("Close Side chat tab");
-      await close.click();
+      const untouchedClose = untouchedTab.locator('[data-app-shell-tab-close-button="true"]');
+      await expect(untouchedClose).toHaveAccessibleName("Close Side chat tab");
+      await untouchedClose.click();
       await expect(composers).toHaveCount(1);
       await expect(confirmation).toBeHidden();
       expect(await invokeIpc(page, "project-sessions:get", untouchedId)).not.toBeNull();

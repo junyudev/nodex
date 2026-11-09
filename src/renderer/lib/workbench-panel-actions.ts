@@ -149,7 +149,7 @@ export function isPanelActionTargetAllowed(action: PanelNewTabAction, panelId: P
 
 export function isWorkbenchTabKind(
   kind: PanelNewTabActionKind,
-): kind is Exclude<WorkbenchTabProjection["kind"], "image_editor" | "page_file"> {
+): kind is Exclude<WorkbenchTabProjection["kind"], "image_editor" | "page_file" | "side_chat"> {
   return kind !== "side_chat" && kind !== "new_page";
 }
 

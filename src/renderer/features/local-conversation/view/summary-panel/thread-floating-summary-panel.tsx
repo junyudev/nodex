@@ -388,6 +388,20 @@ function SummarySourceIconStrip({
   );
 }
 
+const SIDE_CHAT_INITIAL_LIMIT = 4;
+
+/** Reveals the rest of a section's rows, aligned with the row labels above it. */
+function ThreadSummaryPanelShowMoreButton({ onClick }: { onClick: () => void }) {
+  return (
+    <ThreadSummaryPanelRow
+      label="Show more"
+      icon={<span aria-hidden="true" />}
+      labelClassName="truncate text-token-text-secondary"
+      onClick={onClick}
+    />
+  );
+}
+
 function SummaryDropdownRowLabel({ label }: { label: string }) {
   return (
     <span className="flex min-w-0 items-center gap-1 text-token-foreground">
@@ -920,6 +934,7 @@ export function ThreadSummaryPanelSurface({
   const [branchSetupNextAction, setBranchSetupNextAction] =
     useState<SummaryBranchSetupNextAction | null>(null);
   const [gitActionRefreshKey, setGitActionRefreshKey] = useState(0);
+  const [sideChatsExpanded, setSideChatsExpanded] = useState(false);
   const gitSummary = useSummaryGitState(branchCwd, isVisible);
   const gitActionStatus = useSummaryGitActionStatus(branchCwd, isVisible, gitActionRefreshKey);
   const {
@@ -1235,10 +1250,10 @@ export function ThreadSummaryPanelSurface({
       row: Pick<ThreadSummaryPanelAuxiliaryRow, "id" | "panelId" | "leafId">,
       open: ThreadStageActions["onOpenSummarySideChatRow"],
     ) => {
-      if (!open || !row.panelId) return;
+      if (!open) return;
       void open({
         rowId: row.id,
-        panelId: row.panelId,
+        panelId: row.panelId ?? null,
         leafId: row.leafId ?? null,
       });
     },
@@ -1539,7 +1554,10 @@ export function ThreadSummaryPanelSurface({
                         />
                       }
                     >
-                      {sideChatRows.slice(0, 4).map((row) => (
+                      {(sideChatsExpanded
+                        ? sideChatRows
+                        : sideChatRows.slice(0, SIDE_CHAT_INITIAL_LIMIT)
+                      ).map((row) => (
                         <ThreadSummaryPanelRow
                           key={row.id}
                           label={row.title}
@@ -1551,14 +1569,26 @@ export function ThreadSummaryPanelSurface({
                               <SidePanelSideChatIcon className="icon-sm shrink-0" />
                             )
                           }
-                          interactive={Boolean(actions?.onOpenSummarySideChatRow && row.panelId)}
+                          interactive={Boolean(actions?.onOpenSummarySideChatRow)}
                           onClick={
-                            actions?.onOpenSummarySideChatRow && row.panelId
+                            actions?.onOpenSummarySideChatRow
                               ? () => handleOpenAuxiliaryRow(row, actions.onOpenSummarySideChatRow)
                               : undefined
                           }
                         />
                       ))}
+                      {sideChatsExpanded
+                        ? actions?.onLoadMoreSummarySideChats && (
+                            <ThreadSummaryPanelShowMoreButton
+                              onClick={actions.onLoadMoreSummarySideChats}
+                            />
+                          )
+                        : (sideChatRows.length > SIDE_CHAT_INITIAL_LIMIT ||
+                            actions?.onLoadMoreSummarySideChats) && (
+                            <ThreadSummaryPanelShowMoreButton
+                              onClick={() => setSideChatsExpanded(true)}
+                            />
+                          )}
                     </ThreadSummaryPanelSection>
                   );
 

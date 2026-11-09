@@ -107,6 +107,7 @@ function SharedConnectedSessionThread({
   summaryAutomation,
   summaryComputerUsePip,
   onOpenSummarySideChatRow,
+  onLoadMoreSummarySideChats,
   onOpenSummaryBrowserRow,
   onOpenSummaryAutomation,
   onOpenProcessManager,
@@ -196,6 +197,7 @@ function SharedConnectedSessionThread({
   summaryAutomation: ThreadSummaryPanelAutomationRow | null;
   summaryComputerUsePip: ThreadSummaryPanelComputerUsePipState | null;
   onOpenSummarySideChatRow: NonNullable<ThreadStageActions["onOpenSummarySideChatRow"]>;
+  onLoadMoreSummarySideChats: (() => void) | null;
   onOpenSummaryBrowserRow: NonNullable<ThreadStageActions["onOpenSummaryBrowserRow"]>;
   onOpenSummaryAutomation: NonNullable<ThreadStageActions["onOpenSummaryAutomation"]>;
   onOpenProcessManager?: ThreadStageActions["onOpenProcessManager"];
@@ -466,6 +468,7 @@ function SharedConnectedSessionThread({
       onOpenPlanInSidePanel,
       onClosePlanSidePanel,
       onOpenSummarySideChatRow,
+      ...(onLoadMoreSummarySideChats ? { onLoadMoreSummarySideChats } : {}),
       onToggleSummaryComputerUsePip,
       // A hosted chat's hooks are its host's; this desktop's Hooks settings don't govern it.
       ...(hosted ? {} : { onOpenHooksSettings }),
@@ -956,6 +959,7 @@ export function ProjectSessionThreadComposerDock({
       summaryAutomation={null}
       summaryComputerUsePip={null}
       onOpenSummarySideChatRow={noOp}
+      onLoadMoreSummarySideChats={null}
       onOpenSummaryBrowserRow={noOp}
       onOpenSummaryAutomation={noOp}
       onToggleSummaryComputerUsePip={noOp}

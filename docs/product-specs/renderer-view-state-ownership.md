@@ -175,8 +175,9 @@ Window Session snapshot as bounded closed history. The next generic New Window
 request reattaches that exact snapshot; only the no-closed-history fallback and
 targeted `Open in new window` requests clone and remint a source snapshot.
 Browser guests, Terminal PTYs, side-chat execution, and Codex streams remain
-their runtime Modules. Side-chat tab identity and placement remain
-renderer-local and ephemeral. Panel preview/side-surface controller records stay
+their runtime Modules. A Runtime side chat's tab is an ordinary Scene surface;
+only its creation status and a remote side chat's tab stay renderer-local and
+ephemeral. Panel preview/side-surface controller records stay
 in the Workbench panel Adapter because they coordinate imperative
 open/close/promote commands across the window-owned panel trees; they are pruned
 by their explicit close/session cleanup paths, not treated as runtime authority.

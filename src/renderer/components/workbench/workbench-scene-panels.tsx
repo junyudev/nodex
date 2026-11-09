@@ -139,7 +139,7 @@ function makePanelItems(
           ) : undefined,
         closable: surface.id !== scene.primary?.id,
         preview,
-        placement: !preview && surface.id !== scene.primary?.id ? EVERY_PANEL : undefined,
+        placement: surface.id === scene.primary?.id ? undefined : EVERY_PANEL,
         renderPanel: (_close, context) =>
           isRemoteSpace() && ["files", "terminal", "review"].includes(surface.kind) ? (
             <p className="p-3 text-sm text-token-text-secondary">{REMOTE_FILESYSTEM_REASON}</p>

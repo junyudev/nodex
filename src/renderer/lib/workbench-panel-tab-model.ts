@@ -11,7 +11,6 @@ import type {
   CodexSelectedSubagentHydrateResult,
   PanelId,
   WorkbenchTabProjection,
-  ProjectSession,
   CodexPromptInput,
 } from "@/lib/types";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
@@ -38,6 +37,10 @@ export type WorkbenchTabProjectionPanelTab =
 
 export type SideChatPanelTabStatus = "loading" | "ready" | "expired" | "failed";
 
+/**
+ * A temporary side chat of an explicitly attached remote conversation, whose native host owns it.
+ * Agent Runtime side chats are durable `side_chat` Scene surfaces instead.
+ */
 export interface SideChatPanelTab {
   sideChat: true;
   id: string;
@@ -51,14 +54,25 @@ export interface SideChatPanelTab {
   status: SideChatPanelTabStatus;
   errorMessage?: string;
   stateKey: number;
-  /** Retried creation retains the original context capture and child identity. */
-  creation?: import("../../shared/agent-runtime-api").AgentRuntimeSideChatCreateInput;
-  /** A temporary bound Session owns the captured context and independent execution. */
-  runtimeSession?: ProjectSession;
-  draftPrompt?: string;
   draftPromptInput?: CodexPromptInput;
   draftAttachmentMode?: "append";
-  initialSubmission?: import("../features/conversation-launch/session-first-submission-owner").FirstSubmissionIdentity & {
+}
+
+/**
+ * Starting an Agent Runtime side chat, keyed by the side chat's own Session. Its tab is already a
+ * durable surface; this records only what that surface shows until the Session exists and what
+ * its first send carries. A retry repeats the same request, so it keeps the same capture.
+ */
+export interface SideChatCreation {
+  readonly sourceSessionId: string;
+  readonly request: import("../../shared/agent-runtime-api").AgentRuntimeSideChatCreateInput;
+  readonly status: "creating" | "failed" | "ready";
+  readonly errorMessage?: string;
+  readonly draftPrompt?: string;
+  readonly draftPromptInput?: CodexPromptInput;
+  readonly draftAttachmentMode?: "append";
+  /** The opening message, sent once by the side chat's panel after the Session exists. */
+  readonly initialSubmission?: import("../features/conversation-launch/session-first-submission-owner").FirstSubmissionIdentity & {
     readonly acceptedAt: number;
     readonly presentationTicket?: import("../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
   };
@@ -280,8 +294,7 @@ export function isSideChatPanelTab(tab: ProjectSessionRenderableTab): tab is Sid
 }
 
 export function isPanelTabClosable(tab: ProjectSessionRenderableTab): boolean {
-  if (!isSideChatPanelTab(tab)) return true;
-  return tab.status !== "loading" || tab.creation !== undefined;
+  return !isSideChatPanelTab(tab) || tab.status !== "loading";
 }
 
 export const EVERY_PANEL: readonly PanelId[] = ["right", "bottom"];
@@ -290,9 +303,9 @@ const NO_PANEL: readonly PanelId[] = [];
 
 /**
  * The panels a tab may be dragged, moved, or split into; none keeps it in place. Placement does
- * not depend on persistence: durable surfaces and conversations (side chats, MCP apps) go to either
- * panel, tools that present a right-panel surface stay in the right panel, and a side chat that
- * cannot close yet cannot move either.
+ * not depend on persistence or preview state: durable surfaces, previews, and conversations (side
+ * chats, MCP apps) go to either panel, tools that present a right-panel surface stay in the right
+ * panel, and a side chat that cannot close yet cannot move either.
  */
 export function getPanelTabPlacement(tab: ProjectSessionRenderableTab): readonly PanelId[] {
   if (!isPanelTabClosable(tab)) return NO_PANEL;
@@ -440,19 +453,6 @@ export function updateSideChatPanelTabTitle(
 ): SideChatPanelTab[] {
   if (!title.trim() || !tabs.some((tab) => tab.id === tabId && tab.title !== title)) return tabs;
   return tabs.map((tab) => (tab.id === tabId ? { ...tab, title } : tab));
-}
-
-/** The opening message is handled once; a later mount of the tab never sends or drafts it again. */
-export function settleSideChatInitialSubmission(
-  tabs: SideChatPanelTab[],
-  tabId: string,
-): SideChatPanelTab[] {
-  if (!tabs.some((tab) => tab.id === tabId && tab.initialSubmission)) return tabs;
-  return tabs.map((tab) => {
-    if (tab.id !== tabId) return tab;
-    const { initialSubmission: _settled, ...settled } = tab;
-    return settled;
-  });
 }
 
 export function buildSideChatParentNavigationPath(

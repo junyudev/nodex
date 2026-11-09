@@ -308,6 +308,7 @@ const EPHEMERAL_PANEL_FIELD_SET: Record<WorkbenchEphemeralPanelStateField, true>
   previewSurfacesByPanel: true,
   sideChatTabsBySession: true,
   sideChatActiveTabByPanel: true,
+  sideChatCreations: true,
   mcpAppTabsBySession: true,
   mcpAppActiveTabByPanel: true,
   planTabsBySession: true,

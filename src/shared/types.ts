@@ -63,6 +63,7 @@ import type {
   WorkbenchPageStageSurfaceConfig,
   WorkbenchCanvasStageSurfaceConfig,
   WorkbenchPageFileSurfaceConfig,
+  WorkbenchSideChatSurfaceConfig,
 } from "./workbench-scene";
 import type { WorkbenchImageEditorSurfaceConfig } from "./workbench-image-editor";
 import type { BrowserSidebarDeviceToolbarState } from "./browser-sidebar";
@@ -775,7 +776,8 @@ export type WorkbenchTabKind =
   | "browser"
   | "review"
   | "files"
-  | "image_editor";
+  | "image_editor"
+  | "side_chat";
 
 export const PROJECT_SESSION_SINGLETON_TAB_KINDS = [
   "review",
@@ -940,6 +942,7 @@ export interface WorkbenchProjectionTabConfigByKind {
   review: WorkbenchReviewConfig;
   files: WorkbenchProjectionFilesTabConfig;
   image_editor: WorkbenchImageEditorSurfaceConfig;
+  side_chat: WorkbenchSideChatSurfaceConfig;
 }
 
 export type WorkbenchProjectionTabConfig = WorkbenchProjectionTabConfigByKind[WorkbenchTabKind];

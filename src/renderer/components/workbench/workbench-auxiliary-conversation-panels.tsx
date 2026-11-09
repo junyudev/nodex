@@ -42,7 +42,6 @@ import {
 import {
   AgentRuntimeChildPanel,
   AgentRuntimeSubagentsOverviewPanel,
-  AgentRuntimeSideChatPanel,
 } from "./workbench-agent-runtime-panels";
 import type { ConversationAgent } from "../../../shared/conversation-identity";
 
@@ -542,45 +541,11 @@ function BackgroundAgentLoadingPanel({ title }: { title: string }) {
   );
 }
 
-export function SideChatSessionTab(
-  props: Parameters<typeof NativeSideChatSessionTab>[0] & {
-    /** A Runtime side chat's opening message was sent or returned to its composer. */
-    readonly onInitialSubmissionSettled?: () => void;
-  },
-) {
-  const session = props.tab.runtimeSession;
-  const content = !session ? (
-    <NativeSideChatSessionTab {...props} />
-  ) : (
-    <AgentRuntimeSideChatPanel
-      session={session}
-      parentThreadId={props.tab.parentThreadId}
-      title={props.tab.title}
-      onTitleChange={props.onTitleChange}
-      onInitialSubmissionSettled={props.onInitialSubmissionSettled}
-      initialSubmission={props.tab.initialSubmission}
-      project={props.projects.find((candidate) => candidate.id === session.projectId) ?? null}
-      initialPrompt={
-        props.tab.initialSubmission
-          ? {
-              prompt: props.tab.draftPrompt ?? "",
-              promptInput: props.tab.draftPromptInput,
-            }
-          : null
-      }
-      onRefresh={props.onRefreshSessions}
-      onOpenThread={props.onOpenThread}
-      composerEnterBehavior={props.composerEnterBehavior}
-      hostActions={{
-        onOpenTurnDiffReview: props.onOpenTurnDiffReview,
-        onOpenTurnDiffFileInSidePanel: props.onOpenTurnDiffFileInSidePanel,
-      }}
-      turnDiffHoverPreviewDisabled={props.turnDiffHoverPreviewDisabled}
-    />
-  );
+/** A temporary side chat of an explicitly attached remote conversation. */
+export function SideChatSessionTab(props: Parameters<typeof NativeSideChatSessionTab>[0]) {
   return (
     <ConversationContentFrame topFade className="h-full">
-      {content}
+      <NativeSideChatSessionTab {...props} />
     </ConversationContentFrame>
   );
 }

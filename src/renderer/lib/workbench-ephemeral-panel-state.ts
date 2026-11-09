@@ -6,6 +6,7 @@ import type {
   PlanPanelTab,
   ProcessOutputPanelTab,
   ProcessOutputPanelTarget,
+  SideChatCreation,
   SideChatPanelTab,
 } from "./workbench-panel-tab-model";
 import { makeWorkbenchSessionPanelOwnerKey } from "./workbench-panel-slot-key";
@@ -17,6 +18,8 @@ export interface WorkbenchEphemeralPanelState {
   readonly previewSurfacesByPanel: Record<string, WorkbenchSurfaceDescriptor>;
   readonly sideChatTabsBySession: Record<string, SideChatPanelTab[]>;
   readonly sideChatActiveTabByPanel: Record<string, string>;
+  /** Agent Runtime side chats still starting, or holding their opening message, by their Session. */
+  readonly sideChatCreations: Record<string, SideChatCreation>;
   readonly mcpAppTabsBySession: Record<string, McpAppPanelTab[]>;
   readonly mcpAppActiveTabByPanel: Record<string, string>;
   readonly planTabsBySession: Record<string, PlanPanelTab[]>;
@@ -111,6 +114,7 @@ export function createWorkbenchEphemeralPanelState(): WorkbenchEphemeralPanelSta
     previewSurfacesByPanel: {},
     sideChatTabsBySession: {},
     sideChatActiveTabByPanel: {},
+    sideChatCreations: {},
     mcpAppTabsBySession: {},
     mcpAppActiveTabByPanel: {},
     planTabsBySession: {},
@@ -174,6 +178,15 @@ function pruneSession(
     previewTabsByPanel: removeOwnerSlotKeys(state.previewTabsByPanel, ownerKey),
     sideChatTabsBySession: removeRecordKey(state.sideChatTabsBySession, sessionId),
     sideChatActiveTabByPanel: removeOwnerSlotKeys(state.sideChatActiveTabByPanel, ownerKey),
+    sideChatCreations: Object.values(state.sideChatCreations).some(
+      (creation) => creation.sourceSessionId === sessionId,
+    )
+      ? Object.fromEntries(
+          Object.entries(state.sideChatCreations).filter(
+            ([, creation]) => creation.sourceSessionId !== sessionId,
+          ),
+        )
+      : state.sideChatCreations,
     mcpAppTabsBySession: removeRecordKey(state.mcpAppTabsBySession, sessionId),
     mcpAppActiveTabByPanel: removeOwnerSlotKeys(state.mcpAppActiveTabByPanel, ownerKey),
     planTabsBySession: removeRecordKey(state.planTabsBySession, sessionId),

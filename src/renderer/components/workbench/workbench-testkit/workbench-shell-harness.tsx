@@ -2707,6 +2707,7 @@ export function renderWorkbench({
   };
   const defaultDraftSessionIds = new Map(Object.entries(defaultDraftSessionIdsByScope));
   const sideChatSessions = new Map<string, ProjectSession>();
+  const sideChatSourceIds = new Map<string, string>();
   const createMockSession = (input: {
     sessionId: string;
     projectId: string | null;
@@ -2963,6 +2964,7 @@ export function renderWorkbench({
         executionRef: { runtimeId: "runtime:test", threadId },
       });
       sideChatSessions.set(session.id, session);
+      sideChatSourceIds.set(session.id, source.id);
       return { sessionId: session.id, projectId: source.projectId, threadId };
     }
     if (channel === "agent-runtime:session:overview")
@@ -3401,6 +3403,20 @@ export function renderWorkbench({
         hasMore,
         projectionRevision: workspaceCommitSeq,
       };
+    }
+    if (channel === "project-sessions:side-chats") {
+      const sourceSessionId = String(args[0]);
+      const items = [...sideChatSessions.values()]
+        .filter((session) => sideChatSourceIds.get(session.id) === sourceSessionId)
+        .reverse()
+        .map((session) => ({
+          sessionId: session.id,
+          displayTitle: session.displayTitle,
+          createdAt: session.createdAt,
+          updatedAt: session.updatedAt,
+          archived: session.archived,
+        }));
+      return { items, nextCursor: null, projectionRevision: workspaceCommitSeq };
     }
     if (channel === "project-sessions:get") {
       const sessionId = String(args[0]);

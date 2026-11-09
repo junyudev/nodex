@@ -17,6 +17,7 @@ import {
 } from "../workbench-session-view";
 import { WorkbenchReviewConfigSchema } from "./workbench-review";
 import { WorkbenchImageEditorSurfaceConfigSchema } from "./workbench-image-editor";
+import { WorkbenchSideChatSurfaceConfigSchema } from "./workbench-side-chat";
 import { BrowserSidebarDeviceToolbarStateSchema } from "../browser/browser-schemas";
 import { primaryCanvasBlockId } from "../block-documents/canvas-document-identity";
 
@@ -239,6 +240,11 @@ export const WorkbenchSessionViewTabSchema = z
         config: WorkbenchImageEditorSurfaceConfigSchema,
       })
       .strict(),
+    z.strictObject({
+      ...tabBaseSchema,
+      kind: z.literal("side_chat"),
+      config: WorkbenchSideChatSurfaceConfigSchema,
+    }),
   ])
   .superRefine((tab, context) => {
     if (encodedJsonBytes(tab.config) > MAX_WORKBENCH_SESSION_VIEW_JSON_BYTES) {

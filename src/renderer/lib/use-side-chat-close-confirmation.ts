@@ -23,7 +23,7 @@ export function useSideChatCloseConfirmation() {
   );
   return useCallback(
     async (tab: SideChatPanelTab) => {
-      if (tab.runtimeSession || !tab.threadId) return true;
+      if (!tab.threadId) return true;
       if (!(readLocalConversation(tab.threadId)?.turns.length ?? 0)) return true;
       try {
         if (localStorage.getItem(SKIP_CONFIRMATION_KEY) === "true") return Promise.resolve(true);

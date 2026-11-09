@@ -36,6 +36,7 @@ import { InboxScopeSchema } from "./inbox-scope";
 import { inboxScopeKey, LIBRARY_INBOX, projectInbox } from "../inbox";
 import { WorkbenchReviewConfigSchema } from "./workbench-review";
 import { WorkbenchImageEditorSurfaceConfigSchema } from "./workbench-image-editor";
+import { WorkbenchSideChatSurfaceConfigSchema } from "./workbench-side-chat";
 import {
   MAX_WORKBENCH_SESSION_VIEW_JSON_BYTES,
   WorkbenchPanelStateSchema,
@@ -306,6 +307,11 @@ export const WorkbenchSurfaceDescriptorSchema = z
         config: WorkbenchImageEditorSurfaceConfigSchema,
       })
       .strict(),
+    z.strictObject({
+      ...surfaceBaseSchema,
+      kind: z.literal("side_chat"),
+      config: WorkbenchSideChatSurfaceConfigSchema,
+    }),
   ])
   .superRefine((surface, context) => {
     if (encodedJsonBytes(surface.config) > MAX_WORKBENCH_SESSION_VIEW_JSON_BYTES) {
@@ -678,7 +684,12 @@ function isRawScenePanelSurfaceAllowed(ownerKind: unknown, surface: unknown): bo
   if (!surface || typeof surface !== "object" || Array.isArray(surface)) return true;
   const record = surface as Record<string, unknown>;
   if (ownerKind === "project") {
-    return record.kind !== "conversation" && record.kind !== "review" && record.kind !== "inbox";
+    return (
+      record.kind !== "conversation" &&
+      record.kind !== "review" &&
+      record.kind !== "inbox" &&
+      record.kind !== "side_chat"
+    );
   }
   if (ownerKind === "session") return record.kind !== "conversation" && record.kind !== "inbox";
   if (ownerKind !== "library" && ownerKind !== "inbox") return true;

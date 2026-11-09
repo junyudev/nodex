@@ -63,7 +63,6 @@ export function createWorkbenchSceneCommandLifecycle(input: {
       const sideChat = tab.auxiliary && "sideChat" in tab.auxiliary ? tab.auxiliary : null;
       if (
         sideChat?.threadId &&
-        !sideChat.runtimeSession &&
         input.confirmSideChatClose &&
         !(await input.confirmSideChatClose(sideChat))
       )
@@ -98,9 +97,21 @@ export function createWorkbenchSceneCommandLifecycle(input: {
           browserTabId: surface.config.browserTabId,
         });
       }
+      // A side chat that never started has nothing left to show once its tab is gone.
+      if (surface?.kind === "side_chat") {
+        const sideChatSessionId = surface.config.sessionId;
+        input.owner.dispatchEphemeral({
+          type: "update",
+          field: "sideChatCreations",
+          update: (current) => {
+            if (current[sideChatSessionId]?.status !== "failed") return current;
+            const { [sideChatSessionId]: _failed, ...rest } = current;
+            return rest;
+          },
+        });
+      }
       const sideChat = tab.auxiliary && "sideChat" in tab.auxiliary ? tab.auxiliary : null;
-      if (sideChat?.threadId && !sideChat.runtimeSession)
-        await input.discardSideChat(sideChat.threadId);
+      if (sideChat?.threadId) await input.discardSideChat(sideChat.threadId);
     },
   };
 }

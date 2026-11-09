@@ -31,6 +31,7 @@ import {
 } from "./workbench-scene";
 import { WorkbenchReviewConfigSchema } from "./workbench-review";
 import { WorkbenchImageEditorSurfaceConfigSchema } from "./workbench-image-editor";
+import { WorkbenchSideChatSurfaceConfigSchema } from "./workbench-side-chat";
 import {
   CodexCollaborationModeKindSchema,
   CodexThreadActiveFlagSchema,
@@ -115,6 +116,8 @@ export function parseWorkbenchProjectionTabConfig<Kind extends WorkbenchTabKind>
   else if (kind === "files") parsed = WorkbenchProjectionFilesTabConfigSchema.parse(config);
   else if (kind === "image_editor") {
     parsed = WorkbenchImageEditorSurfaceConfigSchema.parse(config);
+  } else if (kind === "side_chat") {
+    parsed = WorkbenchSideChatSurfaceConfigSchema.parse(config);
   } else {
     throw new Error(`Unknown project session tab kind: ${String(kind)}`);
   }

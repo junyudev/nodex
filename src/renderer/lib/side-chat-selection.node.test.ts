@@ -1,55 +1,37 @@
 import { expect, test } from "vite-plus/test";
-import { selectReusableSideChat } from "./side-chat-selection";
-import type { SideChatPanelTab } from "./workbench-panel-tab-model";
+import { selectReusableSideChat, type SideChatSelectionCandidate } from "./side-chat-selection";
 
-const tab = (id: string, overrides: Partial<SideChatPanelTab> = {}): SideChatPanelTab => ({
-  sideChat: true,
-  id,
-  sessionId: "parent",
+const candidate = (
+  tabId: string,
+  overrides: Partial<SideChatSelectionCandidate> = {},
+): SideChatSelectionCandidate => ({
+  tabId,
   panelId: "right",
-  parentThreadId: "thread",
-  parentNavigationPath: "",
-  threadId: id,
-  title: id,
-  status: "ready",
-  stateKey: 1,
+  active: false,
+  accepting: true,
   ...overrides,
 });
 
-test("reuses the active idle side chat, then other right-panel chats before bottom-panel chats", () => {
-  const tabs = [tab("first"), tab("active"), tab("bottom", { panelId: "bottom" })];
-  const input = {
-    tabs,
-    isActive: (entry: SideChatPanelTab) => entry.id !== "first",
-    isIdle: () => true,
-  };
-  expect(selectReusableSideChat(input)?.id).toBe("active");
-  expect(selectReusableSideChat({ ...input, isIdle: (entry) => entry.id !== "active" })?.id).toBe(
-    "first",
-  );
+test("reuses the active accepting side chat, then other right-panel chats before bottom-panel chats", () => {
+  const first = candidate("first");
+  const active = candidate("active", { active: true });
+  const bottom = candidate("bottom", { panelId: "bottom", active: true });
+  expect(selectReusableSideChat([first, active, bottom])).toBe(active);
+  expect(selectReusableSideChat([first, { ...active, accepting: false }, bottom])).toBe(first);
   expect(
-    selectReusableSideChat({ ...input, isIdle: (entry) => entry.panelId === "bottom" })?.id,
-  ).toBe("bottom");
+    selectReusableSideChat([
+      { ...first, accepting: false },
+      { ...active, accepting: false },
+      bottom,
+    ]),
+  ).toBe(bottom);
 });
 
-test("queues more selected context while its side chat opens and skips failed or running chats", () => {
-  const loading = tab("pending", {
-    status: "loading",
-    threadId: null,
-    draftAttachmentMode: "append",
-  });
+test("finds no side chat when every candidate is busy", () => {
   expect(
-    selectReusableSideChat({
-      tabs: [tab("running"), tab("failed", { status: "failed" }), loading],
-      isActive: () => false,
-      isIdle: () => false,
-    }),
-  ).toBe(loading);
-  expect(
-    selectReusableSideChat({
-      tabs: [tab("running"), tab("failed", { status: "failed" })],
-      isActive: () => true,
-      isIdle: () => false,
-    }),
+    selectReusableSideChat([
+      candidate("running", { accepting: false, active: true }),
+      candidate("failed", { accepting: false }),
+    ]),
   ).toBeNull();
 });

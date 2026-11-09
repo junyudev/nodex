@@ -358,10 +358,20 @@ test("side chat notifications reopen its tab in the source Session and reply to 
     await sourceComposer.fill(`/side ${sidePrompt}`);
     await sourceComposer.press("Enter");
     // Panel tab headers live in the shell banner, outside the source Scene.
-    const initialTab = page.locator('[data-panel-tab-id^="sidechat-session:"]');
-    await expect(initialTab).toBeVisible();
+    const initialTab = page.locator("[data-panel-tab-id]").filter({
+      has: page.getByRole("tab", { name: sidePrompt, exact: true }),
+    });
+    await expect(initialTab).toBeVisible({ timeout: 30_000 });
     const tabId = await initialTab.getAttribute("data-panel-tab-id");
-    const sideId = tabId?.slice("sidechat-session:".length);
+    if (!tabId) throw new Error("The side chat has no surface identity");
+    // The tab opens at once; its Session is created behind it.
+    await expect
+      .poll(async () => (await invokeIpc(page, "project-sessions:side-chats", sourceId)).items, {
+        timeout: 30_000,
+      })
+      .toHaveLength(1);
+    const attached = await invokeIpc(page, "project-sessions:side-chats", sourceId);
+    const sideId = attached.items[0]?.sessionId;
     if (!sideId) throw new Error("The side chat has no bound Session");
     const side = await invokeIpc(page, "project-sessions:get", sideId);
     if (!side?.executionRef) throw new Error("The side chat has no execution binding");
@@ -461,11 +471,16 @@ test("side chat notifications reopen its tab in the source Session and reply to 
       .toEqual(["completed", "running"]);
     await page.reload();
     await harness.waitForApplicationReady();
-    await expect(page.locator(`[data-panel-tab-id="${tabId}"]`)).toHaveCount(0);
+    // Reload restores the durable tab.
+    await expect(page.locator(`[data-panel-tab-id="${tabId}"]`)).toBeVisible();
     expect((await invokeIpc(page, "project-sessions:get", sideId))?.executionRef).toEqual(
       side.executionRef,
     );
-    await openCompletion(2, "rebuilt-side-chat-tab-after-reply.png", "Reply from the notification");
+    await openCompletion(
+      2,
+      "restored-side-chat-tab-after-reply.png",
+      "Reply from the notification",
+    );
     fs.writeFileSync(
       path.join(artifacts, "side-chat-result.json"),
       JSON.stringify(

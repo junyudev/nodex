@@ -1,4 +1,7 @@
-import type { WorkbenchPageFileSurfaceConfig } from "./workbench-scene";
+import type {
+  WorkbenchPageFileSurfaceConfig,
+  WorkbenchSideChatSurfaceConfig,
+} from "./workbench-scene";
 import { workbenchFileResourceId } from "./workbench-resource-identity";
 import {
   activateWorkbenchPanelLeaf,
@@ -65,7 +68,8 @@ export type WorkbenchSessionViewTabKind =
   | "browser"
   | "review"
   | "files"
-  | "image_editor";
+  | "image_editor"
+  | "side_chat";
 
 export interface WorkbenchDbViewTabConfig {
   projectId: string;
@@ -118,6 +122,7 @@ export interface WorkbenchSessionViewTabConfigByKind {
   review: WorkbenchReviewTabConfig;
   files: WorkbenchFilesTabConfig;
   image_editor: WorkbenchImageEditorSurfaceConfig;
+  side_chat: WorkbenchSideChatSurfaceConfig;
 }
 
 type WorkbenchSessionViewTabVariant = {

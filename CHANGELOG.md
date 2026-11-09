@@ -20,9 +20,16 @@ All notable changes to this project will be documented in this file.
 - The Inbox's History is now part of Activity, one timeline of everything handled in that Inbox. Each message you send to a chat, file, keep or finish is a single line beside what Nodex, your Automations and GitHub did, and All, Messages, Nodex & automations and Problems narrow it down. Expand a message's line to read it, see why it went where it did, and open its chat, return it to the Inbox, mark it done or delete it. A chat it went to shows its live state on the line while the work is under way.
 - Scheduled tasks are now Automations. Keep the same schedules, runbooks, waiting Inbox runs and history, and choose Dry run, Ask first or Run under the Automation Owner’s authority. Automations can also react to GitHub events: a dry run records each judgement and its reason, Ask first proposes work in the Owner’s Inbox, and Run starts Pages under a standing grant.
 - Nodex Mobile now links to each of your Spaces as one of your Devices, team Spaces included. Scan the code from Settings → Spaces → Link a device, switch between linked Spaces on the phone, and keep working in a team Space while its host runs, even with your laptop closed. Capture to your personal or team Inbox, start chats, answer your Page’s questions, accept reviewed work and follow chats live with every picture in them. Each Space is reachable at its local, Tailscale or DNS address over a connection pinned to that Space’s certificate, and on iPhone it tells you only about what is yours to answer, while you're away from your computer. Removing the phone’s Device ends its access immediately. Settings > Mobile is gone; link a phone you paired before again from Settings → Spaces.
+- Side chats now stay with the chat they came from. Closing a side chat's tab, quitting or restarting no longer discards it: its tab comes back where you left it after a restart, a closed side chat reopens from the chat's summary, and `Delete side chat` in its tab menu removes it for good. Closing a side chat no longer asks for confirmation. Side chats of remote conversations remain temporary.
+- Side chat tabs and tool tabs such as Plan, Automation, Subagents and process output can be dragged like any other tab. Reorder them, move them to another tab group or the bottom panel, or drop them on a group's edge to split it; tool tabs stay in the right panel.
+
+### Removed
+
+- Save as chat is gone from side chats, which now keep their conversation on their own.
 
 ### Fixed
 
+- Dropping a tab on the edge of a tab group now splits the group instead of doing nothing.
 - Usage analytics that is off when Nodex starts no longer sends events an earlier launch left waiting. Setting `DO_NOT_TRACK`, or otherwise turning analytics off while Nodex was closed, now discards them as turning it off in Settings does.
 - Agent settings edits through symbolic links apply reliably, including immediately after startup or after a link points to a new file.
 - Every Agent can now set up and change Automations, reorder Sidebar Sections and manage a chat's queued messages, not only Codex. Claude Code never saw these Nodex tools, and its heartbeats now stay quiet unless something needs you.

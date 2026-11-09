@@ -167,10 +167,13 @@ source has been projected.
 
 ## Side chats, Subagents, and Background
 
-A Side chat row uses only the side-chat tab title. It opens the owning panel tab
-and replaces its ordinary icon with the shared activity spinner only while that
-conversation is responding. Panel loading, open, or expiry state is not repeated
-as row text.
+Side chats lists every side chat of the chat, newest first, whether or not its
+tab is open: the chat's own side chats, then a remote conversation's open side
+chat tabs. A row uses only the side chat's title, which an open tab supplies as
+its request names it. Choosing a row selects its tab, or reopens a closed side
+chat's tab in the right panel. The row replaces its ordinary icon with the
+shared activity spinner only while that conversation is responding. Panel
+loading, open, or expiry state is not repeated as row text.
 
 Subagents uses the canonical root-scoped overview and shared identity from
 [Codex Subagent Behavior](codex-subagent-behavior.md). Inline agents appear as a
