@@ -1419,15 +1419,29 @@ impl CoreInstallationGuard {
 
 impl Drop for CoreInstallationGuard {
     fn drop(&mut self) {
-        if let Err(error) = self.cleanup()
-            && let Some(directory) = self.directory.take()
-        {
+        let drained = self.cleanup();
+        let Some(directory) = self.directory.take() else {
+            return;
+        };
+        let installation = directory.path().to_owned();
+        let retired = match drained {
+            Ok(()) => {
+                // Close this fixture's handles to its exited selectors before deleting the
+                // images and Profile they used.
+                self.selectors.clear();
+                directory.close().map_err(|error| error.to_string())
+            }
+            Err(error) => {
+                // Never delete a Profile or installation while exit remains unproven.
+                std::mem::forget(directory);
+                Err(error)
+            }
+        };
+        if let Err(error) = retired {
             eprintln!(
                 "Preserved Core installation {}: {error}",
-                directory.path().display()
+                installation.display()
             );
-            // Never delete a Profile or installation while exit remains unproven.
-            std::mem::forget(directory);
         }
     }
 }
@@ -1598,7 +1612,8 @@ fn compatibility_policy_reuses_while_electron_artifact_policy_replaces_without_a
             .success()
     );
     if cfg!(windows) {
-        fs::remove_dir_all(&old_bundle).expect("retire the drained Windows installation");
+        nodex_platform::test_support::remove_released_tree(&old_bundle)
+            .expect("retire the drained Windows installation");
         assert!(!old_executable.exists());
     }
 

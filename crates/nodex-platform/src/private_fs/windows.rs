@@ -314,6 +314,14 @@ pub fn create_dir(path: impl AsRef<Path>) -> io::Result<()> {
 pub fn sync_directory(_path: &Path) -> io::Result<()> {
     Ok(())
 }
+/// Defender and indexers can briefly hold a file another process just closed. These
+/// refusals clear once they release it; any other error is final.
+pub(crate) fn delete_sharing_withheld(error: &io::Error) -> bool {
+    matches!(
+        error.raw_os_error().map(|code| code as u32),
+        Some(ERROR_ACCESS_DENIED | ERROR_SHARING_VIOLATION | ERROR_LOCK_VIOLATION)
+    )
+}
 /// Defender and indexers may transiently withhold delete sharing. Retry for at most 1 second.
 pub fn atomic_replace(source: impl AsRef<Path>, target: impl AsRef<Path>) -> io::Result<()> {
     let source = source.as_ref();
@@ -351,12 +359,7 @@ pub fn atomic_replace(source: impl AsRef<Path>, target: impl AsRef<Path>) -> io:
             Ok(()) => return Ok(()),
             Err(error) => error,
         };
-        if attempt == 10
-            || !matches!(
-                error.raw_os_error().map(|code| code as u32),
-                Some(ERROR_ACCESS_DENIED | ERROR_SHARING_VIOLATION | ERROR_LOCK_VIOLATION)
-            )
-        {
+        if attempt == 10 || !delete_sharing_withheld(&error) {
             return Err(if sealed_target {
                 io::Error::new(
                     error.kind(),
