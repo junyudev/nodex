@@ -28,6 +28,10 @@ export function textContentIncludingShadowRoots(node: ParentNode): string {
   return chunks.join("");
 }
 
+/**
+ * Flush React work queued within one timer tick. A query result notifies on its own timer, which
+ * can land on the next tick; await what it renders with `findBy*` or `waitFor` instead.
+ */
 export async function settleAsyncRender() {
   await act(async () => {
     await Promise.resolve();
