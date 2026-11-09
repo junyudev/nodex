@@ -610,31 +610,20 @@ export function useWorkbenchPanelOpeners({
                     focusNonce: Date.now(),
                   },
             );
-            panelControllerRef.current.updateSideChatTabsBySession((current) => ({
-              ...current,
-              [activeSession.id]: (current[activeSession.id] ?? []).map((tab) =>
-                tab.id === loadingId
-                  ? {
-                      ...tab,
-                      id: readyId,
-                      status: "ready",
-                      threadId: result.threadId,
-                      runtimeSession: session,
-                      draftPromptInput: tab.draftPromptInput,
-                      initialSubmission: initialSubmission
-                        ? { ...initialSubmission, presentationTicket }
-                        : undefined,
-                      stateKey: tab.stateKey + 1,
-                    }
-                  : tab,
-              ),
-            }));
-            panelControllerRef.current.updateSideChatActiveTabByPanel((current) => {
-              const slotKey = makeWorkbenchSessionPanelSlotKey(activeSession.id, panelId, leafId);
-              return {
-                ...current,
-                [slotKey]: readyId,
-              };
+            panelControllerRef.current.settleSideChatTab({
+              sessionId: activeSession.id,
+              tabId: loadingId,
+              settle: (tab) => ({
+                ...tab,
+                id: readyId,
+                status: "ready",
+                threadId: result.threadId,
+                runtimeSession: session,
+                initialSubmission: initialSubmission
+                  ? { ...initialSubmission, presentationTicket }
+                  : undefined,
+                stateKey: tab.stateKey + 1,
+              }),
             });
           },
           {
@@ -712,30 +701,17 @@ export function useWorkbenchPanelOpeners({
             submittedPresentation,
           );
           const readyTabId = nativeSideChatTabId(result.threadId);
-          panelControllerRef.current.updateSideChatTabsBySession((current) => {
-            const tabs = current[activeSession.id] ?? [];
-            return {
-              ...current,
-              [activeSession.id]: tabs.map((tab) =>
-                tab.id === loadingTabId
-                  ? {
-                      ...tab,
-                      id: readyTabId,
-                      threadId: result.threadId,
-                      status: "ready",
-                      errorMessage: undefined,
-                      stateKey: tab.stateKey + 1,
-                    }
-                  : tab,
-              ),
-            };
-          });
-          panelControllerRef.current.updateSideChatActiveTabByPanel((current) => {
-            const slotKey = makeWorkbenchSessionPanelSlotKey(activeSession.id, panelId, leafId);
-            return {
-              ...current,
-              [slotKey]: readyTabId,
-            };
+          panelControllerRef.current.settleSideChatTab({
+            sessionId: activeSession.id,
+            tabId: loadingTabId,
+            settle: (tab) => ({
+              ...tab,
+              id: readyTabId,
+              threadId: result.threadId,
+              status: "ready",
+              errorMessage: undefined,
+              stateKey: tab.stateKey + 1,
+            }),
           });
           if (input.kind === "draft" && (draftPrompt.length > 0 || input.promptInput)) {
             composerDraftIntents.set(
@@ -995,34 +971,17 @@ export function useWorkbenchPanelOpeners({
       const titleIndex = titleIndexMatch ? Number.parseInt(titleIndexMatch[1] ?? "1", 10) : 1;
       const safeIndex = Number.isFinite(titleIndex) && titleIndex > 0 ? titleIndex : 1;
       const loadingTabId = `sidechat-loading:${existingTab.parentThreadId}:${safeIndex}`;
-      panelControllerRef.current.updateSideChatTabsBySession((current) => {
-        const tabs = current[activeSession.id] ?? [];
-        return {
-          ...current,
-          [activeSession.id]: tabs.map((tab) =>
-            tab.id === tabId
-              ? {
-                  ...tab,
-                  id: loadingTabId,
-                  threadId: null,
-                  status: "loading",
-                  errorMessage: undefined,
-                  stateKey: tab.stateKey + 1,
-                }
-              : tab,
-          ),
-        };
-      });
-      panelControllerRef.current.updateSideChatActiveTabByPanel((current) => {
-        const slotKey = makeWorkbenchSessionPanelSlotKey(
-          activeSession.id,
-          existingTab.panelId,
-          existingTab.leafId,
-        );
-        return {
-          ...current,
-          [slotKey]: loadingTabId,
-        };
+      panelControllerRef.current.settleSideChatTab({
+        sessionId: activeSession.id,
+        tabId,
+        settle: (tab) => ({
+          ...tab,
+          id: loadingTabId,
+          threadId: null,
+          status: "loading",
+          errorMessage: undefined,
+          stateKey: tab.stateKey + 1,
+        }),
       });
 
       await runWithCleanup(
@@ -1032,66 +991,34 @@ export function useWorkbenchPanelOpeners({
             parentNavigationPath: existingTab.parentNavigationPath,
           });
           const readyTabId = nativeSideChatTabId(result.threadId);
-          panelControllerRef.current.updateSideChatTabsBySession((current) => {
-            const tabs = current[activeSession.id] ?? [];
-            return {
-              ...current,
-              [activeSession.id]: tabs.map((tab) =>
-                tab.id === loadingTabId
-                  ? {
-                      ...tab,
-                      id: readyTabId,
-                      threadId: result.threadId,
-                      status: "ready",
-                      errorMessage: undefined,
-                      stateKey: tab.stateKey + 1,
-                    }
-                  : tab,
-              ),
-            };
-          });
-          panelControllerRef.current.updateSideChatActiveTabByPanel((current) => {
-            const slotKey = makeWorkbenchSessionPanelSlotKey(
-              activeSession.id,
-              existingTab.panelId,
-              existingTab.leafId,
-            );
-            return {
-              ...current,
-              [slotKey]: readyTabId,
-            };
+          panelControllerRef.current.settleSideChatTab({
+            sessionId: activeSession.id,
+            tabId: loadingTabId,
+            settle: (tab) => ({
+              ...tab,
+              id: readyTabId,
+              threadId: result.threadId,
+              status: "ready",
+              errorMessage: undefined,
+              stateKey: tab.stateKey + 1,
+            }),
           });
         },
         {
           onError: (error) => {
             const errorMessage = describeSideChatOpenFailure(error);
-            panelControllerRef.current.updateSideChatTabsBySession((current) => {
-              const tabs = current[activeSession.id] ?? [];
-              return {
-                ...current,
-                [activeSession.id]: tabs.map((tab) =>
-                  tab.id === loadingTabId
-                    ? {
-                        ...existingTab,
-                        threadId: null,
-                        status: "failed",
-                        errorMessage,
-                        stateKey: existingTab.stateKey + 1,
-                      }
-                    : tab,
-                ),
-              };
-            });
-            panelControllerRef.current.updateSideChatActiveTabByPanel((current) => {
-              const slotKey = makeWorkbenchSessionPanelSlotKey(
-                activeSession.id,
-                existingTab.panelId,
-                existingTab.leafId,
-              );
-              return {
-                ...current,
-                [slotKey]: existingTab.id,
-              };
+            panelControllerRef.current.settleSideChatTab({
+              sessionId: activeSession.id,
+              tabId: loadingTabId,
+              settle: (tab) => ({
+                ...existingTab,
+                panelId: tab.panelId,
+                leafId: tab.leafId,
+                threadId: null,
+                status: "failed",
+                errorMessage,
+                stateKey: existingTab.stateKey + 1,
+              }),
             });
             toast.danger("Failed to start a new side chat", { id: "side-chat-recreate-failed" });
           },

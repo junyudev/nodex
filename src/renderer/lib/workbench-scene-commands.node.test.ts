@@ -808,6 +808,196 @@ describe("shared Workbench Scene executor", () => {
   });
 });
 
+describe("dragging renderer-only Session tabs", () => {
+  const sessionOwner = { kind: "session", sessionId: "session-a" } as const;
+  function withSideChat(scene: WorkbenchSceneSnapshot, leafId: string) {
+    const subject = fixture(scene);
+    subject.owner.dispatchEphemeral({
+      type: "update",
+      field: "sideChatTabsBySession",
+      update: {
+        "session-a": [
+          {
+            sideChat: true,
+            id: "side-chat",
+            sessionId: "session-a",
+            panelId: "right",
+            leafId,
+            parentThreadId: "parent",
+            parentNavigationPath: "session:session-a",
+            threadId: "child",
+            title: "Side chat",
+            status: "ready",
+            stateKey: 0,
+          },
+        ],
+      },
+    });
+    return subject;
+  }
+  const groupsOf = (subject: ReturnType<typeof fixture>, panelId: "right" | "bottom") =>
+    subject
+      .observe()
+      .groups.filter((group) => group.panelId === panelId)
+      .map((group) => group.tabIds);
+
+  test("drops a tab on a group edge to split it into a new group", async () => {
+    const scene = seededScene(sessionOwner, [browser("a"), browser("b")]);
+    const subject = fixture(scene);
+    const groupId = scene.panels.right.layout.activeLeafId;
+    const result = await subject.execute({
+      kind: "move_tab",
+      tabId: "b",
+      panelId: "right",
+      groupId,
+      index: 0,
+      splitSide: "right",
+    });
+    expect(result).toMatchObject({ applied: true, error: null, tabId: "b" });
+    expect(result.groupId).not.toBe(groupId);
+    expect(groupsOf(subject, "right")).toEqual([["a"], ["b"]]);
+  });
+
+  test("moves a side chat between groups and panels, closing a group it leaves empty", async () => {
+    const scene = seededScene(sessionOwner, [browser("a"), browser("b")]);
+    const groupId = scene.panels.right.layout.activeLeafId;
+    const subject = withSideChat(scene, groupId);
+
+    const split = await subject.execute({
+      kind: "move_tab",
+      tabId: "side-chat",
+      panelId: "right",
+      groupId,
+      index: 0,
+      splitSide: "down",
+    });
+    expect(split).toMatchObject({ applied: true, error: null });
+    expect(groupsOf(subject, "right")).toEqual([["a", "b"], ["side-chat"]]);
+    expect(
+      subject.observe().groups.find((group) => group.groupId === split.groupId)?.selectedTabId,
+    ).toBe("side-chat");
+
+    const bottomGroupId = scene.panels.bottom.layout.activeLeafId;
+    expect(
+      await subject.execute({
+        kind: "move_tab",
+        tabId: "side-chat",
+        panelId: "bottom",
+        groupId: bottomGroupId,
+        index: 0,
+      }),
+    ).toMatchObject({ applied: true, error: null });
+    expect(groupsOf(subject, "right")).toEqual([["a", "b"]]);
+    expect(groupsOf(subject, "bottom")).toEqual([["side-chat"]]);
+    expect(subject.observe().panels.find((panel) => panel.panelId === "bottom")).toMatchObject({
+      collapsed: false,
+    });
+  });
+
+  test("keeps a group that presents only a side chat when durable tabs leave or close", async () => {
+    const scene = seededScene(sessionOwner, [browser("a"), browser("b"), browser("c")]);
+    const groupId = scene.panels.right.layout.activeLeafId;
+    const subject = withSideChat(scene, groupId);
+    const split = await subject.execute({
+      kind: "split_group",
+      panelId: "right",
+      groupId,
+      side: "right",
+      tabId: "side-chat",
+    });
+    expect(groupsOf(subject, "right")).toEqual([["a", "b", "c"], ["side-chat"]]);
+
+    await subject.execute({
+      kind: "move_tab",
+      tabId: "a",
+      panelId: "bottom",
+      groupId: scene.panels.bottom.layout.activeLeafId,
+      index: 0,
+    });
+    await subject.execute({ kind: "close_tab", tabId: "b" });
+    expect(groupsOf(subject, "right")).toEqual([["c"], ["side-chat"]]);
+    expect(subject.observe().groups.some((group) => group.groupId === split.groupId)).toBe(true);
+  });
+
+  test("keeps another panel's side-chat group when a durable tab closes", async () => {
+    const scene = seededScene(sessionOwner, [browser("a"), browser("b")]);
+    const subject = withSideChat(scene, scene.panels.right.layout.activeLeafId);
+    const bottomGroupId = scene.panels.bottom.layout.activeLeafId;
+    await subject.execute({
+      kind: "move_tab",
+      tabId: "b",
+      panelId: "bottom",
+      groupId: bottomGroupId,
+      index: 0,
+    });
+    await subject.execute({
+      kind: "move_tab",
+      tabId: "side-chat",
+      panelId: "bottom",
+      groupId: bottomGroupId,
+      index: 0,
+      splitSide: "right",
+    });
+    expect(groupsOf(subject, "bottom")).toEqual([["b"], ["side-chat"]]);
+    await subject.execute({ kind: "close_tab", tabId: "a" });
+    expect(groupsOf(subject, "bottom")).toEqual([["b"], ["side-chat"]]);
+  });
+
+  test("shows a durable tab moved into a group whose side chat is selected", async () => {
+    const scene = seededScene(sessionOwner, [browser("a"), browser("b")]);
+    const groupId = scene.panels.right.layout.activeLeafId;
+    const subject = withSideChat(scene, groupId);
+    const split = await subject.execute({
+      kind: "move_tab",
+      tabId: "side-chat",
+      panelId: "right",
+      groupId,
+      index: 0,
+      splitSide: "right",
+    });
+    expect(
+      subject.observe().groups.find((group) => group.groupId === split.groupId)?.selectedTabId,
+    ).toBe("side-chat");
+    await subject.execute({
+      kind: "move_tab",
+      tabId: "a",
+      panelId: "right",
+      groupId: split.groupId!,
+      index: 1,
+    });
+    expect(subject.observe().groups.find((group) => group.groupId === split.groupId)).toMatchObject(
+      { tabIds: ["side-chat", "a"], selectedTabId: "a" },
+    );
+  });
+
+  test("refuses to split a group's only tab beside itself", async () => {
+    const scene = seededScene(sessionOwner, [browser("a")]);
+    const subject = fixture(scene);
+    const groupId = scene.panels.right.layout.activeLeafId;
+    expect(
+      await subject.execute({
+        kind: "move_tab",
+        tabId: "a",
+        panelId: "right",
+        groupId,
+        index: 0,
+        splitSide: "left",
+      }),
+    ).toMatchObject({ applied: false, error: "invalid_placement" });
+    expect(groupsOf(subject, "right")).toEqual([["a"]]);
+  });
+
+  test("splits off an empty group when no tab is named", async () => {
+    const scene = seededScene(sessionOwner, [browser("a")]);
+    const subject = fixture(scene);
+    const groupId = scene.panels.right.layout.activeLeafId;
+    expect(
+      await subject.execute({ kind: "split_group", panelId: "right", groupId, side: "down" }),
+    ).toMatchObject({ applied: true, error: null });
+    expect(groupsOf(subject, "right")).toEqual([["a"], []]);
+  });
+});
+
 describe("generation-local Workbench operation receipts", () => {
   test("canonicalizes equivalent payloads and does not replay applied-but-unpersisted commands", async () => {
     const subject = fixture(seededScene({ kind: "library" }, [page("a")]));

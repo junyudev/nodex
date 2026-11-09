@@ -90,6 +90,13 @@ export type WorkbenchEphemeralPanelAction =
       readonly planKey?: string;
     }
   | {
+      /** A starting side chat takes its ready identity in the group, order, and selection it has now. */
+      readonly type: "settle-side-chat-tab";
+      readonly sessionId: string;
+      readonly tabId: string;
+      readonly settle: (tab: SideChatPanelTab) => SideChatPanelTab;
+    }
+  | {
       readonly type: "prune-session";
       readonly sessionId: string;
     }
@@ -278,6 +285,51 @@ function removeEphemeralTab(
   return next;
 }
 
+function renameValues(
+  record: Readonly<Record<string, string>>,
+  from: string,
+  to: string,
+): Record<string, string> {
+  if (!Object.values(record).includes(from)) return record;
+  return Object.fromEntries(
+    Object.entries(record).map(([key, value]) => [key, value === from ? to : value]),
+  );
+}
+
+function renameOrderEntries(
+  record: Readonly<Record<string, readonly string[]>>,
+  from: string,
+  to: string,
+): Record<string, readonly string[]> {
+  if (!Object.values(record).some((ids) => ids.includes(from))) return record;
+  return Object.fromEntries(
+    Object.entries(record).map(([key, ids]) => [key, ids.map((id) => (id === from ? to : id))]),
+  );
+}
+
+function settleSideChatTab(
+  state: WorkbenchEphemeralPanelState,
+  action: Extract<WorkbenchEphemeralPanelAction, { readonly type: "settle-side-chat-tab" }>,
+): WorkbenchEphemeralPanelState {
+  const tabs = state.sideChatTabsBySession[action.sessionId];
+  const pending = tabs?.find((tab) => tab.id === action.tabId);
+  if (!tabs || !pending) return state;
+  const settled = action.settle(pending);
+  const next = {
+    ...state,
+    sideChatTabsBySession: {
+      ...state.sideChatTabsBySession,
+      [action.sessionId]: tabs.map((tab) => (tab === pending ? settled : tab)),
+    },
+  };
+  if (settled.id === pending.id) return next;
+  return {
+    ...next,
+    sideChatActiveTabByPanel: renameValues(state.sideChatActiveTabByPanel, pending.id, settled.id),
+    tabOrderByPanelGroup: renameOrderEntries(state.tabOrderByPanelGroup, pending.id, settled.id),
+  };
+}
+
 export function reduceWorkbenchEphemeralPanelState(
   state: WorkbenchEphemeralPanelState,
   action: WorkbenchEphemeralPanelAction,
@@ -293,6 +345,9 @@ export function reduceWorkbenchEphemeralPanelState(
   }
   if (action.type === "remove-ephemeral-tab") {
     return removeEphemeralTab(state, action);
+  }
+  if (action.type === "settle-side-chat-tab") {
+    return settleSideChatTab(state, action);
   }
 
   const previous = state[action.field];

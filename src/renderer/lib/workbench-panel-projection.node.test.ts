@@ -350,6 +350,20 @@ describe("workbench panel projection", () => {
     expect(model.activeTabIdsByPanelLeaf.right["right-leaf-2"]).toBe("side");
   });
 
+  test("presents a renderer-only tab whose group closed in its panel's active group", () => {
+    const durable = makeTestWorkbenchTab({ id: "durable", kind: "browser" });
+    const session = makeTestWorkbenchSession({ tabs: [durable], rightActiveTabId: durable.id });
+    const side = { ...auxiliaryTabs().side, leafId: "closed-leaf" };
+    const model = buildSessionPanelRenderModel({
+      ...durableOnlyInput(session),
+      sideChatTabsBySession: { [session.id]: [side] },
+    });
+    expect(model.renderableTabsByPanelLeaf.right["right-leaf"]?.map((tab) => tab.id)).toEqual([
+      "durable",
+      "side",
+    ]);
+  });
+
   test("suppresses a preview after the same identity becomes durable", () => {
     const durable = makeTestWorkbenchTab({
       id: "same-id",

@@ -35,10 +35,12 @@ import { cn } from "@/lib/utils";
 import {
   buildPanelGroupBodyDropData,
   buildPanelTabRowDropData,
+  canPanelGroupAcceptTabDrag,
   isPanelGroupBodyDropData,
   isPanelTabDragData,
   isPanelTabRowDropData,
   resolvePanelGroupBodyDropZone,
+  resolvePanelGroupBodyDropZoneForSource,
   resolvePanelTabDropCommit,
   resolvePanelTabRowInsertion,
   resolveSameLeafInsertionIndex,
@@ -261,11 +263,9 @@ function resolvePanelTabDropIntent(
   if (!bodyRecord || !isPanelGroupBodyDropData(bodyRecord.data)) return null;
   const bodyRect = bodyRecord.element.getBoundingClientRect();
   if (bodyRect.width <= 0 || bodyRect.height <= 0) return null;
-
-  return {
-    kind: "body",
-    panelId: bodyRecord.data.panelId,
-    leafId: bodyRecord.data.leafId,
+  const zone = resolvePanelGroupBodyDropZoneForSource({
+    source,
+    target: bodyRecord.data,
     zone: resolvePanelGroupBodyDropZone({
       pointerClientX: location.current.input.clientX,
       pointerClientY: location.current.input.clientY,
@@ -276,6 +276,14 @@ function resolvePanelTabDropIntent(
         height: bodyRect.height,
       },
     }),
+  });
+  if (!zone) return null;
+
+  return {
+    kind: "body",
+    panelId: bodyRecord.data.panelId,
+    leafId: bodyRecord.data.leafId,
+    zone,
   };
 }
 
@@ -487,7 +495,6 @@ function PanelGroupLeaf({
         style={{ width: leafHeaderStartInsetPx }}
       />
     ) : null;
-  const splittableTabCount = tabs.filter((tab) => tab.splittable === true).length;
   const activateLeaf = () => {
     if (isActive) return;
     onActivateGroup(leaf.id, activeTabId);
@@ -543,7 +550,7 @@ function PanelGroupLeaf({
             onMoveTab(tabId, targetPanelId === "bottom" ? "bottom" : "right", leaf.id)
           }
           onSplitTab={
-            splittableTabCount > 1 ? (tabId, side) => onSplitGroup(leaf.id, side, tabId) : undefined
+            tabs.length > 1 ? (tabId, side) => onSplitGroup(leaf.id, side, tabId) : undefined
           }
           panelTabDnd={{
             sessionId,
@@ -739,8 +746,7 @@ function PanelGroupEmptyHeader({
 
     return dropTargetForElements({
       element,
-      canDrop: ({ source }) =>
-        isPanelTabDragData(source.data) && source.data.sessionId === sessionId,
+      canDrop: ({ source }) => canPanelGroupAcceptTabDrag(source.data, { sessionId, panelId }),
       getIsSticky: () => true,
       getData: () => buildPanelTabRowDropData({ sessionId, panelId, leafId }),
     });
@@ -805,10 +811,9 @@ function PanelGroupEmptyBody({
 
     return dropTargetForElements({
       element,
-      canDrop: ({ source }) =>
-        isPanelTabDragData(source.data) && source.data.sessionId === sessionId,
+      canDrop: ({ source }) => canPanelGroupAcceptTabDrag(source.data, { sessionId, panelId }),
       getIsSticky: () => true,
-      getData: () => buildPanelGroupBodyDropData({ sessionId, panelId, leafId }),
+      getData: () => buildPanelGroupBodyDropData({ sessionId, panelId, leafId, tabCount: 0 }),
     });
   }, [leafId, panelId, sessionId]);
 

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import {
+  type WorkbenchEphemeralPanelAction,
   type WorkbenchEphemeralPanelState,
   type WorkbenchEphemeralPanelStateField,
   type WorkbenchEphemeralPanelStateUpdate,
@@ -64,7 +65,13 @@ export type WorkbenchPanelController = WorkbenchEphemeralPanelState &
       input: WorkbenchEphemeralTabRemovalInput,
     ) => WorkbenchEphemeralTab | null;
     readonly upsertEphemeralTab: (tab: WorkbenchEphemeralTab) => void;
+    readonly settleSideChatTab: (input: WorkbenchSideChatSettlementInput) => void;
   };
+
+export type WorkbenchSideChatSettlementInput = Omit<
+  Extract<WorkbenchEphemeralPanelAction, { readonly type: "settle-side-chat-tab" }>,
+  "type"
+>;
 
 export interface WorkbenchRenderableTabSelectionInput {
   readonly sessionId: string;
@@ -1001,6 +1008,13 @@ export function useWorkbenchPanelController({
     [dispatch, tabOpenerStore],
   );
 
+  const settleSideChatTab = useCallback(
+    (input: WorkbenchSideChatSettlementInput) => {
+      dispatch({ type: "settle-side-chat-tab", ...input });
+    },
+    [dispatch],
+  );
+
   return useMemo(
     () => ({
       ...state,
@@ -1013,6 +1027,7 @@ export function useWorkbenchPanelController({
       selectRenderableTab,
       removeEphemeralTab,
       upsertEphemeralTab,
+      settleSideChatTab,
     }),
     [
       commands,
@@ -1022,6 +1037,7 @@ export function useWorkbenchPanelController({
       pruneSession,
       removeEphemeralTab,
       selectRenderableTab,
+      settleSideChatTab,
       state,
       tabOpenerStore,
       upsertEphemeralTab,

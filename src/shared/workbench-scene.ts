@@ -24,6 +24,7 @@ import {
   reorderWorkbenchSessionViewTabs,
   resizeWorkbenchSessionViewBranch,
   splitWorkbenchSessionViewLeaf,
+  insertWorkbenchSessionViewLeaf,
   updateWorkbenchSessionViewTab,
   WORKBENCH_SESSION_VIEW_VERSION,
   type WorkbenchPanelId,
@@ -1202,6 +1203,27 @@ export function ensureWorkbenchSceneLeafToRight(
     scene: fromLegacyPanelView(scene, result.view),
     leafId: result.leafId,
     created: result.created,
+  };
+}
+
+/** Opens an empty group beside `leafId`; `leafId` in the result is null when the group is absent. */
+export function insertWorkbenchSceneLeaf(
+  scene: WorkbenchSceneSnapshot,
+  input: WorkbenchSceneLeafInput & {
+    readonly side: WorkbenchPanelSplitSide;
+    readonly identityFactory?: WorkbenchSceneIdentityFactory;
+  },
+): { readonly scene: WorkbenchSceneSnapshot; readonly leafId: string | null } {
+  const identityFactory = input.identityFactory ?? defaultIdentityFactory();
+  const result = insertWorkbenchSessionViewLeaf(toLegacyPanelView(scene), {
+    panelId: input.panelId,
+    leafId: input.leafId,
+    side: input.side,
+    identityFactory: toLegacyIdentityFactory(identityFactory),
+  });
+  return {
+    scene: result.leafId ? fromLegacyPanelView(scene, result.view) : scene,
+    leafId: result.leafId,
   };
 }
 

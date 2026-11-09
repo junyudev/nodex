@@ -42,14 +42,14 @@ function makeTabs(): AppShellTabItem[] {
       id: "one",
       title: "One",
       closable: true,
-      reorderable: true,
+      placement: ["right", "bottom"],
       renderPanel: () => <div>Panel one</div>,
     },
     {
       id: "two",
       title: "Two",
       closable: true,
-      reorderable: true,
+      placement: ["right", "bottom"],
       tooltip: (
         <div>
           <span>Project Alpha</span>
@@ -62,7 +62,6 @@ function makeTabs(): AppShellTabItem[] {
       id: "history",
       title: "History",
       closable: false,
-      reorderable: false,
       isLabel: true,
       renderPanel: () => <div>History panel</div>,
     },
@@ -894,14 +893,14 @@ describe("AppShellTabs", () => {
         id: "one",
         title: "One",
         closable: true,
-        reorderable: true,
+        placement: ["right", "bottom"],
         renderPanel: () => <div>Panel one</div>,
       },
       {
         id: "two",
         title: "Two",
         closable: true,
-        reorderable: true,
+        placement: ["right", "bottom"],
         renderPanel: () => <div>Panel two</div>,
       },
     ];
@@ -1132,7 +1131,6 @@ describe("AppShellTabs", () => {
     const tabs = makeTabs();
     tabs[1] = {
       ...tabs[1],
-      splittable: true,
       contextMenuItems: [
         {
           id: "browser-new-tab-right",
@@ -1242,7 +1240,7 @@ describe("AppShellTabs", () => {
     const view = renderAppShellTabs({
       onCloseTab: () => undefined,
       onSplitTab: () => undefined,
-      tabs: makeTabs().map((tab) => ({ ...tab, splittable: true })),
+      tabs: makeTabs(),
     });
     await interact(() => fireEvent.contextMenu(getTabController(view, "one")));
     const menu = await view.findByRole("menu");

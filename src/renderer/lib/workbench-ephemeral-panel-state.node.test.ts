@@ -39,6 +39,57 @@ describe("Workbench ephemeral panel state", () => {
     expect(next).toBe(initial);
   });
 
+  test("a settled side chat keeps the group, order, and selection it has when it settles", () => {
+    const moved = makeWorkbenchSessionPanelSlotKey("session:one", "bottom", "leaf:bottom");
+    const opened = makeWorkbenchSessionPanelSlotKey("session:one", "right", "leaf:right");
+    const pending = {
+      sideChat: true as const,
+      id: "sidechat-session-loading:parent:1",
+      sessionId: "session:one",
+      panelId: "bottom" as const,
+      leafId: "leaf:bottom",
+      parentThreadId: "parent",
+      parentNavigationPath: "",
+      threadId: null,
+      title: "Side chat",
+      status: "loading" as const,
+      stateKey: 1,
+    };
+    const initial = {
+      ...createWorkbenchEphemeralPanelState(),
+      sideChatTabsBySession: { "session:one": [pending] },
+      sideChatActiveTabByPanel: { [moved]: pending.id, [opened]: "other" },
+      tabOrderByPanelGroup: { [moved]: ["terminal", pending.id, "files"] },
+    };
+    const next = reduceWorkbenchEphemeralPanelState(initial, {
+      type: "settle-side-chat-tab",
+      sessionId: "session:one",
+      tabId: pending.id,
+      settle: (tab) => ({ ...tab, id: "sidechat-session:child", status: "ready" }),
+    });
+
+    expect(next.sideChatTabsBySession["session:one"]).toMatchObject([
+      { id: "sidechat-session:child", status: "ready", panelId: "bottom", leafId: "leaf:bottom" },
+    ]);
+    expect(next.sideChatActiveTabByPanel).toEqual({
+      [moved]: "sidechat-session:child",
+      [opened]: "other",
+    });
+    expect(next.tabOrderByPanelGroup[moved]).toEqual([
+      "terminal",
+      "sidechat-session:child",
+      "files",
+    ]);
+    expect(
+      reduceWorkbenchEphemeralPanelState(next, {
+        type: "settle-side-chat-tab",
+        sessionId: "session:one",
+        tabId: pending.id,
+        settle: (tab) => tab,
+      }),
+    ).toBe(next);
+  });
+
   test("session pruning removes every family and slot-keyed override", () => {
     const oneRightLeaf = makeWorkbenchSessionPanelSlotKey("session:one", "right", "leaf:right");
     const twoRightLeaf = makeWorkbenchSessionPanelSlotKey("session:two", "right", "leaf:right");

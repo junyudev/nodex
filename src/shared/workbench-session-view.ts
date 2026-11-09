@@ -586,13 +586,31 @@ export function ensureWorkbenchSessionViewLeafToRight(
     };
   }
 
+  const inserted = insertWorkbenchSessionViewLeaf(view, { ...input, side: "right" });
+  return {
+    view: inserted.view,
+    leafId: inserted.leafId ?? sourceLeaf.id,
+    created: inserted.leafId !== null,
+  };
+}
+
+/** Opens an empty group beside an existing one, for a tab that is about to land in it. */
+export function insertWorkbenchSessionViewLeaf(
+  view: WorkbenchSessionViewSnapshot,
+  input: WorkbenchSessionViewLeafInput & {
+    side: WorkbenchPanelSplitSide;
+    identityFactory?: WorkbenchSessionViewIdentityFactory;
+  },
+): { view: WorkbenchSessionViewSnapshot; leafId: string | null } {
+  const panel = view.panels[input.panelId];
+  if (!findWorkbenchPanelLeaf(panel.layout, input.leafId)) return { view, leafId: null };
   const identityFactory = input.identityFactory ?? defaultIdentityFactory();
   const leafId = identityFactory.createId("leaf");
   const layout = insertWorkbenchPanelLeaf(panel.layout, {
-    leafId: sourceLeaf.id,
+    leafId: input.leafId,
     newLeafId: leafId,
     newBranchId: identityFactory.createId("branch"),
-    side: "right",
+    side: input.side,
   });
   return {
     view: normalizeWorkbenchSessionView(
@@ -606,7 +624,6 @@ export function ensureWorkbenchSessionViewLeafToRight(
       }),
     ),
     leafId,
-    created: true,
   };
 }
 

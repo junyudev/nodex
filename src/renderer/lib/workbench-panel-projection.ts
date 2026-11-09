@@ -186,13 +186,18 @@ export function buildSessionPanelRenderModel(
   for (const panelId of ["right", "bottom"] as const) {
     const panel = session.panels[panelId];
     const activeLeafId = panelId === "right" ? rightActiveLeafId : bottomActiveLeafId;
-    for (const leaf of listWorkbenchPanelLeaves(panel.layout)) {
+    const leaves = listWorkbenchPanelLeaves(panel.layout);
+    const leafIds = new Set(leaves.map((leaf) => leaf.id));
+    // A renderer-only tab whose group closed under it presents in the active group, never nowhere.
+    const presentedLeafId = (tab: { leafId?: string }) =>
+      tab.leafId !== undefined && leafIds.has(tab.leafId) ? tab.leafId : activeLeafId;
+    for (const leaf of leaves) {
       const durableTabs = leaf.tabIds.flatMap((tabId) => {
         const tab = durableById.get(tabId);
         return tab && tab.panelId === panelId ? [tab] : [];
       });
       const matchingLeaf = (tab: { panelId: PanelId; leafId?: string }) =>
-        tab.panelId === panelId && (tab.leafId ?? activeLeafId) === leaf.id;
+        tab.panelId === panelId && presentedLeafId(tab) === leaf.id;
       const sideChatTabs = (sideChatTabsBySession[session.id] ?? []).filter(matchingLeaf);
       const mcpAppTabs = (mcpAppTabsBySession[session.id] ?? []).filter(matchingLeaf);
       const planTabs = (planTabsBySession[session.id] ?? []).filter(matchingLeaf);

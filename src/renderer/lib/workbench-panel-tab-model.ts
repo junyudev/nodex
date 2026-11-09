@@ -284,6 +284,24 @@ export function isPanelTabClosable(tab: ProjectSessionRenderableTab): boolean {
   return tab.status !== "loading" || tab.creation !== undefined;
 }
 
+export const EVERY_PANEL: readonly PanelId[] = ["right", "bottom"];
+const RIGHT_PANEL: readonly PanelId[] = ["right"];
+const NO_PANEL: readonly PanelId[] = [];
+
+/**
+ * The panels a tab may be dragged, moved, or split into; none keeps it in place. Placement does
+ * not depend on persistence: durable surfaces and conversations (side chats, MCP apps) go to either
+ * panel, tools that present a right-panel surface stay in the right panel, and a side chat that
+ * cannot close yet cannot move either.
+ */
+export function getPanelTabPlacement(tab: ProjectSessionRenderableTab): readonly PanelId[] {
+  if (!isPanelTabClosable(tab)) return NO_PANEL;
+  if (!isTransientPanelTab(tab) || isSideChatPanelTab(tab) || isMcpAppPanelTab(tab)) {
+    return EVERY_PANEL;
+  }
+  return RIGHT_PANEL;
+}
+
 export function isMcpAppPanelTab(tab: ProjectSessionRenderableTab): tab is McpAppPanelTab {
   return "mcpApp" in tab && tab.mcpApp === true;
 }

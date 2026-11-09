@@ -62,7 +62,7 @@ import {
   buildPanelGroupBodyDropData,
   buildPanelTabDragData,
   buildPanelTabRowDropData,
-  isPanelTabDragData,
+  canPanelGroupAcceptTabDrag,
   type PanelTabDropIntent,
 } from "./panel-tab-dnd";
 import { createPanelTabDragPreviewElement } from "./panel-tab-drag-preview";
@@ -138,8 +138,11 @@ export interface AppShellTabItem {
   closable?: boolean;
   preview?: boolean;
   pinBehavior?: "automatic" | "disabled";
-  reorderable?: boolean;
-  splittable?: boolean;
+  /**
+   * The panels this tab may be dragged, moved, or split into. Omitted keeps it in place, as for a
+   * protected primary, a preview, or a side chat that is still starting.
+   */
+  placement?: readonly PanelId[];
   isLabel?: boolean;
   disabled?: boolean;
   titleLabel?: string | ((title: string) => string);
@@ -434,6 +437,7 @@ export function AppShellTabs({
   const dndSessionId = panelTabDnd?.sessionId;
   const dndPanelId = panelTabDnd?.panelId;
   const dndLeafId = panelTabDnd?.leafId;
+  const tabCount = tabs.length;
   if (tabs.length > retainedTabCount) {
     setRetainedTabCount(tabs.length);
   }
@@ -481,7 +485,7 @@ export function AppShellTabs({
     return dropTargetForElements({
       element,
       canDrop: ({ source }) =>
-        isPanelTabDragData(source.data) && source.data.sessionId === dndSessionId,
+        canPanelGroupAcceptTabDrag(source.data, { sessionId: dndSessionId, panelId: dndPanelId }),
       getIsSticky: () => true,
       getData: () =>
         buildPanelTabRowDropData({
@@ -588,16 +592,17 @@ export function AppShellTabs({
     return dropTargetForElements({
       element,
       canDrop: ({ source }) =>
-        isPanelTabDragData(source.data) && source.data.sessionId === dndSessionId,
+        canPanelGroupAcceptTabDrag(source.data, { sessionId: dndSessionId, panelId: dndPanelId }),
       getIsSticky: () => true,
       getData: () =>
         buildPanelGroupBodyDropData({
           sessionId: dndSessionId,
           panelId: dndPanelId,
           leafId: dndLeafId,
+          tabCount,
         }),
     });
-  }, [dndLeafId, dndPanelId, dndSessionId]);
+  }, [dndLeafId, dndPanelId, dndSessionId, tabCount]);
 
   const closeTab = (tabId: string) => {
     onCloseTab?.(tabId);
@@ -1078,7 +1083,9 @@ function AppShellTab({
   const dndSessionId = panelTabDnd?.sessionId;
   const dndPanelId = panelTabDnd?.panelId;
   const dndLeafId = panelTabDnd?.leafId;
-  const isDraggable = Boolean(panelTabDnd && tab.isLabel !== true && tab.reorderable !== false);
+  const placement = tab.isLabel === true ? undefined : tab.placement;
+  const movable = Boolean(placement && placement.length > 0);
+  const isDraggable = Boolean(panelTabDnd) && movable;
   const tabIndex = tabs.findIndex((candidate) => candidate.id === tab.id);
   const hasOtherClosableTabs = tabs.some(
     (candidate) => candidate.id !== tab.id && candidate.closable === true,
@@ -1090,7 +1097,7 @@ function AppShellTab({
 
   useEffect(() => {
     if (!dndSessionId || !dndPanelId || !dndLeafId) return undefined;
-    if (tab.isLabel === true || tab.reorderable === false) return undefined;
+    if (!placement || placement.length === 0) return undefined;
     const element = tabRef.current;
     if (!element) return undefined;
 
@@ -1107,6 +1114,7 @@ function AppShellTab({
           panelId: dndPanelId,
           leafId: dndLeafId,
           tabId: tab.id,
+          placement,
         }),
       onGenerateDragPreview: ({ location, nativeSetDragImage, source }) => {
         setCustomNativeDragPreview({
@@ -1129,7 +1137,7 @@ function AppShellTab({
         blurActiveElementWithin(element);
       },
     });
-  }, [dndLeafId, dndPanelId, dndSessionId, onCloseModeExit, tab.id, tab.isLabel, tab.reorderable]);
+  }, [dndLeafId, dndPanelId, dndSessionId, onCloseModeExit, placement, tab.id]);
 
   const chrome = (
     <motion.div
@@ -1279,8 +1287,8 @@ function AppShellTab({
     canCloseTabsToRight: hasClosableTabsToRight,
     canCloseAllTabs,
     canPinTab: tab.preview === true && Boolean(onPin),
-    canMoveTab: Boolean(onMove) && tab.preview !== true,
-    canSplitTab: Boolean(onSplit) && tab.splittable === true,
+    canMoveTab: Boolean(onMove && placement?.includes(targetPanelId)),
+    canSplitTab: Boolean(onSplit) && movable,
     moveTarget:
       targetPanelId === "bottom"
         ? { label: "bottom panel", iconKey: "moveDown" }

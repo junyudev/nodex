@@ -18,8 +18,7 @@ function makeTab(id: string, title: string): AppShellTabItem {
     id,
     title,
     closable: true,
-    reorderable: true,
-    splittable: true,
+    placement: ["right", "bottom"],
     renderPanel: () => <div>{title} content</div>,
   };
 }

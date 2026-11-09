@@ -8,6 +8,7 @@ import { resolveWorkbenchSceneTabPresentation } from "@/lib/workbench-scene-tab-
 import type { WorkbenchSceneDurablePanelCommands } from "@/lib/use-workbench-panel-controller";
 import type { ExecuteWorkbenchUiCommand } from "@/lib/use-workbench-scene-commands";
 import type { PanelId, Project } from "@/lib/types";
+import { EVERY_PANEL } from "@/lib/workbench-panel-tab-model";
 import {
   makePageTitleResourceKey,
   type PageTitleProjectionStore,
@@ -138,8 +139,7 @@ function makePanelItems(
           ) : undefined,
         closable: surface.id !== scene.primary?.id,
         preview,
-        reorderable: !preview && surface.id !== scene.primary?.id,
-        splittable: !preview && surface.id !== scene.primary?.id,
+        placement: !preview && surface.id !== scene.primary?.id ? EVERY_PANEL : undefined,
         renderPanel: (_close, context) =>
           isRemoteSpace() && ["files", "terminal", "review"].includes(surface.kind) ? (
             <p className="p-3 text-sm text-token-text-secondary">{REMOTE_FILESYSTEM_REASON}</p>

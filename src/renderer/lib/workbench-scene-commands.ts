@@ -22,6 +22,7 @@ import { createSecureRuntimeId } from "../../shared/secure-runtime-id";
 import {
   findWorkbenchPanelLeaf,
   listWorkbenchPanelLeaves,
+  type WorkbenchPanelSplitSide,
 } from "../../shared/workbench-panel-layout";
 import {
   activateWorkbenchSceneSurface,
@@ -37,7 +38,7 @@ import {
   removeWorkbenchSceneSurface,
   reorderWorkbenchSceneSurfaces,
   resolveWorkbenchSceneSurface,
-  splitWorkbenchSceneLeaf,
+  insertWorkbenchSceneLeaf,
   updateWorkbenchSceneSurface,
   type WorkbenchSceneOwner,
   type WorkbenchSceneSnapshot,
@@ -52,7 +53,7 @@ import {
   type WorkbenchEphemeralPanelState,
 } from "./workbench-ephemeral-panel-state";
 import { makeWorkbenchPanelSlotKey } from "./workbench-panel-slot-key";
-import { isPanelTabClosable } from "./workbench-panel-tab-model";
+import { getPanelTabPlacement, isPanelTabClosable } from "./workbench-panel-tab-model";
 import { resolvePanelTabCloseReplacement } from "./panel-tab-close-routing";
 import type { WorkbenchPanelTabOpenerState } from "./workbench-panel-tab-opener-state";
 import {
@@ -181,6 +182,13 @@ function requireMovable(tab: WorkbenchCommandTab) {
   if (!tab.observed.panelId || !tab.observed.groupId) reject("invalid_placement");
 }
 
+/** Moves and splits follow the same placement the tab strip offers as drag targets. */
+function requirePlacement(tab: WorkbenchCommandTab, panelId: PanelId) {
+  requireMovable(tab);
+  if (tab.auxiliary && !getPanelTabPlacement(tab.auxiliary).includes(panelId))
+    reject("invalid_placement");
+}
+
 function clearPreview(
   ephemeral: WorkbenchEphemeralPanelState,
   sceneOwner: WorkbenchSceneOwner,
@@ -273,13 +281,6 @@ function moveTransient(
     for (const [field, activeField] of auxiliaryFields) {
       const source = ephemeral[field][sceneOwner.sessionId];
       if (!source?.some((item) => item.id === tab.observed.tabId)) continue;
-      // Auxiliary tools whose UI is a right-panel surface retain that placement contract.
-      if (
-        panelId === "bottom" &&
-        field !== "sideChatTabsBySession" &&
-        field !== "mcpAppTabsBySession"
-      )
-        return reject("invalid_placement");
       const moved = source.map((item) =>
         item.id === tab.observed.tabId ? { ...item, panelId, leafId: groupId } : item,
       );
@@ -388,6 +389,50 @@ export function prepareWorkbenchSceneCommand(
     const resolved = resolveTab(state, initialScene, preview.tabId);
     closing.push(resolved);
     ephemeralPanels = clearPreview(ephemeralPanels, sceneOwner, resolved);
+  };
+  // Scene pruning sees only durable membership, so name every group in either panel that still
+  // presents a tab.
+  const occupiedGroupIds = (leavingTabId: string) =>
+    observation.groups
+      .filter((group) => group.tabIds.some((id) => id !== leavingTabId))
+      .map((group) => group.groupId);
+  // A tab leaving its group's only slot cannot split that group; it would only rename it.
+  const insertGroupBeside = (
+    panelId: PanelId,
+    target: WorkbenchRendererObservation["groups"][number],
+    side: WorkbenchPanelSplitSide,
+    tab: WorkbenchCommandTab | null,
+  ) => {
+    if (tab?.observed.groupId === target.groupId && target.tabIds.length <= 1)
+      return reject("invalid_placement");
+    const inserted = insertWorkbenchSceneLeaf(scene, { panelId, leafId: target.groupId, side });
+    if (!inserted.leafId) return reject("invalid_placement");
+    scene = inserted.scene;
+    return inserted.leafId;
+  };
+  // Every move lands in an existing group, and the group it leaves closes once it has no tabs.
+  const placeTab = (tab: WorkbenchCommandTab, panelId: PanelId, targetGroupId: string) => {
+    const sourcePanelId = tab.observed.panelId!;
+    const sourceGroupId = tab.observed.groupId!;
+    const occupied = occupiedGroupIds(tab.observed.tabId);
+    if (tab.observed.persisted) {
+      scene = moveWorkbenchSceneSurface(scene, {
+        surfaceId: tab.observed.tabId,
+        targetPanelId: panelId,
+        targetLeafId: targetGroupId,
+        preserveEmptyLeafIds: [...occupied, targetGroupId],
+      });
+      // The moved tab is shown in its new group, ahead of any renderer-only tab selected there.
+      ephemeralPanels = selectTab(ephemeralPanels, sceneOwner, {
+        ...tab,
+        observed: { ...tab.observed, panelId, groupId: targetGroupId },
+      });
+      return;
+    }
+    ephemeralPanels = moveTransient(ephemeralPanels, sceneOwner, tab, panelId, targetGroupId);
+    if (sourceGroupId !== targetGroupId && !occupied.includes(sourceGroupId))
+      scene = mergeWorkbenchSceneLeaf(scene, { panelId: sourcePanelId, leafId: sourceGroupId });
+    scene = activateWorkbenchSceneSurface(scene, panelId, targetGroupId);
   };
   const reorderGroup = (panelId: PanelId, leafId: string, ids: readonly string[]) => {
     const durableIds = ids.filter((id) => resolveWorkbenchSceneSurface(scene, id));
@@ -582,13 +627,12 @@ export function prepareWorkbenchSceneCommand(
         openerState: getOpenerState?.(sceneOwner, tab.observed.panelId!, groupId!),
       });
     if (tab.observed.persisted) {
-      const remaining = observation.tabs.filter(
-        (item) =>
-          item.panelId === tab.observed.panelId && item.groupId === groupId && item.tabId !== tabId,
-      );
       scene = removeWorkbenchSceneSurface(scene, tabId, {
-        preserveEmptyLeafIds: remaining.length > 0 && groupId ? [groupId] : [],
         ...options.remove,
+        preserveEmptyLeafIds: [
+          ...occupiedGroupIds(tabId),
+          ...(options.remove?.preserveEmptyLeafIds ?? []),
+        ],
       });
     } else {
       ephemeralPanels = tab.auxiliary
@@ -619,20 +663,10 @@ export function prepareWorkbenchSceneCommand(
       scene = mergeWorkbenchSceneLeaf(scene, { panelId: tab.observed.panelId!, leafId: groupId! });
   } else if (command.kind === "move_tab") {
     const tab = resolveTab(state, scene, command.tabId);
-    requireMovable(tab);
+    requirePlacement(tab, command.panelId);
     let group = requireGroup(observation, command.panelId, command.groupId);
     if (command.splitSide) {
-      const oldGroupIds = new Set(observation.groups.map((item) => item.groupId));
-      scene = splitWorkbenchSceneLeaf(scene, {
-        panelId: command.panelId,
-        leafId: command.groupId,
-        side: command.splitSide,
-      });
-      const created = listWorkbenchPanelLeaves(scene.panels[command.panelId].layout).find(
-        (leaf) => !oldGroupIds.has(leaf.id),
-      );
-      if (!created) return reject("invalid_placement");
-      groupId = created.id;
+      groupId = insertGroupBeside(command.panelId, group, command.splitSide, tab);
       group = { ...group, groupId, tabIds: [], selectedTabId: null };
     }
     const order = group.tabIds.filter((id) => id !== command.tabId);
@@ -643,28 +677,7 @@ export function prepareWorkbenchSceneCommand(
     const removedIds = new Set(closing.map((item) => item.observed.tabId));
     const nextOrder = order.filter((id) => !removedIds.has(id));
     nextOrder.splice(Math.min(command.index, nextOrder.length), 0, command.tabId);
-    if (tab.observed.persisted) {
-      const sourceRemainder = observation.tabs.filter(
-        (item) =>
-          item.panelId === tab.observed.panelId &&
-          item.groupId === tab.observed.groupId &&
-          item.tabId !== command.tabId,
-      );
-      scene = moveWorkbenchSceneSurface(scene, {
-        surfaceId: command.tabId,
-        targetPanelId: command.panelId,
-        targetLeafId: group.groupId,
-        preserveEmptyLeafIds: sourceRemainder.length > 0 ? [tab.observed.groupId!] : [],
-      });
-    } else {
-      ephemeralPanels = moveTransient(
-        ephemeralPanels,
-        sceneOwner,
-        tab,
-        command.panelId,
-        group.groupId,
-      );
-    }
+    placeTab(tab, command.panelId, group.groupId);
     reorderGroup(command.panelId, group.groupId, nextOrder);
     scene = patchWorkbenchScenePanel(scene, command.panelId, { collapsed: false });
     tabId = command.tabId;
@@ -688,25 +701,11 @@ export function prepareWorkbenchSceneCommand(
   } else if (command.kind === "split_group") {
     const group = requireGroup(observation, command.panelId, command.groupId);
     const tab = command.tabId ? resolveTab(state, scene, command.tabId) : null;
-    if (tab) requireMovable(tab);
+    if (tab) requirePlacement(tab, command.panelId);
     if (tab && !group.tabIds.includes(tab.observed.tabId)) return reject("invalid_placement");
-    const oldGroups = new Set(
-      listWorkbenchPanelLeaves(scene.panels[command.panelId].layout).map((leaf) => leaf.id),
-    );
-    scene = splitWorkbenchSceneLeaf(scene, {
-      panelId: command.panelId,
-      leafId: command.groupId,
-      side: command.side,
-      ...(tab?.observed.persisted ? { surfaceId: tab.observed.tabId } : {}),
-    });
-    const added = listWorkbenchPanelLeaves(scene.panels[command.panelId].layout).find(
-      (leaf) => !oldGroups.has(leaf.id),
-    );
-    if (!added) return reject("invalid_placement");
-    groupId = added.id;
+    groupId = insertGroupBeside(command.panelId, group, command.side, tab);
     tabId = tab?.observed.tabId ?? null;
-    if (tab && !tab.observed.persisted)
-      ephemeralPanels = moveTransient(ephemeralPanels, sceneOwner, tab, command.panelId, added.id);
+    if (tab) placeTab(tab, command.panelId, groupId);
   } else if (command.kind === "merge_group") {
     const group = requireGroup(observation, command.panelId, command.groupId);
     if (scene.primary && group.tabIds.includes(scene.primary.id))

@@ -44,6 +44,7 @@ import {
 } from "@/lib/workbench-panel-projection";
 import { makeWorkbenchSessionPanelSlotKey } from "@/lib/workbench-panel-slot-key";
 import {
+  getPanelTabPlacement,
   isAutomationPanelTab,
   isBackgroundAgentPanelTab,
   isImageEditorPanelTab,
@@ -414,8 +415,8 @@ export function useWorkbenchPanelProjection({
             ? undefined
             : tab.preview,
         pinBehavior: isImageEditorPanelTab(tab) ? tab.pinBehavior : undefined,
-        reorderable: transientPanelTab ? false : tab.preview !== true,
-        splittable: !transientPanelTab && tab.preview !== true,
+        // A preview is pinned before it moves; everything else follows its kind's placement.
+        placement: "preview" in tab && tab.preview === true ? undefined : getPanelTabPlacement(tab),
         contextMenuItems:
           !transientPanelTab && tab.kind === "browser"
             ? [

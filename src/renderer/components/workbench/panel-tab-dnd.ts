@@ -8,6 +8,8 @@ export type PanelTabDragData = Record<string | symbol, unknown> & {
   panelId: PanelId;
   leafId: string;
   tabId: string;
+  /** The panels the tab may be placed in; every drop target in another panel declines it. */
+  placement: readonly PanelId[];
 };
 
 export type PanelTabRowDropData = Record<string | symbol, unknown> & {
@@ -22,6 +24,7 @@ export type PanelGroupBodyDropData = Record<string | symbol, unknown> & {
   sessionId: string;
   panelId: PanelId;
   leafId: string;
+  tabCount: number;
 };
 
 export type PanelTabDropIntent =
@@ -85,6 +88,7 @@ export function buildPanelTabDragData(input: {
   panelId: PanelId;
   leafId: string;
   tabId: string;
+  placement: readonly PanelId[];
 }): PanelTabDragData {
   return { type: PANEL_TAB_DRAG_TYPE, ...input };
 }
@@ -101,6 +105,7 @@ export function buildPanelGroupBodyDropData(input: {
   sessionId: string;
   panelId: PanelId;
   leafId: string;
+  tabCount: number;
 }): PanelGroupBodyDropData {
   return { type: PANEL_BODY_DROP_TYPE, ...input };
 }
@@ -113,7 +118,21 @@ export function isPanelTabDragData(
     typeof value.sessionId === "string" &&
     isPanelId(value.panelId) &&
     typeof value.leafId === "string" &&
-    typeof value.tabId === "string"
+    typeof value.tabId === "string" &&
+    Array.isArray(value.placement) &&
+    value.placement.every(isPanelId)
+  );
+}
+
+/** A group accepts a dragged tab from its own Session when the tab may be placed in its panel. */
+export function canPanelGroupAcceptTabDrag(
+  value: Record<string | symbol, unknown>,
+  target: { sessionId: string; panelId: PanelId },
+): boolean {
+  return (
+    isPanelTabDragData(value) &&
+    value.sessionId === target.sessionId &&
+    value.placement.includes(target.panelId)
   );
 }
 
@@ -135,8 +154,24 @@ export function isPanelGroupBodyDropData(
     value.type === PANEL_BODY_DROP_TYPE &&
     typeof value.sessionId === "string" &&
     isPanelId(value.panelId) &&
-    typeof value.leafId === "string"
+    typeof value.leafId === "string" &&
+    typeof value.tabCount === "number"
   );
+}
+
+/**
+ * A tab over its own group's body can only split away from tabs it leaves behind; anywhere else in
+ * that body it would land where it already is.
+ */
+export function resolvePanelGroupBodyDropZoneForSource(input: {
+  source: PanelTabDragData;
+  target: PanelGroupBodyDropData;
+  zone: PanelGroupBodyDropZone;
+}): PanelGroupBodyDropZone | null {
+  const ownGroup =
+    input.source.panelId === input.target.panelId && input.source.leafId === input.target.leafId;
+  if (!ownGroup) return input.zone;
+  return input.zone === "center" || input.target.tabCount <= 1 ? null : input.zone;
 }
 
 export function resolvePanelTabRowInsertion(input: {
