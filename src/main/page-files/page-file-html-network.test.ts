@@ -2,7 +2,7 @@ import { it, assert } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { configurePageFileHtmlNetwork } from "./page-file-html-network";
 
-it.effect("refuses direct fallback or loopback bypass before guest admission", () =>
+it.live("refuses direct fallback or loopback bypass before guest admission", () =>
   Effect.gen(function* () {
     for (const bypass of ["direct", "fallback", "loopback"] as const) {
       const result = yield* Effect.result(
@@ -17,6 +17,29 @@ it.effect("refuses direct fallback or loopback bypass before guest admission", (
       );
       assert.equal(result._tag, "Failure");
     }
+  }),
+);
+
+it.live("waits for proxy propagation before admitting a guest", () =>
+  Effect.gen(function* () {
+    const verified = new Set<string>();
+    let loopbackReady = false;
+    yield* configurePageFileHtmlNetwork({
+      setProxy: async () => {},
+      resolveProxy: async (url) => {
+        if (url === "http://127.0.0.1" && !loopbackReady) {
+          loopbackReady = true;
+          verified.clear();
+          return "DIRECT";
+        }
+        verified.add(url);
+        return "PROXY 127.0.0.1:0";
+      },
+    });
+    assert.sameMembers(
+      [...verified],
+      ["https://example.invalid", "http://127.0.0.1", "http://[::1]"],
+    );
   }),
 );
 
