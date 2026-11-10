@@ -37,6 +37,7 @@ import {
   executeCommandPaletteCommand,
   getBottomPanelContentSizer,
   getConnectedThreadStagePropsByThreadId,
+  getConnectedThreadStagePropsFor,
   findFilesPreviewInteractionTarget,
   getHeaderShellSlot,
   getLastTerminalPanelProps,
@@ -3128,16 +3129,18 @@ describe("workbench session shell / layout-panel-actions", () => {
     const tabCreates = invokeCalls.filter((call) => call[0] === "window-session-view:tab-create");
     expect(tabCreates).toHaveLength(durableTabCreateCount + 1);
     expect((tabCreates.at(-1)?.[1] as { kind?: string } | undefined)?.kind).toBe("side_chat");
-    expect(screen.getByRole("textbox", { name: "Prompt" })).toBeTruthy();
-    const stageProps = (globalThis as { __lastConnectedThreadStageProps?: Record<string, unknown> })
-      .__lastConnectedThreadStageProps;
-    expect(JSON.stringify(stageProps?.sideChatContext ?? null)).toBe(
-      '{"parentThreadId":"thread-alpha","tabTitle":"Side chat"}',
-    );
-    expect(typeof stageProps?.composerScopeIdentity).toBe("string");
-    expect(String(stageProps?.composerScopeIdentity).startsWith("side-chat-session:")).toBe(true);
-    expect(stageProps?.isQueueingEnabled).toBe(false);
-    expect(stageProps?.composerEnterBehavior).toBe("cmdIfMultiline");
+    const creation = invokeCalls.find(
+      ([channel]) => channel === "agent-runtime:session:create-side-chat",
+    )?.[1] as import("../../../shared/agent-runtime-api").AgentRuntimeSideChatCreateInput;
+    const panel = await screen.findByRole("tabpanel", { name: "Side chat" });
+    const prompt = await within(panel).findByRole("textbox", { name: "Prompt" });
+    const stageProps = getConnectedThreadStagePropsFor(prompt);
+    expect(stageProps).toMatchObject({
+      sideChatContext: { parentThreadId: "thread-alpha", tabTitle: "Side chat" },
+      composerScopeIdentity: `side-chat-session:${creation.sessionId}`,
+      isQueueingEnabled: false,
+      composerEnterBehavior: "cmdIfMultiline",
+    });
     expect(Boolean(stageProps?.summaryPanelMounted)).toBe(false);
 
     await act(async () => {
@@ -3147,9 +3150,6 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
 
     expect(discardSideChatCalls).toHaveLength(0);
-    const creation = invokeCalls.find(
-      ([channel]) => channel === "agent-runtime:session:create-side-chat",
-    )?.[1] as import("../../../shared/agent-runtime-api").AgentRuntimeSideChatCreateInput;
     expect(await mockInvokeImpl!("project-sessions:get", creation.sessionId)).toMatchObject({
       id: creation.sessionId,
     });
