@@ -8,7 +8,6 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { parse } from "node-html-parser";
@@ -55,7 +54,8 @@ function readPage(route: string) {
 }
 
 test("builds independently of unrelated ancestor TypeScript projects", async () => {
-  const parent = mkdtempSync(join(tmpdir(), "nodex-landing-tsconfig-"));
+  // Keep the fixture and pnpm's linked dependencies on the same volume.
+  const parent = mkdtempSync(join(generated, "landing-tsconfig-"));
   const root = join(parent, "site");
   const outDir = join(root, "dist");
   try {
