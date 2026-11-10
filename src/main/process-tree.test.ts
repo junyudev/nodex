@@ -78,11 +78,8 @@ test.runIf(process.platform === "win32")(
     const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
     const fixture = actual.spawn(
       process.execPath,
-      [
-        "-e",
-        'process.stdin.on("data", (chunk) => process.stdout.write(chunk)); setInterval(() => {}, 1000)',
-      ],
-      { stdio: "pipe" },
+      ["-e", 'process.on("message", () => process.stdout.write("after-terminal\\n"))'],
+      { stdio: ["pipe", "pipe", "pipe", "ipc"] },
     );
     const closed = new Promise<void>((resolve) => {
       fixture.once("close", () => resolve());
@@ -93,6 +90,8 @@ test.runIf(process.platform === "win32")(
     let complete = () => {};
     let operation: Promise<PromiseSettledResult<unknown>> | undefined;
     try {
+      const { stdout, stderr } = fixture;
+      if (!stdout || !stderr) throw new Error("Expected piped Git output streams");
       await once(fixture, "spawn", { signal });
       vi.mocked(spawn).mockReturnValueOnce(fixture);
       vi.mocked(execFile).mockImplementationOnce(((...args: unknown[]) => {
@@ -116,17 +115,18 @@ test.runIf(process.platform === "win32")(
       expect(result.reason).toBeInstanceOf(WindowsProcessTreeReleaseError);
       expect((result.reason as Error).cause).toBe(nativeFailure);
       expect(fixture.exitCode).toBeNull();
-      expect(fixture.stdout.listenerCount("data")).toBeGreaterThan(0);
+      expect(stdout.listenerCount("data")).toBeGreaterThan(0);
       expect(fixture.listenerCount("error")).toBeGreaterThan(0);
-      const lateOutput = once(fixture.stdout, "data", { signal });
-      fixture.stdin.write("after-terminal\n");
+      // Git owns stdin and closes it at launch. Trigger late output independently.
+      const lateOutput = once(stdout, "data", { signal });
+      fixture.send("write");
       await lateOutput;
       expect(output).toEqual([]);
       expect(() => fixture.emit("error", new Error("late owned Git error"))).not.toThrow();
       fixture.kill("SIGKILL");
       await closed;
-      expect(fixture.stdout.listenerCount("data")).toBe(0);
-      expect(fixture.stderr.listenerCount("data")).toBe(0);
+      expect(stdout.listenerCount("data")).toBe(0);
+      expect(stderr.listenerCount("data")).toBe(0);
       expect(fixture.listenerCount("error")).toBe(0);
       expect(fixture.listenerCount("close")).toBe(0);
     } finally {
