@@ -11,9 +11,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::ProjectWorkspaceApplyOutcome;
-use super::mutation::{
-    WorkspaceMutationEffects, finish_no_op, project_session_scope, run_mutation,
-};
+use super::mutation::{WorkspaceMutationEffects, finish_no_op, project_session_scope};
 use super::session_mutation::{
     SessionInvalidationKind, finish_session_mutation, require_session, sqlite_now, validate_id,
 };
@@ -243,6 +241,7 @@ pub(super) fn delete_session(
     let mut thread_ids = Vec::new();
     let mut project_ids = Vec::new();
     let mut scopes = Vec::new();
+    let mut deleted_folders = Vec::new();
     for id in session_ids.iter().rev() {
         let current = require_session(connection, library_id, id)?;
         if let Some(thread_id) = &current.thread_id {
@@ -264,6 +263,11 @@ pub(super) fn delete_session(
         )?;
         // Runtime consumers remain until native execution cleanup is acknowledged.
         connection.execute("DELETE FROM session_workspaces WHERE session_id=?1 AND NOT EXISTS(SELECT 1 FROM project_session_execution_bindings WHERE session_id=?1)",[id])?;
+        if let Some(folder) = super::chat_folder::read(connection, id)?
+            && folder.origin == nodex_core_contracts::workspace::ChatFolderOrigin::Generated
+        {
+            deleted_folders.push(folder);
+        }
         if connection.execute("DELETE FROM project_sessions WHERE id = ?1", [id])? != 1 {
             return Err(corrupt("Project Session disappeared during deletion"));
         }
@@ -275,9 +279,19 @@ pub(super) fn delete_session(
             scopes.push(scope);
         }
     }
+    let deleted_folders = deleted_folders
+        .into_iter()
+        .filter_map(
+            |folder| match super::chat_folder::still_referenced(connection, &folder) {
+                Ok(false) => Some(Ok(folder)),
+                Ok(true) => None,
+                Err(error) => Some(Err(error)),
+            },
+        )
+        .collect::<Result<Vec<_>, _>>()?;
     project_ids.sort();
     project_ids.dedup();
-    finish_lifecycle_mutation(
+    finish_lifecycle_mutation_with_folders(
         connection,
         library_id,
         context,
@@ -292,6 +306,7 @@ pub(super) fn delete_session(
         authority.project_id.as_deref(),
         &[],
         sqlite_now(connection)?,
+        deleted_folders,
     )
 }
 
@@ -617,6 +632,43 @@ pub(super) fn finish_lifecycle_mutation(
     handed_off_page_ids: &[String],
     committed_at: String,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    finish_lifecycle_mutation_with_folders(
+        connection,
+        library_id,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        operation_kind,
+        project_ids,
+        session_ids,
+        thread_ids,
+        session_summary_scopes,
+        change_project_id,
+        handed_off_page_ids,
+        committed_at,
+        Vec::new(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_lifecycle_mutation_with_folders(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    operation_kind: &'static str,
+    project_ids: Vec<String>,
+    session_ids: Vec<String>,
+    thread_ids: Vec<String>,
+    session_summary_scopes: Vec<nodex_core_contracts::workspace::ProjectSessionInvalidationScope>,
+    change_project_id: Option<&str>,
+    handed_off_page_ids: &[String],
+    committed_at: String,
+    deleted_folders: Vec<nodex_core_contracts::workspace::ChatFolder>,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     let change_project_id = change_project_id.map(str::to_owned);
     let effects = WorkspaceMutationEffects {
         operation_kind,
@@ -636,13 +688,17 @@ pub(super) fn finish_lifecycle_mutation(
         document_heads: Vec::new(),
         committed_at: committed_at.clone(),
     };
-    run_mutation(
+    super::mutation::run_mutation_with_folder_result(
         connection,
         context,
         store_epoch,
         operation_id,
         request_hash,
         &committed_at,
+        super::mutation::FolderMutationResult {
+            bound: None,
+            deleted: deleted_folders,
+        },
         |scope| {
             super::page_chat::advance_handed_off_pages(
                 connection,

@@ -1,3 +1,4 @@
+import { live as sessionFoldersLive } from "../main/agent-backend/SessionFolders";
 import * as PhoneApplication from "./mobile/MobileApplication";
 import { MobileRpc } from "./mobile/rpc";
 import * as PhoneFiles from "../main/platform/node/PhoneFiles";
@@ -194,7 +195,9 @@ export const live = (input: {
   const workspace = Workspace.live({ workerDirectory: input.workerDirectory }).pipe(
     Layer.provideMerge(WorkspaceDependencies.live.pipe(Layer.provideMerge(core))),
   );
-  const presence = Presence.headless.pipe(Layer.provideMerge(workspace));
+  const presence = Presence.headless.pipe(
+    Layer.provideMerge(sessionFoldersLive.pipe(Layer.provideMerge(workspace))),
+  );
   const runtime = AgentRuntime.runtime.pipe(Layer.provideMerge(presence));
   // Members search the chats they may read here, as a desktop searches its own.
   const chats = chatSearch.pipe(Layer.provideMerge(runtime));

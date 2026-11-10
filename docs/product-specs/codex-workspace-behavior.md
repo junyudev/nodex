@@ -120,22 +120,25 @@ An archived Thread must be explicitly restored before resume.
 
 ## Projectless Chats
 
-A projectless Chat has no Project route and receives a generated workspace
-under the Profile's projects directory: the user's Documents/Nodex collection, or
-the home of an isolated development or test run. It persists cwd, output-directory,
-and workspace-browser-root hints. Scratch work belongs under `work/`; user-facing
-deliverables belong under `outputs/`. A persistent fork or Side chat inherits
-the same workspace boundary.
+A Chat with a Project uses the Project's folder. A projectless Chat owns a Chat
+folder as soon as its first filesystem action needs one. A draft can use that
+folder before it has a Thread. The first Turn and later actions reuse it for
+execution, Terminal, and Files.
 
-Owner-time preparation reuses an existing generated projectless cwd before creating another one.
-It prefers the current generated cwd, then the newest retained writable root under the same
-projects directory, then repairs from the persisted workspace-browser root. A selected
-Environment or pending Project workspace suppresses projectless materialization for that Turn.
+By default, Nodex creates the folder under `Chats/<date>/<name>` in the
+Profile's projects directory. Scratch work belongs under `work/`, and
+deliverables belong under `outputs/`. Before the Chat starts, the person can
+choose an existing directory as its first folder. Files and deliverables then
+share that directory. Once bound, the Chat keeps the folder. A persistent fork
+or Side chat inherits its source workspace. An explicit Environment or pending
+workspace still supplies its own execution location.
 
-Projectless Chats support conversation, Browser, exact-file previews, and
-Terminal only when a cwd is available. They never infer Project ownership from
-path containment and cannot open Project-only Database or Pages capabilities
-without explicit access/context.
+When a Chat is permanently deleted, Nodex removes its generated folder if it is
+empty and no other Chat uses it. Folders with files and folders the person chose
+stay on disk.
+
+Projectless Chats also support conversation, Browser, and exact-file previews.
+Project-only Database and Pages capabilities require an explicit Project context.
 
 ## Forks, Side chats, and child agents
 

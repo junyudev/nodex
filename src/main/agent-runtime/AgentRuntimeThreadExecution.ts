@@ -68,6 +68,17 @@ export const make = Effect.gen(function* () {
       .getProjectSession(captured.sessionId)
       .pipe(Effect.mapError((cause) => error("read-session", captured.thread.id, cause)));
     if (!session) return yield* fail("read-session", captured.thread.id, "Session was removed");
+    if (session.projectId === null && session.folder?.path === cwd) {
+      return {
+        hostId: "local",
+        cwd,
+        workspaceRoots: [cwd],
+        managedWorktreePath: null,
+        projectId: null,
+        projectlessOutputDirectory: session.folder.outputDirectory,
+        projectlessWorkspaceBrowserRoot: cwd,
+      } satisfies CodexThreadExecutionLocation;
+    }
     const project = session.projectId
       ? yield* workspace
           .getProject(session.projectId)

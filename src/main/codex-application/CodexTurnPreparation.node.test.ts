@@ -1,3 +1,4 @@
+import { SessionFolders } from "../agent-backend/SessionFolders";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -30,6 +31,11 @@ import {
 const threadId = "thread-steering";
 const prepare = (canonical: CodexCanonicalConversationState | null) =>
   make.pipe(
+    Effect.provideService(SessionFolders, {
+      ensure: () => Effect.die("unused"),
+      choose: () => Effect.die("unused"),
+      cleanDeleted: () => Effect.void,
+    }),
     Effect.provideService(MainConfig, {} as MainConfig["Service"]),
     Effect.provideService(CoreAuthority, {} as CoreAuthority["Service"]),
     Effect.provideService(CoreModules, {

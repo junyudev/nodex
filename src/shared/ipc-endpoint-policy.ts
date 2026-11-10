@@ -809,6 +809,8 @@ type PlainResultCommandEndpointPolicy =
   | "window:new"
   | "window-sessions:save-layout"
   | "window-sessions:update-bounds"
+  | "session-folder:ensure"
+  | "session-folder:choose"
   | "workspace:pick-directory"
   | "worktrees:delete"
   | "worktrees:environments:config:save"

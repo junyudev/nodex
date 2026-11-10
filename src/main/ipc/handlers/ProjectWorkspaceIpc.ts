@@ -1,3 +1,6 @@
+import { SessionFolders } from "../../agent-backend/SessionFolders";
+import { AgentChatWorktrees } from "../../codex-application/AgentChatWorktrees";
+import { sessionFolderFromCore } from "../../core-client/project-workspace-adapter";
 import {
   ProjectSessionPlaceCommandSchema,
   ProjectSessionSummaryWindowInputSchema,
@@ -70,6 +73,8 @@ export const live: Layer.Layer<
   | MainConfig
   | ProjectLifecycleCommands
   | ProjectSessionCommands
+  | SessionFolders
+  | AgentChatWorktrees
   | ProjectWorkspace
   | WindowRuntime
 > = Layer.effectDiscard(
@@ -81,6 +86,8 @@ export const live: Layer.Layer<
     const ipc = yield* ElectronIpc;
     const projectLifecycle = yield* ProjectLifecycleCommands;
     const projectSessions = yield* ProjectSessionCommands;
+    const folders = yield* SessionFolders;
+    const agentChats = yield* AgentChatWorktrees;
     const projects = yield* ProjectWorkspace;
     const windows = yield* WindowRuntime;
     const syncSectionsAfter = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -555,6 +562,26 @@ export const live: Layer.Layer<
         Effect.andThen(
           catalogCommand("project-sessions:rename", command, projectSessions.rename(command)),
         ),
+      ),
+    );
+    yield* handlePlainCommand("session-folder:ensure", (event, sessionId) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          folders.ensure(sessionId, {
+            readExecutionCwd: (threadId) =>
+              agentChats.source.pipe(
+                Effect.flatMap((source) => source.location(threadId)),
+                Effect.map((location) => location?.cwd ?? null),
+              ),
+          }),
+        ),
+        Effect.map(sessionFolderFromCore),
+      ),
+    );
+    yield* handlePlainCommand("session-folder:choose", (event, sessionId, path) =>
+      authorize(event).pipe(
+        Effect.andThen(folders.choose(sessionId, path)),
+        Effect.map(sessionFolderFromCore),
       ),
     );
     yield* handleLocalCommitCommand("project-sessions:delete", (event, command) =>

@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 81;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 82;
 
 /// Host-only admission: the model chooses an opaque key, never a clock or operation envelope.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1827,6 +1827,21 @@ pub enum ProjectLifecycle {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatFolderOrigin {
+    Generated,
+    Chosen,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ChatFolder {
+    pub execution_host_id: String,
+    pub path: String,
+    pub output_directory: Option<String>,
+    pub origin: ChatFolderOrigin,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceSessionSummary {
     pub id: String,
     pub project_id: Option<String>,
@@ -1849,6 +1864,8 @@ pub struct ProjectWorkspaceSessionSummary {
     pub thread_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution_ref: Option<ProjectWorkspaceSessionExecutionRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<ChatFolder>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -2336,6 +2353,10 @@ pub enum ProjectWorkspaceIntent {
         session_id: String,
         project_id: Option<String>,
         title: String,
+    },
+    BindChatFolder {
+        session_id: String,
+        folder: ChatFolder,
     },
     DeleteSession {
         session_id: String,
@@ -2852,6 +2873,10 @@ pub struct InboxWriteResult {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceCommitValue {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_folder: Option<ChatFolder>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deleted_chat_folders: Vec<ChatFolder>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inbox_write: Option<InboxWriteResult>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

@@ -1,3 +1,4 @@
+import { SessionFolders, live as sessionFoldersLive } from "../agent-backend/SessionFolders";
 import { isDevelopmentFeatureEnabled } from "../../shared/development-features";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -122,6 +123,7 @@ export const live: Layer.Layer<
   | CoreSessionAccess
   | CoreModules
   | ProjectWorkspace
+  | SessionFolders
   | ProjectRuntimeLifecycleRuntime
   | CodexEphemeralThreadRouting
   | CodexThreadHostResolver
@@ -141,6 +143,7 @@ export const live: Layer.Layer<
 > = Layer.mergeAll(
   fileExports,
   workspace,
+  sessionFoldersLive.pipe(Layer.provide(core)),
   hostResolver,
   projectRuntimeLifecycleLive,
   automation,

@@ -1,8 +1,8 @@
 use nodex_core_contracts::workspace::{
-    ProjectLifecycle, ProjectSource, ProjectWorkspaceBootstrap, ProjectWorkspaceBootstrapStatus,
-    ProjectWorkspaceExecutionContext, ProjectWorkspaceProject, ProjectWorkspaceRead,
-    ProjectWorkspaceReadValue, ProjectWorkspaceSessionExecutionRef, ProjectWorkspaceSessionSummary,
-    ProjectWorkspaceTurnAuthorityResolution,
+    ChatFolder, ProjectLifecycle, ProjectSource, ProjectWorkspaceBootstrap,
+    ProjectWorkspaceBootstrapStatus, ProjectWorkspaceExecutionContext, ProjectWorkspaceProject,
+    ProjectWorkspaceRead, ProjectWorkspaceReadValue, ProjectWorkspaceSessionExecutionRef,
+    ProjectWorkspaceSessionSummary, ProjectWorkspaceTurnAuthorityResolution,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -51,6 +51,7 @@ struct SessionRow {
     created_at: String,
     updated_at: String,
     execution_ref: Option<ProjectWorkspaceSessionExecutionRef>,
+    folder: Option<ChatFolder>,
 }
 
 pub(super) fn read(
@@ -1023,7 +1024,7 @@ fn read_session(
                thread.thread_preview, session.created_at, session.updated_at, \
                execution.runtime_id, execution.runtime_thread_id, {}, \
                EXISTS(SELECT 1 FROM coordinator_managed_sessions managed WHERE managed.session_id = session.id), \
-               {}, {} \
+               {}, {}, {} \
              FROM project_sessions session \
              LEFT JOIN project_session_threads link ON link.session_id = session.id \
              LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
@@ -1043,6 +1044,7 @@ fn read_session(
                     &super::chat_stewardship::current_run_sql("session.id"),
                     "?3",
                 ),
+                super::chat_folder::SUMMARY_COLUMN,
             ),
             params![session_id, library_id,member],
             session_row,
@@ -1066,6 +1068,7 @@ fn session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionRow> {
         remind_at: row.get(16)?,
         can_manage: row.get(18)?,
         can_stop: row.get(19)?,
+        folder: super::chat_folder::decode_summary(row, 20)?,
         thread_id: row.get(9)?,
         thread_name: row.get(10)?,
         thread_preview: row.get(11)?,
@@ -1106,6 +1109,7 @@ fn session_summary(row: SessionRow) -> ProjectWorkspaceSessionSummary {
         can_stop: row.can_stop,
         thread_id: row.thread_id,
         execution_ref: row.execution_ref,
+        folder: row.folder,
         created_at: row.created_at,
         updated_at: row.updated_at,
     }

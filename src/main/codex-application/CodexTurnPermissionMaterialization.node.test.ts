@@ -1,3 +1,4 @@
+import { SessionFolders } from "../agent-backend/SessionFolders";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { vi } from "vitest";
@@ -96,6 +97,8 @@ const disabledFastMode: ConfigRequirementsReadResponse = {
 };
 
 interface PreparationFixture {
+  readonly projectId?: string | null;
+  readonly folder?: Effect.Success<ReturnType<SessionFolders["Service"]["ensure"]>>;
   readonly canonical?: CodexCanonicalConversationState;
   readonly defaultPersonality?: TurnStartParams["personality"];
   readonly config?: Partial<ConfigReadResponse["config"]>;
@@ -116,6 +119,16 @@ const prepare = (
   fixture: PreparationFixture = {},
 ) =>
   make.pipe(
+    Effect.provideService(SessionFolders, {
+      ensure: (sessionId) =>
+        Effect.sync(() => {
+          assert.equal(sessionId, "permission-session");
+          if (!fixture.folder) throw new Error("Expected a projectless folder");
+          return fixture.folder;
+        }),
+      choose: () => Effect.die("unused"),
+      cleanDeleted: () => Effect.void,
+    }),
     Effect.provideService(MainConfig, {} as MainConfig["Service"]),
     Effect.provideService(CoreAuthority, {} as CoreAuthority["Service"]),
     Effect.provideService(CoreModules, {
@@ -133,7 +146,7 @@ const prepare = (
               },
               session: {
                 id: "permission-session",
-                project_id: "project",
+                project_id: fixture.projectId === undefined ? "project" : fixture.projectId,
                 archived: false,
               },
             },
@@ -151,7 +164,7 @@ const prepare = (
           threadId,
           rootThreadId: threadId,
           parentThreadId: null,
-          projectId: "project",
+          projectId: fixture.projectId === undefined ? "project" : fixture.projectId,
           cwd: "/workspace/project",
           writableRoots: fixture.writableRoots ?? ["/workspace/project"],
         }),
@@ -554,4 +567,34 @@ it.effect.each(["managed-disabled", "requirements-failed"] as const)(
       assert.strictEqual(plan.request.serviceTier, null);
       assert.strictEqual(plan.canonicalParams?.serviceTier, null);
     }),
+);
+
+it.effect("starts a projectless Turn in the Session folder with its own workspace roots", () =>
+  Effect.gen(function* () {
+    const path = "/workspace/chat";
+    const plan = yield* prepare(
+      {
+        originalRequest: {
+          threadId,
+          input: [],
+          cwd: "/workspace",
+          runtimeWorkspaceRoots: ["/workspace"],
+        },
+      },
+      {
+        projectId: null,
+        writableRoots: ["/workspace"],
+        folder: {
+          execution_host_id: "local",
+          path,
+          output_directory: path,
+          origin: "chosen",
+        },
+      },
+    );
+    assert.equal(plan.request.cwd, path);
+    assert.deepEqual(plan.request.runtimeWorkspaceRoots, [path]);
+    assert.deepEqual(plan.workspaceCommit.writableRoots, { kind: "replace", roots: [path] });
+    assert.deepEqual(plan.projectlessWorkspace, { cwd: path, workspaceRoot: path });
+  }),
 );

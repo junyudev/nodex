@@ -37,7 +37,10 @@ describe("Codex projectless workspace", () => {
         prompt: "must not become fallback",
       }),
     ).toBe("new-chat");
-    expect(slugCodexProjectlessDirectoryName("你好，世界")).toBe("new-chat");
+    expect(slugCodexProjectlessDirectoryName("你好，世界")).toBe("你好-世界");
+    expect(slugCodexProjectlessDirectoryName("COM1")).toBe("chat-com1");
+    expect(Buffer.byteLength(slugCodexProjectlessDirectoryName("你".repeat(100)))).toBe(78);
+    expect(slugCodexProjectlessDirectoryName("🗂️")).toBe("new-chat");
     expect(
       slugCodexProjectlessDirectoryName({
         directoryName: "a".repeat(100),

@@ -123,6 +123,15 @@ test("projectless workspace detection mirrors owner-time generated-root reuse", 
   });
 });
 
+test("recognizes generated Chat folders under Chats with Unicode names", () => {
+  expect(
+    codexProjectlessWorkspaceRootFromCwd(
+      "/Users/test/Documents/Nodex/Chats/2026-11-10/你好-世界",
+      "/Users/test/Documents/Nodex",
+    ),
+  ).toBe("/Users/test/Documents/Nodex");
+});
+
 test("projectless preparation prefers cwd, retained roots, then browser-root repair", () => {
   expect(
     resolveExistingCodexProjectlessWorkspace({

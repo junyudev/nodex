@@ -1,5 +1,6 @@
+import { SessionFolders } from "./SessionFolders";
 // @effect-diagnostics strictEffectProvide:off
-import { access, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { tmpdir } from "node:os";
@@ -31,6 +32,7 @@ const input: NativeSessionWorkspaceInput = {
 const fixture = (
   options: {
     config?: Partial<MainConfigValue>;
+    folders?: SessionFolders["Service"];
     setupError?: string;
     ownerFailure?: boolean;
     environmentPath?: string;
@@ -108,6 +110,14 @@ const fixture = (
             }),
         }),
     } as never),
+    Effect.provideService(
+      SessionFolders,
+      options.folders ?? {
+        ensure: () => Effect.die("unused"),
+        choose: () => Effect.die("unused"),
+        cleanDeleted: () => Effect.void,
+      },
+    ),
     Effect.provide(configLayer(options.config)),
   );
   return { owner, events, requests };
@@ -332,80 +342,42 @@ it.effect("uncertain Core ownership retains the workspace and its newborn protec
   }),
 );
 
-it.effect.each([
-  [
-    "a real Profile",
-    "Documents/Nodex",
-    (root: string) => ({ documentsPath: path.join(root, "Documents") }),
-  ],
-  [
-    "an isolated run",
-    ".nodex/workspace",
-    (root: string) => ({
-      documentsPath: path.join(root, "Documents"),
-      isolatedRunId: "isolated-run",
-      nodexHome: path.join(root, ".nodex"),
-    }),
-  ],
-] as const)(
-  "a projectless native session in %s uses a disposable workspace under %s",
-  ([, projectsDirectory, config]) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const root = yield* Effect.acquireRelease(
-          Effect.promise(() => mkdtemp(path.join(tmpdir(), "nodex-native-automation-"))),
-          (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
-        );
-        const f = fixture({ config: config(root) });
-        const owner = yield* f.owner;
-        const lease = yield* owner.prepare({
-          ...input,
-          projectId: null,
-          runInTarget: "localProject",
-          sourceCwd: null,
-          operationId: "run:create",
-        });
-        assert.isTrue(lease.location.cwd.startsWith(path.join(root, projectsDirectory)));
-        assert.equal(
-          lease.location.projectlessOutputDirectory,
-          path.join(lease.location.cwd, "outputs"),
-        );
-        assert.deepEqual((yield* Effect.promise(() => readdir(lease.location.cwd))).sort(), [
-          "outputs",
-          "work",
-        ]);
-        assert.lengthOf(f.requests, 0);
-      }),
-    ),
-);
-
-it.effect("projectless workspace ownership removes only a failed unlinked allocation", () =>
+it.effect("first send uses the chosen Chat folder as its entire workspace", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const documentsPath = yield* Effect.acquireRelease(
-        Effect.promise(() => mkdtemp(path.join(tmpdir(), "nodex-native-automation-"))),
-        (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
-      );
-      const owner = yield* fixture({ config: { documentsPath } }).owner;
-      for (const attach of [false, true]) {
-        const directory = yield* Effect.scoped(
-          Effect.gen(function* () {
-            const lease = yield* owner.prepare({
-              ...input,
-              projectId: null,
-              runInTarget: "localProject",
-              sourceCwd: null,
-              operationId: "run:create",
-            });
-            if (attach) yield* lease.attach("durable-thread");
-            return lease.location.cwd;
-          }),
-        );
-        const exists = yield* Effect.tryPromise(() => access(directory)).pipe(
-          Effect.match({ onFailure: () => false, onSuccess: () => true }),
-        );
-        assert.equal(exists, attach);
-      }
+      const cwd = path.resolve("/chosen");
+      const f = fixture({
+        folders: {
+          ensure: (sessionId) =>
+            Effect.sync(() => {
+              assert.equal(sessionId, input.targetId);
+              return {
+                path: cwd,
+                output_directory: cwd,
+                execution_host_id: "local",
+                origin: "chosen",
+              };
+            }),
+          choose: () => Effect.die("unused"),
+          cleanDeleted: () => Effect.void,
+        },
+      });
+      const owner = yield* f.owner;
+      const lease = yield* owner.prepare({
+        ...input,
+        projectId: null,
+        runInTarget: "localProject",
+        sourceCwd: null,
+        sourceRoots: [path.resolve("/outside")],
+      });
+      assert.deepEqual(lease.location, {
+        cwd,
+        workspaceRoots: [cwd],
+        managedWorktreePath: null,
+        projectlessOutputDirectory: cwd,
+        projectlessWorkspaceBrowserRoot: cwd,
+      });
+      assert.lengthOf(f.requests, 0);
     }),
   ),
 );

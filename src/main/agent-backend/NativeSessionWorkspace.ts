@@ -1,6 +1,5 @@
 import * as path from "node:path";
-import { HostWorkspace } from "../../host/HostWorkspace";
-import { realpath, rm } from "node:fs/promises";
+import { realpath } from "node:fs/promises";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -12,8 +11,7 @@ import { MainConfig } from "../app/MainConfig";
 import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
 import { ManagedWorktreeRuntime } from "../codex-application/ManagedWorktreeRuntime";
-import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
-import { resolveNodexProjectsDirectory } from "../nodex-projects-directory";
+import { SessionFolders } from "./SessionFolders";
 import {
   loadCodexWorktreeShellEnvironmentAtGitPath,
   persistCodexWorktreeShellEnvironmentAtGitPath,
@@ -85,7 +83,7 @@ export class NativeSessionWorkspace extends Context.Service<
 /** Filesystem/Git ownership is shared with all native backends; no Agent process is launched. */
 export const make = Effect.gen(function* () {
   const config = yield* MainConfig;
-  const workspace = yield* HostWorkspace;
+  const folders = yield* SessionFolders;
   const hosts = yield* ExecutionHostRuntime;
   const worktrees = yield* ManagedWorktreeRuntime;
   const git = yield* CodexGitProbe;
@@ -175,40 +173,24 @@ export const make = Effect.gen(function* () {
           cause: new Error("A managed worktree requires a local Project"),
         });
       if (input.projectId === null) {
-        let attached = false;
-        const projectless = yield* Effect.acquireRelease(
-          Effect.tryPromise({
-            try: () =>
-              createCodexProjectlessWorkspace({
-                createSplitDirectories: true,
-                prompt: input.prompt,
-                workspaceRoot: workspace.projectlessRoot ?? resolveNodexProjectsDirectory(config),
-              }),
-            catch: (cause) =>
-              new NativeSessionWorkspaceError({ operation: "projectless.create", cause }),
-          }),
-          (workspace) =>
-            attached
-              ? Effect.void
-              : Effect.promise(() => rm(workspace.cwd, { recursive: true, force: true })).pipe(
-                  Effect.ignore,
-                ),
-        );
+        const folder = yield* folders
+          .ensure(input.targetId, { nameHint: input.prompt })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new NativeSessionWorkspaceError({ operation: "projectless.ensure", cause }),
+            ),
+          );
         return {
           location: {
-            cwd: projectless.cwd,
-            workspaceRoots: [projectless.cwd],
+            cwd: folder.path,
+            workspaceRoots: [folder.path],
             managedWorktreePath: null,
-            projectlessOutputDirectory: projectless.outputDirectory,
-            projectlessWorkspaceBrowserRoot: projectless.workspaceRoot,
+            projectlessOutputDirectory: folder.output_directory ?? null,
+            projectlessWorkspaceBrowserRoot: folder.path,
           },
-          retain: Effect.sync(() => {
-            attached = true;
-          }),
-          attach: () =>
-            Effect.sync(() => {
-              attached = true;
-            }),
+          retain: Effect.void,
+          attach: () => Effect.void,
         };
       }
       if (!sourceCwd)

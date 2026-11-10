@@ -408,6 +408,7 @@ import type {
   ProjectWindowInput,
   ProjectUpdateCommandInput,
   ProjectSession,
+  SessionFolder,
   SessionManagedState,
   ProjectSessionForkInput,
   ProjectSessionForkResult,
@@ -1307,6 +1308,8 @@ export interface IpcApi
     args: [command: ProjectSessionRenameCommandInput];
     result: CoreLocalCommitResult<ProjectSession>;
   };
+  "session-folder:ensure": { args: [sessionId: string]; result: SessionFolder };
+  "session-folder:choose": { args: [sessionId: string, path: string]; result: SessionFolder };
   "project-sessions:delete": {
     args: [command: ProjectSessionDeleteCommandInput];
     result: CoreLocalCommitResult<boolean>;

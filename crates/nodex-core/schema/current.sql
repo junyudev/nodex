@@ -5980,4 +5980,11 @@ END;
 INSERT INTO structural_history_payload_backfill VALUES (1, '', 1);
 INSERT INTO block_mutation_body_backfill VALUES (1, '', 1);
 INSERT INTO session_search_revision(id, revision) VALUES (1, 0);
-PRAGMA user_version=205;
+CREATE TABLE project_session_chat_folders (
+  session_id TEXT PRIMARY KEY REFERENCES project_sessions(id) ON DELETE CASCADE,
+  execution_host_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  output_directory TEXT,
+  origin TEXT NOT NULL CHECK (origin IN ('generated', 'chosen'))
+) WITHOUT ROWID;
+PRAGMA user_version=206;

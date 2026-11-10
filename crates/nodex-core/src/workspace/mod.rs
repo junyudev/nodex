@@ -5,6 +5,7 @@ mod agent_runtime_binding;
 mod agent_runtime_cleanup;
 mod app_tool_operation;
 mod channels;
+mod chat_folder;
 mod chat_stewardship;
 mod child_thread_window;
 mod codex_thread_navigation;

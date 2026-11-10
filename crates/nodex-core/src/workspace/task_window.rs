@@ -42,7 +42,7 @@ pub(super) fn summary_columns(member_parameter: usize) -> String {
     use super::member_attention::{pinned_order_sql, pinned_sql, remind_at_sql, unread_sql};
     let member = format!("?{member_parameter}");
     format!(
-        "{}, {} AS can_manage, {} AS can_stop",
+        "{}, {} AS can_manage, {} AS can_stop, {}",
         TASK_SUMMARY_COLUMNS
             .replace("{pinned_order}", &pinned_order_sql("session.id", &member))
             .replace("{pinned}", &pinned_sql("session.id", &member))
@@ -54,6 +54,7 @@ pub(super) fn summary_columns(member_parameter: usize) -> String {
             &super::chat_stewardship::current_run_sql("session.id"),
             &member,
         ),
+        super::chat_folder::SUMMARY_COLUMN,
     )
 }
 
@@ -370,6 +371,7 @@ pub(super) fn task_summary_from_row(
             remind_at: row.get(offset + 42)?,
             can_manage: row.get(offset + 44)?,
             can_stop: row.get(offset + 45)?,
+            folder: super::chat_folder::decode_summary(row, offset + 46)?,
             thread_id: row.get(offset + 11)?,
             execution_ref: row
                 .get::<_, Option<String>>(offset + 40)?

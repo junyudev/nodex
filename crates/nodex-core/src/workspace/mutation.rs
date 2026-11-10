@@ -892,6 +892,10 @@ pub(super) fn apply(
                     project_id.as_deref(),
                     title,
                 ),
+                ProjectWorkspaceIntent::BindChatFolder { session_id, folder } => super::chat_folder::bind(
+                    transaction, &library_id, &context, &store_epoch, &request.operation_id,
+                    &request_hash, session_id, folder,
+                ),
                 ProjectWorkspaceIntent::DeleteSession { session_id } => {
                     session_lifecycle::delete_session(
                         transaction,
@@ -1434,6 +1438,35 @@ pub(super) fn run_mutation(
     committed_at: &str,
     apply: impl FnOnce(&DurableMutationScope<'_>) -> Result<WorkspaceMutationEffects, StoreError>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    run_mutation_with_folder_result(
+        connection,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        committed_at,
+        Default::default(),
+        apply,
+    )
+}
+
+#[derive(Default)]
+pub(super) struct FolderMutationResult {
+    pub(super) bound: Option<nodex_core_contracts::workspace::ChatFolder>,
+    pub(super) deleted: Vec<nodex_core_contracts::workspace::ChatFolder>,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn run_mutation_with_folder_result(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    committed_at: &str,
+    folders: FolderMutationResult,
+    apply: impl FnOnce(&DurableMutationScope<'_>) -> Result<WorkspaceMutationEffects, StoreError>,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     let result = durable_mutation::run(
         connection,
         OperationIdentity {
@@ -1447,7 +1480,7 @@ pub(super) fn run_mutation(
         },
         |scope| {
             let effects = apply(scope)?;
-            seal_mutation(scope, context, operation_id, effects)
+            seal_mutation_with_result(scope, context, operation_id, effects, None, folders)
         },
     )?;
     workspace_commit_result(connection, result)
@@ -1485,6 +1518,33 @@ pub(super) fn finish_no_op(
     session_ids: Vec<String>,
     committed_at: &str,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    finish_no_op_with_folder(
+        connection,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        operation_kind,
+        project_ids,
+        session_ids,
+        committed_at,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn finish_no_op_with_folder(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    operation_kind: &'static str,
+    project_ids: Vec<String>,
+    session_ids: Vec<String>,
+    committed_at: &str,
+    folder: Option<nodex_core_contracts::workspace::ChatFolder>,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     let result = durable_mutation::run(
         connection,
         OperationIdentity {
@@ -1505,6 +1565,8 @@ pub(super) fn finish_no_op(
             )?;
             let committed = crate::ModuleWriterResult {
                 value: ProjectWorkspaceCommitValue {
+                    chat_folder: folder,
+                    deleted_chat_folders: Vec::new(),
                     inbox_write: None,
                     inbox_created_page_ids: Vec::new(),
                     created_page: None,
@@ -1592,6 +1654,27 @@ pub(super) fn seal_mutation_with_created_page(
     operation_id: &str,
     effects: WorkspaceMutationEffects,
     created_page: Option<nodex_core_contracts::workspace::ProjectWorkspaceCreatedPage>,
+) -> Result<
+    SealedOutcome<crate::ModuleWriterResult<ProjectWorkspaceCommitValue, ProjectWorkspaceReceipt>>,
+    StoreError,
+> {
+    seal_mutation_with_result(
+        scope,
+        context,
+        operation_id,
+        effects,
+        created_page,
+        Default::default(),
+    )
+}
+
+fn seal_mutation_with_result(
+    scope: &DurableMutationScope<'_>,
+    context: &BoundModuleContext,
+    operation_id: &str,
+    effects: WorkspaceMutationEffects,
+    created_page: Option<nodex_core_contracts::workspace::ProjectWorkspaceCreatedPage>,
+    folders: FolderMutationResult,
 ) -> Result<
     SealedOutcome<crate::ModuleWriterResult<ProjectWorkspaceCommitValue, ProjectWorkspaceReceipt>>,
     StoreError,
@@ -1690,6 +1773,8 @@ pub(super) fn seal_mutation_with_created_page(
     )?;
     let committed = crate::ModuleWriterResult {
         value: ProjectWorkspaceCommitValue {
+            chat_folder: folders.bound,
+            deleted_chat_folders: folders.deleted,
             inbox_write: if matches!(effects.operation_kind, "inbox_write" | "inbox_write_replay") {
                 effects.page_ids.first().map(|id| {
                     nodex_core_contracts::workspace::InboxWriteResult {

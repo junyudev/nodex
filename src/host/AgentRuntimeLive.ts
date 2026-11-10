@@ -1,3 +1,4 @@
+import { SessionFolders } from "../main/agent-backend/SessionFolders";
 import { makeSessionReader } from "./RuntimeNotificationSessions";
 import { ReadbackRuntime } from "./ReadbackRuntime";
 import { heldThreadIds } from "./work-application/execution-holds";
@@ -182,6 +183,7 @@ const supervisor = Layer.effectContext(
     const core = yield* CoreAuthority;
     const images = yield* NativePromptImages;
     const workspace = yield* NativeSessionWorkspace;
+    const folders = yield* SessionFolders;
     const pageWorkspaces = yield* makePageWorkspaces;
     const presentation = Option.getOrUndefined(yield* Effect.serviceOption(CodexTurnPresentation));
     const visualizationState = Option.getOrUndefined(
@@ -362,6 +364,7 @@ const supervisor = Layer.effectContext(
           }
         : undefined,
       prepareWorkspace: workspace.prepare,
+      cleanDeletedChatFolders: folders.cleanDeleted,
       pageWorkspaces,
       refreshPageWorkspace: pageWorkspaces.refresh,
       pageWorkspaceThreads: pageWorkspaces.threadsAtPath,

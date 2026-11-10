@@ -1005,7 +1005,7 @@ fn normalize_roots_input(roots: &[String]) -> Vec<String> {
     normalized
 }
 
-fn valid_workspace_root(root: &str) -> bool {
+pub(super) fn valid_workspace_root(root: &str) -> bool {
     if root.is_empty() || root.len() > MAX_PATH_BYTES {
         return false;
     }

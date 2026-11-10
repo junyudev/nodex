@@ -49,8 +49,7 @@ import type {
 import { CodexInputAssets } from "./CodexInputAssets";
 import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
-import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
-import { resolveNodexProjectsDirectory } from "../nodex-projects-directory";
+import { SessionFolders } from "../agent-backend/SessionFolders";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import { CodexAgentConfigRuntime } from "./CodexAgentConfigRuntime";
 import { CodexAttachments } from "./CodexAttachments";
@@ -62,7 +61,6 @@ import { CodexThreadSettingsRuntime } from "./CodexThreadSettingsRuntime";
 import type { CodexTurnPresentationClaim } from "../../host/TurnPresentation";
 import {
   resolveCodexPreparedWorkspaceKind,
-  resolveExistingCodexProjectlessWorkspace,
   prepareCodexTurnWorkspace,
   prepareCodexTurnWorkspaceCommit,
   shouldMaterializeCodexProjectlessWorkspace,
@@ -235,6 +233,7 @@ export const make: Effect.Effect<
   CodexTurnPreparation["Service"],
   never,
   | MainConfig
+  | SessionFolders
   | CoreAuthority
   | CoreModules
   | CodexAgentConfigRuntime
@@ -249,6 +248,7 @@ export const make: Effect.Effect<
   | CodexGateway
 > = Effect.gen(function* () {
   const config = yield* MainConfig;
+  const folders = yield* SessionFolders;
   const coreAuthority = yield* CoreAuthority;
   const core = yield* CoreModules;
   const agentConfig = yield* CodexAgentConfigRuntime;
@@ -316,45 +316,50 @@ export const make: Effect.Effect<
       });
       const currentWorkspaceKind =
         state.canonical.workspaceKind ?? (projectId === null ? "projectless" : "project");
-      const shouldMaterializeProjectless =
-        executionHostId === CODEX_APP_LOCAL_HOST_ID &&
-        shouldMaterializeCodexProjectlessWorkspace({
-          environmentCwd: environment?.cwd ?? null,
-          hasPendingWorkspace: preparedWorkspace.pendingWorkspace !== null,
-          state: liveContext.workspaceState ?? null,
-          stateProjectId: projectId,
-          isProjectlessConversation: projectId === null,
-          workspaceKind: currentWorkspaceKind,
-        });
-      const projectsDirectory = shouldMaterializeProjectless
-        ? resolveNodexProjectsDirectory(config)
-        : null;
-      let projectlessWorkspace =
-        projectsDirectory !== null
-          ? resolveExistingCodexProjectlessWorkspace({
-              cwd: state.canonical.cwd ?? liveContext.conversationCwd ?? liveContext.cwd,
-              projectsDirectory,
-              retainedWritableRoots: liveContext.writableRoots,
-              workspaceKind: currentWorkspaceKind,
-              workspaceBrowserRoot:
-                state.canonical.workspaceBrowserRoot ??
-                state.snapshot?.projectlessWorkspaceBrowserRoot ??
-                null,
+      // Core vouches for the chat this local task belongs to, so the CLI's changes name it.
+      const linkedSession =
+        executionHostId === CODEX_APP_LOCAL_HOST_ID
+          ? yield* readCodexLinkedRootSession(core, {
+              hostId: executionHostId,
+              threadId: input.threadId,
             })
           : null;
-      if (projectsDirectory !== null && projectlessWorkspace === null) {
-        const created = yield* Effect.tryPromise(() =>
-          createCodexProjectlessWorkspace({
-            createSplitDirectories: true,
-            prompt: prepared.promptText,
-            workspaceRoot: projectsDirectory,
+      if (executionHostId === CODEX_APP_LOCAL_HOST_ID && (!linkedSession || linkedSession.archived))
+        return yield* Effect.fail(
+          new CodexTurnPreparationError({
+            operation: "start",
+            threadId: input.threadId,
+            cause: new Error("Agent execution requires its active Nodex Session"),
           }),
         );
-        projectlessWorkspace = {
-          cwd: created.cwd,
-          workspaceRoot: created.workspaceRoot,
-        };
-      }
+      const shouldMaterializeProjectless =
+        linkedSession?.projectId === null &&
+        projectId === null &&
+        environment === undefined &&
+        preparedWorkspace.pendingWorkspace === null &&
+        (linkedSession.folder != null ||
+          shouldMaterializeCodexProjectlessWorkspace({
+            environmentCwd: null,
+            hasPendingWorkspace: false,
+            state: liveContext.workspaceState ?? null,
+            stateProjectId: projectId,
+            isProjectlessConversation: true,
+            workspaceKind: currentWorkspaceKind,
+          }));
+      const folder =
+        shouldMaterializeProjectless && linkedSession
+          ? yield* folders.ensure(linkedSession.id, {
+              nameHint: prepared.promptText,
+              legacyWorkspace: {
+                cwd: state.canonical.cwd ?? liveContext.conversationCwd ?? liveContext.cwd,
+                writableRoots: liveContext.writableRoots,
+                browserRoot:
+                  state.canonical.workspaceBrowserRoot ??
+                  state.snapshot?.projectlessWorkspaceBrowserRoot,
+              },
+            })
+          : null;
+      const projectlessWorkspace = folder ? { cwd: folder.path, workspaceRoot: folder.path } : null;
       const workspaceKind = resolveCodexPreparedWorkspaceKind({
         currentWorkspaceKind,
         hasPendingWorkspace: preparedWorkspace.pendingWorkspace !== null,
@@ -368,7 +373,7 @@ export const make: Effect.Effect<
         projectlessWorkspace?.cwd ??
         preparedWorkspace.cwd;
       const workspaceRoots = projectlessWorkspace
-        ? [...new Set([...liveContext.writableRoots, projectlessWorkspace.workspaceRoot])]
+        ? [projectlessWorkspace.workspaceRoot]
         : [...liveContext.writableRoots];
       const preparedAgentConfig = yield* agentConfig.prepare({
         target: { kind: "existing-thread", threadId: input.threadId },
@@ -409,22 +414,29 @@ export const make: Effect.Effect<
       const resolvedPermissions = fullAccessTurnExecution({
         cwd,
         workspaceRoots,
-        runtimeWorkspaceRoots:
-          environment?.runtimeWorkspaceRoots ??
-          originalRequest?.runtimeWorkspaceRoots ??
-          state.canonical.currentPermissions?.runtimeWorkspaceRoots,
-        workspaceTransition: preparedWorkspace.workspaceTransition,
+        runtimeWorkspaceRoots: folder
+          ? [folder.path]
+          : (environment?.runtimeWorkspaceRoots ??
+            originalRequest?.runtimeWorkspaceRoots ??
+            state.canonical.currentPermissions?.runtimeWorkspaceRoots),
+        workspaceTransition: folder ? undefined : preparedWorkspace.workspaceTransition,
       });
       const canonicalPermissions = resolvedPermissions.permissions;
-      const workspaceCommit = prepareCodexTurnWorkspaceCommit({
-        state: liveContext.workspaceState ?? null,
-        pendingWorkspace: preparedWorkspace.pendingWorkspace,
-        pendingRevision: preparedWorkspace.pendingRevision,
-        roots: resolvedPermissions.workspaceCommitRoots,
-        retainedWritableRoots: workspaceRoots,
-        cwd,
-        conversationCwd: liveContext.conversationCwd ?? liveContext.cwd,
-      });
+      const workspaceCommit: CodexTurnWorkspaceCommit = folder
+        ? {
+            writableRoots: { kind: "replace", roots: [folder.path] },
+            revision: null,
+            hadWorkspaceState: liveContext.workspaceState != null,
+          }
+        : prepareCodexTurnWorkspaceCommit({
+            state: liveContext.workspaceState ?? null,
+            pendingWorkspace: preparedWorkspace.pendingWorkspace,
+            pendingRevision: preparedWorkspace.pendingRevision,
+            roots: resolvedPermissions.workspaceCommitRoots,
+            retainedWritableRoots: workspaceRoots,
+            cwd,
+            conversationCwd: liveContext.conversationCwd ?? liveContext.cwd,
+          });
       const preparedEnvironments = liveContext.environments?.map((candidate, index) =>
         index === 0 && resolvedPermissions.params.runtimeWorkspaceRoots != null
           ? {
@@ -549,22 +561,6 @@ export const make: Effect.Effect<
         prepared,
         executionHostId === CODEX_APP_LOCAL_HOST_ID,
       );
-      // Core vouches for the chat this local task belongs to, so the CLI's changes name it.
-      const linkedSession =
-        executionHostId === CODEX_APP_LOCAL_HOST_ID
-          ? yield* readCodexLinkedRootSession(core, {
-              hostId: executionHostId,
-              threadId: input.threadId,
-            })
-          : null;
-      if (executionHostId === CODEX_APP_LOCAL_HOST_ID && (!linkedSession || linkedSession.archived))
-        return yield* Effect.fail(
-          new CodexTurnPreparationError({
-            operation: "start",
-            threadId: input.threadId,
-            cause: new Error("Agent execution requires its active Nodex Session"),
-          }),
-        );
       const agentAttribution =
         linkedSession && !linkedSession.archived
           ? yield* core.workspace.issueAgentAttribution({

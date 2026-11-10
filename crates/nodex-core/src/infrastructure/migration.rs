@@ -441,6 +441,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 205,
         apply: migrate_v204_to_v205,
     },
+    MigrationStep {
+        from_revision: 205,
+        to_revision: 206,
+        apply: migrate_v205_to_v206,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2650,6 +2655,21 @@ fn migrate_v199_to_v200(
     Ok(())
 }
 
+fn migrate_v205_to_v206(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v205_to_v206.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"chat_folders":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v204_to_v205(
     connection: &Connection,
     context: &MigrationContext,
@@ -3979,6 +3999,7 @@ pub(super) fn rewind_v204_to_v203(connection: &Connection) -> Result<(), StoreEr
         return Err(internal("Rewinding a Store requires foreign keys off"));
     }
     connection.pragma_update(None, "legacy_alter_table", true)?;
+    connection.execute("DROP TABLE IF EXISTS project_session_chat_folders", [])?;
     connection.execute_batch(include_str!("../../tests/fixtures/rewind-v204-to-v203.sql"))?;
     connection.pragma_update(None, "legacy_alter_table", legacy_alter_table)?;
     connection.pragma_update(None, "foreign_keys", foreign_keys)?;
@@ -4055,6 +4076,39 @@ mod workflow_status_tests;
 #[cfg(test)]
 mod tests {
     #[test]
+    fn chat_folder_migration_preserves_unbound_sessions() {
+        let mut connection = rusqlite::Connection::open_in_memory().unwrap();
+        super::install_current_schema(&mut connection).unwrap();
+        connection.execute_batch(
+            "DROP TABLE project_session_chat_folders;
+             PRAGMA user_version=205;
+             INSERT INTO project_sessions(id,no_thread_fallback_title,created_at,updated_at,activity_at)
+             VALUES ('draft','Draft','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z',1767225600000);",
+        ).unwrap();
+        super::validate_schema_identity(&connection, 205).unwrap();
+        let context = super::MigrationContext {
+            source_revision: 205,
+            target_revision: 206,
+            backup_name: "backup".into(),
+            source_schema_fingerprint: super::published_format(205).unwrap().schema_fingerprint,
+            target_schema_fingerprint: super::published_format(206).unwrap().schema_fingerprint,
+            completed_at_unix_ms: 0,
+        };
+        super::migrate_v205_to_v206(&connection, &context).unwrap();
+        super::validate_schema_identity(&connection, 206).unwrap();
+        let drafts: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM project_sessions session
+             LEFT JOIN project_session_chat_folders folder ON folder.session_id = session.id
+             WHERE session.id = 'draft' AND folder.session_id IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(drafts, 1);
+    }
+
+    #[test]
     fn automatic_work_queue_migration_keeps_rank_and_removes_priority_class() {
         let mut connection = rusqlite::Connection::open_in_memory().unwrap();
         super::install_current_schema(&mut connection).unwrap();
@@ -4076,6 +4130,9 @@ mod tests {
             target_schema_fingerprint: super::published_format(205).unwrap().schema_fingerprint,
             completed_at_unix_ms: 0,
         };
+        connection
+            .execute("DROP TABLE project_session_chat_folders", [])
+            .unwrap();
         super::migrate_v204_to_v205(&connection, &context).unwrap();
         let observed: String = connection
             .query_row(
@@ -4242,7 +4299,7 @@ mod tests {
             migrate_v202_to_current(transaction, "team-fixture.db")
         })
         .unwrap();
-        validate_schema_identity(&c, 204).unwrap();
+        validate_schema_identity(&c, CURRENT_STORE_REVISION).unwrap();
         let mut fresh = Connection::open_in_memory().unwrap();
         install_current_schema(&mut fresh).unwrap();
         assert_eq!(
@@ -10322,7 +10379,7 @@ mod tests {
             migrate_v202_to_current(c, "work-row.db")
         })
         .unwrap();
-        validate_schema_identity(&connection, 204).unwrap();
+        validate_schema_identity(&connection, CURRENT_STORE_REVISION).unwrap();
         for table in [
             "local_commits",
             "local_commit_retention_metadata",
@@ -10405,7 +10462,7 @@ mod tests {
         assert_eq!(connection.query_row("SELECT commit_head_seq,replay_floor_seq FROM operational_journal_state WHERE id=1", [], |row| Ok((row.get::<_,i64>(0)?,row.get::<_,i64>(1)?))).unwrap(), (3,4));
         drop(connection);
         let connection = open_writer(&profile.path().join("nodex.db")).unwrap();
-        validate_schema_identity(&connection, 204).unwrap();
+        validate_schema_identity(&connection, CURRENT_STORE_REVISION).unwrap();
         assert_eq!(
             connection
                 .query_row(

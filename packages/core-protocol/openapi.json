@@ -7944,6 +7944,38 @@
           }
         }
       },
+      "ChatFolder": {
+        "type": "object",
+        "required": [
+          "execution_host_id",
+          "path",
+          "origin"
+        ],
+        "properties": {
+          "execution_host_id": {
+            "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/ChatFolderOrigin"
+          },
+          "output_directory": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "ChatFolderOrigin": {
+        "type": "string",
+        "enum": [
+          "generated",
+          "chosen"
+        ]
+      },
       "ChatMessageHandbackReceipt": {
         "type": "object",
         "required": [
@@ -35457,6 +35489,28 @@
                 "type": "object",
                 "required": [
                   "session_id",
+                  "folder",
+                  "kind"
+                ],
+                "properties": {
+                  "folder": {
+                    "$ref": "#/components/schemas/ChatFolder"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "bind_chat_folder"
+                    ]
+                  },
+                  "session_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "session_id",
                   "kind"
                 ],
                 "properties": {
@@ -49662,6 +49716,28 @@
             "type": "object",
             "required": [
               "session_id",
+              "folder",
+              "kind"
+            ],
+            "properties": {
+              "folder": {
+                "$ref": "#/components/schemas/ChatFolder"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "bind_chat_folder"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_id",
               "kind"
             ],
             "properties": {
@@ -52745,6 +52821,16 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/ProjectWorkspaceSessionExecutionRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "folder": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ChatFolder"
               },
               {
                 "type": "null"
@@ -58105,6 +58191,16 @@
                               "type": "string"
                             }
                           },
+                          "chat_folder": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/ChatFolder"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "created_page": {
                             "oneOf": [
                               {
@@ -58114,6 +58210,12 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "deleted_chat_folders": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/ChatFolder"
+                            }
                           },
                           "inbox_created_page_ids": {
                             "type": "array",
@@ -58213,6 +58315,16 @@
                               "type": "string"
                             }
                           },
+                          "chat_folder": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/ChatFolder"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "created_page": {
                             "oneOf": [
                               {
@@ -58222,6 +58334,12 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "deleted_chat_folders": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/ChatFolder"
+                            }
                           },
                           "inbox_created_page_ids": {
                             "type": "array",

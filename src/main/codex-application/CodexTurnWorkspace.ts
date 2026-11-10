@@ -31,9 +31,9 @@ const unionRoots = (...groups: readonly (readonly string[])[]): string[] => [
   ...new Set(groups.flat()),
 ];
 
-/** A thread directory Nodex generated under the projects directory: `<date>/<slug>` or `<date>-<slug>`. */
+/** A thread directory Nodex generated under the projects directory, including earlier layouts. */
 const GENERATED_PROJECTLESS_DIRECTORY =
-  /^[\\/]+(?:\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*|\d{4}-\d{2}-\d{2}[\\/]+[a-z0-9][a-z0-9-]*)[\\/]*$/i;
+  /^[\\/]+(?:(?:Chats[\\/]+)?\d{4}-\d{2}-\d{2}[\\/]+|\d{4}-\d{2}-\d{2}-)[\p{L}\p{N}][\p{L}\p{N}\p{M}-]*[\\/]*$/iu;
 
 /** Returns the durable browser root for a cwd Nodex generated under the projects directory. */
 export function codexProjectlessWorkspaceRootFromCwd(

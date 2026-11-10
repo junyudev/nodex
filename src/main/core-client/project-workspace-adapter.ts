@@ -8,6 +8,7 @@ import type {
   SessionLinkedPageSummary,
   PageChatItem,
   ProjectSession,
+  SessionFolder,
   ProjectSessionSummary,
   ProjectSessionThreadSummary,
   ProjectSessionThreadLink,
@@ -770,6 +771,14 @@ export const projectWorkspaceThreadMoveMetadataToCore = (
     : {}),
 });
 
+export const sessionFolderFromCore = (
+  folder: NonNullable<CoreSessionSummary["folder"]>,
+): SessionFolder => ({
+  path: folder.path,
+  outputDirectory: folder.output_directory ?? null,
+  origin: folder.origin,
+});
+
 const fromCoreSessionSummary = (
   session: CoreSessionSummary,
   thread: ProjectSessionThreadSummary | null,
@@ -777,6 +786,7 @@ const fromCoreSessionSummary = (
   id: session.id,
   projectId: session.project_id ?? null,
   noThreadFallbackTitle: session.no_thread_fallback_title,
+  folder: session.folder ? sessionFolderFromCore(session.folder) : null,
   executionRef: session.execution_ref
     ? { runtimeId: session.execution_ref.runtime_id, threadId: session.execution_ref.thread_id }
     : null,

@@ -1,5 +1,6 @@
+import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir } from "node:fs/promises";
+import { lstat, mkdir, readdir, realpath, rmdir } from "node:fs/promises";
 import path from "node:path";
 import type { CodexProjectlessWorkspace } from "../../shared/types";
 
@@ -21,6 +22,7 @@ export interface CodexProjectlessWorkspaceFileSystem {
 
 export interface CreateCodexProjectlessWorkspaceInput {
   readonly createSplitDirectories: boolean;
+  readonly canonicalPaths?: boolean;
   readonly directoryName?: string | null;
   readonly prompt?: string | null;
   /** The Profile's projects directory; see `resolveNodexProjectsDirectory`. */
@@ -80,12 +82,25 @@ export function slugCodexProjectlessDirectoryName(
   const isOptions = typeof input === "object" && input !== null;
   const directoryName = isOptions ? input.directoryName : null;
   const prompt = isOptions ? input.prompt : input;
-  const words = (directoryName ?? prompt)?.toLowerCase().match(/[a-z0-9]+/g);
+  const words = (directoryName ?? prompt)
+    ?.normalize("NFC")
+    .toLowerCase()
+    .match(/[\p{L}\p{N}][\p{L}\p{N}\p{M}]*/gu);
 
   if (!words || words.length === 0) return "new-chat";
   const selectedWords =
     directoryName === null || directoryName === undefined ? words.slice(0, 6) : words;
-  return selectedWords.join("-").slice(0, 80);
+  let slug = "";
+  let bytes = 0;
+  for (const character of selectedWords.join("-")) {
+    bytes += Buffer.byteLength(character.normalize("NFD"));
+    if (bytes > 80) break;
+    slug += character;
+  }
+  slug = slug.replace(/-$/u, "");
+  return /^(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])$/iu.test(slug)
+    ? `chat-${slug}`
+    : slug || "new-chat";
 }
 
 async function assertRealDirectory(
@@ -163,15 +178,17 @@ export async function createCodexProjectlessWorkspace(
   input: CreateCodexProjectlessWorkspaceInput,
 ): Promise<CodexProjectlessWorkspace> {
   const fileSystem = input.fileSystem ?? nodeProjectlessWorkspaceFileSystem;
-  const { workspaceRoot } = input;
+  await fileSystem.createDirectory({ path: input.workspaceRoot, recursive: true });
+  await assertRealDirectory(fileSystem, input.workspaceRoot);
+  const workspaceRoot = input.canonicalPaths
+    ? await realpath(input.workspaceRoot)
+    : input.workspaceRoot;
   const dateDirectory = path.join(workspaceRoot, formatCodexProjectlessLocalDate(input.date));
   const directoryName = slugCodexProjectlessDirectoryName({
     directoryName: input.directoryName,
     prompt: input.prompt,
   });
 
-  await fileSystem.createDirectory({ path: workspaceRoot, recursive: true });
-  await assertRealDirectory(fileSystem, workspaceRoot);
   await fileSystem.createDirectory({ path: dateDirectory, recursive: true });
   await assertRealDirectory(fileSystem, dateDirectory);
 
@@ -200,4 +217,38 @@ export async function createCodexProjectlessWorkspace(
   }
 
   throw new Error("Unable to create a unique projectless thread directory");
+}
+
+export async function resolveChosenChatDirectory(absolutePath: string): Promise<string> {
+  if (typeof absolutePath !== "string" || !path.isAbsolute(absolutePath))
+    throw new Error("Choose an absolute directory path");
+  const normalized = path.resolve(absolutePath);
+  await assertRealDirectory(nodeProjectlessWorkspaceFileSystem, normalized);
+  return realpath(normalized);
+}
+
+/** Inventory first so a non-empty tree is left alone. Unlinking files is never part of cleanup. */
+async function emptyDirectories(directory: string): Promise<string[] | null> {
+  const metadata = await lstat(directory);
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) return null;
+  const children = await readdir(directory, { withFileTypes: true });
+  if (children.some((child) => !child.isDirectory() || child.isSymbolicLink())) return null;
+  const subtrees = await Promise.all(
+    children.map((child) => emptyDirectories(path.join(directory, child.name))),
+  );
+  if (subtrees.some((tree) => tree === null)) return null;
+  return [...subtrees.flatMap((tree) => tree ?? []), directory];
+}
+
+export async function removeEmptyChatDirectory(directory: string): Promise<void> {
+  const parent = path.dirname(directory);
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(path.basename(parent))) return;
+  if ((await realpath(directory)) !== directory) return;
+  const empty = await emptyDirectories(directory);
+  if (!empty) return;
+  for (const child of empty) {
+    if ((await realpath(child)) !== child) return;
+    await rmdir(child);
+  }
+  await rmdir(parent);
 }

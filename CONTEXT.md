@@ -205,6 +205,13 @@ Page Linked chats, sidebar placement and Workbench presentation refer to this id
 A Session's execution reference identifies its conversation without making those
 relationships owners of the conversation or its delegated tasks.
 
+### Chat folder
+
+The Chat folder is the working directory bound to a projectless Session. It is
+available when execution, Terminal, or Files first needs it, including in a draft.
+Nodex can generate it, or the person can choose an existing directory before the
+Chat starts.
+
 ### Chat owner
 
 A chat's owner is the Member who started it, a fork or side chat included: Core

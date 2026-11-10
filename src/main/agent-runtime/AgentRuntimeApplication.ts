@@ -219,6 +219,10 @@ export interface AgentRuntimeApplicationOptions {
     "claim" | "prepare"
   >;
   readonly presentation?: CodexTurnPresentation["Service"];
+  /** Remove empty generated folders handed back by a committed Session deletion. */
+  readonly cleanDeletedChatFolders?: (
+    folders: readonly import("@nodex/core-protocol").components["schemas"]["ChatFolder"][],
+  ) => Effect.Effect<void>;
   /** Desktop resources an archived or deleted Session's Agents held, such as Browser pages. */
   readonly releaseDesktopSession?: (sessionId: string) => Effect.Effect<void>;
   readonly reconcileWorkspace?: NativeSessionWorkspace["Service"]["reconcile"];
@@ -1595,18 +1599,24 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         const lease =
           pageLease ??
           (!existing && !deferred && options.prepareWorkspace
-            ? yield* options.prepareWorkspace({
-                projectId,
-                targetId: input.sessionId,
-                title: input.title.trim(),
-                prompt: prepared.message.text,
-                sourceCwd,
-                sourceRoots: scope.sourceRoots,
-                runInTarget: "localProject",
-                operationId: createStableOperationId("agent-runtime.workspace", input.acceptedAt, {
-                  launchId: input.launchId,
+            ? yield* asExecutionOwner(
+                options.prepareWorkspace({
+                  projectId,
+                  targetId: input.sessionId,
+                  title: input.title.trim(),
+                  prompt: prepared.message.text,
+                  sourceCwd,
+                  sourceRoots: scope.sourceRoots,
+                  runInTarget: "localProject",
+                  operationId: createStableOperationId(
+                    "agent-runtime.workspace",
+                    input.acceptedAt,
+                    {
+                      launchId: input.launchId,
+                    },
+                  ),
                 }),
-              })
+              )
             : null);
         const cwd =
           lease?.location.cwd ?? existing?.worktreePath ?? input.worktreePath ?? sourceCwd;
@@ -3826,6 +3836,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   ) {
     const result = yield* workspace.deleteProjectSession(command);
     yield* options.releaseDesktopSession?.(command.payload.sessionId) ?? Effect.void;
+    if (options.cleanDeletedChatFolders && !result.apply.receipt.duplicate)
+      yield* options.cleanDeletedChatFolders(result.apply.outcome.deleted_chat_folders ?? []);
     return result;
   });
   const deleteSession = Effect.fn("AgentRuntimeApplication.deleteSession")(function* (

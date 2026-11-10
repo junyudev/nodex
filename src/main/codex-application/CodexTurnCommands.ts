@@ -539,6 +539,16 @@ export const make: Effect.Effect<
       );
 
       if (plan.rendererOwnsState) return;
+      const projectless = plan.projectlessWorkspace;
+      if (projectless) {
+        const observedAtMs = yield* Clock.currentTimeMillis;
+        conversations.current(plan.threadId)?.mutateCanonicalState((draft) => {
+          draft.workspaceKind = "projectless";
+          draft.workspaceBrowserRoot = projectless.workspaceRoot;
+          draft.cwd = projectless.cwd;
+        }, observedAtMs);
+        return;
+      }
       const context = yield* workspace
         .readThreadExecutionContext(plan.threadId)
         .pipe(

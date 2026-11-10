@@ -1,3 +1,5 @@
+import { SessionFolders } from "../../agent-backend/SessionFolders";
+import { live as agentChatWorktreesLive } from "../../codex-application/AgentChatWorktrees";
 import type { CreatePageForCommand } from "../../../shared/workspace-page-create";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -219,6 +221,30 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(ProjectWorkspace, workspace),
+            agentChatWorktreesLive,
+            Layer.succeed(SessionFolders, {
+              ensure: (sessionId) =>
+                Effect.sync(() => {
+                  assert.equal(sessionId, "session:test");
+                  return {
+                    path: "/chat",
+                    output_directory: "/chat/outputs",
+                    origin: "generated",
+                    execution_host_id: "local",
+                  };
+                }),
+              choose: (sessionId, path) =>
+                Effect.sync(() => {
+                  assert.equal(sessionId, "session:test");
+                  return {
+                    path,
+                    output_directory: path,
+                    origin: "chosen",
+                    execution_host_id: "local",
+                  };
+                }),
+              cleanDeleted: () => Effect.void,
+            }),
             Layer.succeed(ElectronIpc, ipc),
             Layer.succeed(
               CodexProjectSessionFork,
@@ -257,7 +283,29 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       scope,
     );
 
-    assert.strictEqual(handlers.size, 56);
+    assert.deepEqual(
+      yield* handlers.get("session-folder:ensure")!(rendererEvent(17), "session:test"),
+      {
+        path: "/chat",
+        outputDirectory: "/chat/outputs",
+        origin: "generated",
+      },
+    );
+    assert.deepEqual(
+      yield* handlers.get("session-folder:choose")!(rendererEvent(17), "session:test", "/chosen"),
+      {
+        path: "/chosen",
+        outputDirectory: "/chosen",
+        origin: "chosen",
+      },
+    );
+    assert.isTrue(
+      yield* handlers.get("session-folder:ensure")!(rendererEvent(99), "session:test").pipe(
+        Effect.isFailure,
+      ),
+    );
+
+    assert.strictEqual(handlers.size, 58);
     assert.isTrue(handlers.has("projects:create"));
     assert.isTrue(handlers.has("project-sessions:start"));
     assert.isTrue(handlers.has("project-sessions:set-reminder"));

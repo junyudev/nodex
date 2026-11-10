@@ -1152,6 +1152,12 @@ export interface ProjectSessionThreadSummary {
   linkedAt: string;
 }
 
+export interface SessionFolder {
+  readonly path: string;
+  readonly outputDirectory: string | null;
+  readonly origin: "generated" | "chosen";
+}
+
 export interface ProjectSession {
   id: string;
   projectId: string | null;
@@ -1173,6 +1179,7 @@ export interface ProjectSession {
   canStop: boolean;
   thread: ProjectSessionThreadLink | null;
   executionRef?: { readonly runtimeId: string; readonly threadId: string } | null;
+  folder?: SessionFolder | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1206,6 +1213,7 @@ export interface ProjectSessionSummary {
   canStop: boolean;
   thread: ProjectSessionThreadSummary | null;
   executionRef?: { readonly runtimeId: string; readonly threadId: string } | null;
+  folder?: SessionFolder | null;
   createdAt: string;
   updatedAt: string;
 }

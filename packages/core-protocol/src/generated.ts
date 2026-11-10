@@ -2054,6 +2054,14 @@ export interface components {
             readonly comment_id: string;
             readonly url: string;
         };
+        readonly ChatFolder: {
+            readonly execution_host_id: string;
+            readonly origin: components["schemas"]["ChatFolderOrigin"];
+            readonly output_directory?: string | null;
+            readonly path: string;
+        };
+        /** @enum {string} */
+        readonly ChatFolderOrigin: "generated" | "chosen";
         readonly ChatMessageHandbackReceipt: {
             readonly page_ids: readonly string[];
             readonly receipt_id: string;
@@ -8687,6 +8695,11 @@ export interface components {
                 readonly session_id: string;
                 readonly title: string;
             } | {
+                readonly folder: components["schemas"]["ChatFolder"];
+                /** @enum {string} */
+                readonly kind: "bind_chat_folder";
+                readonly session_id: string;
+            } | {
                 /** @enum {string} */
                 readonly kind: "delete_session";
                 readonly session_id: string;
@@ -12032,6 +12045,11 @@ export interface components {
             readonly session_id: string;
             readonly title: string;
         } | {
+            readonly folder: components["schemas"]["ChatFolder"];
+            /** @enum {string} */
+            readonly kind: "bind_chat_folder";
+            readonly session_id: string;
+        } | {
             /** @enum {string} */
             readonly kind: "delete_session";
             readonly session_id: string;
@@ -12746,6 +12764,7 @@ export interface components {
             readonly created_at: string;
             readonly display_title: string;
             readonly execution_ref?: components["schemas"]["ProjectWorkspaceSessionExecutionRef"] | null;
+            readonly folder?: components["schemas"]["ChatFolder"] | null;
             readonly id: string;
             readonly managed: boolean;
             readonly no_thread_fallback_title: string;
@@ -13855,7 +13874,9 @@ export interface components {
                     readonly affected_project_ids: readonly string[];
                     readonly affected_session_ids: readonly string[];
                     readonly affected_thread_ids: readonly string[];
+                    readonly chat_folder?: components["schemas"]["ChatFolder"] | null;
                     readonly created_page?: components["schemas"]["ProjectWorkspaceCreatedPage"] | null;
+                    readonly deleted_chat_folders?: readonly components["schemas"]["ChatFolder"][];
                     readonly inbox_created_page_ids?: readonly string[];
                     readonly inbox_undo_token?: string | null;
                     readonly inbox_write?: components["schemas"]["InboxWriteResult"] | null;
@@ -13872,7 +13893,9 @@ export interface components {
                     readonly affected_project_ids: readonly string[];
                     readonly affected_session_ids: readonly string[];
                     readonly affected_thread_ids: readonly string[];
+                    readonly chat_folder?: components["schemas"]["ChatFolder"] | null;
                     readonly created_page?: components["schemas"]["ProjectWorkspaceCreatedPage"] | null;
+                    readonly deleted_chat_folders?: readonly components["schemas"]["ChatFolder"][];
                     readonly inbox_created_page_ids?: readonly string[];
                     readonly inbox_undo_token?: string | null;
                     readonly inbox_write?: components["schemas"]["InboxWriteResult"] | null;

@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 fn migrate(connection: &mut Connection) {
     with_schema_rebuild_transaction(connection, |c| migrate_v202_to_current(c, "team.db")).unwrap();
-    validate_schema_identity(connection, 204).unwrap();
+    validate_schema_identity(connection, CURRENT_STORE_REVISION).unwrap();
 }
 
 /// The frozen v202 schema with one Space and the singleton rows a released Store carries.
