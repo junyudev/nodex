@@ -261,6 +261,13 @@ export interface InboxPageStatus {
   readonly label: string;
 }
 
+/**
+ * What tells one row of an Inbox from another. A Page can wait as two rows at once, the message it
+ * arrived as and the Turn it now has, so its id alone does not.
+ */
+export const inboxRowKey = (item: Pick<InboxItem, "rowKind" | "pageId">): string =>
+  `${item.rowKind}:${item.pageId}`;
+
 export interface InboxItem {
   readonly handback?: components["schemas"]["InboxHandback"] | null;
   readonly outcome: "kept" | "done" | "moved" | "chat" | null;

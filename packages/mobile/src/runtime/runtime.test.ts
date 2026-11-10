@@ -1226,6 +1226,40 @@ it("restarts a partial file without a version after reconnect", async () => {
   detach();
 });
 
+it("keeps both rows of a Page that waits as a message and as a Turn", async () => {
+  const { host, runtime, saved } = await setup();
+  const intake = inboxMessage("page");
+  const turn: InboxEntry = {
+    id: "page",
+    rowKind: "turn",
+    pageId: "page",
+    pageKey: null,
+    title: "Capture",
+    body: "Work is ready to review.",
+    bodyTruncated: false,
+    submittedAt: new Date().toISOString(),
+    source: { kind: "user", label: null },
+    scope: LIBRARY_INBOX,
+    revision: 1,
+    turn: {
+      episode: "episode",
+      reason: "review",
+      since: new Date().toISOString(),
+      options: [],
+      replyCapability: { kind: "available" },
+      chatSessionId: null,
+      pullRequestUrl: null,
+      deliveryError: null,
+    },
+  };
+  host.onRequest = (_request, reply) => reply({ items: [turn, intake], nextCursor: null });
+  const list = runtime.lists.inbox(saved.hostId, LIBRARY_INBOX, "inbox");
+  const detach = list.attach();
+  await tick();
+  expect(list.store.getState().items.map((item) => item.rowKind)).toEqual(["intake", "turn"]);
+  detach();
+});
+
 it("revalidates the Inbox window without reusing stale pages and hydrates the first page offline", async () => {
   const { platform, host, runtime, saved } = await setup();
   const older = inboxMessage("older");

@@ -1,6 +1,7 @@
 import {
   ChatListSchema,
   InboxWindowSchema,
+  inboxEntryKey,
   inboxScopeKey,
   type AgentCatalog,
   type ChatActivity,
@@ -373,7 +374,7 @@ export const makeLists = Effect.gen(function* () {
         hostId,
         ...cache(hostId, key, InboxWindowSchema),
         read: (after) => connection.rpc.request("inbox.window", { scope, filter, after }),
-        id: (message) => message.id,
+        id: inboxEntryKey,
         project: (items) => [...items].reverse(),
         observe: (items) =>
           hostId

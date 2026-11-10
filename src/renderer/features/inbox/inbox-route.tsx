@@ -18,6 +18,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   inboxNewChatAction,
+  inboxRowKey,
   inboxScopeKey,
   inboxScopeProjectId,
   type InboxItem,
@@ -269,10 +270,9 @@ function streamEntries(items: readonly InboxItem[], nowMs: number): readonly Str
   const separators = inboxTimestampSeparators(items, nowMs);
   return items.flatMap((item, index): StreamEntry[] => {
     const sentAtMs = separators[index];
-    const message: StreamEntry = { kind: "message", key: item.pageId, item };
-    return sentAtMs == null
-      ? [message]
-      : [{ kind: "time", key: `time:${item.pageId}`, sentAtMs }, message];
+    const key = inboxRowKey(item);
+    const message: StreamEntry = { kind: "message", key, item };
+    return sentAtMs == null ? [message] : [{ kind: "time", key: `time:${key}`, sentAtMs }, message];
   });
 }
 

@@ -1,4 +1,4 @@
-import { inboxScopeKey, type InboxEntry } from "@nodex/mobile-protocol";
+import { inboxEntryKey, inboxScopeKey, type InboxEntry } from "@nodex/mobile-protocol";
 import { useMemo } from "react";
 import { View } from "react-native";
 
@@ -169,7 +169,7 @@ const PendingRow = ({ capture }: { readonly capture: PendingCapture }) => (
 );
 
 const rowKey = (row: InboxRow): string =>
-  row.type === "message" ? row.message.id : row.capture.captureId;
+  row.type === "message" ? inboxEntryKey(row.message) : row.capture.captureId;
 
 /** The Inbox stream, newest at the bottom beside the Composer, as it reads on the desktop. */
 export const InboxPane = ({ insets }: { readonly insets: ContentInsets }) => {

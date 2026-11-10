@@ -278,6 +278,12 @@ export const InboxEntrySchema = z.discriminatedUnion("rowKind", [
   ProblemEntrySchema,
 ]);
 export type InboxEntry = z.infer<typeof InboxEntrySchema>;
+
+/**
+ * What tells one row of an Inbox from another. A Page can wait as two rows at once, the message it
+ * arrived as and the Turn it now has, and both carry the Page's id.
+ */
+export const inboxEntryKey = (entry: InboxEntry): string => `${entry.rowKind}:${entry.id}`;
 export type IntakeEntry = z.infer<typeof IntakeEntrySchema>;
 export const InboxWindowSchema = z.looseObject({
   items: z.array(InboxEntrySchema),
