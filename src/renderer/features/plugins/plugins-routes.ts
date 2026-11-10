@@ -25,7 +25,13 @@ export type PluginsRouteState =
       /** The directory view the plugin was opened from, which its breadcrumb returns to. */
       readonly browse: PluginDirectoryBrowse;
     }
-  | { readonly page: "skills" };
+  | { readonly page: "skills" }
+  | {
+      readonly page: "skill";
+      readonly skillId: string;
+      /** The skill was just created here, so its page opens with the name ready to type. */
+      readonly created: boolean;
+    };
 
 function normalize(value: string | null | undefined): string | null {
   const normalized = value?.trim() ?? "";
@@ -132,11 +138,27 @@ export function buildSkillsPath(): string {
   return SKILLS_ROOT_PATH;
 }
 
+/** One skill's page, addressed by the id its inventory gives it. */
+export function buildSkillPath(
+  skillId: string,
+  options: { readonly created?: boolean } = {},
+): string {
+  const searchParams = new URLSearchParams();
+  if (options.created) searchParams.set("created", "1");
+  return withQuery(`${SKILLS_ROOT_PATH}/${encodeURIComponent(skillId)}`, searchParams);
+}
+
 /** Resolves any Customize path; unknown paths open the public directory. */
 export function resolvePluginsRouteState(path: string): PluginsRouteState {
   const { pathname, searchParams } = splitPath(path);
 
   if (pathname === SKILLS_ROOT_PATH) return { page: "skills" };
+  if (pathname.startsWith(`${SKILLS_ROOT_PATH}/`)) {
+    const skillId = normalize(safeDecode(pathname.slice(SKILLS_ROOT_PATH.length + 1)));
+    return skillId
+      ? { page: "skill", skillId, created: searchParams.get("created") === "1" }
+      : { page: "skills" };
+  }
 
   const target = readTarget(pathname, searchParams, `${PLUGINS_ROOT_PATH}/`);
   if (target != null) {

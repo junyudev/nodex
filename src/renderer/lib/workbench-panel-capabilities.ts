@@ -9,7 +9,7 @@ import {
  * forks the attached Thread, and `new_page` creates a Page for the owner and opens it.
  */
 export type WorkbenchPanelActionKind =
-  | Exclude<WorkbenchTabKind, "image_editor" | "page_file">
+  | Exclude<WorkbenchTabKind, "image_editor" | "page_file" | "skill">
   | "side_chat"
   | "new_page";
 

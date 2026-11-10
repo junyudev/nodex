@@ -397,6 +397,7 @@ export function isRootThreadRightPanelComposerOverlayEligibleTab(
     tab.kind === "db_view" ||
     tab.kind === "page_stage" ||
     tab.kind === "page_file" ||
+    tab.kind === "skill" ||
     tab.kind === "canvas_stage" ||
     (tab.kind === "image_editor" && tab.config.composerTarget?.placement === "root")
   );

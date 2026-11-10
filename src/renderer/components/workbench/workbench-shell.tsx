@@ -19,6 +19,7 @@ import {
   type WorkbenchViewDeepLinkRequest,
 } from "@/lib/use-workbench-command-ingress";
 import { registerAppCloseFlushHandler } from "@/lib/app-close-flush";
+import { flushSkillFiles } from "@/features/skills/skill-file-lifecycle";
 import { workspaceTextDocumentRegistry } from "@/features/workspace-files/workspace-text-document-controller";
 import { documentSessionRegistry } from "@/lib/document-session-registry";
 import { flushContentInteractionHistories } from "@/lib/content-interaction-history";
@@ -176,6 +177,7 @@ export function WorkbenchShell({
       await documentSessionRegistry.persistAll();
       await canvasSceneSurfaceRegistry.persistAllDurable();
       await workspaceTextDocumentRegistry.flushAll();
+      await flushSkillFiles();
       await flushWindowSessionLayout();
     });
   }, [flushWindowSessionLayout]);

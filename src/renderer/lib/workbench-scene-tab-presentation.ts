@@ -1,3 +1,4 @@
+import { SkillCubeIcon } from "@/components/shared/icons/customize-action-icons";
 import { resolveFileResourceIcon } from "@/components/shared/file-resource-icon";
 import type { ComponentType } from "react";
 import { ImageEditorTabIcon, InboxIcon, ChatIcon } from "@/components/shared/icons";
@@ -21,6 +22,7 @@ export function resolveWorkbenchSceneTabPresentation(
     return { title: surface.titleSnapshot, icon: ImageEditorTabIcon };
   }
 
+  if (surface.kind === "skill") return { title: surface.titleSnapshot, icon: SkillCubeIcon };
   if (surface.kind === "page_file")
     return {
       title:

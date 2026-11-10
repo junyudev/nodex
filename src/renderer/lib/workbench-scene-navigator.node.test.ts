@@ -1056,3 +1056,44 @@ test("opening a File from a Page preview pins the source Page first", async () =
     findWorkbenchPanelLeafForTab(projected.panels.right.layout, result.surfaceId)?.tabIds,
   ).toEqual([source.surfaceId, result.surfaceId]);
 });
+
+test.each([
+  { kind: "session", sessionId: "session-a" },
+  { kind: "project", projectId: "project-a" },
+  { kind: "library" },
+  { kind: "inbox" },
+] as const)(
+  "opens a skill in a $kind Scene and focuses the existing placement on reopening",
+  async (owner) => {
+    const harness = createHarness();
+    const config = {
+      hostId: "local",
+      projectId: "project-a",
+      skillId: "inspect",
+      manifestPath: "/skills/inspect/SKILL.md",
+    };
+    const input = {
+      owner,
+      request: { kind: "skill", config, titleSnapshot: "Inspect" },
+      target: { panelId: "right" },
+      mode: "durable",
+      navigation: "select-owner",
+    } as const;
+    const opened = await harness.navigator.presentPanelSurface(input);
+    if (opened.status !== "presented") throw new Error(opened.reason);
+    const reused = await harness.navigator.presentPanelSurface({
+      ...input,
+      request: { ...input.request, config: { ...config, projectId: null } },
+    });
+    expect(reused).toMatchObject({
+      status: "presented",
+      reused: true,
+      surfaceId: opened.surfaceId,
+    });
+    const scene = WorkbenchSceneSnapshotSchema.parse(harness.scenes[makeWorkbenchSceneKey(owner)]);
+    expect(scene.panelSurfacesById[opened.surfaceId]).toMatchObject({ kind: "skill", config });
+    expect(
+      findWorkbenchPanelLeafForTab(scene.panels.right.layout, opened.surfaceId)?.activeTabId,
+    ).toBe(opened.surfaceId);
+  },
+);

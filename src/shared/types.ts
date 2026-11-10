@@ -1,3 +1,4 @@
+import type { WorkbenchSkillSurfaceConfig } from "./schemas/workbench-skill";
 import type { PageAssignee, PageWork, WorkSummary } from "./work-graph";
 import type { RemoteSignalBlock } from "./product-analytics/remote-signals";
 import type { WorkflowStatusValue } from "./workflow-status";
@@ -771,6 +772,7 @@ export type WorkbenchTabKind =
   | "db_view"
   | "page_stage"
   | "page_file"
+  | "skill"
   | "canvas_stage"
   | "terminal"
   | "browser"
@@ -936,6 +938,7 @@ export interface WorkbenchProjectionTabConfigByKind {
   db_view: WorkbenchProjectionDbViewTabConfig;
   page_stage: WorkbenchProjectionPageStageTabConfig;
   page_file: WorkbenchPageFileSurfaceConfig;
+  skill: WorkbenchSkillSurfaceConfig;
   canvas_stage: WorkbenchProjectionCanvasStageTabConfig;
   terminal: WorkbenchProjectionTerminalTabConfig;
   browser: WorkbenchProjectionBrowserTabConfig;

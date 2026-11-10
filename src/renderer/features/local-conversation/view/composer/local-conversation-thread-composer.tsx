@@ -1,3 +1,4 @@
+import { useOpenSkill } from "@/features/skills/open-skill";
 import { useComposerExecutionHold } from "./use-composer-execution-hold";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useAgentApprovals } from "../../use-agent-approvals";
@@ -1603,6 +1604,7 @@ function HydratedThreadComposer({
     (approval) => !approvals.held.has(approval.requestId),
   );
   const approvalPlaceholder = agentApprovalComposerPlaceholder(answerableApprovals);
+  const openSkill = useOpenSkill();
   const promptEditorRef = useRef<ComposerPromptEditorHandle>(null);
   const lastFocusedIntentRef = useRef<number | null>(null);
   useLayoutEffect(() => {
@@ -4260,6 +4262,16 @@ function HydratedThreadComposer({
       }}
     >
       <ComposerPromptEditor
+        onOpenSkill={({ name, path }) => {
+          void openSkill({
+            hostId: model.hostId === "durable" ? DEFAULT_CODEX_HOST_ID : model.hostId,
+            projectId: model.projectId,
+            name,
+            path,
+          }).then((opened) => {
+            if (!opened) toast.danger("This skill is no longer here");
+          });
+        }}
         ref={promptEditorRef}
         data-composer-prompt-frame="true"
         value={prompt}

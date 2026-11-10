@@ -1,3 +1,4 @@
+import type { WorkbenchSkillSurfaceConfig } from "./schemas/workbench-skill";
 import { resolveBrowserTabTitle } from "./browser-url";
 import { workbenchFilesResourceKey } from "./workbench-resource-identity";
 import type { BrowserSidebarDeviceToolbarState } from "./browser-sidebar";
@@ -154,6 +155,7 @@ export type WorkbenchSurfaceKind =
   | "db_view"
   | "page_stage"
   | "page_file"
+  | "skill"
   | "canvas_stage"
   | "terminal"
   | "browser"
@@ -254,6 +256,7 @@ export interface WorkbenchSurfaceConfigByKind {
   readonly db_view: WorkbenchDbViewSurfaceConfig;
   readonly page_stage: WorkbenchPageStageSurfaceConfig;
   readonly page_file: WorkbenchPageFileSurfaceConfig;
+  readonly skill: WorkbenchSkillSurfaceConfig;
   readonly canvas_stage: WorkbenchCanvasStageSurfaceConfig;
   readonly terminal: WorkbenchTerminalSurfaceConfig;
   readonly browser: WorkbenchBrowserSurfaceConfig;
@@ -329,7 +332,13 @@ export type WorkbenchSurfaceDescriptorV3 =
   | Exclude<
       WorkbenchSurfaceDescriptor,
       {
-        readonly kind: "db_view" | "page_stage" | "canvas_stage" | "page_file" | "image_editor";
+        readonly kind:
+          | "db_view"
+          | "page_stage"
+          | "canvas_stage"
+          | "page_file"
+          | "image_editor"
+          | "skill";
       }
     >
   | WorkbenchLegacyResourceSurfaceDescriptor;
@@ -605,6 +614,7 @@ export function enforceWorkbenchSessionReviewEligibility(
 
 /** Library Scenes present Library content and explicitly addressed host files without a Project. */
 export function isLibrarySceneSurfaceAllowed(surface: WorkbenchSurfaceDescriptor): boolean {
+  if (surface.kind === "skill") return true;
   if (surface.kind === "files")
     return (
       surface.config.projectId === null &&
@@ -1421,6 +1431,8 @@ export function getWorkbenchSurfaceReuseKey(
     }
     case "page_stage":
       return `page:${contentRoutingContextKey(surface.config.routingContext)}:${surface.config.pageId}`;
+    case "skill":
+      return JSON.stringify(["skill", surface.config.hostId, surface.config.skillId]);
     case "page_file":
       // One Profile owns one Library; Project routing is presentation, not resource identity.
       return JSON.stringify(["page_file", surface.config.pageId, surface.config.fileId]);

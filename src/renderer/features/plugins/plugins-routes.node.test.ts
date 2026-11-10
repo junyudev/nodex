@@ -5,8 +5,11 @@ import {
   resolvePluginSettingsTarget,
   buildPluginDirectoryPath,
   buildSkillsPath,
+  buildSkillPath,
   resolvePluginsRouteState,
 } from "./plugins-routes";
+
+import { resolveCustomizeSelection } from "./model/customize-selection";
 
 describe("plugins routes", () => {
   it("opens the public directory by default and for unknown paths", () => {
@@ -96,6 +99,18 @@ describe("plugins routes", () => {
 
   it("opens Skills", () => {
     expect(resolvePluginsRouteState(buildSkillsPath())).toEqual({ page: "skills" });
+  });
+
+  it("opens a skill with Skills selected and keeps the new-skill focus hint", () => {
+    const path = buildSkillPath("skill_A-b", { created: true });
+    expect(resolvePluginsRouteState(path)).toEqual({
+      page: "skill",
+      skillId: "skill_A-b",
+      created: true,
+    });
+    expect(resolveCustomizeSelection(path)).toEqual({ kind: "skills" });
+    expect(resolvePluginsRouteState(buildSkillPath("skill_A-b"))).toMatchObject({ created: false });
+    expect(resolvePluginsRouteState("/skills/%E0%")).toEqual({ page: "skills" });
   });
 
   it("round-trips an installed plugin's settings page", () => {

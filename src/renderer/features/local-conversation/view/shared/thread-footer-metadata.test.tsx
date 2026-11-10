@@ -6,7 +6,11 @@ import { NodexModalHost } from "@/lib/modal-registry";
 import { renderWithMaitai } from "@/test/thread-maitai";
 import { AutoReviewStatsIndicator, UsedSkillsIndicator } from "./thread-footer-metadata";
 
-const { openFile } = vi.hoisted(() => ({ openFile: vi.fn(async () => true) }));
+const { openFile, openSkill } = vi.hoisted(() => ({
+  openFile: vi.fn(async () => true),
+  openSkill: vi.fn(async () => true),
+}));
+vi.mock("@/features/skills/open-skill", () => ({ useOpenSkill: () => openSkill }));
 vi.mock("@/lib/file-reference-router", () => ({
   useFileReferenceRouter: () => ({ open: openFile }),
 }));
@@ -92,7 +96,21 @@ describe("used skills", () => {
     });
     const link = await view.findByRole("link", { name: "Demo" });
     await act(async () => {
-      fireEvent.click(link, { metaKey: true });
+      fireEvent.click(link);
+    });
+    expect(openSkill).toHaveBeenCalledExactlyOnceWith({
+      hostId: "local",
+      name: "Demo",
+      path: "/work/.agents/skills/demo/SKILL.md",
+    });
+    expect(openFile).not.toHaveBeenCalled();
+    await act(async () => {
+      view.getByRole("button", { name: "Skills" }).blur();
+      view.getByRole("button", { name: "Skills" }).focus();
+    });
+    const externalLink = await view.findByRole("link", { name: "Demo" });
+    await act(async () => {
+      fireEvent.click(externalLink, { metaKey: true });
       await Promise.resolve();
     });
     expect(openFile).toHaveBeenCalledWith(

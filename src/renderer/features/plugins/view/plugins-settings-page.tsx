@@ -1,3 +1,4 @@
+import { useOpenSkill } from "@/features/skills/open-skill";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { createElement, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { ActivitySpinnerIcon, PluginsIcon } from "@/components/shared/icons";
@@ -12,13 +13,11 @@ import { ChatBubblesIcon16 } from "@/components/shared/icons/plugin-detail-icons
 import { skillFallbackIcon } from "@/components/shared/icons/skill-fallback-icons";
 import { NodexSwitch } from "@/components/ui/button";
 import { CardTile } from "@/components/ui/card-tile";
-import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import { PageEmptyState } from "@/components/ui/section-header";
 import { NodexSettingsPageSurface, NodexSettingsSection } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
-import { MoreActionsButton, ToolbarButton } from "@/components/ui/toolbar-button";
+import { ToolbarButton } from "@/components/ui/toolbar-button";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { useFileReferenceRouter } from "@/lib/file-reference-router";
 import { cn } from "@/lib/utils";
 import type { SettingsSectionPageProps } from "@/components/workbench/workbench-settings-page-registry";
 import type { SkillMetadata } from "@nodex/codex-app-server-protocol/v2/SkillMetadata";
@@ -63,7 +62,7 @@ import { MarketplacesTab } from "./plugins-settings-marketplaces";
 import { PluginSettingsPage } from "./plugin-settings-page";
 import { PluginLogoImage, pluginLogoSource } from "./plugin-logo";
 import { DetailDialog } from "./detail-dialog";
-import { SkillFileMenu, SkillInstructions } from "./skill-preview-modal";
+import { SkillInstructions } from "./skill-preview-modal";
 import { usePluginHelperActions } from "./use-plugin-helper-actions";
 import { usePluginRowActions } from "./use-plugin-row-actions";
 
@@ -310,9 +309,8 @@ function SkillSettingsRow({
   readonly navigation: PluginsSettingsNavigation;
 }) {
   const management = usePluginManagement(context);
-  const router = useFileReferenceRouter();
+  const openSkill = useOpenSkill();
   const [open, setOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [optimistic, setOptimistic] = useState<boolean | null>(null);
   const [updating, setUpdating] = useState(false);
   const name = skillDisplayName(skill);
@@ -379,40 +377,19 @@ function SkillSettingsRow({
         actions={
           <div className="flex items-center gap-2">
             <div className="text-sm text-(--color-text-secondary)">{skillScopeLabel(skill)}</div>
-            <div
-              className={cn(
-                "flex",
-                menuOpen
-                  ? "visible opacity-100"
-                  : "invisible opacity-0 transition-opacity group-hover:visible group-hover:opacity-100",
-              )}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <NodexDropdownMenu
-                align="end"
-                contentWidth="icon"
-                open={menuOpen}
-                onOpenChange={setMenuOpen}
-                triggerButton={<MoreActionsButton variant="toolbar" />}
-              >
-                <NodexDropdownItem
-                  disabled={context.hostId !== "local"}
-                  onSelect={() =>
-                    void router.open(
-                      { path: skill.path },
-                      { hostId: context.hostId, title: "SKILL.md" },
-                    )
-                  }
-                >
-                  Open
-                </NodexDropdownItem>
-                <NodexDropdownItem onSelect={() => setOpen(true)}>Details</NodexDropdownItem>
-              </NodexDropdownMenu>
-            </div>
             <span onClick={(event) => event.stopPropagation()}>{skillSwitch}</span>
           </div>
         }
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          void openSkill({
+            ...context,
+            name: skill.name,
+            path: skill.path,
+            destination: "customize",
+          }).then((opened) => {
+            if (!opened) setOpen(true);
+          });
+        }}
       />
       <DetailDialog
         iconShape="rounded"
@@ -422,12 +399,7 @@ function SkillSettingsRow({
         title={name}
         titleText={name}
         description={description}
-        headerActions={
-          <div className="flex items-center gap-2">
-            {skillSwitch}
-            <SkillFileMenu context={context} path={skill.path} onOpened={() => setOpen(false)} />
-          </div>
-        }
+        headerActions={<div className="flex items-center gap-2">{skillSwitch}</div>}
         footer={
           <ToolbarButton
             color="primary"

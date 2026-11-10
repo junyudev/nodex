@@ -9,31 +9,36 @@ import {
 } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { RecordIcon, SkillCubeIcon } from "@/components/shared/icons/customize-action-icons";
-import { BrowseTabs } from "@/components/ui/browse-tabs";
+import { PlusMdIcon } from "@/components/shared/icons/plugin-detail-icons";
 import { PageSearchInput } from "@/components/ui/page-search-input";
 import { SearchablePageLayout } from "@/components/ui/searchable-page-layout";
 import { PageEmptyState, PageSection } from "@/components/ui/section-header";
 import { toast } from "@/components/ui/toast";
-import type { SkillMetadata } from "@nodex/codex-app-server-protocol/v2/SkillMetadata";
+import { useSkillInventory } from "@/features/skills/skill-inventory";
+import {
+  describeSkillReaders,
+  displaySkillLocation,
+  groupSkillLocations,
+} from "@/features/skills/skill-presentation";
+import { SkillLocationsList, useCreateSkill } from "@/features/skills/view/skill-locations-list";
 import type { RecommendedSkill } from "../../../../shared/codex-plugin-settings";
 import type { CustomizeNavigation } from "../customize-navigation";
 import { pluginMutationSucceeded } from "../model/mutation-result";
 import { skillDisplayName } from "../model/plugin-detail-model";
-import { groupSkillsByScope, markdownLink, skillsVisibleLimit } from "../model/skill-model";
+import { markdownLink, skillsVisibleLimit } from "../model/skill-model";
 import {
   usePluginManagement,
   useRecommendedSkillInstallIds,
   useSkillsPageData,
   type PluginContext,
 } from "../plugin-management";
+import { buildSkillPath } from "../plugins-routes";
 import { CustomizeHeaderActions } from "./customize-header-actions";
 import { usePluginHelperActions } from "./use-plugin-helper-actions";
-import { RecommendedSkillCard, SkillCard } from "./skill-card";
+import { RecommendedSkillCard } from "./skill-card";
+import { skillEntryTryPrompt } from "./skill-route-page";
 
 const SKILL_CREATOR_OPENED_KEY = "nodex.customize.skill-creator-opened";
-const RECOMMENDED_TAB_ID = "skills-recommended";
-
-type RecommendedEntry = RecommendedSkill & { readonly installedSkill: SkillMetadata | null };
 
 /** The "See A, B, and N more" row that unfolds a long skill list, then folds it back. */
 function SeeMoreSkillsRow({
@@ -60,53 +65,6 @@ function SeeMoreSkillsRow({
   );
 }
 
-/** A one- or two-column grid of skills, folded to six when long enough. */
-function SkillsGrid({
-  skills,
-  context,
-  navigation,
-  fold,
-  highlightedPath = null,
-}: {
-  readonly skills: readonly SkillMetadata[];
-  readonly context: PluginContext;
-  readonly navigation: CustomizeNavigation;
-  readonly fold: boolean;
-  readonly highlightedPath?: string | null;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const limit = fold ? skillsVisibleLimit(skills.length) : null;
-  const visible = limit == null || expanded ? skills : skills.slice(0, limit);
-  return (
-    <>
-      <div
-        className={
-          limit == null
-            ? "grid grid-cols-1 gap-4 @min-[581px]/skills-grid:grid-cols-2"
-            : "grid grid-cols-1 gap-2 @min-[581px]/skills-grid:grid-cols-2"
-        }
-      >
-        {visible.map((skill) => (
-          <SkillCard
-            key={skill.path}
-            skill={skill}
-            context={context}
-            onStartChat={navigation.onStartChat}
-            isHighlighted={highlightedPath === skill.path}
-          />
-        ))}
-      </div>
-      {limit == null ? null : (
-        <SeeMoreSkillsRow
-          expanded={expanded}
-          hiddenNames={skills.slice(limit).map(skillDisplayName)}
-          onToggle={() => setExpanded(!expanded)}
-        />
-      )}
-    </>
-  );
-}
-
 function SkillsLoading() {
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center py-8">
@@ -126,95 +84,58 @@ function skillCreatorDraft(path: string): string {
   return firstTime ? `${mention} help me create a skill` : `${mention} `;
 }
 
-/**
- * The recommended catalog: rows to install, or the installed skill a recommendation matches
- * (highlighted on the Recommended tab). Folds to six like installed lists.
- */
-function RecommendedSkillsList({
-  entries,
+/** Skills to install from the recommended catalog, folded to six unless a search lists them. */
+function RecommendedSkills({
+  skills,
   context,
-  navigation,
-  isLoading,
-  errorMessage,
   installingSkillId,
   installedIds,
-  highlightInstalled,
-  highlightedId = null,
-  showAll = false,
+  highlightedId,
+  showAll,
   onInstall,
 }: {
-  readonly entries: readonly RecommendedEntry[];
+  readonly skills: readonly RecommendedSkill[];
   readonly context: PluginContext;
-  readonly navigation: CustomizeNavigation;
-  readonly isLoading: boolean;
-  readonly errorMessage: string | null;
   readonly installingSkillId: string | null;
   readonly installedIds: ReadonlySet<string>;
-  readonly highlightInstalled: boolean;
-  readonly highlightedId?: string | null;
-  readonly showAll?: boolean;
+  readonly highlightedId: string | null;
+  readonly showAll: boolean;
   readonly onInstall: (skill: RecommendedSkill) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  if (isLoading) return <SkillsLoading />;
-  if (errorMessage != null) {
-    return (
-      <div className="flex min-h-0 flex-1 items-center justify-center py-8">
-        <PageEmptyState title="Unable to load recommended skills" description={errorMessage} />
-      </div>
-    );
-  }
-  if (entries.length === 0) {
-    return (
-      <div className="flex min-h-0 flex-1 items-center justify-center py-8">
-        <PageEmptyState title="No skills found" />
-      </div>
-    );
-  }
-  const limit = showAll ? null : skillsVisibleLimit(entries.length);
-  const visible = limit == null || expanded ? entries : entries.slice(0, limit);
+  const limit = showAll ? null : skillsVisibleLimit(skills.length);
+  const visible = limit == null || expanded ? skills : skills.slice(0, limit);
   return (
-    <>
+    <PageSection id="skills-recommended" title="Recommended">
       <div className="grid grid-cols-1 gap-2 @min-[581px]/skills-grid:grid-cols-2">
-        {visible.map((entry) =>
-          entry.installedSkill == null ? (
-            <RecommendedSkillCard
-              key={entry.id}
-              skill={entry}
-              context={context}
-              canInstall={context.hostId === "local"}
-              isInstalled={installedIds.has(entry.id)}
-              isInstalling={installingSkillId === entry.id}
-              isHighlighted={highlightedId === entry.id}
-              onInstall={onInstall}
-            />
-          ) : (
-            <SkillCard
-              key={entry.id}
-              skill={entry.installedSkill}
-              context={context}
-              onStartChat={navigation.onStartChat}
-              mode="menu"
-              isHighlighted={highlightInstalled || highlightedId === entry.id}
-            />
-          ),
-        )}
+        {visible.map((skill) => (
+          <RecommendedSkillCard
+            key={skill.id}
+            skill={skill}
+            context={context}
+            canInstall={context.hostId === "local"}
+            isInstalled={installedIds.has(skill.id)}
+            isInstalling={installingSkillId === skill.id}
+            isHighlighted={highlightedId === skill.id}
+            onInstall={onInstall}
+          />
+        ))}
       </div>
       {limit == null ? null : (
         <SeeMoreSkillsRow
           expanded={expanded}
-          hiddenNames={entries.slice(limit).map((entry) => entry.name)}
+          hiddenNames={skills.slice(limit).map((skill) => skill.name)}
           onToggle={() => setExpanded(!expanded)}
         />
       )}
-    </>
+    </PageSection>
   );
 }
 
 /**
- * Skills: everything installed outside plugins, then the same skills by where they are
- * installed, and a recommended catalog to install from. Search narrows everything into one list
- * navigable with the arrow keys.
+ * Skills: every skill under the folder it lives in, with the Agents that read that folder, then
+ * a recommended catalog to install from. A skill opens as its own page. Search narrows both
+ * lists and the arrow keys walk the results.
  */
 export function SkillsPage({
   context,
@@ -224,45 +145,44 @@ export function SkillsPage({
   readonly navigation: CustomizeNavigation;
 }) {
   const [search, setSearch] = useState("");
+  const inventory = useSkillInventory(context);
   const data = useSkillsPageData(context, search);
   const installIds = useRecommendedSkillInstallIds(context);
   const management = usePluginManagement(context);
   const helpers = usePluginHelperActions(context, navigation);
+  const createSkill = useCreateSkill(context);
   const [installingSkillId, setInstallingSkillId] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  const skillsQuery = data.skillsQuery;
-  const recommendedQuery = data.recommendedQuery;
+  const snapshot = inventory.data?.status === "ok" ? inventory.data.value : null;
+  const failure =
+    inventory.error?.message ??
+    (inventory.data?.status === "failed" ? inventory.data.message : null);
   const installedIds = new Set(installIds.data);
   const searching = search.trim().length > 0;
-  const installed = data.installed;
-  const recommended = data.recommended;
-  const recommendedError =
-    recommendedQuery.error?.message ?? recommendedQuery.data?.error?.message ?? null;
-  const showRecommended =
-    recommendedQuery.isPending || recommendedError != null || recommended.length > 0;
-  const groups = groupSkillsByScope(installed);
-  const tabs = [
-    ...groups.map((group) => ({ key: group.id, name: group.title })),
-    ...(showRecommended ? [{ key: RECOMMENDED_TAB_ID, name: "Recommended" }] : []),
-  ];
-  const selectedTabId = tabs.some((tab) => tab.key === selectedGroupId)
-    ? selectedGroupId
-    : (tabs[0]?.key ?? null);
-  const selectedGroup = groups.find((group) => group.id === selectedTabId);
+  // A recommendation that matches an installed skill is already in the list above.
+  const recommended = data.recommended.filter((entry) => entry.installedSkill == null);
+  const listed = snapshot ? groupSkillLocations(snapshot, search) : { groups: [], empty: [] };
   const resultKeys = searching
     ? [
-        ...installed.map((skill) => `installed:${skill.path}`),
+        ...listed.groups.flatMap((group) => group.skills.map((skill) => `skill:${skill.id}`)),
         ...recommended.map((skill) => `recommended:${skill.id}`),
       ]
     : [];
   const activeKey =
     resultKeys.length === 0 ? null : resultKeys[Math.min(activeIndex, resultKeys.length - 1)];
   // The skill that writes skills; a personal or project copy takes the place of the built-in one.
-  const skillCreator = skillsQuery.data?.installed.find((skill) => skill.name === "skill-creator");
+  const skillCreator = data.skillsQuery.data?.installed.find(
+    (skill) => skill.name === "skill-creator",
+  );
+  const personalLocations = (snapshot?.locations ?? []).filter(
+    (location) => location.writable && location.scope === "user",
+  );
+
+  const openSkill = (skillId: string, options?: { readonly created?: boolean }) =>
+    navigation.onNavigate(buildSkillPath(skillId, options));
 
   const installRecommended = async (skill: RecommendedSkill) => {
     setInstallingSkillId(skill.id);
@@ -304,106 +224,54 @@ export function SkillsPage({
 
   const onSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (!searching || resultKeys.length === 0) return;
-    const scrollActiveIntoView = () =>
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      setActiveIndex((index) => Math.min(Math.max(index + step, 0), resultKeys.length - 1));
       window.requestAnimationFrame(() =>
         contentRef.current
           ?.querySelector("[data-search-result-active='true']")
           ?.scrollIntoView({ block: "nearest" }),
       );
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      const step = event.key === "ArrowDown" ? 1 : -1;
-      setActiveIndex((index) => Math.min(Math.max(index + step, 0), resultKeys.length - 1));
-      scrollActiveIntoView();
     } else if (event.key === "Enter") {
       const active = contentRef.current?.querySelector("[data-search-result-active='true']");
-      if (active instanceof HTMLElement) {
+      const target = active?.querySelector("button") ?? active;
+      if (target instanceof HTMLElement) {
         event.preventDefault();
-        active.click();
+        target.click();
       }
     }
   };
 
-  const recommendedList = (props: { highlightInstalled: boolean; showAll?: boolean }) => (
-    <RecommendedSkillsList
-      entries={recommended}
-      context={context}
-      navigation={navigation}
-      isLoading={recommendedQuery.isPending}
-      errorMessage={recommendedError}
-      installingSkillId={installingSkillId}
-      installedIds={installedIds}
-      highlightedId={activeKey?.startsWith("recommended:") ? activeKey.slice(12) : null}
-      onInstall={(skill) => void installRecommended(skill)}
-      {...props}
-    />
-  );
-
   let content: ReactNode;
-  if (skillsQuery.isPending) {
+  if (inventory.isPending) {
     content = <SkillsLoading />;
-  } else if (skillsQuery.isError) {
-    content = (
-      <PageEmptyState title="Failed to load skills" description={skillsQuery.error.message} />
-    );
-  } else if (searching) {
-    content =
-      resultKeys.length === 0 ? (
-        <div className="text-base text-(--color-text-secondary)">No skills found</div>
-      ) : (
-        <PageSection id="skills-search-results" title="Skills" count={resultKeys.length}>
-          <div className="flex flex-col gap-3">
-            {installed.length > 0 ? (
-              <SkillsGrid
-                skills={installed}
-                context={context}
-                navigation={navigation}
-                fold={false}
-                highlightedPath={activeKey?.startsWith("installed:") ? activeKey.slice(10) : null}
-              />
-            ) : null}
-            {recommended.length > 0
-              ? recommendedList({ highlightInstalled: false, showAll: true })
-              : null}
-          </div>
-        </PageSection>
-      );
-  } else if (installed.length === 0 && !showRecommended) {
-    content = (
-      <div className="flex min-h-0 flex-1 items-center justify-center py-8">
-        <PageEmptyState title="No skills found" />
-      </div>
-    );
+  } else if (snapshot == null) {
+    content = <PageEmptyState title="Failed to load skills" description={failure} />;
+  } else if (searching && resultKeys.length === 0) {
+    content = <div className="text-base text-(--color-text-secondary)">No skills found</div>;
   } else {
     content = (
       <>
-        {installed.length > 0 ? (
-          <PageSection id="skills-installed" title="Installed">
-            <SkillsGrid skills={installed} context={context} navigation={navigation} fold />
-          </PageSection>
-        ) : null}
-        {selectedTabId == null ? null : (
-          <div className="mb-2">
-            <BrowseTabs
-              ariaLabel="Skill directory"
-              tabs={tabs}
-              selectedKey={selectedTabId}
-              onSelect={setSelectedGroupId}
-            />
-          </div>
-        )}
-        {selectedGroup == null ? null : (
-          <SkillsGrid
-            key={selectedGroup.id}
-            skills={selectedGroup.skills}
+        <SkillLocationsList
+          context={context}
+          snapshot={snapshot}
+          search={search}
+          highlightedSkillId={activeKey?.startsWith("skill:") ? activeKey.slice(6) : null}
+          onOpenSkill={openSkill}
+          onTry={(skill) => navigation.onStartChat(skillEntryTryPrompt(skill))}
+        />
+        {recommended.length === 0 ? null : (
+          <RecommendedSkills
+            skills={recommended}
             context={context}
-            navigation={navigation}
-            fold
+            installingSkillId={installingSkillId}
+            installedIds={installedIds}
+            highlightedId={activeKey?.startsWith("recommended:") ? activeKey.slice(12) : null}
+            showAll={searching}
+            onInstall={(skill) => void installRecommended(skill)}
           />
         )}
-        {selectedTabId === RECOMMENDED_TAB_ID
-          ? recommendedList({ highlightInstalled: true })
-          : null}
       </>
     );
   }
@@ -412,7 +280,7 @@ export function SkillsPage({
     <SearchablePageLayout
       contentClassName="pt-2"
       title="Skills"
-      subtitle="Extend Codex with task-specific skills"
+      subtitle="What your Agents know how to do, kept in the folders each of them reads"
       search={
         <PageSearchInput
           inputRef={searchRef}
@@ -433,9 +301,22 @@ export function SkillsPage({
           context={context}
           onManage={navigation.onOpenSettings}
           addActions={[
+            ...personalLocations.map((location) => ({
+              id: `new:${location.id}`,
+              label:
+                personalLocations.length === 1
+                  ? "New skill"
+                  : `New skill in ${displaySkillLocation(location)} · ${describeSkillReaders(location.readers).replace(/ reads? this folder$/u, "")}`,
+              icon: <PlusMdIcon />,
+              onSelect: () => {
+                void createSkill(location).then((skillId) => {
+                  if (skillId) openSkill(skillId, { created: true });
+                });
+              },
+            })),
             {
               id: "skill",
-              label: "Create skill",
+              label: "Create with skill-creator",
               icon: <SkillCubeIcon />,
               disabled: skillCreator == null,
               onSelect: () => {

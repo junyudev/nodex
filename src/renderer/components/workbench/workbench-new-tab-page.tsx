@@ -1,3 +1,4 @@
+import { SkillCubeIcon } from "@/components/shared/icons/customize-action-icons";
 import {
   createContext,
   useContext,
@@ -685,14 +686,16 @@ export function useWorkbenchNewTabAddressSuggestions(
     .filter((tab) => tab.tabId !== surfaceId)
     .map((tab): BrowserAddressWorkspaceOption => {
       const Icon =
-        tab.surface?.kind === "page_file"
-          ? resolveFileResourceIcon(tab.surface.config.logicalPath ?? tab.surface.titleSnapshot)
-          : tab.surface &&
-              tab.surface.kind !== "conversation" &&
-              tab.surface.kind !== "inbox" &&
-              tab.surface.kind !== "image_editor"
-            ? getPanelNewTabAction(tab.surface.kind).Icon
-            : SidePanelSideChatIcon;
+        tab.surface?.kind === "skill"
+          ? SkillCubeIcon
+          : tab.surface?.kind === "page_file"
+            ? resolveFileResourceIcon(tab.surface.config.logicalPath ?? tab.surface.titleSnapshot)
+            : tab.surface &&
+                tab.surface.kind !== "conversation" &&
+                tab.surface.kind !== "inbox" &&
+                tab.surface.kind !== "image_editor"
+              ? getPanelNewTabAction(tab.surface.kind).Icon
+              : SidePanelSideChatIcon;
       return {
         id: `tab:${tab.tabId}`,
         kind: "switch-tab",

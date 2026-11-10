@@ -1,3 +1,5 @@
+import { displaySkillDirectory } from "@/features/skills/skill-presentation";
+import type { SkillInventoryEntry } from "../../../shared/skill-inventory";
 import type { FileSearchScope, FileSearchMatch } from "../../../shared/file-search";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
@@ -42,6 +44,8 @@ import {
 } from "./workbench-settings-sections";
 
 interface CommandPaletteProps {
+  skillResults?: readonly SkillInventoryEntry[];
+  onOpenSkill?: (skillId: string) => void;
   fileSearchScope?: FileSearchScope | null;
   onOpenFile?: (file: FileSearchMatch, hostId: string) => void;
   onOpenTextMatch?: (match: WorkspaceTextSearchMatch, hostId: string) => void;
@@ -84,6 +88,8 @@ export function CommandPalette({
   recentPageSessions,
   commandContext,
   commandHandlers,
+  skillResults,
+  onOpenSkill,
   spaceCommands,
   onOpenChange,
   onOpenPage,
@@ -176,6 +182,15 @@ export function CommandPalette({
             priority: 700,
           }))
       : []),
+    ...(skillResults ?? []).map((skill): CommandPaletteCommand => ({
+      kind: "command",
+      id: `skill:${skill.id}`,
+      title: skill.name,
+      subtitle: displaySkillDirectory(skill.directory),
+      keywords: ["skills", skill.description],
+      group: "Skills",
+      priority: 100,
+    })),
     ...(spaceCommands?.commands ?? []),
   ];
 
@@ -201,6 +216,10 @@ export function CommandPalette({
       return;
     }
     if (item.disabled) return;
+    if (item.id.startsWith("skill:")) {
+      onOpenSkill?.(item.id.slice("skill:".length));
+      return;
+    }
     if (spaceCommands?.execute(item.id)) return;
     if (item.id.startsWith("settings:")) {
       const target = resolveSettingsCommandTarget(item.id, query);

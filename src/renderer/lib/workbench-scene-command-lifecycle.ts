@@ -1,5 +1,6 @@
 import type { WorkbenchSceneOwner, WorkbenchSurfaceDescriptor } from "../../shared/workbench-scene";
 import { makeWorkbenchSceneKey } from "../../shared/workbench-scene";
+import { flushSkillFiles, workbenchSkillSurfaceKey } from "../features/skills/skill-file-lifecycle";
 import { workspaceTextDocumentRegistry } from "../features/workspace-files/workspace-text-document-controller";
 import {
   canvasSceneSurfaceRegistry,
@@ -30,6 +31,8 @@ export async function prepareWorkbenchSceneSurfaceClose(
   sceneOwner: WorkbenchSceneOwner,
   surface: WorkbenchSurfaceDescriptor,
 ): Promise<boolean> {
+  if (surface.kind === "skill")
+    return flushSkillFiles(workbenchSkillSurfaceKey(sceneOwner, surface.id));
   if (surface.kind === "page_file") return true;
   if (surface.kind === "files") return workspaceTextDocumentRegistry.flush(surface.id);
   if (surface.kind === "page_stage") {

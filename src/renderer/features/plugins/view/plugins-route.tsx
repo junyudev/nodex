@@ -3,6 +3,7 @@ import { resolvePluginsRouteState } from "../plugins-routes";
 import { PluginAppsOnboarding } from "./plugin-apps-onboarding";
 import { PluginDetailPage } from "./plugin-detail-page";
 import { PluginsDirectoryPage } from "./plugins-directory-page";
+import { SkillRoutePage } from "./skill-route-page";
 import { SkillsPage } from "./skills-page";
 
 export interface PluginsRouteProps {
@@ -32,6 +33,13 @@ export function PluginsRoute({ path, navigation }: PluginsRouteProps) {
           navigation={navigation}
           target={state.target}
           browse={state.browse}
+        />
+      ) : state.page === "skill" ? (
+        <SkillRoutePage
+          context={context}
+          navigation={navigation}
+          skillId={state.skillId}
+          created={state.created}
         />
       ) : (
         <SkillsPage context={context} navigation={navigation} />

@@ -20,8 +20,8 @@ the Plugins and Skills pages, and the installed plugins, each with a More action
   mentions the plugin, installing or enabling it first when needed. A long description folds
   after fifteen lines. Included apps (grouped by category when there are several), MCP
   servers, skills and hooks follow; a list longer than five folds behind "See A, B, and N
-  more". Skills preview their instructions; an installed plugin's skill can also be opened,
-  revealed, copied or tried. The Information table always lists Website, showing Unavailable
+  more". Installed local skills open their skill pages. Uninstalled and remote skills can
+  preview their instructions. The Information table always lists Website, showing Unavailable
   without one. A plugin with apps ends with the notice of how connected apps may use chat
   data, worded for one or several apps and extended for Google apps.
 - **Connecting apps after install.** When a plugin that connects its apps on install still
@@ -30,19 +30,22 @@ the Plugins and Skills pages, and the installed plugins, each with a More action
   Nodex regains focus, and the dialog closes when every app is connected. View details and
   Try {plugin} now (with the starter prompt the install began from) close it; connecting is
   always optional.
-- **Skills page.** Installed lists every standalone skill and folds to six only when at least
-  three more would be hidden. Tabs then group the same skills by where they are installed:
-  Personal, the project's folder (or Team), System, and Admin installed. Search narrows
-  everything into one list; Command-F focuses it, the arrow keys move the highlight and
-  Enter opens the highlighted skill. A skill's preview switches it on or off, opens, reveals
-  or copies its SKILL.md, and tries it in a new chat. A recommended skill's preview shows its
-  instructions before it is installed. Add starts a chat with the skill
-  creator.
+- **Skills page.** Skills are grouped by the folder that holds them, including empty writable
+  folders. Folder marks name the Agents that read it. Marks beside a skill switch it on or
+  off for that Agent when its settings can be changed. Search matches names and descriptions.
+  Command-F focuses search, arrow keys move the highlight, and Enter opens the selected skill.
+  Create a blank skill in a writable folder or preview a recommendation before installing it.
+- **Skill pages.** Open a skill to read its instructions and supporting files. Edits save
+  directly to `SKILL.md` and preserve surrounding text. Use Source for raw Markdown or HTML.
+  Open pages follow disk changes and offer to keep your edits or use the file when both changed.
+  Edit the title to rename the skill. Use Copy to or Move to to put it in a different folder.
+  Built-in and plugin skills are read-only and offer Duplicate to edit when a personal folder
+  is available.
 - **Settings › Plugins.** Counted Plugins, Apps, MCPs, Skills and Marketplace tabs share one
   search. MCPs is always offered; another tab is hidden while it has nothing in it, and an
   emptied tab falls through to the next one that has something. Every installed plugin and
-  personal skill has a switch. A plugin row opens that plugin's settings; a skill row opens
-  its instructions. The skills listed are personal skills that aren't recommended ones.
+  personal skill has a switch. A plugin row opens its settings. An installed local skill row
+  opens its page in Customize. The skills listed are personal skills that aren't recommended ones.
   Browse directory returns to the Customize page for the selected tab. Add offers Create
   plugin and Record a skill when their helpers exist, Add a marketplace, and Add MCP server.
 - **Apps.** The apps you have connected each have a switch; one controlled by an administrator

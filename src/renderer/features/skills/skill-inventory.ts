@@ -15,10 +15,11 @@ const documentKey = (context: SkillInventoryContext, skillId: SkillId | null) =>
 const inventoryKey = (context: SkillInventoryContext) =>
   [...contextKey(context), "locations"] as const;
 
-function useSkillWatch(context: SkillInventoryContext, skillId?: SkillId) {
+function useSkillWatch(context: SkillInventoryContext, skillId?: SkillId, enabled = true) {
   const { hostId, projectId } = context;
   const client = useQueryClient();
   useEffect(() => {
+    if (!enabled) return;
     let generation = 0;
     let subscriptionId: string | undefined;
     const input = { hostId, projectId };
@@ -34,7 +35,8 @@ function useSkillWatch(context: SkillInventoryContext, skillId?: SkillId) {
       void skillInventoryAdapter.watchStop({ subscriptionId: id }).catch(() => {});
     };
     const start = () => {
-      const current = ++generation;
+      generation = generation + 1;
+      const current = generation;
       if (subscriptionId) stop(subscriptionId);
       subscriptionId = undefined;
       void skillInventoryAdapter
@@ -56,18 +58,19 @@ function useSkillWatch(context: SkillInventoryContext, skillId?: SkillId) {
     });
     start();
     return () => {
-      generation += 1;
+      generation = generation + 1;
       unsubscribe?.();
       unsubscribeScope();
       if (subscriptionId) stop(subscriptionId);
     };
-  }, [client, hostId, projectId, skillId]);
+  }, [client, enabled, hostId, projectId, skillId]);
 }
 
-export function useSkillInventory(context: SkillInventoryContext) {
-  useSkillWatch(context);
+export function useSkillInventory(context: SkillInventoryContext, enabled = true) {
+  useSkillWatch(context, undefined, enabled);
   return useQuery({
     queryKey: inventoryKey(context),
+    enabled,
     queryFn: () => skillInventoryAdapter.list({ ...context, forceRefresh: true }),
     refetchOnWindowFocus: true,
   });
@@ -92,8 +95,16 @@ function skillCommands(client: QueryClient, context: SkillInventoryContext) {
   };
   return {
     refresh: () => client.invalidateQueries({ queryKey: inventoryKey(context) }),
-    writeDocument: (input: Omit<SkillInput<"writeDocument">, keyof SkillInventoryContext>) =>
-      invalidate(skillInventoryAdapter.writeDocument({ ...context, ...input })),
+    async writeDocument(input: Omit<SkillInput<"writeDocument">, keyof SkillInventoryContext>) {
+      const result = await skillInventoryAdapter.writeDocument({ ...context, ...input });
+      if (result.status === "ok") {
+        const key = documentKey(context, input.skillId);
+        await client.cancelQueries({ queryKey: key });
+        client.setQueryData(key, result);
+      }
+      void client.invalidateQueries({ queryKey: contextKey(context) });
+      return result;
+    },
     createBlank: (input: Omit<SkillInput<"createBlank">, keyof SkillInventoryContext>) =>
       invalidate(skillInventoryAdapter.createBlank({ ...context, ...input })),
     rename: (input: Omit<SkillInput<"rename">, keyof SkillInventoryContext>) =>

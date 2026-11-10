@@ -173,6 +173,7 @@ import type { CustomizeNavigation } from "@/features/plugins/customize-navigatio
 import {
   buildPluginDirectoryPath,
   buildPluginSettingsPath,
+  buildSkillPath,
   PLUGINS_SETTINGS_PATH,
 } from "@/features/plugins/plugins-routes";
 import type { AutomationChatOption } from "@/features/automations/automation-fields";
@@ -267,6 +268,13 @@ import {
   type OpenCanvasStageHandler,
   type SideChatSurfaceOpenInput,
 } from "@/lib/use-workbench-panel-openers";
+import {
+  SkillNavigationContext,
+  resolveLocalSkill,
+  type OpenSkillInput,
+} from "@/features/skills/open-skill";
+import { skillTryPrompt } from "@/features/plugins/model/skill-model";
+import { WorkbenchSkillPageSurface } from "./workbench-skill-page-surface";
 import { FileReferenceRouterProvider } from "@/lib/file-reference-router";
 import { openWorkbenchWindow } from "@/lib/workbench-shell-operations";
 import { useWorkbenchPanelCommandRouter } from "@/lib/use-workbench-panel-command-router";
@@ -3000,6 +3008,44 @@ export function WorkbenchRuntime({
     },
     [openPlugins, workbenchWindow],
   );
+  const openSkill = async (input: OpenSkillInput): Promise<boolean> => {
+    if (isRemoteSpace()) return false;
+    const { location } = workbenchWindow.owner.read().windowState;
+    const isCurrent = () => workbenchWindow.owner.read().windowState.location === location;
+    const context = {
+      hostId: input.hostId ?? activeSession?.thread?.executionHostId ?? "local",
+      projectId:
+        input.projectId === undefined
+          ? activeSession
+            ? activeSession.projectId
+            : activeProjectId
+          : input.projectId,
+    };
+    const skill = await resolveLocalSkill(context, input);
+    if (!skill || !isCurrent()) return false;
+    const sceneOwner = presentedScene?.owner;
+    if (
+      input.destination === "customize" ||
+      (input.destination === "palette" && location.kind !== "session") ||
+      !sceneOwner
+    ) {
+      navigatePlugins(buildSkillPath(skill.id));
+      return true;
+    }
+    const result = await sceneNavigator.presentPanelSurface({
+      owner: sceneOwner,
+      request: {
+        kind: "skill",
+        titleSnapshot: skill.name,
+        config: { ...context, skillId: skill.id, manifestPath: skill.manifestPath },
+      },
+      target: { panelId: "right" },
+      mode: "durable",
+      navigation: "background",
+      isCurrent,
+    });
+    return result.status === "presented";
+  };
   const customizeNavigation: CustomizeNavigation = {
     path: pluginsPath,
     projectId: activeProjectId,
@@ -4490,6 +4536,15 @@ export function WorkbenchRuntime({
       });
     };
 
+    if (surface.kind === "skill")
+      return (
+        <WorkbenchSkillPageSurface
+          sceneOwner={activeProjectScene.owner}
+          surfaceId={surface.id}
+          config={surface.config}
+          onClose={closeSurface}
+        />
+      );
     if (surface.kind === "page_file") return renderOwnedScenePageFileSurface(surface, context);
     if (surface.kind === "inbox") {
       const projectId = inboxScopeProjectId(surface.config.scope);
@@ -4865,6 +4920,15 @@ export function WorkbenchRuntime({
       });
     };
 
+    if (surface.kind === "skill")
+      return (
+        <WorkbenchSkillPageSurface
+          sceneOwner={librarySceneOwner}
+          surfaceId={surface.id}
+          config={surface.config}
+          onClose={removeSurface}
+        />
+      );
     if (surface.kind === "page_file") return renderOwnedScenePageFileSurface(surface, context);
     if (surface.kind === "files") return renderOwnedSceneFileSurface(surface, context);
 
@@ -5978,7 +6042,18 @@ export function WorkbenchRuntime({
     <AgentSettingsNavigationProvider openAgentSettings={openAgentSettings}>
       <AutomationsNavigationProvider value={automationsNavigation}>
         <WorkbenchNewTabPortProvider port={newTabPort}>
-          <LinkOpeningProvider router={linkRouter}>{workbench}</LinkOpeningProvider>
+          <SkillNavigationContext
+            value={{
+              open: openSkill,
+              trySkill: (context, skill) =>
+                void startNewChatWithPrompt({
+                  projectId: context.projectId,
+                  prompt: skillTryPrompt({ name: skill.name, path: skill.manifestPath }),
+                }),
+            }}
+          >
+            <LinkOpeningProvider router={linkRouter}>{workbench}</LinkOpeningProvider>
+          </SkillNavigationContext>
           {/* Its grace period counts from when it can be seen, which setup would prevent. */}
           {firstRun.undecided || firstRun.workbenchInert ? null : (
             <ProductAnalyticsNotice

@@ -32,6 +32,9 @@ vi.mock("../plugin-management", async (importOriginal) => ({
   useSkillContents: vi.fn(() => ({ isPending: true })),
 }));
 
+const openSkill = vi.hoisted(() => vi.fn(async () => true));
+vi.mock("@/features/skills/open-skill", () => ({ useOpenSkill: () => openSkill }));
+
 const setPluginEnabled = vi.fn();
 const saveMcpServer = vi.fn();
 const figma = pluginRow({
@@ -191,4 +194,31 @@ it("retains an MCP edit and releases Save after a rejected write", async () => {
   expect(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(false);
   await click(screen.getByRole("button", { name: "Save" }));
   expect(screen.queryByRole("heading", { name: "Update Docs MCP" })).toBeNull();
+});
+
+it("opens an installed local skill through Customize", async () => {
+  vi.mocked(useSkillsPageData).mockReturnValue({
+    settingsSkills: [
+      {
+        name: "inspect",
+        description: "Check the release tag.",
+        path: "/skills/inspect/SKILL.md",
+        scope: "user",
+        enabled: true,
+      },
+    ],
+    skillsQuery: { isPending: false },
+    recommendedQuery: { isPending: false },
+  } as never);
+  renderPage();
+  await click(screen.getByRole("button", { name: /Skills/u }));
+  await click(screen.getByText("Check the release tag."));
+  expect(openSkill).toHaveBeenCalledExactlyOnceWith({
+    hostId: "local",
+    projectId: null,
+    name: "inspect",
+    path: "/skills/inspect/SKILL.md",
+    destination: "customize",
+  });
+  expect(screen.queryByRole("dialog")).toBeNull();
 });

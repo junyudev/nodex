@@ -466,6 +466,10 @@ function buildMentionDom(node: ProseMirrorNode): DOMOutputSpec {
     class:
       "group/inline-mention cursor-interaction inline-flex max-w-full gap-[3px] px-0.5 align-bottom font-medium text-[color:var(--inline-mention-color)] [--inline-mention-color:var(--inline-mention-base-color)] [--inline-mention-base-color:color-mix(in_srgb,var(--color-token-text-link-foreground)_80%,var(--color-token-foreground)_20%)] hover:underline hover:decoration-current hover:decoration-dashed hover:decoration-[0.5px] hover:underline-offset-2 dark:[--inline-mention-color:var(--inline-mention-dark-base-color,var(--inline-mention-base-color))]",
   };
+  if (attrs.kind === "skill") {
+    domAttrs.role = "link";
+    domAttrs.tabindex = "0";
+  }
   if (attrs.brandColor) {
     domAttrs.style = [
       `--inline-mention-base-color:${attrs.brandColor}`,
@@ -812,6 +816,7 @@ interface ComposerPromptEditorProps {
   /** Words the chat's Agent reacts to in a message; highlighted and explained on hover. */
   promptKeywords?: readonly ComposerPromptKeyword[];
   onChange: (value: string) => void;
+  onOpenSkill?: (skill: { readonly name: string; readonly path: string }) => void;
   onKeyDown: (event: KeyboardEvent) => boolean;
   onLargeTextPaste?: (text: string) => boolean;
   onPasteFiles?: (payload: ComposerPastedFiles) => boolean;
@@ -1166,6 +1171,7 @@ export const ComposerPromptEditor = forwardRef<
     allowMentions = true,
     promptKeywords,
     onChange,
+    onOpenSkill,
     onKeyDown,
     onLargeTextPaste,
     onPasteFiles,
@@ -1765,8 +1771,20 @@ export const ComposerPromptEditor = forwardRef<
     };
   }, [reportIntrinsicContentWidth]);
 
+  const activateSkill = (event: React.SyntheticEvent) => {
+    if (!onOpenSkill || !(event.target instanceof Element)) return;
+    const chip = event.target.closest<HTMLElement>('[data-mention-kind="skill"]');
+    if (!chip?.dataset.mentionName) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onOpenSkill({ name: chip.dataset.mentionName, path: chip.dataset.promptLinkHref ?? "" });
+  };
   return (
     <div
+      onClickCapture={activateSkill}
+      onKeyDownCapture={(event) => {
+        if (event.key === "Enter" && !event.nativeEvent.isComposing) activateSkill(event);
+      }}
       data-composer-prompt-frame={dataComposerPromptFrame}
       data-nodex-keyboard-context={dataComposerPromptFrame ? "composer" : undefined}
       data-single-line={singleLine ? "true" : "false"}

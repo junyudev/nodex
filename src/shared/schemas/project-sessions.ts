@@ -1,3 +1,4 @@
+import { WorkbenchSkillSurfaceConfigSchema } from "./workbench-skill";
 import { WorkbenchPageFileSurfaceConfigSchema } from "./workbench-page-file";
 import { AgentBackendBindingSchema } from "./agent-backend";
 import { z } from "zod";
@@ -107,6 +108,7 @@ export function parseWorkbenchProjectionTabConfig<Kind extends WorkbenchTabKind>
   if (kind === "db_view") parsed = WorkbenchProjectionDbViewTabConfigSchema.parse(config);
   else if (kind === "page_stage")
     parsed = WorkbenchProjectionPageStageTabConfigSchema.parse(config);
+  else if (kind === "skill") parsed = WorkbenchSkillSurfaceConfigSchema.parse(config);
   else if (kind === "page_file") parsed = WorkbenchPageFileSurfaceConfigSchema.parse(config);
   else if (kind === "canvas_stage") {
     parsed = WorkbenchProjectionCanvasStageTabConfigSchema.parse(config);

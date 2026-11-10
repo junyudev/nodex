@@ -1,3 +1,4 @@
+import { SKILLS_PAGES_SCENARIO_ID } from "./scenarios/scenarios/skills-pages";
 import { nativeExecutableName } from "./desktop-build-target";
 import { vitePlusCommand } from "./vite-plus-command";
 import { parseProfileExecutionSnapshot } from "./profile-execution-snapshot";
@@ -345,6 +346,13 @@ export const createDevLaunchPlan = (input: {
     ...managedDevFallbacks,
     NODEX_HOME: input.home.nodexHome,
     CODEX_HOME: input.home.codexHome,
+    ...((input.arguments.seed ?? input.home.manifest.seed?.id) === SKILLS_PAGES_SCENARIO_ID
+      ? {
+          NODEX_INTERNAL_SCENARIO_HOME: path.join(input.home.root, "home"),
+          NODEX_INTERNAL_BROWSER_HOST_HOME: path.join(input.home.root, "home"),
+          CLAUDE_CONFIG_DIR: path.join(input.home.root, "home", ".claude"),
+        }
+      : {}),
     ...((input.arguments.seed ?? input.home.manifest.seed?.id) === CROSS_PROVIDER_SCENARIO_ID
       ? {
           NODEX_DEV_AGENT_RUNTIME_PROJECT_ROOT: path.join(

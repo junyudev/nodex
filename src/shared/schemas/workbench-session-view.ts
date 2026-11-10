@@ -1,3 +1,4 @@
+import { WorkbenchSkillSurfaceConfigSchema } from "./workbench-skill";
 import { z } from "zod";
 import { WorkbenchPageFileSurfaceConfigSchema } from "./workbench-page-file";
 import {
@@ -197,6 +198,11 @@ export const WorkbenchSessionViewTabSchema = z
       ...tabBaseSchema,
       kind: z.literal("page_file"),
       config: WorkbenchPageFileSurfaceConfigSchema,
+    }),
+    z.strictObject({
+      ...tabBaseSchema,
+      kind: z.literal("skill"),
+      config: WorkbenchSkillSurfaceConfigSchema,
     }),
     z
       .object({

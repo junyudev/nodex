@@ -1,3 +1,4 @@
+import { WorkbenchSkillSurfaceConfigSchema } from "./workbench-skill";
 import { z } from "zod";
 import {
   WorkbenchFileHostIdSchema,
@@ -264,6 +265,11 @@ export const WorkbenchSurfaceDescriptorSchema = z
       ...surfaceBaseSchema,
       kind: z.literal("page_file"),
       config: WorkbenchPageFileSurfaceConfigSchema,
+    }),
+    z.strictObject({
+      ...surfaceBaseSchema,
+      kind: z.literal("skill"),
+      config: WorkbenchSkillSurfaceConfigSchema,
     }),
     z
       .object({
@@ -694,6 +700,7 @@ function isRawScenePanelSurfaceAllowed(ownerKind: unknown, surface: unknown): bo
   if (ownerKind === "session") return record.kind !== "conversation" && record.kind !== "inbox";
   if (ownerKind !== "library" && ownerKind !== "inbox") return true;
 
+  if (record.kind === "skill") return true;
   const config = record.config;
   if (!config || typeof config !== "object" || Array.isArray(config)) return false;
   const configRecord = config as Record<string, unknown>;

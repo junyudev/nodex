@@ -1,3 +1,4 @@
+import type { WorkbenchSkillSurfaceConfig } from "../../shared/schemas/workbench-skill";
 import { resolveBrowserTabTitle } from "../../shared/browser-url";
 import {
   canonicalWorkbenchFilesConfig,
@@ -51,6 +52,11 @@ export type WorkbenchSurfaceOpenRequest =
   | {
       readonly kind: "page_stage";
       readonly config: WorkbenchPageStageSurfaceConfig;
+      readonly titleSnapshot?: string;
+    }
+  | {
+      readonly kind: "skill";
+      readonly config: WorkbenchSkillSurfaceConfig;
       readonly titleSnapshot?: string;
     }
   | {
@@ -313,6 +319,13 @@ function makeSurfaceDescriptor(
         ...common,
         kind: request.kind,
         titleSnapshot: request.titleSnapshot ?? "Page",
+        config: request.config,
+      };
+    case "skill":
+      return {
+        ...common,
+        kind: request.kind,
+        titleSnapshot: request.titleSnapshot ?? "Skill",
         config: request.config,
       };
     case "page_file":
@@ -599,6 +612,8 @@ function validateSceneSurfaceRequest(
   )
     return null;
 
+  if (input.request.kind === "skill") return null;
+
   const requestAllowed =
     input.request.kind === "page_stage" ||
     input.request.kind === "page_file" ||
@@ -643,7 +658,7 @@ export function createWorkbenchSceneNavigator(
         });
     }
     const candidate = makeSurfaceDescriptor(input.request, identities);
-    if (input.mode === "preview") {
+    if (input.mode === "preview" && input.request.kind !== "skill") {
       return presentPreviewSurface(port, input, candidate);
     }
     return port.presentDurable(input, candidate);

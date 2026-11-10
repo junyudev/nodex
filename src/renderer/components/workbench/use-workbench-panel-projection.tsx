@@ -1,3 +1,4 @@
+import { SkillCubeIcon } from "@/components/shared/icons/customize-action-icons";
 import {
   useEffect,
   useLayoutEffect,
@@ -205,6 +206,7 @@ const SIDE_CHAT_DELETE_CONFIRMATION = {
 
 function getTabIcon(kind: WorkbenchTabProjection["kind"]): ComponentType<{ className?: string }> {
   if (kind === "image_editor") return ImageEditorTabIcon;
+  if (kind === "skill") return SkillCubeIcon;
   if (kind === "page_file") return resolveFileResourceIcon();
   return getPanelNewTabAction(kind).Icon;
 }

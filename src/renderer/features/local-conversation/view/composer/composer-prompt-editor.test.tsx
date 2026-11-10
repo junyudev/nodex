@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef, StrictMode, useEffect, useRef } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { resolveSubagentAvatarAsset } from "../shared/subagent-avatar";
@@ -22,6 +22,7 @@ function renderPromptEditor({
   allowSlashCommands = true,
   allowMentions = true,
   onKeyDown = vi.fn(() => false),
+  onOpenSkill,
   onLargeTextPaste,
   onPasteFiles,
   onSuggestionStateChange,
@@ -34,6 +35,7 @@ function renderPromptEditor({
   allowSlashCommands?: boolean;
   allowMentions?: boolean;
   onKeyDown?: (event: KeyboardEvent) => boolean;
+  onOpenSkill?: Parameters<typeof ComposerPromptEditor>[0]["onOpenSkill"];
   onLargeTextPaste?: (text: string) => boolean;
   onPasteFiles?: Parameters<typeof ComposerPromptEditor>[0]["onPasteFiles"];
   onSuggestionStateChange?: Parameters<typeof ComposerPromptEditor>[0]["onSuggestionStateChange"];
@@ -52,6 +54,7 @@ function renderPromptEditor({
       allowMentions={allowMentions}
       onChange={onChange}
       onKeyDown={onKeyDown}
+      onOpenSkill={onOpenSkill}
       onLargeTextPaste={onLargeTextPaste}
       onPasteFiles={onPasteFiles}
       onSuggestionStateChange={onSuggestionStateChange}
@@ -103,6 +106,24 @@ function createClipboardData(initial: Record<string, string> = {}) {
 }
 
 describe("ComposerPromptEditor", () => {
+  test("opens a skill chip by click or Enter without changing or submitting the draft", async () => {
+    const target = { name: "inspect", path: "/workspace/.agents/skills/inspect/SKILL.md" };
+    const onOpenSkill = vi.fn();
+    const { onChange, onKeyDown } = renderPromptEditor({
+      value: serializeComposerPromptMentionLink({ kind: "skill", ...target }),
+      onOpenSkill,
+    });
+    const link = screen.getByRole("link", { name: /inspect/u });
+    await act(async () => {
+      fireEvent.click(link);
+      link.focus();
+      fireEvent.keyDown(link, { key: "Enter" });
+    });
+    expect(onOpenSkill.mock.calls).toEqual([[target], [target]]);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onKeyDown).not.toHaveBeenCalled();
+  });
+
   test("highlights the Agent's keywords without changing the message or a command", () => {
     const { editor, editorRef, onChange } = renderPromptEditor({
       value: "Please ultrathink first",

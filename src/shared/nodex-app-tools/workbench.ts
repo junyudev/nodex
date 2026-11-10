@@ -1,3 +1,4 @@
+import { WorkbenchSkillSurfaceConfigSchema } from "../schemas/workbench-skill";
 import { contentRoutingContextKey } from "../content-routing-context";
 import { inboxScopeKey } from "../inbox";
 import {
@@ -92,6 +93,11 @@ export const WorkbenchSurfaceReferenceSchema = z.discriminatedUnion("kind", [
       fileId: identity,
       logicalPath: z.string().min(1).max(4_096).nullable(),
     }),
+  }),
+  z.strictObject({
+    ...referenceBase,
+    kind: z.literal("skill"),
+    config: WorkbenchSkillSurfaceConfigSchema,
   }),
   z.strictObject({
     ...referenceBase,
@@ -453,6 +459,8 @@ function observedTargetKey(surface: WorkbenchSurfaceReference): string {
   if (kind === "conversation") return JSON.stringify([kind, config.sessionId]);
   if (kind === "inbox") return JSON.stringify([kind, inboxScopeKey(config.scope)]);
   if (kind === "browser") return JSON.stringify([kind, config.browserTabId]);
+  if (kind === "skill")
+    return JSON.stringify([kind, config.hostId, config.skillId, config.projectId]);
   if (kind === "files")
     return JSON.stringify([kind, config.projectId, workbenchFilesResourceKey(config)]);
   if (kind === "review") return JSON.stringify([kind, config.projectId]);

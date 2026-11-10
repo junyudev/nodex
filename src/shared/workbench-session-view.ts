@@ -1,3 +1,4 @@
+import type { WorkbenchSkillSurfaceConfig } from "./schemas/workbench-skill";
 import type {
   WorkbenchPageFileSurfaceConfig,
   WorkbenchSideChatSurfaceConfig,
@@ -63,6 +64,7 @@ export type WorkbenchSessionViewTabKind =
   | "db_view"
   | "page_stage"
   | "page_file"
+  | "skill"
   | "canvas_stage"
   | "terminal"
   | "browser"
@@ -116,6 +118,7 @@ export interface WorkbenchSessionViewTabConfigByKind {
   db_view: WorkbenchDbViewTabConfig;
   page_stage: WorkbenchPageStageTabConfig;
   page_file: WorkbenchPageFileSurfaceConfig;
+  skill: WorkbenchSkillSurfaceConfig;
   canvas_stage: WorkbenchCanvasStageTabConfig;
   terminal: WorkbenchTerminalTabConfig;
   browser: WorkbenchBrowserTabConfig;

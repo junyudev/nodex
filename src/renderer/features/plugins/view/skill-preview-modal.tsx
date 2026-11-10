@@ -1,11 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
-import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
-import { toast } from "@/components/ui/toast";
-import { MoreActionsButton } from "@/components/ui/toolbar-button";
 import { MarkdownRenderer } from "@/features/local-conversation/view/shared/markdown/markdown-renderer";
-import { writeTextToClipboard } from "@/lib/clipboard";
-import { useFileReferenceRouter } from "@/lib/file-reference-router";
 import { skillMarkdownBody } from "../model/plugin-detail-model";
 import {
   useSkillContents,
@@ -75,61 +70,4 @@ function LoadedSkillInstructions({
       className="text-sm [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
     />
   );
-}
-
-/** Open, reveal, or copy an installed skill's SKILL.md. */
-export function SkillFileMenu({
-  context,
-  path,
-  onOpened,
-}: {
-  readonly context: PluginContext;
-  readonly path: string;
-  readonly onOpened: () => void;
-}) {
-  const router = useFileReferenceRouter();
-  const contents = useSkillContents(context, { path });
-  const local = context.hostId === "local";
-  return (
-    <NodexDropdownMenu
-      align="end"
-      contentWidth="icon"
-      triggerButton={<MoreActionsButton variant="toolbar" />}
-    >
-      <NodexDropdownItem
-        disabled={!local}
-        onSelect={() => {
-          void router.open({ path }, { hostId: context.hostId, title: "SKILL.md" });
-          onOpened();
-        }}
-      >
-        Open
-      </NodexDropdownItem>
-      <NodexDropdownItem
-        disabled={!local}
-        onSelect={() => void router.open({ path }, { external: true, opener: "fileManager" })}
-      >
-        {revealInFileManagerLabel()}
-      </NodexDropdownItem>
-      <NodexDropdownItem
-        disabled={contents.data?.contents == null}
-        onSelect={() => {
-          const markdown = contents.data?.contents;
-          if (markdown == null) return;
-          void writeTextToClipboard(markdown).then((copied) => {
-            if (copied) toast.success("Copied SKILL.md");
-          });
-        }}
-      >
-        Copy Markdown
-      </NodexDropdownItem>
-    </NodexDropdownMenu>
-  );
-}
-
-function revealInFileManagerLabel(): string {
-  const platform = typeof navigator === "undefined" ? "" : navigator.platform;
-  if (platform.startsWith("Mac")) return "Reveal in Finder";
-  if (platform.startsWith("Win")) return "Reveal in File Explorer";
-  return "Reveal in File Manager";
 }

@@ -149,7 +149,10 @@ export function isPanelActionTargetAllowed(action: PanelNewTabAction, panelId: P
 
 export function isWorkbenchTabKind(
   kind: PanelNewTabActionKind,
-): kind is Exclude<WorkbenchTabProjection["kind"], "image_editor" | "page_file" | "side_chat"> {
+): kind is Exclude<
+  WorkbenchTabProjection["kind"],
+  "image_editor" | "page_file" | "skill" | "side_chat"
+> {
   return kind !== "side_chat" && kind !== "new_page";
 }
 
@@ -260,6 +263,6 @@ export function matchesPanelActionShortcut(
 }
 
 export function getDefaultPanelIdForTabKind(kind: WorkbenchTabProjection["kind"]): PanelId {
-  if (kind === "image_editor" || kind === "page_file") return "right";
+  if (kind === "image_editor" || kind === "page_file" || kind === "skill") return "right";
   return getPanelNewTabAction(kind).defaultPanelId;
 }

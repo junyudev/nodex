@@ -96,6 +96,13 @@ Physical side is normalized away from bottom panels and non-Session Scenes, just
 as panel dimensions that do not apply are discarded. Project, Inbox, and Library
 content stacks remain fixed open and full width.
 
+Skill tabs open beside a chat and can also live in Project, Library, and Inbox Scenes.
+Reopening the same skill on the same host focuses its existing tab in that Scene.
+Renaming it from the skill page keeps its tab and updates the title. Restored tabs
+look up the skill in its inventory and show when the skill has moved or disappeared.
+Closing a tab saves pending edits, and Skill tabs support the floating composer.
+Application tools describe them with the skill name and file path.
+
 Page content reads wait for the exact mounted editor to synchronize before reading
 canonical content. Closing, replacing, or reloading that editor during preparation
 invalidates the read; a different occurrence cannot complete its preparation.

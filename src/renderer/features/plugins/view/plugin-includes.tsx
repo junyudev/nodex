@@ -1,9 +1,9 @@
+import { useOpenSkill } from "@/features/skills/open-skill";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { Children, createElement, useState, type ReactNode } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { RefreshArrowsIcon } from "@/components/shared/icons/customize-action-icons";
 import {
-  ChatBubblesIcon16,
   CheckmarkMdIcon,
   ChevronDownSmIcon,
   GearIcon20,
@@ -16,7 +16,6 @@ import {
 } from "@/components/shared/icons/plugin-detail-icons";
 import { skillFallbackIcon } from "@/components/shared/icons/skill-fallback-icons";
 import { NodexSwitch } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { CardTile } from "@/components/ui/card-tile";
 import { DetailSection } from "@/components/ui/detail-page";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
@@ -41,11 +40,10 @@ import {
 } from "../plugin-management";
 import { appViewFromDetail } from "../model/app-model";
 import { AppLogo, AppToolsDialog, useAppEnabledToggle } from "./app-tools-dialog";
-import { DetailDialog, DetailDialogTitle } from "./detail-dialog";
+import { DetailDialog } from "./detail-dialog";
 import { PluginLogoImage, pluginLogoSource } from "./plugin-logo";
 import { PluginWorksWith } from "./plugin-works-with";
-import { SkillFileMenu, SkillInstructions } from "./skill-preview-modal";
-import { skillTryPrompt } from "../model/skill-model";
+import { SkillInstructions } from "./skill-preview-modal";
 
 export type PluginApp = PluginDetailView["apps"][number];
 type PluginSkill = PluginDetailView["skills"][number];
@@ -546,13 +544,12 @@ function PluginSkillRow({
   view,
   skill,
   context,
-  navigation,
 }: {
   readonly view: PluginDetailView;
   readonly skill: PluginSkill;
   readonly context: PluginContext;
-  readonly navigation: CustomizeNavigation;
 }) {
+  const openSkill = useOpenSkill();
   const [open, setOpen] = useState(false);
   const title = skillDisplayName(skill);
   const description = skillShortDescription(skill);
@@ -583,7 +580,6 @@ function PluginSkillRow({
   // An installed plugin's skill acts as the installed skill it matches; one not found locally
   // previews like a skill of a plugin that isn't installed.
   const installedSkill = view.summary.installed ? skill.installedSkill : null;
-  const installed = installedSkill != null;
   const dimmed = installedSkill != null && !installedSkill.enabled;
   return (
     <>
@@ -595,58 +591,38 @@ function PluginSkillRow({
         title={title}
         description={description}
         descriptionClassName="line-clamp-1"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          if (!installedSkill || context.hostId !== "local") {
+            setOpen(true);
+            return;
+          }
+          void openSkill({
+            ...context,
+            name: skill.name,
+            path: installedSkill.path,
+            destination: "customize",
+          }).then((opened) => {
+            if (!opened) setOpen(true);
+          });
+        }}
       />
       <DetailDialog
         iconShape="rounded"
         open={open}
         onOpenChange={setOpen}
         icon={<SkillIcon skill={skill} className="icon-md" />}
-        title={
-          installed ? (
-            <DetailDialogTitle
-              kind="Skill"
-              title={title}
-              badge={dimmed ? <Badge variant="outline">Disabled</Badge> : null}
-            />
-          ) : (
-            title
-          )
-        }
+        title={title}
         titleText={title}
         description={description}
-        headerActions={
-          installedSkill == null ? undefined : (
-            <SkillFileMenu
-              context={context}
-              path={installedSkill.path}
-              onOpened={() => setOpen(false)}
-            />
-          )
-        }
         footer={
-          installed ? (
-            <ToolbarButton
-              color="primary"
-              className="rounded-full"
-              disabled={dimmed}
-              onClick={() => navigation.onStartChat(skillTryPrompt(skill))}
-            >
-              <ChatBubblesIcon16 />
-              Try now
-            </ToolbarButton>
-          ) : (
-            <ToolbarButton color="primary" className="rounded-full" onClick={() => setOpen(false)}>
-              Close
-            </ToolbarButton>
-          )
+          <ToolbarButton color="primary" className="rounded-full" onClick={() => setOpen(false)}>
+            Close
+          </ToolbarButton>
         }
       >
-        {installed ? null : (
-          <h2 className="flex min-h-7 items-center gap-1.5 text-lg leading-6 font-medium select-none">
-            Skill
-          </h2>
-        )}
+        <h2 className="flex min-h-7 items-center gap-1.5 text-lg leading-6 font-medium select-none">
+          Skill
+        </h2>
         <SkillInstructions context={context} selector={skillContentsSelector(view, skill)} />
       </DetailDialog>
     </>
@@ -656,11 +632,9 @@ function PluginSkillRow({
 function SkillsSection({
   view,
   context,
-  navigation,
 }: {
   readonly view: PluginDetailView;
   readonly context: PluginContext;
-  readonly navigation: CustomizeNavigation;
 }) {
   return (
     <DetailSection title="Skills" count={view.skills.length} inset={false}>
@@ -677,7 +651,6 @@ function SkillsSection({
             view={view}
             skill={skill}
             context={context}
-            navigation={navigation}
           />
         ))}
       </IncludedItemsList>
@@ -799,9 +772,7 @@ export function PluginIncludes({
     view.worksWith?.available ? (
       <PluginWorksWith key="works-with" worksWith={view.worksWith} onRetry={onRetryDetail} />
     ) : null,
-    view.skills.length > 0 ? (
-      <SkillsSection key="skills" view={view} context={context} navigation={navigation} />
-    ) : null,
+    view.skills.length > 0 ? <SkillsSection key="skills" view={view} context={context} /> : null,
     view.hooks.length > 0 ? (
       <HooksSection key="hooks" view={view} context={context} navigation={navigation} />
     ) : null,

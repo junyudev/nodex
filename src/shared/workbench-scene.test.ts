@@ -120,7 +120,7 @@ function sceneV2Fields(
 }
 
 function toLegacySurface(surface: WorkbenchSurfaceDescriptor): WorkbenchSurfaceDescriptorV3 {
-  if (surface.kind === "image_editor" || surface.kind === "page_file") {
+  if (surface.kind === "image_editor" || surface.kind === "page_file" || surface.kind === "skill") {
     throw new Error("Image editor surfaces did not exist in legacy Scenes");
   }
   if (
@@ -1245,4 +1245,51 @@ test("normalizes v9 Scenes without changing their resources or placement", () =>
   const restored = WorkbenchSceneSnapshotSchema.parse({ ...current, version: 9 });
   expect(restored).toEqual(current);
   expect(restored.version).toBe(WORKBENCH_SCENE_VERSION);
+});
+
+test("restores a Skill locator and keeps its selection when cloning the Scene", () => {
+  const owner = LIBRARY_SCENE_OWNER;
+  const surface = {
+    kind: "skill",
+    id: "skill-tab",
+    titleSnapshot: "Inspect",
+    config: {
+      hostId: "local",
+      projectId: "project-1",
+      skillId: "inspect",
+      manifestPath: "/skills/inspect/SKILL.md",
+    },
+    state: null,
+    stateKey: 0,
+  } as const;
+  const initial = materializeInitialWorkbenchScene(owner);
+  const created = createWorkbenchSceneSurface(initial, { panelId: "right", surface });
+  const scene = activateWorkbenchSceneSurface(
+    created,
+    "right",
+    created.panels.right.layout.activeLeafId!,
+    surface.id,
+  );
+  const restored = WorkbenchSceneSnapshotSchema.parse(JSON.parse(JSON.stringify(scene)));
+  expect(restored.panelSurfacesById[surface.id]).toEqual(surface);
+  expect(
+    WorkbenchSceneSnapshotSchema.safeParse({
+      ...restored,
+      panelSurfacesById: {
+        [surface.id]: { ...surface, config: { ...surface.config, skillId: "" } },
+      },
+    }).success,
+  ).toBe(false);
+
+  const key = makeWorkbenchSceneKey(owner);
+  const clone = cloneWorkbenchSceneLayoutForNewWindow(
+    { scenesByOwnerKey: { [key]: restored } },
+    identityFactory("clone"),
+  ).scenesByOwnerKey[key]!;
+  const selected = getWorkbenchPanelActiveLeaf(clone.panels.right.layout)?.activeTabId;
+  expect(selected).not.toBe(surface.id);
+  expect(clone.panelSurfacesById[selected!]).toMatchObject({
+    kind: "skill",
+    config: surface.config,
+  });
 });

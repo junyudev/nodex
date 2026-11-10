@@ -11,7 +11,7 @@ export type CustomizeSelection =
 export function resolveCustomizeSelection(path: string | null): CustomizeSelection {
   if (path === null) return { kind: "none" };
   const state = resolvePluginsRouteState(path);
-  if (state.page === "skills") return { kind: "skills" };
+  if (state.page === "skills" || state.page === "skill") return { kind: "skills" };
   if (state.page === "plugin") return { kind: "plugin", pluginId: state.target.pluginId };
   return { kind: "plugins" };
 }

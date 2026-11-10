@@ -1,3 +1,4 @@
+import { useOpenSkill } from "@/features/skills/open-skill";
 import { UsedSkillsIcon } from "@/components/shared/icons/used-skills-icon";
 import { useCodexMcpApps } from "../../use-codex-mcp-apps";
 import { useId, useLayoutEffect, useState, type MouseEvent, type ReactNode } from "react";
@@ -91,19 +92,24 @@ function SkillDetails({
   hostId?: string;
 }) {
   const router = useFileReferenceRouter();
+  const openSkill = useOpenSkill();
   const { data: apps } = useCodexMcpApps();
   const catalog = useQuery(codexComposerSkillsListQueryOptions(cwd ? [cwd] : [], hostId));
   const plugins = useQuery(codexComposerPluginsListQueryOptions(cwd ? [cwd] : [], hostId));
   if (catalog.isLoading || plugins.isLoading) return <span aria-busy="true" />;
-  const openSkill = (event: MouseEvent<HTMLAnchorElement>, path: string) => {
+  const activateSkill = (event: MouseEvent<HTMLAnchorElement>, { name, path }: UsedTurnSkill) => {
     event.preventDefault();
     event.stopPropagation();
     if (hostId != null && hostId !== "local") return;
     dismissNodexTooltips();
-    void router.open(
-      { path },
-      { cwd, external: event.metaKey || event.ctrlKey || event.button === 1 },
-    );
+    const external = event.metaKey || event.ctrlKey || event.button === 1;
+    if (external) {
+      void router.open({ path }, { cwd, external });
+      return;
+    }
+    void openSkill({ hostId, name, path }).then((opened) => {
+      if (!opened) void router.open({ path }, { cwd, external: false });
+    });
   };
   return (
     <div className="flex min-w-0 flex-col gap-2 text-start">
@@ -158,9 +164,9 @@ function SkillDetails({
                 <a
                   href={skill.path}
                   className="min-w-0 break-words whitespace-pre-wrap hover:underline"
-                  onClick={(event) => openSkill(event, skill.path)}
+                  onClick={(event) => activateSkill(event, skill)}
                   onAuxClick={(event) => {
-                    if (event.button === 1) openSkill(event, skill.path);
+                    if (event.button === 1) activateSkill(event, skill);
                   }}
                 >
                   {known?.displayName || skill.name}

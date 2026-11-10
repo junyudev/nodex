@@ -1,3 +1,6 @@
+import { useOpenSkill } from "@/features/skills/open-skill";
+import { useSkillInventory } from "@/features/skills/skill-inventory";
+import { isRemoteSpace } from "@/lib/renderer-space";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useFirstRunEntry } from "@/features/first-run/first-run-state";
 import { useFileReferenceRouter } from "@/lib/file-reference-router";
@@ -138,6 +141,17 @@ export function WorkbenchCommandPaletteHost({
 }: WorkbenchCommandPaletteHostProps) {
   const workspaceSearchContext = useSelectedWorkspaceSearchContext();
   const fileRouter = useFileReferenceRouter();
+  const openSkill = useOpenSkill();
+  const skillContext = {
+    hostId: activeSession?.thread?.executionHostId ?? "local",
+    projectId: activeSession ? activeSession.projectId : activeProjectId,
+  };
+  const searchSkills = !isRemoteSpace() && skillContext.hostId === "local";
+  const inventory = useSkillInventory(skillContext, open && searchSkills);
+  const skillResults =
+    searchSkills && inventory.data?.status === "ok"
+      ? inventory.data.value.locations.flatMap((location) => location.skills)
+      : [];
   const skillsReloadControl = useSelectedConversationSkillsReloadControl();
   const { runSetupAgain } = useFirstRunEntry();
   const spaceCommands = useSpaceSwitchCommands();
@@ -379,6 +393,12 @@ export function WorkbenchCommandPaletteHost({
           );
       }}
       onOpenSettingsSection={openSettingsSection}
+      skillResults={skillResults}
+      onOpenSkill={(skillId) => {
+        void openSkill({ ...skillContext, skillId, destination: "palette" }).then((opened) => {
+          if (!opened) toast.danger("This skill is no longer here");
+        });
+      }}
       commandContext={commandContext}
       commandHandlers={commandHandlers}
       spaceCommands={spaceCommands}

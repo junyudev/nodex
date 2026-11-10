@@ -27,6 +27,7 @@ import { inboxTriageScenario } from "./scenarios/inbox-triage";
 import { inboxSuggestionSpendScenario } from "./scenarios/inbox-suggestion-spend";
 import { automationsAskInInboxScenario } from "./scenarios/automations-ask-in-inbox";
 import { spaceContentScenario } from "./scenarios/space-content";
+import { skillsPagesScenario } from "./scenarios/skills-pages";
 import { windowTitlesScenario } from "./scenarios/window-titles";
 
 const scenarios = new Map<string, ScenarioDomainRecipe>([
@@ -58,6 +59,7 @@ const scenarios = new Map<string, ScenarioDomainRecipe>([
   [inboxSuggestionSpendScenario.id, inboxSuggestionSpendScenario],
   [spaceContentScenario.id, spaceContentScenario],
   [windowTitlesScenario.id, windowTitlesScenario],
+  [skillsPagesScenario.id, skillsPagesScenario],
 ]);
 
 export const listScenarioIds = (): readonly string[] => [...scenarios.keys()];

@@ -1,5 +1,7 @@
 import markdownWasmPath from "../shared/generated/nodex-markdown-wasm/nodex_markdown_bg.wasm?asset";
 import { app, BrowserWindow, dialog } from "electron";
+import { mkdirSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import type * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import { configureInstanceScopePaths } from "./instance-scope";
@@ -32,6 +34,17 @@ import {
   type IsolatedRunBootstrapAccess,
 } from "./core-client/isolated-run-ownership";
 import { desktopToolHostBindingNames } from "./codex/desktop-tool-environment";
+
+// A seeded development launch can use the same isolated home as Electron scenarios.
+const scenarioHome = process.env.NODEX_INTERNAL_SCENARIO_HOME;
+delete process.env.NODEX_INTERNAL_SCENARIO_HOME;
+if (!app.isPackaged && scenarioHome && isAbsolute(scenarioHome)) {
+  const documents = join(scenarioHome, "Documents");
+  mkdirSync(documents, { recursive: true });
+  app.setPath("home", scenarioHome);
+  app.setPath("documents", documents);
+  process.env.HOME = scenarioHome;
+}
 
 process.env.NODEX_INTERNAL_APP_PACKAGED = app.isPackaged ? "true" : "false";
 const inheritedIsolatedRunId = process.env[ISOLATED_RUN_ID_ENV];

@@ -76,3 +76,38 @@ it.effect(
       }
     }),
 );
+
+it.effect("describes a skill tab with its name and manifest path", () =>
+  Effect.gen(function* () {
+    const describe = yield* make.pipe(
+      Effect.provideService(WorkbenchContentRouting, {
+        describe: () => Effect.succeed({ status: "unavailable" }),
+        describePageFile: () => Effect.succeed({ status: "unavailable" }),
+      }),
+    );
+    const result = yield* describe({
+      observationId: "observation",
+      tab: {
+        ...tab,
+        surface: {
+          id: "surface",
+          kind: "skill",
+          titleSnapshot: "inspect",
+          config: {
+            hostId: "local",
+            projectId: null,
+            skillId: "inspect-id",
+            manifestPath: "/skills/inspect/SKILL.md",
+          },
+        },
+      },
+      sceneOwner: { kind: "library" },
+      authority: {} as NodexAgentTurnContext,
+      callId: "call",
+    });
+    assert.equal(result.status, "available");
+    assert.equal(result.kind, "skill");
+    assert.equal(result.title, "inspect");
+    assert.equal(result.path, "/skills/inspect/SKILL.md");
+  }),
+);

@@ -108,6 +108,9 @@ export const make = Effect.gen(function* () {
       status: "available",
       kind: surface.kind,
       title: surface.titleSnapshot.slice(0, 300),
+      ...(surface.kind === "skill"
+        ? { hostId: surface.config.hostId, path: surface.config.manifestPath }
+        : {}),
       ...(surface.kind === "browser" ? { browserTabId: surface.config.browserTabId } : {}),
       ...(surface.kind === "terminal" ? { terminalId: surface.config.terminalSessionId } : {}),
     };

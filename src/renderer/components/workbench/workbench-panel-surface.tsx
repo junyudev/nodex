@@ -2,6 +2,7 @@ import type { ComponentProps, MutableRefObject, RefObject } from "react";
 import type { MotionValue } from "motion/react";
 import type { PageStageSessionSnapshot } from "@/components/board/page-stage/types";
 import { updateWorkbenchPageFileConfig } from "@/lib/workbench-page-file-surface-state";
+import { WorkbenchSkillPageSurface } from "./workbench-skill-page-surface";
 import { WorkbenchPageFileSurface } from "./workbench-page-file-surface";
 import {
   WorkspaceFilesPanel,
@@ -321,6 +322,15 @@ export function WorkbenchTabProjectionPanel({
     );
   }
 
+  if (tab.kind === "skill")
+    return (
+      <WorkbenchSkillPageSurface
+        sceneOwner={sceneOwner}
+        surfaceId={tab.id}
+        config={tab.config}
+        onClose={() => void onCloseTab(tab.id)}
+      />
+    );
   if (tab.kind === "page_file")
     return (
       <WorkbenchPageFileSurface

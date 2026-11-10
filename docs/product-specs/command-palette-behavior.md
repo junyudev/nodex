@@ -63,6 +63,7 @@ Actions contains the full command catalog, including when the query is empty.
 All uses the same catalog for non-empty queries.
 
 - Commands are grouped as Suggested, Chat, Navigation, Panels, Project, Configure, Settings, Skills, and App.
+- Search installed local skills by name or description under Skills. Open a result beside an active chat or in Customize from elsewhere. Force reload skills remains available for the current conversation's skill catalog.
 - Disabled commands remain visible with their reason, but keyboard selection skips them and they cannot be executed.
 - Commands use customized command-keymap shortcut labels where a matching command id exists.
 - Command rows omit explanatory subtitles unless needed to explain an unavailable action.

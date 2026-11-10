@@ -354,6 +354,12 @@ export function updateSessionTab(
     updatedAt,
   };
   switch (tab.kind) {
+    case "skill":
+      return {
+        ...tab,
+        ...common,
+        config: input.config && "skillId" in input.config ? input.config : tab.config,
+      };
     case "db_view":
       return {
         ...tab,

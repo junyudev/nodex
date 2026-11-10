@@ -1,3 +1,4 @@
+import { SkillCubeIcon } from "@/components/shared/icons/customize-action-icons";
 import { pageAssigneeKey } from "../../../shared/work-graph";
 import { PageAssigneeLabel } from "@/components/database/page-assignee-label";
 import type { FileSearchScope } from "../../../shared/file-search";
@@ -205,6 +206,7 @@ function resolveSelectableIndex(
 }
 
 function CommandGlyph({ id, className }: { id: string; className: string }) {
+  if (id.startsWith("skill:")) return <SkillCubeIcon className={className} />;
   if (id === "captureToInbox") return <InboxIcon className={className} />;
   if (isSpaceSwitchCommandId(id)) return <WorkbenchSpaceIcon className={className} />;
   if (id === "newPage") return <NewPageIcon className={className} />;
@@ -238,7 +240,7 @@ function CommandGlyph({ id, className }: { id: string; className: string }) {
 
 function CommandRow({ item, selected }: { item: CommandPaletteCommand; selected: boolean }) {
   const subtitle = item.disabledReason ?? item.subtitle;
-  const displaySubtitle = Boolean(item.disabledReason);
+  const displaySubtitle = Boolean(item.disabledReason || item.id.startsWith("skill:"));
 
   return (
     <div className={cn("flex w-full gap-2", displaySubtitle ? "items-start" : "items-center")}>

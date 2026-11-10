@@ -95,6 +95,7 @@ export interface WorkspacePierreEditorProps {
   readonly file?: WorkspaceFileRequest;
   readonly documentVersion: number;
   readonly ariaLabel: string;
+  readonly readOnly?: boolean;
   readonly wrap?: boolean;
   readonly className?: string;
   /** Shows a diff against oldContent. Omit newContent for the live editable draft. */
@@ -183,6 +184,7 @@ export function WorkspacePierreEditor({
   file,
   documentVersion,
   ariaLabel,
+  readOnly = false,
   wrap = true,
   className,
   comparison,
@@ -258,6 +260,7 @@ export function WorkspacePierreEditor({
   const oldPath = comparison?.oldPath;
   const snapshotContent = comparison?.newContent ?? null;
   const layout = comparison?.layout;
+  const editable = !readOnly && snapshotContent === null;
 
   const options = useMemo<NonNullable<CodeViewProps<undefined, undefined>["options"]>>(() => {
     const presentation = getNodexSourceOptions(resolved, true, {
@@ -324,6 +327,7 @@ export function WorkspacePierreEditor({
       previous.oldContent === oldContent &&
       previous.oldPath === oldPath &&
       previous.snapshotContent === snapshotContent &&
+      previous.editable === editable &&
       previous.content === content &&
       previous.highlightState === highlightState
     ) {
@@ -346,7 +350,6 @@ export function WorkspacePierreEditor({
     }
     const revision = ++revisionRef.current;
     const fileKey = fileIdentity ?? sourceIdentity;
-    const editable = snapshotContent === null;
     // A comparison too large or slow to diff here shows the plain file instead.
     const comparisonResult =
       oldContent === undefined
@@ -449,6 +452,7 @@ export function WorkspacePierreEditor({
     primeSourceHighlight(pool, item).then(startEditing(true), startEditing(false));
   }, [
     documentVersion,
+    editable,
     fileIdentity,
     filename,
     highlightState,

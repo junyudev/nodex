@@ -191,6 +191,20 @@ describe("dev launcher", () => {
     );
   });
 
+  test("isolates user skill folders when opening the skills seed", () => {
+    const plan = createDevLaunchPlan({
+      arguments: parseDevLauncherArguments(["--seed", "skills-pages"]),
+      environment: { CLAUDE_CONFIG_DIR: "/other/claude" },
+      home: HOME,
+      platform: "darwin",
+    });
+    expect(plan.environment).toMatchObject({
+      CODEX_HOME: HOME.codexHome,
+      NODEX_INTERNAL_SCENARIO_HOME: path.join(HOME.root, "home"),
+      CLAUDE_CONFIG_DIR: path.join(HOME.root, "home", ".claude"),
+    });
+  });
+
   test("enables developer overlays only for the requested invocation", () => {
     const optedIn = createDevLaunchPlan({
       arguments: parseDevLauncherArguments([

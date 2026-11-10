@@ -44,6 +44,8 @@ export interface SkillEditorSession {
   readonly flush: () => SkillEditorDraft;
   /** Adopt the exact candidate confirmed written to disk. Later keystrokes stay in the draft. */
   readonly acceptSaved: (candidate: SkillEditorCandidate) => boolean;
+  /** Advance a confirmed frontmatter-only write while preserving body edits made during it. */
+  readonly acceptFrontmatter: (text: string) => void;
   /** Replace the draft from disk only when it is clean. A refused or pending edit is retained. */
   readonly reseed: (text: string) => boolean;
   readonly dispose: () => void;
@@ -239,6 +241,12 @@ export function createSkillEditorSession(
       snapshot = { ...snapshot, source };
       publish({ ...snapshot, draft: validate() });
       return true;
+    },
+    acceptFrontmatter(text) {
+      clearTimeout(timer);
+      const source = parseSkillSource(text, matchCleanIds(snapshot.source));
+      snapshot = { ...snapshot, source };
+      publish({ ...snapshot, draft: validate() });
     },
     reseed(nextText) {
       if (disposed || flush().kind !== "clean") return false;
