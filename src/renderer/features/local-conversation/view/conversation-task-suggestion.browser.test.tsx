@@ -7,7 +7,10 @@ import { renderWithMaitai } from "@/test/thread-maitai";
 import { installWindowApi } from "@/test/browser-globals";
 import { buildComposerShellFixture } from "@/test/composer-shell-fixture";
 import { buildComposerActions } from "@/test/composer-actions-fixture";
-import { clearPersistedAtomStoreForTests } from "@/lib/persisted-atom-store";
+import {
+  clearPersistedAtomStoreForTests,
+  getPersistedAtomTransport,
+} from "@/lib/persisted-atom-store";
 import { LocalConversationComposerShell } from "./composer/local-conversation-composer-shell";
 import {
   COMPOSER_PROMPT_DRAFTS_STORAGE_KEY,
@@ -149,13 +152,16 @@ describe("task suggestion Composer handoff", () => {
           /(?:turn:start|turn:steer|queue.*enqueue|thread:start)/.test(channel),
         ),
       ).toEqual([]);
-      const draft = persisted.get(COMPOSER_PROMPT_DRAFTS_STORAGE_KEY);
-      if (!draft || typeof draft !== "object") throw new Error("Missing persistent draft");
-      expect(
-        Object.values(draft).flatMap((value) =>
-          typeof value === "string" ? [deserializeComposerPromptDraft(value).text] : [],
-        ),
-      ).toContain("Raw **prompt**");
+      await waitFor(async () => {
+        const { values } = await getPersistedAtomTransport().readSnapshot();
+        const draft = values[COMPOSER_PROMPT_DRAFTS_STORAGE_KEY];
+        if (!draft || typeof draft !== "object") throw new Error("Missing persistent draft");
+        expect(
+          Object.values(draft).flatMap((value) =>
+            typeof value === "string" ? [deserializeComposerPromptDraft(value).text] : [],
+          ),
+        ).toContain("Raw **prompt**");
+      });
       const other = view.getByRole("button", { name: "Other action" });
       await act(async () => {
         await userEvent.click(other);
@@ -172,7 +178,10 @@ describe("task suggestion Composer handoff", () => {
       await waitFor(() => expect(editor.textContent).toBe(""));
       await waitFor(() => expect(document.activeElement).toBe(editor));
       expect(handoffs[1]?.prompt).toBe("");
-      await waitFor(() => expect(persisted.get(COMPOSER_PROMPT_DRAFTS_STORAGE_KEY)).toEqual({}));
+      await waitFor(async () => {
+        const { values } = await getPersistedAtomTransport().readSnapshot();
+        expect(values[COMPOSER_PROMPT_DRAFTS_STORAGE_KEY]).toEqual({});
+      });
       expect(send).not.toHaveBeenCalled();
     } finally {
       view.unmount();
