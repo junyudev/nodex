@@ -148,10 +148,12 @@ for Release, Nightly, Rehearsal and Recovery:
   build never enters a bundle. An installed APK accepts updates only from that
   key. A Google Play listing must enroll the same key in Play App Signing, so
   people who installed the APK can update through Play.
-- **iOS** builds on `macos-26` with Apple's cloud-managed App Store signing
-  through the App Store Connect key, and the exported IPA must carry the
+- **iOS** builds on `macos-26`. Xcode archives with an ad hoc signature to
+  preserve the target entitlements. The App Store Connect key authorizes
+  cloud-managed App Store signing during export. The IPA must carry the
   release's versions and the Nodex team for the app and its notification
-  extension. The bundle certifies it under `testflight/` without publishing it.
+  extension, along with production push and the shared push keychain group.
+  The bundle certifies it under `testflight/` without publishing it.
 
 After a stable release is published, the direct `testflight` job uploads exactly
 that certified IPA, waits for Apple to process it, names the desktop release in
