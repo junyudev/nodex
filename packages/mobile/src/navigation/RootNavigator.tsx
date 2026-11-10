@@ -11,6 +11,7 @@ import { Platform, useColorScheme } from "react-native";
 import { ChatItemScreen } from "../features/chat/ChatItemScreen";
 import { ChatScreen } from "../features/chat/ChatScreen";
 import { ImageViewerScreen } from "../features/chat/ImageViewerScreen";
+import { useHomeState } from "../features/home/home-state";
 import { HOME_HEADER, HomeScreen } from "../features/home/HomeScreen";
 import { MessageScreen } from "../features/inbox/MessageScreen";
 import { SuggestionScreen } from "../features/inbox/Suggestion";
@@ -125,6 +126,8 @@ export const RootNavigator = () => {
     pendingTarget.current = null;
     openNotificationTarget(target);
   }, [activeHostId]);
+  // A Space opens on its own lists, whole: a search or filter does not follow from the last one.
+  useEffect(() => useHomeState.getState().enterSpace(activeHostId), [activeHostId]);
   const base = scheme === "dark" ? DarkTheme : DefaultTheme;
   const theme = {
     ...base,

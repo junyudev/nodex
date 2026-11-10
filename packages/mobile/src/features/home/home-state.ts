@@ -22,7 +22,8 @@ export interface ReplyTarget {
 
 interface HomeState {
   readonly mode: HomeMode;
-  readonly scope: InboxScope;
+  /** The Inbox each Space shows, by (Space, Member). One never chosen shows its Library's. */
+  readonly scopes: Readonly<Record<string, InboxScope>>;
   readonly filter: "inbox" | "processed";
   /** Keyed by (Space, Member, Composer): `inbox`, `new-chat`, or a chat's Session. */
   readonly drafts: Readonly<Record<string, ComposerDraft>>;
@@ -36,7 +37,11 @@ interface HomeState {
   readonly chatsArchived: boolean;
   readonly noteCaptureSent: () => void;
   readonly setMode: (mode: HomeMode) => void;
-  readonly setScope: (scope: InboxScope) => void;
+  readonly setScope: (spaceKey: string, scope: InboxScope) => void;
+  /** The Space whose lists the filter and searches here narrow. */
+  readonly space: string | null;
+  /** Another Space starts with its lists whole: what narrowed the last one's does not follow. */
+  readonly enterSpace: (spaceKey: string | null) => void;
   readonly toggleFilter: () => void;
   readonly setSearch: (search: string | null) => void;
   readonly setChatsArchived: (archived: boolean) => void;
@@ -48,7 +53,7 @@ interface HomeState {
 /** What the person was doing on this phone; none of it is a Host's state. */
 export const useHomeState = createLocalStore<HomeState>({
   mode: "inbox",
-  scope: { kind: "all" },
+  scopes: {},
   filter: "inbox",
   drafts: {},
   capturesSent: 0,
@@ -59,7 +64,17 @@ export const useHomeState = createLocalStore<HomeState>({
   noteCaptureSent: () =>
     useHomeState.setState(({ capturesSent }) => ({ capturesSent: capturesSent + 1 })),
   setMode: (mode) => useHomeState.setState({ mode }),
-  setScope: (scope) => useHomeState.setState({ scope, filter: "inbox", replyTo: null }),
+  setScope: (spaceKey, scope) =>
+    useHomeState.setState(({ scopes }) => ({
+      scopes: { ...scopes, [spaceKey]: scope },
+      filter: "inbox",
+      replyTo: null,
+    })),
+  space: null,
+  enterSpace: (space) =>
+    useHomeState.setState((current) =>
+      current.space === space ? {} : { space, filter: "inbox", search: null, chatsArchived: false },
+    ),
   toggleFilter: () =>
     useHomeState.setState(({ filter }) => ({
       filter: filter === "inbox" ? "processed" : "inbox",
@@ -71,7 +86,8 @@ export const useHomeState = createLocalStore<HomeState>({
       drafts: { ...drafts, [key]: { ...(drafts[key] ?? EMPTY_DRAFT), ...patch } },
     })),
   forgetSpace: (spaceKey) =>
-    useHomeState.setState(({ drafts, replyTo }) => ({
+    useHomeState.setState(({ drafts, replyTo, scopes: { [spaceKey]: _forgotten, ...scopes } }) => ({
+      scopes,
       drafts: Object.fromEntries(
         Object.entries(drafts).filter(([key]) => {
           try {

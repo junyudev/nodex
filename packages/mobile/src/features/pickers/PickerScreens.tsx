@@ -4,7 +4,8 @@ import { useRootNavigation, type ScreenProps } from "../../navigation/types";
 import { useAgentCatalog, useNewChatPreferences, useProjects } from "../../runtime";
 import { Icon } from "../../ui/icons";
 import { Row, RowGroup, SectionLabel, Txt } from "../../ui/primitives";
-import { useHomeState } from "../home/home-state";
+import type { InboxChoice } from "../inbox/inbox-choices";
+import { useInboxChoices } from "../inbox/use-inbox-choices";
 import { effectiveAgentChoice } from "./agent-choice";
 
 const Selected = () => <Icon name="check" color="accent" />;
@@ -22,48 +23,29 @@ const PickerSurface = ({ children }: { readonly children: React.ReactNode }) => 
   </ScrollView>
 );
 
-/** Which Inbox the stream shows and the Composer sends to. */
+/** Which Inbox the stream shows and the Composer sends to, chosen without leaving the words. */
 export const ScopePickerScreen = () => {
   const navigation = useRootNavigation();
-  const scope = useHomeState((state) => state.scope);
-  const setScope = useHomeState((state) => state.setScope);
-  const { projects, libraryInboxCount } = useProjects();
+  const { library, projects, choose } = useInboxChoices();
+  const row = (choice: InboxChoice) => (
+    <Row
+      key={choice.key}
+      icon={choice.icon}
+      label={choice.label}
+      trailing={choice.selected ? <Selected /> : <Count value={choice.count} />}
+      onPress={() => {
+        choose(choice.scope);
+        navigation.goBack();
+      }}
+    />
+  );
   return (
     <PickerSurface>
-      <RowGroup>
-        <Row
-          icon="inbox"
-          label="Library"
-          trailing={scope.kind !== "project" ? <Selected /> : <Count value={libraryInboxCount} />}
-          onPress={() => {
-            setScope({ kind: "all" });
-            navigation.goBack();
-          }}
-        />
-      </RowGroup>
+      <RowGroup>{row(library)}</RowGroup>
       {projects.length > 0 ? (
         <View>
           <SectionLabel>Projects</SectionLabel>
-          <RowGroup>
-            {projects.map((project) => (
-              <Row
-                key={project.id}
-                icon="folder"
-                label={project.name}
-                trailing={
-                  scope.kind === "project" && scope.projectId === project.id ? (
-                    <Selected />
-                  ) : (
-                    <Count value={project.inboxCount} />
-                  )
-                }
-                onPress={() => {
-                  setScope({ kind: "project", projectId: project.id });
-                  navigation.goBack();
-                }}
-              />
-            ))}
-          </RowGroup>
+          <RowGroup>{projects.map(row)}</RowGroup>
         </View>
       ) : null}
     </PickerSurface>

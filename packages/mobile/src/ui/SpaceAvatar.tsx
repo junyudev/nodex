@@ -17,9 +17,15 @@ const hueOf = (seed: string): number => {
   return hue;
 };
 
+const DECORATIVE = {
+  accessibilityElementsHidden: true,
+  importantForAccessibility: "no-hide-descendants",
+} as const;
+
 /**
  * A Space is a rounded square, never a person's round avatar. The personal Space is the person's
- * own Nodex and carries its mark; a team Space carries its initials.
+ * own Nodex and carries its mark; a team Space carries its initials. It always stands beside the
+ * Space's name, so a screen reader hears the name alone.
  */
 export const SpaceAvatar = ({
   space,
@@ -35,12 +41,13 @@ export const SpaceAvatar = ({
   const box = { width: size, height: size, borderRadius: Math.round(size * 0.28) };
   if (space.kind === "personal")
     return (
-      <View style={box} className="items-center justify-center bg-surface-3">
+      <View {...DECORATIVE} style={box} className="items-center justify-center bg-surface-3">
         <NodexMark size={Math.round(size * 0.64)} />
       </View>
     );
   return (
     <View
+      {...DECORATIVE}
       style={[box, { backgroundColor: `hsl(${hueOf(space.spaceId)}, 42%, 46%)` }]}
       className="items-center justify-center"
     >

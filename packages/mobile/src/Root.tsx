@@ -6,8 +6,10 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { HomeMenu } from "./features/home/HomeMenu";
 import { RootNavigator } from "./navigation/RootNavigator";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
+import { SideMenu } from "./ui/SideMenu";
 import { SnackbarHost } from "./ui/snackbar";
 
 const COMPOSER_CLEARANCE = 60;
@@ -17,7 +19,9 @@ const Chrome = () => {
   return (
     <View className="flex-1 bg-surface">
       <StatusBar />
-      <RootNavigator />
+      <SideMenu menu={<HomeMenu />}>
+        <RootNavigator />
+      </SideMenu>
       <SnackbarHost bottom={Math.max(insets.bottom, 8) + COMPOSER_CLEARANCE} />
     </View>
   );

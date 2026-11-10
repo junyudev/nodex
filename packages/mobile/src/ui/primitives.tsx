@@ -47,6 +47,11 @@ export const lightTap = (): void => {
   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 };
 
+/** Something large coming to rest, such as the menu opening. */
+export const softTap = (): void => {
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
+};
+
 export const IconButton = ({
   name,
   label,

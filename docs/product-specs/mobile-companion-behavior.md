@@ -49,10 +49,12 @@ unsent captures, drafts and cached views; it owns no canonical Nodex data.
 - Each connection’s hello supplies Core’s personal or team Space kind. The phone
   saves it with the linked Space and refreshes it on every connection; enabling
   personal Remote access does not make a Space a team.
-- Settings shows a plain Space list. Switching selects that Space and Member's
-  cached views, drafts and outbox. Removing a Space locally stops its connection
-  and removes its local state. Remote Device revocation remains a separate action.
-  A capture is never sent through another Member's enrollment.
+- The menu and Settings both list the linked Spaces. Switching selects that Space
+  and Member's cached views, drafts, outbox and chosen Inbox, and its lists open
+  whole: a search or filter does not follow from the last Space. Removing a Space
+  locally stops its connection and removes its local state. Remote Device
+  revocation remains a separate action. A capture is never sent through another
+  Member's enrollment.
 
 ## Reaching a Space
 
@@ -99,11 +101,28 @@ line whose placeholder names where a message goes. In use it opens to show its p
 A control in a top bar does only what it says. Where the system sends a list to its top when the
 bar is tapped, the status bar still does and the bar's controls do not.
 
+### The menu
+
+Home rests on a menu of where the phone is looking: the current Space with its connection, each
+Inbox that Space has, the other linked Spaces, and Settings.
+
+- The Space's avatar at the top left opens it from either pane. So does a swipe to the right across
+  the Inbox; from Chats the same swipe returns to the Inbox first. Opening puts the keyboard away and
+  keeps the draft.
+- The whole app slides aside as a card that follows the finger. Releasing past halfway, or a flick,
+  decides where it rests. Tapping the card, dragging it back, or Android's back closes the menu.
+- `Inbox` lists the Library's and every Project's, each with how many messages wait, and marks the
+  one being shown. Choosing one shows it and returns to the app.
+- `Other Spaces` appears when more than one is linked. Choosing one switches to it.
+- The menu belongs to Home. Opening Settings, a chat or a message closes it.
+
 ### Inbox
 
 - The stream shows the chosen Inbox, the Library's or a Project's, newest at the bottom, rendered as
-  the desktop renders it. Library Home reads across all Projects; capture there has no Project. The Composer's chip chooses its destination. A phone chooses
-  explicitly, as a desktop window does.
+  the desktop renders it. Library Home reads across all Projects; capture there has no Project. A
+  phone chooses explicitly, as a desktop window does: from the menu, or from the Composer's chip
+  without leaving the words being written. Each Space keeps its own choice while the app runs and
+  starts at its Library. The resting Composer names a Project it would capture to.
 - Capture never waits for the network. A sent message is durable on the phone first, shows as waiting,
   and is delivered in order once the desktop is reachable, across app restarts. Retrying can never
   create a second message. A message the desktop refuses stays visible with the reason, `Retry` and

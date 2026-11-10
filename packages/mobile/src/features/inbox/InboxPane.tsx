@@ -35,6 +35,7 @@ import {
 } from "./inbox-presentation";
 import { SuggestionCard } from "./Suggestion";
 import { useDecide } from "./use-decide";
+import { useInboxScope } from "./use-inbox-choices";
 
 // Whole class names, so the stylesheet compiler can see every one.
 const SIGNATURE_TEXT: Readonly<Record<EntrySignature["tone"], string>> = {
@@ -172,7 +173,7 @@ const rowKey = (row: InboxRow): string =>
 
 /** The Inbox stream, newest at the bottom beside the Composer, as it reads on the desktop. */
 export const InboxPane = ({ insets }: { readonly insets: ContentInsets }) => {
-  const scope = useHomeState((state) => state.scope);
+  const { scope } = useInboxScope();
   const filter = useHomeState((state) => state.filter);
   const capturesSent = useHomeState((state) => state.capturesSent);
   const inbox = useInbox(scope, filter);
@@ -188,7 +189,7 @@ export const InboxPane = ({ insets }: { readonly insets: ContentInsets }) => {
           <EmptyState
             icon="warning"
             title={`No access to ${name}`}
-            detail="Link this phone again, or switch to another Space in Settings."
+            detail="Link this phone again, or switch to another Space."
           />
         </View>
       );

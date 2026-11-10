@@ -19,25 +19,10 @@ import { Row, RowGroup, SectionLabel, StatusDot, Txt } from "../../ui/primitives
 import { SpaceAvatar } from "../../ui/SpaceAvatar";
 import { showFailure } from "../../ui/snackbar";
 import { useHomeState } from "../home/home-state";
-import { spaceKindLabel } from "./space-presentation";
-
-const STATUS_WORDS = {
-  idle: "Not connected",
-  connecting: "Connecting",
-  connected: "Connected",
-  offline: "Unavailable",
-  unavailable: "Unavailable",
-  incompatible: "Needs an update",
-  revoked: "Access revoked",
-} as const;
-
-const kindOf = (host: SavedHost) => spaceKindLabel({ name: host.hostName, kind: host.spaceKind });
+import { linkedSpace, spaceKindLabel, spaceStatusLine } from "./space-presentation";
 
 const HostAvatar = ({ host }: { readonly host: SavedHost }) => (
-  <SpaceAvatar
-    space={{ spaceId: host.spaceId, name: host.hostName, kind: host.spaceKind }}
-    size={28}
-  />
+  <SpaceAvatar space={linkedSpace(host)} size={28} />
 );
 
 const PROBLEM_WORDS: Readonly<Record<NotificationProblem, string>> = {
@@ -159,7 +144,7 @@ export const SettingsScreen = ({ navigation }: ScreenProps<"Settings">) => {
             <Row
               leading={<HostAvatar host={active} />}
               label={active.hostName}
-              detail={[kindOf(active), STATUS_WORDS[connection.status]].filter(Boolean).join(" · ")}
+              detail={spaceStatusLine(linkedSpace(active), connection.status)}
               trailing={
                 <StatusDot
                   tone={
@@ -196,7 +181,7 @@ export const SettingsScreen = ({ navigation }: ScreenProps<"Settings">) => {
                   key={host.hostId}
                   leading={<HostAvatar host={host} />}
                   label={host.hostName}
-                  detail={kindOf(host) ?? undefined}
+                  detail={spaceKindLabel(linkedSpace(host))}
                   onPress={() => activateHost(host.hostId)}
                   onLongPress={() => confirmForget(host)}
                 />
