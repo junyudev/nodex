@@ -38,7 +38,7 @@
     "start": "node --import tsx src/nodex/entry.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.316",
+    "@anthropic-ai/claude-agent-sdk": "0.3.322",
     "@effect/platform-node": "4.0.6",
     "@effect/vitest": "4.0.6",
     "@ff-labs/fff-node": "0.11.0",

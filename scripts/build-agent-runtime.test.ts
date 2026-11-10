@@ -122,11 +122,11 @@ function fixture() {
     "node_modules/dependency/package.json": '{"name":"dependency","main":"index.js"}',
     "node_modules/dependency/index.js": "export const dependency = true;",
     "node_modules/@anthropic-ai/claude-agent-sdk/package.json":
-      '{"main":"sdk.mjs","optionalDependencies":{"@anthropic-ai/claude-agent-sdk-darwin-arm64":"0.3.316"}}',
+      '{"main":"sdk.mjs","optionalDependencies":{"@anthropic-ai/claude-agent-sdk-darwin-arm64":"0.3.322"}}',
     "node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs": "export const sdk = true;",
     "node_modules/@anthropic-ai/claude-agent-sdk/native/worker": "native helper",
     "node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/package.json":
-      '{"name":"@anthropic-ai/claude-agent-sdk-darwin-arm64","version":"0.3.316"}',
+      '{"name":"@anthropic-ai/claude-agent-sdk-darwin-arm64","version":"0.3.322"}',
     "node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude": "bundled Claude executable",
   };
   for (const [path, contents] of Object.entries(sources)) write(join(root, path), contents);

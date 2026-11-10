@@ -5548,51 +5548,57 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
-  it.effect("reports a required sandbox startup failure before any model turn", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeWakeHarness;
-      const now = yield* DateTime.now;
-      const message = "Claude Code requires a sandbox, but it is unavailable on this system.";
-      yield* harness.runtime.startTurn(
-        makeClaudeTestTurnInput({
-          threadId: harness.threadId,
-          providerThread: harness.providerThread,
-          now,
-          attemptId: RunAttemptId.make("sandbox-startup-failure"),
-          text: "Continue.",
-          attachments: [],
-        }),
-      );
-      yield* Queue.offer(harness.sdkMessages, {
-        ...makeResultFrame({
-          uuid: "00000000-0000-4000-8000-000000000611",
-          result: "",
-          numTurns: 0,
-          subtype: "error_during_execution",
-          isError: true,
-          errors: [message],
-          terminalReason: null,
-          startupFailureReason: "sandbox_required_unavailable",
-        }),
-        usage: {
-          input_tokens: 0,
-          output_tokens: 0,
-          cache_creation_input_tokens: 0,
-          cache_read_input_tokens: 0,
-        },
-      } as SDKMessage);
-      const terminal = yield* Queue.take(harness.terminalReceipts);
-      assert.equal(terminal.status, "failed");
-      if (terminal.status !== "failed") return;
-      assert.equal(terminal.failure.message, message);
-      assert.equal(terminal.failure.class, "provider_error");
-      assert.equal(terminal.failure.code, "error_during_execution");
-    }).pipe(
-      Effect.provide(
-        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+  for (const reason of [
+    "sandbox_required_unavailable",
+    "initialize_not_first",
+    "config_file_invalid",
+  ] as const) {
+    it.effect(`reports ${reason} before any model turn`, () =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        const now = yield* DateTime.now;
+        const message = "Claude Code requires a sandbox, but it is unavailable on this system.";
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make("sandbox-startup-failure"),
+            text: "Continue.",
+            attachments: [],
+          }),
+        );
+        yield* Queue.offer(harness.sdkMessages, {
+          ...makeResultFrame({
+            uuid: "00000000-0000-4000-8000-000000000611",
+            result: "",
+            numTurns: 0,
+            subtype: "error_during_execution",
+            isError: true,
+            errors: [message],
+            terminalReason: null,
+            startupFailureReason: reason,
+          }),
+          usage: {
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+          },
+        } as SDKMessage);
+        const terminal = yield* Queue.take(harness.terminalReceipts);
+        assert.equal(terminal.status, "failed");
+        if (terminal.status !== "failed") return;
+        assert.equal(terminal.failure.message, message);
+        assert.equal(terminal.failure.class, "provider_error");
+        assert.equal(terminal.failure.code, "error_during_execution");
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   it.effect("names an expired Claude login instead of the terminal API error", () =>
     Effect.gen(function* () {

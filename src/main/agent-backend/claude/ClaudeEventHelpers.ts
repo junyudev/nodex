@@ -39,6 +39,7 @@ export const CLAUDE_SYSTEM_EVENT_DISPOSITIONS = {
   permission_denied: "diagnostic",
   plugin_install: "diagnostic",
   session_state_changed: "lifecycle",
+  session_writes_lost: "diagnostic",
   status: "lifecycle",
   task_notification: "lifecycle",
   task_progress: "lifecycle",
