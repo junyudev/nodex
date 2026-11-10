@@ -37,6 +37,7 @@ interface NativeDiscoveryLocation {
 export class ClaudeNativeCatalog extends Context.Service<
   ClaudeNativeCatalog,
   {
+    readonly invalidateSkills: Effect.Effect<void>;
     readonly nativeHome: (instanceConfigId: string) => Effect.Effect<string, AgentRuntimeError>;
     readonly nativeCatalog: (input: {
       readonly instanceConfigId: string;
@@ -122,6 +123,7 @@ export const make = Effect.gen(function* () {
   const config = yield* MainConfig;
   const lanes = yield* RcMap.make({ lookup: (_id: string) => Semaphore.make(1) });
   const discovery = yield* Semaphore.make(2);
+  let skillsEpoch = 0;
   const catalogCache = new Map<string, { expires: number; value: ClaudeDiscovery }>();
   const nativeScope = Effect.fn("ClaudeNativeCatalog.nativeScope")(function* (
     instanceConfigId: string,
@@ -269,6 +271,7 @@ export const make = Effect.gen(function* () {
           if (forceReload) catalogCache.delete(key);
           const cached = catalogCache.get(key);
           if (cached && cached.expires > now) return cached.value;
+          const epoch = skillsEpoch;
           const value = yield* discovery.withPermits(1)(
             Effect.scoped(
               Effect.gen(function* () {
@@ -313,12 +316,16 @@ export const make = Effect.gen(function* () {
             const oldest = catalogCache.keys().next().value;
             if (oldest) catalogCache.delete(oldest);
           }
-          catalogCache.set(key, { expires: now + 60_000, value });
+          if (epoch === skillsEpoch) catalogCache.set(key, { expires: now + 60_000, value });
           return value;
         }),
       );
     });
   return ClaudeNativeCatalog.of({
+    invalidateSkills: Effect.sync(() => {
+      skillsEpoch += 1;
+      catalogCache.clear();
+    }),
     nativeHome,
     nativeCatalog,
     nativeSessionInfo,

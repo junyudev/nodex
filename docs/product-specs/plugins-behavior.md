@@ -1,8 +1,8 @@
 # Plugins behavior
 
-Customize manages the selected local Codex home's plugins, marketplaces and skills.
-Native Codex remains the installation and configuration authority. Nodex does not copy
-installation state into its content database.
+Customize manages plugins and marketplaces in the active local Codex home. The local skill
+inventory also covers Claude Profiles and Project source folders. Native Agent directories and
+configuration remain the authority for skill files and availability.
 
 ## Customize pages
 
@@ -161,11 +161,38 @@ returned by installation for the caller's setup workflow.
 
 ## Skills
 
-Skills flatten in resolved root order and deduplicate by path, then by name. Scope precedence
-is Project, user, system, administrator; lexical path breaks ties. Standalone groups exclude
-plugin-owned skills and retain system skills. Match keys include directory basename, raw and
-humanized name, display name, and punctuation-free variants. Plugin-owned skills still
-contribute installed match keys. Local contents must match current skill inventory or an exact
+A skill is a directory containing `SKILL.md`. Its location determines which Agents read it.
+The inventory includes Codex's `~/.agents/skills` and active Codex home's `skills`, each enabled
+Claude Profile's `skills`, and the Project source folders' `.agents/skills` and `.claude/skills`
+for the corresponding Agents. Personal locations are available without a Project. An absent
+Project skill directory is available as a destination when its source folder is writable.
+A shared physical directory has one location with all its readers. Same-name skills in
+different directories have separate entries, including skills shadowed by another directory.
+Nodex uses the Agents' existing discovery rules and leaves cross-location copies and moves
+to the user.
+
+Codex plugin, bundled and administrator skills with local files appear as read-only entries.
+Claude plugin and enterprise skill directories are outside the current inventory. The inventory
+can show a broken manifest for repair and retains filesystem entries when native availability
+is unknown. Codex availability comes from native skill inventory. Claude availability reflects
+effective `skillOverrides`; a toggle is unavailable when the name is ambiguous or the
+effective settings layer cannot be safely edited. Personal Claude toggles use the Profile's
+settings and Project toggles use Project-local settings.
+
+Creating a skill writes an empty body with valid frontmatter. The document read returns the
+exact Markdown, included files, and a disk revision. A save checks that revision, replaces
+`SKILL.md` atomically, preserves its mode, and returns the current document on conflict. A
+deleted file is unavailable to a pending save. An external writer can still race the final
+filesystem check, so an open document reconciles after a disk change.
+
+Renaming updates the directory and the frontmatter name while preserving the remaining text
+and supporting files. Copy and move publish the complete skill into an explicit location
+without overwriting an existing name. A move trashes its source after the copy is published
+and verified. If source removal fails or the source changes, the result reports that both
+copies remain. Availability follows the destination's native configuration. Deleting a
+writable skill sends it to the operating system's trash.
+
+Plugin detail previews use the existing native authorization. Local contents must match current skill inventory or an exact
 absolute SKILL.md path returned by a completed plugin detail query, including disabled and
 uninstalled plugins. Detail path grants are scoped by host generation, account identity and
 epoch, Project bindings and ordered roots. The original native plugin selector is re-read
@@ -186,9 +213,8 @@ The catalog refreshes after ten minutes; each Git command has a thirty-second ti
 A bundled repository is used when present and no checkout exists. Failed refreshes retain
 the cached catalog and expose a separate error. User installations go into `<codexHome>/skills/<id>`;
 Project installations go into the selected active source's `.agents/skills/<id>`.
-Installation copies supporting files through a staging directory and refuses to overwrite an
-existing skill. Standalone uninstall requires a current user or Project skill, no plugin owner,
-and an immediate child of an authorized installation directory. Symbolic-link escapes and
+Installation stages the complete skill and refuses to overwrite an existing name.
+Standalone uninstall sends an authorized standalone user or Project skill to the system trash. Symbolic-link escapes and
 managed directories are protected. Local contents include the original SKILL.md and the
 contained file list; remote skill reads expose only SKILL.md because the native protocol
 has no remote included-files operation.
@@ -358,8 +384,11 @@ from the plugin's native detail.
 
 ## Settings observation updates
 
-Skill changes invalidate skills, recommended skills, previews, affected detail and composer
-observations. App changes invalidate app-dependent plugin projections and MCP catalogs.
+The local skill inventory watches registered locations and open skill directories. A missing
+location is observed through its existing ancestors. After the watch is ready, the inventory
+and open documents reconcile with disk. Skill mutations invalidate both Agents' composer
+observations. Native Codex skill changes also invalidate recommendations, previews and
+affected plugin detail. App changes invalidate app-dependent plugin projections and MCP catalogs.
 MCP changes invalidate MCP/app status and detail without refetching unrelated skill or
 marketplace catalogs. Account and host changes remove old scoped and composer observations;
 late results cannot repopulate them. MCP OAuth completion carries host generation and account

@@ -1,3 +1,4 @@
+import { SkillFileMutationLane } from "../host-runtime/SkillFileMutationLane";
 import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import { live as workspaceRuntimeLive } from "../../host/WorkspaceRuntimeLive";
 import { live as standaloneSkillsLive } from "../platform/node/StandaloneSkillsNode";
@@ -129,7 +130,10 @@ const plugins = Layer.unwrap(
       ),
     );
   }),
-).pipe(Layer.provideMerge(pluginServiceLive.pipe(Layer.provideMerge(chatGpt))));
+).pipe(
+  Layer.provideMerge(pluginServiceLive.pipe(Layer.provideMerge(chatGpt))),
+  Layer.provideMerge(SkillFileMutationLane.live),
+);
 const browserSiteStatus = browserSiteStatusRuntimeLive.pipe(Layer.provideMerge(chatGpt));
 const browserApplication = Layer.unwrap(
   Effect.gen(function* () {
@@ -254,6 +258,7 @@ export const live: Layer.Layer<
   | ElectronNet.ElectronNet
   | ChatGptDesktop
   | PluginManager
+  | SkillFileMutationLane
   | PluginService
   | CodexWorkspaceRouting
   | ComposerExternalSuggestions

@@ -263,9 +263,11 @@ export function codexComposerSkillsListQueryOptions(
   return queryOptions({
     queryKey: queryKeys.codexComposerSkills.list(normalizedCwds, hostId),
     queryFn: () =>
-      invoke("codex:composer-skills:list", { hostId, cwds: normalizedCwds }) as Promise<
-        CodexComposerSkill[]
-      >,
+      invoke("codex:composer-skills:list", {
+        hostId,
+        cwds: normalizedCwds,
+        forceReload: hostId === DEFAULT_CODEX_HOST_ID,
+      }) as Promise<CodexComposerSkill[]>,
     enabled: !isHostedChat(),
     retry: false,
     staleTime: 5 * 60_000,

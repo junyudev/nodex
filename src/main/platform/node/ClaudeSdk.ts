@@ -74,8 +74,20 @@ export class ClaudeSdk extends Context.Service<
       input: ClaudeSdkDiscoveryInput,
     ) => Effect.Effect<ClaudeSdkDiscovery, AgentRuntimeError, Scope.Scope>;
     readonly configuration: (
-      input: Pick<ClaudeSdkDiscoveryInput, "instance" | "environment" | "cwd">,
-    ) => Effect.Effect<Pick<Settings, "skillOverrides">, AgentRuntimeError>;
+      input: Pick<ClaudeSdkDiscoveryInput, "instance" | "environment" | "cwd"> & {
+        readonly userSettingsOnly?: boolean;
+      },
+    ) => Effect.Effect<
+      Pick<Settings, "skillOverrides"> & {
+        readonly skillOverrideSources?: readonly {
+          readonly source: "user" | "project" | "local" | "managed" | "flag";
+          readonly path?: string;
+          readonly skillOverrides?: Settings["skillOverrides"];
+          readonly hasPolicyHelper: boolean;
+        }[];
+      },
+      AgentRuntimeError
+    >;
     readonly historyPage: (
       input: HistoryInput,
       page?: { readonly before?: string; readonly limit?: number },
@@ -330,6 +342,7 @@ const nativeOperations = (moduleUrl: string) => {
       readonly offset?: number;
       readonly records?: readonly import("@anthropic-ai/claude-agent-sdk").SessionStoreEntry[];
       readonly hasMore?: boolean;
+      readonly userSettingsOnly?: boolean;
     } = {},
   ) =>
     Effect.callback<A, AgentRuntimeError>((resume) => {
@@ -381,8 +394,13 @@ const nativeOperations = (moduleUrl: string) => {
         post((await sdk.listSessions({limit:workerData.options.limit,offset:workerData.options.offset,includeProgrammatic:true})).map(metadata));return;
       }
       if (workerData.operation === "configuration") {
-        const resolved = await sdk.resolveSettings({cwd:workerData.cwd,settingSources:["user","project","local"]});
-        post({skillOverrides:resolved.effective.skillOverrides??{}}); return;
+        const resolved = await sdk.resolveSettings({cwd:workerData.cwd,settingSources:workerData.options.userSettingsOnly?["user"]:["user","project","local"]});
+        post({
+          skillOverrides:resolved.effective.skillOverrides??{},
+          skillOverrideSources:resolved.sources.map(({source,path,settings})=>({
+            source,path,skillOverrides:settings.skillOverrides,hasPolicyHelper:Boolean(settings.policyHelper),
+          })),
+        }); return;
       }
       // Exact native identity is account-scoped; moving execution must not move or lose history.
       if (workerData.operation === "session-info") {post(metadata(await sdk.getSessionInfo(workerData.sessionId)));return;}
@@ -480,7 +498,9 @@ const nativeOperations = (moduleUrl: string) => {
       });
     });
   const configuration: ClaudeSdk["Service"]["configuration"] = (input) =>
-    nativeOperation({ ...input, sessionId: "" }, "configuration");
+    nativeOperation({ ...input, sessionId: "" }, "configuration", {
+      userSettingsOnly: input.userSettingsOnly ?? false,
+    });
   const nativeHome: ClaudeSdk["Service"]["nativeHome"] = (input) => nativeOperation(input, "home");
   const listSessions: ClaudeSdk["Service"]["listSessions"] = (input, page) =>
     nativeOperation(input, "catalog", page);

@@ -36,6 +36,8 @@ import { live as agentBackendApplicationLive } from "../agent-backend/AgentBacke
 import { live as agentBackendRegistryLive } from "../agent-backend/AgentBackendRegistry";
 import { live as workspaceDependencies } from "../../host/WorkspaceDependenciesLive";
 
+import { live as skillInventoryLive } from "./SkillInventoryLive";
+
 const backgroundProcesses = Layer.effect(CodexBackgroundProcesses, makeCodexBackgroundProcesses);
 const projectArchiveBlockers = projectArchiveBlockersLive.pipe(
   Layer.provideMerge(backgroundProcesses),
@@ -91,7 +93,7 @@ export const live = Layer.mergeAll(
   Layer.effect(WorkbenchContentRouting, makeWorkbenchContentRouting),
 ).pipe(
   Layer.provideMerge(
-    sessionWaiterLive.pipe(
+    Layer.merge(sessionWaiterLive, skillInventoryLive).pipe(
       Layer.provideMerge(sessionObservationLive.pipe(Layer.provideMerge(agentBackends))),
     ),
   ),

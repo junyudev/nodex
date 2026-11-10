@@ -130,6 +130,7 @@ import {
   setLocalConversationThreadPresented,
   useDefaultCodexAppServerManager,
 } from "./local-conversation-store";
+import { subscribeComposerSkillInvalidation } from "@/lib/skill-inventory-adapter";
 import { subscribeAgentCatalogRefresh } from "@/lib/agent-catalog-refresh";
 import { useFirstRunEntry, useNotificationOffer } from "@/features/first-run/first-run-state";
 import {
@@ -1012,6 +1013,13 @@ export function useAgentRuntimeConversationAdapter(input: {
     () =>
       subscribeAgentCatalogRefresh(() => {
         setCatalogRequest(({ revision }) => ({ revision: revision + 1, refresh: false }));
+      }),
+    [],
+  );
+  useEffect(
+    () =>
+      subscribeComposerSkillInvalidation(() => {
+        setCatalogRequest(({ revision }) => ({ revision: revision + 1, refresh: true }));
       }),
     [],
   );

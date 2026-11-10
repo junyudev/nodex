@@ -9,6 +9,8 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { ProjectionInvalidationProvider } from "./projection-invalidation-context";
 import { PageFileQueryCacheSync } from "./page-file-query-cache";
 import { useDevelopmentFeature } from "./development-features-context";
+import { subscribeComposerSkillInvalidation } from "./skill-inventory-adapter";
+import { queryKeys } from "./query-keys";
 import { acquirePluginManagementSubscription } from "./plugin-management-cache";
 
 const ReactQueryDevtools = lazy(async () => {
@@ -38,6 +40,15 @@ export function createNodexQueryClient(
 
 function CodexHostCatalogQuerySync({ queryClient }: { queryClient: QueryClient }) {
   useEffect(() => acquirePluginManagementSubscription(queryClient), [queryClient]);
+  useEffect(
+    () =>
+      subscribeComposerSkillInvalidation(({ hostId }) => {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.codexComposerSkills.list([], hostId),
+        });
+      }),
+    [queryClient],
+  );
   return null;
 }
 

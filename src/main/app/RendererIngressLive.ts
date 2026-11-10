@@ -3,6 +3,7 @@ import * as SourcesIpc from "../ipc/handlers/SourcesIpc";
 import * as WorkIpc from "../ipc/handlers/WorkIpc";
 import * as ChatSearchIpc from "../ipc/handlers/ChatSearchIpc";
 import * as InsightsIpc from "../ipc/handlers/InsightsIpc";
+import * as SkillInventoryIpc from "../ipc/handlers/SkillInventoryIpc";
 import * as PluginManagerIpc from "../ipc/handlers/PluginManagerIpc";
 import * as McpAppDataIpc from "../ipc/handlers/McpAppDataIpc";
 import * as AcpAgentsIpc from "../ipc/handlers/AcpAgentsIpc";
@@ -116,6 +117,7 @@ export const live = Layer.mergeAll(
   ComposerAppshotIpc.live,
   CodexApplicationIpc.live,
   PluginManagerIpc.live,
+  SkillInventoryIpc.live,
   McpAppDataIpc.live,
   CodexRendererIpc.live,
   CodexVisualizationIpc.live,

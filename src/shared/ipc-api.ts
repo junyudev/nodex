@@ -1,3 +1,12 @@
+import type {
+  SkillInput,
+  SkillResult,
+  SkillDocument,
+  SkillSaveResult,
+  SkillTransferResult,
+  SkillInventorySnapshot,
+  SkillsChangedEvent,
+} from "./skill-inventory";
 import type { SpaceAdministrationIpcApi } from "./space-administration";
 import type {
   InsightsContentSnapshot,
@@ -2559,6 +2568,46 @@ export interface IpcApi
     args: [input: CodexComposerPluginListInput];
     result: CodexComposerPlugin[];
   };
+  "skills:inventory:list": {
+    args: [input: SkillInput<"list">];
+    result: SkillResult<SkillInventorySnapshot>;
+  };
+  "skills:document:read": {
+    args: [input: SkillInput<"readDocument">];
+    result: SkillResult<SkillDocument>;
+  };
+  "skills:document:write": {
+    args: [input: SkillInput<"writeDocument">];
+    result: SkillSaveResult;
+  };
+  "skills:create": {
+    args: [input: SkillInput<"createBlank">];
+    result: SkillResult<SkillDocument>;
+  };
+  "skills:rename": {
+    args: [input: SkillInput<"rename">];
+    result: SkillSaveResult;
+  };
+  "skills:transfer": {
+    args: [input: SkillInput<"transfer">];
+    result: SkillTransferResult;
+  };
+  "skills:trash": {
+    args: [input: SkillInput<"trash">];
+    result: SkillResult<void>;
+  };
+  "skills:set-enabled": {
+    args: [input: SkillInput<"setEnabled">];
+    result: SkillResult<void>;
+  };
+  "skills:watch:start": {
+    args: [input: SkillInput<"watchStart">];
+    result: SkillResult<{ readonly subscriptionId: string }>;
+  };
+  "skills:watch:stop": {
+    args: [input: SkillInput<"watchStop">];
+    result: SkillResult<void>;
+  };
   "codex:composer-skills:list": {
     args: [input: CodexComposerSkillListInput];
     result: CodexComposerSkill[];
@@ -3136,6 +3185,8 @@ export interface IpcApi
 export type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"];
 
 export interface IpcEvents {
+  "skills:changed": SkillsChangedEvent;
+  "skills:composer-invalidated": { readonly hostId: string };
   "codex:plugins:changed": [PluginManagementChanged];
   "nodex-account:changed": import("./nodex-account").NodexAccountSnapshot;
   "opencode-setup:changed": import("./opencode-setup").OpenCodeSetupState;

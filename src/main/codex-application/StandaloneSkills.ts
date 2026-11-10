@@ -1,3 +1,11 @@
+import {
+  copySkillTree,
+  discardSkillStage,
+  listSkillFiles,
+  publishSkill,
+  stageSkill,
+  SkillFileError,
+} from "../platform/node/SkillFilesNode";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -56,6 +64,8 @@ export const live = (options: {
   codexHome: string;
   environment: Readonly<Record<string, string | undefined>>;
   bundledRepoRoot?: string;
+  fileLane?: Semaphore.Semaphore;
+  trashDirectory?: (directory: string) => Effect.Effect<void, SkillFileError>;
 }) =>
   Layer.effect(
     StandaloneSkills,
@@ -64,6 +74,18 @@ export const live = (options: {
       const path = yield* Path.Path;
       const git = yield* GitCommandPlatform;
       const lane = yield* Semaphore.make(1);
+      const fileLane = options.fileLane ?? (yield* Semaphore.make(1));
+      const fileOperation = <T>(operation: () => Promise<T>) =>
+        Effect.tryPromise({
+          try: operation,
+          catch: (cause) =>
+            cause instanceof SkillFileError
+              ? pluginError(
+                  cause.code === "collision" ? "invalid_input" : "protected",
+                  cause.message,
+                )
+              : failure(),
+        });
       const vendorRoot = path.join(options.codexHome, "vendor_imports");
       const repo = path.join(vendorRoot, "skills");
       const cacheFile = path.join(vendorRoot, "skills-curated-cache.json");
@@ -88,34 +110,10 @@ export const live = (options: {
         if (Result.isSuccess(link))
           return yield* pluginError("protected", "Skill files must not contain symbolic links.");
       });
-      const files = Effect.fn("StandaloneSkills.files")(function* (root: string) {
-        const canonicalRoot = yield* canonical(root);
-        const pending = [root];
-        const result: string[] = [];
-        while (pending.length) {
-          const directory = pending.pop()!;
-          const children = yield* fs.readDirectory(directory).pipe(Effect.mapError(failure));
-          for (const name of children) {
-            const file = path.join(directory, name);
-            yield* noLink(file);
-            if (!contained(canonicalRoot, yield* canonical(file)))
-              return yield* pluginError(
-                "protected",
-                "The skill contains files outside its directory.",
-              );
-            const info = yield* fs.stat(file).pipe(Effect.mapError(failure));
-            if (info.type === "Directory") pending.push(file);
-            else if (info.type === "File")
-              result.push(path.relative(root, file).replaceAll("\\", "/"));
-            else
-              return yield* pluginError(
-                "protected",
-                "The skill contains an unsupported file type.",
-              );
-          }
-        }
-        return result.toSorted();
-      });
+      const files = (root: string) =>
+        canonical(root).pipe(
+          Effect.flatMap((directory) => fileOperation(() => listSkillFiles(directory))),
+        );
       const contents = Effect.fn("StandaloneSkills.contents")(function* (skillFile: string) {
         const root = path.dirname(skillFile);
         const realRoot = yield* canonical(root);
@@ -434,42 +432,39 @@ export const live = (options: {
           ),
         install: (id, projectRoot, beforeWrite) =>
           lane.withPermits(1)(
-            Effect.scoped(
-              Effect.gen(function* () {
-                if (!safeId(id))
-                  return yield* pluginError("invalid_input", "Select a recommended skill.");
-                const source = yield* recommendedSource(id);
-                yield* files(source);
-                yield* beforeWrite;
-                const root = yield* ownedRoot(
-                  projectRoot ?? options.codexHome,
-                  projectRoot === null ? ["skills"] : [".agents", "skills"],
-                  true,
-                );
-                const destination = path.join(root, id);
-                if (yield* exists(destination))
-                  return yield* pluginError(
-                    "invalid_input",
-                    "A skill with this ID is already installed in this scope.",
+            Effect.gen(function* () {
+              if (!safeId(id))
+                return yield* pluginError("invalid_input", "Select a recommended skill.");
+              const source = yield* recommendedSource(id);
+              return yield* fileLane.withPermits(1)(
+                Effect.gen(function* () {
+                  yield* noLink(source);
+                  const physicalSource = yield* canonical(source);
+                  yield* beforeWrite;
+                  const root = yield* ownedRoot(
+                    projectRoot ?? options.codexHome,
+                    projectRoot === null ? ["skills"] : [".agents", "skills"],
+                    true,
                   );
-                const stage = yield* fs
-                  .makeTempDirectoryScoped({ directory: root, prefix: ".install-" })
-                  .pipe(Effect.mapError(failure));
-                const staged = path.join(stage, id);
-                yield* fs.copy(source, staged, { overwrite: false }).pipe(Effect.mapError(failure));
-                yield* beforeWrite;
-                if ((yield* canonical(root)) !== root || (yield* exists(destination)))
-                  return yield* pluginError(
-                    "config_conflict",
-                    "The skill installation directory changed.",
+                  return yield* Effect.acquireUseRelease(
+                    fileOperation(() => stageSkill(root, id)),
+                    (stage) =>
+                      Effect.gen(function* () {
+                        yield* fileOperation(() => copySkillTree(physicalSource, stage.directory));
+                        yield* beforeWrite;
+                        const destination = yield* fileOperation(() => publishSkill(stage)).pipe(
+                          Effect.uninterruptible,
+                        );
+                        return { path: path.join(destination, "SKILL.md") };
+                      }),
+                    (stage) => fileOperation(() => discardSkillStage(stage)).pipe(Effect.ignore),
                   );
-                yield* fs.rename(staged, destination).pipe(Effect.mapError(failure));
-                return { path: path.join(destination, "SKILL.md") };
-              }),
-            ),
+                }),
+              );
+            }),
           ),
         uninstall: (skill, roots, beforeWrite) =>
-          lane.withPermits(1)(
+          fileLane.withPermits(1)(
             Effect.gen(function* () {
               if (skill.pluginId !== null || (skill.scope !== "user" && skill.scope !== "repo"))
                 return yield* pluginError(
@@ -508,6 +503,16 @@ export const live = (options: {
               yield* beforeWrite;
               if ((yield* canonical(root)) !== root)
                 return yield* pluginError("protected", "The skill installation directory changed.");
+              yield* noLink(directory);
+              yield* noLink(skill.path);
+              if (options.trashDirectory) {
+                yield* options
+                  .trashDirectory(realDirectory)
+                  .pipe(
+                    Effect.mapError((cause) => pluginError("service_unavailable", cause.message)),
+                  );
+                return;
+              }
               yield* fs.remove(realDirectory, { recursive: true }).pipe(Effect.mapError(failure));
             }),
           ),

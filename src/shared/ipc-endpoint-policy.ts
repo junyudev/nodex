@@ -57,6 +57,8 @@ export type IpcCommand<
 
 /** Exact owner-audited groups. Never replace one group with an `Exclude<keyof IpcApi, ...>` remainder. */
 type QueryEndpointPolicy =
+  | "skills:document:read"
+  | "skills:inventory:list"
   | "sources:automation-options"
   | "space-admin:members"
   | "space-admin:devices"
@@ -333,6 +335,8 @@ type QueryEndpointPolicy =
   | "worktrees:thread:availability";
 
 type ControlEndpointPolicy =
+  | "skills:watch:stop"
+  | "skills:watch:start"
   | "agent-runtime:restart"
   | "agent-runtime:windows-sandbox:setup"
   | "agent-runtime:windows-sandbox:cancel"
@@ -534,6 +538,12 @@ type MainRevisionCommandEndpointPolicy =
   | "codex:visualization:interaction:write";
 
 type PlainResultCommandEndpointPolicy =
+  | "skills:set-enabled"
+  | "skills:trash"
+  | "skills:transfer"
+  | "skills:rename"
+  | "skills:create"
+  | "skills:document:write"
   | "space-admin:invite"
   | "space-admin:link-device"
   | "space-admin:revoke"
