@@ -476,11 +476,24 @@ Leaf directives say Blocks that are references or owned resources:
 | Page mention         | `<nodex://pages/ID>`                                     |
 | date mention         | `:date{start end tz format time-format reminder}`        |
 | chat mention         | `<nodex://sessions/ID>`                                  |
+| skill mention        | `:skill{name="review"}`                                  |
 | attachment           | `:attachment{kind mode source name mime bytes origin}`   |
 | Agent config         | `:agent-config{mode provider model reasoning speed}`     |
 | inline math          | `$$E = mc^2$$`                                           |
 | inline image         | `![alt](url)` within text, `[![alt](url)](link)` linked  |
 | line break           | a newline, or `<br>` where a newline cannot stand        |
+
+A skill mention takes exactly one attribute, `name`. The name is the
+case-sensitive invocation identifier, such as `review` or `toolkit:review`.
+It starts with an ASCII letter or digit, contains a letter, and uses up to 128
+ASCII letters, digits, colons, underscores, or hyphens. An exact read refuses
+an invalid name or extra attributes. The boundary reader keeps invalid
+directives as text.
+
+Bare `$review` is ordinary Markdown text, as are `$5` and `$HOME`. Write
+`\:skill{name="review"}` for the literal directive spelling in prose. Code
+spans and fenced code keep the spelling verbatim. Portable Markdown and plain
+text spell a mention as a separate `$name` token.
 
 ### Styles
 

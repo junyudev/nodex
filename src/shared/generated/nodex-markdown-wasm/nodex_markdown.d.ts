@@ -44,6 +44,11 @@ export function readLocated(markdown: string, mode: string): string;
 export function write(blocks_json: string): string;
 
 /**
+ * Exact Markdown of Blocks with skill atoms projected to invocation words.
+ */
+export function writeAgentMessage(blocks_json: string): string;
+
+/**
  * The one-line text of inline content given as BlockNote JSON text.
  */
 export function writeInline(inline_json: string): string;
@@ -66,6 +71,7 @@ export interface InitOutput {
     readonly readInline: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly readLocated: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly write: (a: number, b: number) => [number, number, number, number];
+    readonly writeAgentMessage: (a: number, b: number) => [number, number, number, number];
     readonly writeInline: (a: number, b: number) => [number, number, number, number];
     readonly writePortable: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;

@@ -24,7 +24,7 @@ interface EditorWithProsemirrorView {
 }
 
 /** Inline references that open something: Page and chat mentions, and attached Files. */
-const MENTION_NODE_TYPES = new Set(["pageMention", "threadMention", "attachment"]);
+const MENTION_NODE_TYPES = new Set(["pageMention", "threadMention", "attachment", "skillMention"]);
 const PAGE_MENTION_ANCHOR_SELECTOR = '[data-page-mention-inline-anchor="true"]';
 const MENTION_INLINE_CHIP_SELECTOR = '[data-inline-reference-chip="true"]';
 export const MENTION_TOKEN_SELECTED_CLASS = "nodex-mention-token-selected";
@@ -137,6 +137,22 @@ export function activateSelectedMention(editor: EditorWithProsemirrorView): bool
   return true;
 }
 
+/** Enter must also be routed by the Page surface before BlockNote's split-Block keymap. */
+export function activateSelectedMentionOnEnter(
+  editor: EditorWithProsemirrorView,
+  event: KeyboardEvent,
+): boolean {
+  return (
+    event.key === "Enter" &&
+    !event.isComposing &&
+    !event.shiftKey &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    activateSelectedMention(editor)
+  );
+}
+
 export const mentionChipKeyboardNavigationExtension = createExtension(() => ({
   key: "mention-chip-keyboard-navigation",
   prosemirrorPlugins: [
@@ -157,18 +173,7 @@ export const mentionChipKeyboardNavigationExtension = createExtension(() => ({
             return selectAdjacentMention({ prosemirrorView: view }, direction);
           }
 
-          if (
-            event.key !== "Enter" ||
-            event.isComposing ||
-            event.shiftKey ||
-            event.altKey ||
-            event.ctrlKey ||
-            event.metaKey
-          ) {
-            return false;
-          }
-
-          return activateSelectedMention({ prosemirrorView: view });
+          return activateSelectedMentionOnEnter({ prosemirrorView: view }, event);
         },
       },
       view(view) {

@@ -1,3 +1,4 @@
+import { SkillMentionChip } from "./editor/skill-mention-chip";
 import { createContext, useContext, type ReactNode } from "react";
 import { CornerDownRight, Link2 } from "@/components/shared/icons/generic-icons";
 import { ImageIcon, NodexLogoMarkIcon } from "@/components/shared/icons";
@@ -815,6 +816,7 @@ function InlineItem({
     );
   if (item.type === "pageMention")
     return <NfmPageMention pageId={String(props.targetPageId ?? "")} />;
+  if (item.type === "skillMention") return <SkillMentionChip name={String(props.name ?? "")} />;
   if (item.type === "dateMention") {
     const payload = normalizeDateMention({ ...props, type: "dateMention" });
     return payload ? (

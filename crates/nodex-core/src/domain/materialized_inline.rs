@@ -58,6 +58,10 @@ fn encode_item(item: &RichTextItem) -> Value {
             "type": "pageMention",
             "props": { "targetPageId": target_page_id },
         }),
+        RichTextItem::SkillMention { name } => serde_json::json!({
+            "type": "skillMention",
+            "props": { "name": name },
+        }),
         RichTextItem::DateMention {
             start,
             end,
@@ -118,6 +122,9 @@ fn decode_item(value: &Value) -> Result<Vec<RichTextItem>, MaterializedInlineErr
         }]),
         Some("pageMention") => Ok(vec![RichTextItem::PageMention {
             target_page_id: required_prop(object, "targetPageId")?,
+        }]),
+        Some("skillMention") => Ok(vec![RichTextItem::SkillMention {
+            name: required_prop(object, "name")?,
         }]),
         Some("dateMention") => decode_date_mention(object),
         _ => Err(MaterializedInlineError::UnsupportedPrimaryContent),
@@ -288,6 +295,9 @@ mod tests {
             },
             RichTextItem::PageMention {
                 target_page_id: "page-a".to_owned(),
+            },
+            RichTextItem::SkillMention {
+                name: "review".into(),
             },
             RichTextItem::DateMention {
                 start: "2026-08-23T09:30:00+08:00".to_owned(),

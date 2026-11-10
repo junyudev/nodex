@@ -1,4 +1,6 @@
-export type NfmTypedSuggestionKind = "slash" | "page-mention" | "emoji";
+import { matchInlineSkills } from "../../../../packages/agent-runtime/vendor/shared/src/inlineSkills";
+
+export type NfmTypedSuggestionKind = "slash" | "page-mention" | "emoji" | "skill-mention";
 
 export type NfmPageMentionTrigger = "@" | "+" | "[[";
 
@@ -44,6 +46,7 @@ function isSupportedTrigger(input: NfmTriggerPolicyInput): boolean {
   if (input.kind === "page-mention") {
     return input.trigger === "@" || input.trigger === "+" || input.trigger === "[[";
   }
+  if (input.kind === "skill-mention") return input.trigger === "$";
   return input.trigger === ":";
 }
 
@@ -86,6 +89,12 @@ export function evaluateNfmTypedSuggestionTrigger(
     return reject("protected-literal");
   }
 
+  if (input.kind === "skill-mention") {
+    return /(?:^|\s)$/u.test(input.textBeforeTrigger)
+      ? { allowed: true }
+      : reject("invalid-left-boundary");
+  }
+
   const hasBoundary =
     input.kind === "slash"
       ? hasSlashBoundary(input.textBeforeTrigger)
@@ -94,4 +103,15 @@ export function evaluateNfmTypedSuggestionTrigger(
         : hasEmojiBoundary(input.textBeforeTrigger);
 
   return hasBoundary ? { allowed: true } : reject("invalid-left-boundary");
+}
+
+/** Use the provider token rule for both candidate eligibility and currency-shaped queries. */
+export function isNfmInlineSkillToken(name: string): boolean {
+  return !matchInlineSkills(`$${name}`, [{ name }]).next().done;
+}
+
+export function shouldCloseNfmSkillQuery(query: string, names: readonly string[]): boolean {
+  if (!query) return names.length === 0;
+  const prefix = query.toLowerCase();
+  return !names.some((name) => name.toLowerCase().startsWith(prefix));
 }

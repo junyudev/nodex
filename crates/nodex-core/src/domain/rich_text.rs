@@ -71,6 +71,8 @@ pub enum RichTextItem {
     ThreadMention { uuid: String },
     #[serde(rename = "pageMention", rename_all = "camelCase")]
     PageMention { target_page_id: String },
+    #[serde(rename = "skillMention")]
+    SkillMention { name: String },
     #[serde(rename = "dateMention", rename_all = "camelCase")]
     DateMention {
         start: String,
@@ -147,21 +149,34 @@ pub fn materialize_rich_text(
 }
 
 pub fn rich_text_plain_text(items: &[RichTextItem]) -> String {
-    items
-        .iter()
-        .map(|item| match item {
+    let mut text = String::new();
+    let mut after_skill = false;
+    for item in items {
+        let next = match item {
             RichTextItem::Text { text, .. } | RichTextItem::Link { text, .. } => text.clone(),
             RichTextItem::LineBreak => "\n".to_owned(),
             RichTextItem::ThreadMention { uuid } => format!("@thread:{uuid}"),
-            RichTextItem::PageMention { target_page_id } => {
-                format!("@page:{target_page_id}")
-            }
+            RichTextItem::PageMention { target_page_id } => format!("@page:{target_page_id}"),
+            RichTextItem::SkillMention { name } => format!("${name}"),
             RichTextItem::DateMention { start, end, .. } => end
                 .as_ref()
                 .map(|end| format!("@date:{start}..{end}"))
                 .unwrap_or_else(|| format!("@date:{start}")),
-        })
-        .collect()
+        };
+        if next.is_empty() {
+            continue;
+        }
+        let skill = matches!(item, RichTextItem::SkillMention { .. });
+        if (skill || after_skill)
+            && text.chars().next_back().is_some_and(|c| !c.is_whitespace())
+            && next.chars().next().is_some_and(|c| !c.is_whitespace())
+        {
+            text.push(' ');
+        }
+        text.push_str(&next);
+        after_skill = skill;
+    }
+    text
 }
 
 pub fn canonicalize_rich_text(
@@ -208,6 +223,7 @@ fn encode_rich_text_delta(items: &[RichTextItem]) -> Result<Vec<TextDelta>, Rich
             }),
             RichTextItem::ThreadMention { .. }
             | RichTextItem::PageMention { .. }
+            | RichTextItem::SkillMention { .. }
             | RichTextItem::DateMention { .. } => {
                 validate_atom(item)?;
                 let encoded =
@@ -394,6 +410,7 @@ fn validate_atom(item: &RichTextItem) -> Result<(), RichTextError> {
         {
             Ok(())
         }
+        RichTextItem::SkillMention { name } if nodex_markdown::valid_skill_name(name) => Ok(()),
         RichTextItem::DateMention {
             start,
             end,
@@ -542,6 +559,35 @@ fn is_false(value: &bool) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn skill_mention_title_round_trips_without_an_inventory() {
+        let items = vec![
+            RichTextItem::Text {
+                text: "Run(".into(),
+                styles: RichTextStyles::default(),
+            },
+            RichTextItem::SkillMention {
+                name: "missing:Review_2".into(),
+            },
+            RichTextItem::Text {
+                text: ")".into(),
+                styles: RichTextStyles::default(),
+            },
+        ];
+        let delta = rich_text_to_delta(&items).unwrap();
+        assert_eq!(delta[1].insert, RICH_TEXT_ATOM.to_string());
+        let materialized = materialize_rich_text(&delta).unwrap();
+        assert_eq!(materialized.rich_text, items);
+        assert_eq!(materialized.plain_text, "Run( $missing:Review_2 )");
+
+        let mut malformed = delta;
+        malformed[1].attributes.insert(
+            ATOM_ATTRIBUTE.to_owned(),
+            PortableValue::String(r#"{"type":"skillMention","name":"bad/path"}"#.into()),
+        );
+        assert!(materialize_rich_text(&malformed).is_err());
+    }
+
     use std::path::PathBuf;
 
     use serde_json::Value;

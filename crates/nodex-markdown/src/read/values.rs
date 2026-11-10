@@ -76,6 +76,15 @@ pub(super) fn colors(attrs: &[Attribute], line: usize) -> Result<Colors, ReadErr
     })
 }
 
+pub(super) fn skill_name(d: &Directive) -> Result<String, ReadError> {
+    allowed(d, &["name"])?;
+    let name = required(d, "name")?;
+    if !crate::valid_skill_name(name) {
+        return Err(error(d.line, "skill needs a valid invocation name"));
+    }
+    Ok(name.to_owned())
+}
+
 pub(super) fn date(d: &Directive) -> Result<DateMention, ReadError> {
     allowed(
         d,

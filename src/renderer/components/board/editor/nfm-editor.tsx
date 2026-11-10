@@ -1,3 +1,4 @@
+import { PageSkillMentionProvider, type OpenSkillMention } from "./skill-mention-chip";
 import { useNfmSearchState } from "./use-nfm-search-state";
 import type { PageChatSendResult } from "@/lib/page-chat-send";
 import {
@@ -168,7 +169,7 @@ import {
   ThreadMentionRuntimeProvider,
   type ThreadMentionRuntimeValue,
 } from "./thread-mention-chip";
-import { activateSelectedMention } from "./mention-chip-keyboard-navigation";
+import { activateSelectedMentionOnEnter } from "./mention-chip-keyboard-navigation";
 import { AgentConfigRuntimeProvider, type AgentConfigRuntimeValue } from "./agent-config-runtime";
 import { resolveDefaultAgentConfigIntelligence } from "./agent-config-chip";
 import { prepareOwnedBlockDocument } from "@/lib/api";
@@ -260,6 +261,7 @@ interface NfmEditorCommonProps {
   onOpenPage?: (input: ContentPageNavigationTarget) => void | Promise<void>;
   onOpenDatabase?: BlockReferenceHostRuntime["openDatabase"];
   onOpenCanvas?: (input: ContentCanvasNavigationTarget) => void | Promise<void>;
+  openSkill?: OpenSkillMention;
   onOpenPageFile?: BlockReferenceHostRuntime["openPageFile"];
   onStartNewSessionThreadFromEditor?: (input: {
     projectId: string;
@@ -510,6 +512,7 @@ function NfmEditorInstance({
   onOpenPage,
   onOpenDatabase,
   onOpenCanvas,
+  openSkill,
   onOpenPageFile,
   onStartNewSessionThreadFromEditor,
   onSendPagePrompt,
@@ -1290,16 +1293,7 @@ function NfmEditorInstance({
       const targetIsTextField =
         event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
 
-      if (
-        !targetIsTextField &&
-        event.key === "Enter" &&
-        !event.altKey &&
-        !event.shiftKey &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.isComposing &&
-        activateSelectedMention(editor)
-      ) {
+      if (!targetIsTextField && activateSelectedMentionOnEnter(editor, event)) {
         event.preventDefault();
         event.stopPropagation();
         return;
@@ -2272,7 +2266,7 @@ function NfmEditorInstance({
       ? "0 of 0"
       : `${Math.max(searchActiveIndex + 1, 0)} of ${searchMatchCount}`;
 
-  return (
+  const surface = (
     <FileRuntimeProvider value={fileRuntime}>
       <div
         ref={containerRef}
@@ -2551,6 +2545,13 @@ function NfmEditorInstance({
         )}
       </div>
     </FileRuntimeProvider>
+  );
+  return sourcePageContext || documentOwnerBlockId ? (
+    <PageSkillMentionProvider context={contentRoutingContext} openSkill={openSkill}>
+      {surface}
+    </PageSkillMentionProvider>
+  ) : (
+    surface
   );
 }
 

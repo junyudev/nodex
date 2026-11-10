@@ -10,6 +10,7 @@ import {
   buildDateMentionSuggestionItems,
   buildNfmPageMentionCreateSuggestionItems,
   buildNfmSlashMenuItems,
+  buildNfmSkillMentionSuggestionItems,
   buildNfmThreadMentionInlineContent,
   buildNfmThreadMentionSuggestionItems,
   createNfmTypedSuggestionShouldOpen,
@@ -1383,4 +1384,50 @@ describe("NfmSlashMenu", () => {
 
     expect(view.getByText("No matching mentions").textContent).toBe("No matching mentions");
   });
+});
+
+test("keeps grouped Skills after existing sections and gives them a separate budget", () => {
+  const insertInlineContent = vi.fn();
+  const editor = { insertInlineContent };
+  const candidates = Array.from({ length: 6 }, (_, index) => ({
+    name: `review-${index}`,
+    displayName: `Review ${index}`,
+    locations: [
+      {
+        provider: "Codex" as const,
+        scope: "Personal",
+        hostId: "local",
+        path: "/home/review/SKILL.md",
+      },
+      {
+        provider: "Claude" as const,
+        scope: "Project",
+        hostId: "local",
+        path: "/repo/review/SKILL.md",
+      },
+    ],
+  }));
+  const skills = buildNfmSkillMentionSuggestionItems(editor, candidates, "review", "broad");
+  const page: NfmSuggestionItem = {
+    title: "Review notes",
+    key: "page:review",
+    onItemClick: () => {},
+    mentionRank: { family: "page", match: "content", activeContext: true, sourceOrder: 0 },
+  };
+  const rows = selectNfmMentionSuggestionItems("review", [...skills, page]);
+  expect(rows.map(({ key }) => key)).toEqual([
+    "page:review",
+    "skill:review-0",
+    "skill:review-1",
+    "skill:review-2",
+    "skill:review-3",
+    "mention-expand:skill",
+  ]);
+  expect(rows[1]?.subtext).toBe("Codex · Personal / Claude · Project");
+  rows[1]?.onItemClick();
+  expect(insertInlineContent).toHaveBeenCalledWith(
+    [{ type: "skillMention", props: { name: "review-0" } }, " "],
+    { updateSelection: true },
+  );
+  expect(buildNfmSkillMentionSuggestionItems(editor, candidates, "5", "dollar")).toEqual([]);
 });

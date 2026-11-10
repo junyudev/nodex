@@ -1,3 +1,8 @@
+import {
+  ComposerCapabilityIcon,
+  SkillMentionIcon,
+  normalizeSafeIconUrl,
+} from "@/components/shared/skill-mention-icon";
 import { isHostedChat } from "@/lib/hosted-chat";
 import { buildPageDeepLink } from "@/lib/page-deeplink";
 import { useComposerPageSuggestions } from "./use-composer-page-suggestions";
@@ -18,7 +23,7 @@ import {
   type ReactNode,
   type SVGProps,
 } from "react";
-import { CircleDotIcon, SplitIcon, Sparkles } from "@/components/shared/icons/generic-icons";
+import { CircleDotIcon, SplitIcon } from "@/components/shared/icons/generic-icons";
 import {
   GoalTargetIcon,
   PageIcon,
@@ -190,79 +195,6 @@ export function buildComposerSubagentMentionCandidates(
   });
 }
 
-function isSafeBrandColor(value: string | null): value is string {
-  return Boolean(value && /^#[\da-f]{3,8}$/iu.test(value));
-}
-
-function normalizeSafeIconUrl(value: string | null): string | null {
-  const normalized = value?.trim() ?? "";
-  if (!normalized) return null;
-  if (/^data:image\/(?:png|gif|jpeg|webp|svg\+xml);base64,/iu.test(normalized)) {
-    return normalized;
-  }
-  try {
-    const url = new URL(normalized);
-    return url.protocol === "https:" || url.protocol === "app:" ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
-function ComposerCapabilityIcon({
-  iconUrl,
-  iconUrlDark,
-  brandColor,
-  fallback,
-}: {
-  readonly iconUrl: string | null;
-  readonly iconUrlDark: string | null;
-  readonly brandColor: string | null;
-  readonly fallback: ReactNode;
-}) {
-  const safeIconUrl = normalizeSafeIconUrl(iconUrl);
-  const safeDarkIconUrl = normalizeSafeIconUrl(iconUrlDark);
-  const safeBrandColor = isSafeBrandColor(brandColor) ? brandColor : undefined;
-
-  if (!safeIconUrl) {
-    return (
-      <span
-        aria-hidden="true"
-        className="flex size-4 shrink-0 items-center justify-center text-token-foreground/80"
-        style={safeBrandColor ? { color: safeBrandColor } : undefined}
-      >
-        {fallback}
-      </span>
-    );
-  }
-
-  return (
-    <span
-      aria-hidden="true"
-      className="relative flex size-4 shrink-0 items-center justify-center overflow-hidden"
-    >
-      {safeDarkIconUrl && safeDarkIconUrl !== safeIconUrl ? (
-        <img
-          src={safeDarkIconUrl}
-          alt=""
-          draggable={false}
-          referrerPolicy="no-referrer"
-          className="hidden size-4 object-contain dark:block"
-        />
-      ) : null}
-      <img
-        src={safeIconUrl}
-        alt=""
-        draggable={false}
-        referrerPolicy="no-referrer"
-        className={cn(
-          "size-4 object-contain",
-          safeDarkIconUrl && safeDarkIconUrl !== safeIconUrl ? "dark:hidden" : null,
-        )}
-      />
-    </span>
-  );
-}
-
 function useComposerAppshotTarget(enabled: boolean): {
   readonly loading: boolean;
   readonly target: CodexComposerAppshotTarget | null;
@@ -423,14 +355,7 @@ function buildComposerSkillItem(
         },
       },
     },
-    icon: (
-      <ComposerCapabilityIcon
-        iconUrl={skill.iconUrl}
-        iconUrlDark={null}
-        brandColor={skill.brandColor}
-        fallback={<Sparkles className="size-3.5" />}
-      />
-    ),
+    icon: <SkillMentionIcon iconUrl={skill.iconUrl} brandColor={skill.brandColor} />,
     active: false,
     scopeLabel: getComposerSkillScopeLabel({
       scope: skill.scope,

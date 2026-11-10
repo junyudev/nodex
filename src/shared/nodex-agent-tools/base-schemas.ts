@@ -1,3 +1,4 @@
+import { isSkillMentionName } from "../rich-text/skill-mention";
 import { z } from "zod";
 import {
   MAX_PORTABLE_RICH_TEXT_SEGMENTS,
@@ -84,6 +85,10 @@ const PortableRichTextItemSchema = z.discriminatedUnion("type", [
       .regex(/\S/, "Must contain a non-whitespace character")
       .min(1)
       .max(1_024),
+  }),
+  z.strictObject({
+    type: z.literal("skillMention"),
+    name: z.string().refine(isSkillMentionName),
   }),
   z.strictObject({
     type: z.literal("dateMention"),

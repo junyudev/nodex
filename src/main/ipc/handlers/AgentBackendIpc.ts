@@ -25,7 +25,12 @@ const ClaudeDiscoveryInput = z
   .object({
     scope: z.discriminatedUnion("kind", [
       z
-        .object({ kind: z.literal("project"), instanceConfigId: id, projectId: id.nullable() })
+        .object({
+          kind: z.literal("project"),
+          instanceConfigId: id,
+          projectId: id.nullable(),
+          sourceDirectory: z.string().min(1).max(4096).optional(),
+        })
         .strict(),
       z.object({ kind: z.literal("thread"), threadId: id }).strict(),
     ]),

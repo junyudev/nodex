@@ -852,3 +852,27 @@ fn portable_literal_addresses_are_readable_without_markdown_escapes() {
         "https://example.com, www.example.com or me@example.com!"
     );
 }
+
+#[test]
+fn skill_mentions_project_with_token_boundaries() {
+    use crate::{ReadOptions, read, write_agent_message};
+    let source = r#"Use(:skill{name="toolkit:Review_2"}). Keep $5 and `:skill{name="example"}`."#;
+    let blocks = read(source, ReadOptions::EXACT).unwrap();
+    let expected = r#"Use( $toolkit:Review_2 ). Keep $5 and `:skill{name="example"}`."#;
+    assert_eq!(write_agent_message(&blocks), expected);
+    let portable = crate::write_portable(&blocks, &crate::PortableOptions::default());
+    assert_eq!(portable.markdown, expected);
+    assert!(!portable.exact);
+    assert!(crate::text::plain_text(&blocks).contains(" $toolkit:Review_2 "));
+}
+
+#[test]
+fn predecessor_skill_directives_keep_their_literal_meaning() {
+    use crate::{ReadOptions, read, write};
+    let source = r#"Example :skill{name="review"} and :skill{name="a/b"}."#;
+    let predecessor = read(source, ReadOptions::BEFORE_SKILL_MENTIONS).unwrap();
+    let canonical = write(&predecessor);
+    assert_ne!(source, canonical);
+    assert_eq!(read(&canonical, ReadOptions::EXACT).unwrap(), predecessor);
+    assert!(read(source, ReadOptions::EXACT).is_err());
+}

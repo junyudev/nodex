@@ -52,6 +52,10 @@ export function blockNoteInlineToPortableRichText(content: unknown): PortableRic
       return [{ type: "pageMention", targetPageId: String(item.props?.targetPageId ?? "") }];
     if (item.type === "threadMention")
       return [{ type: "threadMention", uuid: String(item.props?.uuid ?? "") }];
+    if (item.type === "skillMention")
+      return [
+        { type: "skillMention", name: typeof item.props?.name === "string" ? item.props.name : "" },
+      ];
     if (item.type === "dateMention") {
       const date = normalizeDateMention({ ...item.props, type: "dateMention" });
       if (date) return [date];

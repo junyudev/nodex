@@ -13,6 +13,7 @@ import { MainConfig } from "../app/MainConfig";
 import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { loadCodexWorktreeShellEnvironmentAtGitPath } from "../codex/codex-worktree-shell-environment";
+import { localProjectSourceRoots } from "../../shared/project-sources";
 import { projectNativeModelOption } from "../../shared/native-model-option";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
@@ -298,12 +299,16 @@ export const make = Effect.gen(function* () {
             return discovery;
           }
           const project = scope.projectId ? yield* workspace.getProject(scope.projectId) : null;
-          if (
-            scope.projectId &&
-            (!project || project.lifecycle !== "active" || !project.primaryWorkspaceRoot)
-          )
+          if (scope.projectId && (!project || project.lifecycle !== "active"))
             return yield* fail("claude.discover", new Error("Choose an active local Project"));
-          const cwd = project?.primaryWorkspaceRoot ?? config?.homeDirectory;
+          if (
+            scope.sourceDirectory &&
+            (!project || !localProjectSourceRoots(project.sources).includes(scope.sourceDirectory))
+          )
+            return yield* fail("claude.discover", new Error("The Project source is unavailable"));
+          const cwd =
+            scope.sourceDirectory ??
+            (project ? project.primaryWorkspaceRoot : config.homeDirectory);
           if (!cwd)
             return yield* fail(
               "claude.discover",

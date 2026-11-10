@@ -1,3 +1,4 @@
+import { createSkillMentionInlineContentSpec } from "./skill-mention-chip";
 import { skillBodyBlockTypes } from "../../../../shared/skill-document";
 import {
   BlockNoteSchema,
@@ -59,6 +60,7 @@ export const nfmSchema = BlockNoteSchema.create({
     inlineImage: inlineImageInlineContentSpec,
     agentConfig: createAgentConfigInlineContentSpec(),
     attachment: createAttachmentInlineContentSpec(),
+    skillMention: createSkillMentionInlineContentSpec(),
     dateMention: createDateMentionInlineContentSpec(),
     pageMention: createPageMentionInlineContentSpec(),
     threadMention: createThreadMentionInlineContentSpec(),

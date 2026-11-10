@@ -30,6 +30,16 @@ const runLength = (text: string, start: number): number => {
 };
 
 const TICKS = /`+/gu;
+const SKILL_MENTION = /:skill\{name="([A-Za-z0-9][A-Za-z0-9:_-]{0,127})"\}/uy;
+const DOLLAR_RUN = /\$+/gu;
+
+function mathEnd(text: string, start: number, width: number): number | null {
+  DOLLAR_RUN.lastIndex = start + width;
+  for (let match = DOLLAR_RUN.exec(text); match; match = DOLLAR_RUN.exec(text)) {
+    if (match[0].length === width) return match.index + width;
+  }
+  return null;
+}
 /** Where a code span opened by `ticks` backticks ends, or null when nothing closes it. */
 const codeSpanEnd = (text: string, from: number, ticks: number): number | null => {
   TICKS.lastIndex = from;
@@ -60,6 +70,18 @@ const escapeSingleDollars = (prose: string): string => {
     else if (char === "`") {
       const ticks = runLength(prose, index);
       end = codeSpanEnd(prose, index + ticks, ticks) ?? index + ticks;
+    } else if (char === ":") {
+      SKILL_MENTION.lastIndex = index;
+      const match = SKILL_MENTION.exec(prose);
+      const name = match?.[1];
+      if (match && name && /[A-Za-z]/u.test(name)) {
+        end = index + match[0].length;
+        if (/\S/u.test(out.at(-1) ?? "")) out += " ";
+        out += `\\$${name}`;
+        if (/\S/u.test(prose[end] ?? "")) out += " ";
+        index = end;
+        continue;
+      }
     } else if (char === "$") {
       end = index + runLength(prose, index);
       if (end === index + 1) {
@@ -67,6 +89,7 @@ const escapeSingleDollars = (prose: string): string => {
         index = end;
         continue;
       }
+      end = mathEnd(prose, index, end - index) ?? end;
     } else if (char === "<" || char === "h" || char === "w") {
       end = index + (addressAt(prose, index)?.length ?? 1);
     }

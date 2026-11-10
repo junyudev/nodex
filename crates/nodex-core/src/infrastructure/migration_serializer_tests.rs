@@ -19,7 +19,12 @@ fn predecessor() -> (nodex_platform::test_support::TempDir, Connection) {
 
 /// Storage-shape fixture: create retained heads with canonical Yrs authority and
 /// stale text only. Their Block identity is already indexed by an owned Document.
-fn plant_retained_heads(connection: &Connection) {
+fn plant_retained_heads(
+    connection: &Connection,
+    input_markdown: &str,
+    stored_markdown: &str,
+    derivation: i64,
+) {
     let library: String = connection
         .query_row("SELECT id FROM libraries LIMIT 1", [], |r| r.get(0))
         .unwrap();
@@ -33,12 +38,12 @@ fn plant_retained_heads(connection: &Connection) {
     let page = crate::document::prepare_page_yjs_genesis_with_content(
         "document:serializer:seed",
         &[],
-        STALE,
+        input_markdown,
         &mut || indexed_id.clone(),
     )
     .unwrap();
     assert_ne!(
-        page.materialization.markdown, STALE,
+        page.materialization.markdown, stored_markdown,
         "fixture must require a serializer rebuild with either writer"
     );
     for schema in [
@@ -68,8 +73,8 @@ fn plant_retained_heads(connection: &Connection) {
         ).unwrap();
         let title = serde_json::to_string(&value.rich_title).unwrap();
         connection.execute(
-            "INSERT INTO document_materializations(document_id,generation,projected_seq,schema_version,title,title_rich_json,title_rich_hash,markdown,plain_text,preview,block_tree_json,references_json,asset_refs_json,updated_at,materialization_derivation_version) VALUES (?1,1,0,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,4)",
-            params![id,schema.schema_version(),value.title,title,crate::document::sha256(title.as_bytes()),STALE,value.plain_text,value.preview,serde_json::to_string(&value.block_tree).unwrap(),serde_json::to_string(&value.references).unwrap(),serde_json::to_string(&value.asset_refs).unwrap(),NOW],
+            "INSERT INTO document_materializations(document_id,generation,projected_seq,schema_version,title,title_rich_json,title_rich_hash,markdown,plain_text,preview,block_tree_json,references_json,asset_refs_json,updated_at,materialization_derivation_version) VALUES (?1,1,0,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+            params![id,schema.schema_version(),value.title,title,crate::document::sha256(title.as_bytes()),stored_markdown,value.plain_text,value.preview,serde_json::to_string(&value.block_tree).unwrap(),serde_json::to_string(&value.references).unwrap(),serde_json::to_string(&value.asset_refs).unwrap(),NOW,derivation],
         ).unwrap();
     }
 }
@@ -173,7 +178,7 @@ fn unaffected(connection: &Connection) -> BTreeMap<String, Vec<Vec<rusqlite::typ
 #[test]
 fn serializer_upgrade_rebuilds_exact_text_without_content_or_identity_changes() {
     let (home, mut connection) = predecessor();
-    plant_retained_heads(&connection);
+    plant_retained_heads(&connection, STALE, STALE, 4);
     let (page, old_basis, expected_body) = plant_inbox_snapshot(&connection);
     assert_eq!(validate_profile_clone_source(&connection).unwrap(), 199);
     let before = unaffected(&connection);
@@ -241,7 +246,7 @@ fn serializer_upgrade_rebuilds_exact_text_without_content_or_identity_changes() 
     // The serializer's preservation contract is checked at its own migration boundary;
     // later steps may backfill workflow schema or retire rebuildable delivery evidence.
     with_schema_rebuild_transaction(&mut connection, |c| {
-        migrate_v199_to_v200(
+        migrate_markdown_serialization(
             c,
             &MigrationContext {
                 source_revision: 199,
@@ -393,7 +398,7 @@ fn serializer_preflight_rejects_frozen_content_and_unaffected_projection_corrupt
         "UPDATE inbox_suggestion_requests SET inputs_json=json_set(inputs_json,'$[0].input.body','Different content')",
     ] {
         let (home, mut connection) = predecessor();
-        plant_retained_heads(&connection);
+        plant_retained_heads(&connection, STALE, STALE, 4);
         plant_inbox_snapshot(&connection);
         connection.execute(mutation, []).unwrap();
         assert_eq!(
@@ -419,7 +424,7 @@ fn serializer_preflight_rejects_frozen_content_and_unaffected_projection_corrupt
 #[test]
 fn serializer_failure_rolls_back_inbox_text_document_text_and_revision_together() {
     let (home, mut connection) = predecessor();
-    plant_retained_heads(&connection);
+    plant_retained_heads(&connection, STALE, STALE, 4);
     plant_inbox_snapshot(&connection);
     let before = rows(
         &connection,
@@ -433,7 +438,7 @@ fn serializer_failure_rolls_back_inbox_text_document_text_and_revision_together(
     connection.execute_batch("CREATE TRIGGER reject_serializer BEFORE UPDATE ON document_materializations BEGIN SELECT RAISE(ABORT,'serializer failure'); END").unwrap();
     let format = published_format(199).unwrap();
     let result = with_schema_rebuild_transaction(&mut connection, |transaction| {
-        migrate_v199_to_v200(
+        migrate_markdown_serialization(
             transaction,
             &MigrationContext {
                 source_revision: 199,
@@ -474,4 +479,53 @@ fn serializer_failure_rolls_back_inbox_text_document_text_and_revision_together(
         .execute_batch("DROP TRIGGER reject_serializer")
         .unwrap();
     prepare_profile_store(&mut connection, home.path()).unwrap();
+}
+
+#[test]
+fn skill_mention_migration_preserves_the_predecessors_literal_directives() {
+    let (home, mut connection) = predecessor();
+    prepare_profile_store(&mut connection, home.path()).unwrap();
+    connection.pragma_update(None, "user_version", 207).unwrap();
+    connection
+        .execute(
+            "DELETE FROM core_store_migration_history WHERE target_revision=208",
+            [],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "UPDATE document_materializations SET materialization_derivation_version=5",
+            [],
+        )
+        .unwrap();
+    let literal = r#"Example :skill{name="review"} with $5 and $HOME."#;
+    let escaped = r#"Example \:skill{name="review"} with $5 and $HOME."#;
+    plant_retained_heads(&connection, escaped, literal, 5);
+
+    assert_eq!(validate_profile_clone_source(&connection).unwrap(), 207);
+    let before = rows(
+        &connection,
+        "SELECT document_id,block_tree_json,plain_text FROM document_materializations ORDER BY document_id",
+    );
+    let prepared = prepare_profile_store(&mut connection, home.path()).unwrap();
+    assert_eq!(prepared.migrated_from_version, Some(207));
+    let after = rows(
+        &connection,
+        "SELECT document_id,block_tree_json,plain_text FROM document_materializations ORDER BY document_id",
+    );
+    assert_eq!(after, before);
+    let repository = DocumentReadRepository::new(&connection);
+    for head in repository
+        .live_yjs_heads()
+        .unwrap()
+        .into_iter()
+        .filter(|head| head.id.starts_with("document:serializer:"))
+    {
+        let markdown = repository
+            .materialization(&head.id)
+            .unwrap()
+            .unwrap()
+            .markdown;
+        assert_eq!(markdown, escaped);
+    }
 }

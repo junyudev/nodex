@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateNfmTypedSuggestionTrigger,
   getNfmSlashTriggerCharacters,
+  isNfmInlineSkillToken,
+  shouldCloseNfmSkillQuery,
 } from "./editor-trigger-policy";
 
 function evaluate(
-  kind: "slash" | "page-mention" | "emoji",
+  kind: Parameters<typeof evaluateNfmTypedSuggestionTrigger>[0]["kind"],
   trigger: string,
   textBeforeTrigger: string,
   locale = "en-US",
@@ -147,4 +149,24 @@ describe("NFM typed suggestion trigger policy", () => {
       reason: "unsupported-trigger",
     });
   });
+});
+
+it("uses the invocation boundary and defers currency-shaped prefixes", () => {
+  expect(evaluate("skill-mention", "$", "")).toEqual({ allowed: true });
+  expect(evaluate("skill-mention", "$", "use ")).toEqual({ allowed: true });
+  for (const prefix of ["name", "\\", "$", "("]) {
+    expect(evaluate("skill-mention", "$", prefix).allowed).toBe(false);
+  }
+
+  const names = ["review", "5kit", "plugin:Review"];
+  for (const query of ["", "5", "5k", "re", "plugin:"]) {
+    expect(shouldCloseNfmSkillQuery(query, names)).toBe(false);
+  }
+  for (const query of ["5.00", "5m", "1e3", "HOME", "review,", "review ", "$"]) {
+    expect(shouldCloseNfmSkillQuery(query, names)).toBe(true);
+  }
+  expect(isNfmInlineSkillToken("5k")).toBe(false);
+  expect(isNfmInlineSkillToken("5kit")).toBe(true);
+  expect(isNfmInlineSkillToken("plugin:Review")).toBe(true);
+  expect(shouldCloseNfmSkillQuery("", [])).toBe(true);
 });

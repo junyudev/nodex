@@ -399,7 +399,7 @@ describe("Yjs/Yrs compatibility", () => {
         patches: [
           {
             oldMarkdown: "## Heading",
-            newMarkdown: "## Heading from an exact Rust patch",
+            newMarkdown: '## Heading from an exact Rust patch :skill{name="review"}',
             expectedMatches: 1,
           },
         ],
@@ -409,6 +409,7 @@ describe("Yjs/Yrs compatibility", () => {
             text: "Patched by Rust",
             styles: { bold: true },
           },
+          { type: "skillMention", name: "toolkit:review" },
         ],
       }),
     );
@@ -470,6 +471,7 @@ describe("Yjs/Yrs compatibility", () => {
     const nodeNames = exactElementNames(yjsDocument.getXmlFragment("body"));
     expect(nodeNames).toContain("blockGroup");
     expect(nodeNames).toContain("blockContainer");
+    expect(nodeNames).toContain("skillMention");
     for (const blockType of manifest.matrix.blockTypes) {
       expect(nodeNames, blockType).toContain(blockType);
     }

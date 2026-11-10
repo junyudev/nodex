@@ -130,6 +130,7 @@ fn collect_inline(items: &[Inline], parts: &mut Vec<String>) {
             Inline::Math { source } => parts.push(source.clone()),
             Inline::PageMention { page } => parts.push(crate::links::page_link(page)),
             Inline::ChatMention { session } => parts.push(crate::links::session_link(session)),
+            Inline::SkillMention { name } => parts.push(format!("${name}")),
             Inline::DateMention(date) => parts.push(date_plain_text(date)),
             Inline::Attachment(attachment) => parts.push(attachment.name.clone()),
             Inline::AgentConfig(config) => parts.extend(

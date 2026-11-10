@@ -18,6 +18,12 @@ import {
   type BlockReferenceHostRuntime,
 } from "../../block-documents/block-reference-runtime-context";
 import { NfmSlashMenu, createNfmTypedSuggestionControllerConfig } from "./nfm-slash-menu";
+import { SkillMentionPresentationProvider } from "./skill-mention-chip";
+import {
+  activateSelectedMentionOnEnter,
+  mentionChipKeyboardNavigationExtension,
+} from "./mention-chip-keyboard-navigation";
+import { libraryContentRoute } from "../../../../shared/content-routing-context";
 import { nfmSchema } from "./nfm-schema";
 import { TestQueryProvider } from "@/test/query";
 import { installRendererThemeFixture } from "@/test/renderer-theme";
@@ -583,4 +589,89 @@ describe("NFM typed suggestion sessions in Chromium", () => {
       }
     }
   });
+});
+
+test("inserts and opens a skill atom with the keyboard while keeping money as text", async () => {
+  const editor = BlockNoteEditor.create({
+    schema: nfmSchema,
+    extensions: [mentionChipKeyboardNavigationExtension()],
+    initialContent: [{ id: "paragraph-0", type: "paragraph", content: "" }],
+  });
+  const opened: unknown[] = [];
+  const view = render(
+    <TestQueryProvider>
+      <SkillMentionPresentationProvider
+        value={{
+          context: libraryContentRoute,
+          candidates: [
+            {
+              name: "review",
+              displayName: "Review changes",
+              locations: [
+                {
+                  provider: "Codex",
+                  scope: "Personal",
+                  hostId: "local",
+                  path: "/skills/review/SKILL.md",
+                },
+              ],
+            },
+          ],
+          openSkill: (request) => {
+            opened.push(request);
+          },
+        }}
+      >
+        <div
+          onKeyDownCapture={(event) => {
+            if (!activateSelectedMentionOnEnter(editor, event.nativeEvent)) return;
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
+          <BlockNoteView editor={editor} slashMenu={false} sideMenu={false} emojiPicker={false}>
+            <NfmSlashMenu executionProjectId={null} allowPageReferences={false} />
+          </BlockNoteView>
+        </div>
+      </SkillMentionPresentationProvider>
+    </TestQueryProvider>,
+  );
+  const type = async (keys: string) => {
+    await act(async () => {
+      await userEvent.keyboard(keys);
+      await settleEditor();
+    });
+  };
+  try {
+    await act(async () => {
+      editor.setTextCursorPosition("paragraph-0", "start");
+      editor.focus();
+      await settleEditor();
+    });
+    await type("$5 ");
+    expect(editor.prosemirrorState.doc.textContent).toBe("$5 ");
+    expect(editor.getExtension(SuggestionMenu)?.getMenuState()).toBeUndefined();
+    await type("$rev");
+    expect(await view.findByText("Review changes")).toBeTruthy();
+    await type("{Enter}");
+    expect(editor.getBlock("paragraph-0")?.content).toEqual([
+      { type: "text", text: "$5 ", styles: {} },
+      { type: "skillMention", props: { name: "review" } },
+      { type: "text", text: " ", styles: {} },
+    ]);
+    await act(async () => {
+      editor._tiptapEditor.commands.setTextSelection(
+        editor.prosemirrorState.selection.$from.start() + "$5 ".length,
+      );
+      await settleEditor();
+    });
+    await type("{ArrowRight}");
+    const chip = view.getByRole("button", { name: "Review changes" });
+    expect(chip.dataset.mentionTokenSelected).toBe("true");
+    await type("{Enter}");
+    expect(opened).toEqual([{ name: "review", context: libraryContentRoute }]);
+  } finally {
+    view.unmount();
+    editor._tiptapEditor.destroy();
+  }
 });

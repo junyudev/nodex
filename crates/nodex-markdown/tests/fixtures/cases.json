@@ -1,6 +1,10 @@
 {
   "about": "Round-trip contract of Nodex Markdown, docs/references/nodex-markdown.md. Each case's `markdown` is the one exact text of its `blocks`: writing the Blocks gives the text, and reading the text in exact mode gives the Blocks. Blocks are spelled as Nodex stores them, without identities except an owning shell's, props at their defaults, or empty content and children. `gfm` marks text that uses no Nodex extension and that GitHub Flavored Markdown, read as Nodex's Markdown reader reads it today, reads as the same Blocks; `reads` are other GitHub Flavored Markdown spellings that read as them too, checked against today's reader; `nodexReads` are spellings only Nodex Markdown reads as them, such as unindented container bodies, ```math fences, own-line \\[…\\] math and HTML style tags. `rejects` are texts an exact write refuses rather than reading as something else; `boundaryReads` say how such text reads everywhere else, where a container without its closing line still reads as a container so a reply reads while it streams.",
   "cases": [
+    {"name": "skill mention stores the invocation name", "markdown": "Use(:skill{name=\"toolkit:Review_2\"}).", "blocks": [{"type": "paragraph", "content": [{"type": "text", "text": "Use("}, {"type": "skillMention", "props": {"name": "toolkit:Review_2"}}, {"type": "text", "text": ")."}]}]},
+    {"name": "skill directive spelling can be literal prose", "markdown": "Example \\:skill{name=\"review\"} with $review, $5 and $HOME.", "blocks": [{"type": "paragraph", "content": [{"type": "text", "text": "Example :skill{name=\"review\"} with $review, $5 and $HOME."}]}]},
+    {"name": "skill mentions survive Prompt first lines and children", "markdown": ":::prompt[:skill{name=\"review\"}]\n  Ask :skill{name=\"toolkit:Review_2\"}.\n:::", "blocks": [{"type": "prompt", "content": [{"type": "skillMention", "props": {"name": "review"}}], "children": [{"type": "paragraph", "content": [{"type": "text", "text": "Ask "}, {"type": "skillMention", "props": {"name": "toolkit:Review_2"}}, {"type": "text", "text": "."}]}]}]},
+    {"name": "skill mention survives table cells", "markdown": "| Task |\n| --- |\n| :skill{name=\"review\"} |", "blocks": [{"type": "table", "content": {"type": "tableContent", "headerRows": 1, "rows": [{"cells": [{"content": [{"type": "text", "text": "Task"}]}]}, {"cells": [{"content": [{"type": "skillMention", "props": {"name": "review"}}]}]}]}}]},
     {"name":"a styled span preserves following whitespace-only emphasis","markdown":":span[*# title*]{underline background=\"blue\"}:span[**&#x20; &#x9;** after]","blocks":[{"type":"paragraph","content":[{"type":"text","text":"# title","styles":{"italic":true,"underline":true,"backgroundColor":"blue"}},{"type":"text","text":"  \t","styles":{"bold":true}},{"type":"text","text":" after"}]}]},
     {"name": "balanced citation brackets need no escapes", "markdown": "[[207]](https://github.com/openai/codex/issues/11966)", "gfm": true, "blocks": [{"content": [{"content": [{"text": "[207]", "type": "text"}], "href": "https://github.com/openai/codex/issues/11966", "type": "link"}], "type": "paragraph"}]},
     {"name": "balanced brackets in a toggle label need no escapes", "markdown": ":::toggle[[x] y]\n:::", "blocks": [{"type": "toggleListItem", "content": [{"type": "text", "text": "[x] y"}]}]},
@@ -2189,6 +2193,12 @@
     }
   ],
   "rejects": [
+    {"name": "invalid skill directive 0", "markdown": ":skill{}"},
+    {"name": "invalid skill directive 1", "markdown": ":skill{name=\"\"}"},
+    {"name": "invalid skill directive 2", "markdown": ":skill{name=\"50\"}"},
+    {"name": "invalid skill directive 3", "markdown": ":skill{name=\"x/y\"}"},
+    {"name": "invalid skill directive 4", "markdown": ":skill{name=\"review\" path=\"/tmp/SKILL.md\"}"},
+    {"name": "invalid skill directive 5", "markdown": ":skill{name=\"review\" name=\"other\"}"},
     {"name":"prompt message needs a send record","markdown":":::prompt{sent-message=\"message:one\"}\n:::"},
     {"name":"prompt message refuses empty ids","markdown":":::prompt{sent=\"nodex://sessions/chat\" sent-at=\"2026-10-31T08:30:00Z\" sent-message=\"\"}\n:::"},
     {"name":"prompt message refuses surrounding whitespace","markdown":":::prompt{sent=\"nodex://sessions/chat\" sent-at=\"2026-10-31T08:30:00Z\" sent-message=\" message \"}\n:::"},
@@ -2247,6 +2257,7 @@
     }
   ],
   "boundaryReads": [
+    {"name": "invalid skill directive stays literal at the boundary", "markdown": ":skill{name=\"x/y\"}", "blocks": [{"type": "paragraph", "content": [{"type": "text", "text": ":skill{name=\"x/y\"}"}]}]},
     {
       "name": "a container without its closing line ends with its indented body",
       "markdown": ":::toggle[Open]\n  Inside\n\nAfter",

@@ -66,6 +66,14 @@ pub(crate) fn content_from_markdown(
     connection: &Connection,
     markdown: String,
 ) -> Result<MessageContent, StoreError> {
+    content_from_markdown_with_options(connection, markdown, nodex_markdown::ReadOptions::EXACT)
+}
+
+pub(super) fn content_from_markdown_with_options(
+    connection: &Connection,
+    markdown: String,
+    options: nodex_markdown::ReadOptions,
+) -> Result<MessageContent, StoreError> {
     // Image syntax requires ASCII punctuation. Plain text cannot contain images or
     // malformed Markdown constructs, so evidence needs only its exact UTF-8 body.
     // In particular, edited Pages may be much larger than the capture limit.
@@ -75,7 +83,7 @@ pub(crate) fn content_from_markdown(
             images: Vec::new(),
         });
     }
-    let blocks = crate::domain::markdown::parse_markdown(&markdown)
+    let blocks = nodex_markdown::read(&markdown, options)
         .map_err(|_| super::inbox::corrupt("Inbox Page Markdown is unreadable"))?;
     let mut sources = Vec::new();
     super::inbox::collect_image_sources(&blocks, &mut sources);
@@ -157,7 +165,7 @@ pub(super) fn predecessor_agent_markdown_matches(
         stored = stored.replace(label, &token);
     }
     let canonical = |text: &str| {
-        crate::domain::markdown::parse_markdown(text)
+        nodex_markdown::read(text, nodex_markdown::ReadOptions::BEFORE_SKILL_MENTIONS)
             .map(|blocks| crate::domain::markdown::serialize_markdown(&blocks))
             .map_err(|_| super::inbox::corrupt("Stored Inbox Agent body is unreadable"))
     };
@@ -195,10 +203,7 @@ fn agent_markdown_parts(
         Some(token)
     };
     replace_images(&mut blocks, &mut marker);
-    Ok((
-        crate::domain::markdown::serialize_markdown(&blocks),
-        replacements,
-    ))
+    Ok((nodex_markdown::write_agent_message(&blocks), replacements))
 }
 
 fn replace_inline_images(
@@ -255,6 +260,20 @@ fn replace_images(blocks: &mut [Block], marker: &mut impl FnMut(&str, &str) -> O
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inbox_skill_mention_projects_when_read_by_an_agent() {
+        let content = MessageContent {
+            markdown: "Run(:skill{name=\"tools:review\"}). Keep $5.".into(),
+            images: Vec::new(),
+        };
+        assert_eq!(
+            agent_markdown(&content, &HashMap::new(), 20).unwrap(),
+            "Run( $tools:review ). Keep $5."
+        );
+        assert!(content.markdown.contains(":skill"));
+    }
+
     #[test]
     fn plain_text_evidence_preserves_bytes_and_syntax_still_requires_validation() {
         let workspace = super::super::test_support::seeded_workspace();

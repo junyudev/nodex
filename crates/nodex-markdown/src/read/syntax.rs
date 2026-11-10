@@ -537,7 +537,9 @@ impl Syntax {
                 && leaf_prefixes
                     .get(line.saturating_sub(first_line))
                     .is_some_and(|end| i <= *end);
-            let inline = colons == 1 && is_inline(directive_name);
+            let inline = colons == 1
+                && is_inline(directive_name)
+                && !(self.options.literal_skill_directives && directive_name == "skill");
             if leaf || inline {
                 let length = directive_length(&rest[colons..], &runs, i + colons);
                 let raw = &rest[colons..colons + length];
@@ -642,7 +644,10 @@ fn is_container(name: &str) -> bool {
     )
 }
 fn is_inline(name: &str) -> bool {
-    matches!(name, "span" | "date" | "attachment" | "agent-config")
+    matches!(
+        name,
+        "span" | "date" | "skill" | "attachment" | "agent-config"
+    )
 }
 
 /// The label balances brackets and ignores escaped brackets and brackets in code spans.

@@ -1,7 +1,8 @@
+import { containsSkillMention } from "./rich-text/skill-mention";
 import { classifyImageSource } from "./image-source";
 import {
   readMarkdown,
-  writeMarkdown,
+  writeAgentMessageMarkdown,
   type MarkdownBlock,
   type MarkdownInline,
 } from "./nodex-markdown";
@@ -263,7 +264,7 @@ export function projectMessageBlocks(
       };
     });
   return {
-    text: writeMarkdown(visit(blocks.flatMap(projectPromptBlockForSend))).trim(),
+    text: writeAgentMessageMarkdown(visit(blocks.flatMap(projectPromptBlockForSend))).trim(),
     ...(images.length ? { images } : {}),
     ...(agentConfigs.length ? { agentConfigs } : {}),
   };
@@ -287,8 +288,11 @@ export function projectMessageText(
   text: string,
   options: MessageAgentInputOptions = {},
 ): MessageAgentInput {
-  const projected = projectMessageBlocks(readMarkdown(text), options);
-  return projected.images || projected.agentConfigs ? projected : { text };
+  const blocks = readMarkdown(text);
+  const projected = projectMessageBlocks(blocks, options);
+  return projected.images || projected.agentConfigs || containsSkillMention(blocks)
+    ? projected
+    : { text };
 }
 
 export function promptAgentConfig(

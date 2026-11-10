@@ -1,3 +1,4 @@
+import { SkillMentionChip } from "../board/editor/skill-mention-chip";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import type {
   PortableRichText,
@@ -19,6 +20,7 @@ const renderItem = (item: PortableRichTextItem, index: number): ReactNode => {
   if (item.type === "linebreak") {
     return <br key={`linebreak:${index}`} />;
   }
+  if (item.type === "skillMention") return <SkillMentionChip key={index} name={item.name} />;
   if (item.type === "threadMention" || item.type === "pageMention" || item.type === "dateMention") {
     const label = portableRichTitleAtomLabel(item);
     const tooltip =

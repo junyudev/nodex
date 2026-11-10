@@ -1,3 +1,12 @@
+import {
+  libraryContentRoute,
+  projectContentRoute,
+} from "../../../../shared/content-routing-context";
+import { containsSkillMention } from "../../../../shared/rich-text/skill-mention";
+import {
+  createSkillMentionInlineContentSpec,
+  PageSkillMentionProvider,
+} from "./skill-mention-chip";
 import { useThreadMentionRuntime } from "./thread-mention-chip";
 import { markdownBlocksForEditor } from "../../../../shared/nodex-markdown/blocknote";
 import { inlineImageInlineContentSpec } from "./inline-image-inline-content";
@@ -255,6 +264,7 @@ export const readonlyMarkdownBlockNotePreviewSchema = BlockNoteSchema.create({
     inlineImage: inlineImageInlineContentSpec,
     attachment: createReadonlyAttachmentInlineContentSpec(),
     agentConfig: createReadonlyAgentConfigInlineContentSpec(),
+    skillMention: createSkillMentionInlineContentSpec(),
     dateMention: createReadonlyDateMentionInlineContentSpec(),
     pageMention: createReadonlyPageMentionInlineContentSpec(),
     threadMention: createReadonlyThreadMentionInlineContentSpec(),
@@ -506,7 +516,7 @@ function ReadonlyNfmPreviewContent({
     ],
   );
 
-  return (
+  const surface = (
     <div
       className={cn("nfm-editor readonly-nfm-blocknote-preview relative", className)}
       style={{ minHeight: 0 }}
@@ -537,5 +547,16 @@ function ReadonlyNfmPreviewContent({
         data-theming-css-variables-demo
       />
     </div>
+  );
+  if (!pageId || !containsSkillMention(previewDocument.initialContent)) return surface;
+  return (
+    <PageSkillMentionProvider
+      context={
+        hostRuntime?.contentRoutingContext ??
+        (projectId ? projectContentRoute(projectId) : libraryContentRoute)
+      }
+    >
+      {surface}
+    </PageSkillMentionProvider>
   );
 }

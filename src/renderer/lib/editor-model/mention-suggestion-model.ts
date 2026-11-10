@@ -1,4 +1,4 @@
-export type MentionSuggestionFamily = "page" | "chat" | "temporal";
+export type MentionSuggestionFamily = "page" | "chat" | "temporal" | "skill";
 
 export type MentionSuggestionMatch =
   | "temporal_intent"
@@ -23,7 +23,7 @@ export interface RankedMentionSuggestion<Value> {
 
 export interface MentionSuggestionSection<Value> {
   readonly family: MentionSuggestionFamily;
-  readonly label: "Mention a page" | "Mention a chat" | "Date";
+  readonly label: "Mention a page" | "Mention a chat" | "Date" | "Skills";
   readonly items: readonly Value[];
   readonly hiddenItemCount: number;
 }
@@ -42,12 +42,14 @@ const EMPTY_QUERY_LIMITS: Readonly<Record<MentionSuggestionFamily, number>> = {
   temporal: 2,
   page: 5,
   chat: 3,
+  skill: 3,
 };
 
 const QUERY_LIMITS: Readonly<Record<MentionSuggestionFamily, number>> = {
   temporal: 3,
   page: 5,
   chat: 4,
+  skill: 4,
 };
 
 const SECTION_LABELS: Readonly<
@@ -56,14 +58,21 @@ const SECTION_LABELS: Readonly<
   page: "Mention a page",
   chat: "Mention a chat",
   temporal: "Date",
+  skill: "Skills",
 };
 
-const EMPTY_QUERY_SECTION_ORDER: readonly MentionSuggestionFamily[] = ["temporal", "page", "chat"];
+const EMPTY_QUERY_SECTION_ORDER: readonly MentionSuggestionFamily[] = [
+  "temporal",
+  "page",
+  "chat",
+  "skill",
+];
 
 const QUERY_TIE_BREAK: Readonly<Record<MentionSuggestionFamily, number>> = {
   temporal: 0,
   page: 1,
   chat: 2,
+  skill: 3,
 };
 
 function mentionSuggestionScore(rank: MentionSuggestionRank): number {
@@ -99,6 +108,7 @@ export function selectMentionSuggestionSections<Value>(input: {
     page: [],
     chat: [],
     temporal: [],
+    skill: [],
   };
 
   for (const candidate of input.candidates) {
@@ -111,6 +121,8 @@ export function selectMentionSuggestionSections<Value>(input: {
   const families = (Object.keys(byFamily) as MentionSuggestionFamily[])
     .filter((family) => byFamily[family].length > 0)
     .sort((left, right) => {
+      const skillOrder = Number(left === "skill") - Number(right === "skill");
+      if (skillOrder) return skillOrder;
       if (!hasQuery) {
         return EMPTY_QUERY_SECTION_ORDER.indexOf(left) - EMPTY_QUERY_SECTION_ORDER.indexOf(right);
       }

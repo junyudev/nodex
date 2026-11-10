@@ -1,3 +1,4 @@
+import { joinSkillMentionText } from "../../shared/rich-text/skill-mention";
 import type {
   PortableRichText,
   PortableRichTextItem,
@@ -93,7 +94,7 @@ export function createRichTitleClipboardPayload(
 ): RichTitleClipboardPayload {
   const selectionStart = Math.max(0, Math.min(selection.start, selection.end));
   const selectionEnd = Math.max(selectionStart, selection.start, selection.end);
-  const plainText: string[] = [];
+  const plainText: (string | { name: string })[] = [];
   const html: string[] = [];
   let offset = 0;
 
@@ -103,7 +104,7 @@ export function createRichTitleClipboardPayload(
     const selectedText = itemSelectionText(item, itemStart, selectionStart, selectionEnd);
     if (selectedText === null) continue;
 
-    plainText.push(selectedText);
+    plainText.push(item.type === "skillMention" ? item : selectedText);
     if (item.type === "linebreak") {
       html.push("<br>");
       continue;
@@ -122,7 +123,7 @@ export function createRichTitleClipboardPayload(
 
   return {
     html: html.join(""),
-    plainText: plainText.join(""),
+    plainText: joinSkillMentionText(plainText),
   };
 }
 

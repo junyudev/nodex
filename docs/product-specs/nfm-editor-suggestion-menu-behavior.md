@@ -1,7 +1,7 @@
 # Page Editor Suggestion Menu Behavior
 
 Status: Active
-Last updated: 2026-08-26
+Last updated: 2026-11-10
 
 ## Purpose
 
@@ -28,6 +28,17 @@ Broad mentions use `@`, while Page-focused mentions use `+` and `[[`. `@` and
 word-adjacent input such as `name@` and `name+` remains literal. `[[` opens as
 soon as the second bracket completes the pair, including after adjacent text
 such as `name[[`.
+
+Skill mentions use `$` at Block start or after whitespace. The popup waits
+until the query can be a skill name and matches an available name prefix. An
+invalid query closes the session and preserves the typed text. Amounts, shell
+variables without a matching skill, escaped dollars, double-dollar math, and
+code stay literal. The trigger is inactive with an empty skill inventory.
+
+The broad `@` menu adds Skills after the existing sections, with a separate
+budget of three rows for an empty query and four for a search. The
+[skill mention specification](nfm-editor-skill-mention-behavior.md) defines
+which skills a Page offers and how mentions open.
 
 Emoji search uses `:`. It opens at Block start or after whitespace, `{`, `[`,
 or `(`; word-adjacent input such as `time:` remains literal. The emoji grid is

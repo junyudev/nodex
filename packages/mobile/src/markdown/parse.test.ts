@@ -151,3 +151,13 @@ describe("plainMarkdownText", () => {
     );
   });
 });
+
+it("flattens skill mentions while preserving literal directives and dollars", () => {
+  expect(
+    flattenNodexMarkdown(
+      'Use(:skill{name="tools:review"}). $5 and $HOME ` :skill{name="code"} ` $$:skill{name="math"}$$ \\:skill{name="literal"}',
+    ),
+  ).toBe(
+    'Use( \\$tools:review ). \\$5 and \\$HOME ` :skill{name="code"} ` $$:skill{name="math"}$$ \\:skill{name="literal"}',
+  );
+});

@@ -35,7 +35,7 @@ const PAGE_MENTION_ENTRY_PROFILE_BY_TRIGGER: Readonly<
   "@": {
     entry: "broad",
     trigger: "@",
-    providers: ["page", "chat", "temporal", "create_page"],
+    providers: ["page", "chat", "temporal", "create_page", "skill"],
     createPlacement: "after_broad_results",
     emptyQueryPopup: "show",
     temporaryInput: true,
@@ -103,5 +103,8 @@ export function selectNfmPageMentionSections<Value>(input: {
   if (input.profile.createPlacement === "before_page_results") {
     return [creation, ...resultSections];
   }
-  return [...resultSections, creation];
+  const skill = resultSections.at(-1);
+  return skill?.family === "skill"
+    ? [...resultSections.slice(0, -1), creation, skill]
+    : [...resultSections, creation];
 }

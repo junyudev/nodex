@@ -114,6 +114,12 @@ export const agentConfigInlineContentConfig = {
   content: "none",
 } as const satisfies CustomInlineContentConfig;
 
+export const skillMentionInlineContentConfig = {
+  type: "skillMention",
+  propSchema: { name: { default: "" } },
+  content: "none",
+} as const;
+
 export const dateMentionInlineContentConfig = {
   type: "dateMention",
   propSchema: {
@@ -172,6 +178,7 @@ export const blockDocumentCustomInlineContentConfigs = {
   agentConfig: agentConfigInlineContentConfig,
   attachment: attachmentInlineContentConfig,
   dateMention: dateMentionInlineContentConfig,
+  skillMention: skillMentionInlineContentConfig,
   pageMention: pageMentionInlineContentConfig,
   threadMention: threadMentionInlineContentConfig,
   math: mathInlineContentConfig,

@@ -320,6 +320,9 @@ impl Reader<'_> {
 
     fn atom(&self, d: &Directive, style: &Style, depth: usize) -> Result<Vec<Inline>, ReadError> {
         let atom = match d.name.as_str() {
+            "skill" => Inline::SkillMention {
+                name: values::skill_name(d)?,
+            },
             "date" => Inline::DateMention(values::date(d)?),
             "attachment" => Inline::Attachment(values::attachment(d)?),
             "agent-config" => Inline::AgentConfig(values::agent(d)?),

@@ -457,6 +457,7 @@ fn atom(item: &Inline, position: Position) -> String {
                 written
             };
         }
+        Inline::SkillMention { name } => ("skill", vec![Attribute::value("name", name)]),
         Inline::DateMention(date) => {
             let mut attrs = vec![Attribute::value("start", &date.start)];
             for (key, value) in [

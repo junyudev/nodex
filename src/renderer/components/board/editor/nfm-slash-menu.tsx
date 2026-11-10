@@ -1,3 +1,9 @@
+import { SkillMentionIcon } from "@/components/shared/skill-mention-icon";
+import {
+  pageSkillLocationsLabel,
+  type PageSkillMention,
+} from "@/features/skills/use-page-skill-mentions";
+import { useSkillMentionPresentation } from "./skill-mention-chip";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   startTransition,
@@ -99,6 +105,8 @@ import { NfmTurnIntoBlockIcon, type NfmTurnIntoBlockKey } from "./nfm-turn-into-
 import {
   evaluateNfmTypedSuggestionTrigger,
   getNfmSlashTriggerCharacters,
+  isNfmInlineSkillToken,
+  shouldCloseNfmSkillQuery,
   type NfmTypedSuggestionKind,
 } from "@/lib/editor-model/editor-trigger-policy";
 import {
@@ -148,6 +156,13 @@ export function createNfmTypedSuggestionShouldOpen(input: {
     if (!transaction.selection.empty) return false;
     const { parent, parentOffset } = transaction.selection.$from;
     if (parent.type.spec.code) return false;
+    if (
+      input.kind === "skill-mention" &&
+      (transaction.storedMarks ?? transaction.selection.$from.marks()).some(
+        (mark) => mark.type.spec.code,
+      )
+    )
+      return false;
     if (input.kind === "slash" && parent.type.isInGroup("tableContent")) return false;
 
     const textBeforeTrigger = parent.textBetween(
@@ -175,6 +190,14 @@ export function createNfmTypedSuggestionControllerConfig(
         locale,
       }),
     })),
+    skillMention: {
+      triggerCharacter: "$",
+      shouldOpen: createNfmTypedSuggestionShouldOpen({
+        kind: "skill-mention",
+        trigger: "$",
+        locale,
+      }),
+    },
     pageMention: (["@", "+", "[["] as const).map((triggerCharacter) => ({
       triggerCharacter,
       profile: getNfmPageMentionEntryProfile(triggerCharacter),
@@ -986,6 +1009,7 @@ export function NfmSlashMenu({
           controller={controller}
         />
       ))}
+      <SkillMentionMenu controller={typedSuggestionControllers.skillMention} />
       <GridSuggestionMenuController
         triggerCharacter={typedSuggestionControllers.emoji.triggerCharacter}
         columns={typedSuggestionControllers.emoji.columns}
@@ -1578,6 +1602,104 @@ export function useNfmMentionGetItems({
   );
 }
 
+const EMPTY_SKILLS: readonly PageSkillMention[] = [];
+
+export function buildNfmSkillMentionSuggestionItems(
+  editor: unknown,
+  skills: readonly PageSkillMention[],
+  query: string,
+  entry: "dollar" | "broad",
+): NfmSuggestionItem[] {
+  const term = query.trim().toLowerCase();
+  if (entry === "dollar" && !isNfmInlineSkillToken(query)) return [];
+  return skills.flatMap((skill, sourceOrder): NfmSuggestionItem[] => {
+    const name = skill.name.toLowerCase();
+    const prefix = name.startsWith(term);
+    if (
+      !prefix &&
+      (entry === "dollar" ||
+        !(name.includes(term) || skill.displayName.toLowerCase().includes(term)))
+    )
+      return [];
+    const detail = pageSkillLocationsLabel(skill.locations);
+    return [
+      {
+        key: `skill:${skill.name}`,
+        title: skill.displayName,
+        subtext: detail,
+        detail,
+        group: "Skills",
+        aliases: [skill.name],
+        tooltipContent: buildMentionTooltipContent(skill.displayName, [skill.description, detail]),
+        mentionRank: {
+          family: "skill",
+          match: !term
+            ? "recent"
+            : name === term
+              ? "exact_title"
+              : prefix
+                ? "prefix_title"
+                : "title",
+          activeContext: false,
+          sourceOrder,
+        },
+        icon: <SkillMentionIcon iconUrl={skill.iconUrl} brandColor={skill.brandColor} />,
+        onItemClick: () =>
+          insertInlineContent(editor, [{ type: "skillMention", props: { name: skill.name } }, " "]),
+      },
+    ];
+  });
+}
+
+function SkillMentionMenu({
+  controller,
+}: {
+  readonly controller: ReturnType<typeof createNfmTypedSuggestionControllerConfig>["skillMention"];
+}) {
+  const editor = useBlockNoteEditor();
+  const candidates = useSkillMentionPresentation()?.candidates ?? EMPTY_SKILLS;
+  const skills = useMemo(
+    () => candidates.filter(({ name }) => isNfmInlineSkillToken(name)),
+    [candidates],
+  );
+  const names = useMemo(() => skills.map(({ name }) => name), [skills]);
+  const getImmediateItems = useCallback(
+    (query: string) =>
+      buildNfmSkillMentionSuggestionItems(editor, skills, query, "dollar")
+        .sort(
+          (left, right) =>
+            Number(right.mentionRank?.match === "exact_title") -
+            Number(left.mentionRank?.match === "exact_title"),
+        )
+        .slice(0, 8),
+    [editor, skills],
+  );
+  const getItems = useCallback(
+    async (query: string) => getImmediateItems(query),
+    [getImmediateItems],
+  );
+  const shouldClose = useCallback(
+    (query: string) => shouldCloseNfmSkillQuery(query, names),
+    [names],
+  );
+  if (!skills.length) return null;
+  return (
+    <SuggestionMenuController
+      triggerCharacter={controller.triggerCharacter}
+      shouldOpen={controller.shouldOpen}
+      getItems={getItems}
+      getImmediateItems={getImmediateItems}
+      shouldCloseOnQuery={shouldClose}
+      autoCloseWhenNoItems={false}
+      deferPopupWhenQueryEmpty
+      {...NFM_SUGGESTION_MENU_CONTROLLER_PORTAL_PROPS}
+      suggestionMenuComponent={(props) =>
+        props.items.length ? <NfmMentionSuggestionMenuSurface {...props} /> : null
+      }
+    />
+  );
+}
+
 function MentionMenu({
   activeProjectId,
   allowPageReferences,
@@ -1594,6 +1716,14 @@ function MentionMenu({
     activeProjectId,
   });
   const pageItems = usePageReferenceGetItems("mention");
+  const skills = useSkillMentionPresentation()?.candidates ?? EMPTY_SKILLS;
+  const getSkillItems = useCallback(
+    (query: string) =>
+      controller.profile.entry === "broad"
+        ? buildNfmSkillMentionSuggestionItems(editor, skills, query, "broad")
+        : [],
+    [controller.profile.entry, editor, skills],
+  );
   const [sectionExpansion, setSectionExpansion] = useState<{
     readonly query: string;
     readonly families: ReadonlySet<MentionSuggestionFamily>;
@@ -1612,7 +1742,7 @@ function MentionMenu({
       ]);
       return selectNfmPageMentionSuggestionItems(
         query,
-        [...pageResults, ...nonPageItems],
+        [...pageResults, ...nonPageItems, ...getSkillItems(query)],
         controller.profile,
         buildCreateItems(query),
         {
@@ -1628,6 +1758,7 @@ function MentionMenu({
       controller.profile,
       expandSection,
       getNonPageItems,
+      getSkillItems,
       pageItems,
       sectionExpansion,
     ],
@@ -1636,7 +1767,10 @@ function MentionMenu({
     (query: string) =>
       selectNfmPageMentionSuggestionItems(
         query,
-        allowPageReferences ? pageItems.getImmediateItems(query) : [],
+        [
+          ...(allowPageReferences ? pageItems.getImmediateItems(query) : []),
+          ...getSkillItems(query),
+        ],
         controller.profile,
         buildCreateItems(query),
         {
@@ -1650,6 +1784,7 @@ function MentionMenu({
       buildCreateItems,
       controller.profile,
       expandSection,
+      getSkillItems,
       pageItems,
       sectionExpansion,
     ],

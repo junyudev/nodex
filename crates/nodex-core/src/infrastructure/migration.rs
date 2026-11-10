@@ -414,7 +414,7 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
     MigrationStep {
         from_revision: 199,
         to_revision: 200,
-        apply: migrate_v199_to_v200,
+        apply: migrate_markdown_serialization,
     },
     MigrationStep {
         from_revision: 200,
@@ -450,6 +450,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         from_revision: 206,
         to_revision: 207,
         apply: migrate_v206_to_v207,
+    },
+    MigrationStep {
+        from_revision: 207,
+        to_revision: 208,
+        apply: migrate_markdown_serialization,
     },
 ];
 
@@ -2639,21 +2644,36 @@ fn migrate_v195_to_v196(
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
 }
-fn migrate_v199_to_v200(
+fn migrate_markdown_serialization(
     connection: &Connection,
     context: &MigrationContext,
 ) -> Result<(), StoreError> {
-    // Capture fingerprints before changing Document text. Frozen suggestion
-    // snapshots remain their own authority even when their Page has been edited.
-    let inbox = crate::workspace::rebuild_inbox_markdown_serialization(connection)?;
-    let documents =
-        crate::document::integrity::rebuild_document_markdown_serialization(connection)?;
-    validate_restore_documents(connection)?;
+    // Capture fingerprints before changing Document text. Frozen suggestion snapshots retain
+    // their own content and confirmed handoffs retain the exact dispatched bytes.
+    let inbox = crate::workspace::rebuild_inbox_markdown_serialization(
+        connection,
+        context.source_revision,
+    )?;
+    let derivation_version =
+        materialization_derivation_for_store_revision(context.target_revision)?;
+    let documents = if context.source_revision == 207 {
+        crate::document::integrity::rebuild_skill_mention_serialization(
+            connection,
+            derivation_version,
+        )?
+    } else {
+        let rebuilt = crate::document::integrity::rebuild_document_markdown_serialization(
+            connection,
+            derivation_version,
+        )?;
+        validate_documents_for_store_revision(connection, context.target_revision)?;
+        rebuilt
+    };
     connection.execute(
         "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
-            json!({"document_materialization_derivation": 5, "rebuilt_documents": documents,
+            json!({"document_materialization_derivation": derivation_version, "rebuilt_documents": documents,
                 "rebuilt_inbox_inputs": inbox}).to_string()],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;

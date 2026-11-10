@@ -151,6 +151,10 @@ export function writeMarkdown(blocks: readonly MarkdownBlock[]): string {
   ready();
   return wasm.write(JSON.stringify(blocks));
 }
+export function writeAgentMessageMarkdown(blocks: readonly MarkdownBlock[]): string {
+  ready();
+  return wasm.writeAgentMessage(JSON.stringify(blocks));
+}
 export function writeInlineMarkdown(inline: readonly MarkdownInline[]): string {
   ready();
   return wasm.writeInline(JSON.stringify(inline));

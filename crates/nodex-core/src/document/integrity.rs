@@ -64,14 +64,54 @@ pub(crate) fn upgrade_document_markdown_derivation(
 /// current Document, so the ordinary full persistence path must not run here.
 pub(crate) fn rebuild_document_markdown_serialization(
     connection: &Connection,
+    derivation_version: i64,
 ) -> Result<usize, StoreError> {
     let repository = DocumentReadRepository::new(connection);
     let heads = repository.live_yjs_heads()?;
     for head in &heads {
         let materialization = reconstruct_live_yjs_document(&repository, head)?;
-        super::persistence::persist_markdown_serialization(connection, head, &materialization)?;
+        super::persistence::persist_markdown_serialization(
+            connection,
+            head,
+            &materialization,
+            derivation_version,
+        )?;
     }
     Ok(heads.len())
+}
+
+/// Only the new directive's spelling can change the predecessor's exact Markdown.
+pub(crate) fn rebuild_skill_mention_serialization(
+    connection: &Connection,
+    derivation_version: i64,
+) -> Result<usize, StoreError> {
+    let repository = DocumentReadRepository::new(connection);
+    let ids = connection
+        .prepare("SELECT document_id FROM document_materializations WHERE instr(markdown, ':skill') > 0 ORDER BY document_id")?
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut rebuilt = 0;
+    for id in ids {
+        let Some(head) = repository
+            .document_head(&id)?
+            .filter(DocumentHeadRow::is_live_yjs_authority)
+        else {
+            continue;
+        };
+        let materialization = reconstruct_live_yjs_document(&repository, &head)?;
+        super::persistence::persist_markdown_serialization(
+            connection,
+            &head,
+            &materialization,
+            derivation_version,
+        )?;
+        rebuilt += 1;
+    }
+    connection.execute(
+        "UPDATE document_materializations SET materialization_derivation_version=?1 WHERE materialization_derivation_version<>?1",
+        [derivation_version],
+    )?;
+    Ok(rebuilt)
 }
 
 pub(crate) fn materialization_derivation_for_store_revision(
@@ -83,7 +123,8 @@ pub(crate) fn materialization_derivation_for_store_revision(
         130..=188 => Ok(2),
         189..=191 => Ok(3),
         192..=199 => Ok(4),
-        200..=LATEST_SUPPORTED_STORE_REVISION => Ok(5),
+        200..=207 => Ok(5),
+        208..=LATEST_SUPPORTED_STORE_REVISION => Ok(6),
         _ => Err(StoreError::new(
             StoreErrorCode::UnsupportedSchema,
             format!("Store v{store_revision} has no registered Document derivation"),
@@ -222,7 +263,15 @@ fn assert_persisted_materialization(
     // The exact language changed at v200. Parsing old derived text with the
     // new reader cannot authenticate it. Verify the canonical tree and every
     // unchanged field below, then rebuild Markdown in the migration.
-    let markdown_matches = store_revision < 200 || persisted.markdown == actual.markdown;
+    let markdown_matches = store_revision < 200
+        || persisted.markdown == actual.markdown
+        || (store_revision < 208
+            && persisted.markdown.contains(":skill")
+            && nodex_markdown::read(
+                &persisted.markdown,
+                nodex_markdown::ReadOptions::BEFORE_SKILL_MENTIONS,
+            )
+            .is_ok_and(|blocks| nodex_markdown::write(&blocks) == actual.markdown));
     let persisted_block_tree = if current_shape {
         persisted.block_tree.clone()
     } else {

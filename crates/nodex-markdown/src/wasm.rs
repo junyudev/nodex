@@ -103,6 +103,12 @@ pub fn write(blocks_json: &str) -> Result<String, JsValue> {
     Ok(crate::write(&blocks(blocks_json)?))
 }
 
+/// Exact Markdown of Blocks with skill atoms projected to invocation words.
+#[wasm_bindgen(js_name = writeAgentMessage)]
+pub fn write_agent_message(blocks_json: &str) -> Result<String, JsValue> {
+    Ok(crate::write_agent_message(&blocks(blocks_json)?))
+}
+
 /// Portable Markdown of Blocks, as JSON text `{"markdown": string, "exact": boolean}`.
 /// `page_titles_json` maps Page ids to the titles that name mentions of them.
 #[wasm_bindgen(js_name = writePortable)]

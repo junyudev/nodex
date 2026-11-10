@@ -12,14 +12,17 @@ pub(super) fn write(blocks: &[Block], options: &PortableOptions<'_>) -> Portable
     };
     let mut projected = state.flow(blocks);
     crate::normalize_blocks(&mut projected);
-    let markdown = blocks::flow_with_mode(
-        &projected,
-        blocks::Mode {
-            portable: true,
-            document_breaks: options.line_breaks == LineBreaks::Document,
-            ..blocks::Mode::default()
-        },
-    );
+    let writer = |blocks: &[Block]| {
+        blocks::flow_with_mode(
+            blocks,
+            blocks::Mode {
+                portable: true,
+                document_breaks: options.line_breaks == LineBreaks::Document,
+                ..blocks::Mode::default()
+            },
+        )
+    };
+    let markdown = super::project_skills(&projected, writer).unwrap_or_else(|| writer(&projected));
     let read_options = if options.line_breaks == LineBreaks::Document {
         crate::ReadOptions::DOCUMENT
     } else {
@@ -248,6 +251,10 @@ impl State<'_, '_> {
                     Inline::ChatMention { session } => {
                         self.lossy = true;
                         link(crate::links::session_link(session), "Thread".to_owned())
+                    }
+                    Inline::SkillMention { .. } => {
+                        self.lossy = true;
+                        item.clone()
                     }
                     Inline::DateMention(date) => {
                         self.lossy = true;

@@ -186,6 +186,7 @@ fn title_is_empty(items: &[RichTextItem], leading_text: &str, consumed_bytes: us
                 RichTextItem::LineBreak => false,
                 RichTextItem::ThreadMention { .. }
                 | RichTextItem::PageMention { .. }
+                | RichTextItem::SkillMention { .. }
                 | RichTextItem::DateMention { .. } => true,
             })
 }

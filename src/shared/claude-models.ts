@@ -132,6 +132,7 @@ export type ClaudeDiscoveryScope =
       readonly kind: "project";
       readonly instanceConfigId: string;
       readonly projectId: string | null;
+      readonly sourceDirectory?: string;
     }
   | { readonly kind: "thread"; readonly threadId: string };
 

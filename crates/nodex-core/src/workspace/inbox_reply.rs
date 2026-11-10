@@ -83,6 +83,11 @@ pub(super) fn turn_reply(
             Some(response)
         }
     };
+    let projected = response
+        .is_none()
+        .then(|| nodex_markdown::project_agent_skill_mentions(body))
+        .flatten();
+    let body = projected.as_deref().unwrap_or(body);
     let proposal = stable_uuid_v7(operation, "turn-reply", page);
     let action = ProjectWorkspaceInboxDispatchAction::SendToChat {
         session_id: session.clone(),

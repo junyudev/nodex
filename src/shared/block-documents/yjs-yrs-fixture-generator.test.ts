@@ -118,6 +118,7 @@ const schemaMatrixContent = [
         },
       },
       { type: "threadMention", props: { uuid: "session-matrix" } },
+      { type: "skillMention", props: { name: "toolkit:review" } },
       { type: "text", text: " after 😀 中文 e\u0301", styles: { italic: true } },
     ],
   },
@@ -254,6 +255,7 @@ const createSchemaMatrix = (): {
     { type: "threadMention", uuid: "thread-title-matrix" },
     { type: "text", text: " at ", styles: {} },
     { type: "dateMention", start: "2026-07-18", format: "ll" },
+    { type: "skillMention", name: "review" },
   ]);
   blocksToYXmlFragment(editor, editor.document, document.getXmlFragment("body"));
   const root = document.getXmlFragment("body").get(0);

@@ -25,6 +25,7 @@ pub use model::{
     AgentConfig, Align, Attachment, AttachmentKind, Block, BlockKind, Cell, Color, Colors,
     DateMention, Inline, InlineImage, ModelError, Style, StyledText, Table, blocks_from_json,
     blocks_to_json, inline_content_from_json, inline_content_to_json, normalize_blocks,
+    valid_skill_name,
 };
 
 /// How a single newline inside a paragraph reads.
@@ -45,6 +46,7 @@ pub struct ReadOptions {
     /// as the text it is, and a container must have its closing line.
     pub exact: bool,
     pub line_breaks: LineBreaks,
+    pub(crate) literal_skill_directives: bool,
 }
 
 impl ReadOptions {
@@ -52,16 +54,24 @@ impl ReadOptions {
     pub const EXACT: ReadOptions = ReadOptions {
         exact: true,
         line_breaks: LineBreaks::Comment,
+        literal_skill_directives: false,
+    };
+    /// Read derived Markdown from before skill mentions were part of the language.
+    pub const BEFORE_SKILL_MENTIONS: ReadOptions = ReadOptions {
+        literal_skill_directives: true,
+        ..Self::EXACT
     };
     /// What people and other software exchange: pastes, messages and Agent replies.
     pub const BOUNDARY: ReadOptions = ReadOptions {
         exact: false,
         line_breaks: LineBreaks::Comment,
+        literal_skill_directives: false,
     };
     /// A Markdown file, read as GitHub reads a README.
     pub const DOCUMENT: ReadOptions = ReadOptions {
         exact: false,
         line_breaks: LineBreaks::Document,
+        literal_skill_directives: false,
     };
 }
 
@@ -98,6 +108,21 @@ pub fn link_literal_addresses(text: &str) -> Vec<Inline> {
 /// The one exact text of Blocks.
 pub fn write(blocks: &[Block]) -> String {
     write::write_exact(blocks)
+}
+
+/// Exact Markdown with skill mentions projected to provider-readable invocation words.
+pub fn write_agent_message(blocks: &[Block]) -> String {
+    write::project_skills(blocks, write::write_exact).unwrap_or_else(|| write(blocks))
+}
+
+/// Projects explicit mentions in authored message Markdown. Returns None when the original
+/// bytes can go directly to the Agent.
+pub fn project_agent_skill_mentions(markdown: &str) -> Option<String> {
+    if !markdown.contains(":skill") {
+        return None;
+    }
+    let blocks = read(markdown, ReadOptions::BOUNDARY).ok()?;
+    write::project_skills(&blocks, write::write_exact)
 }
 
 /// The exact text and each Block’s own lines, in preorder.

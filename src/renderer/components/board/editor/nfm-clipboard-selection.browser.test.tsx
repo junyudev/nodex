@@ -186,6 +186,33 @@ describe("current Block clipboard behavior in Chromium", () => {
     },
   );
 
+  test("copies skill mentions as invocation text and retains their identity in Nodex HTML", async () => {
+    const mention = { type: "skillMention", props: { name: "tools:review" } } as const;
+    const editor = BlockNoteEditor.create({
+      schema: nfmSchema,
+      initialContent: [
+        {
+          id: "skills",
+          type: "paragraph",
+          content: ["Run(", mention, ")."],
+        },
+      ],
+      extensions: [NfmStructuredClipboardExtension()],
+    });
+    const rendered = renderClipboardEditor(editor);
+    try {
+      await setTextSelection(editor, "skills", 0, 7);
+      const { data } = await dispatchClipboardEvent(requireView(editor), "copy");
+      expect(data.getData("text/plain")).toBe("Run( $tools:review ).");
+      const html = readNodexClipboardFragment(data.getData("text/html"));
+      expect(html).toBe(data.getData("blocknote/html"));
+      expect(editor.tryParseHTMLToBlocks(html!)[0]?.content).toContainEqual(mention);
+    } finally {
+      rendered.unmount();
+      editor._tiptapEditor.destroy();
+    }
+  });
+
   test("routes a clicked atomic image Block through structural cut", async () => {
     const onStructuralClipboard = vi.fn(() => true);
     const editor = BlockNoteEditor.create({

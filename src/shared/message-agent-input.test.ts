@@ -274,3 +274,12 @@ describe("what an image's source names", () => {
     expect(resolveRelativeImagePath("x.png", null)).toBeNull();
   });
 });
+
+test("projects skill atoms in Prompt and table content while leaving ordinary dollars and code intact", () => {
+  const source =
+    ':::prompt[Run(:skill{name="review"}).]\n  Cost $5 and use `:skill{name="code"}`.\n:::\n\n| Skills |\n| --- |\n| :skill{name="tools:other"} |';
+  expect(projectMessageText(source).text).toBe(
+    'Run( $review ).\n\nCost $5 and use `:skill{name="code"}`.\n\n| Skills |\n| --- |\n| $tools:other |',
+  );
+  expect(projectMessageText("Use $review, $5 and $HOME.").text).toBe("Use $review, $5 and $HOME.");
+});

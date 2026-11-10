@@ -7,15 +7,18 @@ use serde_json::Value;
 
 use super::inbox::corrupt;
 use super::inbox_content::{
-    agent_markdown, content_from_markdown, predecessor_agent_markdown_matches,
+    agent_markdown, content_from_markdown_with_options, predecessor_agent_markdown_matches,
 };
 use super::inbox_read::{FrozenSuggestionInput, image_numbers};
 use crate::infrastructure::sqlite::StoreError;
 
 type Fingerprints = BTreeMap<(String, String), String>;
 
-fn canonicalize(markdown: &str) -> Result<String, StoreError> {
-    let blocks = nodex_markdown::read(markdown, nodex_markdown::ReadOptions::EXACT)
+fn canonicalize(
+    markdown: &str,
+    options: nodex_markdown::ReadOptions,
+) -> Result<String, StoreError> {
+    let blocks = nodex_markdown::read(markdown, options)
         .map_err(|_| corrupt("Stored Inbox Markdown is unreadable"))?;
     Ok(nodex_markdown::write(&blocks))
 }
@@ -39,11 +42,16 @@ pub(crate) fn validate_inbox_markdown_serialization(
     connection: &Connection,
     predecessor: bool,
 ) -> Result<(), StoreError> {
+    let options = if predecessor {
+        nodex_markdown::ReadOptions::BEFORE_SKILL_MENTIONS
+    } else {
+        nodex_markdown::ReadOptions::EXACT
+    };
     for (_, json) in saved_inputs(connection)? {
         let mut offset = 0;
         for frozen in decode_inputs(&json)? {
             let mut canonical = frozen.content.clone();
-            canonical.markdown = canonicalize(&canonical.markdown)?;
+            canonical.markdown = canonicalize(&canonical.markdown, options)?;
             let numbers = image_numbers(&canonical, offset);
             offset += canonical.images.len();
             let body_matches = if predecessor {
@@ -95,7 +103,10 @@ fn rewrite_basis(value: &mut Value, fingerprints: &Fingerprints) -> bool {
 
 pub(crate) fn rebuild_inbox_markdown_serialization(
     connection: &Connection,
+    source_revision: i64,
 ) -> Result<usize, StoreError> {
+    let options = nodex_markdown::ReadOptions::BEFORE_SKILL_MENTIONS;
+    let affected = |markdown: &str| source_revision < 207 || markdown.contains(":skill");
     let mut fingerprints = Fingerprints::new();
     let pages = connection
         .prepare(
@@ -108,30 +119,35 @@ pub(crate) fn rebuild_inbox_markdown_serialization(
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     for (page, markdown) in pages {
-        let mut content = content_from_markdown(connection, markdown)?;
+        if !affected(&markdown) {
+            continue;
+        }
+        let mut content = content_from_markdown_with_options(connection, markdown, options)?;
         let old = content.fingerprint();
-        content.markdown = canonicalize(&content.markdown)?;
+        content.markdown = canonicalize(&content.markdown, options)?;
         fingerprints.insert((page, old), content.fingerprint());
     }
     let mut rebuilt = 0;
     for (request, json) in saved_inputs(connection)? {
         let mut inputs = decode_inputs(&json)?;
         let mut offset = 0;
+        let mut changed = false;
         for frozen in &mut inputs {
+            let numbers = image_numbers(&frozen.content, offset);
+            offset += frozen.content.images.len();
+            if !affected(&frozen.content.markdown) {
+                continue;
+            }
             let old = frozen.content.fingerprint();
-            frozen.content.markdown = canonicalize(&frozen.content.markdown)?;
+            frozen.content.markdown = canonicalize(&frozen.content.markdown, options)?;
             let new = frozen.content.fingerprint();
             fingerprints.insert((frozen.input.page_id.clone(), old), new.clone());
             frozen.input.basis.content_hash = new;
-            frozen.input.body = agent_markdown(
-                &frozen.content,
-                &image_numbers(&frozen.content, offset),
-                usize::MAX,
-            )?;
-            offset += frozen.content.images.len();
+            frozen.input.body = agent_markdown(&frozen.content, &numbers, usize::MAX)?;
             rebuilt += 1;
+            changed = true;
         }
-        if inputs.is_empty() {
+        if !changed {
             continue;
         }
         let inputs_json = serde_json::to_string(&inputs)
@@ -141,10 +157,15 @@ pub(crate) fn rebuild_inbox_markdown_serialization(
             params![request, inputs_json],
         )?;
     }
+    let automation_decisions = if source_revision < 203 {
+        "core_automation_firings"
+    } else {
+        "automation_decisions"
+    };
     for (table, key, column) in [
         ("inbox_proposals", "proposal_id", "basis_json"),
         ("inbox_suggestion_requests", "request_id", "basis_json"),
-        ("core_automation_firings", "dispatch_id", "hold_basis_json"),
+        (automation_decisions, "dispatch_id", "hold_basis_json"),
     ] {
         let rows = connection
             .prepare(&format!("SELECT {key},{column} FROM {table}"))?

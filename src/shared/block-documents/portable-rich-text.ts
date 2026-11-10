@@ -1,4 +1,5 @@
 import type * as Y from "yjs";
+import { isSkillMentionName, joinSkillMentionText } from "../rich-text/skill-mention";
 import { MAX_PAGE_TITLE_LENGTH } from "../page-limits";
 import {
   normalizeDateMention,
@@ -83,7 +84,8 @@ export type PortableRichTextItem =
   | PortableRichTextLineBreak
   | PortableRichTextThreadMention
   | PortableRichTextPageMention
-  | PortableRichTextDateMention;
+  | PortableRichTextDateMention
+  | { readonly type: "skillMention"; readonly name: string };
 
 export type PortableRichText = readonly PortableRichTextItem[];
 
@@ -237,6 +239,13 @@ const readItem = (value: unknown, index: number): PortableRichTextItem => {
       targetPageId: readBoundedString(value.targetPageId, `${label}.targetPageId`),
     };
   }
+  if (value.type === "skillMention") {
+    assertExactKeys(value, ["type", "name"], label);
+    if (!isSkillMentionName(value.name)) {
+      throw new PortableRichTextError(`${label} is not a valid skill mention`);
+    }
+    return { type: "skillMention", name: value.name };
+  }
   if (value.type === "dateMention") {
     assertExactKeys(
       value,
@@ -265,16 +274,17 @@ const readItem = (value: unknown, index: number): PortableRichTextItem => {
 };
 
 export const portableRichTextPlainText = (value: PortableRichText): string =>
-  value
-    .map((item) => {
+  joinSkillMentionText(
+    value.map((item) => {
       if (item.type === "text" || item.type === "link") return item.text;
       if (item.type === "linebreak") return "\n";
       if (item.type === "threadMention") return `@thread:${item.uuid}`;
       if (item.type === "pageMention") return `@page:${item.targetPageId}`;
+      if (item.type === "skillMention") return item;
       const end = item.end ? `..${item.end}` : "";
       return `@date:${item.start}${end}`;
-    })
-    .join("");
+    }),
+  );
 
 export const portableRichTextSemanticSource = (value: PortableRichText): string =>
   JSON.stringify(value);
@@ -376,7 +386,10 @@ const attributesToStyles = (
 };
 
 const atomAttribute = (
-  item: PortableRichTextThreadMention | PortableRichTextPageMention | PortableRichTextDateMention,
+  item: Exclude<
+    PortableRichTextItem,
+    PortableRichTextText | PortableRichTextLink | PortableRichTextLineBreak
+  >,
 ) => ({
   [ATOM_ATTRIBUTE]: JSON.stringify(item),
 });
@@ -389,7 +402,8 @@ export const portableRichTextToYTextDelta = (
     if (
       item.type === "threadMention" ||
       item.type === "pageMention" ||
-      item.type === "dateMention"
+      item.type === "dateMention" ||
+      item.type === "skillMention"
     ) {
       return { insert: PORTABLE_RICH_TEXT_ATOM_CHARACTER, attributes: atomAttribute(item) };
     }
@@ -445,7 +459,8 @@ export const portableRichTextFromYTextDelta = (value: unknown): PortableRichText
         !parsed ||
         (parsed.type !== "threadMention" &&
           parsed.type !== "pageMention" &&
-          parsed.type !== "dateMention")
+          parsed.type !== "dateMention" &&
+          parsed.type !== "skillMention")
       ) {
         throw new PortableRichTextError(`title Delta atom ${index} is not title-safe`);
       }

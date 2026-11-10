@@ -23,7 +23,7 @@ describe("NFM Page mention entry profiles", () => {
     expect(getNfmPageMentionEntryProfile("@")).toEqual({
       entry: "broad",
       trigger: "@",
-      providers: ["page", "chat", "temporal", "create_page"],
+      providers: ["page", "chat", "temporal", "create_page", "skill"],
       createPlacement: "after_broad_results",
       emptyQueryPopup: "show",
       temporaryInput: true,

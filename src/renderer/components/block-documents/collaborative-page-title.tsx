@@ -125,7 +125,8 @@ const renderRichTitleDom = (root: HTMLDivElement, value: PortableRichText): void
     if (
       item.type === "threadMention" ||
       item.type === "pageMention" ||
-      item.type === "dateMention"
+      item.type === "dateMention" ||
+      item.type === "skillMention"
     ) {
       element.dataset.richTitleKind = "atom";
       element.dataset.richTitleAtom = item.type;

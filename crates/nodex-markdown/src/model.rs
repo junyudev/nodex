@@ -187,6 +187,9 @@ pub enum Inline {
         session: String,
     },
     DateMention(DateMention),
+    SkillMention {
+        name: String,
+    },
     Attachment(Attachment),
     AgentConfig(AgentConfig),
     Math {
@@ -618,6 +621,19 @@ fn block_from_json(value: &Value, path: &str) -> Result<Block, ModelError> {
     Ok(Block { id, kind, children })
 }
 
+/// Names are provider invocation identifiers, including optional plugin qualification.
+pub fn valid_skill_name(name: &str) -> bool {
+    name.len() <= 128
+        && name
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphanumeric)
+        && name.bytes().any(|byte| byte.is_ascii_alphabetic())
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b":_-".contains(&byte))
+}
+
 /// Inline content from its BlockNote JSON, normalized like a Block's text.
 pub fn inline_content_from_json(value: &Value) -> Result<Vec<Inline>, ModelError> {
     let mut items = inline_from_json(Some(value), "inline")?;
@@ -677,6 +693,19 @@ fn inline_from_json(content: Option<&Value>, path: &str) -> Result<Vec<Inline>, 
             "threadMention" => Inline::ChatMention {
                 session: owned_prop(props, "uuid"),
             },
+            "skillMention" => {
+                let Some(name) = string_prop(props, "name")
+                    .filter(|name| props.len() == 1 && valid_skill_name(name))
+                else {
+                    return Err(model_error(
+                        &item_path,
+                        "skillMention requires a valid name",
+                    ));
+                };
+                Inline::SkillMention {
+                    name: name.to_owned(),
+                }
+            }
             "dateMention" => Inline::DateMention(DateMention {
                 start: owned_prop(props, "start"),
                 end: optional_prop(props, "end"),
@@ -1336,6 +1365,10 @@ fn inline_item_to_json(item: &Inline) -> Value {
         Inline::ChatMention { session } => custom(
             "threadMention",
             Map::from_iter([("uuid".into(), json!(session))]),
+        ),
+        Inline::SkillMention { name } => custom(
+            "skillMention",
+            Map::from_iter([("name".into(), json!(name))]),
         ),
         Inline::DateMention(date) => {
             let mut props = Map::new();
