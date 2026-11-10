@@ -352,8 +352,17 @@ test("creates a new-worktree chat through the Composer and runs it there", async
       "selected branch\n",
     );
     expect(fs.existsSync(path.join(fixture.sourceRoot, "review-branch.txt"))).toBe(false);
-    // The Environment's setup ran in the new worktree before the message.
-    await expect(fixture.page.getByText("Preparing workspace").first()).toBeVisible();
+    // The Environment's setup ran in the new worktree before the message. A finished turn folds
+    // its activity away, so open it when it has.
+    const preparation = fixture.page.getByText("Preparing workspace").first();
+    await expect(async () => {
+      if (!(await preparation.isVisible()))
+        await fixture.page
+          .getByRole("button", { name: /^Worked for/u })
+          .first()
+          .click({ timeout: 2_000 });
+      await expect(preparation).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
     expect(runGit(worktreeGitRoot, ["status", "--porcelain"])).toBe("");
     await expect(
       fixture.page.getByText("Thread could not be restored", { exact: true }),
