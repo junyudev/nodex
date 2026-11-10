@@ -32,7 +32,6 @@ import {
   type AutomationRunContext,
   type AutomationHeartbeatRunContext,
 } from "../../main/host-runtime/ClockAutomationPolicy";
-import { computeAutomationIntervalMs } from "./automation-cadence";
 import { ProjectWorkspace } from "../../main/project-application/ProjectWorkspace";
 import { AgentBackendRegistry } from "../../main/agent-backend/AgentBackendRegistry";
 import { AutomationApplication } from "./AutomationApplication";
@@ -474,35 +473,19 @@ export const live: Layer.Layer<
             "heartbeat",
             "A heartbeat runs on its chat's Agent. Choose the Agent this chat uses.",
           );
-        const interval = computeAutomationIntervalMs(definition.rrule);
-        const cooldownAt =
-          interval === null
-            ? null
-            : Math.max(definition.lastRunAt ?? 0, Date.parse(target.thread.updatedAt)) + interval;
+        // The clock alone sets a heartbeat's cadence. Launch waits only for the chat to be free.
+        const scheduled = !context.admission;
         const reason =
           target.thread.activeRunId || target.thread.pendingRuntimeRequest
             ? "heartbeat_busy"
-            : context.reason === "scheduled" &&
-                !context.admission &&
-                context.heartbeat?.automationsEnabled !== true
+            : scheduled && context.heartbeat?.automationsEnabled !== true
               ? "heartbeat_disabled"
-              : context.reason === "scheduled" &&
-                  !context.admission &&
-                  context.heartbeat?.rendererState?.isEligible !== true
+              : scheduled && context.heartbeat?.rendererState?.isEligible !== true
                 ? "renderer_ineligible"
-                : context.reason === "scheduled" &&
-                    !context.admission &&
-                    cooldownAt !== null &&
-                    cooldownAt > context.now
-                  ? "heartbeat_cooldown"
-                  : null;
-        if (!previous && reason)
+                : null;
+        if (reason)
           return yield* Effect.fail(
-            new AutomationRetryError(
-              "Heartbeat is not eligible right now",
-              reason === "heartbeat_cooldown" ? Math.max(1, cooldownAt! - context.now) : 60_000,
-              reason,
-            ),
+            new AutomationRetryError("Heartbeat is not eligible right now", 60_000, reason),
           );
         const changes = yield* subscribeExecutionChanges(supervisor.get());
         const runId = identity("run", [definition.id, dispatchId, 0]);

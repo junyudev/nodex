@@ -101,6 +101,7 @@ const setup = (
     agentDefinitionId: binding.kind === "acp" ? binding.agentDefinitionId : "",
     targetProviderId: agentRuntimeProviderId(binding),
     targetArchived: false,
+    targetUpdatedAt: "1970-01-01T00:00:00Z",
     missingRunbook: false,
     dispatches: 0,
   };
@@ -315,7 +316,7 @@ const setup = (
               thread: {
                 providerInstanceId: state.targetProviderId,
                 archivedAt: null,
-                updatedAt: "1970-01-01T00:00:00Z",
+                updatedAt: state.targetUpdatedAt,
                 activeRunId:
                   state.waitingForInput && physical.size
                     ? `engine:${[...physical].at(-1)}`
@@ -666,6 +667,44 @@ it.effect(
       assert.equal(fixture.messages.length, 1);
       assert.equal(fixture.physical.size, 1);
       assert.equal(fixture.launches.length, 0);
+      assert.equal(fixture.runs.size, 1);
+    }).pipe(Effect.provide(fixture.layer));
+  },
+);
+
+it.effect(
+  "an interval heartbeat beats at every due time, however recently its chat changed",
+  () => {
+    const dueAt = Date.parse("2026-11-10T12:49:00Z");
+    const fixture = setup();
+    // The previous beat settled seconds after its minute and the chat's record changed since.
+    fixture.state.definition = {
+      ...fixture.state.definition,
+      kind: "heartbeat",
+      projectId: null,
+      targetSessionId: "heartbeat-session",
+      cwds: [],
+      rrule: "FREQ=HOURLY;INTERVAL=1",
+      lastRunAt: Date.parse("2026-11-10T11:49:36Z"),
+    };
+    fixture.state.targetUpdatedAt = "2026-11-10T12:19:36Z";
+    return Effect.gen(function* () {
+      const execution = yield* AutomationExecution;
+      yield* execution.executeClaimed(fixture.state.definition, {
+        ...context,
+        now: dueAt,
+        heartbeat: {
+          automationsEnabled: true,
+          rendererState: {
+            rendererClientId: "renderer",
+            isEligible: true,
+            reason: null,
+            updatedAtMs: dueAt,
+          },
+          collaborationMode: null,
+        },
+      });
+      assert.equal(fixture.messages.length, 1);
       assert.equal(fixture.runs.size, 1);
     }).pipe(Effect.provide(fixture.layer));
   },

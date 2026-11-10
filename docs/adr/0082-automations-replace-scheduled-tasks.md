@@ -57,7 +57,7 @@ Main observes Core's due-work plan, materializes through fenced leases and execu
 admitted decisions. Run now uses the same durable admission. Dry run never gains
 an execution lease. Missed time records the outstanding overdue occurrence once
 and advances past now. Runbooks are read at execution time; heartbeat eligibility,
-busy and cooldown guards, exact-Turn cancellation and notification preferences
+busy guards, exact-Turn cancellation and notification preferences
 remain part of execution.
 
 The forward migration retains definition, dispatch, run, held Inbox and lease

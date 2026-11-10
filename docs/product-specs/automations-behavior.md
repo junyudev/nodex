@@ -166,9 +166,12 @@ A heartbeat resolves its stable Session's current execution reference without
 opening transcript history or resuming a second native client. Only one active
 heartbeat targets a Session. Archiving the Session pauses its Automations and fences
 claimed leases atomically; restoring leaves them paused. Deleting the Session
-retires them. Busy state, cooldown, background tasks and foreground eligibility
-are rechecked before launch. A person-admitted heartbeat still waits for a busy
-chat, but bypasses its normal foreground and cadence requirements.
+retires them. The clock alone sets a heartbeat's cadence: recent activity in its
+chat never postpones a due beat, and what a beat does about that activity belongs
+in its instructions. Busy state, background tasks and foreground eligibility are
+rechecked before launch, and a beat that cannot start yet keeps its dispatch and
+starts once the chat is free. A person-admitted heartbeat still waits for a busy
+chat, but bypasses its foreground requirement.
 
 Run now creates a durable manual dispatch and uses the same execution path as a
 clock occurrence. Committed Automation changes wake the Host without waiting for its
