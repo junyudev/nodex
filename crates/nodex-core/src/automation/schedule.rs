@@ -17,6 +17,8 @@ use nodex_core_contracts::automation::AutomationExecutionKind;
 
 pub(super) const DEFAULT_RRULE: &str = "FREQ=HOURLY;INTERVAL=24;BYMINUTE=0";
 const JITTER_MAX_SECONDS: u32 = 120;
+const HEARTBEAT_SPREAD_SECONDS: u32 = 300;
+const HEARTBEAT_SPREAD_MIN_INTERVAL_MS: i64 = 60 * 60_000;
 
 #[derive(Debug)]
 pub(super) struct ScheduleError(pub(super) &'static str);
@@ -47,6 +49,11 @@ pub(super) fn next_run_at(
     if now_ms < 0 {
         return Err(ScheduleError("Core clock is invalid"));
     }
+    if kind == AutomationExecutionKind::Heartbeat
+        && let Some(interval_ms) = interval_millis(&parse_rule(rrule)?)?
+    {
+        return heartbeat_interval_next(automation_id, interval_ms, now_ms, jitter_salt).map(Some);
+    }
     let timezone = timezone
         .parse::<chrono_tz::Tz>()
         .map_err(|_| ScheduleError("Automation timezone is invalid"))?;
@@ -54,12 +61,35 @@ pub(super) fn next_run_at(
     let Some(base) = base else {
         return Ok(None);
     };
-    if !should_jitter(kind, rrule)? {
+    if !should_jitter(rrule)? {
         return Ok(Some(base));
     }
     let jitter = i64::from(jitter_seconds(automation_id, base, jitter_salt)) * 1_000;
     base.checked_add(jitter)
         .map(Some)
+        .ok_or(ScheduleError("Scheduled time exceeds its bound"))
+}
+
+/// An interval heartbeat beats one interval after its previous beat started, off any
+/// wall-clock grid. Beats an hour or more apart spread around that instant, so heartbeats
+/// that began together do not all reach their Agents in the same second.
+fn heartbeat_interval_next(
+    automation_id: &str,
+    interval_ms: i64,
+    started_at_ms: i64,
+    jitter_salt: &str,
+) -> Result<i64, ScheduleError> {
+    let nominal = started_at_ms
+        .checked_add(interval_ms)
+        .ok_or(ScheduleError("Scheduled time exceeds its bound"))?;
+    if interval_ms < HEARTBEAT_SPREAD_MIN_INTERVAL_MS {
+        return Ok(nominal);
+    }
+    let offset = i64::from(
+        jitter_digest(automation_id, nominal, jitter_salt) % (2 * HEARTBEAT_SPREAD_SECONDS + 1),
+    ) - i64::from(HEARTBEAT_SPREAD_SECONDS);
+    nominal
+        .checked_add(offset * 1_000)
         .ok_or(ScheduleError("Scheduled time exceeds its bound"))
 }
 
@@ -285,11 +315,8 @@ fn normalize_content_lines(
     Ok(lines.join("\n"))
 }
 
-fn should_jitter(kind: AutomationExecutionKind, rrule: &str) -> Result<bool, ScheduleError> {
+fn should_jitter(rrule: &str) -> Result<bool, ScheduleError> {
     let parsed = parse_rule(rrule)?;
-    if kind == AutomationExecutionKind::Heartbeat && interval_millis(&parsed)?.is_some() {
-        return Ok(false);
-    }
     if positive_integer(parsed.options.get("COUNT"))? == Some(1) {
         return Ok(false);
     }
@@ -300,8 +327,12 @@ fn should_jitter(kind: AutomationExecutionKind, rrule: &str) -> Result<bool, Sch
 }
 
 fn jitter_seconds(automation_id: &str, next_run_at: i64, jitter_salt: &str) -> u32 {
+    jitter_digest(automation_id, next_run_at, jitter_salt) % JITTER_MAX_SECONDS
+}
+
+fn jitter_digest(automation_id: &str, next_run_at: i64, jitter_salt: &str) -> u32 {
     let digest = Sha256::digest(format!("{jitter_salt}:{automation_id}:{next_run_at}").as_bytes());
-    u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]) % JITTER_MAX_SECONDS
+    u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]])
 }
 
 fn parse_rule(value: &str) -> Result<ParsedRule, ScheduleError> {
@@ -402,19 +433,56 @@ fn has_only_keys(options: &BTreeMap<String, String>, allowed: &BTreeSet<&str>) -
 mod tests {
     use super::*;
 
-    #[test]
-    fn heartbeat_interval_matches_the_typescript_oracle() {
-        let now = 1_783_520_207_000_i64;
-        let next = next_run_at(
-            "heartbeat-1",
+    fn heartbeat_next(rrule: &str, started_at_ms: i64, automation_id: &str) -> i64 {
+        next_run_at(
+            automation_id,
             AutomationExecutionKind::Heartbeat,
-            "FREQ=MINUTELY;INTERVAL=5",
-            now,
+            rrule,
+            started_at_ms,
             "salt",
             "UTC",
         )
-        .expect("schedule");
-        assert_eq!(next, Some(1_783_520_460_000));
+        .expect("schedule")
+        .expect("next beat")
+    }
+
+    #[test]
+    fn a_short_interval_heartbeat_beats_exactly_one_interval_after_it_started() {
+        let started = 1_783_520_207_000_i64;
+        assert_eq!(
+            heartbeat_next("FREQ=MINUTELY;INTERVAL=5", started, "heartbeat-1"),
+            started + 5 * 60_000
+        );
+        assert_eq!(
+            heartbeat_next("FREQ=MINUTELY;INTERVAL=59", started, "heartbeat-1"),
+            started + 59 * 60_000
+        );
+    }
+
+    #[test]
+    fn an_hourly_heartbeat_spreads_within_five_minutes_of_one_interval_after_it_started() {
+        let started = 1_783_520_207_000_i64;
+        let offsets = (0..64)
+            .flat_map(|index| {
+                let id = format!("heartbeat-{index}");
+                [
+                    "FREQ=HOURLY;INTERVAL=1",
+                    "FREQ=HOURLY;INTERVAL=2;BYMINUTE=0",
+                    "FREQ=MINUTELY;INTERVAL=60",
+                ]
+                .map(|rrule| {
+                    let interval = if rrule.contains("INTERVAL=2") { 2 } else { 1 };
+                    heartbeat_next(rrule, started, &id) - started - interval * 60 * 60_000
+                })
+            })
+            .collect::<Vec<_>>();
+        assert!(offsets.iter().all(|offset| offset.abs() <= 300_000));
+        assert!(offsets.iter().any(|offset| *offset < 0));
+        assert!(offsets.iter().any(|offset| *offset > 0));
+        assert_eq!(
+            heartbeat_next("FREQ=HOURLY;INTERVAL=1", started, "heartbeat-1"),
+            heartbeat_next("FREQ=HOURLY;INTERVAL=1", started, "heartbeat-1"),
+        );
     }
 
     #[test]

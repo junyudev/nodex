@@ -1406,8 +1406,12 @@ fn settle_lease(
             &committed_at,
         )?;
     } else {
+        // The next occurrence is measured from when this run started. One that came due
+        // while it ran starts next instead of being skipped.
+        let measured_from_ms = if failed { now_ms } else { lease.claimed_at_ms };
         let next_scheduled = if definition.status == AutomationStatus::Active {
-            scheduled_next_for_stored(connection, &definition, now_ms)?
+            scheduled_next_for_stored(connection, &definition, measured_from_ms)?
+                .map(|next| next.max(now_ms))
         } else {
             None
         };
@@ -3565,6 +3569,91 @@ mod tests {
         )
         .expect("replay completion");
         assert!(duplicate.committed.receipt.mutation.duplicate);
+    }
+
+    #[test]
+    fn a_heartbeat_measures_its_interval_from_when_the_beat_started() {
+        let harness = harness();
+        seed_session(&harness, "session-target");
+        let mut input = definition();
+        input.kind = AutomationExecutionKind::Heartbeat;
+        input.project_id = None;
+        input.target_session_id = Some("session-target".to_owned());
+        input.cwds = None;
+        input.rrule = Some("FREQ=MINUTELY;INTERVAL=30".to_owned());
+        apply(
+            &harness,
+            "heartbeat-create",
+            AutomationIntent::CreateAutomation {
+                automation_id: "heartbeat".to_owned(),
+                automation: input,
+            },
+        )
+        .expect("heartbeat");
+        // Each beat is claimed, then completes `ran_for_ms` after it started.
+        let beat = |operation: &str, ran_for_ms: i64| {
+            harness
+                .kernel
+                .writer()
+                .call(|connection| {
+                    connection.execute(
+                        "UPDATE automations SET next_run_at = 0 WHERE automation_id = 'heartbeat'",
+                        [],
+                    )?;
+                    Ok(())
+                })
+                .expect("make heartbeat due");
+            let lease = apply(
+                &harness,
+                &format!("{operation}-claim"),
+                AutomationIntent::ClaimDue {
+                    work_token: definition_work_token(&harness),
+                    limit: 1,
+                    lease_duration_ms: 60_000,
+                },
+            )
+            .expect("claim heartbeat")
+            .committed
+            .value
+            .claimed_leases[0]
+                .clone();
+            let started_at_ms = lease.claimed_at_ms - ran_for_ms;
+            harness
+                .kernel
+                .writer()
+                .call({
+                    let lease_id = lease.lease_id.clone();
+                    move |connection| {
+                        connection.execute(
+                            "UPDATE automation_execution_leases SET claimed_at_ms = ?2 WHERE lease_id = ?1",
+                            rusqlite::params![lease_id, started_at_ms],
+                        )?;
+                        Ok(())
+                    }
+                })
+                .expect("backdate the beat's start");
+            let completed = apply(
+                &harness,
+                &format!("{operation}-complete"),
+                AutomationIntent::CompleteLease {
+                    lease_id: lease.lease_id,
+                },
+            )
+            .expect("complete beat");
+            let automation = completed.committed.value.automations[0].clone();
+            (
+                started_at_ms,
+                automation.next_run_at_ms.expect("next beat"),
+                automation.last_run_at_ms.expect("completion time"),
+            )
+        };
+
+        let (started, next, _) = beat("ten-minute-beat", 10 * 60_000);
+        assert_eq!(next, started + 30 * 60_000);
+
+        // A beat that outlasts its interval is followed at once instead of a full interval later.
+        let (_, next, completed) = beat("forty-minute-beat", 40 * 60_000);
+        assert_eq!(next, completed);
     }
 
     #[test]

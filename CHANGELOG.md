@@ -46,7 +46,7 @@ All notable changes to this project will be documented in this file.
 - Page history opens again after you edit a Page and pause. The automatic revision Nodex saves when you stop editing made the Page's history show a database error instead of its revisions.
 - Usage analytics that is off when Nodex starts no longer sends events an earlier launch left waiting. Setting `DO_NOT_TRACK`, or otherwise turning analytics off while Nodex was closed, now discards them as turning it off in Settings does.
 - Agent settings edits through symbolic links apply reliably, including immediately after startup or after a link points to a new file.
-- Heartbeats run on their schedule. An hourly heartbeat ran about every 90 minutes, and one set to every few minutes waited half an hour between runs, because Nodex postponed each one after its own previous run. A heartbeat now waits only while its chat is busy.
+- Heartbeats run on their schedule. An hourly heartbeat ran about every 90 minutes, and one set to every few minutes waited half an hour between runs, because Nodex postponed each one after its own previous run. A heartbeat now waits only while its chat is busy, and counts its interval from when the previous run started, so a long run no longer pushes the next one back. Heartbeats an hour or more apart start within five minutes either side of their time.
 - Every Agent can now set up and change Automations, reorder Sidebar Sections and manage a chat's queued messages, not only Codex. Claude Code never saw these Nodex tools, and its heartbeats now stay quiet unless something needs you.
 
 ## [0.5.3] - 2026-11-08

@@ -101,6 +101,8 @@ and withdrawn. Execution attempts retain their own leases and run identities.
 
 Only the outstanding overdue occurrence is materialized after missed time; the
 clock then advances beyond now. It does not replay every interval missed offline.
+A completed run measures the next occurrence from when it started, so an
+occurrence that came due while it ran starts next.
 Automation edits do not rewrite earlier Triggers or decision snapshots.
 
 An Automation set to Ask first has at most one waiting decision, including a failed one awaiting
@@ -168,7 +170,11 @@ heartbeat targets a Session. Archiving the Session pauses its Automations and fe
 claimed leases atomically; restoring leaves them paused. Deleting the Session
 retires them. The clock alone sets a heartbeat's cadence: recent activity in its
 chat never postpones a due beat, and what a beat does about that activity belongs
-in its instructions. Busy state, background tasks and foreground eligibility are
+in its instructions. A heartbeat that repeats every so many minutes or hours beats
+one interval after its previous beat started, however long that beat ran; one that
+outlasts its interval is followed at once. Intervals of an hour or more land
+within five minutes either side of that time, fixed per beat, so heartbeats that
+began together do not all start in the same second. Busy state, background tasks and foreground eligibility are
 rechecked before launch, and a beat that cannot start yet keeps its dispatch and
 starts once the chat is free. A person-admitted heartbeat still waits for a busy
 chat, but bypasses its foreground requirement.
