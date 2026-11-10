@@ -449,15 +449,18 @@ it("cancels an application-owned subagent through its parent and settles from ev
 });
 
 it("keeps loaded pages across task events and attaches again after a delivery gap", async () => {
-  const overview = vi
-    .spyOn(agentRuntimeRuntime, "overview")
-    .mockResolvedValueOnce({
-      active: { items: [task("one")], nextCursor: "after-one", hasMore: true, totalCount: 2 },
-      terminal: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
-    })
-    .mockResolvedValueOnce(overviewOf([task("two")]))
-    .mockRejectedValueOnce(new Error("Agent execution is restarting"))
-    .mockResolvedValueOnce(overviewOf([task("three")]));
+  const initial: AgentSubagentOverview = {
+    active: { items: [task("one")], nextCursor: "after-one", hasMore: true, totalCount: 2 },
+    terminal: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
+  };
+  let current = initial;
+  let runtimeState: "ready" | "restarting" | "recovered" = "ready";
+  vi.spyOn(agentRuntimeRuntime, "overview").mockImplementation(async ({ activeCursor }) => {
+    if (runtimeState === "restarting") throw new Error("Agent execution is restarting");
+    if (runtimeState === "recovered") return overviewOf([task("three")]);
+    if (activeCursor === "after-one") return overviewOf([task("two")]);
+    return current;
+  });
   const { subscribe, releases, emit, update } = observe();
   const view = render(
     <AgentRuntimeSubagentsOverviewPanel sessionId="session" threadId="root" onSelect={vi.fn()} />,
@@ -468,15 +471,22 @@ it("keeps loaded pages across task events and attaches again after a delivery ga
   });
   await screen.findByRole("button", { name: "Open subagent Review two" });
   await act(async () => {
-    update({ ...task("one"), title: "Review one again", updatedAt: "2026-10-13T20:01:00Z" }, 2);
+    const renamed = {
+      ...task("one"),
+      title: "Review one again",
+      updatedAt: "2026-10-13T20:01:00Z",
+    };
+    current = { ...initial, active: { ...initial.active, items: [renamed], totalCount: 3 } };
+    update(renamed, 2);
     await Promise.resolve();
   });
   // An event patches the loaded window; the explicitly loaded page stays.
   await screen.findByRole("button", { name: "Open subagent Review one again" });
+  await screen.findByText("Active · 3");
   expect(screen.getByRole("button", { name: "Open subagent Review two" })).toBeTruthy();
-  expect(overview).toHaveBeenCalledTimes(2);
 
   await act(async () => {
+    runtimeState = "restarting";
     emit({
       type: "reset-required",
       sessionId: "session",
@@ -491,6 +501,7 @@ it("keeps loaded pages across task events and attaches again after a delivery ga
   // The failed re-read keeps the last window visible beside its Retry.
   expect(screen.getByRole("button", { name: "Open subagent Review one again" })).toBeTruthy();
   await act(async () => {
+    runtimeState = "recovered";
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await Promise.resolve();
   });
