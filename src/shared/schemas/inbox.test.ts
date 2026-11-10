@@ -45,13 +45,14 @@ describe("Inbox boundary contracts", () => {
     };
     const first = InboxPreparedConfirmationSchema.parse(prepared);
     expect(InboxPreparedConfirmationSchema.parse(JSON.parse(JSON.stringify(first)))).toEqual(first);
-    // A decision saved before chats chose models or carried additions still replays.
+    // A saved decision with no model, additions, or skills still replays.
     expect(first.action).toEqual({
       type: "new_chat",
       projectId: null,
       prompt: "Research only; do not change code.",
       agent: null,
       additions: [],
+      skills: [],
     });
   });
 

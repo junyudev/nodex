@@ -15,6 +15,7 @@ import {
   setMaitaiPersistenceTransport,
 } from "@/lib/maitai";
 import {
+  inboxNewChatAction,
   LIBRARY_INBOX,
   projectInbox,
   type InboxSendInput,
@@ -595,13 +596,7 @@ describe("Inbox capture ownership", () => {
       const persistence = new MemoryPersistence();
       const pageId = createUuidV7();
       const basis = [{ pageId, contentHash: "4".repeat(64) }];
-      const action = {
-        type: "new_chat" as const,
-        projectId: null,
-        prompt: "The edited prompt",
-        agent: null,
-        additions: [],
-      };
+      const action = inboxNewChatAction(null, "The edited prompt");
       vi.mocked(prepareInboxConfirmation).mockImplementation(async (draft) => ({
         ...draft,
         operationId: createBoundedOperationId("inbox.confirm"),
