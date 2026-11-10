@@ -67,9 +67,9 @@ const REAL_HISTORY_LIST_PARAMS = {
   // not the session origin selected by sourceKinds (the bundled stdio runtime uses vscode).
   useStateDbOnly: true,
 } satisfies ThreadListParams;
-const SAMPLE_COUNT = 15;
+// Sixty observations leave three samples above the nearest-rank p95 position.
+const SAMPLE_COUNT = 60;
 const WARMUP_COUNT = 3;
-const STATUS_SAMPLE_COUNT = 15;
 const HOT_OVERVIEW_P95_GATE_MS = 250;
 const REAL_HISTORY_LIST_P95_GATE_MS = 250;
 const REAL_HISTORY_RSS_NOISE_FLOOR_BYTES = 4 * 1024 * 1024;
@@ -1151,7 +1151,7 @@ it.live(
       const unknownStatusSamples: number[] = [];
       try {
         const knownThread = tenFixture.threads.at(-2)!;
-        for (let index = 0; index < STATUS_SAMPLE_COUNT; index += 1) {
+        for (let index = 0; index < SAMPLE_COUNT; index += 1) {
           const waiting = index % 2 === 0;
           const sample = yield* measured(
             Effect.gen(function* () {
@@ -1198,7 +1198,7 @@ it.live(
           knownStatusSamples.push(sample.elapsedMs);
         }
 
-        for (let index = 0; index < STATUS_SAMPLE_COUNT; index += 1) {
+        for (let index = 0; index < SAMPLE_COUNT; index += 1) {
           const unknownThread = makeThread(tenFixture.rootThreadId, 10_000 + index, "active");
           const sample = yield* measured(
             Effect.gen(function* () {
@@ -1243,6 +1243,7 @@ it.live(
       }
       const knownStatus = summarize(knownStatusSamples);
       const unknownStatus = summarize(unknownStatusSamples);
+      console.log("NODEX_SUBAGENT_STATUS", JSON.stringify({ knownStatus, unknownStatus }));
       assert.isAtMost(knownStatus.p95Ms, 250);
       assert.isAtMost(unknownStatus.p95Ms, 2_000);
 
