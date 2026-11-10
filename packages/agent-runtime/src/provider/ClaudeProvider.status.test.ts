@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { vi } from "vite-plus/test";
 import { assert, it } from "@effect/vitest";
 import { ClaudeSettings } from "@nodex/runtime-contracts";
 import * as HostProcess from "@nodex/runtime-shared/HostProcess";
@@ -10,7 +11,8 @@ import * as NodePath from "node:path";
 
 import { resolveUsageLimitsAfterProbe } from "@nodex/provider-core/server/usageLimits";
 
-import { checkClaudeProviderStatus } from "./ClaudeProvider.ts";
+import { applyClaudeModelLineup, BUNDLED_CLAUDE_MODEL_CATALOG } from "./ClaudeModelCatalog.ts";
+import { checkClaudeProviderStatus, probeClaudeCapabilities } from "./ClaudeProvider.ts";
 
 // The `#!/bin/sh` stub below cannot be resolved as an executable on Windows.
 const windowsHost = HostProcess.Platform.defaultValue() === "win32";
@@ -173,4 +175,65 @@ it.live.skipIf(windowsHost)(
       }).pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false }))),
     );
   },
+);
+
+vi.mock("./ClaudeAgentSdk.ts", () => ({
+  loadClaudeAgentSdk: async () => ({
+    query: () => ({
+      initializationResult: async () => ({
+        account: { email: "ada@example.com", tokenSource: "claude.ai" },
+        commands: [],
+        models: [
+          {
+            value: "fable",
+            resolvedModel: "claude-fable-5-3[1m]",
+            supportedEffortLevels: ["medium", "high"],
+          },
+        ],
+      }),
+    }),
+  }),
+}));
+
+it.effect.skipIf(windowsHost)(
+  "lists initialization's future default-family model with inherited Ultracode and reported effort",
+  () =>
+    withFakeClaude(({ settings, cwd }) =>
+      Effect.gen(function* () {
+        const capabilities = yield* probeClaudeCapabilities(
+          settings,
+          { PATH: process.env.PATH },
+          cwd,
+          false,
+        );
+        let loaded = false;
+        const catalog = Effect.sync(() =>
+          applyClaudeModelLineup(
+            BUNDLED_CLAUDE_MODEL_CATALOG,
+            loaded ? capabilities?.modelLineup : undefined,
+          ),
+        );
+        const provider = yield* checkClaudeProviderStatus(
+          settings,
+          () =>
+            Effect.sync(() => {
+              loaded = true;
+              return capabilities;
+            }),
+          { PATH: process.env.PATH },
+          cwd,
+          catalog,
+        );
+        const model = provider.models.find(({ slug }) => slug === "claude-fable-5-3")!;
+        assert.isDefined(model);
+        assert.isTrue(model.isDefault);
+        assert.isFalse(model.isLegacy);
+        assert.isTrue(model.capabilities?.optionDescriptors?.some(({ id }) => id === "ultracode"));
+        const effort = model.capabilities?.optionDescriptors?.find(({ id }) => id === "effort");
+        assert.deepEqual(effort?.type === "select" ? effort.options.map(({ id }) => id) : [], [
+          "medium",
+          "high",
+        ]);
+      }),
+    ),
 );

@@ -4,6 +4,11 @@ import { resolveSettings } from "@anthropic-ai/claude-agent-sdk";
 import { ProviderInstanceId } from "@nodex/runtime-contracts";
 import { DEFAULT_MODEL_POLICY, setModelOn } from "../../../../src/shared/model-policy.ts";
 import { RuntimeModelPolicy, make } from "./ModelPolicy.ts";
+import {
+  applyClaudeModelLineup,
+  BUNDLED_CLAUDE_MODEL_CATALOG,
+  parseClaudeModelLineup,
+} from "../provider/ClaudeModelCatalog.ts";
 import { restrictions, verifyClaudeModelPolicy } from "./ClaudeModelPolicy.ts";
 
 it.live(
@@ -37,5 +42,39 @@ it.live(
           })),
         ).rejects.toThrow("could not be verified");
       });
+    }),
+);
+
+it.effect(
+  "newly discovered Claude models follow the provider default in native exact restrictions",
+  () =>
+    Effect.gen(function* () {
+      const instanceId = ProviderInstanceId.make("claudeAgent");
+      const catalog = applyClaudeModelLineup(
+        BUNDLED_CLAUDE_MODEL_CATALOG,
+        parseClaudeModelLineup([{ value: "fable", resolvedModel: "claude-fable-5-3" }]),
+      );
+      const owner = yield* make(DEFAULT_MODEL_POLICY, {});
+      const settings = yield* restrictions(
+        { instanceId, model: "claude-sonnet-5-5" },
+        catalog,
+      ).pipe(Effect.provideService(RuntimeModelPolicy, owner));
+      expect(settings.availableModels).toContain("claude-fable-5-3");
+      expect(settings.availableModelsMatch).toBe("exact");
+      const disabled = yield* make(
+        setModelOn(
+          DEFAULT_MODEL_POLICY,
+          { instanceId, driver: "claudeAgent" },
+          "claude-fable-5-3",
+          false,
+        ),
+        {},
+      );
+      const restricted = yield* restrictions(
+        { instanceId, model: "claude-sonnet-5-5" },
+        catalog,
+      ).pipe(Effect.provideService(RuntimeModelPolicy, disabled));
+      expect(restricted.availableModels).not.toContain("claude-fable-5-3");
+      expect(restricted.deniedModels).toContain("claude-fable-5-3");
     }),
 );

@@ -1,3 +1,8 @@
+import {
+  applyClaudeModelLineup,
+  BUNDLED_CLAUDE_MODEL_CATALOG,
+  parseClaudeModelLineup,
+} from "../../provider/ClaudeModelCatalog.ts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
@@ -1006,6 +1011,7 @@ describe("ClaudeAdapterV2 context usage", () => {
       },
       CLAUDE_TEST_MODEL_SELECTION,
       "2026-08-29T00:00:00.000Z",
+      BUNDLED_CLAUDE_MODEL_CATALOG,
     );
 
     assert.deepEqual(usage, {
@@ -1028,6 +1034,7 @@ describe("ClaudeAdapterV2 context usage", () => {
         { input_tokens: 1, output_tokens: 1, cache_creation },
         CLAUDE_TEST_MODEL_SELECTION,
         "2026-08-29T00:00:00.000Z",
+        BUNDLED_CLAUDE_MODEL_CATALOG,
       ).promptCacheTtlMs;
 
     assert.strictEqual(
@@ -2510,6 +2517,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     });
 
   const makeWakeHarnessWithOptions = (options?: {
+    readonly modelCatalog?: ClaudeAdapterV2.ClaudeAdapterV2Options["modelCatalog"];
     readonly close?: (sdkMessages: Queue.Queue<SDKMessage>) => Effect.Effect<void>;
     readonly interrupt?: Effect.Effect<void>;
     readonly stopTask?: (taskId: string) => Effect.Effect<void>;
@@ -2633,6 +2641,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       const adapter = yield* ClaudeAdapterV2.makeClaudeAdapterV2({
         instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
         settings: options?.settings ?? DEFAULT_CLAUDE_SETTINGS,
+        ...(options?.modelCatalog ? { modelCatalog: options.modelCatalog } : {}),
         resolveSettings:
           options?.resolveSettings ??
           (async () => ({ effective: {}, sources: [], provenance: {} })),
@@ -2810,6 +2819,87 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       };
     });
   const makeWakeHarness = makeWakeHarnessWithOptions();
+
+  it.effect(
+    "refreshes the effective catalog after session creation before compiling a discovered model",
+    () =>
+      Effect.gen(function* () {
+        let catalog = BUNDLED_CLAUDE_MODEL_CATALOG;
+        const harness = yield* makeWakeHarnessWithOptions({
+          modelCatalog: Effect.sync(() => catalog),
+        });
+        catalog = applyClaudeModelLineup(
+          catalog,
+          parseClaudeModelLineup([
+            { value: "fable", resolvedModel: "claude-fable-5-3", supportedEffortLevels: ["high"] },
+          ]),
+        );
+        yield* harness.runtime.startTurn({
+          ...makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("discovered-model"),
+            text: "Continue.",
+            attachments: [],
+          }),
+          modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, model: "fable" },
+        });
+        assert.equal(harness.getOpenedOptions()?.model, "claude-fable-5-3");
+        assert.equal(harness.getOpenedOptions()?.effort, "high");
+        assert.equal(
+          harness.runtime.getModelContextWindow?.({
+            ...CLAUDE_TEST_MODEL_SELECTION,
+            model: "fable",
+          }),
+          1_000_000,
+        );
+        const usageFrame = makeAssistantTextFrame({
+          uuid: "00000000-0000-4000-8000-000000000710",
+          text: "Considering.",
+        });
+        yield* harness.offerAndWait(usageFrame);
+        yield* harness.offerAndWait(
+          claudeSdkFrame({
+            type: "system",
+            subtype: "compact_boundary",
+            compact_metadata: { trigger: "manual", pre_tokens: 1500, post_tokens: 400 },
+            uuid: "00000000-0000-4000-8000-000000000711",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+        );
+        yield* harness.offerAndWait(
+          makeResultFrame({ uuid: "00000000-0000-4000-8000-000000000712", result: "Done." }),
+        );
+        yield* Queue.take(harness.terminalReceipts);
+        const usage = harness.events.findLast(
+          (event) =>
+            event.type === "provider_turn.updated" &&
+            event.providerTurn.tokenUsage?.usedTokens === 2,
+        );
+        assert.equal(
+          usage?.type === "provider_turn.updated"
+            ? usage.providerTurn.tokenUsage?.maxTokens
+            : undefined,
+          1_000_000,
+        );
+        const compacted = harness.events.findLast(
+          (event) =>
+            event.type === "provider_turn.updated" &&
+            event.providerTurn.tokenUsage?.usedTokens === 400,
+        );
+        assert.equal(
+          compacted?.type === "provider_turn.updated"
+            ? compacted.providerTurn.tokenUsage?.maxTokens
+            : undefined,
+          1_000_000,
+        );
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
 
   const makeDesktopHarness = Effect.fnUntraced(function* (
     options: {

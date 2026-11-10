@@ -48,6 +48,8 @@ import {
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   type ClaudeModelCatalog,
+  type ClaudeModelLineupEntry,
+  parseClaudeModelLineup,
   formatClaudeVersionUpgradeMessage,
   resolveClaudeModelsForVersion,
   resolveClaudeUpdateRequiredModels,
@@ -302,6 +304,7 @@ function nonEmptyProbeString(value: string): string | undefined {
 }
 
 type ClaudeCapabilitiesProbe = {
+  readonly modelLineup?: ReadonlyArray<ClaudeModelLineupEntry>;
   readonly email: string | undefined;
   /**
    * The organization UUID from the login's `.claude.json`. The driver reads it
@@ -500,6 +503,7 @@ const probeClaudeCapabilities = (
           apiKeySource: account?.apiKeySource,
           apiProvider: account?.apiProvider,
           slashCommands: parseClaudeInitializationCommands(init.commands),
+          modelLineup: parseClaudeModelLineup(init.models),
           ...(workflowsAvailable === undefined ? {} : { workflowsAvailable }),
           ...usage,
         } satisfies ClaudeCapabilitiesProbe;
@@ -584,7 +588,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   ) => Effect.Effect<ClaudeCapabilitiesProbe | undefined>,
   environment?: NodeJS.ProcessEnv,
   cwd?: string,
-  modelCatalog: ClaudeModelCatalog = BUNDLED_CLAUDE_MODEL_CATALOG,
+  modelCatalog: Effect.Effect<ClaudeModelCatalog> = Effect.succeed(BUNDLED_CLAUDE_MODEL_CATALOG),
   /** Shared with the adapter so turn events reuse the scoped-bucket names this probe saw. */
   scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>,
 ): Effect.fn.Return<
@@ -595,7 +599,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   const resolvedEnvironment = environment ?? process.env;
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   const allModels = providerModelsFromSettings(
-    modelCatalog.models.map((entry) => entry.model),
+    (yield* modelCatalog).models.map((entry) => entry.model),
     claudeSettings.customModels,
     DEFAULT_CLAUDE_MODEL_CAPABILITIES,
   );
@@ -694,17 +698,18 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
-  const models = providerModelsFromSettings(
-    resolveClaudeModelsForVersion(modelCatalog, parsedVersion),
-    claudeSettings.customModels,
-    DEFAULT_CLAUDE_MODEL_CAPABILITIES,
-  );
-  const updateRequiredModels = resolveClaudeUpdateRequiredModels(modelCatalog, parsedVersion);
-  const versionUpgradeMessage = formatClaudeVersionUpgradeMessage(modelCatalog, parsedVersion);
-
   const capabilities = resolveCapabilities
     ? yield* resolveCapabilities(claudeSettings).pipe(Effect.orElseSucceed(() => undefined))
     : undefined;
+  const catalog = yield* modelCatalog;
+  const models = providerModelsFromSettings(
+    resolveClaudeModelsForVersion(catalog, parsedVersion),
+    claudeSettings.customModels,
+    DEFAULT_CLAUDE_MODEL_CAPABILITIES,
+  );
+  const updateRequiredModels = resolveClaudeUpdateRequiredModels(catalog, parsedVersion);
+  const versionUpgradeMessage = formatClaudeVersionUpgradeMessage(catalog, parsedVersion);
+
   const skills = yield* discoverClaudeSkills(claudeSettings, cwd, resolvedEnvironment);
   const slashCommands = [COMPACT_SLASH_COMMAND, ...(capabilities?.slashCommands ?? [])];
   const dedupedSlashCommands = dedupeSlashCommands(slashCommands);
@@ -788,12 +793,12 @@ const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
 export const makePendingClaudeProvider = (
   claudeSettings: ClaudeSettings,
-  modelCatalog: ClaudeModelCatalog = BUNDLED_CLAUDE_MODEL_CATALOG,
+  modelCatalog: Effect.Effect<ClaudeModelCatalog> = Effect.succeed(BUNDLED_CLAUDE_MODEL_CATALOG),
 ): Effect.Effect<ServerProviderDraft> =>
   Effect.gen(function* () {
     const checkedAt = yield* nowIso;
     const models = providerModelsFromSettings(
-      modelCatalog.models.map((entry) => entry.model),
+      (yield* modelCatalog).models.map((entry) => entry.model),
       claudeSettings.customModels,
       DEFAULT_CLAUDE_MODEL_CAPABILITIES,
     );

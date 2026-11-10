@@ -19,6 +19,7 @@ import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import { HttpClient } from "effect/http";
 import { ChildProcessSpawner } from "effect/process";
@@ -47,7 +48,11 @@ import {
 } from "../ClaudeProvider.ts";
 import { makeManagedServerProvider } from "@nodex/provider-core/server/managedProvider";
 import * as ModelCatalog from "@nodex/provider-core/server/ModelCatalog";
-import { resolveClaudeModelCatalog } from "../ClaudeModelCatalog.ts";
+import {
+  applyClaudeModelLineup,
+  resolveClaudeModelCatalog,
+  type ClaudeModelLineupEntry,
+} from "../ClaudeModelCatalog.ts";
 import {
   defaultProviderContinuationIdentity,
   type ProviderDriver,
@@ -127,9 +132,6 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
       const httpClient = yield* HttpClient.HttpClient;
       const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
       const catalogService = yield* ModelCatalog.ModelCatalog;
-      const modelCatalog = catalogService
-        .current(DRIVER_KIND)
-        .pipe(Effect.map(resolveClaudeModelCatalog));
       const processEnv = yield* mergeProviderInstanceEnvironment(
         environment,
         config.isolated ? {} : process.env,
@@ -171,33 +173,8 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         continuationGroupKey,
       });
 
-      const scopedLimitNames = yield* makeClaudeScopedLimitNames;
-      const orchestrationAdapter = yield* createClaudeAdapterV2(
-        {
-          instanceId,
-          displayName,
-          accentColor,
-          environment,
-          enabled,
-          config,
-        },
-        { scopedLimitNames, onUsageLimits: (update) => snapshot.applyUsageLimits(update) },
-      ).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderDriverError({
-              driver: DRIVER_KIND,
-              instanceId,
-              detail: "Failed to build Claude orchestration adapter.",
-              cause,
-            }),
-        ),
-      );
-      const textGeneration = yield* makeClaudeTextGeneration(
-        effectiveConfig,
-        processEnv,
-        modelCatalog,
-      );
+      // Model identity outlives the account/usage probe's freshness window.
+      const lastModelLineup = yield* Ref.make<ReadonlyArray<ClaudeModelLineupEntry>>([]);
 
       // Per-instance capabilities cache: keyed on binary + resolved HOME so
       // account-specific probes never share auth metadata across instances.
@@ -210,6 +187,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
           Effect.gen(function* () {
             const before = yield* readClaudeAccountState(accountConfigPath);
             const capabilities = yield* probeClaudeCapabilities(effectiveConfig, processEnv, cwd);
+            if (capabilities?.modelLineup?.length) {
+              yield* Ref.set(lastModelLineup, capabilities.modelLineup);
+            }
             if (!capabilities) return capabilities;
             const usageReadAt =
               capabilities.usage && capabilities.usageReadAt
@@ -237,23 +217,57 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         processEnv,
       );
 
+      // Reading the catalog never launches or waits for a capability probe.
+      const modelCatalog = Effect.gen(function* () {
+        const catalog = resolveClaudeModelCatalog(yield* catalogService.current(DRIVER_KIND));
+        if (!enabled || config.isolated) return catalog;
+        return applyClaudeModelLineup(catalog, yield* Ref.get(lastModelLineup));
+      });
+
+      const scopedLimitNames = yield* makeClaudeScopedLimitNames;
+      const orchestrationAdapter = yield* createClaudeAdapterV2(
+        {
+          instanceId,
+          displayName,
+          accentColor,
+          environment,
+          enabled,
+          config,
+        },
+        {
+          modelCatalog,
+          scopedLimitNames,
+          onUsageLimits: (update) => snapshot.applyUsageLimits(update),
+        },
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new ProviderDriverError({
+              driver: DRIVER_KIND,
+              instanceId,
+              detail: "Failed to build Claude orchestration adapter.",
+              cause,
+            }),
+        ),
+      );
+      const textGeneration = yield* makeClaudeTextGeneration(
+        effectiveConfig,
+        processEnv,
+        modelCatalog,
+      );
+
       // Start the TTL-gated refresh without delaying provider readiness. The
       // next check observes a remote manifest after the background fetch lands.
       const checkProvider = catalogService.refreshInBackground.pipe(
         Effect.andThen(
-          modelCatalog.pipe(
-            Effect.flatMap((catalog) =>
-              checkClaudeProviderStatus(
-                effectiveConfig,
-                () => Cache.get(capabilitiesProbeCache, capabilitiesCacheKey),
-                processEnv,
-                cwd,
-                catalog,
-                scopedLimitNames,
-              ),
-            ),
-            Effect.map(stampIdentity),
-          ),
+          checkClaudeProviderStatus(
+            effectiveConfig,
+            () => Cache.get(capabilitiesProbeCache, capabilitiesCacheKey),
+            processEnv,
+            cwd,
+            modelCatalog,
+            scopedLimitNames,
+          ).pipe(Effect.map(stampIdentity)),
         ),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(FileSystem.FileSystem, fileSystem),
@@ -267,8 +281,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         streamSettings: snapshotSettings.streamSettings,
         haveSettingsChanged: haveProviderSnapshotSettingsChanged,
         initialSnapshot: (settings) =>
-          modelCatalog.pipe(
-            Effect.flatMap((catalog) => makePendingClaudeProvider(settings.provider, catalog)),
+          makePendingClaudeProvider(settings.provider, modelCatalog).pipe(
             Effect.map(stampIdentity),
           ),
         checkProvider,

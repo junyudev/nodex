@@ -212,10 +212,11 @@ import {
 export const CLAUDE_PROVIDER = ProviderDriverKind.make("claudeAgent");
 export const CLAUDE_AGENT_SDK_QUERY_PROTOCOL = "claude-agent-sdk.query" as const;
 
-function claudeContextWindow(modelSelection: ModelSelection): number | null {
-  return (
-    resolveClaudeCatalogContextWindowTokens(BUNDLED_CLAUDE_MODEL_CATALOG, modelSelection) ?? null
-  );
+function claudeContextWindow(
+  catalog: ClaudeModelCatalog,
+  modelSelection: ModelSelection,
+): number | null {
+  return resolveClaudeCatalogContextWindowTokens(catalog, modelSelection) ?? null;
 }
 
 interface ClaudeCacheCreation {
@@ -245,6 +246,7 @@ export function claudeProviderTurnTokenUsage(
   },
   modelSelection: ModelSelection,
   updatedAt: string,
+  catalog: ClaudeModelCatalog,
 ) {
   const inputTokens =
     usage.input_tokens +
@@ -254,7 +256,7 @@ export function claudeProviderTurnTokenUsage(
   const promptCacheTtlMs = claudePromptCacheTtlMs(usage.cache_creation);
   return {
     usedTokens: inputTokens + outputTokens,
-    maxTokens: claudeContextWindow(modelSelection),
+    maxTokens: claudeContextWindow(catalog, modelSelection),
     inputTokens,
     cachedInputTokens: usage.cache_read_input_tokens ?? 0,
     outputTokens,
@@ -3871,6 +3873,9 @@ export function claudeProposedPlan(input: unknown): string | null {
 }
 
 export interface ClaudeAdapterV2Options {
+  readonly modelCatalog?: Effect.Effect<
+    import("../../provider/ClaudeModelCatalog.ts").ClaudeModelCatalog
+  >;
   readonly instanceId: ProviderInstanceId;
   readonly settings: ClaudeSettings;
   readonly environment: NodeJS.ProcessEnv;
@@ -3898,9 +3903,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
   const { attachmentsDir, fileSystem, path, crypto, idAllocator, queryRunner } = adapterOptions;
   const keepViewedImageCopy = keepViewedImage({ attachmentsDir, fileSystem, path });
   // Subagent model names and effort levels, including the instance's custom models.
-  const subagentModelCatalog = scopeClaudeModelCatalog(
-    BUNDLED_CLAUDE_MODEL_CATALOG,
-    adapterOptions.settings.customModels,
+  const readModelCatalog = (
+    adapterOptions.modelCatalog ?? Effect.succeed(BUNDLED_CLAUDE_MODEL_CATALOG)
+  ).pipe(
+    Effect.map((catalog) => scopeClaudeModelCatalog(catalog, adapterOptions.settings.customModels)),
   );
   const continuationRequests = adapterOptions.continuationRequests ?? {
     offer: () => Effect.void,
@@ -4018,6 +4024,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
     ),
     openSession: Effect.fn("ClaudeAdapterV2.openSession")(
       function* (input: ProviderAdapter.ProviderAdapterV2OpenSessionInput) {
+        let subagentModelCatalog = yield* readModelCatalog;
         const sessionScope = yield* Effect.scope;
         const now = yield* DateTime.now;
         const session = providerSession({
@@ -7935,7 +7942,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                       Number.isFinite(measured.maxTokens) &&
                       measured.maxTokens > 0
                         ? Math.floor(measured.maxTokens)
-                        : claudeContextWindow(context.input.modelSelection),
+                        : claudeContextWindow(subagentModelCatalog, context.input.modelSelection),
                     updatedAt: DateTime.formatIso(now),
                   },
                 },
@@ -8089,6 +8096,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     message.message.usage,
                     context.input.modelSelection,
                     DateTime.formatIso(now),
+                    subagentModelCatalog,
                   ),
                 },
               });
@@ -9922,6 +9930,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
 
         const startTurn = Effect.fn("ClaudeAdapterV2.startTurn")(
           function* (turnInput: ProviderAdapter.ProviderAdapterV2TurnInput) {
+            subagentModelCatalog = yield* readModelCatalog;
             const startedAt = yield* DateTime.now;
             const nativeThreadId = yield* getNativeThreadId(turnInput.providerThread);
             const nativeTurnId = `turn:${turnInput.attemptId}`;
@@ -10479,7 +10488,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           providerSessionId: input.providerSessionId,
           providerSession: session,
           getModelContextWindow: (selection) =>
-            resolveClaudeCatalogContextWindowTokens(BUNDLED_CLAUDE_MODEL_CATALOG, selection),
+            resolveClaudeCatalogContextWindowTokens(subagentModelCatalog, selection),
           events: Stream.fromEffectRepeat(BoundedQueue.take(events)),
           hasPendingBackgroundWork: Effect.gen(function* () {
             // Native queued input must keep the process alive through a late wake.
@@ -10870,7 +10879,7 @@ export type ClaudeAdapterV2DriverEnv =
 export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
   function* (
     input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
-    hooks: Pick<ClaudeAdapterV2Options, "scopedLimitNames" | "onUsageLimits"> = {},
+    hooks: Pick<ClaudeAdapterV2Options, "modelCatalog" | "scopedLimitNames" | "onUsageLimits"> = {},
   ) {
     const { instanceId, environment, enabled, config } = input;
     const fileSystem = yield* FileSystem.FileSystem;

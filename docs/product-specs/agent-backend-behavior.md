@@ -56,7 +56,18 @@ Claude discovery uses an SDK metadata query with persistence, hooks, MCP and IDE
 integration disabled, and releases its process after initialization. At most two
 such queries run concurrently. Its cache includes account configuration and execution
 folder and retains at most 64 entries. Native commands and filesystem skills remain
-separate catalogs. Nodex does not add Codex instruction files to Claude configuration.
+separate catalogs.
+
+Claude's models follow the lineup the selected Claude Code reports for its account when it
+initializes, so a model newer than the Nodex release is listed as soon as Claude Code offers
+it. Nodex's bundled model descriptions supply names and choices; a model they do not describe
+takes the choices of the newest described model in its family, narrowed to the effort levels
+and Fast support Claude Code reports. A family name such as `fable`, and the default when it
+belongs to that family, resolve to the family's model in the lineup, so chats, subagents,
+titles and model restrictions name the model Claude Code runs. Models outside the lineup stay
+listed. A described model the installed Claude Code is too old for is withheld and named with
+the version it needs. Until Claude Code first reports a lineup, the bundled descriptions alone
+apply; the last lineup stays in effect until a later report replaces it. Nodex does not add Codex instruction files to Claude configuration.
 The native executable resolves from explicit configuration or Desktop/login-shell PATH;
 credentials are not imported from a login shell. Explicit PATH and profile overrides
 remain authoritative. Nodex's Agent SDK and the selected Claude Code executable are
