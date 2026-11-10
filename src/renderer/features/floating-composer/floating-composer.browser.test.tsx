@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { renderWithAppMaitai } from "@/test/app-maitai";
-import { clearPersistedAtomStoreForTests, readAtom } from "@/lib/persisted-atom-store";
+import {
+  clearPersistedAtomStoreForTests,
+  getPersistedAtomTransport,
+} from "@/lib/persisted-atom-store";
 import {
   ComposerContextRail,
   ComposerContextRailSlot,
@@ -16,7 +19,8 @@ const PANE = { left: 40, top: 30, width: 1000, height: 700 };
 const PREFERENCE_KEY = "nodex:floating-composer:v1";
 
 async function storedPreference() {
-  return (await readAtom(PREFERENCE_KEY, null)) as { width?: number; dock?: string } | null;
+  const { values } = await getPersistedAtomTransport().readSnapshot();
+  return values[PREFERENCE_KEY] as { width?: number; dock?: string } | undefined;
 }
 
 const states: FloatingComposerState[] = [];
@@ -285,7 +289,7 @@ describe("FloatingComposer", () => {
       expect(rect.left).toBeCloseTo(10, 0);
       expect(rect.top).toBeCloseTo(paneToolbarHeight() + 10, 0);
     });
-    expect((await storedPreference())?.dock).toBe("top-left");
+    await waitFor(async () => expect((await storedPreference())?.dock).toBe("top-left"));
 
     // Pressing the pointer into the bottom-left corner minimizes there; the frame keeps its dock.
     await dragPointer(frameElement(), headerDragPoint(), {
