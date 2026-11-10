@@ -1,4 +1,4 @@
-import type { BlockNoteEditorOptions } from "@blocknote/core";
+import type { BlockNoteEditor, BlockNoteEditorOptions } from "@blocknote/core";
 import { withCollaboration, type CollaborationOptions } from "@blocknote/core/yjs";
 import type { Awareness } from "y-protocols/awareness";
 import type { ContentRoutingContext } from "../../../../shared/content-routing-context";
@@ -6,12 +6,10 @@ import { contentRoutingContextKey } from "../../../../shared/content-routing-con
 import type * as Y from "yjs";
 
 /**
- * A mounted NFM editor is always a view over an existing collaborative
- * Document. NFM parsing belongs to explicit import/export boundaries and must
- * never be used to rehydrate an editor after collaboration has started.
+ * A mounted NFM editor is a view over an existing Yjs body. The source
+ * determines whether the host has Library authority or an in-memory file draft.
  */
-export interface NfmEditorSource {
-  readonly kind: "collaborative-document";
+interface NfmEditorFragmentSource {
   readonly documentId: string;
   readonly storeEpoch: string;
   readonly generation: number;
@@ -30,7 +28,17 @@ export interface NfmEditorSource {
   readonly onDocumentChange?: () => void;
 }
 
-export type NfmEditorCollaborativeDocumentSource = NfmEditorSource;
+export interface NfmEditorCollaborativeDocumentSource extends NfmEditorFragmentSource {
+  readonly kind: "collaborative-document";
+}
+
+export interface NfmFileEditorSource extends NfmEditorFragmentSource {
+  readonly kind: "markdown-file";
+  readonly readOnly?: boolean;
+  readonly onMount?: (editor: BlockNoteEditor<any, any, any>) => () => void;
+}
+
+export type NfmEditorSource = NfmEditorCollaborativeDocumentSource | NfmFileEditorSource;
 
 const transactionOriginsByFragment = new WeakMap<Y.XmlFragment, Map<string, object>>();
 
@@ -88,7 +96,7 @@ export function getNfmEditorInstanceKey(input: {
   readonly source: NfmEditorSource;
 }): string {
   return [
-    "collaborative-document",
+    input.source.kind,
     contentRoutingContextKey(input.routingContext),
     input.source.documentId,
     input.source.generation,

@@ -1,3 +1,4 @@
+import { parseSkillSource } from "../../../../shared/skill-document";
 import { markdownBlocksForEditor } from "../../../../shared/nodex-markdown/blocknote";
 import { normalizeRichHtmlBlocks } from "../../../../shared/markdown/rich-html-blocks";
 import { beginRendererStructuralSpan } from "@/lib/renderer-causal-trace";
@@ -571,6 +572,7 @@ export type NfmPasteHandler = (context: {
 }) => boolean | undefined;
 
 export interface NfmEditorExtensionOptions {
+  readonly file?: boolean;
   readonly onStructuralClipboardUnavailable?: () => void;
   readonly onStructuralClipboard?: (
     action: NfmClipboardCommand,
@@ -589,15 +591,19 @@ export function createNfmEditorExtensions(options: NfmEditorExtensionOptions = {
   return [
     nfmSyntaxHighlighter,
     nfmSearchExtension(),
-    canvasCreatePendingExtension(),
-    nfmClipboardPastePendingExtension(),
-    nfmPasteTargetExtension(),
+    ...(options.file
+      ? []
+      : [
+          canvasCreatePendingExtension(),
+          nfmClipboardPastePendingExtension(),
+          nfmPasteTargetExtension(),
+        ]),
     nfmTaskShorthandPreviewExtension(),
-    NfmStructuredClipboardExtension(options),
+    ...(options.file ? [] : [NfmStructuredClipboardExtension(options)]),
     headingToggleAware,
-    toggleInputRule,
+    ...(options.file ? [] : [toggleInputRule]),
     quoteInputRule,
-    mentionChipKeyboardNavigationExtension(),
+    ...(options.file ? [] : [mentionChipKeyboardNavigationExtension()]),
     selectBlockShortcut,
     selectedBlockDecorationsExtension(),
     childGroupEnterExt,
@@ -753,5 +759,29 @@ function pasteExternalHtml(editor: BlockNoteEditor, html: string): void {
   const blocks = normalizeRichHtmlBlocks(editor.tryParseHTMLToBlocks(html));
   if (blocks.length > 0) editor.pasteHTML(editor.blocksToFullHTML(blocks), true);
 }
+
+/** File paste accepts text only, with portable Markdown blocks when the projection is safe. */
+export const pasteNfmFileContent: NfmPasteHandler = ({ event, editor }) => {
+  if (!editor.isEditable) return true;
+  const clipboard = event.clipboardData;
+  const plain = clipboard?.getData("text/plain") ?? "";
+  const markdown = clipboard?.getData("text/markdown") || plain;
+  if (!markdown) return true;
+
+  const selection = editor.prosemirrorView?.state.selection;
+  if (!selection?.$from.parent.type.spec.code) {
+    // The clipboard has no manifest. A leading thematic break can be literal text.
+    const parsed = parseSkillSource(markdown);
+    if (
+      parsed.rich.editable &&
+      parsed.bodyStart === 0 &&
+      parsed.units.length > 0 &&
+      pasteNfmBlocks(editor, [...parsed.blocks])
+    )
+      return true;
+  }
+  editor.pasteText(plain || markdown);
+  return true;
+};
 
 export { getNfmSearchState };

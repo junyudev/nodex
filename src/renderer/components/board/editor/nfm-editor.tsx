@@ -25,7 +25,19 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { SideMenuController, type LinkToolbarProps } from "@blocknote/react";
+import {
+  blockTypeSelectItems,
+  DragHandleMenu,
+  FormattingToolbar,
+  FormattingToolbarController,
+  getFormattingToolbarItems,
+  RemoveBlockItem,
+  SideMenu,
+  SideMenuController,
+  useDictionary,
+  type LinkToolbarProps,
+  type SideMenuProps,
+} from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { useSurfaceHistoryFocus } from "@/lib/surface-history/use-surface-history-focus";
 import { CornerDownLeft } from "@/components/shared/icons/generic-icons";
@@ -69,7 +81,7 @@ import {
 import { readCachedPageTargetReadModel } from "@/lib/block-reference-queries";
 import { previewTaskShorthandInlineContent } from "@/lib/task-shorthand-preview";
 import type { CodexPromptInput } from "@/lib/types";
-import { NfmSlashMenu } from "./nfm-slash-menu";
+import { NfmFileSlashMenu, NfmSlashMenu } from "./nfm-slash-menu";
 import { NfmTableHandlesController } from "./nfm-table-handles";
 import { NfmHeadingNavigationRail } from "./nfm-heading-navigation-rail";
 import {
@@ -343,15 +355,101 @@ export function NfmEditor(props: NfmEditorProps) {
         editorSession: props.editorSession,
       }}
     >
-      {(owner) => (
-        <NfmEditorInstance
-          {...props}
-          source={source}
-          editorInstanceKey={editorInstanceKey}
-          owner={owner}
-        />
-      )}
+      {(owner) =>
+        source.kind === "markdown-file" ? (
+          <NfmFileEditorView owner={owner} source={source} className={props.className} />
+        ) : (
+          <NfmEditorInstance
+            {...props}
+            source={source}
+            editorInstanceKey={editorInstanceKey}
+            owner={owner}
+          />
+        )
+      }
     </NfmEditorOwnerBoundary>
+  );
+}
+
+const fileToolbarItems = new Set([
+  "blockTypeSelect",
+  "boldStyleButton",
+  "italicStyleButton",
+  "strikeStyleButton",
+  "createLinkButton",
+]);
+
+function NfmFileFormattingToolbar() {
+  const types = blockTypeSelectItems(useDictionary()).filter(
+    (item) =>
+      item.type !== "toggleListItem" &&
+      !item.props?.isToggleable &&
+      Number(item.props?.level ?? 1) <= 4,
+  );
+  return (
+    <FormattingToolbar>
+      {getFormattingToolbarItems(types).filter(
+        ({ key }) => typeof key === "string" && fileToolbarItems.has(key),
+      )}
+    </FormattingToolbar>
+  );
+}
+
+function NfmFileDragMenu() {
+  const { drag_handle } = useDictionary();
+  return (
+    <DragHandleMenu>
+      <RemoveBlockItem>{drag_handle.delete_menuitem}</RemoveBlockItem>
+    </DragHandleMenu>
+  );
+}
+
+function NfmFileSideMenu(props: SideMenuProps) {
+  return <SideMenu {...props} dragHandleMenu={NfmFileDragMenu} />;
+}
+
+function NfmFileEditorView({
+  owner,
+  source,
+  className,
+}: {
+  readonly owner: NfmEditorOwner;
+  readonly source: Extract<NfmEditorSource, { kind: "markdown-file" }>;
+  readonly className?: string;
+}) {
+  const { readOnly } = source;
+  const { resolved: theme } = useTheme();
+  const unmount = useRef<(() => void) | undefined>(undefined);
+
+  return (
+    <div className={cn("nfm-editor relative", className)}>
+      <BlockNoteView
+        editor={owner.editor}
+        editable={!readOnly}
+        theme={theme}
+        onEditorViewMount={() => {
+          unmount.current = source.onMount?.(owner.editor);
+        }}
+        onEditorViewUnmount={() => {
+          unmount.current?.();
+          unmount.current = undefined;
+        }}
+        attributionTooltip={false}
+        formattingToolbar={false}
+        sideMenu={false}
+        slashMenu={false}
+        tableHandles={false}
+      >
+        {!readOnly && (
+          <>
+            <FormattingToolbarController formattingToolbar={NfmFileFormattingToolbar} />
+            <SideMenuController sideMenu={NfmFileSideMenu} />
+            <NfmFileSlashMenu />
+            <NfmTableHandlesController />
+          </>
+        )}
+      </BlockNoteView>
+    </div>
   );
 }
 

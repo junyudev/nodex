@@ -94,6 +94,52 @@ function readValue<T>(read: () => string): T {
 
 export const readMarkdown = (text: string, mode: MarkdownReadMode = "boundary"): MarkdownBlock[] =>
   readValue(() => wasm.read(text, mode));
+export interface MarkdownSourceSpan {
+  /** Half-open offsets for JavaScript string slicing (UTF-16 code units). */
+  readonly start: number;
+  readonly end: number;
+}
+
+export interface LocatedMarkdown {
+  readonly blocks: readonly MarkdownBlock[];
+  /** Own source lines, including their endings, per block in tree preorder. */
+  readonly locations: readonly (readonly MarkdownSourceSpan[])[];
+}
+
+export function readLocatedMarkdown(
+  text: string,
+  mode: MarkdownReadMode = "boundary",
+): LocatedMarkdown {
+  const { blocks, locations } = readValue<LocatedMarkdown>(() => wasm.readLocated(text, mode));
+  const boundaries = [
+    ...new Set(locations.flatMap((spans) => spans.flatMap(({ start, end }) => [start, end]))),
+  ].sort((left, right) => left - right);
+  const offsets = new Map<number, number>();
+  let byte = 0;
+  let offset = 0;
+  const characters = text[Symbol.iterator]();
+  for (const boundary of boundaries) {
+    while (byte < boundary) {
+      const character = characters.next().value;
+      if (character === undefined) break;
+      const point = character.codePointAt(0)!;
+      byte += point < 0x80 ? 1 : point < 0x800 ? 2 : point < 0x10000 ? 3 : 4;
+      offset += character.length;
+    }
+    if (byte !== boundary) throw new Error("Markdown returned an invalid UTF-8 source offset");
+    offsets.set(boundary, offset);
+  }
+  return {
+    blocks,
+    locations: locations.map((spans) =>
+      spans.map(({ start, end }) => ({
+        start: offsets.get(start)!,
+        end: offsets.get(end)!,
+      })),
+    ),
+  };
+}
+
 export const readInlineMarkdown = (
   text: string,
   mode: MarkdownReadMode = "boundary",

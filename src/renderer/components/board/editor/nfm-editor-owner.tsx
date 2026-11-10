@@ -14,7 +14,7 @@ import { contentRoutingContextKey } from "../../../../shared/content-routing-con
 import { createUuidV7 } from "../../../../shared/uuid-v7";
 import { toast } from "@/components/ui/toast";
 import { PAGE_DESCRIPTION_PLACEHOLDER } from "@/lib/page-description-placeholder";
-import { nfmSchema } from "./nfm-schema";
+import { nfmFileSchema, nfmSchema } from "./nfm-schema";
 import {
   createNfmEditorModeOptions,
   getNfmEditorInstanceKey,
@@ -24,6 +24,7 @@ import { createNfmEditorPlaceholders } from "./nfm-editor-placeholders";
 import {
   createNfmEditorExtensions,
   createNfmPasteHandler,
+  pasteNfmFileContent,
   NFM_DISABLED_EXTENSIONS,
 } from "./nfm-editor-extensions";
 import { createNfmLinkExtension } from "./nfm-link-extension";
@@ -91,6 +92,7 @@ export class NfmEditorOwner {
 
   constructor(private readonly input: NfmEditorOwnerInput) {
     validateRetainedAuthority(input);
+    const file = input.source.kind === "markdown-file";
     const controller = new NfmStructuralEditingController();
     this.controller = controller;
     const pasteHandler = createNfmPasteHandler({
@@ -111,17 +113,27 @@ export class NfmEditorOwner {
       shouldHandleStructuralBlockPaste: () => controller.current?.hasTypedOwnerSelection() ?? false,
     });
     const options = createNfmEditorModeOptions(input.source, {
-      schema: nfmSchema,
+      schema: file ? (nfmFileSchema as unknown as typeof nfmSchema) : nfmSchema,
       generateBlockId: createUuidV7,
       tabBehavior: "prefer-indent" as const,
       dropCursor: NFM_DROP_CURSOR_OPTIONS,
       placeholders: createNfmEditorPlaceholders(input.placeholder ?? PAGE_DESCRIPTION_PLACEHOLDER),
-      uploadFile: (file: File) => this.requireCallbacks().uploadFile(file),
-      resolveFileUrl: (url: string) => this.requireCallbacks().resolveFileUrl(url),
-      pasteHandler,
-      tables: { headers: true, cellBackgroundColor: true, cellTextColor: false, splitCells: false },
+      ...(file
+        ? { trailingBlock: false }
+        : {
+            uploadFile: (asset: File) => this.requireCallbacks().uploadFile(asset),
+            resolveFileUrl: (url: string) => this.requireCallbacks().resolveFileUrl(url),
+          }),
+      pasteHandler: file ? pasteNfmFileContent : pasteHandler,
+      tables: {
+        headers: !file,
+        cellBackgroundColor: !file,
+        cellTextColor: false,
+        splitCells: false,
+      },
       disableExtensions: [...NFM_DISABLED_EXTENSIONS, "link"],
       extensions: createNfmEditorExtensions({
+        file,
         resolveCopiedFileReferences: (payload) =>
           this.callbacks?.resolveCopiedFileReferences(payload) ?? null,
         onStructuralClipboard: (action, { rootBlockIds, presentation, writeClaim }) =>

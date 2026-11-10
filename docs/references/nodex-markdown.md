@@ -105,6 +105,19 @@ Two things vary with where text comes from:
 - The directive names and attribute lists below have Nodex meanings. Any other
   directive, such as `:::note`, is text.
 
+### Located reading
+
+The TypeScript facade exposes `readLocatedMarkdown(text, mode)`. It returns the
+same Blocks as `readMarkdown` and one array of source ranges per Block in
+preorder. A range covers the Block's own lines, including their original line
+endings where present. Child lines and separator lines are outside that range.
+A Block may own several disjoint ranges. The synthetic empty paragraph can
+have no range.
+
+The WASM interface uses half-open UTF-8 byte ranges. The TypeScript facade
+converts these to half-open UTF-16 offsets suitable for `String.slice`. Source
+such as standalone comments and link definitions may have no Block owner.
+
 ## Writing exact text
 
 ### Layout

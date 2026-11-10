@@ -41,6 +41,22 @@ pub fn read(markdown: &str, mode: &str) -> Result<String, JsValue> {
         .map_err(refusal)
 }
 
+/// Reads Blocks and their own UTF-8 byte ranges, in preorder.
+#[wasm_bindgen(js_name = readLocated)]
+pub fn read_located(markdown: &str, mode: &str) -> Result<String, JsValue> {
+    let located = crate::read_located(markdown, read_options(mode)?).map_err(refusal)?;
+    let locations: Vec<_> = located
+        .locations
+        .into_iter()
+        .map(|block| block.spans)
+        .collect();
+    Ok(serde_json::json!({
+        "blocks": crate::blocks_to_json(&located.blocks),
+        "locations": locations,
+    })
+    .to_string())
+}
+
 /// Reads one line of inline Nodex Markdown, as a Page title is written, as inline content JSON
 /// text. A refused exact read throws like `read`.
 #[wasm_bindgen(js_name = readInline)]

@@ -1722,3 +1722,49 @@ function EmbedPageMenu({
     />
   );
 }
+
+/** The file schema supplies its own block palette, with a GFM header on new tables. */
+export function NfmFileSlashMenu() {
+  const editor = useBlockNoteEditor();
+  const getItems = useCallback(
+    async (query: string) => {
+      const items = getDefaultReactSlashMenuItems(editor).flatMap((defaultItem) => {
+        const item = defaultItem as NfmSuggestionItem;
+        if (!item.key || /^(toggle_|heading_[56]$|emoji$)/.test(item.key)) return [];
+        if (item.key !== "table") return [item];
+        return [
+          {
+            ...item,
+            onItemClick: () =>
+              insertOrUpdateBlockForSlashMenu(editor, {
+                type: "table",
+                content: {
+                  type: "tableContent",
+                  headerRows: 1,
+                  rows: [{ cells: ["", "", ""] }, { cells: ["", "", ""] }],
+                },
+              }),
+          },
+        ];
+      });
+      return filterSuggestionItems(items, query);
+    },
+    [editor],
+  );
+
+  return (
+    <NodexFloatingLayerProvider zIndex={NFM_SUGGESTION_MENU_Z_INDEX}>
+      <SuggestionMenuController
+        triggerCharacter="/"
+        shouldOpen={createNfmTypedSuggestionShouldOpen({
+          kind: "slash",
+          trigger: "/",
+          locale: getBrowserLocale(),
+        })}
+        getItems={getItems}
+        {...NFM_SUGGESTION_MENU_CONTROLLER_PORTAL_PROPS}
+        suggestionMenuComponent={NfmSuggestionMenuSurface}
+      />
+    </NodexFloatingLayerProvider>
+  );
+}

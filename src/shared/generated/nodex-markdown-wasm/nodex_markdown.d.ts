@@ -34,6 +34,11 @@ export function read(markdown: string, mode: string): string;
 export function readInline(text: string, mode: string): string;
 
 /**
+ * Reads Blocks and their own UTF-8 byte ranges, in preorder.
+ */
+export function readLocated(markdown: string, mode: string): string;
+
+/**
  * The exact text of Blocks given as BlockNote JSON text.
  */
 export function write(blocks_json: string): string;
@@ -59,6 +64,7 @@ export interface InitOutput {
     readonly preview: (a: number, b: number) => [number, number];
     readonly read: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly readInline: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly readLocated: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly write: (a: number, b: number) => [number, number, number, number];
     readonly writeInline: (a: number, b: number) => [number, number, number, number];
     readonly writePortable: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];

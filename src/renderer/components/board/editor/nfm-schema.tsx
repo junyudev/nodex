@@ -1,3 +1,4 @@
+import { skillBodyBlockTypes } from "../../../../shared/skill-document";
 import {
   BlockNoteSchema,
   defaultBlockSpecs,
@@ -64,4 +65,19 @@ export const nfmSchema = BlockNoteSchema.create({
     math: createReactInlineMathSpec(mathInlineContentConfig),
   },
   styleSpecs: defaultStyleSpecs,
+});
+
+/** File drafts share Page block rendering but cannot create Library blocks or inline atoms. */
+export const nfmFileSchema = BlockNoteSchema.create({
+  blockChildrenRules: BLOCK_CHILDREN_RULES,
+  blockSpecs: Object.fromEntries(
+    skillBodyBlockTypes.map((type) => [type, nfmSchema.blockSpecs[type]]),
+  ),
+  inlineContentSpecs: defaultInlineContentSpecs,
+  styleSpecs: {
+    bold: defaultStyleSpecs.bold,
+    italic: defaultStyleSpecs.italic,
+    strike: defaultStyleSpecs.strike,
+    code: defaultStyleSpecs.code,
+  },
 });

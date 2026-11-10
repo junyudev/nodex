@@ -7,6 +7,7 @@ export const plainText: (a: number, b: number) => [number, number, number, numbe
 export const preview: (a: number, b: number) => [number, number];
 export const read: (a: number, b: number, c: number, d: number) => [number, number, number, number];
 export const readInline: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+export const readLocated: (a: number, b: number, c: number, d: number) => [number, number, number, number];
 export const write: (a: number, b: number) => [number, number, number, number];
 export const writeInline: (a: number, b: number) => [number, number, number, number];
 export const writePortable: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
