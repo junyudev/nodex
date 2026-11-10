@@ -275,8 +275,11 @@ fn persistent_request(
         serde_json::to_vec(&body).unwrap()
     };
     let (id, binding) = binding.unwrap_or(("", ""));
-    write!(stream.get_mut(), "POST {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nx-nodex-connection-id: {id}\r\nx-nodex-connection-binding: {binding}\r\nx-nodex-request-id: request:{}\r\nContent-Length: {}\r\n\r\n", random_id(), bytes.len()).unwrap();
-    stream.get_mut().write_all(&bytes).unwrap();
+    // Write a complete request in one TLS record so serial requests exercise the
+    // rate window without spending most of it waiting for TCP acknowledgments.
+    let mut request = format!("POST {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nx-nodex-connection-id: {id}\r\nx-nodex-connection-binding: {binding}\r\nx-nodex-request-id: request:{}\r\nContent-Length: {}\r\n\r\n", random_id(), bytes.len()).into_bytes();
+    request.extend_from_slice(&bytes);
+    stream.get_mut().write_all(&request).unwrap();
     stream.get_mut().flush().unwrap();
     let mut headers = String::new();
     loop {
