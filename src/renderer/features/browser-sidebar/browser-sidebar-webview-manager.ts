@@ -13,15 +13,15 @@ import {
 } from "../../../shared/browser-sidebar";
 import type { BrowserAnnotationDesignChange } from "../../../shared/browser-annotation";
 import { createSecureUuid } from "../../../shared/secure-runtime-id";
-import { APP_SHELL_BROWSER_WEBVIEW_LAYER_INDEX } from "../../lib/app-shell-layers";
+import {
+  APP_SHELL_BROWSER_PAINT_SURFACE_LAYER_INDEX,
+  APP_SHELL_BROWSER_WEBVIEW_LAYER_INDEX,
+} from "../../lib/app-shell-layers";
 import { isBlankBrowserUrl } from "../../../shared/browser-url";
 import {
   invokeBrowserSidebarCommand,
   notifyBrowserWebviewHostCreated,
 } from "./browser-sidebar-commands";
-
-export const BROWSER_SIDEBAR_VISIBLE_WEBVIEW_Z_INDEX = 2147483647;
-export const BROWSER_SIDEBAR_WEBVIEW_LAYER_Z_INDEX = APP_SHELL_BROWSER_WEBVIEW_LAYER_INDEX;
 
 export type BrowserSidebarWebviewElement = HTMLElement & {
   executeJavaScript?: (code: string, userGesture?: boolean) => Promise<unknown>;
@@ -114,7 +114,7 @@ interface ResolvedSyncWebviewInput extends SyncWebviewInput {
 
 interface ManagedBrowserWebviewHost {
   container: HTMLDivElement;
-  cursorOverlayHost: HTMLDivElement;
+  pageOverlayHost: HTMLDivElement;
   disposed: boolean;
   hostKind: BrowserSidebarWebviewHostKind;
   hostGeneration: number;
@@ -132,7 +132,7 @@ interface ManagedBrowserWebviewHost {
 
 class BrowserSidebarRendererWebviewHost implements ManagedBrowserWebviewHost {
   readonly container = document.createElement("div");
-  readonly cursorOverlayHost = document.createElement("div");
+  readonly pageOverlayHost = document.createElement("div");
   readonly webview: BrowserSidebarWebviewElement;
   disposed = false;
   hostKind: BrowserSidebarWebviewHostKind;
@@ -178,9 +178,9 @@ class BrowserSidebarRendererWebviewHost implements ManagedBrowserWebviewHost {
     this.webview.setAttribute("data-browser-sidebar-webview-host-root", "");
     this.webview.setAttribute("data-browser-sidebar-webview-host-kind", input.hostKind);
 
-    this.cursorOverlayHost.className = "pointer-events-none absolute inset-0";
-    this.cursorOverlayHost.setAttribute("data-browser-sidebar-cursor-overlay-host", "");
-    this.container.append(this.webview, this.cursorOverlayHost);
+    this.pageOverlayHost.className = "pointer-events-none absolute inset-0";
+    this.pageOverlayHost.setAttribute("data-browser-sidebar-page-overlay-host", "");
+    this.container.append(this.webview, this.pageOverlayHost);
     this.ensureLifecycleListeners();
     this.syncContainerStyle();
     document.body.append(this.container);
@@ -298,9 +298,13 @@ class BrowserSidebarRendererWebviewHost implements ManagedBrowserWebviewHost {
         opacity: shouldPaintHidden ? "0.001" : "1",
         pointerEvents: shouldPaintHidden ? "none" : "auto",
         overflow: "hidden",
-        zIndex: shouldPaintHidden
-          ? String(BROWSER_SIDEBAR_VISIBLE_WEBVIEW_Z_INDEX)
-          : resolveBrowserSidebarVisibleWebviewZIndex(this.hostKind),
+        // A presented page is web content whichever claim owns it; only the hidden paint surface
+        // leaves the app-shell order.
+        zIndex: String(
+          shouldPaintHidden
+            ? APP_SHELL_BROWSER_PAINT_SURFACE_LAYER_INDEX
+            : APP_SHELL_BROWSER_WEBVIEW_LAYER_INDEX,
+        ),
         contain: shouldPaintHidden ? "layout paint size style" : "layout style paint",
         transform: shouldPaintHidden
           ? "translate3d(0, 0, 0)"
@@ -336,7 +340,7 @@ class BrowserSidebarRendererWebviewHost implements ManagedBrowserWebviewHost {
     this.webview.style.opacity = paintsPage ? "" : "0";
     this.webview.style.pointerEvents = shouldPresent ? "" : "none";
     this.webview.style.backgroundColor = "";
-    this.cursorOverlayHost.className = shouldPresent
+    this.pageOverlayHost.className = shouldPresent
       ? "pointer-events-none absolute inset-0"
       : "pointer-events-none";
     this.container.setAttribute(
@@ -442,16 +446,16 @@ export class BrowserSidebarRendererWebviewManager {
       sessionId: string;
     }
   >();
-  private readonly cursorOverlayHostListeners = new Set<() => void>();
+  private readonly pageOverlayHostListeners = new Set<() => void>();
   private readonly hostClaims = new Map<string, Map<string, BrowserSidebarHostClaim>>();
   private readonly hostReconciliations = new Map<string, BrowserSidebarHostReconciliation>();
   private hostClaimEpoch = 0;
   private nextHostClaimSequence = 1;
   private readonly rendererInstanceId = makeRendererInstanceId();
 
-  readonly subscribeCursorOverlayHosts = (listener: () => void): (() => void) => {
-    this.cursorOverlayHostListeners.add(listener);
-    return () => this.cursorOverlayHostListeners.delete(listener);
+  readonly subscribePageOverlayHosts = (listener: () => void): (() => void) => {
+    this.pageOverlayHostListeners.add(listener);
+    return () => this.pageOverlayHostListeners.delete(listener);
   };
 
   /**
@@ -527,7 +531,7 @@ export class BrowserSidebarRendererWebviewManager {
     existing?.dispose();
     const host = new BrowserSidebarRendererWebviewHost(input);
     this.hosts.set(key, host);
-    this.emitCursorOverlayHostsChanged();
+    this.emitPageOverlayHostsChanged();
     return host;
   }
 
@@ -825,7 +829,7 @@ export class BrowserSidebarRendererWebviewManager {
     if (shouldDestroy && managedHost) {
       managedHost.dispose();
       this.hosts.delete(key);
-      this.emitCursorOverlayHostsChanged();
+      this.emitPageOverlayHostsChanged();
       const reconciliation = this.hostReconciliations.get(key);
       if (reconciliation?.mountGeneration === request.mountGeneration) {
         reconciliation.lifecycleEpoch += 1;
@@ -859,8 +863,12 @@ export class BrowserSidebarRendererWebviewManager {
     }
   }
 
-  getCursorOverlayHost(input: WebviewHostKey): HTMLElement | null {
-    return this.hosts.get(makeHostKey(input))?.cursorOverlayHost ?? null;
+  /**
+   * The element stacked on a Browser page inside its body-level container. Anything drawn over
+   * web content mounts here; an element positioned inside the panel paints beneath the page.
+   */
+  getPageOverlayHost(input: WebviewHostKey): HTMLElement | null {
+    return this.hosts.get(makeHostKey(input))?.pageOverlayHost ?? null;
   }
 
   resyncAttachedHosts(): void {
@@ -923,11 +931,11 @@ export class BrowserSidebarRendererWebviewManager {
       if (state.retryTimeout !== null) clearTimeout(state.retryTimeout);
     }
     this.hostReconciliations.clear();
-    if (hadHosts) this.emitCursorOverlayHostsChanged();
+    if (hadHosts) this.emitPageOverlayHostsChanged();
   }
 
-  private emitCursorOverlayHostsChanged(): void {
-    for (const listener of this.cursorOverlayHostListeners) listener();
+  private emitPageOverlayHostsChanged(): void {
+    for (const listener of this.pageOverlayHostListeners) listener();
   }
 }
 
@@ -962,16 +970,6 @@ function resolveBrowserStorageId(
 
 function makeHostKey(input: WebviewHostKey): string {
   return makeBrowserSidebarTabKey(input);
-}
-
-function resolveBrowserSidebarVisibleWebviewZIndex(
-  hostKind: BrowserSidebarWebviewHostKind,
-): string {
-  return String(
-    hostKind === "retained"
-      ? BROWSER_SIDEBAR_VISIBLE_WEBVIEW_Z_INDEX
-      : BROWSER_SIDEBAR_WEBVIEW_LAYER_Z_INDEX,
-  );
 }
 
 export const browserSidebarRendererWebviewManager = new BrowserSidebarRendererWebviewManager();

@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import {
-  BROWSER_SIDEBAR_VISIBLE_WEBVIEW_Z_INDEX,
-  BROWSER_SIDEBAR_WEBVIEW_LAYER_Z_INDEX,
   BrowserSidebarRendererWebviewManager,
   type BrowserSidebarWebviewElement,
 } from "./browser-sidebar-webview-manager";
@@ -10,6 +8,10 @@ import type {
   BrowserSidebarWebviewHostCreated,
 } from "../../../shared/browser-sidebar";
 import { parseBrowserSidebarHostRoutePartition } from "../../../shared/browser-sidebar";
+import {
+  APP_SHELL_BROWSER_PAINT_SURFACE_LAYER_INDEX,
+  APP_SHELL_BROWSER_WEBVIEW_LAYER_INDEX,
+} from "../../lib/app-shell-layers";
 
 let activeManagers: BrowserSidebarRendererWebviewManager[] = [];
 
@@ -305,7 +307,7 @@ describe("BrowserSidebarRendererWebviewManager", () => {
     expect(root?.style.top).toBe("20px");
     expect(root?.style.width).toBe("320px");
     expect(root?.style.height).toBe("240px");
-    expect(root?.style.zIndex).toBe(String(BROWSER_SIDEBAR_WEBVIEW_LAYER_Z_INDEX));
+    expect(root?.style.zIndex).toBe(String(APP_SHELL_BROWSER_WEBVIEW_LAYER_INDEX));
     expect(root?.parentElement === document.body).toBe(true);
     expect(created.length).toBe(1);
     expect(created[0]?.webContentsId).toBe(101);
@@ -430,7 +432,7 @@ describe("BrowserSidebarRendererWebviewManager", () => {
     ).toMatchObject(secondIdentity);
   });
 
-  test("keeps retained visible hosts on the retained webview layer", () => {
+  test("presents a retained page on the web content layer", () => {
     const manager = createManager();
 
     const mountGeneration = manager.claimMountGeneration({
@@ -453,7 +455,7 @@ describe("BrowserSidebarRendererWebviewManager", () => {
     });
 
     const root = getManagerRoot("tab-retained");
-    expect(root?.style.zIndex).toBe(String(BROWSER_SIDEBAR_VISIBLE_WEBVIEW_Z_INDEX));
+    expect(root?.style.zIndex).toBe(String(APP_SHELL_BROWSER_WEBVIEW_LAYER_INDEX));
     expect(root?.parentElement === document.body).toBe(true);
   });
 
@@ -480,7 +482,7 @@ describe("BrowserSidebarRendererWebviewManager", () => {
     const retainedRoot = getManagerRoot(identity.browserTabId);
     const retainedWebview = retainedRoot?.querySelector("webview");
     const retainedCursorHost = retainedRoot?.querySelector(
-      "[data-browser-sidebar-cursor-overlay-host]",
+      "[data-browser-sidebar-page-overlay-host]",
     );
     const stableParent = retainedRoot?.parentElement;
 
@@ -502,12 +504,12 @@ describe("BrowserSidebarRendererWebviewManager", () => {
     expect(panelRoot?.parentElement).toBe(stableParent);
     expect(panelRoot?.parentElement).toBe(document.body);
     expect(panelRoot?.querySelector("webview")).toBe(retainedWebview);
-    expect(panelRoot?.querySelector("[data-browser-sidebar-cursor-overlay-host]")).toBe(
+    expect(panelRoot?.querySelector("[data-browser-sidebar-page-overlay-host]")).toBe(
       retainedCursorHost,
     );
     expect((retainedWebview as HTMLElement).isConnected).toBe(true);
     expect(panelRoot?.getAttribute("data-browser-sidebar-webview-host-kind")).toBe("panel");
-    expect(panelRoot?.style.zIndex).toBe(String(BROWSER_SIDEBAR_WEBVIEW_LAYER_Z_INDEX));
+    expect(panelRoot?.style.zIndex).toBe(String(APP_SHELL_BROWSER_WEBVIEW_LAYER_INDEX));
   });
 
   test("temporarily paints the current visible guest on the Browser Use capture surface", () => {
@@ -544,7 +546,7 @@ describe("BrowserSidebarRendererWebviewManager", () => {
     expect(root?.style.visibility).toBe("visible");
     expect(root?.style.opacity).toBe("0.001");
     expect(root?.style.pointerEvents).toBe("none");
-    expect(root?.style.zIndex).toBe(String(BROWSER_SIDEBAR_VISIBLE_WEBVIEW_Z_INDEX));
+    expect(root?.style.zIndex).toBe(String(APP_SHELL_BROWSER_PAINT_SURFACE_LAYER_INDEX));
     expect(root?.getAttribute("data-browser-sidebar-webview-painting")).toBe("true");
     expect(root?.getAttribute("data-browser-sidebar-webview-visible")).toBe("false");
 
@@ -590,7 +592,7 @@ describe("BrowserSidebarRendererWebviewManager", () => {
     expect(root?.style.visibility).toBe("visible");
     expect(root?.style.opacity).toBe("0.001");
     expect(root?.style.pointerEvents).toBe("none");
-    expect(root?.style.zIndex).toBe(String(BROWSER_SIDEBAR_VISIBLE_WEBVIEW_Z_INDEX));
+    expect(root?.style.zIndex).toBe(String(APP_SHELL_BROWSER_PAINT_SURFACE_LAYER_INDEX));
     expect(root?.style.contain).toBe("layout paint size style");
     expect(root?.getAttribute("data-browser-sidebar-webview-painting")).toBe("true");
   });

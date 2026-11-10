@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useEffectEvent,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
   BrowserSidebarTabIdentity,
@@ -15,7 +8,7 @@ import {
   createBrowserAgentCursorController,
   type BrowserAgentCursorController,
 } from "./browser-agent-cursor";
-import { browserSidebarRendererWebviewManager } from "./browser-sidebar-webview-manager";
+import { useBrowserPageOverlayHost } from "./browser-page-overlay";
 
 interface BrowserUseCursorOverlayProps {
   cursor: BrowserUseCursorState | null;
@@ -46,11 +39,7 @@ export function BrowserUseCursorPortal({
   isVisible: boolean;
   onArrived?: (moveSequence: number) => void;
 }) {
-  const overlayHost = useSyncExternalStore(
-    browserSidebarRendererWebviewManager.subscribeCursorOverlayHosts,
-    () => browserSidebarRendererWebviewManager.getCursorOverlayHost(identity),
-    () => null,
-  );
+  const overlayHost = useBrowserPageOverlayHost(identity);
   const presentationSize = useCursorPresentationSize(overlayHost);
   const viewportSize = presentationSize ?? fallbackViewportSize;
   if (!overlayHost || !viewportSize) return null;

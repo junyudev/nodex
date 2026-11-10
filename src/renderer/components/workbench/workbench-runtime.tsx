@@ -5739,7 +5739,7 @@ export function WorkbenchRuntime({
                 data-app-shell-application-menu-bar={applicationMenuBarEnabled ? "true" : undefined}
                 data-app-shell-frame
                 data-app-shell-page-surface="true"
-                className="relative isolate flex flex-col text-token-text-primary browser:bg-token-side-bar-background"
+                className="relative flex flex-col text-token-text-primary browser:bg-token-side-bar-background"
                 style={
                   {
                     "--app-shell-application-menu-height": `${applicationMenuBarEnabled ? WORKBENCH_APPLICATION_MENU_HEIGHT_PX : 0}px`,

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { BackIcon } from "@/components/shared/icons";
 import { NodexButton, NodexIconButton } from "@/components/ui/button";
+import { APP_SHELL_FIRST_RUN_LAYER_CLASS } from "@/lib/app-shell-layers";
 import type { Project, ProjectCreateInput } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { FirstRunAgentsStep } from "./first-run-agents-step";
@@ -87,7 +88,10 @@ function FirstRunFlow({
       aria-modal="true"
       aria-label="Set up Nodex"
       data-testid="first-run"
-      className="fixed inset-0 flex flex-col bg-token-main-surface-primary text-token-text-primary"
+      className={cn(
+        "fixed inset-0 flex flex-col bg-token-main-surface-primary text-token-text-primary",
+        APP_SHELL_FIRST_RUN_LAYER_CLASS,
+      )}
       exit={reducedMotion ? { opacity: 1 } : { opacity: 0 }}
       transition={{ duration: reducedMotion ? 0 : 0.2, ease: "easeOut" }}
     >

@@ -37,6 +37,7 @@ import {
   DEFAULT_BROWSER_SIDEBAR_FIND_STATE,
   makeBrowserSidebarTabKey,
   matchesBrowserSidebarTabIdentity,
+  type BrowserSidebarTabIdentity,
   requireWorkbenchBrowserTabProjectionId,
   type BrowserBrowsingDataKind,
   type BrowserLocalServerPreferences,
@@ -83,8 +84,8 @@ import { createSecureRuntimeId } from "../../../shared/secure-runtime-id";
 import { useTheme } from "@/lib/use-theme";
 import { openLink } from "@/lib/link-opening";
 import { useLinkOpening } from "@/lib/web-link-navigation";
+import { BrowserPageOverlay } from "./browser-page-overlay";
 import {
-  BROWSER_SIDEBAR_VISIBLE_WEBVIEW_Z_INDEX,
   browserSidebarRendererWebviewManager,
   type BrowserSidebarHostClaimInput,
   type BrowserSidebarHostLease,
@@ -168,6 +169,8 @@ import {
   NodexDropdownMenu,
   NodexDropdownSeparator,
 } from "@/components/ui/dropdown";
+import { NodexPopover, NodexPopoverContent } from "@/components/ui/popover";
+import { toast } from "@/components/ui/toast";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import {
   ViewerButton,
@@ -215,9 +218,6 @@ const BROWSER_ADDRESS_BAR_CLASS =
   "group/address-bar flex min-w-0 w-full items-center overflow-hidden cursor-text focus-within:ring-1 focus-within:ring-inset focus-within:ring-token-border";
 const BROWSER_COLLAPSIBLE_ACTION_CLASS =
   "grid min-w-0 overflow-hidden transition-[max-width,opacity,transform] duration-150 ease-out";
-const BROWSER_DROPDOWN_CONTENT_STYLE: CSSProperties = {
-  zIndex: BROWSER_SIDEBAR_VISIBLE_WEBVIEW_Z_INDEX,
-};
 const DEFAULT_BROWSER_SNAPSHOT: Omit<
   BrowserSidebarTabSnapshot,
   "browserConversationId" | "browserViewScopeId" | "browserTabId" | "projectId" | "updatedAt"
@@ -339,11 +339,11 @@ export function BrowserSidebarPanel({
   const [browserUseViewport, setBrowserUseViewport] =
     useState<BrowserSidebarBrowserUseViewportEvent | null>(null);
   const [registeredBrowserKey, setRegisteredBrowserKey] = useState<string | null>(null);
-  const [clearDataStatus, setClearDataStatus] = useState<string | null>(null);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [profileImportOpen, setProfileImportOpen] = useState(false);
   const [siteInfo, setSiteInfo] = useState<BrowserSiteInfo | null>(null);
   const [siteInfoRevision, setSiteInfoRevision] = useState(0);
+  const [chromeElement, setChromeElement] = useState<HTMLDivElement | null>(null);
   const [credentialCandidate, setCredentialCandidate] =
     useState<BrowserCredentialSaveCandidate | null>(null);
   const [downloadsSnapshot, setDownloadsSnapshot] = useState<BrowserDownloadsSnapshot>({
@@ -563,7 +563,7 @@ export function BrowserSidebarPanel({
         action,
       });
       setCredentialCandidate(null);
-      if (!result.ok) setClearDataStatus(result.message ?? "Unable to save password");
+      if (!result.ok) showBrowserStatus(result.message ?? "Unable to save password");
     },
     [credentialCandidate],
   );
@@ -698,7 +698,7 @@ export function BrowserSidebarPanel({
       if (!matchesBrowserSidebarTabIdentity(event, browserIdentity)) return;
       if (event.action === "image-attached") {
         if (!codexSessionId) {
-          setClearDataStatus("Open a Conversation to add browser context");
+          showBrowserStatus("Open a Conversation to add browser context");
           return;
         }
         publishBrowserImageAttachment(codexSessionId, {
@@ -706,11 +706,11 @@ export function BrowserSidebarPanel({
           filename: event.attachment.fileName,
           source: event.attachment.source,
         });
-        setClearDataStatus("Browser image added to composer");
+        showBrowserStatus("Browser image added to composer");
         return;
       }
       if (event.action === "error") {
-        setClearDataStatus(event.message);
+        showBrowserStatus(event.message);
         return;
       }
 
@@ -732,7 +732,7 @@ export function BrowserSidebarPanel({
               mode: "comment",
             },
       ).then((result) => {
-        if (!result.ok) setClearDataStatus(result.message);
+        if (!result.ok) showBrowserStatus(result.message);
       });
     });
   }, [browserIdentity, browserRuntimeAvailable, codexSessionId, command]);
@@ -1106,7 +1106,6 @@ export function BrowserSidebarPanel({
   };
 
   const clearBrowsingData = async (kind: BrowserBrowsingDataKind) => {
-    setClearDataStatus(null);
     const result = await clearBrowserData(kind);
     if (result.ok) {
       const labels: Record<BrowserBrowsingDataKind, string> = {
@@ -1116,19 +1115,19 @@ export function BrowserSidebarPanel({
         history: "Browser history cleared",
         downloads: "Download history cleared",
       };
-      setClearDataStatus(labels[kind]);
+      showBrowserStatus(labels[kind]);
       return;
     }
-    setClearDataStatus(result.message ?? `Failed to clear ${kind}`);
+    showBrowserStatus(result.message ?? `Failed to clear ${kind}`);
   };
 
   const captureScreenshot = async () => {
     const result = await command({ type: "capture-screenshot", ...browserIdentity });
     if (result.ok) {
-      setClearDataStatus("Screenshot copied");
+      showBrowserStatus("Screenshot copied");
       return;
     }
-    setClearDataStatus(result.message);
+    showBrowserStatus(result.message);
   };
 
   const cursor =
@@ -1173,7 +1172,10 @@ export function BrowserSidebarPanel({
   return (
     <div className="relative h-full min-h-0 overflow-hidden bg-token-main-surface-primary text-token-text-primary">
       {/* Open address suggestions extend below the chrome, over the New tab page. */}
-      <div className={cn(BROWSER_CHROME_CLASS, addressSuggestionsOpen && "z-30")}>
+      <div
+        ref={setChromeElement}
+        className={cn(BROWSER_CHROME_CLASS, addressSuggestionsOpen && "z-30")}
+      >
         <div className={BROWSER_CHROME_ROW_CLASS} data-viewer-density="compact">
           <ViewerControlGroup label="Navigation" className="no-drag">
             <BrowserToolbarButton
@@ -1448,7 +1450,7 @@ export function BrowserSidebarPanel({
                       mode: commentMode ? "browse" : "comment",
                     }).then((result) => {
                       if (result.ok) return;
-                      setClearDataStatus(
+                      showBrowserStatus(
                         result.message ?? "Comment mode is unavailable for this site.",
                       );
                     });
@@ -1507,8 +1509,9 @@ export function BrowserSidebarPanel({
             }}
           />
         </div>
-        {credentialCandidate ? (
+        {credentialCandidate && isVisible ? (
           <BrowserCredentialSavePrompt
+            anchor={chromeElement}
             candidate={credentialCandidate}
             onDismiss={() => void actOnCredentialCandidate("dismiss")}
             onSave={() => void actOnCredentialCandidate("save")}
@@ -1532,11 +1535,11 @@ export function BrowserSidebarPanel({
                 downloadId,
                 action,
               });
-              if (!result.ok) setClearDataStatus(result.message);
+              if (!result.ok) showBrowserStatus(result.message);
             }}
             onClearHistory={async () => {
               const result = await clearBrowserDownloadHistory();
-              if (!result.ok) setClearDataStatus(result.message);
+              if (!result.ok) showBrowserStatus(result.message);
             }}
           />
         ) : snapshot.failure ? (
@@ -1557,7 +1560,7 @@ export function BrowserSidebarPanel({
               preferences={localServerPreferences}
               onPreferencesChange={(update) => {
                 void updateLocalServerPreferences(update).catch((error) => {
-                  setClearDataStatus(
+                  showBrowserStatus(
                     error instanceof Error
                       ? error.message
                       : "Could not save local server preferences",
@@ -1601,12 +1604,13 @@ export function BrowserSidebarPanel({
             tabId={tab.id}
             deviceToolbarVisible={snapshot.deviceToolbarVisible}
             viewport={snapshot.viewport}
+            browserIdentity={browserIdentity}
             webviewHostRef={webviewHostRef}
             onViewportChange={updateViewport}
             onCloseDeviceToolbar={toggleDeviceToolbar}
           >
             {commentMode ? (
-              <BrowserCommentOverlay>
+              <BrowserCommentOverlay identity={browserIdentity}>
                 <BrowserAnnotationComposer
                   anchors={annotationAnchors}
                   designChange={annotationDesignChange}
@@ -1651,7 +1655,7 @@ export function BrowserSidebarPanel({
                   }}
                   onAddToComposer={() => {
                     if (!codexSessionId) {
-                      setClearDataStatus("Open a Conversation to add browser context");
+                      showBrowserStatus("Open a Conversation to add browser context");
                       return;
                     }
                     if (annotationAnchors.length === 0) return;
@@ -1662,7 +1666,7 @@ export function BrowserSidebarPanel({
                           (anchor) => anchor.id === annotationDesignChange.anchorId,
                         ))
                     ) {
-                      setClearDataStatus("Choose a design property and value");
+                      showBrowserStatus("Choose a design property and value");
                       return;
                     }
                     void captureBrowserAnnotationEvidence({
@@ -1686,14 +1690,14 @@ export function BrowserSidebarPanel({
                           evidence,
                         });
                         setAnnotationDraft((current) => resetBrowserAnnotationDraft(current));
-                        setClearDataStatus(
+                        showBrowserStatus(
                           annotationIntent === "designChange"
                             ? "Browser design change added to composer"
                             : "Browser annotation added to composer",
                         );
                       })
                       .catch((error) => {
-                        setClearDataStatus(
+                        showBrowserStatus(
                           error instanceof Error
                             ? error.message
                             : "Could not capture Browser annotation evidence",
@@ -1713,16 +1717,6 @@ export function BrowserSidebarPanel({
           </BrowserWebviewStage>
         )}
       </div>
-      {clearDataStatus ? (
-        <div
-          className={cn(
-            "pointer-events-none absolute left-1/2 z-40 -translate-x-1/2 rounded-full bg-token-dropdown-background/90 px-3 py-1 text-xs text-token-text-secondary shadow-xl-spread ring-[0.5px] ring-token-border backdrop-blur-sm",
-            snapshot.deviceToolbarVisible ? "bottom-[46px]" : "bottom-3",
-          )}
-        >
-          {clearDataStatus}
-        </div>
-      ) : null}
       <BrowserProfileImportDialog open={profileImportOpen} onOpenChange={setProfileImportOpen} />
     </div>
   );
@@ -1784,7 +1778,6 @@ function BrowserSiteInfoMenu({
     <NodexDropdownMenu
       align="start"
       contentWidth="menuWide"
-      contentStyle={BROWSER_DROPDOWN_CONTENT_STYLE}
       triggerButton={
         <button
           type="button"
@@ -1891,7 +1884,6 @@ function BrowserCredentialMenu({
     <NodexDropdownMenu
       align="end"
       contentWidth="panel"
-      contentStyle={BROWSER_DROPDOWN_CONTENT_STYLE}
       disabled={disabled}
       open={open}
       onOpenChange={setOpen}
@@ -1985,48 +1977,63 @@ function BrowserCredentialMenu({
   );
 }
 
+/** Hangs below the Browser toolbar, over the page, until the offer is answered or expires. */
 function BrowserCredentialSavePrompt({
+  anchor,
   candidate,
   onDismiss,
   onSave,
 }: {
+  anchor: HTMLElement | null;
   candidate: BrowserCredentialSaveCandidate;
   onDismiss: () => void;
   onSave: () => void;
 }) {
   return (
-    <div
-      className="no-drag absolute right-2 top-[calc(var(--height-toolbar-pane)+6px)] w-[300px] rounded-xl bg-token-dropdown-background/95 p-3 shadow-xl-spread ring-[0.5px] ring-token-border backdrop-blur-xl"
-      style={BROWSER_DROPDOWN_CONTENT_STYLE}
-      role="dialog"
-      aria-label="Save password"
+    <NodexPopover
+      open
+      onOpenChange={(open, details) => {
+        if (!open && details.reason === "escape") onDismiss();
+      }}
     >
-      <div className="flex items-start gap-2">
-        <KeyRound className="mt-0.5 size-4 shrink-0 text-token-text-secondary" />
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-token-text-primary">Save password?</div>
-          <div className="mt-1 truncate text-xs text-token-text-secondary">
-            {candidate.username || "No username"} · {candidate.origin}
+      <NodexPopoverContent
+        anchor={anchor}
+        side="bottom"
+        align="end"
+        sideOffset={6}
+        alignOffset={8}
+        // The offer arrives while the person is using the page; it must not take their focus.
+        initialFocus={false}
+        aria-label="Save password"
+        className="w-[300px] p-3"
+      >
+        <div className="flex items-start gap-2">
+          <KeyRound className="mt-0.5 size-4 shrink-0 text-token-text-secondary" />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium text-token-text-primary">Save password?</div>
+            <div className="mt-1 truncate text-xs text-token-text-secondary">
+              {candidate.username || "No username"} · {candidate.origin}
+            </div>
           </div>
         </div>
-      </div>
-      <div className="mt-3 flex justify-end gap-2">
-        <button
-          type="button"
-          className="rounded-lg px-3 py-1.5 text-sm text-token-text-secondary hover:bg-token-list-hover-background"
-          onClick={onDismiss}
-        >
-          Not now
-        </button>
-        <button
-          type="button"
-          className="rounded-lg bg-token-foreground px-3 py-1.5 text-sm text-token-background hover:opacity-90"
-          onClick={onSave}
-        >
-          Save
-        </button>
-      </div>
-    </div>
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            type="button"
+            className="rounded-lg px-3 py-1.5 text-sm text-token-text-secondary hover:bg-token-list-hover-background"
+            onClick={onDismiss}
+          >
+            Not now
+          </button>
+          <button
+            type="button"
+            className="rounded-lg bg-token-foreground px-3 py-1.5 text-sm text-token-background hover:opacity-90"
+            onClick={onSave}
+          >
+            Save
+          </button>
+        </div>
+      </NodexPopoverContent>
+    </NodexPopover>
   );
 }
 
@@ -2062,7 +2069,6 @@ function BrowserOverflowMenu({
     <NodexDropdownMenu
       align="end"
       contentWidth="menuWide"
-      contentStyle={BROWSER_DROPDOWN_CONTENT_STYLE}
       triggerButton={
         <ViewerButton
           uniform
@@ -2497,7 +2503,6 @@ export function BrowserDeviceToolbar({
       <NodexDropdownMenu
         align="start"
         contentWidth="menuWide"
-        contentStyle={BROWSER_DROPDOWN_CONTENT_STYLE}
         triggerButton={
           <NodexDropdownButtonTrigger
             size="xs"
@@ -2621,6 +2626,7 @@ export function BrowserWebviewStage({
   tabId,
   deviceToolbarVisible,
   viewport,
+  browserIdentity,
   webviewHostRef,
   onViewportChange,
   onCloseDeviceToolbar,
@@ -2628,6 +2634,7 @@ export function BrowserWebviewStage({
 }: {
   activeSessionId: string;
   tabId: string;
+  browserIdentity: BrowserSidebarTabIdentity;
   deviceToolbarVisible: boolean;
   viewport: BrowserSidebarViewport;
   webviewHostRef: RefObject<HTMLDivElement | null>;
@@ -2727,10 +2734,12 @@ export function BrowserWebviewStage({
               />
               {children}
               {deviceToolbarVisible && viewport.presetId === "responsive" ? (
-                <BrowserViewportResizeHandles
-                  viewport={viewport}
-                  onViewportChange={onViewportChange}
-                />
+                <BrowserPageOverlay identity={browserIdentity}>
+                  <BrowserViewportResizeHandles
+                    viewport={viewport}
+                    onViewportChange={onViewportChange}
+                  />
+                </BrowserPageOverlay>
               ) : null}
             </div>
           </div>
@@ -2817,21 +2826,21 @@ function BrowserViewportResizeHandles({
     <>
       <button
         type="button"
-        className="absolute inset-y-8 left-0 z-20 w-1 cursor-ew-resize opacity-0 focus-visible:opacity-100"
+        className="pointer-events-auto absolute inset-y-8 left-0 w-1 cursor-ew-resize opacity-0 focus-visible:opacity-100"
         aria-label="Narrow viewport"
         onPointerDown={beginDrag("width", -1)}
         onKeyDown={onResizeKeyDown("width", -1)}
       />
       <button
         type="button"
-        className="absolute inset-y-8 right-0 z-20 w-1 cursor-ew-resize opacity-0 focus-visible:opacity-100"
+        className="pointer-events-auto absolute inset-y-8 right-0 w-1 cursor-ew-resize opacity-0 focus-visible:opacity-100"
         aria-label="Widen viewport"
         onPointerDown={beginDrag("width", 1)}
         onKeyDown={onResizeKeyDown("width", 1)}
       />
       <button
         type="button"
-        className="absolute inset-x-8 bottom-0 z-20 h-1 cursor-ns-resize opacity-0 focus-visible:opacity-100"
+        className="pointer-events-auto absolute inset-x-8 bottom-0 h-1 cursor-ns-resize opacity-0 focus-visible:opacity-100"
         aria-label="Taller viewport"
         onPointerDown={beginDrag("height", 1)}
         onKeyDown={onResizeKeyDown("height", 1)}
@@ -3176,13 +3185,19 @@ function formatLocalServerTitle(origin: string): string {
   }
 }
 
-export function BrowserCommentOverlay({ children }: { children?: ReactNode }) {
+function BrowserCommentOverlay({
+  identity,
+  children,
+}: {
+  identity: BrowserSidebarTabIdentity;
+  children?: ReactNode;
+}) {
   return (
-    <div className="pointer-events-none absolute inset-0 z-20 cursor-crosshair">
+    <BrowserPageOverlay identity={identity}>
       <div id="browser-sidebar-comment-popup-root" className="absolute inset-0">
         {children}
       </div>
-    </div>
+    </BrowserPageOverlay>
   );
 }
 
@@ -3497,6 +3512,11 @@ function makeInitialSnapshot(
     pageActionsDisabled: isBlankBrowserUrl(url),
     updatedAt: Date.now(),
   };
+}
+
+/** Reports the outcome of a Browser action; a newer outcome replaces the one still showing. */
+function showBrowserStatus(message: string): void {
+  toast.info(message, { id: "browser-status" });
 }
 
 function readWebviewHostBounds(element: HTMLElement) {

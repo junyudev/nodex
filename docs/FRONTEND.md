@@ -316,6 +316,13 @@ measured vertical caption clearance. See [Windows host behavior](product-specs/w
   execution path.
 - Use the named layer constants in `src/renderer/lib/app-shell-layers.ts` and
   shared portal primitives. Exact layer values are executable code, not prose.
+- Named layers are compared in one stacking context, the document root. Browser
+  pages mount on `document.body`, so the workbench root and the ancestors of a
+  layered shell surface never create a stacking context (`isolate`, `z-index`,
+  `transform`, `opacity`, `contain`); doing so drops that chrome beneath web
+  content. A surface that must cover the shell takes a named layer. Browser UI
+  drawn over a page mounts through `BrowserPageOverlay` or a shared portal
+  primitive; an element positioned inside the panel paints beneath the page.
 - Base UI is the interaction engine behind Nodex-owned buttons, menus, dialogs,
   popovers, tooltips, tabs, collapsibles, scroll areas, and sliders. Feature code
   imports the app-owned modules under `src/renderer/components/ui/`, not

@@ -12,6 +12,7 @@ import type { WorkbenchTabProjection } from "@/lib/types";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 import { render, settleAsyncRender } from "../../test/dom";
 import { browserSidebarRendererWebviewManager } from "./browser-sidebar-webview-manager";
+import { APP_SHELL_BROWSER_WEBVIEW_LAYER_INDEX } from "@/lib/app-shell-layers";
 import { openLink } from "@/lib/link-opening";
 import { LinkOpeningProvider } from "@/lib/web-link-navigation";
 
@@ -718,7 +719,7 @@ describe("BrowserSidebarPanel chrome", () => {
     });
   });
 
-  test("renders browser options above the body-attached webview layer", async () => {
+  test("renders browser options above the web content layer", async () => {
     const view = render(
       <BrowserSidebarPanel
         tab={loadedBrowserTab}
@@ -737,7 +738,7 @@ describe("BrowserSidebarPanel chrome", () => {
 
     const menu = document.body.querySelector<HTMLElement>("[role='menu']");
     expect(menu === null).toBe(false);
-    expect(menu?.style.zIndex).toBe("2147483647");
+    expect(Number(menu?.style.zIndex)).toBeGreaterThan(APP_SHELL_BROWSER_WEBVIEW_LAYER_INDEX);
   });
 });
 

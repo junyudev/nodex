@@ -60,6 +60,7 @@ All notable changes to this project will be documented in this file.
 - A heartbeat's unread dot in Automations clears once you open its chat. It used to stay forever, because only a cron run opened from its folder was marked read. Any finished run is now read as soon as its chat is on screen, however you got there.
 - Heartbeats run on their schedule. An hourly heartbeat ran about every 90 minutes, and one set to every few minutes waited half an hour between runs, because Nodex postponed each one after its own previous run. A heartbeat now waits only while its chat is busy, and counts its interval from when the previous run started, so a long run no longer pushes the next one back. Heartbeats an hour or more apart start within five minutes either side of their time.
 - Every Agent can now set up and change Automations, reorder Sidebar Sections and manage a chat's queued messages, not only Codex. Claude Code never saw these Nodex tools, and its heartbeats now stay quiet unless something needs you.
+- Browser tools that sit over a web page show again. The annotation composer, the device toolbar's resize handles and the offer to save a password were hidden behind the page, as was the sidebar when it slid over a full-width Browser.
 
 ## [0.5.3] - 2026-11-08
 

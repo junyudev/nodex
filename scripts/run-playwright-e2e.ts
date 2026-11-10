@@ -9,6 +9,7 @@ const PERFORMANCE_GREP =
 export const NIGHTLY_E2E_SPECS = [
   "tests/e2e/electron-smoke.spec.ts",
   "tests/e2e/workbench-shell-navigation.spec.ts",
+  "tests/e2e/web-content-layering.spec.ts",
   "tests/e2e/new-chat-lifecycle.spec.ts",
   "tests/e2e/scripted-agent-runtime.spec.ts",
   "tests/e2e/side-chat-context.spec.ts",
