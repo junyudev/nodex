@@ -38,7 +38,8 @@ async function buildSite(root: string, outDir: string) {
     outDir,
   ]);
   await execFileAsync(invocation.command, invocation.args, {
-    cwd: root,
+    // Resolve the installed CLI from the workspace. Astro uses --root to load the site.
+    cwd: landingRoot,
     env: { ...process.env, ASTRO_TELEMETRY_DISABLED: "1" },
   });
 }
@@ -69,7 +70,6 @@ test("builds independently of unrelated ancestor TypeScript projects", async () 
     );
     mkdirSync(join(root, "src/pages"), { recursive: true });
     symlinkSync(join(landingRoot, "node_modules"), join(root, "node_modules"), "junction");
-    copyFileSync(resolve(landingRoot, "../../.node-version"), join(root, ".node-version"));
     for (const file of ["astro.config.mjs", "tsconfig.json", "package.json"])
       copyFileSync(join(landingRoot, file), join(root, file));
     writeFileSync(join(root, "src/pages/index.astro"), "<h1>Isolated site</h1>");
