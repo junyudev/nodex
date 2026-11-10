@@ -61,9 +61,12 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${NEEDS_XVFB}" == "true" ]]; then
+            # Keep the display alive between independent Electron fixture processes.
             vp exec tsx scripts/ci/run-timed.ts \
               --name "app-${APP_TEST_SUITE}" \
-              -- xvfb-run --auto-servernum vp exec tsx scripts/ci/run-app-test-suite.ts \
+              -- xvfb-run --auto-servernum --error-file=/dev/stderr \
+                --server-args="-screen 0 1280x1024x24 -noreset" \
+                vp exec tsx scripts/ci/run-app-test-suite.ts \
                 --suite "${APP_TEST_SUITE}"
             exit 0
           fi
