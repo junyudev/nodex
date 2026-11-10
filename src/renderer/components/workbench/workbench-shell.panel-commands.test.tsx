@@ -2106,7 +2106,7 @@ describe("workbench session shell / panel-commands", () => {
     });
   });
 
-  test("terminal tab does not fall back to the process cwd without a conversation workspace", async () => {
+  test("a chat in a Project without a working folder cannot start a terminal", async () => {
     delete (globalThis as { __lastTerminalPanelProps?: Record<string, unknown> })
       .__lastTerminalPanelProps;
     const terminalSession = makeSession({
@@ -2130,7 +2130,7 @@ describe("workbench session shell / panel-commands", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    expect(screen.getByText("Terminal workspace is unavailable") !== null).toBe(true);
+    expect(await screen.findByText("This chat has no folder to work in")).toBeDefined();
     expect(
       (globalThis as { __lastTerminalPanelProps?: Record<string, unknown> })
         .__lastTerminalPanelProps,
