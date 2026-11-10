@@ -109,6 +109,7 @@ export const inboxNewChatAction = (
   prompt,
   agent: null,
   additions: [],
+  skills: [],
 });
 
 export interface InboxSuggestedSkill {

@@ -93,7 +93,7 @@ export const InboxSuggestedSkillsSchema = z
   .array(
     z.strictObject({
       name: InboxSkillNameSchema,
-      reason: z.string().trim().min(1).max(160),
+      reason: z.string().max(160).regex(/\S/, "Reason is empty"),
     }),
   )
   .max(3);
