@@ -92,14 +92,19 @@ describe("workbench panel preview", () => {
     expect(isPreviewableWorkbenchTabKind("page_stage")).toBe(false);
   });
 
-  test("guards projectless draft creation by runtime capability", () => {
+  test("opens Terminal and Files for a chat without a Project before it starts", () => {
     const projectless = makeTestWorkbenchSession({ projectId: null });
     expect(makeWorkbenchTabProjectionDraft(projectless, "browser")).toMatchObject({
       kind: "browser",
     });
-    expect(makeWorkbenchTabProjectionDraft(projectless, "files")).toBeNull();
+    expect(makeWorkbenchTabProjectionDraft(projectless, "files")).toMatchObject({
+      kind: "files",
+      config: { projectId: null },
+    });
     expect(makeWorkbenchTabProjectionDraft(projectless, "review")).toBeNull();
-    expect(makeWorkbenchTabProjectionDraft(projectless, "terminal")).toBeNull();
+    expect(makeWorkbenchTabProjectionDraft(projectless, "terminal")).toMatchObject({
+      kind: "terminal",
+    });
 
     const attached = makeTestWorkbenchSession({
       projectId: null,

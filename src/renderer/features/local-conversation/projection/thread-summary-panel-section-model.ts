@@ -4,6 +4,7 @@ import { getBackgroundSubagentListRows } from "./background-subagent-summary-mod
 export type ThreadSummaryPanelSectionKind =
   | "automations"
   | "environment"
+  | "folder"
   | "plan"
   | "outputs"
   | "sideChats"
@@ -29,6 +30,8 @@ export interface ThreadSummaryPanelSectionModelInput {
   activeThreadId: string | null;
   hasAutomation: boolean;
   hasEnvironment: boolean;
+  /** A chat in no Project shows the Chat folder it works in. */
+  hasFolder?: boolean;
   hasPlan: boolean;
   outputCount: number;
   sideChatCount: number;
@@ -97,6 +100,16 @@ export function buildThreadSummaryPanelSectionModel(
           kind: "environment",
           sectionKey: "environment",
           title: "Environment",
+          mode: "accordion",
+          count: null,
+          autoCollapse: false,
+        }
+      : null,
+    input.hasFolder
+      ? {
+          kind: "folder",
+          sectionKey: "folder",
+          title: "Folder",
           mode: "accordion",
           count: null,
           autoCollapse: false,

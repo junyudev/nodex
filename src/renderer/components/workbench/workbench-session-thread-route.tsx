@@ -56,6 +56,8 @@ import {
   resolveLocalEnvironmentSelection,
   writeLocalEnvironmentSelection,
 } from "./local-environment-selection";
+import { toastFailure } from "@/lib/failure-toast";
+import { turnSessionFolderIntoProject } from "@/lib/session-folders";
 
 function NewThreadProjectReset({
   projectId,
@@ -442,6 +444,17 @@ function SharedConnectedSessionThread({
       onOpenSummaryBrowserRow,
       onOpenSummaryAutomation,
       onOpenSummaryGitReview,
+      ...(summary && session.projectId === null && session.canManage
+        ? {
+            onTurnChatFolderIntoProject: async () => {
+              try {
+                await turnSessionFolderIntoProject(session.id, {});
+              } catch (error) {
+                toastFailure("Couldn’t turn this folder into a project", error);
+              }
+            },
+          }
+        : {}),
       onOpenProcessManager,
       onOpenBackgroundTerminalOutput,
       // Pins and reminders are each Member's own; only the chat's owner or a Space Owner
@@ -515,6 +528,8 @@ function SharedConnectedSessionThread({
           selectedProjectId: effectiveProjectId,
           disabled: Boolean(projectDraftId),
           canAddProject: !projectDraftId,
+          sessionId: session.id,
+          folder: session.projectId === null ? (session.folder ?? null) : null,
         },
     newThreadStartInSelector: summary ? null : startInSelectorModel,
     newThreadStartBlockedReason: effectiveNewThreadStartBlockedReason,

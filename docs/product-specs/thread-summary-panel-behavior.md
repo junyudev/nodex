@@ -115,6 +115,12 @@ handoff owner, and an unresolved recovery disables another move. Unsupported
 backends and execution hosts have a location row without an interactive menu.
 See [Moving a Chat](codex-managed-worktree-lifecycle-behavior.md#moving-a-chat).
 
+## Folder
+
+A started projectless Chat shows the folder it works in. Activating the row
+shows it in the system file manager. `Turn into project` makes that folder a
+Project and moves the Chat into it; it is offered to whoever can manage the Chat.
+
 ## Plan, Outputs, and Sources
 
 Plan renders the current structured task plan from the conversation projection.

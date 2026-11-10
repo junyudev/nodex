@@ -19,11 +19,12 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       "side_chat",
       "browser",
       "terminal",
+      "files",
       "new_page",
     ]);
   });
 
-  it("offers side chat, browser, then terminal to attached projectless chats in the bottom panel", () => {
+  it("offers side chat, browser, terminal, then files to attached projectless chats in the bottom panel", () => {
     const result = resolveWorkbenchPanelCapabilities({
       panelId: "bottom",
       owner: {
@@ -35,7 +36,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       },
     });
 
-    expect(result.availableActionKinds).toEqual(["side_chat", "browser", "terminal"]);
+    expect(result.availableActionKinds).toEqual(["side_chat", "browser", "terminal", "files"]);
   });
 
   it("keeps Review unavailable without an attached thread", () => {
@@ -53,39 +54,8 @@ describe("resolveWorkbenchPanelCapabilities", () => {
     expect(result.actions.review.reason).toBe("no_thread");
   });
 
-  it("offers projectless actions independently of a workspace cwd", () => {
-    const result = resolveWorkbenchPanelCapabilities({
-      panelId: "right",
-      owner: {
-        kind: "session",
-        backendKind: "codex",
-        projectId: null,
-        hasAttachedThread: true,
-        cwd: null,
-      },
-    });
-
-    expect(result.availableActionKinds).toEqual(["review", "side_chat", "browser", "new_page"]);
-  });
-
-  it("keeps side chat available when a projectless parent needs workspace repair", () => {
-    const result = resolveWorkbenchPanelCapabilities({
-      panelId: "right",
-      owner: {
-        kind: "session",
-        backendKind: "codex",
-        projectId: null,
-        hasAttachedThread: true,
-        cwd: null,
-      },
-    });
-
-    expect(result.availableActionKinds).toEqual(["review", "side_chat", "browser", "new_page"]);
-    expect(result.actions.terminal.reason).toBe("no_cwd");
-  });
-
-  it("offers only Browser and New page to a blank projectless session", () => {
-    const result = resolveWorkbenchPanelCapabilities({
+  it("offers a chat without a Project its Terminal and Files before it has a folder", () => {
+    const blank = resolveWorkbenchPanelCapabilities({
       panelId: "right",
       owner: {
         kind: "session",
@@ -95,11 +65,36 @@ describe("resolveWorkbenchPanelCapabilities", () => {
         cwd: null,
       },
     });
+    const bottom = resolveWorkbenchPanelCapabilities({
+      panelId: "bottom",
+      owner: {
+        kind: "session",
+        backendKind: "codex",
+        projectId: null,
+        hasAttachedThread: false,
+        cwd: null,
+      },
+    });
 
-    expect(result.availableActionKinds).toEqual(["browser", "new_page"]);
-    expect(result.actions.side_chat.reason).toBe("no_thread");
+    expect(blank.availableActionKinds).toEqual(["browser", "terminal", "files", "new_page"]);
+    expect(bottom.availableActionKinds).toEqual(["browser", "terminal", "files"]);
+    expect(blank.actions.side_chat.reason).toBe("no_thread");
+  });
+
+  it("keeps Terminal from a Project chat that has no folder", () => {
+    const result = resolveWorkbenchPanelCapabilities({
+      panelId: "right",
+      owner: {
+        kind: "session",
+        backendKind: "codex",
+        projectId: "project-1",
+        hasAttachedThread: false,
+        cwd: null,
+        projectWorkspaceRoot: null,
+      },
+    });
+
     expect(result.actions.terminal.reason).toBe("no_cwd");
-    expect(result.actions.files.reason).toBe("project_required");
   });
 
   it("keeps the existing project-backed action order and panel eligibility", () => {

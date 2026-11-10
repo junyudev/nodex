@@ -27,6 +27,12 @@ New Chat offers the local Project workspace or a new worktree. Both choices use
 the ordinary Composer, file attachments, workspace search, and first-send
 workflow. Only executable targets belong in the selector and Composer model.
 
+With no Project selected, the Composer's project chip names where the chat
+works instead of asking for a Project: `New folder`, or the name of the folder
+chosen for it. Its menu lists Projects first, then a `No project` group with
+`New folder` and `Choose folder…`. The choice stays open until the first
+message; see [Projectless Chats](codex-workspace-behavior.md#projectless-chats).
+
 ## First-send transition
 
 - Enter and the Send button share one submission lifecycle. After a successful start, both clear the current Composer draft and show the same first user message; a failed start preserves the draft.

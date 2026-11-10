@@ -1,5 +1,8 @@
-import { CloseIcon, FolderIcon, PlusIcon } from "@/components/shared/icons";
+import { CloseIcon, FolderIcon, FolderOpenIcon, PlusIcon } from "@/components/shared/icons";
 import { useMemo, useState } from "react";
+import { toastFailure } from "@/lib/failure-toast";
+import { chooseSessionFolder, pickSessionFolder, resetSessionFolder } from "@/lib/session-folders";
+import type { SessionFolder } from "@/lib/types";
 
 import { ProjectMarker } from "@/components/workbench/project-marker";
 import {
@@ -17,6 +20,7 @@ import {
   NodexDropdownSection,
   NodexDropdownSelectedIcon,
   NodexDropdownSeparator,
+  NodexDropdownTitle,
   NodexTooltip,
 } from "./local-conversation-thread-composer-deps";
 
@@ -28,6 +32,46 @@ interface NewChatProjectSelectorProps {
 }
 
 const PROJECT_SELECTOR_MENU_CLASS_NAME = "w-[260px] max-w-[calc(100vw-1rem)]";
+
+const folderName = (path: string) => path.split(/[\\/]/).findLast(Boolean) ?? path;
+
+/**
+ * The Chat folder of a draft in no Project. The menu's own choice shows at once; the Session's
+ * record takes over when the draft is reopened.
+ */
+function useDraftChatFolder(model: NewChatProjectSelectorModel) {
+  const [local, setLocal] = useState<{
+    sessionId: string | undefined;
+    folder: SessionFolder | null;
+  } | null>(null);
+  const folder =
+    model.selectedProjectId !== null
+      ? null
+      : local && local.sessionId === model.sessionId
+        ? local.folder
+        : (model.folder ?? null);
+  const sessionId = model.sessionId;
+  const chooseFolder = async () => {
+    if (!sessionId) return;
+    try {
+      const path = await pickSessionFolder();
+      if (!path) return;
+      setLocal({ sessionId, folder: await chooseSessionFolder(sessionId, path) });
+    } catch (error) {
+      toastFailure("Couldn’t use that folder", error);
+    }
+  };
+  const resetToNewFolder = async () => {
+    if (!sessionId || folder?.origin !== "chosen") return;
+    try {
+      await resetSessionFolder(sessionId);
+      setLocal({ sessionId, folder: null });
+    } catch (error) {
+      toastFailure("Couldn’t change this chat’s folder", error);
+    }
+  };
+  return { folder, chooseFolder, resetToNewFolder, canChoose: Boolean(sessionId) };
+}
 
 export function NewChatProjectSelector({
   model,
@@ -46,8 +90,12 @@ export function NewChatProjectSelector({
     [model.projects, search],
   );
   const selectorDisabled = disabled || model.disabled || !actions.onNewThreadProjectChange;
-  const triggerLabel = selectedOption?.label ?? "Choose project";
-  const headingTriggerLabel = `${triggerLabel}?`;
+  const chatFolder = useDraftChatFolder(model);
+  const chosenFolder = chatFolder.folder?.origin === "chosen" ? chatFolder.folder : null;
+  // With no Project the chip names where the chat works: the folder picked for it, or a new one.
+  const triggerLabel =
+    selectedOption?.label ?? (chosenFolder ? folderName(chosenFolder.path) : "New folder");
+  const headingTriggerLabel = `${selectedOption?.label ?? "Choose project"}?`;
   const handleMenuOpenChange = (open: boolean) => {
     setMenuOpen(open);
     if (!open) setSearch("");
@@ -59,6 +107,7 @@ export function NewChatProjectSelector({
       search={search}
       setSearch={setSearch}
       filteredOptions={filteredOptions}
+      chatFolder={chatFolder}
     />
   );
 
@@ -102,7 +151,9 @@ export function NewChatProjectSelector({
         triggerTooltipContent={
           selectedOption
             ? "Change the project for this chat"
-            : "Select a project to run your chat in"
+            : chosenFolder
+              ? chosenFolder.path
+              : "This chat works in a new folder of its own"
         }
         contentWidth="workspace"
         contentMaxHeight="tall"
@@ -124,6 +175,8 @@ export function NewChatProjectSelector({
                     : "size-4 group-hover/project-selector:invisible"
                 }
               />
+            ) : chosenFolder ? (
+              <FolderOpenIcon className="icon-xs shrink-0" />
             ) : (
               <FolderIcon className="icon-xs shrink-0" />
             )}
@@ -156,13 +209,17 @@ function ProjectSelectorMenuContent({
   search,
   setSearch,
   filteredOptions,
+  chatFolder,
 }: {
   model: NewChatProjectSelectorModel;
   actions: ThreadStageActions;
   search: string;
   setSearch: (value: string) => void;
   filteredOptions: ReturnType<typeof filterNewChatProjectSelectorOptions>;
+  chatFolder: ReturnType<typeof useDraftChatFolder>;
 }) {
+  const inNoProject = model.selectedProjectId === null;
+  const chosenFolder = chatFolder.folder?.origin === "chosen" ? chatFolder.folder : null;
   const showFooter = Boolean(
     (model.canAddProject && actions.onRequestNewChatProjectCreate) ||
     (model.selectedProjectId && actions.onNewThreadProjectChange),
@@ -238,6 +295,46 @@ function ProjectSelectorMenuContent({
                 Don&apos;t work in a project
               </NodexDropdownItem>
             ) : null}
+          </NodexDropdownSection>
+        </>
+      ) : null}
+
+      {inNoProject && chatFolder.canChoose ? (
+        <>
+          <NodexDropdownSeparator />
+          <NodexDropdownSection className="flex flex-col">
+            <NodexDropdownTitle>No project</NodexDropdownTitle>
+            <NodexDropdownItem
+              className={COMPOSER_PICKER_ITEM_CLASS_NAME}
+              leftSlot={<FolderIcon className="icon-xs text-token-description-foreground" />}
+              rightSlot={chosenFolder ? null : <NodexDropdownSelectedIcon />}
+              tooltipText="Nodex makes a folder for this chat when it first needs one"
+              onSelect={() => void chatFolder.resetToNewFolder()}
+              data-new-chat-folder-new="true"
+              data-selected={chosenFolder ? undefined : "true"}
+            >
+              New folder
+            </NodexDropdownItem>
+            {chosenFolder ? (
+              <NodexDropdownItem
+                className={COMPOSER_PICKER_ITEM_CLASS_NAME}
+                leftSlot={<FolderOpenIcon className="icon-xs text-token-description-foreground" />}
+                rightSlot={<NodexDropdownSelectedIcon />}
+                tooltipText={chosenFolder.path}
+                data-new-chat-folder-chosen="true"
+                data-selected="true"
+              >
+                {folderName(chosenFolder.path)}
+              </NodexDropdownItem>
+            ) : null}
+            <NodexDropdownItem
+              className={COMPOSER_PICKER_ITEM_CLASS_NAME}
+              leftSlot={<FolderOpenIcon className="icon-xs text-token-description-foreground" />}
+              onSelect={() => void chatFolder.chooseFolder()}
+              data-new-chat-folder-choose="true"
+            >
+              {chosenFolder ? "Choose another folder…" : "Choose folder…"}
+            </NodexDropdownItem>
           </NodexDropdownSection>
         </>
       ) : null}

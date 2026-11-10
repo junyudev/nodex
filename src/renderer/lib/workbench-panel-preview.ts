@@ -19,7 +19,6 @@ import {
   type WorkbenchTabProjectionPanelTab,
 } from "@/lib/workbench-panel-tab-model";
 import type { WorkspaceFilesTabState } from "@/features/workspace-files/workspace-file-types";
-import { normalizeOptionalPath } from "@/lib/workbench-workspace-context";
 
 const PREVIEWABLE_PROJECT_SESSION_TAB_KINDS = [
   "browser",
@@ -78,9 +77,6 @@ export function makeWorkbenchTabProjectionDraft(
   }
 
   if (kind === "terminal") {
-    if (projectId === null && (!session.thread || !normalizeOptionalPath(session.thread.cwd))) {
-      return null;
-    }
     return {
       kind,
       title: "Terminal",
@@ -98,8 +94,6 @@ export function makeWorkbenchTabProjectionDraft(
       config: { projectId },
     };
   }
-
-  if (projectId === null) return null;
 
   if (kind === "files") {
     return {

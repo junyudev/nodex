@@ -83,6 +83,7 @@ const PROJECTLESS_ACTION_ORDER: readonly WorkbenchPanelActionKind[] = [
   "side_chat",
   "browser",
   "terminal",
+  "files",
   "new_page",
 ];
 
@@ -96,7 +97,6 @@ const BOTTOM_PANEL_ACTIONS = new Set<WorkbenchPanelActionKind>([
   "side_chat",
 ]);
 const PROJECT_REQUIRED_ACTIONS = new Set<WorkbenchPanelActionKind>([
-  "files",
   "db_view",
   "page_stage",
   "canvas_stage",
@@ -125,6 +125,12 @@ function resolveActionCapability(
   if (projectId === null && PROJECT_REQUIRED_ACTIONS.has(kind)) {
     return unavailable("project_required");
   }
+  // A chat without a Project works in a Chat folder of its own, which exists once anything
+  // needs it; a Project without a folder has nowhere for a Terminal to open.
+  const hasWorkingFolder =
+    (owner.kind === "session" && (projectId === null || Boolean(owner.cwd?.trim()))) ||
+    Boolean(owner.projectWorkspaceRoot?.trim());
+  if (kind === "terminal" && !hasWorkingFolder) return unavailable("no_cwd");
 
   if (kind === "side_chat") {
     if (owner.kind !== "session") return unavailable("session_required");
@@ -134,15 +140,6 @@ function resolveActionCapability(
     if (owner.kind !== "session") return unavailable("session_required");
     if (!owner.hasAttachedThread) return unavailable("no_thread");
     if (owner.backendKind !== "codex") return unavailable("backend_not_supported");
-  }
-
-  if (kind === "terminal") {
-    const cwd = owner.kind === "session" ? owner.cwd?.trim() : null;
-    const projectWorkspaceRoot = owner.projectWorkspaceRoot?.trim();
-    if (!cwd && !projectWorkspaceRoot) return unavailable("no_cwd");
-    if (owner.kind === "session" && projectId === null && !owner.hasAttachedThread) {
-      return unavailable("no_thread");
-    }
   }
 
   if (SINGLETON_ACTIONS.has(kind) && existingTabKinds.has(kind as WorkbenchTabKind)) {

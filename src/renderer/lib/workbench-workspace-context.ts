@@ -1,5 +1,5 @@
 import { localProjectSourceRoots } from "../../shared/project-sources";
-import type { Project, WorkbenchTabProjection } from "@/lib/types";
+import type { Project, ProjectSession, WorkbenchTabProjection } from "@/lib/types";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 
 export function normalizeOptionalPath(value: string | null | undefined): string | undefined {
@@ -35,13 +35,43 @@ export function getWorkspaceFileParentPath(path: string): string {
   return "";
 }
 
+/**
+ * Where a chat works: its execution location once it has one, else the Chat folder it reserved,
+ * else its Project's folder. A chat with none of these gets a Chat folder when one is first needed.
+ */
+export function resolveSessionWorkingFolder(
+  session: Pick<ProjectSession, "thread" | "folder">,
+  project: Project | null | undefined,
+): string | undefined {
+  return (
+    normalizeOptionalPath(session.thread?.cwd) ??
+    normalizeOptionalPath(session.folder?.path) ??
+    normalizeProjectPrimaryWorkspaceRoot(project)
+  );
+}
+
+/** The one description of a Session that panel capabilities are resolved from. */
+export function sessionPanelOwner(
+  session: Pick<ProjectSession, "projectId" | "thread" | "folder" | "executionRef">,
+  project: Project | null | undefined,
+) {
+  return {
+    kind: "session",
+    backendKind: session.thread?.backendBinding.kind ?? "codex",
+    projectId: session.projectId,
+    hasAttachedThread: Boolean(session.executionRef || session.thread),
+    cwd: resolveSessionWorkingFolder(session, null),
+    projectWorkspaceRoot: projectWorkspaceRootOrNull(project),
+  } as const;
+}
+
 export function resolveSessionTerminalCwd(
   session: WorkbenchSessionRenderProjection,
   tab: WorkbenchTabProjection,
   projects: readonly Project[],
 ): string | undefined {
-  const threadCwd = normalizeOptionalPath(session.thread?.cwd);
-  if (threadCwd) return threadCwd;
+  const ownFolder = resolveSessionWorkingFolder(session, null);
+  if (ownFolder) return ownFolder;
 
   const tabProjectId = "projectId" in tab.config ? tab.config.projectId : session.projectId;
   return (

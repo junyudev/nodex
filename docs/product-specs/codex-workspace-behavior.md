@@ -128,8 +128,11 @@ execution, Terminal, and Files.
 By default, Nodex creates the folder under `Chats/<date>/<name>` in the
 Profile's projects directory. Scratch work belongs under `work/`, and
 deliverables belong under `outputs/`. Before the Chat starts, the person can
-choose an existing directory as its first folder. Files and deliverables then
-share that directory. Once bound, the Chat keeps the folder. A persistent fork
+choose an existing directory as its folder, change that choice, or return to a
+new folder. Files and deliverables then share the chosen directory, and Nodex
+adds nothing to it. Once the Chat starts, it keeps the folder. `Turn into
+project` makes that folder a Project and moves the Chat into it without
+changing where it works. A persistent fork
 or Side chat inherits its source workspace. An explicit Environment or pending
 workspace still supplies its own execution location.
 

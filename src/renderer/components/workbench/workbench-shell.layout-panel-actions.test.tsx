@@ -2572,7 +2572,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     const actionText = textContent(actionGrid);
     expect(actionText.indexOf("Side chat") < actionText.indexOf("Browser")).toBe(true);
     expect(actionText.indexOf("Browser") < actionText.indexOf("Terminal")).toBe(true);
-    expect(actionText.includes("Files")).toBe(false);
+    expect(actionText.indexOf("Terminal") < actionText.indexOf("Files")).toBe(true);
     expect(actionText.includes("Review")).toBe(true);
 
     const menu = await openPanelMenu(screen, "right");
@@ -2580,7 +2580,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(within(menu).getByText("Browser") !== null).toBe(true);
     expect(within(menu).getByText("Terminal") !== null).toBe(true);
     expect(within(menu).getByText("Review") !== null).toBe(true);
-    expect(within(menu).queryByText("Files")).toBe(null);
+    expect(within(menu).getByText("Files") !== null).toBe(true);
 
     await clickMenuItem(menu, "Side chat");
     await settleAsyncRender();
@@ -2607,7 +2607,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     const bottomMenuText = textContent(bottomMenu);
     expect(bottomMenuText.indexOf("Side chat") < bottomMenuText.indexOf("Browser")).toBe(true);
     expect(bottomMenuText.indexOf("Browser") < bottomMenuText.indexOf("Terminal")).toBe(true);
-    expect(within(bottomMenu).queryByText("Files")).toBe(null);
+    expect(bottomMenuText.indexOf("Terminal") < bottomMenuText.indexOf("Files")).toBe(true);
 
     await clickMenuItem(bottomMenu, "Terminal");
     await settleAsyncRender();
@@ -2629,7 +2629,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     });
   });
 
-  test("blank projectless chats expose Browser and New page", async () => {
+  test("a blank projectless chat opens a Terminal in a folder of its own", async () => {
     const screen = renderWorkbench();
     await settleAsyncRender();
     await act(async () => {
@@ -2657,15 +2657,21 @@ describe("workbench session shell / layout-panel-actions", () => {
       await Promise.resolve();
     });
     expect(sideChatShortcut.defaultPrevented).toBe(false);
-    expect(terminalShortcut.defaultPrevented).toBe(false);
+    expect(terminalShortcut.defaultPrevented).toBe(true);
     expect(startSideChatCalls).toHaveLength(0);
-    expect(
-      invokeCalls.some(
-        (call) =>
-          call[0] === "window-session-view:tab-create" &&
-          (call[1] as { kind?: string } | undefined)?.kind === "terminal",
-      ),
-    ).toBe(false);
+    await waitFor(() => {
+      expect(
+        invokeCalls.some(
+          (call) =>
+            call[0] === "window-session-view:tab-create" &&
+            (call[1] as { kind?: string } | undefined)?.kind === "terminal",
+        ),
+      ).toBe(true);
+    });
+    // The chat has no folder yet, so the Terminal asks for the one its first message will use.
+    await waitFor(() => {
+      expect(invokeCalls.some((call) => call[0] === "session-folder:ensure")).toBe(true);
+    });
 
     const browserShortcut = new KeyboardEvent("keydown", {
       key: "t",

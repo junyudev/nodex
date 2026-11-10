@@ -419,7 +419,7 @@ import {
   projectWorkbenchPanelTabShortcutProjection,
   type WorkbenchPanelTabShortcutState,
 } from "@/lib/workbench-panel-tab-shortcut";
-import { projectWorkspaceRootOrNull } from "@/lib/workbench-workspace-context";
+import { projectWorkspaceRootOrNull, sessionPanelOwner } from "@/lib/workbench-workspace-context";
 import {
   buildStableWorktreeCreateInput,
   listStableWorktrees,
@@ -3563,14 +3563,12 @@ export function WorkbenchRuntime({
         const project = projects.find((candidate) => candidate.id === activeSession.projectId);
         // Singletons stay listed: choosing one that is already open switches to it.
         return {
-          actions: filterAvailablePanelActions(PANEL_NEW_TAB_ACTIONS, [], panelId, {
-            kind: "session",
-            backendKind: activeSession.thread?.backendBinding.kind ?? "codex",
-            projectId: activeSession.projectId,
-            hasAttachedThread: Boolean(activeSession.executionRef || activeSession.thread),
-            cwd: activeSession.thread?.cwd,
-            projectWorkspaceRoot: projectWorkspaceRootOrNull(project ?? null),
-          }),
+          actions: filterAvailablePanelActions(
+            PANEL_NEW_TAB_ACTIONS,
+            [],
+            panelId,
+            sessionPanelOwner(activeSession, project ?? null),
+          ),
           currentProjectId: activeSession.projectId,
           canOpenBottomTerminal: canOpenBottomTerminal(
             resolveActivePanelCapabilities("bottom").actions.terminal.available,
@@ -5372,14 +5370,12 @@ export function WorkbenchRuntime({
     ) : null;
   const activeSessionCanOpenSideChat =
     activeRenderSession &&
-    filterAvailablePanelActions(PANEL_NEW_TAB_ACTIONS, activeRenderSession.tabs, "right", {
-      kind: "session",
-      backendKind: activeRenderSession.thread?.backendBinding.kind ?? "codex",
-      projectId: activeRenderSession.projectId,
-      hasAttachedThread: hasSessionConversation(activeRenderSession),
-      cwd: activeRenderSession.thread?.cwd,
-      projectWorkspaceRoot: projectWorkspaceRootOrNull(activeSessionProject),
-    }).some((action) => action.kind === "side_chat");
+    filterAvailablePanelActions(
+      PANEL_NEW_TAB_ACTIONS,
+      activeRenderSession.tabs,
+      "right",
+      sessionPanelOwner(activeRenderSession, activeSessionProject),
+    ).some((action) => action.kind === "side_chat");
   const activeSessionRoute =
     activeRenderSession && activeSessionPanelModel && sessionWorkspace ? (
       <WorkbenchSessionScene

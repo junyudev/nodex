@@ -12,7 +12,7 @@ import { filterAvailablePanelActions, PANEL_NEW_TAB_ACTIONS } from "@/lib/workbe
 import type { AppShellMainContentLayout } from "@/lib/codex-panel-motion";
 import type { useWorkbenchPanelCommandRouter } from "@/lib/use-workbench-panel-command-router";
 import type { useWorkbenchPanelLifecycle } from "@/lib/use-workbench-panel-lifecycle";
-import { projectWorkspaceRootOrNull } from "@/lib/workbench-workspace-context";
+import { sessionPanelOwner } from "@/lib/workbench-workspace-context";
 import type { SessionPanelRenderModel } from "@/lib/workbench-panel-projection";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 import type { PanelId, Project } from "@/lib/types";
@@ -146,27 +146,13 @@ export function WorkbenchSessionScene({
     PANEL_NEW_TAB_ACTIONS,
     session.tabs,
     "right",
-    {
-      kind: "session",
-      backendKind: session.thread?.backendBinding.kind ?? "codex",
-      projectId: session.projectId,
-      hasAttachedThread: Boolean(session.executionRef || session.thread),
-      cwd: session.thread?.cwd,
-      projectWorkspaceRoot: projectWorkspaceRootOrNull(project),
-    },
+    sessionPanelOwner(session, project),
   );
   const availableBottomPanelActions = filterAvailablePanelActions(
     PANEL_NEW_TAB_ACTIONS,
     session.tabs,
     "bottom",
-    {
-      kind: "session",
-      backendKind: session.thread?.backendBinding.kind ?? "codex",
-      projectId: session.projectId,
-      hasAttachedThread: Boolean(session.executionRef || session.thread),
-      cwd: session.thread?.cwd,
-      projectWorkspaceRoot: projectWorkspaceRootOrNull(project),
-    },
+    sessionPanelOwner(session, project),
   );
   const threadScopeDescriptor = resolveProjectSessionThreadScopeDescriptor(
     threadScopeIdentityRegistry,

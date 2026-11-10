@@ -17,6 +17,8 @@ import type { WorkbenchTabProjectionPanelTab } from "@/lib/workbench-panel-tab-m
 import {
   projectWorkspaceRootOrNull,
   resolveSessionTerminalCwd,
+  resolveSessionWorkingFolder,
+  sessionPanelOwner,
 } from "@/lib/workbench-workspace-context";
 import type { CodexPromptInput, PanelId, Project, WorkbenchTabProjection } from "@/lib/types";
 import type { OpenCanvasStageHandler } from "@/lib/use-workbench-panel-openers";
@@ -31,9 +33,10 @@ import {
   type PageStageHistoryModalContext,
 } from "./workbench-page-stage-panel";
 import { TerminalPanel } from "./workbench-terminal-panel";
+import { SessionWorkingFolder } from "./session-working-folder";
 import { WorkbenchBrowserSidebarPanel } from "./workbench-new-tab-page";
 import { projectSessionThreadLinkToSummary } from "./thread-summary-projection";
-import { hasSessionConversation, resolveSessionPageSendTarget } from "@/lib/session-execution";
+import { resolveSessionPageSendTarget } from "@/lib/session-execution";
 import { resolveNfmSendToThreadPreferredTarget } from "@/components/board/editor/nfm-send-to-thread-menu-model";
 import { presentChatTitle } from "@/lib/page-stage-related-chat-candidates";
 import { resolveWorkbenchPanelCapabilities } from "@/lib/workbench-panel-capabilities";
@@ -444,27 +447,27 @@ export function WorkbenchTabProjectionPanel({
   }
 
   if (tab.kind === "terminal" && "terminalSessionId" in tab.config) {
-    const cwd = resolveSessionTerminalCwd(activeSession, tab, projects);
     const leafId = resolveLeafIdForPanelTab(activeSession, tab.panelId, tab.id);
-    if (!cwd) {
-      return (
-        <div className="flex h-full min-h-0 items-center justify-center bg-token-main-surface-primary px-3 text-sm text-token-text-secondary">
-          Terminal workspace is unavailable
-        </div>
-      );
-    }
+    const terminalSessionId = tab.config.terminalSessionId;
     return (
-      <div className="h-full min-h-0 bg-token-main-surface-primary">
-        <TerminalPanel
-          terminalId={tab.config.terminalSessionId}
-          cwd={cwd}
-          conversationId={activeSession.thread?.threadId ?? null}
-          projectSessionId={activeSession.id}
-          onNewTerminalTab={() => {
-            void onCreateTerminalTab(tab.panelId, leafId);
-          }}
-        />
-      </div>
+      <SessionWorkingFolder
+        session={activeSession}
+        folder={resolveSessionTerminalCwd(activeSession, tab, projects)}
+      >
+        {(cwd) => (
+          <div className="h-full min-h-0 bg-token-main-surface-primary">
+            <TerminalPanel
+              terminalId={terminalSessionId}
+              cwd={cwd}
+              conversationId={activeSession.thread?.threadId ?? null}
+              projectSessionId={activeSession.id}
+              onNewTerminalTab={() => {
+                void onCreateTerminalTab(tab.panelId, leafId);
+              }}
+            />
+          </div>
+        )}
+      </SessionWorkingFolder>
     );
   }
 
@@ -516,9 +519,9 @@ export function WorkbenchTabProjectionPanel({
 
   if (tab.kind === "files") {
     const project = projects.find((item) => item.id === tab.projectId) ?? null;
-    const renderFiles = (review?: WorkspaceFilesReview) => (
+    const renderPanel = (filesTab: WorkspaceFilesTab, review?: WorkspaceFilesReview) => (
       <WorkspaceFilesPanel
-        tab={tab as WorkspaceFilesTab}
+        tab={filesTab}
         activeSession={activeSession}
         project={project}
         onOpenFileTab={onOpenFileTab}
@@ -529,17 +532,28 @@ export function WorkbenchTabProjectionPanel({
         }}
       />
     );
+    const filesTab = tab as WorkspaceFilesTab;
+    // A chat without a Project browses its own folder; an exact-file preview needs no folder.
+    const renderFiles = (review?: WorkspaceFilesReview) =>
+      activeSession.projectId !== null || filesTab.config.workspaceRoot || filesTab.config.path ? (
+        renderPanel(filesTab, review)
+      ) : (
+        <SessionWorkingFolder
+          session={activeSession}
+          folder={resolveSessionWorkingFolder(activeSession, null)}
+        >
+          {(folder) =>
+            renderPanel(
+              { ...filesTab, config: { ...filesTab.config, workspaceRoot: folder } },
+              review,
+            )
+          }
+        </SessionWorkingFolder>
+      );
     // All changes opens Review, so it is offered only where this Session can show Review.
     const reviewAvailable = resolveWorkbenchPanelCapabilities({
       panelId: "right",
-      owner: {
-        kind: "session",
-        backendKind: activeSession.thread?.backendBinding.kind ?? "codex",
-        projectId: activeSession.projectId,
-        hasAttachedThread: hasSessionConversation(activeSession),
-        cwd: activeSession.thread?.cwd,
-        projectWorkspaceRoot: projectWorkspaceRootOrNull(project),
-      },
+      owner: sessionPanelOwner(activeSession, project),
     }).actions.review.available;
     if (!onActivateReviewTab || !reviewAvailable) return renderFiles();
     // Review reads a runtime-backed conversation's working directory, else the project root.

@@ -42,7 +42,8 @@ import {
   type BranchSelectorState,
 } from "../shared/branch-selector-state";
 import { DiffStats } from "../shared/tools/diff-file-shared";
-import { ConnectorGlobeIcon } from "@/components/shared/icons";
+import { ConnectorGlobeIcon, FolderIcon, FolderPlusIcon } from "@/components/shared/icons";
+import { openFileLink } from "@/lib/file-system-operations";
 import { useMcpResource, useMcpServerStatuses } from "../../../../lib/use-mcp-queries";
 import { useCodexMcpApps } from "../../use-codex-mcp-apps";
 import { useGitBranchState } from "../../../../lib/use-git-branch-state";
@@ -1111,12 +1112,14 @@ export function ThreadSummaryPanelSurface({
   );
   const hasComputerUsePip =
     computerUsePip !== null && actions?.onToggleSummaryComputerUsePip !== undefined;
+  const chatFolderPath = activeThreadProjectless && activeThreadId ? cwd?.trim() || null : null;
   const summarySections = useMemo(
     () =>
       buildThreadSummaryPanelSectionModel({
         activeThreadId,
         hasAutomation: clockAutomation !== null,
         hasEnvironment: hasGitEnvironmentSummary,
+        hasFolder: chatFolderPath !== null,
         hasPlan: planRow !== null,
         outputCount: outputRows.length,
         sideChatCount: sideChatRows.length,
@@ -1131,6 +1134,7 @@ export function ThreadSummaryPanelSurface({
       backgroundSubagentRows,
       backgroundTasks,
       browserRows.length,
+      chatFolderPath,
       hasComputerUsePip,
       outputRows.length,
       planRow,
@@ -1305,6 +1309,39 @@ export function ThreadSummaryPanelSurface({
                           onOpenAutomation ? () => handleOpenAutomation(clockAutomation) : undefined
                         }
                       />
+                    </ThreadSummaryPanelSection>
+                  );
+
+                case "folder":
+                  if (!chatFolderPath) return null;
+                  return (
+                    <ThreadSummaryPanelSection
+                      key={section.kind}
+                      sectionKey="folder"
+                      title="Folder"
+                    >
+                      <ThreadSummaryPanelRow
+                        aria-label="Show this chat's folder"
+                        label={chatFolderPath.split(/[\\/]/).findLast(Boolean) ?? chatFolderPath}
+                        title={chatFolderPath}
+                        icon={<FolderIcon className="icon-sm shrink-0" />}
+                        interactive
+                        onClick={() =>
+                          void openFileLink({ path: chatFolderPath }, "fileManager").catch(
+                            (error: unknown) => toastFailure("Couldn’t open this folder", error),
+                          )
+                        }
+                      />
+                      {actions?.onTurnChatFolderIntoProject ? (
+                        <ThreadSummaryPanelRow
+                          label="Turn into project"
+                          title="Make this folder a project and move the chat into it"
+                          icon={<FolderPlusIcon className="icon-sm shrink-0" />}
+                          interactive
+                          disabled={!isVisible}
+                          onClick={() => void actions.onTurnChatFolderIntoProject?.()}
+                        />
+                      ) : null}
                     </ThreadSummaryPanelSection>
                   );
 

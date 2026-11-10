@@ -8,6 +8,7 @@ import type { ThreadGoal, FeedbackUploadParams } from "@nodex/codex-app-server-p
 import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
 import type {
   PageRunInTarget,
+  SessionFolder,
   CodexAccountSnapshot,
   CodexBackgroundTerminalRow,
   CodexCanonicalOptionPickerResponse,
@@ -95,6 +96,9 @@ export interface NewChatProjectSelectorModel {
   selectedProjectId: string | null;
   disabled: boolean;
   canAddProject: boolean;
+  /** The draft chat whose place is being chosen, and the Chat folder it has when in no Project. */
+  sessionId?: string;
+  folder?: SessionFolder | null;
 }
 
 export interface NewChatStartInSelectorModel {
@@ -535,6 +539,8 @@ export interface ThreadStageActions {
   onOpenSummaryAutomation?: (input: ThreadSummaryPanelAutomationOpenInput) => void | Promise<void>;
   onOpenSummaryGitReview?: (input: ThreadSummaryPanelGitReviewOpenInput) => void | Promise<void>;
   onStartSummaryGitAction?: (input: ThreadSummaryPanelGitActionInput) => void | Promise<void>;
+  /** Present for a chat in no Project: makes its folder a Project and moves the chat into it. */
+  onTurnChatFolderIntoProject?: () => void | Promise<void>;
   onOpenProcessManager?: () => void | Promise<void>;
   onOpenBackgroundTerminalOutput?: (row: CodexBackgroundTerminalRow) => void | Promise<void>;
   onToggleSummaryComputerUsePip?: (nextVisible: boolean) => void | Promise<void>;

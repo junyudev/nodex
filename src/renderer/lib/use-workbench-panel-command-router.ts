@@ -9,7 +9,7 @@ import {
 import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
 import { toast } from "@/components/ui/toast";
 import { requestTerminalFocus, returnFocusFromPanel } from "./terminal-focus";
-import { projectWorkspaceRootOrNull } from "./workbench-workspace-context";
+import { sessionPanelOwner } from "./workbench-workspace-context";
 import {
   PANEL_NEW_TAB_ACTIONS,
   getPanelNewTabAction,
@@ -452,16 +452,7 @@ export function useWorkbenchPanelCommandRouter({
           : (projects.find((candidate) => candidate.id === activeSession?.projectId) ?? null);
       return resolveWorkbenchPanelCapabilities({
         panelId,
-        owner: activeSession
-          ? {
-              kind: "session",
-              backendKind: activeSession.thread?.backendBinding.kind ?? "codex",
-              projectId: activeSession.projectId,
-              hasAttachedThread: Boolean(activeSession.executionRef || activeSession.thread),
-              cwd: activeSession.thread?.cwd,
-              projectWorkspaceRoot: projectWorkspaceRootOrNull(project),
-            }
-          : null,
+        owner: activeSession ? sessionPanelOwner(activeSession, project) : null,
         existingTabKinds: activeSession?.tabs.map((tab) => tab.kind) ?? [],
       });
     },

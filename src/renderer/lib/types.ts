@@ -61,6 +61,7 @@ export type {
   ProjectUpdateInput,
   ProjectSession,
   ProjectSessionSummary,
+  SessionFolder,
   ProjectSessionSummaryWindow,
   SessionSideChatSummary,
   SessionSideChatWindow,
