@@ -1,5 +1,6 @@
 import { localProjectSourceRoots } from "../../shared/project-sources";
 import { execFile } from "node:child_process";
+import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { expect, test } from "vite-plus/test";
@@ -42,22 +43,26 @@ test.each(listScenarioIds())(
       expect(projects.some((project) => project.id === manifest.projectId)).toBe(true);
       expect(
         projects.every(
-          (project) => project.sources.length > 0 && project.primaryWorkspaceRoot === source,
+          (project) =>
+            project.primaryWorkspaceRoot &&
+            localProjectSourceRoots(project.sources).includes(project.primaryWorkspaceRoot),
         ),
       ).toBe(true);
-      // Includes the bootstrap Project and secondary Projects, not just the manifest's primary one.
       const roots = projects.flatMap((project) => localProjectSourceRoots(project.sources));
       expect(roots.length).toBeGreaterThan(0);
-      expect(new Set(roots)).toEqual(new Set([source]));
       const gitRoot = (
         await execFileAsync("git", ["rev-parse", "--show-toplevel"], { cwd: source })
       ).stdout.trim();
       expect(path.resolve(gitRoot)).toBe(source);
       const seed = new CoreClientSeedAdapter(runtime);
       const tasks = await seed.readAutomations();
-      expect(tasks.flatMap((task) => task.cwds).every((cwd) => path.resolve(cwd) === source)).toBe(
-        true,
-      );
+      // Some scenarios put Project files in a dedicated directory inside the seeded repo.
+      for (const directory of new Set([...roots, ...tasks.flatMap((task) => task.cwds)])) {
+        const relative = path.relative(source, await realpath(directory));
+        expect(path.isAbsolute(relative) || relative.split(path.sep)[0] === "..", directory).toBe(
+          false,
+        );
+      }
     } finally {
       if (runtime) {
         await runtime.rootClient.shutdown();
