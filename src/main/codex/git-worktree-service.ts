@@ -9,6 +9,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  realpath,
   rm,
   stat,
   writeFile,
@@ -1429,7 +1430,9 @@ async function createPageManagedWorktree(
   const gitRoot = (
     await runGitCommand(["rev-parse", "--show-toplevel"], worktreeGitRoot, { signal })
   ).stdout.trim();
-  if (path.resolve(gitRoot) !== worktreeGitRoot)
+  // Git reports the canonical path; the managed root may be configured through a symlink, as
+  // every macOS temporary directory is.
+  if ((await realpath(gitRoot)) !== (await realpath(worktreeGitRoot)))
     throw new Error("Page Workspace checkout identity changed");
   const attached = (
     await runGitCommand(["branch", "--show-current"], worktreeGitRoot, { signal })

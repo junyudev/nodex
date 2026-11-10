@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, mkdir, writeFile, rm, realpath } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, realpath, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as Effect from "effect/Effect";
@@ -34,10 +34,16 @@ const launch: AgentRuntimeLaunch = {
   message: { messageId: "message", text: "Work" },
 };
 
-async function fixture(gitRepository = true) {
+async function fixture(gitRepository = true, symlinkedRoot = false) {
   const home = await realpath(await mkdtemp(join(tmpdir(), "nodex-page-workspace-")));
   const repository = join(home, "repo");
   await mkdir(repository);
+  // A managed root reached through a symlink, as a macOS temporary directory is.
+  const managedRoot = join(home, "trees");
+  if (symlinkedRoot) {
+    await mkdir(join(home, "trees-target"));
+    await symlink(join(home, "trees-target"), managedRoot);
+  }
   const writeGit = async (args: string[]) => {
     expect(await realpath(repository)).toBe(join(home, "repo"));
     if (args[0] !== "init")
@@ -152,7 +158,7 @@ async function fixture(gitRepository = true) {
     Effect.provideService(CoreModules, core as never),
     Effect.provideService(CodexGitProbe, git),
     Effect.provideService(ExecutionHostRuntime, {
-      resolve: () => Effect.succeed({ descriptor: { managedRoot: join(home, "trees") } }),
+      resolve: () => Effect.succeed({ descriptor: { managedRoot } }),
     } as never),
     Effect.provideService(NativeSessionWorkspace, {
       prepare: (input) =>
@@ -179,7 +185,7 @@ async function fixture(gitRepository = true) {
           const result = await createManagedWorktree({
             repositoryPath: repository,
             nodexHome: home,
-            managedRoot: join(home, "trees"),
+            managedRoot,
             projectId: "project",
             targetId: input.targetId,
             threadTitle: input.title,
@@ -331,9 +337,9 @@ async function fixture(gitRepository = true) {
   };
 }
 
-const acquireFixture = (gitRepository = true) =>
+const acquireFixture = (gitRepository = true, symlinkedRoot = false) =>
   Effect.acquireRelease(
-    Effect.tryPromise(() => fixture(gitRepository)),
+    Effect.tryPromise(() => fixture(gitRepository, symlinkedRoot)),
     (f) => Effect.promise(f.dispose),
   );
 
@@ -468,6 +474,21 @@ it.effect("a failed checkout is claimed and created again by the next preparatio
       expect(f.workspace?.allocation_operation_id).toBe(allocation);
       expect(retried?.location.cwd).toBe(f.workspace?.worktree_path);
       expect(f.creations).toBe(1);
+    }),
+  ),
+);
+it.effect("creates the checkout under a managed root configured through a symlink", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const f = yield* acquireFixture(true, true);
+      const owner = yield* f.owner;
+      const lease = yield* f.ensure(owner);
+      expect(f.workspace?.lifecycle).toBe("ready");
+      expect(lease?.location.cwd).toBe(f.workspace?.worktree_path);
+      const branch = yield* Effect.promise(() =>
+        exec("git", ["branch", "--show-current"], { cwd: lease!.location.cwd }),
+      );
+      expect(branch.stdout.trim()).toBe(f.workspace?.branch_name);
     }),
   ),
 );
