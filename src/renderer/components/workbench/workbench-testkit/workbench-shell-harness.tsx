@@ -1625,6 +1625,8 @@ function MockThreadStageHeader({ title }: { readonly title: string }) {
   );
 }
 
+const connectedThreadStageProps = new WeakMap<Element, Record<string, unknown>>();
+
 vi.mock("@/features/local-conversation", () => ({
   useDefaultCodexAppServerManager: () => ({
     readProjectThreadSummaries: () => [],
@@ -1750,7 +1752,12 @@ vi.mock("@/features/local-conversation", () => ({
         : createElement(AppShellHeaderContentRegistrar, { content: headerContent }),
       createElement(
         "div",
-        { "data-thread-stage": "true" },
+        {
+          "data-thread-stage": "true",
+          ref: (element: HTMLDivElement | null) => {
+            if (element) connectedThreadStageProps.set(element, props);
+          },
+        },
         createElement("span", null, `Thread:${String(props.activeThreadId)}`),
         props.isNewThreadTab || props.sideChatContext
           ? createElement("textarea", {
@@ -5305,6 +5312,13 @@ export function getConnectedThreadStagePropsByThreadId(
       __mockConnectedThreadStagePropsByThreadId?: Record<string, Record<string, unknown>>;
     }
   ).__mockConnectedThreadStagePropsByThreadId?.[threadId];
+}
+
+export function getConnectedThreadStagePropsFor(
+  element: Element,
+): Record<string, unknown> | undefined {
+  const stage = element.closest('[data-thread-stage="true"]');
+  return stage ? connectedThreadStageProps.get(stage) : undefined;
 }
 
 export type WorkbenchShellTestScope =
