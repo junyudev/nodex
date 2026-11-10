@@ -1,3 +1,4 @@
+import { InboxSkillAvailabilityInputSchema } from "../shared/schemas/inbox";
 import * as Effect from "effect/Effect";
 import { z } from "zod";
 import type { components } from "@nodex/core-protocol";
@@ -156,6 +157,8 @@ export const executeHostCommand = (
         return yield* hostLocalCommit(inbox.send(InboxSendInputSchema.parse(input)));
       // The host resolves the decision's Agent from its own catalog; Core confirms it with
       // the requesting Member's authority, exactly as for a phone.
+      case "inbox_skill_availability":
+        return yield* inbox.skillAvailability(InboxSkillAvailabilityInputSchema.parse(input));
       case "inbox_prepare_confirmation":
         return yield* inbox.prepareConfirmation(InboxConfirmationDraftSchema.parse(input));
       case "inbox_confirm":

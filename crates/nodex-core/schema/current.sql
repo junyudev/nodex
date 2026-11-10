@@ -4258,7 +4258,7 @@ CREATE TABLE inbox_handoffs (
   execution_selection_json TEXT CHECK (execution_selection_json IS NULL OR json_valid(execution_selection_json)),
   target_execution_ref_json TEXT CHECK (target_execution_ref_json IS NULL OR json_valid(target_execution_ref_json))
   , images_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(images_json) AND json_type(images_json) = 'array'), question_response_json TEXT
-  CHECK (question_response_json IS NULL OR json_valid(question_response_json))) WITHOUT ROWID, STRICT;
+  CHECK (question_response_json IS NULL OR json_valid(question_response_json)), skill_invocations_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(skill_invocations_json) AND json_type(skill_invocations_json) = 'array'), unavailable_skills_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(unavailable_skills_json) AND json_type(unavailable_skills_json) = 'array')) WITHOUT ROWID, STRICT;
 CREATE TABLE inbox_suggestion_requests (
   request_id TEXT PRIMARY KEY,
   library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
@@ -4287,7 +4287,7 @@ CREATE TABLE inbox_routing_deliveries (
   handed_over_at_ms INTEGER NOT NULL CHECK(handed_over_at_ms>=0)
 , run_started_at_ms INTEGER
   CHECK (run_started_at_ms IS NULL OR run_started_at_ms >= 0), last_refusal TEXT
-  CHECK (last_refusal IS NULL OR length(last_refusal) <= 2048)) WITHOUT ROWID, STRICT;
+  CHECK (last_refusal IS NULL OR length(last_refusal) <= 2048), skill_offers_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(skill_offers_json) AND json_type(skill_offers_json) = 'array')) WITHOUT ROWID, STRICT;
 CREATE TABLE inbox_decision_undo (
   token TEXT PRIMARY KEY,
   operation_id TEXT NOT NULL UNIQUE,
@@ -5987,4 +5987,4 @@ CREATE TABLE project_session_chat_folders (
   output_directory TEXT,
   origin TEXT NOT NULL CHECK (origin IN ('generated', 'chosen'))
 ) WITHOUT ROWID;
-PRAGMA user_version=206;
+PRAGMA user_version=207;

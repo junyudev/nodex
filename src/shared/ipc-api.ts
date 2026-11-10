@@ -1086,6 +1086,10 @@ export interface IpcApi
     args: [input: import("./inbox").InboxStreamInput];
     result: import("./inbox").InboxWindow;
   };
+  "inbox:skill-availability": {
+    args: [input: import("./inbox").InboxSkillAvailabilityInput];
+    result: readonly import("./inbox").InboxSkillAvailability[];
+  };
   "inbox:prepare-confirmation": {
     args: [input: import("./inbox").InboxConfirmationDraft];
     result: import("./inbox").InboxPreparedConfirmation;

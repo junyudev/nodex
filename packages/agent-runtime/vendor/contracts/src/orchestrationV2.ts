@@ -1406,7 +1406,16 @@ export const OrchestrationV2MessageDeliveryReceipt = Schema.Struct({
   nativeItemRef: Schema.optional(OrchestrationV2ProviderRef),
 });
 
+const SkillInvocations = Schema.optional(Schema.Array(Schema.Struct({
+  name: TrimmedNonEmptyString,
+  path: TrimmedNonEmptyString,
+  instanceId: TrimmedNonEmptyString,
+  cwd: TrimmedNonEmptyString,
+})).check(Schema.isMaxLength(3)));
+
 export const OrchestrationV2ConversationMessage = Schema.Struct({
+  skillInvocations: SkillInvocations,
+  unavailableSkillNames: Schema.optional(Schema.Array(Schema.String)),
   delegatedQuestion: Schema.optional(Schema.Struct({ taskId: NodeId, requestId: RuntimeRequestId })),
   notification: Schema.optional(OrchestrationV2Notification),
   ...OrchestrationV2CreationFields,
@@ -3449,6 +3458,7 @@ export const OrchestrationV2Command = Schema.Union([
     messageId: MessageId,
     text: Schema.String,
     providerText: Schema.optional(Schema.String),
+    skillInvocations: SkillInvocations,
     context: Schema.optional(OrchestrationMessageContext),
     attachments: Schema.Array(ChatAttachment),
     modelSelection: Schema.optional(ModelSelection),

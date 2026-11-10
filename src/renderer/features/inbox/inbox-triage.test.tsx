@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from "vite-plus/test";
 
 import { openNodexMenu, render } from "@/test/dom";
 import { TestQueryProvider } from "@/test/query";
-import type { InboxItem, InboxProposal } from "../../../shared/inbox";
+import type { InboxDispatchAction, InboxItem, InboxProposal } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import { InboxDeleteDialog } from "./inbox-delete-dialog";
 import { actionFromDraft, draftForInboxItem, draftFromAction } from "./inbox-dispatch-editor";
@@ -601,6 +601,39 @@ describe("InboxTriage", () => {
     expect(draftForInboxItem(item({ proposal: offered }), null, kept).prompt).toBe(
       "Fix the scroll jump.\n\nStart from thread-body.tsx.",
     );
+  });
+
+  test("drops a skill from the reviewed proposal and retains the rest in the manual draft", async () => {
+    const skills = [
+      { name: "review", reason: "Check the diff." },
+      { name: "diagnose", reason: "Find the cause." },
+    ];
+    const offered = proposal({
+      action: {
+        type: "new_chat",
+        projectId: "project:nodex",
+        agent: null,
+        prompt: "Fix the scroll jump.",
+        additions: [],
+        skills,
+      },
+    });
+    const commands = renderTriage({ item: item({ proposal: offered }) });
+    expect(
+      screen.getByRole("button", { name: "Use diagnose skill" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    await click("Use review skill");
+    expect(
+      screen.getByRole("button", { name: "Use review skill" }).getAttribute("aria-pressed"),
+    ).toBe("false");
+    await click("New chat in Nodex");
+    const edited = { ...offered.action, skills: [skills[1]!] } as InboxDispatchAction;
+    await waitFor(() =>
+      expect(commands.confirm).toHaveBeenCalledWith(offered, edited, undefined, ["review"]),
+    );
+    expect(
+      draftForInboxItem(item({ proposal: offered }), null, edited, null, ["review"]),
+    ).toMatchObject({ skills: [skills[1]], droppedSkillNames: ["review"] });
   });
 
   test("Edit rewrites the message itself and asks nothing to run", async () => {

@@ -88,6 +88,38 @@ pub enum ProjectWorkspaceInboxProposalState {
     Failed,
 }
 
+/// A skill the user can include when confirming a chat proposal.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxSuggestedSkill {
+    pub name: String,
+    pub reason: String,
+}
+
+/// A routing offer is scoped to one new-chat choice or one existing Session.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxSkillOffer {
+    pub project_id: Option<String>,
+    pub session_id: Option<String>,
+    pub instance_id: Option<String>,
+    pub skills: Vec<InboxOfferedSkill>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxOfferedSkill {
+    pub name: String,
+    pub description: String,
+}
+
+/// Host-resolved skill identity. Paths never enter the routing prompt.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct InboxSkillInvocation {
+    pub name: String,
+    pub path: String,
+    pub instance_id: String,
+    pub cwd: String,
+}
+
 /// The exact action a proposal asks the user to authorize.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -106,6 +138,8 @@ pub enum ProjectWorkspaceInboxDispatchAction {
         /// Sent after the prompt unless the user drops them: how to run or what to consult, never what to deliver.
         #[serde(default)]
         additions: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        skills: Vec<InboxSuggestedSkill>,
         /// What the chat runs on when chosen for this decision; the Inbox's own otherwise.
         #[serde(default)]
         agent: Option<ProjectWorkspaceInboxChatAgent>,
@@ -117,6 +151,8 @@ pub enum ProjectWorkspaceInboxDispatchAction {
         /// Sent after the prompt unless the user drops them: how to run or what to consult, never what to deliver.
         #[serde(default)]
         additions: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        skills: Vec<InboxSuggestedSkill>,
     },
     /// File the entries into one active Project: their Pages move into its primary
     /// Database and the entries are kept, without reopening there.
@@ -262,6 +298,8 @@ pub struct InboxQuestionResponse {
 /// Handover and the carrying Run start survive restarts.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct InboxRoutingDelivery {
+    #[serde(default)]
+    pub skill_offers: Vec<InboxSkillOffer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused_ms: Option<i64>,
     pub coordinator_session_id: String,
@@ -335,6 +373,8 @@ pub struct ProjectWorkspaceInboxChat {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxProposal {
+    #[serde(default)]
+    pub unavailable_skill_names: Vec<String>,
     pub answered_question: bool,
     /// Created cards in plan-step order; empty until confirmation.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -536,6 +576,8 @@ pub struct ProjectWorkspaceInboxDispatchContext {
 /// A confirmed dispatch that the Desktop Host must deliver.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxDispatchWork {
+    #[serde(default)]
+    pub skill_invocations: Vec<InboxSkillInvocation>,
     pub question_response: Option<InboxQuestionResponse>,
     /// None only for pre-snapshot history that must be reconciled, never sent.
     pub final_text: Option<String>,

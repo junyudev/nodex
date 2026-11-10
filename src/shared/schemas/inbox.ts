@@ -84,6 +84,32 @@ const additions = z
   .max(MAX_INBOX_ADDITIONS)
   .default([]);
 
+export const InboxSkillNameSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-zA-Z0-9][a-zA-Z0-9:_-]*$/);
+export const InboxSuggestedSkillsSchema = z
+  .array(
+    z.strictObject({
+      name: InboxSkillNameSchema,
+      reason: z.string().trim().min(1).max(160),
+    }),
+  )
+  .max(3);
+export const InboxDroppedSkillNamesSchema = z.array(InboxSkillNameSchema).max(3);
+const skillInvocations = z
+  .array(
+    z.strictObject({
+      name: InboxSkillNameSchema,
+      path: z.string().min(1),
+      instanceId: id,
+      cwd: z.string().min(1),
+    }),
+  )
+  .max(3)
+  .optional();
+
 export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
   z.strictObject({
     type: z.literal("plan"),
@@ -123,9 +149,18 @@ export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
       prompt,
       agent: InboxAgentChoiceSchema.nullable().default(null),
       additions,
+      skills: InboxSuggestedSkillsSchema.default([]),
     })
     .strict(),
-  z.object({ type: z.literal("send_to_chat"), sessionId: id, prompt, additions }).strict(),
+  z
+    .object({
+      type: z.literal("send_to_chat"),
+      sessionId: id,
+      prompt,
+      additions,
+      skills: InboxSuggestedSkillsSchema.default([]),
+    })
+    .strict(),
   z.object({ type: z.literal("move_to_project"), projectId: id }).strict(),
 ]) satisfies z.ZodType<InboxDispatchAction>;
 
@@ -216,6 +251,8 @@ export const InboxConfirmInputSchema = z
     proposalId: id,
     expectedRevision: z.number().int().min(1),
     action: InboxDispatchActionSchema.optional(),
+    droppedSkillNames: InboxDroppedSkillNamesSchema.optional(),
+    skillInvocations,
   })
   .strict() satisfies z.ZodType<InboxConfirmInput>;
 
@@ -232,6 +269,20 @@ export const InboxDispatchInputSchema = z
   })
   .strict() satisfies z.ZodType<InboxDispatchInput>;
 
+export const InboxSkillAvailabilityInputSchema = z.strictObject({
+  proposalId: id,
+  expectedRevision: z.number().int().min(1),
+  pageId: id,
+  target: z.discriminatedUnion("type", [
+    z.strictObject({
+      type: z.literal("new_chat"),
+      projectId: id.nullable(),
+      instanceId: id.nullable(),
+    }),
+    z.strictObject({ type: z.literal("send_to_chat"), sessionId: id }),
+  ]),
+});
+
 export const InboxConfirmationDraftSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -241,6 +292,7 @@ export const InboxConfirmationDraftSchema = z.discriminatedUnion("kind", [
       expectedRevision: z.number().int().min(1),
       basis,
       action: InboxDispatchActionSchema.optional(),
+      droppedSkillNames: InboxDroppedSkillNamesSchema.optional(),
     })
     .strict(),
   z

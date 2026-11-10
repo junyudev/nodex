@@ -5997,6 +5997,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           targetRunId: dispatchMode.targetRunId,
           messageId: command.messageId,
           text: dispatchText,
+          ...(command.skillInvocations === undefined
+            ? {}
+            : { skillInvocations: command.skillInvocations }),
           ...(command.providerText === undefined ? {} : { providerText: command.providerText }),
           ...(command.context ? { context: command.context } : {}),
           attachments: command.attachments,
@@ -6223,6 +6226,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           nodeId: rootNodeId,
           role: "user",
           text: dispatchText,
+          ...(command.skillInvocations === undefined
+            ? {}
+            : { skillInvocations: command.skillInvocations }),
           ...(command.providerText === undefined ? {} : { providerText: command.providerText }),
           ...(command.context ? { context: command.context } : {}),
           attachments: command.attachments,
@@ -6610,6 +6616,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           nodeId: rootNodeId,
           role: "user",
           text: dispatchText,
+          ...(command.skillInvocations === undefined
+            ? {}
+            : { skillInvocations: command.skillInvocations }),
           ...(command.providerText === undefined ? {} : { providerText: command.providerText }),
           ...(command.context ? { context: command.context } : {}),
           attachments: command.attachments,
@@ -7318,6 +7327,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         nodeId: rootNodeId,
         role: "user",
         text: dispatchText,
+        ...(command.skillInvocations === undefined
+          ? {}
+          : { skillInvocations: command.skillInvocations }),
         ...(command.providerText === undefined ? {} : { providerText: command.providerText }),
         ...(command.context ? { context: command.context } : {}),
         attachments: command.attachments,

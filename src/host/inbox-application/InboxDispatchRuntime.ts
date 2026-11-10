@@ -1,3 +1,4 @@
+import { makeInboxSkills } from "./inbox-skills";
 import { deliverChatLaunch } from "../work-application/chat-launch-delivery";
 import { createHash } from "node:crypto";
 import * as Effect from "effect/Effect";
@@ -43,7 +44,7 @@ export const inboxDispatchIdentity = (
 
 /** Runtime retains the first prepared message against the immutable confirmed intent. */
 export const inboxDispatchFingerprint = (
-  work: Pick<CoreInboxDispatchWork, "message_id" | "final_text" | "images">,
+  work: Pick<CoreInboxDispatchWork, "message_id" | "final_text" | "images" | "skill_invocations">,
 ): string =>
   createHash("sha256")
     .update(
@@ -53,6 +54,16 @@ export const inboxDispatchFingerprint = (
         work.message_id,
         work.final_text,
         work.images.map((image) => [image.file_id, image.content_hash]),
+        ...(work.skill_invocations?.length
+          ? [
+              work.skill_invocations.map((skill) => [
+                skill.name,
+                skill.path,
+                skill.instanceId,
+                skill.cwd,
+              ]),
+            ]
+          : []),
       ]),
     )
     .digest("hex");
@@ -62,6 +73,7 @@ export const make = Effect.gen(function* () {
   const inbox = yield* InboxApplication;
   const runtime = yield* AgentRuntimeApplication;
   const workspace = yield* ProjectWorkspace;
+  const skillInventory = yield* makeInboxSkills;
   const loadImages = yield* makeInboxImageLoader;
   const remoteTurns = yield* Effect.serviceOption(NativeConversationDelivery);
   const logger = getLogger({ component: "inbox-dispatch-runtime" });
@@ -88,6 +100,7 @@ export const make = Effect.gen(function* () {
       messageId: work.message_id,
       text: note ? `${text}\n\n${note} could not be attached.` : text,
       agentConfigs: [],
+      ...(work.skill_invocations?.length ? { skillInvocations: work.skill_invocations } : {}),
       images: inboxPromptImages(loaded),
     };
   });
@@ -195,7 +208,25 @@ export const make = Effect.gen(function* () {
       if (!location.available)
         return yield* inbox.failDispatch(work, location.reason, "unavailable");
     }
-    const message = yield* prepareMessage(work, work.final_text);
+    const frozenSkills = work.skill_invocations ?? [];
+    const currentSkills = yield* skillInventory.resolve(
+      action,
+      work.execution_selection?.model_selection.instanceId,
+      frozenSkills.map(({ name }) => name),
+    );
+    const skills = frozenSkills.filter((skill) =>
+      currentSkills.some(
+        (candidate) =>
+          candidate.name === skill.name &&
+          candidate.path === skill.path &&
+          candidate.cwd === skill.cwd &&
+          candidate.instanceId === skill.instanceId,
+      ),
+    );
+    const unavailableSkills = frozenSkills
+      .filter((skill) => !skills.includes(skill))
+      .map(({ name }) => name);
+    const message = yield* prepareMessage({ ...work, skill_invocations: skills }, work.final_text);
     if (action.type === "new_chat") {
       if (session.projectId !== action.projectId)
         return yield* inbox.failDispatch(
@@ -228,7 +259,7 @@ export const make = Effect.gen(function* () {
         workPage: work.page_ids[0] ? { pageId: work.page_ids[0] } : undefined,
         message,
       });
-      return yield* inbox.completeDispatch(work, threadId);
+      return yield* inbox.completeDispatch(work, threadId, unavailableSkills);
     }
     if (session.executionRef) {
       if (
@@ -248,7 +279,7 @@ export const make = Effect.gen(function* () {
         messageFingerprint: inboxDispatchFingerprint(work),
         message,
       });
-      return yield* inbox.completeDispatch(work, session.executionRef.threadId);
+      return yield* inbox.completeDispatch(work, session.executionRef.threadId, unavailableSkills);
     }
     const thread = session.thread;
     if (

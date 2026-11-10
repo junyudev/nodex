@@ -77,10 +77,27 @@ export const proposalAttribution = ({
 };
 
 /** The decision that authorizes a suggestion exactly as it was shown, and how it is confirmed. */
+export const proposalSkills = (proposal: InboxProposal) =>
+  proposal.action.type === "new_chat" || proposal.action.type === "send_to_chat"
+    ? (proposal.action.skills ?? [])
+    : [];
+
 export const proposalAcceptance = (
   proposal: InboxProposal,
+  droppedSkillNames: readonly string[] = [],
 ): { readonly decision: InboxDecision; readonly done: string } => ({
-  decision: { type: "accept", proposalId: proposal.proposalId, revision: proposal.revision },
+  decision: {
+    type: "accept",
+    proposalId: proposal.proposalId,
+    revision: proposal.revision,
+    ...(proposalSkills(proposal).length
+      ? {
+          keptSkillNames: proposalSkills(proposal)
+            .filter(({ name }) => !droppedSkillNames.includes(name))
+            .map(({ name }) => name),
+        }
+      : {}),
+  },
   done: proposal.action.type === "keep" ? "Kept" : "Done",
 });
 

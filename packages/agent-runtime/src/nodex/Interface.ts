@@ -549,6 +549,10 @@ export interface AgentRuntimeOperations
     readonly input: { readonly refresh?: boolean; readonly instanceIds?: ReadonlyArray<string> };
     readonly output: ReadonlyArray<AgentWire<ServerProvider>>;
   };
+  readonly "providers.skills.read": {
+    readonly input: { readonly instanceId: string; readonly cwd: string };
+    readonly output: NonNullable<AgentWire<ServerProvider>["skills"]>;
+  };
   readonly "providers.logout": {
     /** Signs the named Agents out of the sign-in their own CLI keeps, then checks them again. */
     readonly input: { readonly instanceIds: ReadonlyArray<string> };

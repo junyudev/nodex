@@ -501,6 +501,39 @@ const history = {
 };
 
 it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
+  it.effect("delivers verified Inbox skills through the native prompt argument", () =>
+    Effect.gen(function* () {
+      const kept = {
+        name: "review",
+        path: `${WORK}/.agents/skills/review/SKILL.md`,
+        cwd: WORK,
+        instanceId,
+      };
+      const removed = { ...kept, name: "removed", path: `${WORK}/.agents/skills/removed/SKILL.md` };
+      const { runtime, thread } = yield* resumed([
+        out("skill.list", { "location[directory]": WORK }),
+        reply("skill.list", {
+          location: { directory: WORK },
+          data: [{ id: kept.name, name: "Review", path: kept.path, content: "Review the work." }],
+        }),
+        out("session.prompt", { sessionID: SESSION, text: "hi", skills: [{ id: "review" }] }),
+        promptAccepted,
+        event("session.execution.succeeded", { sessionID: SESSION }),
+      ]);
+      const input = turnInput(thread);
+      const unavailable: string[] = [];
+      yield* runtime.startTurn({
+        ...input,
+        message: { ...input.message, skillInvocations: [kept, removed] },
+        reportUnavailableSkills: (names) =>
+          Effect.sync(() => {
+            unavailable.push(...names);
+          }),
+      });
+      assert.deepEqual(unavailable, ["removed"]);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("switches the session's model and variant before a turn that changed them", () =>
     Effect.gen(function* () {
       const { runtime, thread } = yield* resumed([

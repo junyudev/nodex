@@ -61,6 +61,8 @@ export const isChatAction = (
  */
 export interface InboxRowEdit {
   readonly proposalId: string;
+  readonly revision?: number;
+  readonly droppedSkillNames?: readonly string[];
   readonly agent?: InboxAgentChoice | null;
   readonly dropped: readonly number[];
 }
@@ -74,15 +76,22 @@ export function inboxRowAction(
   const choosesAgent =
     edit.agent !== undefined && (action.type === "new_chat" || action.type === "execute_decision");
   const dropsAdditions = edit.dropped.length > 0 && isChatAction(action);
-  if (!choosesAgent && !dropsAdditions) return null;
+  if (!choosesAgent && !dropsAdditions && !edit.droppedSkillNames?.length) return null;
   const withAgent =
     choosesAgent && (action.type === "new_chat" || action.type === "execute_decision")
       ? { ...action, agent: edit.agent ?? null }
       : action;
-  return isChatAction(withAgent) && dropsAdditions
+  return isChatAction(withAgent)
     ? {
         ...withAgent,
         additions: withAgent.additions.filter((_, index) => !edit.dropped.includes(index)),
+        ...(edit.droppedSkillNames?.length
+          ? {
+              skills: (withAgent.skills ?? []).filter(
+                ({ name }) => !edit.droppedSkillNames?.includes(name),
+              ),
+            }
+          : {}),
       }
     : withAgent;
 }

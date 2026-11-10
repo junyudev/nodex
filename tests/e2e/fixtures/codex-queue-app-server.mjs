@@ -537,6 +537,21 @@ const handle = (message) => {
       respond(id, {});
       return;
     case "skills/list":
+      if (process.env.NODEX_FAKE_CODEX_INBOX_SKILLS === "1") {
+        respond(id, {
+          data: (params.cwds ?? []).map((cwd) => ({
+            cwd,
+            errors: [],
+            skills: ["positioning-review", "homepage-audit"].flatMap((name) => {
+              const skillPath = path.join(cwd, ".agents", "skills", name, "SKILL.md");
+              return fs.existsSync(skillPath)
+                ? [{ name, path: skillPath, description: "Review the homepage", scope: "repo", enabled: true, pluginId: null }]
+                : [];
+            }),
+          })),
+        });
+        return;
+      }
       respond(id, {
         data: [{
           cwd: process.cwd(),

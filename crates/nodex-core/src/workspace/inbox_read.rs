@@ -871,6 +871,12 @@ fn read_proposal(
         .collect::<Result<Vec<_>, _>>()?;
     let outdated = basis.iter().any(|current| !written.basis.contains(current));
     Ok(Some(ProjectWorkspaceInboxProposal {
+        unavailable_skill_names: super::inbox::reliable::read_handoff_json(
+            connection,
+            proposal_id,
+            "unavailable_skills_json",
+        )?
+        .unwrap_or_default(),
         answered_question: super::inbox::reliable::read_handoff_json::<
             nodex_core_contracts::inbox::InboxQuestionResponse,
         >(connection, proposal_id, "question_response_json")?
@@ -1457,6 +1463,12 @@ pub(super) fn read_dispatch_outbox(
             }
         }
         let item = ProjectWorkspaceInboxDispatchWork {
+            skill_invocations: super::inbox::reliable::read_handoff_json(
+                connection,
+                &proposal_id,
+                "skill_invocations_json",
+            )?
+            .unwrap_or_default(),
             question_response: super::inbox::reliable::read_handoff_json(
                 connection,
                 &proposal_id,

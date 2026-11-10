@@ -5243,7 +5243,7 @@ export interface components {
          * @description Only these semantic operations may cross from a Member to the execution owner.
          * @enum {string}
          */
-        readonly HostOperation: "activity" | "connection" | "providers" | "session_read" | "session_control" | "session_inspect" | "thread_identity" | "session_history" | "session_message" | "session_respond" | "session_stop" | "session_stop_task" | "session_cancel_task" | "session_stop_background" | "session_background_output" | "session_prompt_turns" | "session_prompt_index" | "session_queue" | "session_queue_read" | "session_item" | "session_attachment" | "session_overview" | "session_queued_preview" | "session_run_message" | "session_start" | "session_fork" | "session_side_chat_create" | "session_side_chat_delete" | "session_merge_back" | "session_rewrite_message" | "session_compact" | "session_clear_context" | "session_rename" | "session_archive" | "session_unarchive" | "session_move" | "work_start" | "workspace_refresh" | "coordinator_open" | "inbox_settings" | "inbox_reply_destination" | "inbox_send" | "inbox_prepare_confirmation" | "inbox_confirm" | "inbox_dispatch" | "inbox_chat_targets" | "inbox_request_suggestion" | "inbox_stop_suggestion" | "inbox_retry_dispatch" | "chat_search" | "chat_search_messages";
+        readonly HostOperation: "activity" | "connection" | "providers" | "session_read" | "session_control" | "session_inspect" | "thread_identity" | "session_history" | "session_message" | "session_respond" | "session_stop" | "session_stop_task" | "session_cancel_task" | "session_stop_background" | "session_background_output" | "session_prompt_turns" | "session_prompt_index" | "session_queue" | "session_queue_read" | "session_item" | "session_attachment" | "session_overview" | "session_queued_preview" | "session_run_message" | "session_start" | "session_fork" | "session_side_chat_create" | "session_side_chat_delete" | "session_merge_back" | "session_rewrite_message" | "session_compact" | "session_clear_context" | "session_rename" | "session_archive" | "session_unarchive" | "session_move" | "work_start" | "workspace_refresh" | "coordinator_open" | "inbox_settings" | "inbox_reply_destination" | "inbox_send" | "inbox_prepare_confirmation" | "inbox_skill_availability" | "inbox_confirm" | "inbox_dispatch" | "inbox_chat_targets" | "inbox_request_suggestion" | "inbox_stop_suggestion" | "inbox_retry_dispatch" | "chat_search" | "chat_search_messages";
         readonly HostRegistration: {
             readonly instance: string;
         };
@@ -5261,6 +5261,10 @@ export interface components {
             readonly reason: string;
             readonly receipt_id: string;
             readonly returned_at: string;
+        };
+        readonly InboxOfferedSkill: {
+            readonly description: string;
+            readonly name: string;
         };
         readonly InboxPlanAgent: {
             readonly effort: string | null;
@@ -5315,12 +5319,32 @@ export interface components {
             readonly paused_ms?: number | null;
             /** Format: int64 */
             readonly run_started_at_ms?: number | null;
+            readonly skill_offers?: readonly components["schemas"]["InboxSkillOffer"][];
         };
         /**
          * @description Membership comes from Core's current Turn, independently of its explanatory note.
          * @enum {string}
          */
         readonly InboxRowKind: "problem" | "intake" | "turn" | "answer";
+        /** @description Host-resolved skill identity. Paths never enter the routing prompt. */
+        readonly InboxSkillInvocation: {
+            readonly cwd: string;
+            readonly instanceId: string;
+            readonly name: string;
+            readonly path: string;
+        };
+        /** @description A routing offer is scoped to one new-chat choice or one existing Session. */
+        readonly InboxSkillOffer: {
+            readonly instance_id?: string | null;
+            readonly project_id?: string | null;
+            readonly session_id?: string | null;
+            readonly skills: readonly components["schemas"]["InboxOfferedSkill"][];
+        };
+        /** @description A skill the user can include when confirming a chat proposal. */
+        readonly InboxSuggestedSkill: {
+            readonly name: string;
+            readonly reason: string;
+        };
         readonly InboxTurn: {
             readonly active_chat?: components["schemas"]["ProjectWorkspaceInboxChat"] | null;
             readonly delivery_error?: string | null;
@@ -8978,6 +9002,7 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "begin_inbox_routing";
                 readonly request_id: string;
+                readonly skill_offers?: readonly components["schemas"]["InboxSkillOffer"][];
             } | {
                 readonly coordinator_session_id: string;
                 /** Format: int64 */
@@ -9036,6 +9061,7 @@ export interface components {
                 readonly kind: "confirm_inbox_dispatch";
                 readonly proposal_id: string;
                 readonly session_id?: string | null;
+                readonly skill_invocations?: readonly components["schemas"]["InboxSkillInvocation"][];
             } | {
                 readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
                 readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
@@ -9133,6 +9159,7 @@ export interface components {
                 readonly kind: "complete_inbox_dispatch";
                 readonly message_id: string;
                 readonly proposal_id: string;
+                readonly unavailable_skill_names?: readonly string[];
             } | {
                 /** Format: int64 */
                 readonly expected_revision: number;
@@ -11348,6 +11375,7 @@ export interface components {
             readonly agent?: components["schemas"]["ProjectWorkspaceInboxChatAgent"] | null;
             readonly project_id?: string | null;
             readonly prompt: string;
+            readonly skills?: readonly components["schemas"]["InboxSuggestedSkill"][];
             /** @enum {string} */
             readonly type: "new_chat";
         } | {
@@ -11355,6 +11383,7 @@ export interface components {
             readonly additions?: readonly string[];
             readonly prompt: string;
             readonly session_id: string;
+            readonly skills?: readonly components["schemas"]["InboxSuggestedSkill"][];
             /** @enum {string} */
             readonly type: "send_to_chat";
         } | {
@@ -11404,6 +11433,7 @@ export interface components {
             /** Format: int64 */
             readonly revision: number;
             readonly session_id: string;
+            readonly skill_invocations?: readonly components["schemas"]["InboxSkillInvocation"][];
             readonly target_execution_ref?: components["schemas"]["ProjectWorkspaceSessionExecutionRef"] | null;
             /** @description Runtime family of the target chat's Thread: codex, claude, opencode, or acp. */
             readonly thread_backend_kind?: string | null;
@@ -11564,6 +11594,7 @@ export interface components {
             readonly summary: string;
             /** @description Display context for the action's target Project. */
             readonly target_project_name?: string | null;
+            readonly unavailable_skill_names?: readonly string[];
             readonly updated_at: string;
         };
         /** @enum {string} */
@@ -12332,6 +12363,7 @@ export interface components {
             /** @enum {string} */
             readonly kind: "begin_inbox_routing";
             readonly request_id: string;
+            readonly skill_offers?: readonly components["schemas"]["InboxSkillOffer"][];
         } | {
             readonly coordinator_session_id: string;
             /** Format: int64 */
@@ -12390,6 +12422,7 @@ export interface components {
             readonly kind: "confirm_inbox_dispatch";
             readonly proposal_id: string;
             readonly session_id?: string | null;
+            readonly skill_invocations?: readonly components["schemas"]["InboxSkillInvocation"][];
         } | {
             readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
             readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
@@ -12487,6 +12520,7 @@ export interface components {
             readonly kind: "complete_inbox_dispatch";
             readonly message_id: string;
             readonly proposal_id: string;
+            readonly unavailable_skill_names?: readonly string[];
         } | {
             /** Format: int64 */
             readonly expected_revision: number;

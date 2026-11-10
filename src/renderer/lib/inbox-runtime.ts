@@ -148,3 +148,7 @@ export const retryInboxProblem = (input: RetryProblemInput) =>
   invokeLocalCommitCommand(retryProblemCommand, input);
 export const readInboxActivity = (input: ActivityWindowInput) =>
   invokeRendererQuery("inbox:activity", input);
+
+export const readInboxSkillAvailability = (
+  input: import("../../shared/inbox").InboxSkillAvailabilityInput,
+) => invokeRendererQuery("inbox:skill-availability", input);

@@ -87,6 +87,7 @@ pub(super) fn turn_reply(
     let action = ProjectWorkspaceInboxDispatchAction::SendToChat {
         session_id: session.clone(),
         prompt: body.into(),
+        skills: vec![],
         additions: vec![],
     };
     connection.execute("INSERT INTO inbox_proposals(proposal_id,library_id,origin,state,action_json,summary,basis_json,dispatch_session_id,confirmed_at,confirmed_by,attempt,created_at,updated_at) VALUES(?1,?2,'user','dispatching',?3,'Reply to the active chat','[]',?4,?5,'user',1,?5,?5)",params![proposal,library,action_json(&action)?,session,now])?;

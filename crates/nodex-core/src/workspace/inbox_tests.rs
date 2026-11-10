@@ -343,6 +343,7 @@ fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
         "proposal:1",
         &entry,
         ProjectWorkspaceInboxDispatchAction::NewChat {
+            skills: vec![],
             additions: vec![],
             project_id: Some("project:default".into()),
             prompt: "Survey three assistant onboarding flows; do not change code.".into(),
@@ -359,6 +360,7 @@ fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
     assert_eq!(summary(module).needs_decision_count, 1);
 
     let confirm = ProjectWorkspaceIntent::ConfirmInboxDispatch {
+        skill_invocations: vec![],
         confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
         expected_store_epoch: "epoch-1".into(),
         basis: proposal_basis(module, "proposal:1"),
@@ -413,6 +415,7 @@ fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
             expected_revision: dispatches[0].revision,
             message_id: dispatches[0].message_id.clone(),
             proposal_id: "proposal:1".into(),
+            unavailable_skill_names: vec![],
             dispatched_thread_id: Some("thread:dispatched".into()),
         },
     );
@@ -430,8 +433,10 @@ fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
 }
 
 #[test]
-fn chat_additions_round_trip_and_only_the_confirmed_additions_reach_the_chat() {
-    use nodex_core_contracts::inbox::ProjectWorkspaceInboxChatAgent;
+fn chat_suggestions_freeze_only_the_confirmed_additions_and_skills() {
+    use nodex_core_contracts::inbox::{
+        InboxSkillInvocation, InboxSuggestedSkill, ProjectWorkspaceInboxChatAgent,
+    };
     for (existing_chat, edited) in [(false, false), (false, true), (true, false), (true, true)] {
         let workspace = seeded_workspace();
         let module = &workspace.module;
@@ -451,17 +456,29 @@ fn chat_additions_round_trip_and_only_the_confirmed_additions_reach_the_chat() {
             "Consult the project's API guidelines.".to_owned(),
             "Use the existing onboarding screens as a reference.".to_owned(),
         ];
-        let action = |additions| {
+        let skills = vec![
+            InboxSuggestedSkill {
+                name: "api-review".into(),
+                reason: "Check the API.".into(),
+            },
+            InboxSuggestedSkill {
+                name: "onboarding".into(),
+                reason: "Review the flow.".into(),
+            },
+        ];
+        let action = |additions, skills| {
             if existing_chat {
                 return ProjectWorkspaceInboxDispatchAction::SendToChat {
                     session_id: "session:target".into(),
                     prompt: prompt.into(),
+                    skills,
                     additions,
                 };
             }
             ProjectWorkspaceInboxDispatchAction::NewChat {
                 project_id: Some(PROJECT.into()),
                 prompt: prompt.into(),
+                skills,
                 additions,
                 agent: Some(ProjectWorkspaceInboxChatAgent {
                     instance_id: "claude:work".into(),
@@ -480,29 +497,39 @@ fn chat_additions_round_trip_and_only_the_confirmed_additions_reach_the_chat() {
                     .iter()
                     .map(|addition| format!(" \n{addition}\t "))
                     .collect(),
+                skills.clone(),
             ),
         );
         let proposal = item(module, "page:redesign").proposal.expect("suggestion");
-        assert_eq!(proposal.action, action(additions.clone()));
+        assert_eq!(proposal.action, action(additions.clone(), skills.clone()));
         let confirmed_additions = if edited {
             vec![format!("  {}\n", additions[1])]
         } else {
             additions.clone()
         };
-        apply_host(
-            module,
-            "confirm:planned",
-            ProjectWorkspaceIntent::ConfirmInboxDispatch {
-                confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
-                expected_store_epoch: "epoch-1".into(),
-                basis: proposal_basis(module, "proposal:planned"),
-                execution_selection: Some(selection()),
-                proposal_id: "proposal:planned".into(),
-                expected_revision: proposal.revision,
-                action: edited.then(|| action(confirmed_additions.clone())),
-                session_id: (!existing_chat).then(|| "session:planned".into()),
-            },
-        );
+        let kept = if edited { skills[1..].to_vec() } else { skills };
+        let bindings = kept
+            .iter()
+            .map(|skill| InboxSkillInvocation {
+                name: skill.name.clone(),
+                path: format!("/repo/.agents/skills/{}/SKILL.md", skill.name),
+                instance_id: "claude:work".into(),
+                cwd: "/repo".into(),
+            })
+            .collect::<Vec<_>>();
+        let confirmation = ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            skill_invocations: bindings.clone(),
+            confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
+            expected_store_epoch: "epoch-1".into(),
+            basis: proposal_basis(module, "proposal:planned"),
+            execution_selection: Some(selection()),
+            proposal_id: "proposal:planned".into(),
+            expected_revision: proposal.revision,
+            action: edited.then(|| action(confirmed_additions.clone(), kept.clone())),
+            session_id: (!existing_chat).then(|| "session:planned".into()),
+        };
+        apply_host(module, "confirm:planned", confirmation.clone());
+        apply_host(module, "confirm:planned", confirmation);
         let receiving_session = if existing_chat {
             "session:target"
         } else {
@@ -534,7 +561,8 @@ fn chat_additions_round_trip_and_only_the_confirmed_additions_reach_the_chat() {
             format!("{prompt}\n\n{}", confirmed_additions.join("\n\n"))
         );
         assert!(originals.ends_with("\n> Redesign onboarding and its API.\n"));
-        assert_eq!(work.action, action(confirmed_additions));
+        assert_eq!(work.action, action(confirmed_additions, kept));
+        assert_eq!(work.skill_invocations, bindings);
         assert_eq!(work.execution_selection, Some(selection()));
         assert_eq!(
             work.thread_id.as_deref(),
@@ -563,12 +591,14 @@ fn chat_additions_reject_invalid_values_and_accept_the_character_and_count_limit
                 return ProjectWorkspaceInboxDispatchAction::SendToChat {
                     session_id: "session:target".into(),
                     prompt: "Review the onboarding flow".into(),
+                    skills: vec![],
                     additions,
                 };
             }
             ProjectWorkspaceInboxDispatchAction::NewChat {
                 project_id: None,
                 prompt: "Review the onboarding flow".into(),
+                skills: vec![],
                 additions,
                 agent: None,
             }
@@ -680,6 +710,7 @@ fn stored_chat_actions_without_additions_decode_and_dispatch_without_a_migration
             module,
             "confirm:stored",
             ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                skill_invocations: vec![],
                 confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
                 expected_store_epoch: "epoch-1".into(),
                 basis: proposal_basis(module, "proposal:stored"),
@@ -737,6 +768,7 @@ fn keep_dismisses_suggestions_and_states_filter_the_stream() {
         "proposal:note",
         &entry,
         ProjectWorkspaceInboxDispatchAction::NewChat {
+            skills: vec![],
             additions: vec![],
             project_id: None,
             prompt: "Study it".into(),
@@ -909,6 +941,7 @@ fn user_dispatch_to_a_started_chat_carries_its_thread() {
             proposal_id: "proposal:manual".into(),
             page_ids: vec!["page:follow-up".into()],
             action: ProjectWorkspaceInboxDispatchAction::SendToChat {
+                skills: vec![],
                 additions: vec![],
                 session_id: "session:target".into(),
                 prompt: "Also cover the empty state".into(),
@@ -975,6 +1008,7 @@ fn confirming_a_move_owns_the_library_relocation() {
         module,
         "confirm:move",
         ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            skill_invocations: vec![],
             confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
             expected_store_epoch: "epoch-1".into(),
             basis: proposal_basis(module, "proposal:move"),
@@ -1329,6 +1363,7 @@ fn deleting_a_message_erases_it_and_every_suggestion_that_names_it() {
             page_ids: entries.iter().map(|entry| entry.page_id.clone()).collect(),
             basis: entries.iter().map(|entry| entry.basis.clone()).collect(),
             action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                skills: vec![],
                 additions: vec![],
                 project_id: None,
                 prompt: "Configure staging with sk-live-0123456789".into(),
@@ -1444,6 +1479,7 @@ fn deleting_keeps_handled_neighbours_handled_and_refuses_filed_pages() {
             proposal_id: "proposal:ab".into(),
             page_ids: vec!["page:a".into(), "page:b".into()],
             action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                skills: vec![],
                 additions: vec![],
                 project_id: None,
                 prompt: "Survey onboarding flows and their empty states".into(),
@@ -1460,6 +1496,7 @@ fn deleting_keeps_handled_neighbours_handled_and_refuses_filed_pages() {
             proposal_id: delivery.proposal_id,
             expected_revision: delivery.revision,
             message_id: delivery.message_id,
+            unavailable_skill_names: vec![],
             dispatched_thread_id: Some("thread:accepted".into()),
         },
     );
@@ -1700,6 +1737,7 @@ fn runtime_bound_chats_remain_suggestion_and_dispatch_targets() {
         "proposal:runtime-target",
         &entry,
         ProjectWorkspaceInboxDispatchAction::SendToChat {
+            skills: vec![],
             additions: vec![],
             session_id: "session:runtime-source".into(),
             prompt: "Continue".into(),
@@ -1716,6 +1754,7 @@ fn runtime_bound_chats_remain_suggestion_and_dispatch_targets() {
         module,
         "confirm:runtime-target",
         ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            skill_invocations: vec![],
             confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
             expected_store_epoch: "epoch-1".into(),
             basis: proposal_basis(module, "proposal:runtime-target"),
@@ -1922,6 +1961,7 @@ fn filing_into_a_project_keeps_the_message_handled_in_its_own_inbox() {
         module,
         "confirm:file",
         ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            skill_invocations: vec![],
             confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
             expected_store_epoch: "epoch-1".into(),
             basis: proposal_basis(module, "proposal:file"),
@@ -2021,6 +2061,7 @@ fn confirm_proposal(module: &ProjectWorkspaceModule, proposal_id: &str, session:
         module,
         &format!("confirm:{proposal_id}"),
         ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            skill_invocations: vec![],
             confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
             expected_store_epoch: "epoch-1".into(),
             basis: proposal_basis(module, proposal_id),
@@ -2054,6 +2095,7 @@ fn activity_keeps_one_fact_per_decision_about_a_message() {
         "proposal:chat",
         &pending(module).remove(0),
         ProjectWorkspaceInboxDispatchAction::NewChat {
+            skills: vec![],
             additions: vec![],
             project_id: Some(PROJECT.into()),
             prompt: "Fix the typo".into(),
@@ -2249,6 +2291,7 @@ fn a_project_inbox_routes_only_inside_its_project() {
         propose_error(
             "projectless",
             ProjectWorkspaceInboxDispatchAction::NewChat {
+                skills: vec![],
                 additions: vec![],
                 project_id: None,
                 prompt: "Explain it".into(),
@@ -2261,6 +2304,7 @@ fn a_project_inbox_routes_only_inside_its_project() {
         propose_error(
             "other-chat",
             ProjectWorkspaceInboxDispatchAction::SendToChat {
+                skills: vec![],
                 additions: vec![],
                 session_id: "session:loose-chat".into(),
                 prompt: "Explain it".into(),
@@ -2282,6 +2326,7 @@ fn a_project_inbox_routes_only_inside_its_project() {
         "proposal:project-chat",
         &entry,
         ProjectWorkspaceInboxDispatchAction::SendToChat {
+            skills: vec![],
             additions: vec![],
             session_id: "session:project-chat".into(),
             prompt: "Explain the hover flicker".into(),
@@ -2802,6 +2847,7 @@ fn a_dispatched_chat_receives_the_messages_images_with_their_text() {
             proposal_id: "proposal:pictured".into(),
             page_ids: pages,
             action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                skills: vec![],
                 additions: vec![],
                 project_id: None,
                 prompt: "Fix the banners".into(),
@@ -2853,6 +2899,7 @@ fn a_chat_reads_why_its_start_failed_and_whether_it_can_retry_until_it_starts() 
             proposal_id: "proposal:start".into(),
             page_ids: vec!["page:start".into()],
             action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                skills: vec![],
                 additions: vec![],
                 project_id: None,
                 prompt: "Draft the release notes".into(),
@@ -2940,6 +2987,7 @@ fn complete_handoff_and_selection_survive_retries_with_fenced_receipts() {
             proposal_id: "proposal:frozen".into(),
             page_ids: vec!["page:long".into()],
             action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                skills: vec![],
                 additions: vec![],
                 project_id: None,
                 prompt: "Answer the question".into(),
@@ -2983,6 +3031,7 @@ fn complete_handoff_and_selection_survive_retries_with_fenced_receipts() {
                 proposal_id: work.proposal_id.clone(),
                 expected_revision: work.revision,
                 message_id: work.message_id.clone(),
+                unavailable_skill_names: vec![],
                 dispatched_thread_id: Some("thread:frozen".into())
             }
         ),
@@ -2995,6 +3044,7 @@ fn complete_handoff_and_selection_survive_retries_with_fenced_receipts() {
             proposal_id: retried.proposal_id,
             expected_revision: retried.revision,
             message_id: retried.message_id,
+            unavailable_skill_names: vec![],
             dispatched_thread_id: Some("thread:frozen".into()),
         },
     );
@@ -3026,6 +3076,7 @@ fn replacing_a_failed_group_member_retires_its_delivery_and_reopens_the_rest() {
                 basis: pages_basis(module, pages.clone()),
                 page_ids: pages,
                 action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                    skills: vec![],
                     additions: vec![],
                     project_id: None,
                     prompt: "Discuss both messages".into(),
@@ -3510,6 +3561,7 @@ fn remote_unknown_is_not_replayed_and_new_decisions_have_new_delivery_identity()
         proposal_id: proposal.into(),
         page_ids: vec!["page:a".into(), "page:b".into()],
         action: ProjectWorkspaceInboxDispatchAction::NewChat {
+            skills: vec![],
             additions: vec![],
             project_id: None,
             prompt: "Discuss".into(),
@@ -4478,6 +4530,7 @@ fn outbox_byte_budget_never_splits_a_frozen_handoff() {
                 proposal_id: format!("proposal:{id}"),
                 page_ids: pages,
                 action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                    skills: vec![],
                     additions: vec![],
                     project_id: None,
                     prompt: "Discuss".into(),
@@ -4524,6 +4577,7 @@ fn erasing_a_dispatch_member_preserves_unknown_receipts_without_payload() {
                 proposal_id: "proposal:group".into(),
                 page_ids: pages,
                 action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                    skills: vec![],
                     additions: vec![],
                     project_id: None,
                     prompt: "Discuss secret-to-erase".into(),
@@ -4578,6 +4632,7 @@ fn erasing_a_dispatch_member_preserves_unknown_receipts_without_payload() {
                     proposal_id: delivery.proposal_id,
                     expected_revision: delivery.revision + i64::from(remote_begun),
                     message_id: delivery.message_id,
+                    unavailable_skill_names: vec![],
                     dispatched_thread_id: Some("thread:late".into()),
                 }
             ),
@@ -4750,6 +4805,7 @@ fn dispatched_messages_become_linked_pages_of_their_chat() {
         "new",
         &["page:first", "page:second"],
         ProjectWorkspaceInboxDispatchAction::NewChat {
+            skills: vec![],
             additions: vec![],
             project_id: Some(PROJECT.into()),
             prompt: "Draft the release notes".into(),
@@ -4787,6 +4843,7 @@ fn dispatched_messages_become_linked_pages_of_their_chat() {
         "send",
         &["page:follow-up"],
         ProjectWorkspaceInboxDispatchAction::SendToChat {
+            skills: vec![],
             additions: vec![],
             session_id: "session:target".into(),
             prompt: "Also mention the Board".into(),
@@ -5055,6 +5112,7 @@ fn a_messages_status_follows_its_handling_until_someone_else_sets_it() {
         "chat",
         &["page:chat"],
         ProjectWorkspaceInboxDispatchAction::NewChat {
+            skills: vec![],
             additions: vec![],
             project_id: Some(PROJECT.into()),
             prompt: "Fix the flickering Board header".into(),
@@ -5077,6 +5135,7 @@ fn a_messages_status_follows_its_handling_until_someone_else_sets_it() {
             expected_revision: dispatches[0].revision,
             message_id: dispatches[0].message_id.clone(),
             proposal_id: "proposal:chat".into(),
+            unavailable_skill_names: vec![],
             dispatched_thread_id: Some("thread:chat".into()),
         },
     );
@@ -5354,6 +5413,7 @@ mod scheduled {
                 request(
                     "wrong-owner",
                     ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                        skill_invocations: vec![],
                         confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
                         expected_store_epoch: "epoch-1".into(),
                         proposal_id: proposal.proposal_id,
@@ -5461,6 +5521,7 @@ mod scheduled {
         agent(
             "automation-agent-confirm",
             ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                skill_invocations: vec![],
                 confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
                 expected_store_epoch: "epoch-1".into(),
                 proposal_id: proposal.proposal_id.clone(),
@@ -5662,6 +5723,7 @@ mod scheduled {
             &workspace.module,
             "confirm-task",
             ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                skill_invocations: vec![],
                 confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
                 expected_store_epoch: "epoch-1".into(),
                 proposal_id: proposal.proposal_id,
@@ -6002,6 +6064,7 @@ mod scheduled {
                 &workspace.module,
                 "auto-confirm-task",
                 ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                    skill_invocations: vec![],
                     confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::Nodex,
                     expected_store_epoch: "epoch-1".into(),
                     proposal_id: proposal.proposal_id.clone(),
@@ -6432,6 +6495,7 @@ mod scheduled {
                 request(
                     "confirm-deleted",
                     ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                        skill_invocations: vec![],
                         confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
                         expected_store_epoch: "epoch-1".into(),
                         proposal_id: proposal.proposal_id,
@@ -7178,6 +7242,7 @@ fn outdated_advice_confirms_the_current_content_and_rejects_a_stale_review() {
     let reviewed = item(module, "page:review").proposal.unwrap();
     assert!(reviewed.outdated);
     let confirm = |basis| ProjectWorkspaceIntent::ConfirmInboxDispatch {
+        skill_invocations: vec![],
         confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
         expected_store_epoch: "epoch-1".into(),
         proposal_id: reviewed.proposal_id.clone(),
@@ -8010,6 +8075,7 @@ fn inbox_over_budget_suggestions_fail_readably_and_preserve_the_proposal() {
             page_ids: vec!["page:many".into()],
             basis: pages_basis(module, vec!["page:many".into()]),
             action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                skills: vec![],
                 additions: vec![],
                 project_id: None,
                 prompt: "Review these screenshots".into(),
@@ -8225,6 +8291,7 @@ fn inbox_confirmed_handoff_freezes_reviewed_image_hashes_across_file_replacement
             page_ids: vec!["page:reviewed".into()],
             basis: vec![before.clone()],
             action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                skills: vec![],
                 additions: vec![],
                 project_id: None,
                 prompt: "Review it".into(),
@@ -8336,12 +8403,14 @@ fn inbox_confirmation_rolls_back_managed_membership_with_a_rejected_handoff() {
             ProjectWorkspaceInboxDispatchAction::SendToChat {
                 session_id: "session:target".into(),
                 prompt: "Check the build".into(),
+                skills: vec![],
                 additions: vec![],
             }
         } else {
             ProjectWorkspaceInboxDispatchAction::NewChat {
                 project_id: Some(PROJECT.into()),
                 prompt: "Check the build".into(),
+                skills: vec![],
                 additions: vec![],
                 agent: None,
             }
@@ -8349,6 +8418,7 @@ fn inbox_confirmation_rolls_back_managed_membership_with_a_rejected_handoff() {
         propose(module, "proposal:atomic", &entry, action);
         let proposal = item(module, "page:work").proposal.unwrap();
         let confirm = ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            skill_invocations: vec![],
             confirmed_by: Default::default(),
             expected_store_epoch: "epoch-1".into(),
             basis: proposal_basis(module, "proposal:atomic"),
@@ -8454,6 +8524,7 @@ mod plans {
         confirmed_by: InboxConfirmedBy,
     ) -> ProjectWorkspaceIntent {
         ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            skill_invocations: vec![],
             confirmed_by,
             expected_store_epoch: "epoch-1".into(),
             proposal_id: "proposal:plan".into(),
@@ -8786,6 +8857,7 @@ fn a_first_inbox_handoff_captures_the_current_person_choice_as_its_attempt_basel
         "first-handoff",
         &["page:first-handoff"],
         ProjectWorkspaceInboxDispatchAction::NewChat {
+            skills: vec![],
             additions: vec![],
             project_id: Some(PROJECT.into()),
             prompt: "Build this".into(),

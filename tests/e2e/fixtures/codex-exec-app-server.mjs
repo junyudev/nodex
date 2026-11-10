@@ -57,6 +57,7 @@ if (args[0] !== "exec") {
         project_id: null,
         session_id: null,
         prompt: null,
+        skills: [],
         additions: [],
         chat_instance_id: null,
         chat_model: null,

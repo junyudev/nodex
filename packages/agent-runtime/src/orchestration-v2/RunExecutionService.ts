@@ -725,6 +725,7 @@ export interface RunExecutionServiceV2StartRootRunInput {
     readonly withLock: ThreadCommandExecutor["Service"]["withLock"];
   };
   readonly isRunTerminal?: ProviderAdapter.ProviderAdapterV2TurnInput["isRunTerminal"];
+  readonly reportUnavailableSkills?: ProviderAdapter.ProviderAdapterV2TurnInput["reportUnavailableSkills"];
   readonly commandId: CommandId;
   readonly appThread: OrchestrationV2AppThread;
   readonly providerSessionId: ProviderSessionId;
@@ -2034,6 +2035,9 @@ export const layer: Layer.Layer<
           }));
           const turnInput = {
             ...(input.isRunTerminal === undefined ? {} : { isRunTerminal: input.isRunTerminal }),
+            ...(input.reportUnavailableSkills
+              ? { reportUnavailableSkills: input.reportUnavailableSkills }
+              : {}),
             appThread: input.appThread,
             ...(input.continuation === undefined ? {} : { continuation: input.continuation }),
             threadId: input.run.threadId,

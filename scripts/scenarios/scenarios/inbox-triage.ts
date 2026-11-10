@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { agentRuntimeProviderId } from "../../../src/shared/agent-runtime-provider";
 import { defaultClaudeInstance } from "../../../src/shared/claude-agent-settings";
 import {
@@ -15,12 +17,30 @@ import {
 } from "../contracts";
 
 export const INBOX_TRIAGE_SCENARIO_ID = "inbox/triage" as const;
-export const INBOX_TRIAGE_SCENARIO_REVISION = 6 as const;
+export const INBOX_TRIAGE_SCENARIO_REVISION = 7 as const;
 /** The Claude Code account every Profile starts with. */
 const DEFAULT_CLAUDE_INSTANCE_ID = agentRuntimeProviderId({
   kind: "claude",
   instanceConfigId: defaultClaudeInstance().id,
 })!;
+
+const inboxTriageSkills = [
+  { name: "positioning-review", reason: "Compare how the homepage speaks to each audience." },
+  { name: "homepage-audit", reason: "Find the current claims and supporting evidence." },
+];
+
+export async function seedInboxTriageSkills(workspace: string) {
+  await Promise.all(
+    inboxTriageSkills.map(async ({ name, reason }) => {
+      const directory = join(workspace, ".agents", "skills", name);
+      await mkdir(directory, { recursive: true });
+      await writeFile(
+        join(directory, "SKILL.md"),
+        `---\nname: ${name}\ndescription: ${reason}\n---\n\nReview the Project notes and report findings.\n`,
+      );
+    }),
+  );
+}
 
 const PAGE_KEYS = {
   kept: "keptNote",
@@ -255,8 +275,9 @@ const materializeInboxTriage = async (
   if (!delivered) throw new Error("inbox/triage dispatched message has no proposal");
   await port.completeInboxDispatch(delivered.proposalId, workingThreadId);
 
+  await seedInboxTriageSkills(workspace);
   const newChat = await port.sendInboxMessage(
-    "Homepage feels like a dev tool. Maybe it should read like a personal assistant?",
+    "Homepage feels like a dev tool. Maybe it should read like a personal assistant? Use $positioning-context.",
   );
   await port.proposeInboxDispatch({
     pageIds: [newChat.pageId],
@@ -265,8 +286,14 @@ const materializeInboxTriage = async (
       additions: [],
       projectId: project.id,
       prompt:
-        "Compare positioning the homepage as a developer tool versus a personal assistant. Read the current homepage and notes, then deliver a short comparison and the decisions I need to make. Do not change code.",
-      agent: null,
+        "Compare positioning the homepage as a developer tool versus a personal assistant. Use $positioning-context to read the current homepage and notes, then deliver a short comparison and the decisions I need to make. Do not change code.",
+      agent: {
+        instanceId: agentRuntimeProviderId({ kind: "codex" })!,
+        model: null,
+        reasoningEffort: null,
+        serviceTier: null,
+      },
+      skills: inboxTriageSkills,
     },
     kind: "question",
     summary: "Compare both homepage positions before changing anything.",

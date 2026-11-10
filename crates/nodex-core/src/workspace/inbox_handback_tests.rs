@@ -111,6 +111,7 @@ fn handback_receipts_preserve_words_and_author_and_bound_rerouting_to_two_return
             ProjectWorkspaceInboxDispatchAction::SendToChat {
                 session_id: session.into(),
                 prompt: "Read the original message".into(),
+                skills: vec![],
                 additions: vec![],
             },
             None,
@@ -177,6 +178,7 @@ fn handback_preserves_original_page_images_without_granting_new_consent() {
         ProjectWorkspaceInboxDispatchAction::SendToChat {
             session_id: "worker".into(),
             prompt: "Check the screenshot".into(),
+            skills: vec![],
             additions: vec![],
         },
         None,
@@ -221,6 +223,7 @@ fn handback_preserves_original_page_images_without_granting_new_consent() {
                         project_id: None,
                         prompt: "Continue".into(),
                         agent: None,
+                        skills: vec![],
                         additions: vec![]
                     },
                     entry_kind: None,
@@ -268,6 +271,7 @@ fn handback_preserves_original_page_images_without_granting_new_consent() {
                 action: ProjectWorkspaceInboxDispatchAction::SendToChat {
                     session_id: "worker".into(),
                     prompt: "The person wants this chat to finish it".into(),
+                    skills: vec![],
                     additions: vec![],
                 },
                 entry_kind: None,
@@ -413,6 +417,7 @@ fn handback_refuses_a_delivery_after_the_person_has_rerouted_its_message() {
         ProjectWorkspaceInboxDispatchAction::SendToChat {
             session_id: "first".into(),
             prompt: "Check".into(),
+            skills: vec![],
             additions: vec![],
         },
         None,
@@ -432,6 +437,7 @@ fn handback_refuses_a_delivery_after_the_person_has_rerouted_its_message() {
             proposal_id: work.proposal_id,
             expected_revision: work.revision,
             message_id: work.message_id,
+            unavailable_skill_names: vec![],
             dispatched_thread_id: Some("thread:first".into()),
         },
     );
@@ -450,6 +456,7 @@ fn handback_refuses_a_delivery_after_the_person_has_rerouted_its_message() {
         ProjectWorkspaceInboxDispatchAction::SendToChat {
             session_id: "second".into(),
             prompt: "Check".into(),
+            skills: vec![],
             additions: vec![],
         },
         None,
@@ -627,6 +634,7 @@ fn handback_never_recreates_an_original_intake_message_the_person_erased() {
         ProjectWorkspaceInboxDispatchAction::SendToChat {
             session_id: "worker".into(),
             prompt: "Check this".into(),
+            skills: vec![],
             additions: vec![],
         },
         None,
@@ -666,6 +674,7 @@ fn handback_refuses_a_group_when_one_original_message_was_erased() {
         ProjectWorkspaceInboxDispatchAction::SendToChat {
             session_id: "worker".into(),
             prompt: "Check these".into(),
+            skills: vec![],
             additions: vec![],
         },
         None,
@@ -707,6 +716,7 @@ fn handback_does_not_reopen_a_message_the_person_closed() {
             ProjectWorkspaceInboxDispatchAction::SendToChat {
                 session_id: "worker".into(),
                 prompt: "Check".into(),
+                skills: vec![],
                 additions: vec![],
             },
             None,

@@ -187,12 +187,14 @@ fn dispatch(
             ProjectWorkspaceInboxDispatchAction::SendToChat {
                 session_id: "chat".into(),
                 prompt: "Handle the request".into(),
+                skills: vec![],
                 additions: vec![],
             }
         } else {
             ProjectWorkspaceInboxDispatchAction::NewChat {
                 project_id: project.map(str::to_owned),
                 prompt: "Handle the request".into(),
+                skills: vec![],
                 additions: vec![],
                 agent: None,
             }

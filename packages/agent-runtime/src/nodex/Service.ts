@@ -417,6 +417,10 @@ const AgentRequest = Schema.Union([
       instanceIds: Schema.optional(Schema.Array(Schema.String)),
     }),
   ),
+  request(
+    "providers.skills.read",
+    Schema.Struct({ instanceId: ProviderInstanceId, cwd: Schema.String }),
+  ),
   request("providers.logout", Schema.Struct({ instanceIds: Schema.Array(ProviderInstanceId) })),
   request(
     "providers.windows-sandbox.read",
@@ -1423,6 +1427,15 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         if (input.method === "providers.windows-sandbox.cancel")
           return yield* sandbox.cancel(input.input.instanceId, input.input.generation);
         return yield* sandbox.read(input.input.instanceId, input.input.refresh);
+      }
+      case "providers.skills.read": {
+        const { instanceId, cwd } = input.input;
+        const instance = yield* instances.getInstance(instanceId);
+        if (!instance?.enabled || !["codex", "claude", "opencode"].includes(instance.driverKind))
+          return [];
+        if (instance.skillsForCwd) return (yield* instance.skillsForCwd(cwd)) ?? [];
+        const snapshot = yield* instance.snapshotForCwd?.(cwd) ?? Effect.succeed(null);
+        return snapshot?.skills ?? [];
       }
       case "providers.read": {
         const policy = yield* providerPolicy.admission;

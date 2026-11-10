@@ -145,6 +145,7 @@
         "session_id": "value",
         "prompt": "value",
         "additions": [],
+        "skills": [],
         "chat_instance_id": "value",
         "chat_model": "value",
         "chat_effort": "value",

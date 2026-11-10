@@ -78,7 +78,7 @@ import * as OpenCodeRuntime from "../OpenCodeRuntime.ts";
 import { openCodePermissionRequestKind } from "../adapter.ts";
 import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
 import { buildRuntimeInstructions } from "@nodex/provider-core/server/runtimeInstructions";
-import { SKILL_MENTION_PATTERN } from "@nodex/runtime-shared/composerInlineTokens";
+import { maskSkillCode, SKILL_MENTION_PATTERN } from "@nodex/runtime-shared/composerInlineTokens";
 import * as KeyedLock from "@nodex/runtime-shared/KeyedLock";
 import { getModelSelectionStringOptionValue, modelSelectionsEqual } from "@nodex/runtime-shared/model";
 import { causeErrorTag } from "@nodex/runtime-shared/observability";
@@ -786,7 +786,7 @@ const SKILL_MENTION = new RegExp(SKILL_MENTION_PATTERN.source, "u");
 /** The workspace skills a prompt names with the composer's `$skill` tokens. */
 const skillsNamed = (text: string, known: ReadonlySet<string>) => [
   ...new Set(
-    [...text.matchAll(SKILL_MENTION_PATTERN)].flatMap((match) =>
+    [...maskSkillCode(text).matchAll(SKILL_MENTION_PATTERN)].flatMap((match) =>
       known.has(match[2] ?? "") ? [match[2]!] : [],
     ),
   ),
@@ -3818,16 +3818,21 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           return yield* client.session.command({ sessionID, ...command });
         }
       }
-      const skills = SKILL_MENTION.test(text)
-        ? skillsNamed(
-            text,
-            yield* client.skill.list({ location }).pipe(
-              Effect.timeout(INVENTORY_TIMEOUT),
-              Effect.map((list) => new Set(list.data.map((skill) => skill.id))),
-              Effect.orElseSucceed(() => new Set<string>()),
-            ),
+      const requested = turnInput.message.skillInvocations ?? [];
+      const available = requested.length || SKILL_MENTION.test(text)
+        ? yield* client.skill.list({ location }).pipe(
+            Effect.timeout(INVENTORY_TIMEOUT),
+            Effect.map((list) => list.data),
+            Effect.orElseSucceed(() => []),
           )
         : [];
+      const optional = requested.flatMap((invocation) =>
+        available.some((skill) => ProviderAdapter.matchesSkillInvocation(invocation, { name: skill.id, path: skill.path }, instanceId, location.directory, turnInput))
+          ? [invocation.name] : [],
+      );
+      const omitted = requested.filter(({ name }) => !optional.includes(name)).map(({ name }) => name);
+      if (omitted.length) yield* turnInput.reportUnavailableSkills?.(omitted) ?? Effect.void;
+      const skills = [...new Set([...skillsNamed(text, new Set(available.map(({ id }) => id))), ...optional])];
       if (!sending()) return;
       return yield* client.session
         .prompt({

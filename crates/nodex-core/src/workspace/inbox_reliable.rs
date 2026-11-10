@@ -54,6 +54,12 @@ pub(in crate::workspace) fn read_handoff_json<T: serde::de::DeserializeOwned>(
         "target_execution_ref_json" => {
             "SELECT target_execution_ref_json FROM inbox_handoffs WHERE proposal_id=?1"
         }
+        "unavailable_skills_json" => {
+            "SELECT unavailable_skills_json FROM inbox_handoffs WHERE proposal_id=?1"
+        }
+        "skill_invocations_json" => {
+            "SELECT skill_invocations_json FROM inbox_handoffs WHERE proposal_id=?1"
+        }
         "images_json" => "SELECT images_json FROM inbox_handoffs WHERE proposal_id=?1",
         _ => return Err(internal("Unknown handoff field")),
     };
@@ -164,6 +170,7 @@ pub(in crate::workspace) fn apply_reliable(
                     request_id,
                     generation,
                     coordinator_session_id,
+                    skill_offers,
                 } => {
                     require_host(context)?;
                     if super::super::execution_holds::routing_held(connection, &request_id)? {
@@ -183,7 +190,11 @@ pub(in crate::workspace) fn apply_reliable(
                     if count >= 16 {
                         return Err(conflict("Too many routing requests are already pending"));
                     }
-                    connection.execute("INSERT INTO inbox_routing_deliveries(request_id,generation,coordinator_session_id,handed_over_at_ms) VALUES(?1,?2,?3,CAST(unixepoch('subsec')*1000 AS INTEGER))",params![request_id,generation,coordinator_session_id])?;
+                    let offers = encode(&skill_offers)?;
+                    if offers.len() > 16384 {
+                        return Err(invalid("Inbox skill offers exceed the routing budget"));
+                    }
+                    connection.execute("INSERT INTO inbox_routing_deliveries(request_id,generation,coordinator_session_id,handed_over_at_ms,skill_offers_json) VALUES(?1,?2,?3,CAST(unixepoch('subsec')*1000 AS INTEGER),?4)",params![request_id,generation,coordinator_session_id,offers])?;
                     Ok(simple_effects("inbox_begin_routing", &now))
                 }
                 ProjectWorkspaceIntent::RecordInboxRoutingRefusal {
@@ -228,6 +239,7 @@ pub(in crate::workspace) fn apply_reliable(
                 }
                 ProjectWorkspaceIntent::ConfirmInboxDispatch {
                     confirmed_by,
+                    skill_invocations,
                     expected_store_epoch,
                     proposal_id,
                     expected_revision,
@@ -293,6 +305,30 @@ pub(in crate::workspace) fn apply_reliable(
                             action.as_ref(),
                         )?;
                     }
+                    let reviewed_action = action.as_ref().unwrap_or(&proposal.action);
+                    let reviewed_skills = action_skills(reviewed_action);
+                    let stored_skills = action_skills(&proposal.action);
+                    if reviewed_skills
+                        .iter()
+                        .any(|skill| !stored_skills.contains(skill))
+                        || (confirmed_by == InboxConfirmedBy::Nodex
+                            && !skill_invocations.is_empty())
+                        || skill_invocations.iter().any(|binding| {
+                            !reviewed_skills
+                                .iter()
+                                .any(|skill| skill.name == binding.name)
+                        })
+                        || skill_invocations
+                            .iter()
+                            .map(|binding| &binding.name)
+                            .collect::<std::collections::HashSet<_>>()
+                            .len()
+                            != skill_invocations.len()
+                    {
+                        return Err(invalid(
+                            "Dispatch skills must match the reviewed suggestion",
+                        ));
+                    }
                     let effects = decide(
                         connection,
                         library_id,
@@ -305,6 +341,7 @@ pub(in crate::workspace) fn apply_reliable(
                         action.as_ref().unwrap_or(&proposal.action),
                         session_id.as_deref(),
                         execution_selection.as_ref(),
+                        &skill_invocations,
                         assets_root,
                         &now,
                     )?;
@@ -367,6 +404,7 @@ pub(in crate::workspace) fn apply_reliable(
                         &action,
                         session_id.as_deref(),
                         execution_selection.as_ref(),
+                        &[],
                         assets_root,
                         &now,
                     )
@@ -575,6 +613,7 @@ pub(in crate::workspace) fn apply_reliable(
                     expected_revision,
                     message_id,
                     dispatched_thread_id,
+                    unavailable_skill_names,
                 } => {
                     require_host(context)?;
                     let proposal = dispatch_fence(
@@ -593,10 +632,23 @@ pub(in crate::workspace) fn apply_reliable(
                     for page in proposal.page_ids {
                         connection.execute("UPDATE inbox_entries SET outcome='chat',suggestion_state='settled',suggestion_request_id=NULL,revision=revision+1,updated_at=?2 WHERE page_id=?1",params![page,now])?;
                     }
+                    let mut unavailable = read_handoff_json::<Vec<String>>(
+                        connection,
+                        &proposal_id,
+                        "unavailable_skills_json",
+                    )?
+                    .unwrap_or_default();
+                    for skill in action_skills(&proposal.action) {
+                        if unavailable_skill_names.contains(&skill.name)
+                            && !unavailable.contains(&skill.name)
+                        {
+                            unavailable.push(skill.name.clone());
+                        }
+                    }
                     // Accepted transcript belongs to Agent Runtime; Core retains only its receipt identity.
                     connection.execute(
-                        "UPDATE inbox_handoffs SET final_text='' WHERE proposal_id=?1",
-                        [&proposal_id],
+                        "UPDATE inbox_handoffs SET final_text='',unavailable_skills_json=?2 WHERE proposal_id=?1",
+                        params![proposal_id,encode(&unavailable)?],
                     )?;
                     super::chat_start_effects(
                         connection,
@@ -664,6 +716,7 @@ fn decide(
     action: &ProjectWorkspaceInboxDispatchAction,
     session_id: Option<&str>,
     selection: Option<&ProjectWorkspaceInboxExecutionSelection>,
+    skill_invocations: &[nodex_core_contracts::inbox::InboxSkillInvocation],
     assets_root: &Path,
     now: &str,
 ) -> Result<WorkspaceMutationEffects, StoreError> {
@@ -876,7 +929,16 @@ fn decide(
                 _=>None,
             };
             images.truncate(MAX_HANDOFF_IMAGES);
-            connection.execute("INSERT INTO inbox_handoffs(proposal_id,store_epoch,final_text,launch_id,message_id,execution_selection_json,target_execution_ref_json,images_json) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",params![proposal_id,scope.store_epoch(),text,handoff_identity(proposal_id,"launch",scope.store_epoch()),handoff_identity(proposal_id,"message",scope.store_epoch()),selection.map(encode).transpose()?,target.as_ref().map(encode).transpose()?,encode(&images)?])?;
+            let unavailable = action_skills(&action)
+                .iter()
+                .filter(|skill| {
+                    !skill_invocations
+                        .iter()
+                        .any(|binding| binding.name == skill.name)
+                })
+                .map(|skill| &skill.name)
+                .collect::<Vec<_>>();
+            connection.execute("INSERT INTO inbox_handoffs(proposal_id,store_epoch,final_text,launch_id,message_id,execution_selection_json,target_execution_ref_json,images_json,skill_invocations_json,unavailable_skills_json) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",params![proposal_id,scope.store_epoch(),text,handoff_identity(proposal_id,"launch",scope.store_epoch()),handoff_identity(proposal_id,"message",scope.store_epoch()),selection.map(encode).transpose()?,target.as_ref().map(encode).transpose()?,encode(&images)?,encode(&skill_invocations)?,encode(&unavailable)?])?;
         }
         ProjectWorkspaceInboxDispatchAction::MoveToProject { .. } => {
             connection.execute(
@@ -1480,7 +1542,10 @@ fn pickup_request(
         }];
     }
     Ok(ProjectWorkspaceInboxSuggestionRequest {
-        delivery: connection.query_row("SELECT coordinator_session_id,handed_over_at_ms,run_started_at_ms,last_refusal FROM inbox_routing_deliveries WHERE request_id=?1 AND generation=?2",params![row.id,row.generation],|r|Ok(InboxRoutingDelivery {paused_ms:connection.query_row("SELECT elapsed_ms + CASE WHEN paused_at_ms IS NULL THEN 0 ELSE MAX(0,CAST(unixepoch('subsec')*1000 AS INTEGER)-paused_at_ms) END FROM execution_hold_routing_clocks WHERE request_id=?1 AND generation=?2",params![row.id,row.generation],|clock|clock.get(0)).optional()?,coordinator_session_id:r.get(0)?,handed_over_at_ms:r.get(1)?,run_started_at_ms:r.get(2)?,last_refusal:r.get(3)?})).optional()?,
+        delivery: connection.query_row("SELECT coordinator_session_id,handed_over_at_ms,run_started_at_ms,last_refusal,skill_offers_json FROM inbox_routing_deliveries WHERE request_id=?1 AND generation=?2",params![row.id,row.generation],|r|Ok((InboxRoutingDelivery {paused_ms:connection.query_row("SELECT elapsed_ms + CASE WHEN paused_at_ms IS NULL THEN 0 ELSE MAX(0,CAST(unixepoch('subsec')*1000 AS INTEGER)-paused_at_ms) END FROM execution_hold_routing_clocks WHERE request_id=?1 AND generation=?2",params![row.id,row.generation],|clock|clock.get(0)).optional()?,coordinator_session_id:r.get(0)?,handed_over_at_ms:r.get(1)?,run_started_at_ms:r.get(2)?,last_refusal:r.get(3)?,skill_offers:vec![]}, r.get::<_, String>(4)?))).optional()?.map(|(mut delivery, raw)| -> Result<_, StoreError> {
+            delivery.skill_offers = serde_json::from_str(&raw).map_err(|_| corrupt("Invalid Inbox skill offers"))?;
+            Ok(delivery)
+        }).transpose()?,
         context,
         request_id: row.id.clone(),
         generation: row.generation,
@@ -1522,8 +1587,15 @@ fn require_automatic_confirmation(
     require_basis(connection, &proposal.page_ids, &proposal.basis)?;
     let mut expected = proposal.action.clone();
     match &mut expected {
-        ProjectWorkspaceInboxDispatchAction::NewChat { additions, .. }
-        | ProjectWorkspaceInboxDispatchAction::SendToChat { additions, .. } => additions.clear(),
+        ProjectWorkspaceInboxDispatchAction::NewChat {
+            additions, skills, ..
+        }
+        | ProjectWorkspaceInboxDispatchAction::SendToChat {
+            additions, skills, ..
+        } => {
+            additions.clear();
+            skills.clear();
+        }
         _ => {
             return Err(invalid(
                 "Nodex may only confirm a new chat or a chat follow-up",
@@ -1532,7 +1604,7 @@ fn require_automatic_confirmation(
     }
     if supplied != Some(&expected) {
         return Err(invalid(
-            "Automatic dispatch must preserve the request and omit additions",
+            "Automatic dispatch must preserve the request and omit additions and optional skills",
         ));
     }
     Ok(())
@@ -1702,4 +1774,14 @@ pub(crate) fn discard_replaced_dispatches(connection: &Connection) -> Result<(),
     connection.execute("DELETE FROM inbox_handoffs WHERE proposal_id IN (SELECT proposal_id FROM inbox_proposals WHERE state='failed' AND failure_kind='rejected')",[])?;
     connection.execute("DELETE FROM inbox_decision_undo", [])?;
     Ok(())
+}
+
+fn action_skills(
+    action: &ProjectWorkspaceInboxDispatchAction,
+) -> &[nodex_core_contracts::inbox::InboxSuggestedSkill] {
+    match action {
+        ProjectWorkspaceInboxDispatchAction::NewChat { skills, .. }
+        | ProjectWorkspaceInboxDispatchAction::SendToChat { skills, .. } => skills,
+        _ => &[],
+    }
 }

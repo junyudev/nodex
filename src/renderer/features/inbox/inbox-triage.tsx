@@ -1,3 +1,5 @@
+import { useInboxSkillAvailability, InboxSkillToggles } from "./inbox-skill-review";
+import { inboxActionSkills } from "../../../shared/inbox";
 import { useSpaceHostAvailable } from "@/lib/space-host-runtime";
 import { useInboxClock } from "./use-inbox-clock";
 import { loadPageDocumentMaterialization } from "@/lib/page-prompt-context";
@@ -340,6 +342,7 @@ function SuggestionStrip({
   decisionLine,
   dropped,
   onToggleAddition,
+  skillReview,
   planSteps,
 }: {
   readonly proposal: InboxProposal;
@@ -350,6 +353,7 @@ function SuggestionStrip({
   /** Additions unchecked on this row. */
   readonly dropped: readonly number[];
   readonly onToggleAddition: (index: number) => void;
+  readonly skillReview: ReactNode;
 }) {
   // An outdated suggestion recedes, prompt included: it was written for text the message no
   // longer has.
@@ -380,6 +384,7 @@ function SuggestionStrip({
         <p className="min-w-0 text-sm leading-snug">{proposal.summary}</p>
       )}
       {action.type === "plan" ? planSteps : null}
+      {skillReview}
       {isChatAction(action) && action.additions.length > 0 ? (
         <ul className="flex min-w-0 flex-col gap-1.5">
           {action.additions.map((addition, index) => {
@@ -507,7 +512,13 @@ export function InboxTriage({
       ? proposedAction
       : null;
   const edit =
-    rowEdit && item.proposal && rowEdit.proposalId === item.proposal.proposalId ? rowEdit : null;
+    rowEdit &&
+    item.proposal &&
+    rowEdit.proposalId === item.proposal.proposalId &&
+    rowEdit.revision === item.proposal.revision
+      ? rowEdit
+      : null;
+  const proposalRevision = item.proposal?.revision;
   // The suggestion as the row has it, once a model is chosen or an addition dropped here.
   const rowAction = item.proposal ? inboxRowAction(item.proposal.action, edit) : null;
   // A new chat starts from the Inbox's own model; an Automation admission from its Automation's.
@@ -518,18 +529,44 @@ export function InboxTriage({
     agents.settings.chatAgent;
   const chooseAgent = (proposalId: string, agent: InboxAgentChoice) =>
     setRowEdit((current) => ({
+      ...edit,
       proposalId,
+      revision: proposalRevision,
       agent: baseAgent && sameInboxAgentChoice(agent, baseAgent) ? null : agent,
-      dropped: current?.proposalId === proposalId ? current.dropped : [],
+      dropped:
+        current?.proposalId === proposalId && current.revision === proposalRevision
+          ? current.dropped
+          : [],
     }));
   const toggleAddition = (proposalId: string, index: number) =>
     setRowEdit((current) => {
-      const same = current?.proposalId === proposalId ? current : { proposalId, dropped: [] };
+      const same =
+        current?.proposalId === proposalId && current.revision === proposalRevision
+          ? current
+          : { proposalId, revision: proposalRevision, dropped: [] };
       return {
         ...same,
         dropped: same.dropped.includes(index)
           ? same.dropped.filter((dropped) => dropped !== index)
           : [...same.dropped, index],
+      };
+    });
+  const skillAvailability = useInboxSkillAvailability(item.proposal, rowAction ?? proposedAction);
+  const droppedSkillNames = [
+    ...new Set([...(edit?.droppedSkillNames ?? []), ...skillAvailability.unavailable]),
+  ];
+  const toggleSkill = (proposalId: string, name: string) =>
+    setRowEdit((current) => {
+      const same =
+        current?.proposalId === proposalId && current.revision === proposalRevision
+          ? current
+          : { proposalId, revision: proposalRevision, dropped: [] };
+      const dropped = same.droppedSkillNames ?? [];
+      return {
+        ...same,
+        droppedSkillNames: dropped.includes(name)
+          ? dropped.filter((candidate) => candidate !== name)
+          : [...dropped, name],
       };
     });
   const [editing, setEditing] = useState<{
@@ -547,7 +584,15 @@ export function InboxTriage({
   const done = () => void actions.setState([item.pageId], "done");
   const keep = () => void actions.keep([item.pageId]);
   const handleManually = () =>
-    onManualDraftChange(draftForInboxItem(item, inboxProjectId, rowAction, automationDecision));
+    onManualDraftChange(
+      draftForInboxItem(
+        item,
+        inboxProjectId,
+        rowAction,
+        automationDecision,
+        edit?.droppedSkillNames,
+      ),
+    );
   const menuNode = menu(offers, handleManually);
   const editAction = (
     <InboxIconAction
@@ -664,9 +709,11 @@ export function InboxTriage({
               inboxProjectId={inboxProjectId}
               onEditTask={onOpenAutomation}
               onCancel={() => onManualDraftChange(null)}
-              onSubmit={(action, chat) =>
+              onSubmit={(action, chat, droppedSkills) =>
                 manualDraft.proposal
-                  ? actions.confirm(manualDraft.proposal, action, chat)
+                  ? droppedSkills?.length
+                    ? actions.confirm(manualDraft.proposal, action, chat, droppedSkills)
+                    : actions.confirm(manualDraft.proposal, action, chat)
                   : actions.dispatch(
                       (manualDraft.basis ?? [item.basis]).map((basis) => basis.pageId),
                       action,
@@ -748,6 +795,15 @@ export function InboxTriage({
                 }
                 dropped={edit?.dropped ?? []}
                 onToggleAddition={(index) => toggleAddition(proposal.proposalId, index)}
+                skillReview={
+                  <InboxSkillToggles
+                    skills={inboxActionSkills(proposal.action)}
+                    dropped={droppedSkillNames}
+                    unavailable={skillAvailability.unavailable}
+                    pending={skillAvailability.pending}
+                    onToggle={(name) => toggleSkill(proposal.proposalId, name)}
+                  />
+                }
                 planSteps={
                   proposal.action.type === "plan" ? (
                     <InboxPlanSteps
@@ -779,7 +835,11 @@ export function InboxTriage({
               <Decision
                 label={presentation.verb}
                 disabledReason={
-                  !hostAvailable && executesDecision ? "Space host unavailable" : undefined
+                  skillAvailability.pending
+                    ? "Checking skill availability"
+                    : !hostAvailable && executesDecision
+                      ? "Space host unavailable"
+                      : undefined
                 }
                 target={presentation.target}
                 variant={variant}
@@ -805,9 +865,18 @@ export function InboxTriage({
                   ) : null
                 }
                 onClick={() =>
-                  void (rowAction
-                    ? actions.confirm(proposal, rowAction)
-                    : actions.confirm(proposal))
+                  skillAvailability.pending
+                    ? undefined
+                    : droppedSkillNames.length
+                      ? void actions.confirm(
+                          proposal,
+                          rowAction ?? undefined,
+                          undefined,
+                          droppedSkillNames,
+                        )
+                      : void (rowAction
+                          ? actions.confirm(proposal, rowAction)
+                          : actions.confirm(proposal))
                 }
               />
               {asksAgainFirst ? (

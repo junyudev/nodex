@@ -716,6 +716,7 @@ async function answerMobile(prompt, server, native) {
           session_id: null,
           prompt: null,
           additions: [],
+          skills: [],
           chat_instance_id: null,
           chat_model: null,
           chat_effort: null,

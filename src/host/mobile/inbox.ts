@@ -1,3 +1,4 @@
+import { inboxActionSkills } from "../../shared/inbox";
 import type { AgentChoice, InboxEntry, InboxProposalAction } from "@nodex/mobile-protocol";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -54,6 +55,7 @@ const projectAction = (
         projectName: targetProjectName,
         prompt: action.prompt,
         additions: [...action.additions],
+        skills: [...(action.skills ?? [])],
         agent: action.agent?.model
           ? { providerInstanceId: action.agent.instanceId, model: action.agent.model }
           : null,
@@ -65,6 +67,7 @@ const projectAction = (
         chatTitle: chat?.displayTitle ?? null,
         prompt: action.prompt,
         additions: [...action.additions],
+        skills: [...(action.skills ?? [])],
       };
     case "move_to_project":
       return { type: action.type, projectId: action.projectId, projectName: targetProjectName };
@@ -311,7 +314,7 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
             JSON.stringify([
               input.entryId,
               decision.type === "accept"
-                ? [decision.proposalId, decision.revision]
+                ? [decision.proposalId, decision.revision, decision.keptSkillNames?.toSorted()]
                 : [
                     decision.projectId,
                     decision.prompt,
@@ -349,6 +352,15 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
                   "This message changed. Review the suggestion on your desktop.",
                 ),
               );
+            const proposedSkills = inboxActionSkills(proposal.action);
+            const kept = decision.keptSkillNames;
+            if (
+              (proposedSkills.length && !kept) ||
+              kept?.some((name) => !proposedSkills.some((skill) => skill.name === name))
+            )
+              return yield* Effect.fail(
+                rpcError("rejected", "Review the suggested skills before accepting."),
+              );
             const draft = yield* inbox
               .prepareConfirmation({
                 kind: "proposal",
@@ -356,6 +368,13 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
                 expectedRevision: decision.revision,
                 storeEpoch,
                 basis: proposal.basis,
+                ...(kept
+                  ? {
+                      droppedSkillNames: proposedSkills
+                        .filter(({ name }) => !kept.includes(name))
+                        .map(({ name }) => name),
+                    }
+                  : {}),
               })
               .pipe(refused);
             frozen = { ...draft, operationId, sessionId };

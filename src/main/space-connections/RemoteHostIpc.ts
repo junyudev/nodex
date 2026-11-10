@@ -269,6 +269,9 @@ export const live = Layer.effectDiscard(
     yield* ipc.handleLocalCommitCommand("inbox:send", (_, input) =>
       call<"inbox:send">("inbox_send", input),
     );
+    yield* ipc.handleQuery("inbox:skill-availability", (_, input) =>
+      call<"inbox:skill-availability">("inbox_skill_availability", input),
+    );
     yield* ipc.handleQuery("inbox:prepare-confirmation", (_, input) =>
       call<"inbox:prepare-confirmation">("inbox_prepare_confirmation", input),
     );

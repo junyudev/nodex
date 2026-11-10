@@ -277,6 +277,21 @@ export const makeManagedCodexProvider = Effect.fn("makeManagedCodexProvider")(fu
     generateReviewGuide: (value) =>
       protect("generateReviewGuide", nativeGeneration.generateReviewGuide(value)),
   };
+  const probeWorkspaceSkills = (cwd: string, exactCwd = false) =>
+    resolveRuntime.pipe(
+      Effect.flatMap((effective) =>
+        probeCodexSkillsForCwd({
+          binaryPath: effective.config.binaryPath,
+          homePath: effective.config.homePath,
+          launchArgs: effective.config.launchArgs,
+          cwd,
+          exactCwd,
+          environment: effective.environment,
+        }),
+      ),
+      Effect.scoped,
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+    );
   return {
     instanceId,
     driverKind: DRIVER,
@@ -288,23 +303,14 @@ export const makeManagedCodexProvider = Effect.fn("makeManagedCodexProvider")(fu
     orchestrationAdapter,
     textGeneration,
     auth: runtime.auth.controller,
+    skillsForCwd: (cwd: string) =>
+      probeWorkspaceSkills(cwd, true).pipe(Effect.orElseSucceed(() => [])),
     snapshotForCwd: (cwd: string) =>
       enabled
-        ? resolveRuntime.pipe(
-            Effect.flatMap((effective) =>
-              probeCodexSkillsForCwd({
-                binaryPath: effective.config.binaryPath,
-                homePath: effective.config.homePath,
-                launchArgs: effective.config.launchArgs,
-                cwd,
-                environment: effective.environment,
-              }),
-            ),
+        ? probeWorkspaceSkills(cwd).pipe(
             Effect.flatMap((skills) =>
               snapshot.getSnapshot.pipe(Effect.map((draft) => ({ ...draft, skills }))),
             ),
-            Effect.scoped,
-            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
             Effect.catch(() => snapshot.getSnapshot),
           )
         : snapshot.getSnapshot,

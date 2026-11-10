@@ -1,3 +1,4 @@
+import { makeInboxSkills } from "./inbox-skills";
 import * as Clock from "effect/Clock";
 import * as Cause from "effect/Cause";
 import * as Exit from "effect/Exit";
@@ -43,6 +44,7 @@ export const make = Effect.gen(function* () {
   const settings = yield* ApplicationSettings;
   const runtime = yield* AgentRuntimeApplication;
   const coordinator = yield* CoordinatorSession;
+  const skillInventory = yield* makeInboxSkills;
   const prepareContext = yield* makeRoutingContext;
   const loadImages = yield* makeInboxImageLoader;
   const logger = getLogger({ component: "inbox-dispatcher" });
@@ -82,7 +84,23 @@ export const make = Effect.gen(function* () {
       const session = yield* coordinator.ensure().pipe(Effect.result);
       if (session._tag === "Failure")
         return yield* fail(request, agentRuntimeFailureReason(session.failure));
-      yield* inbox.beginRouting(request, session.success);
+      const prepared = yield* prepareContext(current).pipe(Effect.result);
+      if (prepared._tag === "Failure")
+        return yield* fail(request, agentRuntimeFailureReason(prepared.failure));
+      const context = prepared.success;
+      // Leave room for the optional inventory before freezing what Nodex can validate.
+      const inputBudget = Buffer.byteLength(
+        JSON.stringify([request.context, current.instructions, context.agents, request.correction]),
+      );
+      const offers =
+        inputBudget < 180 * 1024
+          ? yield* skillInventory.offers(
+              request.context,
+              context.defaultChat?.instance_id,
+              context.agents?.candidates.map((candidate) => candidate.instance_id) ?? [],
+            )
+          : [];
+      yield* inbox.beginRouting(request, session.success, offers);
       const begun = yield* inbox.suggestionRequest(request.request_id);
       if (!begun || begun.generation !== request.generation) return;
       request = begun;
@@ -174,6 +192,7 @@ export const make = Effect.gen(function* () {
                   correction: request.correction,
                 },
                 agents: context.agents,
+                skillOffers: delivery.skill_offers ?? [],
                 attachedImageMarkers: loaded.attachedMarkers,
               }),
             catch: (cause) =>

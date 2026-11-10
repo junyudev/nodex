@@ -259,6 +259,7 @@ type QueryEndpointPolicy =
   | "inbox:window"
   | "inbox:activity"
   | "inbox:prepare-confirmation"
+  | "inbox:skill-availability"
   | "inbox:chat-targets"
   | "files:read"
   | "page-ownership-path:resolve"

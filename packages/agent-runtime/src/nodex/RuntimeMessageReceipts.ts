@@ -5,6 +5,7 @@ import {
   ModelSelection,
   OrchestrationMessageContext,
   OrchestrationV2RunStatus,
+  OrchestrationV2ConversationMessage,
   ProviderInteractionMode,
   RuntimeMode,
   ThreadId,
@@ -42,6 +43,7 @@ export const RuntimeMessageLaunch = Schema.Struct({
   message: Schema.Struct({
     messageId: MessageId,
     text: Schema.String,
+    skillInvocations: OrchestrationV2ConversationMessage.fields.skillInvocations,
     attachments: Schema.Array(ChatAttachment),
     context: Schema.optional(OrchestrationMessageContext),
     modelSelection: Schema.optional(ModelSelection),

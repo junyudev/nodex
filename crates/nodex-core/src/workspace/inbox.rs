@@ -2498,6 +2498,7 @@ fn normalize_action(
             project_id,
             prompt,
             additions,
+            skills,
             agent,
         } => {
             if scope.is_some() && project_id.as_deref() != scope {
@@ -2515,6 +2516,7 @@ fn normalize_action(
                 project_id: project_id.clone(),
                 prompt: normalize_prompt(prompt)?,
                 additions: normalize_additions(additions)?,
+                skills: normalize_skills(skills)?,
                 agent: agent.as_ref().map(normalize_chat_agent).transpose()?,
             })
         }
@@ -2522,6 +2524,7 @@ fn normalize_action(
             session_id,
             prompt,
             additions,
+            skills,
         } => {
             validate_id("session_id", session_id)?;
             let authority =
@@ -2543,6 +2546,7 @@ fn normalize_action(
                 session_id: session_id.clone(),
                 prompt: normalize_prompt(prompt)?,
                 additions: normalize_additions(additions)?,
+                skills: normalize_skills(skills)?,
             })
         }
         ProjectWorkspaceInboxDispatchAction::MoveToProject { project_id } => {
@@ -2700,4 +2704,38 @@ pub(super) fn corrupt(message: &str) -> StoreError {
 
 fn internal(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::Internal, message, false)
+}
+
+fn normalize_skills(
+    skills: &[nodex_core_contracts::inbox::InboxSuggestedSkill],
+) -> Result<Vec<nodex_core_contracts::inbox::InboxSuggestedSkill>, StoreError> {
+    let mut names = std::collections::HashSet::new();
+    if skills.len() > 3 {
+        return Err(invalid("A chat can have at most three suggested skills"));
+    }
+    skills
+        .iter()
+        .cloned()
+        .map(|mut skill| {
+            skill.reason = skill.reason.trim().to_owned();
+            if skill.name.is_empty()
+                || skill.name.chars().count() > 128
+                || !skill
+                    .name
+                    .bytes()
+                    .next()
+                    .is_some_and(|byte| byte.is_ascii_alphanumeric())
+                || !skill
+                    .name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b':' | b'_' | b'-'))
+                || !names.insert(skill.name.clone())
+                || skill.reason.is_empty()
+                || skill.reason.chars().count() > 160
+            {
+                return Err(invalid("Invalid suggested skill"));
+            }
+            Ok(skill)
+        })
+        .collect()
 }

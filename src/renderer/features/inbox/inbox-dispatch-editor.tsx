@@ -1,3 +1,4 @@
+import { useInboxSkillAvailability, InboxSkillToggles } from "./inbox-skill-review";
 import { useMemo, useState, type ReactNode, type ComponentProps } from "react";
 import type {
   InboxDispatchAction,
@@ -6,6 +7,7 @@ import type {
   InboxItem,
   InboxProposal,
   InboxPageBasis,
+  InboxSuggestedSkill,
 } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import { messageTextOf } from "../../../shared/message-content";
@@ -14,6 +16,7 @@ import { NodexOptionPicker } from "@/components/ui/dropdown";
 import { CompactChevronDownIcon } from "@/components/shared/icons";
 import {
   LIBRARY_INBOX,
+  inboxActionSkills,
   inboxNewChatAction,
   inboxPromptWithAdditions,
   projectInbox,
@@ -71,6 +74,8 @@ export interface InboxDispatchDraft {
   readonly projectId: string | null;
   readonly sessionId: string | null;
   readonly prompt: string;
+  readonly skills?: readonly InboxSuggestedSkill[];
+  readonly droppedSkillNames?: readonly string[];
   /** What a new chat runs on when chosen for this decision; the Inbox's own when unset. */
   readonly agent?: InboxAgentChoice | null;
   /** The immutable decision being reviewed, independent of its originating Automation. */
@@ -101,6 +106,7 @@ export function draftFromAction(
         projectId: action.projectId,
         sessionId: null,
         prompt: inboxPromptWithAdditions(action.prompt, action.additions),
+        ...(action.skills?.length ? { skills: action.skills } : {}),
         agent: action.agent,
       };
     case "send_to_chat":
@@ -109,6 +115,7 @@ export function draftFromAction(
         projectId: null,
         sessionId: action.sessionId,
         prompt: inboxPromptWithAdditions(action.prompt, action.additions),
+        ...(action.skills?.length ? { skills: action.skills } : {}),
       };
     case "move_to_project":
       return {
@@ -138,14 +145,17 @@ export function draftForInboxItem(
   projectId: string | null,
   edited: InboxDispatchAction | null = null,
   automationDecision: InboxDispatchAutomationDecision | null = null,
+  droppedSkillNames?: readonly string[],
 ): InboxDispatchDraft {
   const proposal = item.proposal;
   const action = edited ?? proposal?.action;
+  const draft = draftFromAction(
+    action ?? inboxNewChatAction(projectId, messageTextOf(item.body)),
+    messageTextOf(item.body),
+  );
   return {
-    ...draftFromAction(
-      action ?? inboxNewChatAction(projectId, messageTextOf(item.body)),
-      messageTextOf(item.body),
-    ),
+    ...draft,
+    ...(proposal?.state !== "open" && draft.skills ? { skills: [] } : {}),
     basis: proposal?.basis ?? [item.basis],
     chat: proposal?.chat ?? null,
     decisionId:
@@ -153,6 +163,7 @@ export function draftForInboxItem(
         ? action.decisionId
         : (item.automationDecision?.dispatchId ?? null),
     automationDecision,
+    ...(droppedSkillNames?.length ? { droppedSkillNames } : {}),
     ...(proposal?.state === "open" ? { proposal } : {}),
   };
 }
@@ -173,11 +184,18 @@ export function actionFromDraft(draft: InboxDispatchDraft): InboxDispatchAction 
             prompt,
             agent: draft.agent ?? null,
             additions: [],
+            ...(draft.skills?.length ? { skills: draft.skills } : {}),
           }
         : null;
     case "send_to_chat":
       return prompt && draft.sessionId
-        ? { type: "send_to_chat", sessionId: draft.sessionId, prompt, additions: [] }
+        ? {
+            type: "send_to_chat",
+            sessionId: draft.sessionId,
+            prompt,
+            additions: [],
+            ...(draft.skills?.length ? { skills: draft.skills } : {}),
+          }
         : null;
     case "move_to_project":
       return draft.projectId ? { type: "move_to_project", projectId: draft.projectId } : null;
@@ -237,7 +255,11 @@ export function InboxDispatchEditor({
   /** The Project whose Inbox holds the messages, or null for the Library Inbox. */
   readonly inboxProjectId?: string | null;
   /** `chat` is the chosen chat when the action sends to one. */
-  readonly onSubmit: (action: InboxDispatchAction, chat: InboxChat | null) => Promise<boolean>;
+  readonly onSubmit: (
+    action: InboxDispatchAction,
+    chat: InboxChat | null,
+    droppedSkillNames?: readonly string[],
+  ) => Promise<boolean>;
   readonly onCancel: () => void;
   /** Opens an automationDecision's task, where its folders, workspace and schedule change for every run. */
   readonly onEditTask?: (automationId: string) => void;
@@ -279,6 +301,10 @@ export function InboxDispatchEditor({
               : current.projectId,
     }));
   const action = actionFromDraft(draft);
+  const skillAvailability = useInboxSkillAvailability(draft.proposal, action);
+  const droppedSkillNames = [
+    ...new Set([...(draft.droppedSkillNames ?? []), ...skillAvailability.unavailable]),
+  ];
   const projectName = (projectId: string | null) =>
     projectId === null
       ? "No Project"
@@ -290,9 +316,12 @@ export function InboxDispatchEditor({
     chosenChat?.displayTitle ?? (draft.sessionId ? "Selected chat" : "Choose a chat");
 
   const submit = async () => {
-    if (!action) return;
+    if (!action || skillAvailability.pending) return;
     setSubmitting(true);
-    const done = await onSubmit(action, action.type === "send_to_chat" ? chosenChat : null);
+    const chat = action.type === "send_to_chat" ? chosenChat : null;
+    const done = droppedSkillNames.length
+      ? await onSubmit(action, chat, droppedSkillNames)
+      : await onSubmit(action, chat);
     setSubmitting(false);
     if (done) onCancel();
   };
@@ -425,6 +454,27 @@ export function InboxDispatchEditor({
         />
       ) : null}
 
+      {action &&
+      draft.proposal &&
+      (action.type === "new_chat" || action.type === "send_to_chat") ? (
+        <InboxSkillToggles
+          skills={inboxActionSkills(draft.proposal.action)}
+          dropped={droppedSkillNames}
+          unavailable={skillAvailability.unavailable}
+          pending={skillAvailability.pending}
+          onToggle={(name) =>
+            setDraft((current) => {
+              const dropped = current.droppedSkillNames ?? [];
+              return {
+                ...current,
+                droppedSkillNames: dropped.includes(name)
+                  ? dropped.filter((candidate) => candidate !== name)
+                  : [...dropped, name],
+              };
+            })
+          }
+        />
+      ) : null}
       {draft.type === "execute_decision" && draft.automationDecision ? (
         // The message is this run's instructions; everything else is the task's own.
         <div className="flex min-w-0 items-center gap-1 px-1 text-sm text-token-description-foreground">
@@ -489,7 +539,7 @@ export function InboxDispatchEditor({
         <NodexButton
           size="xs"
           variant="primary"
-          disabled={!action || submitting}
+          disabled={!action || submitting || skillAvailability.pending}
           onClick={() => void submit()}
         >
           {CONFIRM_LABELS[draft.type]}

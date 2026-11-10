@@ -113,6 +113,7 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
           chat_model: null,
           chat_effort: null,
           additions: [],
+          skills: [],
           summary: "Keep this reference",
           rationale: null,
         })),
@@ -165,6 +166,19 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
     Effect.provideService(AgentRuntimeApplication, {
       catalog,
       sendMessage: generated,
+      executionWorkspace: () =>
+        Effect.succeed({ available: true, workspaceRoot: "/repo", sourceRoots: ["/repo"] }),
+      skillsForWorkspace: () =>
+        Effect.succeed([
+          {
+            name: "repo-review",
+            path: "/repo/.agents/skills/repo-review/SKILL.md",
+            enabled: true,
+            description: "Review the repository",
+          },
+          { name: "disabled", path: "/repo/disabled", enabled: false },
+        ]),
+      skillDestinationForSession: () => Effect.succeed(null),
       stopHostInput,
       runOutcome: () => Effect.succeed(null),
       messageAdmission: () => Effect.succeed(null),
@@ -410,6 +424,16 @@ it.effect("offers the Project's source directories in a queued host routing requ
       assert.equal(call.mode, "queue");
       assert.isString(call.messageFingerprint);
       const data = JSON.parse(call.message.text.split("JSON data:\n")[1]!);
+      assert.sameDeepMembers(
+        data.skill_offers,
+        [null, "codex"].map((instance_id) => ({
+          project_id: projectId,
+          session_id: null,
+          instance_id,
+          skills: [{ name: "repo-review", description: "Review the repository" }],
+        })),
+      );
+      assert.notInclude(call.message.text, "SKILL.md");
       assert.isAbove(
         data.projects.find((project: { project_id: string }) => project.project_id === projectId)
           .sources.length,

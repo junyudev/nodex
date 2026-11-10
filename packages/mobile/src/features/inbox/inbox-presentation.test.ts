@@ -29,6 +29,7 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
     projectId: null,
     projectName: null,
     prompt: "Do it",
+    skills: [],
     additions: [],
     agent: null,
   },
@@ -158,6 +159,7 @@ describe("messageChat", () => {
         sessionId: "s1",
         chatTitle: null,
         prompt: "x",
+        skills: [],
         additions: [],
       },
     });
@@ -177,6 +179,7 @@ describe("proposalDestination", () => {
         projectId: null,
         projectName: null,
         prompt: "x",
+        skills: [],
         additions: [],
         agent: null,
       }),
@@ -325,6 +328,7 @@ describe("proposalHeadline", () => {
       projectName: null,
       prompt: "x",
       additions: [] as string[],
+      skills: [] as { name: string; reason: string }[],
       agent: null,
     } as const;
     expect(proposalHeadline(newChat)).toBe("Start a chat");
@@ -337,6 +341,7 @@ describe("proposalHeadline", () => {
         sessionId: "s",
         chatTitle: "Refactor",
         prompt: "x",
+        skills: [],
         additions: [],
       }),
     ).toBe("Send to Refactor");
@@ -364,5 +369,27 @@ describe("proposalAcceptance", () => {
       done: "Done",
     });
     expect(proposalAcceptance(proposal({ action: { type: "keep" } })).done).toBe("Kept");
+  });
+});
+
+it("accepts exactly the skill names left checked after review", () => {
+  const reviewed = proposal({
+    action: {
+      type: "send_to_chat",
+      sessionId: "session",
+      chatTitle: null,
+      prompt: "Investigate",
+      additions: [],
+      skills: [
+        { name: "review", reason: "Inspect the diff" },
+        { name: "trace", reason: "Find the cause" },
+      ],
+    },
+  });
+  expect(proposalAcceptance(reviewed, ["review"]).decision).toEqual({
+    type: "accept",
+    proposalId: reviewed.proposalId,
+    revision: reviewed.revision,
+    keptSkillNames: ["trace"],
   });
 });

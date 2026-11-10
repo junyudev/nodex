@@ -1,3 +1,4 @@
+import type { InboxSkillOffer } from "./inbox-skills";
 import { describe, expect, it } from "vitest";
 import type {
   CoreInboxDispatchContext,
@@ -55,6 +56,7 @@ const raw = (overrides: Record<string, unknown>) => ({
   project_id: null,
   session_id: null,
   prompt: null,
+  skills: [],
   additions: [],
   chat_instance_id: null,
   chat_model: null,
@@ -725,4 +727,68 @@ describe("automatic routing notes", () => {
       expect(validate(31, ["Use tests"], false).suggestions).toHaveLength(1);
     },
   );
+});
+
+describe("suggested skills", () => {
+  const note = entry("1", "Consider $required, and ignore `$sample`.");
+  const skill = { name: "review", reason: "Compare the affected code." };
+  const proposed = {
+    action: "new_chat",
+    project_id: "project:nodex",
+    prompt: "Consider $required, then summarize the implications.",
+    skills: [skill],
+  };
+  const offer = {
+    project_id: "project:nodex",
+    instance_id: null,
+    session_id: null,
+    skills: [
+      { name: "review", description: "Review code" },
+      { name: "required", description: "Required skill" },
+    ],
+  };
+  const validate = (
+    overrides: Record<string, unknown>,
+    offers: readonly InboxSkillOffer[] = [offer],
+  ) =>
+    validateInboxSuggestions(
+      output([raw({ ...proposed, ...overrides })]),
+      context([note]),
+      [note],
+      request,
+      [],
+      offers,
+    );
+
+  it("uses the Inbox default's exact destination offer and preserves requested tokens", () => {
+    expect(validate({}).suggestions[0]?.action).toMatchObject({
+      skills: [skill],
+      prompt: proposed.prompt,
+    });
+    expect(() => validate({}, [])).toThrow(/was not offered/);
+    expect(() => validate({}, [{ ...offer, instance_id: "claude" }])).toThrow(/was not offered/);
+    expect(() => validate({ skills: [skill, skill] })).toThrow(/duplicated/);
+    expect(() => validate({ skills: [{ ...skill, name: "Review" }] })).toThrow(/was not offered/);
+    expect(() => validate({ skills: [{ ...skill, name: "required" }] })).toThrow(
+      /already requested/,
+    );
+    expect(() => validate({ prompt: "Summarize the implications." })).toThrow(
+      /user's skill invocations/,
+    );
+  });
+
+  it("requires the Session offer and rejects invocations that bypass review", () => {
+    const followup = { action: "send_to_chat", project_id: null, session_id: "session:sidebar" };
+    expect(() => validate(followup)).toThrow(/was not offered/);
+    expect(
+      validate(followup, [{ ...offer, project_id: null, session_id: "session:sidebar" }])
+        .suggestions[0]?.action,
+    ).toMatchObject({ type: "send_to_chat", skills: [skill] });
+    expect(() => validate({ prompt: proposed.prompt + " $invented" })).toThrow(/only in skills/);
+    expect(() => validate({ additions: ["Try /review."] })).toThrow(/only in skills/);
+    expect(() => validate({ explicit_request: true })).toThrow(/cannot suggest skills/);
+    expect(() => validate({ action: "keep", prompt: null, project_id: null })).toThrow(
+      /cannot suggest skills/,
+    );
+  });
 });

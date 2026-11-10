@@ -88,6 +88,7 @@ export interface ProviderInstance {
   readonly accentColor?: string | undefined;
   readonly enabled: boolean;
   readonly snapshot: ManagedServerProvider;
+  readonly skillsForCwd?: (cwd: string) => Effect.Effect<ServerProvider["skills"]>;
   readonly snapshotForCwd?: (
     cwd: string,
   ) => Effect.Effect<ProviderWorkspaceSnapshot, ProviderDriverError>;

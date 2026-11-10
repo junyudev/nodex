@@ -1,3 +1,4 @@
+import { inboxSkillTokens, type InboxSkillOffer } from "./inbox-skills";
 import { createHash } from "node:crypto";
 import { countWords } from "../../shared/word-count";
 import {
@@ -51,8 +52,8 @@ export const inboxRoutingDeadline = (
   delivery.run_started_at_ms == null
     ? delivery.handed_over_at_ms + INBOX_ROUTING_HANDOVER_CAP_MS + (delivery.paused_ms ?? 0)
     : delivery.run_started_at_ms + INBOX_ROUTING_DEADLINE_MS + (delivery.paused_ms ?? 0);
-export const INBOX_PROMPT_VERSION = "inbox-routing-v14";
-export const INBOX_SCHEMA_VERSION = "inbox-routing-v8";
+export const INBOX_PROMPT_VERSION = "inbox-routing-v15";
+export const INBOX_SCHEMA_VERSION = "inbox-routing-v9";
 const MAX_PROMPT_CHARS = 2_000;
 const MAX_SUMMARY_CHARS = 200;
 const MAX_RATIONALE_CHARS = 600;
@@ -91,6 +92,7 @@ export const renderInboxRoutingRequest = (input: {
   readonly instructions: string;
   readonly request: InboxSuggestionRequestIdentity;
   readonly agents: InboxSuggestionAgents | null;
+  readonly skillOffers?: readonly InboxSkillOffer[];
   readonly attachedImageMarkers?: readonly number[];
 }): string => {
   const { context, request, agents } = input;
@@ -155,18 +157,23 @@ export const renderInboxRoutingRequest = (input: {
       (proposal) => proposal.action.type !== "execute_decision",
     ),
     correction: request.correction ?? null,
+    skill_offers: input.skillOffers ?? [],
   };
-  const prompt = `Routing request
+  const prompt = (routingData: typeof data) => `Routing request
 Submit with inbox_suggest; echo request_id and generation exactly. Cover all page_ids exactly once, using only the supplied actions and target IDs. grouped/refine requires one action; a correction revises only its supplied proposal and members.
 keep: null targets/prompt; new_chat: project_id (nullable in Library) and prompt; send_to_chat: only session_id and prompt; move_to_project: only project_id. Only new_chat sets chat_instance_id/chat_model/chat_effort, using an offered choice; otherwise these are null. Only chat actions have additions; otherwise []. explicit_request is a required boolean on every suggestion. plan: null targets/prompt/chat fields, no additions, explicit_request false, and steps [{key,project_id,title,body,agent:{instance_id,model,effort}|null,blocked_by:[key]}]. Plans have 2–8 unique step keys, only eligible Projects (a Project Inbox stays in its Project), offered Agent choices or null for the chat default, and acyclic prerequisites naming other steps. Step titles are at most 120 characters and bodies at most 4000. Only plans carry steps. Plans always wait for the user.
-${agents === null ? "No Agent choices are offered for this request. chat_instance_id, chat_model and chat_effort must all be null, including for new_chat; every plan step agent must also be null. Choices from earlier requests or list_agent_models do not apply.\n" : ""}For explicit_request true, use at most 30 words in prompt and no additions.
+${agents === null ? "No Agent choices are offered for this request. chat_instance_id, chat_model and chat_effort must all be null, including for new_chat; every plan step agent must also be null. Choices from earlier requests or list_agent_models do not apply.\n" : ""}For explicit_request true, use at most 30 words in prompt and no additions or skills.
+For other chat actions, propose at most three useful skills as {name,reason}. Match an exact name in skill_offers for that project_id and chat_instance_id (null is the Inbox default), or for that session_id. Keep dollar invocations from the user in the prompt; for explicit requests the unchanged original carries them. Never repeat them as optional skills. Put all skill advice in skills, never as dollar or slash invocations in prompt or additions. Use [] for other actions or when no skill fits.
 Budgets: at most 16 suggestions/titles/members; prompt 2000, summary 200, rationale 600, provisional message title 80 characters; at most 12 additions of 600 characters. summary is nonempty; rationale may be null. Titles name only provisional messages. The whole response is at most 48 KiB.
 Bodies use Nodex Markdown. [Image #N] marks its position. Attached images follow attached_images in message order; unavailable_images have no attachment. This request's data and scope supersede historical routing data.
 JSON data:
-${JSON.stringify(data)}`;
-  if (Buffer.byteLength(prompt, "utf8") > INBOX_SUGGESTION_MAX_INPUT_BYTES)
+${JSON.stringify(routingData)}`;
+  const withSkills = prompt(data);
+  if (Buffer.byteLength(withSkills) <= INBOX_SUGGESTION_MAX_INPUT_BYTES) return withSkills;
+  const withoutSkills = prompt({ ...data, skill_offers: [] });
+  if (Buffer.byteLength(withoutSkills, "utf8") > INBOX_SUGGESTION_MAX_INPUT_BYTES)
     throw new Error("These messages exceed the suggestion input budget; select fewer messages");
-  return prompt;
+  return withoutSkills;
 };
 
 export interface ValidatedInboxSuggestion {
@@ -205,6 +212,7 @@ export const validateInboxSuggestions = (
   entries: readonly CoreInboxSuggestionInput[],
   request: InboxSuggestionRequestIdentity,
   candidates: readonly InboxAgentCandidate[] = [],
+  skillOffers: readonly InboxSkillOffer[] = [],
 ): InboxSuggestionValidation => {
   if (Buffer.byteLength(JSON.stringify(supplied) ?? "", "utf8") > INBOX_SUGGESTION_MAX_OUTPUT_BYTES)
     throw new Error("Invalid Inbox suggestion: output exceeds the 48 KiB budget");
@@ -260,6 +268,43 @@ export const validateInboxSuggestions = (
     if (additions.some((addition) => !addition)) reject("an empty addition");
     if (raw.action !== "new_chat" && raw.action !== "send_to_chat" && additions.length > 0)
       reject("only a chat prompt has additions");
+    const chat = raw.action === "new_chat" || raw.action === "send_to_chat";
+    if ((!chat || raw.explicit_request) && raw.skills.length)
+      reject("this decision cannot suggest skills");
+    if (chat) {
+      const required = new Set(
+        entries
+          .filter((entry) => raw.page_ids.includes(entry.page_id))
+          .flatMap((entry) => inboxSkillTokens(entry.body, "$")),
+      );
+      const promptNames = new Set(inboxSkillTokens(prompt ?? "", "$"));
+      const offered = skillOffers.find((offer) =>
+        raw.action === "send_to_chat"
+          ? offer.session_id === raw.session_id
+          : offer.session_id == null &&
+            offer.project_id === raw.project_id &&
+            offer.instance_id === raw.chat_instance_id,
+      );
+      const offeredNames = new Set(offered?.skills.map((skill) => skill.name));
+      if (
+        new Set(raw.skills.map((skill) => skill.name)).size !== raw.skills.length ||
+        raw.skills.some(
+          ({ name }) => !offeredNames.has(name) || required.has(name) || promptNames.has(name),
+        )
+      )
+        reject("a skill is duplicated, already requested, or was not offered for this chat");
+      if (
+        [...promptNames].some((name) => !required.has(name)) ||
+        inboxSkillTokens(prompt ?? "", "/").length ||
+        additions.some(
+          (addition) =>
+            inboxSkillTokens(addition, "$").length || inboxSkillTokens(addition, "/").length,
+        )
+      )
+        reject("put optional skill invocations only in skills");
+      if (!raw.explicit_request && [...required].some((name) => !promptNames.has(name)))
+        reject("keep the user's skill invocations in the prompt");
+    }
     if (raw.action !== "plan" && raw.steps !== undefined) reject("only plans carry steps");
     let action: InboxDispatchAction;
     switch (raw.action) {
@@ -342,6 +387,7 @@ export const validateInboxSuggestions = (
               ? null
               : offered(raw.chat_instance_id, raw.chat_model, raw.chat_effort),
           additions,
+          ...(raw.skills.length ? { skills: raw.skills } : {}),
         };
         break;
       case "send_to_chat":
@@ -352,7 +398,13 @@ export const validateInboxSuggestions = (
           !sessionIds.has(raw.session_id)
         )
           reject("invalid existing chat destination or prompt");
-        action = { type: "send_to_chat", sessionId: raw.session_id!, prompt: prompt!, additions };
+        action = {
+          type: "send_to_chat",
+          sessionId: raw.session_id!,
+          prompt: prompt!,
+          additions,
+          ...(raw.skills.length ? { skills: raw.skills } : {}),
+        };
         break;
       case "move_to_project":
         if (

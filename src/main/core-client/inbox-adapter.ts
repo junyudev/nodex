@@ -77,6 +77,7 @@ export const inboxDispatchActionFromCore = (
         prompt: action.prompt,
         agent: action.agent ? inboxChatAgentFromCore(action.agent) : null,
         additions: action.additions ?? [],
+        skills: action.skills ?? [],
       };
     case "send_to_chat":
       return {
@@ -84,6 +85,7 @@ export const inboxDispatchActionFromCore = (
         sessionId: action.session_id,
         prompt: action.prompt,
         additions: action.additions ?? [],
+        skills: action.skills ?? [],
       };
     case "move_to_project":
       return { type: "move_to_project", projectId: action.project_id };
@@ -140,6 +142,7 @@ export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInbo
         prompt: action.prompt,
         agent: action.agent ? chatAgentToCore(action.agent) : null,
         additions: [...action.additions],
+        skills: [...(action.skills ?? [])],
       };
     case "send_to_chat":
       return {
@@ -147,6 +150,7 @@ export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInbo
         session_id: action.sessionId,
         prompt: action.prompt,
         additions: [...action.additions],
+        skills: [...(action.skills ?? [])],
       };
     case "move_to_project":
       return { type: "move_to_project", project_id: action.projectId };
@@ -273,6 +277,7 @@ export const inboxChatFromCore = (chat: CoreInboxChat): InboxChat => ({
 });
 
 const proposalFromCore = (proposal: CoreInboxProposal): InboxProposal => ({
+  unavailableSkillNames: proposal.unavailable_skill_names ?? [],
   createdPageIds: proposal.created_page_ids ?? [],
   answeredQuestion: proposal.answered_question,
   proposalId: proposal.proposal_id,

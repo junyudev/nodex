@@ -11,6 +11,7 @@ fn routing_run_start_survives_reopen_and_never_resets_for_a_retry() {
         m,
         "begin",
         ProjectWorkspaceIntent::BeginInboxRouting {
+            skill_offers: vec![],
             request_id: "request:route".into(),
             generation: 1,
             coordinator_session_id: "nodex".into(),
@@ -71,6 +72,7 @@ fn routing_refusal_survives_reopen_and_is_fenced_to_the_pending_delivery() {
         m,
         "begin",
         ProjectWorkspaceIntent::BeginInboxRouting {
+            skill_offers: vec![],
             request_id: "request:route".into(),
             generation: 1,
             coordinator_session_id: "nodex".into(),

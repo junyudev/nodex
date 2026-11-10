@@ -126,6 +126,7 @@ pub enum HostOperation {
     InboxReplyDestination,
     InboxSend,
     InboxPrepareConfirmation,
+    InboxSkillAvailability,
     InboxConfirm,
     InboxDispatch,
     InboxChatTargets,

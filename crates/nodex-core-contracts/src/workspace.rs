@@ -2600,6 +2600,8 @@ pub enum ProjectWorkspaceIntent {
     },
 
     BeginInboxRouting {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        skill_offers: Vec<crate::inbox::InboxSkillOffer>,
         request_id: String,
         generation: i64,
         coordinator_session_id: String,
@@ -2650,6 +2652,8 @@ pub enum ProjectWorkspaceIntent {
     },
     /// The user authorizes one exact proposal revision, optionally with edits.
     ConfirmInboxDispatch {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        skill_invocations: Vec<crate::inbox::InboxSkillInvocation>,
         #[serde(default)]
         confirmed_by: crate::inbox::InboxConfirmedBy,
         expected_store_epoch: String,
@@ -2745,6 +2749,8 @@ pub enum ProjectWorkspaceIntent {
         message_id: String,
         proposal_id: String,
         dispatched_thread_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        unavailable_skill_names: Vec<String>,
     },
     FailInboxDispatch {
         expected_revision: i64,

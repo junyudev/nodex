@@ -1,3 +1,4 @@
+import { INBOX_TRIAGE_SCENARIO_ID, seedInboxTriageSkills } from "../scenarios/inbox-triage";
 import { execFile } from "node:child_process";
 import { cp, lstat, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -88,6 +89,7 @@ export const materializeSeededSourceFolder = async (
         `# ${scenarioId}\n\nDevelopment workspace.\n`,
       );
     }
+    if (scenarioId === INBOX_TRIAGE_SCENARIO_ID) await seedInboxTriageSkills(source);
     await git(source, "init", "--initial-branch=main", "--template=");
     await git(source, "config", "user.name", "Nodex Development");
     await git(source, "config", "user.email", "development@nodex.invalid");

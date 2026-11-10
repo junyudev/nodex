@@ -132,7 +132,19 @@ it.effect(
         modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "original-model" },
         interactionMode: "plan" as const,
         runtimeMode: "approval-required" as const,
-        message: { messageId: input.messageId, text: "", attachments: [] },
+        message: {
+          messageId: input.messageId,
+          text: "",
+          attachments: [],
+          skillInvocations: [
+            {
+              name: "review",
+              path: "/workspace/review/SKILL.md",
+              instanceId: "codex",
+              cwd: "/workspace",
+            },
+          ],
+        },
         resources: [{ name: "evidence.txt", mimeType: "text/plain", sizeBytes: 8, source }],
       };
       const staged = yield* owner.stage(request);
@@ -142,6 +154,7 @@ it.effect(
       assert.equal(staged.interactionMode, "plan");
       assert.equal(staged.runtimeMode, "approval-required");
       assert.deepEqual(staged.modelSelection, request.modelSelection);
+      assert.deepEqual(staged.message.skillInvocations, request.message.skillInvocations);
       assert.equal(
         yield* fs.readFileString(
           path.join(config.attachmentsDir, attachmentRelativePath(staged.message.attachments[0]!)!),

@@ -14,17 +14,19 @@ export const make = Effect.gen(function* () {
     const provider = providers.find(
       (provider) => provider.instanceId === modelSelection.instanceId,
     );
+    const defaultChat = inboxDefaultChatCandidate(providers, current.chatAgent);
     const agents = current.suggestionsChooseModels
       ? {
           candidates: inboxAgentCandidates(providers, {
             now: yield* Clock.currentTimeMillis,
             useModelGuide: current.useModelGuide,
           }),
-          defaultChat: inboxDefaultChatCandidate(providers, current.chatAgent),
+          defaultChat,
         }
       : null;
     return {
       modelSelection,
+      defaultChat,
       agents,
       producedBy: [
         provider?.displayName ?? modelSelection.instanceId,

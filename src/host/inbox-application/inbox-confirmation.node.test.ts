@@ -1,3 +1,5 @@
+import { createUuidV7 } from "../../shared/uuid-v7";
+import { DEFAULT_INBOX_SETTINGS } from "../../shared/inbox";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
@@ -95,4 +97,101 @@ it.effect("freezes a new chat on the Agent its decision chose, or else on the In
       assert.match(retired.message, /selected model is unavailable/);
     }),
   ),
+);
+
+it.effect(
+  "derives the kept skills from the proposal and reports another Agent's availability",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const skills = [
+          { name: "audit", reason: "Audit the homepage." },
+          { name: "review", reason: "Review the current copy." },
+        ];
+        const { inbox, projectId } = yield* inboxOverRealCore(
+          Effect.void,
+          () => Effect.succeed([codex, { ...codex, instanceId: "other-agent" }]),
+          () => DEFAULT_INBOX_SETTINGS,
+          {
+            executionWorkspace: () =>
+              Effect.succeed({ available: true, workspaceRoot: "/repo", sourceRoots: ["/repo"] }),
+            skillsForWorkspace: ({ instanceId }) =>
+              Effect.succeed(
+                skills
+                  .filter(({ name }) => instanceId === "codex" || name === "review")
+                  .map(({ name }) => ({ name, path: `/repo/${name}/SKILL.md`, enabled: true })),
+              ),
+          },
+        );
+        const { pageId } = yield* captureInbox(inbox, "Compare both homepage positions");
+        const entry = (yield* inbox.entry(pageId))!;
+        const basis = [entry.basis];
+        yield* inbox.requestSuggestion({
+          requestId: createUuidV7(),
+          mode: "auto",
+          pageIds: [pageId],
+          basis,
+        });
+        const [request] = yield* inbox.suggestionRequests(1);
+        yield* inbox.settleSuggestion({
+          request_id: request!.request_id,
+          generation: request!.generation,
+          titles: [],
+          produced_by: "Nodex",
+          error: null,
+          automatic_dispatch: false,
+          suggestions: [
+            {
+              proposal_id: createUuidV7(),
+              page_ids: [pageId],
+              entry_kind: "question",
+              summary: "Compare both positions.",
+              rationale: null,
+              explicit_request: false,
+              action: {
+                type: "new_chat",
+                project_id: projectId,
+                prompt: "Compare both positions.",
+                skills,
+              },
+            },
+          ],
+        });
+        const { item, storeEpoch } = yield* inbox.message(pageId);
+        const proposal = item.proposal!;
+        const fence = { proposalId: proposal.proposalId, expectedRevision: proposal.revision };
+        const action = proposal.action;
+        if (action.type !== "new_chat") return assert.fail("Expected a chat proposal");
+        assert.deepEqual(
+          yield* inbox.skillAvailability({
+            ...fence,
+            pageId,
+            target: { type: "new_chat", projectId: action.projectId, instanceId: "other-agent" },
+          }),
+          [
+            { name: "audit", available: false },
+            { name: "review", available: true },
+          ],
+        );
+
+        const draft = { ...fence, kind: "proposal" as const, storeEpoch, basis, action };
+        const refusal = yield* Effect.flip(
+          inbox.prepareConfirmation({ ...draft, droppedSkillNames: ["forged"] }),
+        );
+        assert.match(refusal.message, /not part of this suggestion/);
+        const prepared = yield* inbox.prepareConfirmation({
+          ...draft,
+          droppedSkillNames: ["audit"],
+        });
+        if (prepared.kind !== "proposal") return assert.fail("Expected a prepared proposal");
+        const { kind: _kind, ...confirmation } = prepared;
+        yield* inbox.confirm(confirmation);
+        yield* inbox.confirm(confirmation);
+        const [work] = yield* inbox.outbox(1);
+        assert.deepInclude(work!.action, { skills: [skills[1]] });
+        assert.deepEqual(work!.skill_invocations, [
+          { name: "review", path: "/repo/review/SKILL.md", cwd: "/repo", instanceId: "codex" },
+        ]);
+      }),
+    ),
 );

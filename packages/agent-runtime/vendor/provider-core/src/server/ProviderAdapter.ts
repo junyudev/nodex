@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { OrchestrationV2HistoricalMessage } from "@nodex/runtime-contracts";
 import {
   ChatAttachment,
@@ -56,6 +57,7 @@ export const ProviderAdapterV2RuntimePolicy = Schema.Struct({
 export type ProviderAdapterV2RuntimePolicy = typeof ProviderAdapterV2RuntimePolicy.Type;
 
 export const ProviderAdapterV2TurnMessage = Schema.Struct({
+  skillInvocations: OrchestrationV2ConversationMessage.fields.skillInvocations,
   messageId: MessageId,
   text: Schema.String,
   attachments: Schema.Array(ChatAttachment),
@@ -432,6 +434,8 @@ export interface ProviderAdapterV2EnsureThreadInput {
 }
 
 export interface ProviderAdapterV2TurnInput {
+  /** Report optional skills that failed the provider's final availability check. */
+  readonly reportUnavailableSkills?: (names: readonly string[]) => Effect.Effect<void>;
   /** Durable ownership probe; absent means another Run must be treated as live. */
   /** Automatic same-Run recovery input; separate from runtime restart continuation. */
   readonly continuation?: "resend" | "empty" | "prompt";
@@ -464,6 +468,27 @@ export interface ProviderAdapterV2TurnInput {
    * application context; others never receive any.
    */
   readonly appContext?: ReadonlyArray<{ readonly key: string; readonly text: string }>;
+}
+
+/** A managed Page checkout can contain the reviewed Project skill at the same relative path. */
+export function matchesSkillInvocation(
+  invocation: NonNullable<ProviderAdapterV2TurnMessage["skillInvocations"]>[number],
+  available: { readonly name: string; readonly path: string },
+  instanceId: string,
+  cwd: string | null | undefined,
+  placement?: Partial<Pick<ProviderAdapterV2TurnInput, "appThread" | "hostSourceRoots">>,
+): boolean {
+  if (invocation.instanceId !== instanceId || invocation.name !== available.name || !cwd) return false;
+  if (invocation.path === available.path) return true;
+  const worktree = placement?.appThread?.executionLocation?.managedWorktreePath ??
+    placement?.appThread?.worktreePath;
+  if (!worktree || !placement?.hostSourceRoots?.includes(invocation.cwd)) return false;
+  const checkout = path.relative(worktree, cwd);
+  if (path.isAbsolute(checkout) || checkout === ".." || checkout.startsWith(`..${path.sep}`)) return false;
+  const relative = path.relative(invocation.cwd, invocation.path);
+  const [directory, kind] = relative.split(path.sep);
+  if (![".agents", ".claude", ".opencode"].includes(directory ?? "") || kind !== "skills") return false;
+  return path.join(cwd, relative) === available.path;
 }
 
 /**

@@ -688,6 +688,7 @@ fn a_member_starts_a_chat_from_the_inbox_and_the_host_keeps_delivery() {
                 action: ProjectWorkspaceInboxDispatchAction::NewChat {
                     project_id: None,
                     prompt: "Draft the release notes".into(),
+                    skills: vec![],
                     additions: vec![],
                     agent: None,
                 },
@@ -738,6 +739,7 @@ fn a_member_starts_a_chat_from_the_inbox_and_the_host_keeps_delivery() {
             proposal_id: "proposal:bob".into(),
             expected_revision: dispatches[0].revision,
             message_id: dispatches[0].message_id.clone(),
+            unavailable_skill_names: vec![],
             dispatched_thread_id: Some("thread:bob".into()),
         },
     )

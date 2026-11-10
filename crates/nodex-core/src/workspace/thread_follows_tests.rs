@@ -563,6 +563,7 @@ fn intake_deduplicates_discovery_and_dispatch_follows_its_origin_without_automat
             action: ProjectWorkspaceInboxDispatchAction::NewChat {
                 project_id: None,
                 prompt: "Investigate the request".into(),
+                skills: vec![],
                 additions: vec![],
                 agent: None,
             },
@@ -969,6 +970,7 @@ fn external_intake_refuses_explicit_request_even_when_start_my_requests_is_enabl
         action: ProjectWorkspaceInboxDispatchAction::NewChat {
             project_id: None,
             prompt: "Investigate".into(),
+            skills: vec![],
             additions: vec![],
             agent: None,
         },

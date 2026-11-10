@@ -63,6 +63,7 @@ export interface InboxActions {
     proposal: InboxProposal,
     edited?: InboxDispatchAction,
     chat?: InboxChat | null,
+    droppedSkillNames?: readonly string[],
   ) => Promise<boolean>;
   readonly dispatch: (
     pageIds: readonly string[],
@@ -348,7 +349,7 @@ export function useInboxActions(
       run("The message could not be edited", () =>
         editInboxMessage({ pageId, basis, originalBody, body }),
       ),
-    confirm: (proposal, edited, chat) =>
+    confirm: (proposal, edited, chat, droppedSkillNames) =>
       run("The suggestion could not be confirmed", () => {
         const draft: InboxConfirmationDraft = {
           kind: "proposal",
@@ -357,6 +358,7 @@ export function useInboxActions(
           expectedRevision: proposal.revision,
           basis: proposal.basis,
           action: edited ?? proposal.action,
+          ...(droppedSkillNames ? { droppedSkillNames } : {}),
         };
         return decide(draft, undefined, chat ?? proposal.chat);
       }),

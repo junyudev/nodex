@@ -107,6 +107,10 @@ export const InboxProposalActionSchema = z.discriminatedUnion("type", [
     prompt: z.string(),
     /** What the suggestion adds of its own, sent after the prompt. */
     additions: z.array(z.string()).default([]),
+    skills: z
+      .array(z.object({ name: z.string(), reason: z.string() }))
+      .max(3)
+      .default([]),
     /** What the chat runs on when the suggestion chose it; the Inbox's own when null. */
     agent: AgentChoiceSchema.nullable().default(null),
   }),
@@ -116,6 +120,10 @@ export const InboxProposalActionSchema = z.discriminatedUnion("type", [
     chatTitle: z.string().nullable(),
     prompt: z.string(),
     additions: z.array(z.string()).default([]),
+    skills: z
+      .array(z.object({ name: z.string(), reason: z.string() }))
+      .max(3)
+      .default([]),
   }),
   z.looseObject({
     type: z.literal("move_to_project"),
@@ -309,6 +317,7 @@ export const InboxDecisionSchema = z.discriminatedUnion("type", [
     type: z.literal("accept"),
     proposalId: z.string(),
     revision: z.number().int(),
+    keptSkillNames: z.array(z.string().min(1).max(128)).max(3).optional(),
   }),
   z.looseObject({
     type: z.literal("start_chat"),

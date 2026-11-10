@@ -17,6 +17,7 @@ type DispatchMessage = Extract<AgentCommand, { readonly type: "message.dispatch"
 type Respond = Extract<AgentCommand, { readonly type: "runtime-request.respond" }>;
 
 export interface AgentRuntimeMessage {
+  readonly skillInvocations?: readonly import("./inbox").InboxSkillInvocation[];
   readonly messageId: string;
   readonly text: string;
   readonly attachments?: DispatchMessage["attachments"];

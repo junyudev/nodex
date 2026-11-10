@@ -71,12 +71,14 @@ export type InboxDispatchAction =
       /** What the chat runs on when chosen for this decision; the Inbox's own when null. */
       readonly agent: InboxAgentChoice | null;
       readonly additions: readonly string[];
+      readonly skills?: readonly InboxSuggestedSkill[];
     }
   | {
       readonly type: "send_to_chat";
       readonly sessionId: string;
       readonly prompt: string;
       readonly additions: readonly string[];
+      readonly skills?: readonly InboxSuggestedSkill[];
     }
   | { readonly type: "move_to_project"; readonly projectId: string }
   | {
@@ -108,6 +110,41 @@ export const inboxNewChatAction = (
   agent: null,
   additions: [],
 });
+
+export interface InboxSuggestedSkill {
+  readonly name: string;
+  readonly reason: string;
+}
+
+export interface InboxSkillInvocation {
+  readonly name: string;
+  readonly path: string;
+  readonly instanceId: string;
+  readonly cwd: string;
+}
+
+export type InboxSkillTarget =
+  | {
+      readonly type: "new_chat";
+      readonly projectId: string | null;
+      readonly instanceId: string | null;
+    }
+  | { readonly type: "send_to_chat"; readonly sessionId: string };
+
+export interface InboxSkillAvailabilityInput {
+  readonly proposalId: string;
+  readonly expectedRevision: number;
+  readonly pageId: string;
+  readonly target: InboxSkillTarget;
+}
+
+export interface InboxSkillAvailability {
+  readonly name: string;
+  readonly available: boolean;
+}
+
+export const inboxActionSkills = (action: InboxDispatchAction | null | undefined) =>
+  action?.type === "new_chat" || action?.type === "send_to_chat" ? (action.skills ?? []) : [];
 
 /** Most additions one chat decision carries, and the longest each may be. */
 export const MAX_INBOX_ADDITIONS = 12;
@@ -215,6 +252,7 @@ export interface InboxChat {
 }
 
 export interface InboxProposal {
+  readonly unavailableSkillNames?: readonly string[];
   readonly answeredQuestion?: boolean;
   readonly createdPageIds?: readonly string[];
   readonly failureKind: "rejected" | "unavailable" | "unknown" | null;
@@ -407,6 +445,8 @@ export interface InboxConfirmInput {
   readonly executionSelection?: InboxExecutionSelection | null;
   readonly proposalId: string;
   readonly expectedRevision: number;
+  readonly droppedSkillNames?: readonly string[];
+  readonly skillInvocations?: readonly InboxSkillInvocation[];
   /** Present when the user edited the suggestion before confirming it. */
   readonly action?: InboxDispatchAction;
 }
@@ -435,7 +475,7 @@ export interface InboxExecutionSelection {
 export type InboxConfirmationDraft =
   | ({ readonly kind: "proposal" } & Omit<
       InboxConfirmInput,
-      "operationId" | "sessionId" | "executionSelection"
+      "operationId" | "sessionId" | "executionSelection" | "skillInvocations"
     >)
   | ({ readonly kind: "direct" } & Omit<
       InboxDispatchInput,

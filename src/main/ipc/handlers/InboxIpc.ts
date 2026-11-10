@@ -92,6 +92,7 @@ export const live: Layer.Layer<
     yield* command("inbox:retry-problem", (_, input) => committed(inbox.retryProblem(input)));
     // A window reads only what still needs the user; handled messages are Activity's.
     yield* query("inbox:window", (_, input) => inbox.window({ ...input, filter: "inbox" }));
+    yield* query("inbox:skill-availability", (_, input) => inbox.skillAvailability(input));
     yield* query("inbox:prepare-confirmation", (_, input) => inbox.prepareConfirmation(input));
     yield* query("inbox:chat-targets", (_, input) => inbox.chatTargets(input));
     yield* command("inbox:send", (_, input) => committed(inbox.send(input)));

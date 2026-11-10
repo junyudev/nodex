@@ -1746,6 +1746,7 @@ export function makeClaudeUserMessage(input: {
   readonly text: string;
   readonly priority?: SDKUserMessage["priority"];
   readonly skillNames?: ReadonlySet<string>;
+  readonly optionalSkills?: readonly string[];
   // Claude echoes it as user_message_uuid on the turn that answers it.
   readonly uuid?: SDKUserMessage["uuid"];
 }): SDKUserMessage {
@@ -1756,7 +1757,7 @@ export function makeClaudeUserMessage(input: {
   const dispatch =
     input.skillNames === undefined
       ? undefined
-      : planClaudeSkillDispatch(input.text, input.skillNames);
+      : planClaudeSkillDispatch(input.text, input.skillNames, input.optionalSkills);
   return {
     type: "user",
     message: {
@@ -1799,11 +1800,13 @@ const makeClaudeUserMessageWithAttachments = Effect.fnUntraced(function* (input:
   readonly attachmentsDir: string;
   readonly fileSystem: FileSystem.FileSystem;
   readonly skillNames?: ReadonlySet<string>;
+  readonly optionalSkills?: readonly string[];
 }) {
   if (input.attachments.length === 0) {
     return makeClaudeUserMessage({
       text: input.text,
       ...(input.skillNames === undefined ? {} : { skillNames: input.skillNames }),
+      ...(input.optionalSkills === undefined ? {} : { optionalSkills: input.optionalSkills }),
       ...(input.priority === undefined ? {} : { priority: input.priority }),
       ...(input.uuid === undefined ? {} : { uuid: input.uuid }),
     });
@@ -1822,7 +1825,7 @@ const makeClaudeUserMessageWithAttachments = Effect.fnUntraced(function* (input:
   const dispatch =
     input.skillNames === undefined
       ? undefined
-      : planClaudeSkillDispatch(textWithAttachmentPaths, input.skillNames);
+      : planClaudeSkillDispatch(textWithAttachmentPaths, input.skillNames, input.optionalSkills);
   const content: Array<ClaudeUserContentBlock> = [];
   if (dispatch?.leadingText !== undefined) {
     content.push({ type: "text", text: dispatch.leadingText });
@@ -3972,23 +3975,44 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
   // the scan is a few directory reads. A skill switched off via skillOverrides,
   // or reserved for the agent with `user-invocable: false`, is left as prose:
   // the CLI would answer `/name` with a notice instead of running it.
-  const userInvocableSkillNames = (cwd: string | null) =>
+  const userInvocableSkills = (cwd: string | null) =>
     discoverClaudeSkills(
       adapterOptions.settings,
       cwd ?? undefined,
       adapterOptions.environment,
     ).pipe(
-      Effect.map(
-        (skills) =>
-          new Set(
-            skills
-              .filter((skill) => skill.enabled && skill.userInvocable !== false)
-              .map((skill) => skill.name),
-          ),
+      Effect.map((skills) =>
+        skills.filter((skill) => skill.enabled && skill.userInvocable !== false),
       ),
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
     );
+
+  const skillDispatch = Effect.fnUntraced(function* (
+    turn: ProviderAdapter.ProviderAdapterV2TurnInput,
+    requested: ProviderAdapter.ProviderAdapterV2TurnMessage["skillInvocations"],
+  ) {
+    const cwd = turn.runtimePolicy.cwd;
+    const skills = yield* userInvocableSkills(cwd);
+    const optionalSkills = (requested ?? []).flatMap((invocation) =>
+      skills.some((skill) =>
+        ProviderAdapter.matchesSkillInvocation(
+          invocation,
+          skill,
+          adapterOptions.instanceId,
+          cwd,
+          turn,
+        ),
+      )
+        ? [invocation.name]
+        : [],
+    );
+    const omitted = requested
+      ?.filter(({ name }) => !optionalSkills.includes(name))
+      .map(({ name }) => name);
+    if (omitted?.length) yield* turn.reportUnavailableSkills?.(omitted) ?? Effect.void;
+    return { skillNames: new Set(skills.map(({ name }) => name)), optionalSkills };
+  });
 
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: adapterOptions.instanceId,
@@ -10030,7 +10054,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     attachments: turnInput.message.attachments,
                     attachmentsDir,
                     fileSystem,
-                    skillNames: yield* userInvocableSkillNames(turnInput.runtimePolicy.cwd),
+                    ...(yield* skillDispatch(turnInput, turnInput.message.skillInvocations)),
                     uuid: promptUuid,
                   }).pipe(
                     Effect.map((message) =>
@@ -10321,7 +10345,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               ...(boundaryUuid === undefined ? {} : { uuid: boundaryUuid }),
               attachmentsDir,
               fileSystem,
-              skillNames: yield* userInvocableSkillNames(currentTurn.input.runtimePolicy.cwd),
+              ...(yield* skillDispatch(currentTurn.input, turnInput.message.skillInvocations)),
             });
             if (boundaryUuid === undefined) {
               yield* Ref.update(steeredTurns, (current) =>

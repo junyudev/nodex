@@ -369,6 +369,7 @@ const exampleOutput = (value: RoutingCase) => ({
       decision.action === "new_chat" || decision.action === "send_to_chat"
         ? `Research the supplied scope; ${(decision.promptIncludes ?? []).join("; ")}`
         : null,
+    skills: [],
     additions:
       decision.handsOffTo === "codex"
         ? ["You may hand the backend to GPT-6.1 Sol."]

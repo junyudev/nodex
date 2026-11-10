@@ -1121,6 +1121,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     threadId,
     messageId: message.messageId,
     text: message.text,
+    ...(message.skillInvocations === undefined
+      ? {}
+      : { skillInvocations: message.skillInvocations }),
     attachments: message.attachments ?? [],
     ...(message.context === undefined ? {} : { context: message.context }),
     ...(message.modelSelection === undefined ? {} : { modelSelection: message.modelSelection }),
@@ -1434,6 +1437,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             message: {
               messageId: preparation.message.messageId,
               text: preparation.message.text,
+              ...(preparation.message.skillInvocations
+                ? { skillInvocations: preparation.message.skillInvocations }
+                : {}),
               attachments: preparation.message.attachments ?? [],
               ...(preparation.message.context ? { context: preparation.message.context } : {}),
               modelSelection: preparation.message.modelSelection ?? input.modelSelection,
@@ -5064,6 +5070,28 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       Stream.changes,
       Stream.map(() => undefined),
     ),
+    skillsForWorkspace: (input: AgentRuntimeOperations["providers.skills.read"]["input"]) =>
+      owned(
+        "workspace-skills",
+        options.connect.pipe(
+          Effect.flatMap((connection) => connection.request("providers.skills.read", input)),
+        ),
+      ),
+    skillDestinationForSession: (sessionId: string) =>
+      owned(
+        "session-skills",
+        Effect.gen(function* () {
+          const session = yield* workspace.getProjectSession(sessionId);
+          if (!session?.executionRef || session.archived) return null;
+          const connection = yield* options.connect;
+          const { thread } = yield* targetInfo(connection, { sessionId });
+          if (!thread.executionLocation?.cwd) return null;
+          return {
+            instanceId: thread.modelSelection.instanceId,
+            cwd: thread.executionLocation.cwd,
+          };
+        }),
+      ),
     catalog: (input: AgentRuntimeOperations["providers.read"]["input"] = {}) =>
       owned(
         "catalog",

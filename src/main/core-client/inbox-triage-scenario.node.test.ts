@@ -40,6 +40,13 @@ describe("inbox/triage scenario", () => {
           .map((item) => ({ pageId: item.pageId, reason: item.turn?.turn.reason })),
       ).toEqual([{ pageId: facts.inboxMovedNoChat.pageId, reason: "review" }]);
       const pending = [...all.items, ...project.items];
+      expect(
+        all.items.find((item) => item.pageId === context.manifest.pageIdsByKey.newChatSuggestion)
+          ?.proposal?.action,
+      ).toMatchObject({
+        type: "new_chat",
+        skills: [{ name: "positioning-review" }, { name: "homepage-audit" }],
+      });
       expect(pending.some((item) => item.suggestionState === "pending")).toBe(false);
       expect(
         pending.some(

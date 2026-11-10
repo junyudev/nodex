@@ -4634,6 +4634,107 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ),
   );
 
+  it.effect("sends verified Inbox skills as native items and records an unavailable binding", () =>
+    Effect.gen(function* () {
+      const nativeThreadId = "inbox-skill-thread";
+      const nativeTurnId = "inbox-skill-turn";
+      const prompt = "$required Review the diff.";
+      const skills = ["audit", "review", "gone"].map((name) => ({
+        name,
+        path: `/workspace/.agents/skills/${name}/SKILL.md`,
+        cwd: "/workspace",
+        instanceId: "codex",
+      }));
+      const preamble = codexReplayPreamble({
+        nativeThreadId,
+        nativeTurnId,
+        prompt,
+        sentPrompt: `${prompt}\n\n$audit $review`,
+      });
+      const start = preamble[5]!;
+      if (start.type !== "expect_outbound") throw new Error("Expected the turn start fixture");
+      const frame = start.frame as { params: { input: readonly unknown[] } };
+      const transcript = makeCodexReplayTranscript({
+        scenario: "inbox-skill-items",
+        entries: [
+          ...preamble.slice(0, 5),
+          {
+            type: "expect_outbound",
+            label: "revalidate skills",
+            frame: {
+              id: 3,
+              method: "skills/list",
+              params: { cwds: ["/workspace"], forceReload: true },
+            },
+          },
+          {
+            type: "emit_inbound",
+            label: "skill inventory",
+            frame: {
+              id: 3,
+              result: {
+                data: [
+                  {
+                    cwd: "/workspace",
+                    errors: [],
+                    skills: skills.map(({ name, path }) => ({
+                      name,
+                      path,
+                      description: name,
+                      scope: "repo",
+                      pluginId: null,
+                      enabled: name !== "gone",
+                    })),
+                  },
+                ],
+              },
+            },
+          },
+          {
+            ...start,
+            frame: {
+              ...frame,
+              id: 4,
+              method: "turn/start",
+              params: {
+                ...frame.params,
+                input: [
+                  ...frame.params.input,
+                  ...skills.slice(0, 2).map(({ name, path }) => ({ type: "skill", name, path })),
+                ],
+              },
+            },
+          },
+          withReplayRequestId(preamble[6]!, 4),
+          ...preamble.slice(7),
+        ],
+      });
+      const harness = yield* makeCodexReplayHarness(transcript);
+      const input = makeCodexTestTurnInput({
+        threadId: harness.threadId,
+        providerThread: harness.providerThread,
+        now: yield* DateTime.now,
+        attemptId: RunAttemptId.make("inbox-skill-attempt"),
+        text: prompt,
+      });
+      const unavailable: string[] = [];
+      yield* harness.runtime.startTurn({
+        ...input,
+        message: { ...input.message, skillInvocations: skills },
+        reportUnavailableSkills: (names) =>
+          Effect.sync(() => {
+            unavailable.push(...names);
+          }),
+      });
+      assert.deepEqual(unavailable, ["gone"]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
   it.effect("sends currency-sigil skill mentions to Codex as $ mentions", () =>
     Effect.gen(function* () {
       const nativeThreadId = "skill-sigil-thread";

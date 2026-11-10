@@ -1593,8 +1593,40 @@ export const layer: Layer.Layer<
               !noteContinuation
             ? session
             : makeDeliverySession(session, startWithHandoffs);
+      const reportUnavailableSkills = Effect.fnUntraced(
+        function* (names: readonly string[]) {
+          const message = yield* projectionStore.getRunUserMessage(run.threadId, run.id);
+          if (!message || message.id !== inputMessage.id) return;
+          const unavailableSkillNames = [
+            ...new Set([...(message.unavailableSkillNames ?? []), ...names]),
+          ];
+          const occurredAt = yield* DateTime.now;
+          yield* eventSink.writeIfRunCurrent({
+            threadId: run.threadId,
+            runId: run.id,
+            activeAttemptId: attempt.id,
+            expectedStatus: "running",
+            events: [
+              {
+                id: yield* idAllocator.allocate.event({ threadId: run.threadId }),
+                type: "message.updated",
+                threadId: run.threadId,
+                runId: run.id,
+                nodeId: rootNode.id,
+                providerInstanceId: run.providerInstanceId,
+                occurredAt,
+                payload: { ...message, unavailableSkillNames, updatedAt: occurredAt },
+              },
+            ],
+          });
+        },
+        Effect.catch((cause) =>
+          Effect.logWarning("Could not record unavailable Inbox skills", { cause }),
+        ),
+      );
       yield* runExecution.startRootRun({
         commandId: CommandId.make(`command:effect:provider-turn.start:${run.id}`),
+        ...(inputMessage.skillInvocations?.length ? { reportUnavailableSkills } : {}),
         appThread: projection.thread,
         isRunTerminal: runControls.isRunTerminal,
         providerSessionId,
@@ -1631,6 +1663,9 @@ export const layer: Layer.Layer<
           ...(inputMessage.delivery === undefined ? {} : { delivery: inputMessage.delivery }),
           text: userText,
           attachments: syntheticContinuation ? [] : inputMessage.attachments,
+          ...(syntheticContinuation || inputMessage.skillInvocations === undefined
+            ? {}
+            : { skillInvocations: inputMessage.skillInvocations }),
           createdBy: inputMessage.createdBy,
           creationSource: inputMessage.creationSource,
           ...(inputMessage.scheduledTaskId === undefined

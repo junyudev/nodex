@@ -80,3 +80,26 @@ describe("planClaudeSkillDispatch", () => {
     }
   });
 });
+
+it("gives a user invocation the sole expansion slot and leaves optional skills as references", () => {
+  expect(
+    planClaudeSkillDispatch("Please $review the patch", SKILLS, ["implement", "2spec"]),
+  ).toEqual({
+    leadingText: "Please",
+    commandText: "/review the patch /implement /2spec",
+    skillName: "review",
+  });
+  expect(planClaudeSkillDispatch("Look at the patch", SKILLS, ["implement", "2spec"])).toEqual({
+    leadingText: "Look at the patch",
+    commandText: "/implement /2spec",
+    skillName: "implement",
+  });
+});
+
+it("keeps code examples literal and dispatches a requested skill beside punctuation", () => {
+  const prompt = "Example:\n```sh\n$implement\n```\nPlease use $review, focusing on auth.";
+  expect(planClaudeSkillDispatch(prompt, SKILLS, ["2spec"])).toMatchObject({
+    leadingText: "Example:\n```sh\n$implement\n```\nPlease use",
+    commandText: "/review , focusing on auth. /2spec",
+  });
+});

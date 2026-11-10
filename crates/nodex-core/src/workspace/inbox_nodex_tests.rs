@@ -171,6 +171,7 @@ fn automatic_inbox_confirmation_enforces_source_intent_basis_and_action_in_the_t
                 project_id: None,
                 prompt: "Handle the attached request".into(),
                 agent: None,
+                skills: vec![],
                 additions: vec!["Optional reference".into()],
             },
         };
@@ -214,7 +215,7 @@ fn automatic_inbox_confirmation_enforces_source_intent_basis_and_action_in_the_t
         {
             additions.clear()
         }
-        let confirmation=ProjectWorkspaceIntent::ConfirmInboxDispatch {confirmed_by:InboxConfirmedBy::Nodex,expected_store_epoch:"epoch-1".into(),basis:proposal_basis(m,"proposal:auto"),execution_selection:Some(serde_json::from_value(serde_json::json!({"model_selection":{"instanceId":"codex","model":"model"},"interaction_mode":"default"})).unwrap()),proposal_id:"proposal:auto".into(),expected_revision:1,action:Some(confirmed_action),session_id:Some("session:dispatched".into())};
+        let confirmation=ProjectWorkspaceIntent::ConfirmInboxDispatch {skill_invocations:vec![],confirmed_by:InboxConfirmedBy::Nodex,expected_store_epoch:"epoch-1".into(),basis:proposal_basis(m,"proposal:auto"),execution_selection:Some(serde_json::from_value(serde_json::json!({"model_selection":{"instanceId":"codex","model":"model"},"interaction_mode":"default"})).unwrap()),proposal_id:"proposal:auto".into(),expected_revision:1,action:Some(confirmed_action),session_id:Some("session:dispatched".into())};
         let result = m.apply(&host(), request("confirm", confirmation.clone()));
         if case == "user" || case == "cli" {
             result.unwrap();
@@ -325,6 +326,7 @@ fn routing_delivery_fixes_recipient_and_first_deadline_and_bounds_unsettled_requ
         grouped_request(m, &format!("request:{i}"), vec![format!("page:route:{i}")]);
     }
     let begin = |i| ProjectWorkspaceIntent::BeginInboxRouting {
+        skill_offers: vec![],
         request_id: format!("request:{i}"),
         generation: 1,
         coordinator_session_id: "nodex".into(),
@@ -510,6 +512,7 @@ fn routing_clocks_preserve_the_pause_union_across_reopen_and_agents_hold_for_the
         m,
         "begin-paused",
         ProjectWorkspaceIntent::BeginInboxRouting {
+            skill_offers: vec![],
             request_id: "paused-request".into(),
             generation: 1,
             coordinator_session_id: "nodex".into(),
@@ -1286,6 +1289,7 @@ fn answers_refuse_questions_already_dispatched_to_a_chat() {
             project_id: None,
             prompt: "Investigate the question".into(),
             agent: None,
+            skills: vec![],
             additions: vec![],
         },
         Some("question-chat"),

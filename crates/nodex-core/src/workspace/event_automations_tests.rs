@@ -500,6 +500,7 @@ fn confirming_ask_starts_its_reviewed_page_and_follows_the_thread() {
         &w.module,
         "confirm",
         ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            skill_invocations: vec![],
             confirmed_by: InboxConfirmedBy::User,
             expected_store_epoch: "epoch-1".into(),
             basis: proposal.basis,
@@ -937,6 +938,7 @@ fn ask_confirmation_uses_the_page_start_pause_guard() {
         request(
             "confirm-paused",
             ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                skill_invocations: vec![],
                 confirmed_by: InboxConfirmedBy::User,
                 expected_store_epoch: "epoch-1".into(),
                 basis: proposal.basis,

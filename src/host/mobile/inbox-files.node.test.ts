@@ -97,6 +97,7 @@ test("a chat suggestion reaches the phone whole", () => {
         prompt: "Fix the flaky test",
         agent: { instanceId: "codex", model: "gpt", reasoningEffort: null, serviceTier: null },
         additions: ["Open a pull request when it passes"],
+        skills: [{ name: "test-review", reason: "Check the reproduction." }],
       },
       summary: "Start on the flaky test",
       rationale: "It failed three times this week",
@@ -116,6 +117,7 @@ test("a chat suggestion reaches the phone whole", () => {
       projectName: "Nodex",
       prompt: "Fix the flaky test",
       additions: ["Open a pull request when it passes"],
+      skills: [{ name: "test-review", reason: "Check the reproduction." }],
       agent: { providerInstanceId: "codex", model: "gpt" },
     },
   });

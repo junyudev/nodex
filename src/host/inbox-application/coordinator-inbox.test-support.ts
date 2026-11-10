@@ -81,6 +81,7 @@ export const keepOutput = (request: CoreInboxSuggestionRequest) => ({
     project_id: null,
     session_id: null,
     prompt: null,
+    skills: [],
     additions: [],
     chat_instance_id: null,
     chat_model: null,
@@ -278,6 +279,9 @@ export const routingFixture = Effect.fn("CoordinatorInbox.fixture")(function* (
       },
     ]);
   const runtime = {
+    executionWorkspace: () =>
+      Effect.succeed({ available: false as const, reason: "No fixture source" }),
+    skillDestinationForSession: () => Effect.succeed(null),
     catalog,
     runOutcome: ({ messageId }: { messageId: string }) =>
       Effect.sync(() =>

@@ -2985,9 +2985,21 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
           }
         });
 
-        const resolvePromptParts = (turnInput: ProviderAdapter.ProviderAdapterV2TurnInput) => {
+        const resolvePromptParts = Effect.fnUntraced(function* (turnInput: ProviderAdapter.ProviderAdapterV2TurnInput) {
+          const requested = turnInput.message.skillInvocations ?? [];
+          const available = requested.length ? yield* runtime.loadOpenCodeSkills(client).pipe(
+            Effect.timeout("5 seconds"),
+            Effect.orElseSucceed(() => []),
+          ) : [];
+          const kept = requested.filter((invocation) => available.some((skill) =>
+            skill.name != null && skill.location != null && ProviderAdapter.matchesSkillInvocation(
+              invocation, { name: skill.name, path: skill.location },
+              options.instanceId, turnInput.runtimePolicy.cwd, turnInput,
+            )));
+          const omitted = requested.filter((skill) => !kept.includes(skill)).map(({ name }) => name);
+          if (omitted.length) yield* turnInput.reportUnavailableSkills?.(omitted) ?? Effect.void;
           const text = providerMessageTextWithAttachmentPaths({
-            text: turnInput.message.text,
+            text: [turnInput.message.text, ...kept.map(({ name }) => `Use the /${name} skill.`)].join("\n\n"),
             attachments: turnInput.message.attachments,
             resolveAttachmentPath: host.resolveAttachmentPath,
           }).trim();
@@ -2996,10 +3008,10 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             resolveAttachmentPath: host.resolveAttachmentPath,
           });
           if (text.length === 0 && files.length === 0) {
-            throw protocolError("OpenCode turns require text or at least one valid attachment");
+            return yield* protocolError("OpenCode turns require text or at least one valid attachment");
           }
           return [...(text.length === 0 ? [] : [{ type: "text" as const, text }]), ...files];
-        };
+        });
 
         const readSnapshot = Effect.fnUntraced(function* (
           providerThread: OrchestrationV2ProviderThread,
@@ -3301,7 +3313,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               const isCompaction =
                 turnInput.message.text.trim() === "/compact" &&
                 turnInput.message.attachments.length === 0;
-              const parts = isCompaction ? [] : resolvePromptParts(turnInput);
+              const parts = isCompaction ? [] : yield* resolvePromptParts(turnInput);
               const startedAt = yield* DateTime.now;
               const syntheticNativeTurnId = `${sessionId}:attempt:${turnInput.attemptId}`;
               const providerTurnId = idAllocator.derive.providerTurn({

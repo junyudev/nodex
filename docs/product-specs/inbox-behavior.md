@@ -429,6 +429,15 @@ no Agent choices. New chats use the Inbox default; Nodex must leave the Agent,
 model and effort fields empty, including each plan step's Agent. Choices from
 earlier requests do not apply.
 
+A chat suggestion can offer up to three skills available to its destination.
+The skill list sits above the additions. Each skill is selected by default and
+can be turned off before confirming. A skill the person invoked with `$name`
+stays part of their request. Automatic starts omit optional skills.
+
+Changing the receiving Agent or chat can make a suggested skill unavailable.
+If a selected skill becomes unavailable before the chat receives the message,
+the handoff proceeds with the skills the chat can use.
+
 Each suggestion spends the usage of the Agent Nodex runs on, so only a send asks for
 one on its own. The `Suggestions` preference chooses when they run:
 

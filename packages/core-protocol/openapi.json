@@ -20791,6 +20791,7 @@
           "inbox_reply_destination",
           "inbox_send",
           "inbox_prepare_confirmation",
+          "inbox_skill_availability",
           "inbox_confirm",
           "inbox_dispatch",
           "inbox_chat_targets",
@@ -20863,6 +20864,21 @@
             "type": "string"
           },
           "returned_at": {
+            "type": "string"
+          }
+        }
+      },
+      "InboxOfferedSkill": {
+        "type": "object",
+        "required": [
+          "name",
+          "description"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
             "type": "string"
           }
         }
@@ -21087,6 +21103,12 @@
               "null"
             ],
             "format": "int64"
+          },
+          "skill_offers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxSkillOffer"
+            }
           }
         }
       },
@@ -21099,6 +21121,79 @@
           "turn",
           "answer"
         ]
+      },
+      "InboxSkillInvocation": {
+        "type": "object",
+        "description": "Host-resolved skill identity. Paths never enter the routing prompt.",
+        "required": [
+          "name",
+          "path",
+          "instanceId",
+          "cwd"
+        ],
+        "properties": {
+          "cwd": {
+            "type": "string"
+          },
+          "instanceId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "InboxSkillOffer": {
+        "type": "object",
+        "description": "A routing offer is scoped to one new-chat choice or one existing Session.",
+        "required": [
+          "skills"
+        ],
+        "properties": {
+          "instance_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxOfferedSkill"
+            }
+          }
+        }
+      },
+      "InboxSuggestedSkill": {
+        "type": "object",
+        "description": "A skill the user can include when confirming a chat proposal.",
+        "required": [
+          "name",
+          "reason"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
       },
       "InboxTurn": {
         "type": "object",
@@ -36790,6 +36885,12 @@
                   },
                   "request_id": {
                     "type": "string"
+                  },
+                  "skill_offers": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/InboxSkillOffer"
+                    }
                   }
                 }
               },
@@ -37053,6 +37154,12 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "skill_invocations": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/InboxSkillInvocation"
+                    }
                   }
                 }
               },
@@ -37515,6 +37622,12 @@
                   },
                   "proposal_id": {
                     "type": "string"
+                  },
+                  "unavailable_skill_names": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 }
               },
@@ -46728,6 +46841,12 @@
               "prompt": {
                 "type": "string"
               },
+              "skills": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InboxSuggestedSkill"
+                }
+              },
               "type": {
                 "type": "string",
                 "enum": [
@@ -46757,6 +46876,12 @@
               },
               "session_id": {
                 "type": "string"
+              },
+              "skills": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InboxSuggestedSkill"
+                }
               },
               "type": {
                 "type": "string",
@@ -46962,6 +47087,12 @@
           },
           "session_id": {
             "type": "string"
+          },
+          "skill_invocations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxSkillInvocation"
+            }
           },
           "target_execution_ref": {
             "oneOf": [
@@ -47589,6 +47720,12 @@
               "null"
             ],
             "description": "Display context for the action's target Project."
+          },
+          "unavailable_skill_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "updated_at": {
             "type": "string"
@@ -51035,6 +51172,12 @@
               },
               "request_id": {
                 "type": "string"
+              },
+              "skill_offers": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InboxSkillOffer"
+                }
               }
             }
           },
@@ -51298,6 +51441,12 @@
                   "string",
                   "null"
                 ]
+              },
+              "skill_invocations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InboxSkillInvocation"
+                }
               }
             }
           },
@@ -51760,6 +51909,12 @@
               },
               "proposal_id": {
                 "type": "string"
+              },
+              "unavailable_skill_names": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             }
           },

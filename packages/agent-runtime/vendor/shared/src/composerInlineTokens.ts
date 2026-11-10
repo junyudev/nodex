@@ -37,6 +37,13 @@ const SKILL_TOKEN_REGEX = new RegExp(`${SKILL_MENTION_SOURCE}(?=\\s)`, "gu");
  * global, so use it with `matchAll` or `replace`, not `test` or `exec`.
  */
 export const SKILL_MENTION_PATTERN = new RegExp(`${SKILL_MENTION_SOURCE}(?=\\s|$)`, "gu");
+/** Ignore literal examples while keeping the offsets of prose invocations. */
+export function maskSkillCode(text: string): string {
+  return text.replace(
+    /^\s{0,3}(\x60{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^\s{0,3}\1[\t ]*$|(?![\s\S]))|\x60([^\x60\n]*)\x60/gm,
+    (code) => code.replace(/[^\r\n]/g, " "),
+  );
+}
 const MENTION_TOKEN_REGEX = /(^|\s)@(?:"((?:\\.|[^"\\])*)"|([^\s@"]+))(?=\s)/g;
 /**
  * The label body is bounded rather than `*`. Unbounded, every whitespace in

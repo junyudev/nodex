@@ -281,23 +281,23 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv, Path.Pat
         processEnv,
         snapshot.getSnapshot.pipe(Effect.map((value) => value.models)),
       );
+      const probeWorkspaceSkills = (cwd: string, exactCwd = false) =>
+        probeCodexSkillsForCwd({
+          binaryPath: effectiveConfig.binaryPath,
+          homePath: effectiveConfig.homePath,
+          launchArgs: resolveCodexLaunchArgs(effectiveConfig.launchArgs, processEnv),
+          cwd,
+          exactCwd,
+          environment: processEnv,
+        }).pipe(
+          Effect.scoped,
+          Effect.timeout("20 seconds"),
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        );
       const snapshotForCwd = (cwd: string) =>
         !effectiveConfig.enabled
           ? snapshot.getSnapshot
-          : Effect.all([
-              snapshot.getSnapshot,
-              probeCodexSkillsForCwd({
-                binaryPath: effectiveConfig.binaryPath,
-                homePath: effectiveConfig.homePath,
-                launchArgs: resolveCodexLaunchArgs(effectiveConfig.launchArgs, processEnv),
-                cwd,
-                environment: processEnv,
-              }).pipe(
-                Effect.scoped,
-                Effect.timeout("20 seconds"),
-                Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-              ),
-            ]).pipe(
+          : Effect.all([snapshot.getSnapshot, probeWorkspaceSkills(cwd)]).pipe(
               Effect.map(([machineSnapshot, skills]) => ({ ...machineSnapshot, skills })),
               Effect.mapError(
                 (cause) =>
@@ -384,6 +384,8 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv, Path.Pat
         enabled,
         snapshot,
         snapshotForCwd,
+        skillsForCwd: (cwd: string) =>
+          probeWorkspaceSkills(cwd, true).pipe(Effect.orElseSucceed(() => [])),
         consumeResetCredit,
         orchestrationAdapter,
         textGeneration,

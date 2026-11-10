@@ -616,11 +616,15 @@ export const probeCodexSkillsForCwd = Effect.fn("probeCodexSkillsForCwd")(functi
   readonly homePath?: string;
   readonly launchArgs?: string;
   readonly cwd: string;
+  readonly exactCwd?: boolean;
   readonly environment?: NodeJS.ProcessEnv;
 }) {
   const { client } = yield* withCodexAppServerClient(input);
   const skillsResponse = yield* client.request("skills/list", { cwds: [input.cwd] });
-  return parseCodexSkillsListResponse(skillsResponse, input.cwd);
+  const response = input.exactCwd
+    ? { ...skillsResponse, data: skillsResponse.data.filter(({ cwd }) => cwd === input.cwd) }
+    : skillsResponse;
+  return parseCodexSkillsListResponse(response, input.cwd);
 });
 
 const emptyCodexModelsFromSettings = (codexSettings: CodexSettings): ServerProvider["models"] =>

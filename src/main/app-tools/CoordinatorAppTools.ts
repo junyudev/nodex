@@ -293,6 +293,7 @@ export const makeWithCapture = (
                 correction: request.correction,
               },
               context.agents?.candidates ?? [],
+              request.delivery?.skill_offers ?? [],
             ),
           catch: (cause) =>
             cause instanceof Error ? cause : new Error("Invalid Inbox suggestion"),

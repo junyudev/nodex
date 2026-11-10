@@ -1,3 +1,10 @@
+import { InboxSkillAvailabilityInputSchema } from "../../shared/schemas/inbox";
+import { inboxSkillTokens, makeInboxSkills, type InboxSkillOffer } from "./inbox-skills";
+import {
+  inboxActionSkills,
+  type InboxSkillAvailabilityInput,
+  type InboxSkillAvailability,
+} from "../../shared/inbox";
 import type { ActivityWindowInput, ActivityWindow, RetryProblemInput } from "../../shared/inbox";
 import { ActivityWindowInputSchema, RetryProblemInputSchema } from "../../shared/schemas/inbox";
 import { effectiveHolds, scopeHeld, spaceHeld } from "../work-application/execution-holds";
@@ -170,6 +177,9 @@ export class InboxApplication extends Context.Service<
       body: string,
     ) => InboxEffect<import("../../shared/inbox").InboxReplyDestination>;
     readonly send: (input: InboxSendInput) => InboxMutation<InboxSendResult>;
+    readonly skillAvailability: (
+      input: InboxSkillAvailabilityInput,
+    ) => InboxEffect<readonly InboxSkillAvailability[]>;
     readonly prepareConfirmation: (
       input: InboxConfirmationDraft,
       identity?: { readonly operationId: string; readonly sessionId: string },
@@ -206,6 +216,7 @@ export class InboxApplication extends Context.Service<
     readonly beginRouting: (
       request: CoreInboxSuggestionRequest,
       coordinatorSessionId: string,
+      skillOffers?: readonly InboxSkillOffer[],
     ) => InboxEffect<void>;
     readonly recordRoutingRefusal: (
       request: CoreInboxSuggestionRequest,
@@ -242,6 +253,7 @@ export class InboxApplication extends Context.Service<
     readonly completeDispatch: (
       work: InboxDispatchFence,
       threadId: string | null,
+      unavailableSkillNames?: readonly string[],
     ) => InboxEffect<void>;
     readonly failDispatch: (
       work: InboxDispatchFence,
@@ -578,6 +590,40 @@ export const make = Effect.gen(function* () {
     });
   });
 
+  const skillInventory = yield* makeInboxSkills;
+  const skillAvailability = Effect.fn("InboxApplication.skillAvailability")(function* (
+    supplied: InboxSkillAvailabilityInput,
+  ) {
+    const input = yield* parse("skill-availability", () =>
+      InboxSkillAvailabilityInputSchema.parse(supplied),
+    );
+    const { item } = yield* message(input.pageId);
+    const proposal = item.proposal;
+    const skills =
+      proposal?.proposalId === input.proposalId && proposal.revision === input.expectedRevision
+        ? inboxActionSkills(proposal.action)
+        : [];
+    if (!skills.length) return [];
+    let instanceId = input.target.type === "new_chat" ? input.target.instanceId : null;
+    if (input.target.type === "new_chat" && instanceId === null) {
+      const current = (yield* settings.snapshot().pipe(Effect.mapError(fail("skill-availability"))))
+        .inbox;
+      const selection = yield* resolveInboxModel(runtime, current.chatAgent).pipe(
+        Effect.catch(() => Effect.succeed(null)),
+      );
+      instanceId = selection?.instanceId ?? null;
+    }
+    const resolved = yield* skillInventory.resolve(
+      input.target,
+      instanceId ?? undefined,
+      skills.map(({ name }) => name),
+    );
+    return skills.map(({ name }) => ({
+      name,
+      available: resolved.some((skill) => skill.name === name),
+    }));
+  });
+
   const prepareConfirmation = Effect.fn("InboxApplication.prepareConfirmation")(function* (
     input: InboxConfirmationDraft,
     identity?: { readonly operationId: string; readonly sessionId: string },
@@ -590,7 +636,8 @@ export const make = Effect.gen(function* () {
       draft.kind === "proposal"
         ? context.open_proposals.find((proposal) => proposal.proposal_id === draft.proposalId)
         : undefined;
-    const action = draft.action ?? (proposal ? inboxDispatchActionFromCore(proposal.action) : null);
+    const storedAction = proposal ? inboxDispatchActionFromCore(proposal.action) : null;
+    let action = draft.action ?? storedAction;
     if (!action)
       return yield* fail("prepare-confirmation")(
         new Error("Review this suggestion before deciding"),
@@ -625,8 +672,31 @@ export const make = Effect.gen(function* () {
       (action.type === "new_chat" || action.type === "plan") && modelSelection
         ? { modelSelection, interactionMode: "default" as const }
         : null;
+    const proposedSkills = inboxActionSkills(storedAction);
+    const droppedNames = new Set(draft.kind === "proposal" ? (draft.droppedSkillNames ?? []) : []);
+    const proposedNames = new Set(proposedSkills.map(({ name }) => name));
+    if (
+      [...droppedNames].some((name) => !proposedNames.has(name)) ||
+      inboxActionSkills(action).some(({ name }) => !proposedNames.has(name))
+    )
+      return yield* fail("prepare-confirmation")(
+        new Error("A skill was not part of this suggestion"),
+      );
+    if (action.type === "new_chat" || action.type === "send_to_chat") {
+      const required = new Set(inboxSkillTokens(action.prompt, "$"));
+      action = {
+        ...action,
+        skills: proposedSkills.filter(({ name }) => !droppedNames.has(name) && !required.has(name)),
+      };
+    }
+    const skillInvocations = yield* skillInventory.resolve(
+      action,
+      modelSelection?.instanceId,
+      inboxActionSkills(action).map(({ name }) => name),
+    );
     const prepared = {
       ...draft,
+      ...(draft.kind === "proposal" && skillInvocations.length ? { skillInvocations } : {}),
       action,
       executionSelection,
       operationId: identity?.operationId ?? createOperationId("inbox.confirm"),
@@ -659,6 +729,7 @@ export const make = Effect.gen(function* () {
       "confirm",
       {
         kind: "confirm_inbox_dispatch",
+        skill_invocations: [...(parsed.skillInvocations ?? [])],
         confirmed_by: confirmedBy,
         expected_store_epoch: parsed.storeEpoch,
         proposal_id: parsed.proposalId,
@@ -824,11 +895,16 @@ export const make = Effect.gen(function* () {
     read("suggestion-request", { kind: "inbox_suggestion_request", request_id: requestId }).pipe(
       Effect.map((snapshot) => expectVariant(snapshot, "inbox_suggestion_request").request ?? null),
     );
-  const beginRouting = (request: CoreInboxSuggestionRequest, coordinatorSessionId: string) =>
+  const beginRouting = (
+    request: CoreInboxSuggestionRequest,
+    coordinatorSessionId: string,
+    skillOffers: readonly InboxSkillOffer[] = [],
+  ) =>
     apply(
       "begin-routing",
       {
         kind: "begin_inbox_routing",
+        skill_offers: [...skillOffers],
         request_id: request.request_id,
         generation: request.generation,
         coordinator_session_id: coordinatorSessionId,
@@ -1020,7 +1096,8 @@ export const make = Effect.gen(function* () {
             proposalId: proposal.proposal_id,
             expectedRevision: proposal.revision,
             basis: proposal.basis.map(inboxPageBasisFromCore),
-            action: { ...action, additions: [] },
+            action: { ...action, additions: [], skills: [] },
+            droppedSkillNames: inboxActionSkills(action).map(({ name }) => name),
           },
           {
             operationId,
@@ -1223,11 +1300,16 @@ export const make = Effect.gen(function* () {
     apply("begin-dispatch", { kind: "begin_inbox_dispatch", ...dispatchFence(work) }).pipe(
       Effect.asVoid,
     );
-  const completeDispatch = (work: InboxDispatchFence, threadId: string | null) =>
+  const completeDispatch = (
+    work: InboxDispatchFence,
+    threadId: string | null,
+    unavailableSkillNames: readonly string[] = [],
+  ) =>
     apply("complete-dispatch", {
       kind: "complete_inbox_dispatch",
       ...dispatchFence(work),
       dispatched_thread_id: threadId,
+      unavailable_skill_names: [...unavailableSkillNames],
     }).pipe(Effect.asVoid);
   const failDispatch = (
     work: InboxDispatchFence,
@@ -1255,6 +1337,7 @@ export const make = Effect.gen(function* () {
     replyDestination,
     edit,
     prepareConfirmation,
+    skillAvailability,
     confirm,
     undo,
     dispatch,

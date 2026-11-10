@@ -15,6 +15,7 @@ import {
   proposalAttribution,
   proposalDestination,
   proposalHeadline,
+  proposalSkills,
   suggestionView,
 } from "./inbox-presentation";
 import { useDecide } from "./use-decide";
@@ -61,16 +62,18 @@ const AcceptButton = ({
   message,
   proposal,
   compact,
+  droppedSkillNames,
   onAccepted,
 }: {
   readonly message: InboxEntry;
   readonly proposal: InboxProposal;
   readonly compact?: boolean;
+  readonly droppedSkillNames?: readonly string[];
   readonly onAccepted?: () => void;
 }) => {
   const decide = useDecide();
   const action = proposalAction(proposal.action);
-  const { decision, done } = proposalAcceptance(proposal);
+  const { decision, done } = proposalAcceptance(proposal, droppedSkillNames);
   return (
     <Button
       compact={compact}
@@ -161,7 +164,9 @@ export const SuggestionCard = ({ message }: { readonly message: InboxEntry }) =>
           </Txt>
           <Icon name="chevronRight" size={12} color="ink-3" />
         </View>
-        {proposal.outdated ? null : <AcceptButton compact message={message} proposal={proposal} />}
+        {proposal.outdated || proposalSkills(proposal).length ? null : (
+          <AcceptButton compact message={message} proposal={proposal} />
+        )}
       </View>
     </Tap>
   );
@@ -175,7 +180,15 @@ const Section = ({ label, children }: { readonly label: string; readonly childre
 );
 
 /** Everything a suggestion would do, so accepting it is never a guess. */
-const SuggestionDetail = ({ proposal }: { readonly proposal: InboxProposal }) => {
+const SuggestionDetail = ({
+  proposal,
+  dropped,
+  onToggle,
+}: {
+  readonly proposal: InboxProposal;
+  readonly dropped: readonly string[];
+  readonly onToggle: (name: string) => void;
+}) => {
   const navigation = useRootNavigation();
   const { catalog } = useAgentCatalog();
   const { projects } = useProjects();
@@ -213,6 +226,18 @@ const SuggestionDetail = ({ proposal }: { readonly proposal: InboxProposal }) =>
           </View>
         </Section>
       ) : null}
+      {proposalSkills(proposal).map(({ name, reason }) => (
+        <Tap
+          key={name}
+          accessibilityLabel={`Use ${name} skill`}
+          accessibilityHint={reason}
+          accessibilityState={{ selected: !dropped.includes(name) }}
+          disabled={proposal.outdated}
+          onPress={() => onToggle(name)}
+        >
+          <Txt>{name}</Txt>
+        </Tap>
+      ))}
       {chatAction && chatAction.additions.length > 0 ? (
         <Section label="It also adds">
           <View className="gap-1.5">
@@ -270,14 +295,42 @@ const SuggestionDetail = ({ proposal }: { readonly proposal: InboxProposal }) =>
   );
 };
 
+function useReviewedSkills(proposal: InboxProposal | undefined) {
+  const key = proposal ? `${proposal.proposalId}:${proposal.revision}` : null;
+  const [review, setReview] = useState<{ key: string | null; dropped: readonly string[] }>({
+    key,
+    dropped: [],
+  });
+  return {
+    dropped: review.key === key ? review.dropped : [],
+    onToggle: (name: string) =>
+      setReview((current) => {
+        const dropped = current.key === key ? current.dropped : [];
+        return {
+          key,
+          dropped: dropped.includes(name)
+            ? dropped.filter((skill) => skill !== name)
+            : [...dropped, name],
+        };
+      }),
+  };
+}
+
 /** A message's advice laid open, for a screen already showing that message. */
 export const SuggestionPanel = ({ message }: { readonly message: InboxEntry }) => {
   const view = suggestionView(message);
+  const skills = useReviewedSkills(view.kind === "offer" ? view.proposal : undefined);
   if (view.kind !== "offer") return <SuggestionStatus message={message} />;
   return (
     <View className="gap-4 rounded-[24px] bg-fill p-4">
-      <SuggestionDetail proposal={view.proposal} />
-      {view.proposal.outdated ? null : <AcceptButton message={message} proposal={view.proposal} />}
+      <SuggestionDetail proposal={view.proposal} {...skills} />
+      {view.proposal.outdated ? null : (
+        <AcceptButton
+          message={message}
+          proposal={view.proposal}
+          droppedSkillNames={skills.dropped}
+        />
+      )}
     </View>
   );
 };
@@ -291,6 +344,7 @@ export const SuggestionScreen = ({ route, navigation }: ScreenProps<"Suggestion"
   const { height } = useWindowDimensions();
   const [message] = useInboxEntry(route.params.pageId, route.params.initial);
   const view = message ? suggestionView(message) : null;
+  const skills = useReviewedSkills(view?.kind === "offer" ? view.proposal : undefined);
   if (!message || view?.kind !== "offer") {
     // A sheet that hugs its content has no height of its own for this to fill.
     return (
@@ -305,7 +359,7 @@ export const SuggestionScreen = ({ route, navigation }: ScreenProps<"Suggestion"
         contentContainerClassName="px-5 pb-3 pt-7"
         style={{ maxHeight: height * SHEET_TEXT_FRACTION }}
       >
-        <SuggestionDetail proposal={view.proposal} />
+        <SuggestionDetail proposal={view.proposal} {...skills} />
       </ScrollView>
       {view.proposal.outdated ? (
         <View style={{ height: Math.max(insets.bottom, 16) }} />
@@ -314,6 +368,7 @@ export const SuggestionScreen = ({ route, navigation }: ScreenProps<"Suggestion"
           <AcceptButton
             message={message}
             proposal={view.proposal}
+            droppedSkillNames={skills.dropped}
             onAccepted={() => navigation.goBack()}
           />
         </View>

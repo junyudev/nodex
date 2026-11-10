@@ -854,7 +854,10 @@ new chat, send to chat, move to Project, plan, or run an Automation's held
 decision. A plan names several Pages to create across Projects, each with its Agent
 work and Prerequisites. A new chat may also name the Agent it
 runs on. A chat action's prompt holds what the user asked for; its optional additions hold what the suggestion added on
-its own, such as advice to delegate part of the work, each dropped before confirmation if the user unchecks it. It is versioned and records the
+its own, such as advice to delegate part of the work. The proposal can also suggest
+up to three skills available to the receiving chat. The user can drop individual
+additions and skills before confirmation. A skill the user invoked stays part of
+the request. It is versioned and records the
 message it was written for, its Markdown body and Library images; once that message changes it is outdated, still
 reviewable and confirmable, never withdrawn or replaced on its own. A proposal is advice. Only the user's
 confirmation, a user-written dispatch, or the user's standing consent to start their own clear requests

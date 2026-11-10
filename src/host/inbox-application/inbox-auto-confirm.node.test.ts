@@ -55,6 +55,7 @@ it.effect.each(["suggest", "act_on_requests"] as const)(
                 project_id: projectId,
                 prompt: "Handle the attached request",
                 additions: ["Optional extra lookup"],
+                skills: [{ name: "review", reason: "An extra review." }],
               },
               entry_kind: "todo",
               summary: "Fix the typo",
@@ -112,6 +113,8 @@ it.effect.each(["suggest", "act_on_requests"] as const)(
         assert.equal(entry.proposal?.state, "dispatching");
         const [work] = yield* inbox.outbox(16);
         assert.isDefined(work);
+        assert.isEmpty(work!.skill_invocations ?? []);
+        assert.isEmpty("skills" in work!.action ? (work!.action.skills ?? []) : []);
         assert.notInclude(work!.final_text!, "Optional extra lookup");
         assert.include(work!.final_text!, "Fix the README typo");
         assert.equal(

@@ -446,6 +446,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 206,
         apply: migrate_v205_to_v206,
     },
+    MigrationStep {
+        from_revision: 206,
+        to_revision: 207,
+        apply: migrate_v206_to_v207,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2655,6 +2660,21 @@ fn migrate_v199_to_v200(
     Ok(())
 }
 
+fn migrate_v206_to_v207(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v206_to_v207.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"inbox_skills":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v205_to_v206(
     connection: &Connection,
     context: &MigrationContext,
@@ -3928,6 +3948,8 @@ fn prepare_current_inbox_capture_columns(connection: &Connection) -> Result<(), 
         ALTER TABLE project_session_pages ADD COLUMN report_status_moved INTEGER;
         ALTER TABLE inbox_entries ADD COLUMN status_fence INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE inbox_handoffs ADD COLUMN question_response_json TEXT;
+        ALTER TABLE inbox_handoffs ADD COLUMN skill_invocations_json TEXT NOT NULL DEFAULT '[]';
+        ALTER TABLE inbox_handoffs ADD COLUMN unavailable_skills_json TEXT NOT NULL DEFAULT '[]';
         ALTER TABLE inbox_entries ADD COLUMN purpose TEXT;
         ALTER TABLE inbox_entries ADD COLUMN subject_session_id TEXT;
         ALTER TABLE inbox_entries ADD COLUMN subject_page_id TEXT;
@@ -3969,6 +3991,8 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
         ALTER TABLE project_session_pages DROP COLUMN status_moved;
         ALTER TABLE project_session_pages DROP COLUMN status_fence;
         ALTER TABLE pages DROP COLUMN status_person_revision;
+        ALTER TABLE inbox_handoffs DROP COLUMN unavailable_skills_json;
+        ALTER TABLE inbox_handoffs DROP COLUMN skill_invocations_json;
         ALTER TABLE inbox_handoffs DROP COLUMN question_response_json;
         DROP TABLE inbox_routing_deliveries;
         ALTER TABLE data_source_relation_edges DROP COLUMN target_data_source_id;
@@ -3980,6 +4004,17 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
         ALTER TABLE inbox_proposals DROP COLUMN auto_confirm_pending;
         ALTER TABLE inbox_proposals DROP COLUMN confirmed_by;
         ALTER TABLE inbox_proposals DROP COLUMN explicit_request;",
+    )?;
+    Ok(())
+}
+
+#[cfg(test)]
+fn rewind_inbox_skill_columns(connection: &Connection) -> Result<(), StoreError> {
+    connection.execute_batch(
+        "ALTER TABLE inbox_handoffs DROP COLUMN unavailable_skills_json;
+         ALTER TABLE inbox_handoffs DROP COLUMN skill_invocations_json;
+         ALTER TABLE inbox_routing_deliveries DROP COLUMN skill_offers_json;
+         PRAGMA user_version=206;",
     )?;
     Ok(())
 }
@@ -3999,6 +4034,7 @@ pub(super) fn rewind_v204_to_v203(connection: &Connection) -> Result<(), StoreEr
         return Err(internal("Rewinding a Store requires foreign keys off"));
     }
     connection.pragma_update(None, "legacy_alter_table", true)?;
+    rewind_inbox_skill_columns(connection)?;
     connection.execute("DROP TABLE IF EXISTS project_session_chat_folders", [])?;
     connection.execute_batch(include_str!("../../tests/fixtures/rewind-v204-to-v203.sql"))?;
     connection.pragma_update(None, "legacy_alter_table", legacy_alter_table)?;
@@ -4075,10 +4111,59 @@ mod workflow_status_tests;
 
 #[cfg(test)]
 mod tests {
+    fn install_schema_before_inbox_skills(connection: &mut rusqlite::Connection) {
+        super::install_current_schema(connection).unwrap();
+        super::rewind_inbox_skill_columns(connection).unwrap();
+        super::validate_schema_identity(connection, 206).unwrap();
+    }
+
+    #[test]
+    fn inbox_skills_migration_preserves_routing_deliveries_and_frozen_handoffs() {
+        let mut connection = rusqlite::Connection::open_in_memory().unwrap();
+        install_schema_before_inbox_skills(&mut connection);
+        connection.execute_batch(
+            "PRAGMA foreign_keys=OFF;
+             INSERT INTO inbox_routing_deliveries(request_id,generation,coordinator_session_id,handed_over_at_ms)
+                 VALUES ('request',1,'coordinator',1);
+             INSERT INTO inbox_handoffs(proposal_id,store_epoch,final_text,launch_id,message_id)
+                 VALUES ('proposal','epoch','Reviewed prompt','launch','message');",
+        ).unwrap();
+        let context = super::MigrationContext {
+            source_revision: 206,
+            target_revision: 207,
+            backup_name: "backup".into(),
+            source_schema_fingerprint: super::published_format(206).unwrap().schema_fingerprint,
+            target_schema_fingerprint: super::published_format(207).unwrap().schema_fingerprint,
+            completed_at_unix_ms: 0,
+        };
+        super::migrate_v206_to_v207(&connection, &context).unwrap();
+        super::validate_schema_identity(&connection, 207).unwrap();
+        let handoff = connection.query_row(
+            "SELECT final_text,message_id,skill_invocations_json,unavailable_skills_json FROM inbox_handoffs",
+            [],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?)),
+        ).unwrap();
+        assert_eq!(
+            handoff,
+            (
+                "Reviewed prompt".into(),
+                "message".into(),
+                "[]".into(),
+                "[]".into()
+            )
+        );
+        let delivery = connection.query_row(
+            "SELECT skill_offers_json FROM inbox_routing_deliveries WHERE coordinator_session_id='coordinator'",
+            [],
+            |row| row.get::<_, String>(0),
+        ).unwrap();
+        assert_eq!(delivery, "[]");
+    }
+
     #[test]
     fn chat_folder_migration_preserves_unbound_sessions() {
         let mut connection = rusqlite::Connection::open_in_memory().unwrap();
-        super::install_current_schema(&mut connection).unwrap();
+        install_schema_before_inbox_skills(&mut connection);
         connection.execute_batch(
             "DROP TABLE project_session_chat_folders;
              PRAGMA user_version=205;
@@ -4111,7 +4196,7 @@ mod tests {
     #[test]
     fn automatic_work_queue_migration_keeps_rank_and_removes_priority_class() {
         let mut connection = rusqlite::Connection::open_in_memory().unwrap();
-        super::install_current_schema(&mut connection).unwrap();
+        install_schema_before_inbox_skills(&mut connection);
         connection
             .pragma_update(None, "foreign_keys", false)
             .unwrap();

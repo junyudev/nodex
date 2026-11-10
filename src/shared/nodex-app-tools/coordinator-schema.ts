@@ -1,5 +1,6 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { InboxSuggestedSkillsSchema } from "../schemas/inbox";
 import { MAX_INBOX_ADDITION_CHARS, MAX_INBOX_ADDITIONS } from "../inbox";
 import { toolInputSchema } from "./tool-input-schema";
 const MAX_PROMPT_CHARS = 2000;
@@ -60,6 +61,7 @@ const RawSuggestion = z
     project_id: z.string().nullable(),
     session_id: z.string().nullable(),
     prompt: z.string().max(MAX_PROMPT_CHARS).nullable(),
+    skills: InboxSuggestedSkillsSchema,
     additions: z.array(z.string().max(MAX_INBOX_ADDITION_CHARS)).max(MAX_INBOX_ADDITIONS),
     chat_instance_id: z.string().nullable(),
     chat_model: z.string().nullable(),
@@ -145,7 +147,7 @@ export const coordinatorToolCatalog: readonly Tool[] = [
   {
     name: "inbox_suggest",
     description:
-      "Coordinator only. Submit the complete Routing request response, echoing request_id and generation. Cover every member exactly once; grouped/refine requests need one action. explicit_request says the person clearly asked for work now. Only new_chat or plan steps choose a model; plans require explicit_request false and 2–8 acyclic steps; unused targets/model fields are null, non-chat additions are empty. Validation errors leave the request pending: correct them and resubmit.",
+      "Coordinator only. Submit the complete Routing request response, echoing request_id and generation. Cover every member exactly once; grouped/refine requests need one action. explicit_request says the person clearly asked for work now. Only new_chat or plan steps choose a model; plans require explicit_request false and 2–8 acyclic steps; unused targets/model fields are null, non-chat additions and skills are empty. Validation errors leave the request pending: correct them and resubmit.",
     inputSchema: toolInputSchema(InboxSuggestionOutput),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },

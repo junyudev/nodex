@@ -4143,12 +4143,57 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             | ProviderAdapter.ProviderAdapterV2TurnInput
             | ProviderAdapter.ProviderAdapterV2SteerInput,
             "message"
-          >,
+          > &
+            Partial<
+              Pick<
+                ProviderAdapter.ProviderAdapterV2TurnInput,
+                "runtimePolicy" | "appThread" | "hostSourceRoots" | "reportUnavailableSkills"
+              >
+            >,
         ) =>
           Effect.gen(function* () {
             const inputItems: Array<CodexSchema.V2TurnStartParams__UserInput> = [];
+            const requested = turnInput.message.skillInvocations ?? [];
+            const cwd = turnInput.runtimePolicy?.cwd;
+            const available =
+              requested.length && cwd
+                ? yield* client
+                    .request("skills/list", {
+                      cwds: [cwd],
+                      forceReload: true,
+                    })
+                    .pipe(
+                      Effect.map(
+                        (response) =>
+                          response.data.find((entry) => entry.cwd === cwd)?.skills ?? [],
+                      ),
+                      Effect.timeout("3 seconds"),
+                      Effect.orElseSucceed(() => []),
+                    )
+                : [];
+            const kept = requested.flatMap((skill) => {
+              const match = available.find(
+                (candidate) =>
+                  candidate.enabled &&
+                  ProviderAdapter.matchesSkillInvocation(
+                    skill,
+                    candidate,
+                    adapterOptions.instanceId,
+                    cwd,
+                    turnInput,
+                  ),
+              );
+              return match ? [{ name: match.name, path: match.path }] : [];
+            });
+            const omitted = requested
+              .filter(({ name }) => !kept.some((skill) => skill.name === name))
+              .map(({ name }) => name);
+            if (omitted.length) yield* turnInput.reportUnavailableSkills?.(omitted) ?? Effect.void;
+            const markers = kept.map(({ name }) => `$${name}`).join(" ");
             const text = providerMessageTextWithAttachmentPaths({
-              text: codexSkillMentionText(turnInput.message.text),
+              text: [codexSkillMentionText(turnInput.message.text), markers]
+                .filter(Boolean)
+                .join("\n\n"),
               attachments: turnInput.message.attachments,
               resolveAttachmentPath: (attachment) =>
                 resolveAttachmentPath({ attachmentsDir: serverConfig.attachmentsDir, attachment }),
@@ -4164,7 +4209,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               resolveCodexAttachment,
               { concurrency: 1 },
             );
-            inputItems.push(...attachmentItems);
+            inputItems.push(
+              ...attachmentItems,
+              ...kept.map(({ name, path }) => ({ type: "skill" as const, name, path })),
+            );
             if (inputItems.length === 0) {
               return yield* toProtocolError("Turn requires non-empty text or attachments.");
             }

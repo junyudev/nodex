@@ -549,8 +549,16 @@ it.effect("a dispatched chat receives the messages' Library images with their te
 
 it.effect("hands busy follow-ups to the Runtime queue and does not starve a ninth chat", () =>
   Effect.gen(function* () {
+    const review = {
+      name: "review",
+      path: "/repo/review/SKILL.md",
+      cwd: "/repo",
+      instanceId: "codex",
+    };
+    const removed = { ...review, name: "removed", path: "/repo/removed/SKILL.md" };
     const items = Array.from({ length: 9 }, (_, index) => ({
       ...work({ type: "send_to_chat", session_id: "session:one", prompt: "Follow up" }),
+      skill_invocations: index === 0 ? [review, removed] : [],
       images: index === 0 ? [suggestionImage("missing", new Uint8Array([1]))] : [],
       proposal_id: `proposal:${index}`,
       message_id: `message:${index}`,
@@ -562,7 +570,12 @@ it.effect("hands busy follow-ups to the Runtime queue and does not starve a nint
     const complete = vi.fn(() => Effect.void);
     const { drain } = yield* delivery({
       session: () => session(true),
-      runtime: { sendMessage },
+      runtime: {
+        sendMessage,
+        skillDestinationForSession: () => Effect.succeed({ instanceId: "codex", cwd: "/repo" }),
+        skillsForWorkspace: () =>
+          Effect.succeed([{ name: review.name, path: review.path, enabled: true }]),
+      },
       inbox: {
         outbox: () => Effect.succeed(items),
         completeDispatch: complete,
@@ -583,6 +596,8 @@ it.effect("hands busy follow-ups to the Runtime queue and does not starve a nint
       sendMessage.mock.calls[0]?.[0].messageFingerprint,
       inboxDispatchFingerprint(items[0]!),
     );
+    assert.deepEqual(sendMessage.mock.calls[0]?.[0].message.skillInvocations, [review]);
+    assert.deepEqual(complete.mock.calls[0], [items[0], "thread:one", ["removed"]]);
     assert.strictEqual(complete.mock.calls.length, 9);
   }),
 );
@@ -744,7 +759,7 @@ it.effect("delivers an Inbox chat without a Project to the host's projectless wo
     yield* drain;
     assert.deepEqual(asked, [null]);
     assert.strictEqual(launches[0]?.projectId, null);
-    assert.deepEqual(complete.mock.calls[0], [confirmed, "thread:one"]);
+    assert.deepEqual(complete.mock.calls[0], [confirmed, "thread:one", []]);
   }),
 );
 
