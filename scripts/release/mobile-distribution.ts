@@ -218,23 +218,12 @@ const plistValue = (plist: string, key: string): string =>
 export function buildIosDistribution(options: MobileBuildOptions): MobileBuildManifest {
   if (process.platform !== "darwin") throw new Error("iOS distribution builds on macOS.");
   const { cwd, identity, outputDirectory, mobile, env } = prepare(options);
-  const { APPLE_API_KEY_B64, APPLE_API_KEY_ID, APPLE_API_ISSUER } = env;
+  const { APPLE_API_KEY_B64, APPLE_API_KEY_ID, APPLE_API_ISSUER, ...archiveEnv } = env;
   if (!APPLE_API_KEY_B64 || !APPLE_API_KEY_ID || !APPLE_API_ISSUER)
     throw new Error("iOS distribution needs the App Store Connect key.");
   const work = mkdtempSync(join(tmpdir(), "nodex-ios-distribution-"));
   try {
-    const key = join(work, "AuthKey.p8");
-    writeFileSync(key, Buffer.from(APPLE_API_KEY_B64, "base64"), { mode: 0o600 });
-    const signing = [
-      "-allowProvisioningUpdates",
-      "-authenticationKeyPath",
-      key,
-      "-authenticationKeyID",
-      APPLE_API_KEY_ID,
-      "-authenticationKeyIssuerID",
-      APPLE_API_ISSUER,
-    ];
-    const buildEnv = { ...env, APPLE_TEAM_ID: APPLE_TEAM_IDENTIFIER };
+    const buildEnv = { ...archiveEnv, APPLE_TEAM_ID: APPLE_TEAM_IDENTIFIER };
     runVitePlus(["exec", "expo", "prebuild", "--clean", "--no-install", "--platform", "ios"], {
       cwd: mobile,
       env: buildEnv,
@@ -255,9 +244,11 @@ export function buildIosDistribution(options: MobileBuildOptions): MobileBuildMa
         "generic/platform=iOS",
         "-archivePath",
         archive,
-        ...signing,
         `DEVELOPMENT_TEAM=${APPLE_TEAM_IDENTIFIER}`,
         "CODE_SIGN_STYLE=Automatic",
+        // Preserve target entitlements in the archive without allocating a development certificate.
+        "CODE_SIGN_IDENTITY=-",
+        "AD_HOC_CODE_SIGNING_ALLOWED=YES",
       ],
       mobile,
       buildEnv,
@@ -278,6 +269,8 @@ export function buildIosDistribution(options: MobileBuildOptions): MobileBuildMa
 `,
     );
     const exported = join(work, "export");
+    const key = join(work, "AuthKey.p8");
+    writeFileSync(key, Buffer.from(APPLE_API_KEY_B64, "base64"), { mode: 0o600 });
     run(
       "xcodebuild",
       [
@@ -288,7 +281,13 @@ export function buildIosDistribution(options: MobileBuildOptions): MobileBuildMa
         exportOptions,
         "-exportPath",
         exported,
-        ...signing,
+        "-allowProvisioningUpdates",
+        "-authenticationKeyPath",
+        key,
+        "-authenticationKeyID",
+        APPLE_API_KEY_ID,
+        "-authenticationKeyIssuerID",
+        APPLE_API_ISSUER,
       ],
       mobile,
       buildEnv,
@@ -314,6 +313,8 @@ function verifyIpa(ipa: string, identity: ReleaseIdentity, work: string): void {
   const app = join(payload, "Payload/Nodex.app");
   const extension = join(app, "PlugIns/NotificationService.appex");
   const expected = mobileAppFor("ios", identity);
+  const pushKeychainGroup = `${APPLE_TEAM_IDENTIFIER}.${MOBILE_APP_ID}.push`;
+  run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app], work, process.env);
   for (const [bundle, id] of [
     [app, MOBILE_APP_ID],
     [extension, `${MOBILE_APP_ID}.NotificationService`],
@@ -325,15 +326,28 @@ function verifyIpa(ipa: string, identity: ReleaseIdentity, work: string): void {
       plistValue(plist, "CFBundleVersion") !== expected.build
     )
       throw new Error(`${id} does not carry the Release Identity's versions.`);
+    // codesign writes the signature description to stderr and the entitlements to stdout.
+    const signature = spawnSync(
+      "/usr/bin/codesign",
+      ["-d", "--verbose=2", "--entitlements", ":-", bundle],
+      { encoding: "utf8" },
+    );
+    if (
+      signature.status !== 0 ||
+      !signature.stderr.split("\n").includes(`TeamIdentifier=${APPLE_TEAM_IDENTIFIER}`)
+    )
+      throw new Error(`${id} is not signed by the Nodex team.`);
+    const entitlements = JSON.parse(
+      output("/usr/bin/plutil", ["-convert", "json", "-o", "-", "-"], { input: signature.stdout }),
+    ) as Record<string, unknown>;
+    const keychainGroups = entitlements["keychain-access-groups"];
+    if (
+      entitlements["application-identifier"] !== `${APPLE_TEAM_IDENTIFIER}.${id}` ||
+      entitlements["get-task-allow"] !== false ||
+      !Array.isArray(keychainGroups) ||
+      !keychainGroups.includes(pushKeychainGroup) ||
+      (id === MOBILE_APP_ID && entitlements["aps-environment"] !== "production")
+    )
+      throw new Error(`${id} is missing the App Store distribution entitlements.`);
   }
-  run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app], work, process.env);
-  // codesign describes a signature on stderr.
-  const signature = spawnSync("/usr/bin/codesign", ["-dv", "--verbose=2", app], {
-    encoding: "utf8",
-  });
-  if (
-    signature.status !== 0 ||
-    !signature.stderr.split("\n").includes(`TeamIdentifier=${APPLE_TEAM_IDENTIFIER}`)
-  )
-    throw new Error("iOS app is not signed by the Nodex team.");
 }
