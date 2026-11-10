@@ -14,6 +14,7 @@ import {
   useProjects,
   type LocalImage,
 } from "../../runtime";
+import { BarControl } from "../../ui/BarControl";
 import { cn } from "../../ui/cn";
 import { ComposerLayout } from "../../ui/ComposerLayout";
 import { Glass } from "../../ui/glass";
@@ -183,9 +184,17 @@ const HomeTrailing = () => {
 
 export const HOME_HEADER: NativeStackNavigationOptions = {
   title: "Home",
-  headerLeft: () => <HomeLeading />,
+  headerLeft: () => (
+    <BarControl>
+      <HomeLeading />
+    </BarControl>
+  ),
   headerTitle: () => <HomeTitle />,
-  headerRight: () => <HomeTrailing />,
+  headerRight: () => (
+    <BarControl>
+      <HomeTrailing />
+    </BarControl>
+  ),
 };
 
 /**

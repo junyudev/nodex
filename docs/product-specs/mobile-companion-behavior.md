@@ -96,6 +96,9 @@ with Liquid Glass the bars and the Composer are glass and content blurs away und
 they are the platform's nearest material, and Android keeps a solid top bar. At rest the Composer is one
 line whose placeholder names where a message goes. In use it opens to show its pickers.
 
+A control in a top bar does only what it says. Where the system sends a list to its top when the
+bar is tapped, the status bar still does and the bar's controls do not.
+
 ### Inbox
 
 - The stream shows the chosen Inbox, the Library's or a Project's, newest at the bottom, rendered as

@@ -24,6 +24,7 @@ import { SettingsScreen } from "../features/settings/SettingsScreen";
 import { activateHost, useHosts } from "../runtime";
 import type { NotificationTarget } from "../runtime/notification-payload";
 import { useNotificationRouting } from "../features/notifications/notification-routing";
+import { BarControl } from "../ui/BarControl";
 import { LIQUID_GLASS } from "../ui/glass";
 import { IconButton } from "../ui/primitives";
 import { useColor } from "../ui/tokens";
@@ -62,12 +63,14 @@ const closableModal =
     ...(Platform.OS === "ios"
       ? {
           headerRight: () => (
-            <IconButton
-              color="ink"
-              label="Close"
-              name="close"
-              onPress={() => navigation.goBack()}
-            />
+            <BarControl>
+              <IconButton
+                color="ink"
+                label="Close"
+                name="close"
+                onPress={() => navigation.goBack()}
+              />
+            </BarControl>
           ),
         }
       : {}),

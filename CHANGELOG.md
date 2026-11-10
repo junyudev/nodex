@@ -35,6 +35,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- On iOS 27, tapping a button in Nodex Mobile's top bar no longer also scrolls the list beneath it to the top. Opening Settings used to leave the Inbox at its oldest message.
+
 - Older chats open again after upgrading Nodex.
 
 - Dropping a tab on the edge of a tab group now splits the group instead of doing nothing.

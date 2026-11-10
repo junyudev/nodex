@@ -16,6 +16,7 @@ import {
   useNotifications,
   type LocalImage,
 } from "../../runtime";
+import { BarControl } from "../../ui/BarControl";
 import { Icon, type IconName } from "../../ui/icons";
 import { BottomAnchoredList } from "../../ui/BottomAnchoredList";
 import { ComposerLayout } from "../../ui/ComposerLayout";
@@ -266,12 +267,14 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
       ),
       headerRight: archivable
         ? () => (
-            <IconButton
-              color="ink"
-              label="Archive chat"
-              name="archive"
-              onPress={() => setArchived(sessionId, true)}
-            />
+            <BarControl>
+              <IconButton
+                color="ink"
+                label="Archive chat"
+                name="archive"
+                onPress={() => setArchived(sessionId, true)}
+              />
+            </BarControl>
           )
         : undefined,
     });
