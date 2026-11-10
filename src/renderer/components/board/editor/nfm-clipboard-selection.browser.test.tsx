@@ -12,8 +12,9 @@ import { BlockNoteView } from "@blocknote/shadcn";
 import type { Node } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { act, render } from "@testing-library/react";
+import { act } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
+import { renderWithAppMaitai } from "@/test/app-maitai";
 
 import {
   attachNodexClipboardFragment,
@@ -108,7 +109,7 @@ async function dispatchClipboardEvent(
 }
 
 function renderClipboardEditor(editor: AnyBlockNoteEditor) {
-  return render(
+  return renderWithAppMaitai(
     <BlockNoteView
       editor={editor}
       formattingToolbar={false}
