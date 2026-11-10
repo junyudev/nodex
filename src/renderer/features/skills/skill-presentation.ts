@@ -23,7 +23,9 @@ export function displaySkillLocation(location: Pick<SkillLocation, "directory" |
   if (location.scope !== "project") return displaySkillDirectory(location.directory);
   const separator = location.directory.includes("\\") ? "\\" : "/";
   const segments = location.directory.split(separator).filter(Boolean);
-  return segments.length > 3 ? segments.slice(-3).join(separator) : displaySkillDirectory(location.directory);
+  return segments.length > 3
+    ? segments.slice(-3).join(separator)
+    : displaySkillDirectory(location.directory);
 }
 
 /** What a location is, in the user's words; the directory itself is shown beside it. */

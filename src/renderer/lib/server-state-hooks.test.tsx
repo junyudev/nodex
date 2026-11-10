@@ -352,10 +352,10 @@ describe("server state query hooks", () => {
     await waitFor(() => expect(view.getByTestId("/first").textContent).toBe("original,new-skill"));
     await waitFor(() => expect(view.getByTestId("/second").textContent).toBe("original,new-skill"));
     expect(skillsListCwds).toEqual([
-      { hostId: "local", cwds: ["/first"] },
-      { hostId: "local", cwds: ["/second"] },
-      { hostId: "local", cwds: ["/first"] },
-      { hostId: "local", cwds: ["/second"] },
+      { hostId: "local", cwds: ["/first"], forceReload: true },
+      { hostId: "local", cwds: ["/second"], forceReload: true },
+      { hostId: "local", cwds: ["/first"], forceReload: true },
+      { hostId: "local", cwds: ["/second"], forceReload: true },
     ]);
   });
 });
