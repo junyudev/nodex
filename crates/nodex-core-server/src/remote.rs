@@ -606,17 +606,27 @@ fn certificate(
                     .to_string();
                 let rcgen::CertifiedKey { cert, signing_key } =
                     rcgen::generate_simple_self_signed(vec!["localhost".into(), host])?;
-                let pending = dir.join("server-identity.pending");
-                private_fs::write(
-                    &pending,
-                    format!("{}{}", cert.pem(), signing_key.serialize_pem()),
-                )?;
-                private_fs::OpenOptions::new()
-                    .read(true)
-                    .open(&pending)?
-                    .sync_all()?;
-                private_fs::atomic_replace(&pending, &identity_path)?;
-                private_fs::sync_directory(&dir)?;
+                let pending = dir.join(format!(
+                    "server-identity-{}.pending",
+                    runtime_files::random_hex(8)?
+                ));
+                let mut file = private_fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(&pending)?;
+                let published = (|| {
+                    write!(file, "{}{}", cert.pem(), signing_key.serialize_pem())?;
+                    // Windows requires write access to flush file contents.
+                    file.sync_all()?;
+                    drop(file);
+                    private_fs::atomic_replace(&pending, &identity_path)?;
+                    private_fs::sync_directory(&dir)
+                })();
+                if published.is_err() {
+                    let _ = fs::remove_file(&pending);
+                }
+                published?;
             }
             let identity = pem_bytes(&identity_path, true)?;
             (identity.clone(), identity)
@@ -950,12 +960,18 @@ pub(crate) async fn prepare_space(
 ) -> Result<Json<SpaceIdentity>, ApiError> {
     local_admin(&state, remote)?;
     let owner_member_id = state.membership.require_owner().map_err(store_api)?;
-    let (_, fingerprint) = certificate(&state.home, &request).map_err(|_| {
-        ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "Certificate configuration is invalid",
-        )
-    })?;
+    let fingerprint = {
+        // Serialize first-time identity creation with listener startup.
+        let _listener = state.remote.info.lock().map_err(|_| remote_unavailable())?;
+        certificate(&state.home, &request)
+            .map_err(|_| {
+                ApiError::new(
+                    StatusCode::BAD_REQUEST,
+                    "Certificate configuration is invalid",
+                )
+            })?
+            .1
+    };
     state.membership.prepare_hosting().map_err(store_api)?;
     Ok(Json(SpaceIdentity {
         space_id: state.library_id.clone(),
