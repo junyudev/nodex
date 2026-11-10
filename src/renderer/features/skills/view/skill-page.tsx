@@ -384,7 +384,8 @@ function LoadedSkillPage({
         </div>
       </div>
       <div className="px-0.5 pt-1 text-sm text-token-description-foreground">
-        {skillLocationKind(location)} · <NodexTooltip tooltipContent={location.directory} side="bottom">
+        {skillLocationKind(location)} ·{" "}
+        <NodexTooltip tooltipContent={location.directory} side="bottom">
           <span>{displaySkillLocation(location)}</span>
         </NodexTooltip>
       </div>
