@@ -20,13 +20,21 @@ same stable command returns the original Session without launching duplicate wor
 Core admits the Session before any execution or workspace effect exists, so a Session
 Core refuses never gains a Thread or worktree, and invalid Agent configuration is refused
 before either. The binding names a deterministic root Thread that each later step creates
-idempotently. A checkout or projectless workspace is ready immediately. A new managed
-worktree is prepared after the first message is durable: its Run waits as preparing,
-shows worktree progress in the transcript and starts once the Thread records the new
-location. A failed preparation leaves the Run failed with Retry, which prepares the
-worktree again, and Work locally, which starts the Run in the source checkout. A
-preparation interrupted by an application restart fails with that reason; Retry then
-creates the worktree from the source checkout's current branch.
+idempotently. The launch owns that Thread until it exists: opening the chat meanwhile waits
+for it and then shows the conversation, and a bound Session whose launch stopped first gets
+its Thread the next time the chat is used. Nothing slow sits between the two, so a launch
+never waits on Git.
+
+A checkout or projectless workspace is ready immediately. A managed worktree, the chat's
+own new one or the checkout of its
+[Page Workspace](codex-managed-worktree-lifecycle-behavior.md#page-workspaces), is prepared
+after the first message is durable: its Run waits as preparing, shows worktree progress in
+the transcript and starts once the Thread records the new location. A failed preparation
+leaves the Run failed with its reason and with Retry, which prepares the worktree again, and
+Work locally, which starts the Run in the source checkout. A Page Workspace's preparation
+resumes after an application restart, since Core keeps the chat's claim. A worktree of the
+chat's own fails with that reason instead; Retry then creates it from the source checkout's
+current branch.
 
 A chat a person starts is titled once from its opening prompt, at the lightest effort of the
 model Settings → General names in **Title chats with**. Until one is chosen, a light model on the

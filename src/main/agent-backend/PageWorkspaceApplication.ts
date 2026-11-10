@@ -16,6 +16,7 @@ import {
   resolveManagedWorktreeDefaultStartingState,
 } from "../codex/git-worktree-service";
 import { readGhPrStatus } from "../github-pr-service";
+import { readActionableErrorMessage } from "../actionable-error-message";
 import { NativeSessionWorkspace } from "./NativeSessionWorkspace";
 
 type Workspace = components["schemas"]["PageWorkspace"];
@@ -24,6 +25,15 @@ export class PageWorkspaceError extends Schema.TaggedError<PageWorkspaceError>()
   "PageWorkspaceError",
   { cause: Schema.Defect() },
 ) {}
+
+/** A chat that works a Page, as the Page's Workspace needs to know it. */
+export interface PageWorkspaceConsumer {
+  readonly sessionId: string;
+  readonly projectId: string | null;
+  /** Where the chat would run without a Workspace: its repository, and its directory inside it. */
+  readonly sourceCwd: string;
+  readonly sourceRoots: readonly string[];
+}
 
 export function canonicalRepositoryUrl(value: string | null): string | null {
   if (!value) return null;
@@ -82,7 +92,8 @@ export const make = Effect.gen(function* () {
   const hosts = yield* ExecutionHostRuntime;
   const native = yield* NativeSessionWorkspace;
   const worktrees = yield* ManagedWorktreeRuntime;
-  // Allocation and cleanup share the gate; durable claims survive this process.
+  // Checkout creation and cleanup share the gate. Claims are Core writes that survive this
+  // process and never wait on it.
   const lane = yield* Semaphore.make(1);
   const readPage = Effect.fn("PageWorkspaceApplication.readPage")(function* (pageId: string) {
     const read = yield* core.workspace.read(
@@ -98,22 +109,26 @@ export const make = Effect.gen(function* () {
     intent: components["schemas"]["ProjectWorkspaceIntent"],
     operationId = createOperationId("page-workspace"),
   ) => core.workspace.apply({ operationId, intent }, undefined, null);
-  const ensure = Effect.fn("PageWorkspaceApplication.ensure")(function* (input: {
-    launch: AgentRuntimeLaunch;
-    sourceCwd: string;
-    sourceRoots: readonly string[];
-  }) {
-    const launch = input.launch;
-    if (!launch.projectId || !launch.workPage) return null;
-    const root = yield* git.readPath(input.sourceCwd, ["rev-parse", "--show-toplevel"]);
+  /**
+   * Joins a chat to its Page's Workspace, recording the intended checkout when the Page has none
+   * to use. Git reads and one Core write: nothing is created on disk.
+   */
+  const join = Effect.fn("PageWorkspaceApplication.join")(function* (
+    consumer: PageWorkspaceConsumer,
+    target: NonNullable<AgentRuntimeLaunch["workPage"]>,
+    launch?: Pick<AgentRuntimeLaunch, "launchId" | "acceptedAt">,
+  ) {
+    const projectId = consumer.projectId;
+    if (!projectId) return null;
+    const root = yield* git.readPath(consumer.sourceCwd, ["rev-parse", "--show-toplevel"]);
     if (!root) {
-      if (yield* git.isNonGitWorkspace(input.sourceCwd)) return null;
+      if (yield* git.isNonGitWorkspace(consumer.sourceCwd)) return null;
       return yield* new PageWorkspaceError({
         cause: new Error("Project repository is unavailable"),
       });
     }
-    const observation = yield* readPage(launch.workPage.pageId);
-    if (launch.workPage.onlyIfAgentWork && !observation.has_agent_work) return null;
+    const observation = yield* readPage(target.pageId);
+    if (target.onlyIfAgentWork && !observation.has_agent_work) return null;
     const page = observation.page;
     const origin = yield* git.readPath(root, ["remote", "get-url", "origin"]);
     const fallback = origin
@@ -143,7 +158,7 @@ export const make = Effect.gen(function* () {
       yield* apply({
         kind: "bind_page_workspace",
         workspace_id: known.workspace_id,
-        session_id: launch.sessionId,
+        session_id: consumer.sessionId,
       });
     } else {
       const host = yield* hosts.resolve("local", "create");
@@ -152,8 +167,8 @@ export const make = Effect.gen(function* () {
           kind: "claim_page_workspace",
           workspace_id: workspaceId,
           page_id: page.page_id,
-          project_id: launch.projectId,
-          session_id: launch.sessionId,
+          project_id: projectId,
+          session_id: consumer.sessionId,
           repository_url: repository,
           repository_root: root,
           branch_name:
@@ -166,45 +181,61 @@ export const make = Effect.gen(function* () {
           base_commit_oid: base,
           worktree_path: pageWorkspaceWorktreePath(host.descriptor.managedRoot, root, workspaceId),
         },
-        createStableOperationId("page-workspace.claim", launch.acceptedAt, {
-          launchId: launch.launchId,
-          pageId: page.page_id,
-          revision: known?.revision ?? 0,
-        }),
+        // A repeated launch claims once; a later preparation of the same Workspace claims anew.
+        launch
+          ? createStableOperationId("page-workspace.claim", launch.acceptedAt, {
+              launchId: launch.launchId,
+              pageId: page.page_id,
+              revision: known?.revision ?? 0,
+            })
+          : undefined,
       );
     }
     const claimed = (yield* readPage(page.page_id)).workspace!;
-    if (claimed.lifecycle === "ready" && claimed.worktree_path) {
-      const lease = yield* native.prepare({
-        projectId: launch.projectId,
-        targetId: launch.sessionId,
-        title: page.title,
-        prompt: launch.message.text,
-        sourceCwd: input.sourceCwd,
-        sourceRoots: input.sourceRoots,
-        runInTarget: "localProject",
-        operationId: claimed.allocation_operation_id,
-        reusePageWorkspace: {
-          worktreeGitRoot: claimed.worktree_path,
-          branchName: claimed.branch_name,
-        },
-      });
-      return {
-        ...lease,
-        attach: (threadId: string) =>
-          native.reconcile({ cwd: lease.location.cwd, threadId, sharedWorkspace: true }),
-      };
-    }
+    return { projectId, title: page.title, workspace: claimed };
+  });
+  type Joined = NonNullable<Effect.Success<ReturnType<typeof join>>>;
+  /** Every chat of a Page works in the Page's one checkout, at its own directory inside it. */
+  const lease = Effect.fn("PageWorkspaceApplication.lease")(function* (
+    consumer: PageWorkspaceConsumer,
+    joined: Joined,
+    worktreeGitRoot: string,
+  ) {
+    const shared = yield* native.prepare({
+      projectId: joined.projectId,
+      targetId: consumer.sessionId,
+      title: joined.title,
+      prompt: "",
+      sourceCwd: consumer.sourceCwd,
+      sourceRoots: consumer.sourceRoots,
+      runInTarget: "localProject",
+      operationId: joined.workspace.allocation_operation_id,
+      reusePageWorkspace: { worktreeGitRoot, branchName: joined.workspace.branch_name },
+    });
+    return {
+      ...shared,
+      attach: (threadId: string) =>
+        native.reconcile({ cwd: shared.location.cwd, threadId, sharedWorkspace: true }),
+    };
+  });
+  /** Leases the checkout a chat joined, creating it first when the Page does not have one yet. */
+  const checkout = Effect.fn("PageWorkspaceApplication.checkout")(function* (
+    consumer: PageWorkspaceConsumer,
+    joined: Joined,
+  ) {
+    const claimed = joined.workspace;
+    if (claimed.lifecycle === "ready" && claimed.worktree_path)
+      return yield* lease(consumer, joined, claimed.worktree_path);
     if (claimed.lifecycle !== "preparing")
       return yield* new PageWorkspaceError({ cause: new Error("Page Workspace is unavailable") });
-    const lease = yield* native
+    const created = yield* native
       .prepare({
-        projectId: launch.projectId,
-        targetId: launch.sessionId,
-        title: page.title,
-        prompt: launch.message.text,
-        sourceCwd: root,
-        sourceRoots: input.sourceRoots,
+        projectId: joined.projectId,
+        targetId: consumer.sessionId,
+        title: joined.title,
+        prompt: "",
+        sourceCwd: claimed.repository_root,
+        sourceRoots: consumer.sourceRoots,
         runInTarget: "newWorktree",
         operationId: claimed.allocation_operation_id,
         pageWorkspace: {
@@ -220,11 +251,14 @@ export const make = Effect.gen(function* () {
             kind: "record_page_workspace_failed",
             workspace_id: claimed.workspace_id,
             allocation_operation_id: claimed.allocation_operation_id,
-            failure: String(cause).slice(0, 4096) || "Workspace preparation failed",
+            failure: readActionableErrorMessage(cause, {
+              fallback: "Workspace preparation failed",
+              maximumLength: 4096,
+            }),
           }).pipe(Effect.ignore),
         ),
       );
-    if (!lease.branchName || !lease.location.managedWorktreePath)
+    if (!created.branchName || !created.location.managedWorktreePath)
       return yield* new PageWorkspaceError({
         cause: new Error("Page Workspace branch is unavailable"),
       });
@@ -232,14 +266,52 @@ export const make = Effect.gen(function* () {
       kind: "record_page_workspace_ready",
       workspace_id: claimed.workspace_id,
       allocation_operation_id: claimed.allocation_operation_id,
-      branch_name: lease.branchName,
-      worktree_path: lease.location.managedWorktreePath,
+      branch_name: created.branchName,
+      worktree_path: created.location.managedWorktreePath,
     });
-    if ((yield* readPage(page.page_id)).workspace?.lifecycle !== "ready")
+    const ready = (yield* readPage(claimed.page_id)).workspace;
+    if (ready?.lifecycle !== "ready" || !ready.worktree_path)
       return yield* new PageWorkspaceError({
         cause: new Error("Page Workspace is awaiting cleanup"),
       });
-    return lease;
+    return yield* lease(consumer, { ...joined, workspace: ready }, ready.worktree_path);
+  });
+  const claim = Effect.fn("PageWorkspaceApplication.claim")(function* (
+    input: PageWorkspaceConsumer & {
+      readonly workPage: NonNullable<AgentRuntimeLaunch["workPage"]>;
+      readonly launch: Pick<AgentRuntimeLaunch, "launchId" | "acceptedAt">;
+    },
+  ) {
+    const joined = yield* join(input, input.workPage, input.launch);
+    if (!joined) return null;
+    const { workspace } = joined;
+    return {
+      workspace,
+      lease:
+        workspace.lifecycle === "ready" && workspace.worktree_path
+          ? yield* lease(input, joined, workspace.worktree_path)
+          : null,
+    };
+  });
+  const prepare = Effect.fn("PageWorkspaceApplication.prepare")(function* (
+    consumer: PageWorkspaceConsumer,
+  ) {
+    const read = yield* core.workspace.read(
+      { kind: "session_workspace", session_id: consumer.sessionId },
+      undefined,
+      null,
+    );
+    const known = read.value.kind === "session_workspace" ? read.value.workspace : null;
+    if (!known) return null;
+    // The claim fixed the repository. A chat prepared again from another source root, as after
+    // a restart, works at the top of the checkout.
+    const root = yield* git.readPath(consumer.sourceCwd, ["rev-parse", "--show-toplevel"]);
+    const source =
+      root === known.repository_root ? consumer : { ...consumer, sourceCwd: known.repository_root };
+    const joined = yield* join(source, { pageId: known.page_id });
+    if (!joined)
+      return yield* new PageWorkspaceError({ cause: new Error("Page Workspace is unavailable") });
+    return yield* checkout(source, joined);
   });
   const consumers = Effect.fn("PageWorkspaceApplication.consumers")(function* (
     workspace: Workspace,
@@ -485,7 +557,18 @@ export const make = Effect.gen(function* () {
       Effect.map((values) => values.some((value) => value.lifecycle === "cleanup_requested")),
     ),
     threadsAtPath,
-    ensure: (input: Parameters<typeof ensure>[0]) => lane.withPermits(1)(ensure(input)),
+    /**
+     * Launch admission: joins the chat to its work Page's Workspace without creating anything, so
+     * it never waits on Git. Null when the chat gets no Workspace: its Project is not a
+     * repository, or the Page has no Agent work and only that would open one. `lease` is the
+     * checkout when the Page already has one; otherwise `prepare` creates it.
+     */
+    claim,
+    /**
+     * Leases the checkout of the Workspace a chat joined, creating it when it is missing; null
+     * when the chat joined none. Repeatable: a failed or removed checkout is claimed again.
+     */
+    prepare: (consumer: PageWorkspaceConsumer) => lane.withPermits(1)(prepare(consumer)),
     reconcile: (connection: AgentRuntimeApplicationConnection | null) =>
       lane
         .withPermits(1)(reconcile(connection))

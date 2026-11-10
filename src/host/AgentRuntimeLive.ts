@@ -362,7 +362,7 @@ const supervisor = Layer.effectContext(
           }
         : undefined,
       prepareWorkspace: workspace.prepare,
-      ensurePageWorkspace: pageWorkspaces.ensure,
+      pageWorkspaces,
       refreshPageWorkspace: pageWorkspaces.refresh,
       pageWorkspaceThreads: pageWorkspaces.threadsAtPath,
       presentation,

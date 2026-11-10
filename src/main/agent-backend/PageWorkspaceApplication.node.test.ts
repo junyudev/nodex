@@ -66,6 +66,7 @@ async function fixture(gitRepository = true) {
   let afterHold = false;
   let creations = 0;
   let loseReady = false;
+  let failCreation = false;
   let hasAgentAssignee = true;
   const core = {
     workspace: {
@@ -81,33 +82,46 @@ async function fixture(gitRepository = true) {
                       kind: input.kind,
                       binding: { runtime_id: "runtime", runtime_thread_id: input.session_id },
                     }
-                  : {
-                      kind: "page_workspace",
-                      workspace,
-                      pull_request: pullRequest,
-                      page: {
-                        page_id: "page",
-                        page_key: "NODEX-12",
-                        title: "Fix login",
-                        status: "doing",
+                  : input.kind === "session_workspace"
+                    ? {
+                        kind: input.kind,
+                        workspace: consumers.has(input.session_id!) ? workspace : null,
+                      }
+                    : {
+                        kind: "page_workspace",
+                        workspace,
+                        pull_request: pullRequest,
+                        page: {
+                          page_id: "page",
+                          page_key: "NODEX-12",
+                          title: "Fix login",
+                          status: "doing",
+                        },
+                        has_agent_work: hasAgentAssignee,
                       },
-                      has_agent_work: hasAgentAssignee,
-                    },
         })),
       apply: (input: { operationId: string; intent: Record<string, unknown> }) =>
         Effect.sync(() => {
           const intent = input.intent;
           events.push(String(intent.kind));
           if (intent.kind === "claim_page_workspace") {
+            // Core keeps a Workspace's first allocation identity when its checkout is claimed again.
             workspace = {
               ...intent,
-              allocation_operation_id: input.operationId,
+              allocation_operation_id: workspace?.allocation_operation_id ?? input.operationId,
               lifecycle: "preparing",
-              revision: 1,
+              revision: (workspace?.revision ?? 0) + 1,
               failure: null,
             } as unknown as components["schemas"]["PageWorkspace"];
             consumers.add(String(intent.session_id));
           }
+          if (intent.kind === "record_page_workspace_failed" && workspace)
+            workspace = {
+              ...workspace,
+              lifecycle: "failed",
+              failure: String(intent.failure),
+              revision: workspace.revision + 1,
+            };
           if (intent.kind === "bind_page_workspace") consumers.add(String(intent.session_id));
           if (intent.kind === "record_page_workspace_ready" && loseReady) {
             loseReady = false;
@@ -157,6 +171,10 @@ async function fixture(gitRepository = true) {
               attach: () => Effect.void,
             };
           expect(workspace?.lifecycle).toBe("preparing");
+          if (failCreation) {
+            failCreation = false;
+            throw new Error("Branch is checked out elsewhere");
+          }
           creations++;
           const result = await createManagedWorktree({
             repositoryPath: repository,
@@ -246,16 +264,53 @@ async function fixture(gitRepository = true) {
     get creations() {
       return creations;
     },
+    consumer: (sessionId = "one") => ({
+      sessionId,
+      projectId: "project",
+      sourceCwd: repository,
+      sourceRoots: [repository],
+    }),
+    claim: (application: Effect.Success<typeof make>, sessionId = "one", onlyIfAgentWork = false) =>
+      application.claim({
+        sessionId,
+        projectId: "project",
+        sourceCwd: repository,
+        sourceRoots: [repository],
+        workPage: { pageId: "page", onlyIfAgentWork },
+        launch,
+      }),
+    /** What a launch does end to end: join the Workspace, then lease or create its checkout. */
     ensure: (
       application: Effect.Success<typeof make>,
       sessionId = "one",
       onlyIfAgentWork = false,
     ) =>
-      application.ensure({
-        launch: { ...launch, sessionId, workPage: { pageId: "page", onlyIfAgentWork } },
-        sourceCwd: repository,
-        sourceRoots: [repository],
-      }),
+      application
+        .claim({
+          sessionId,
+          projectId: "project",
+          sourceCwd: repository,
+          sourceRoots: [repository],
+          workPage: { pageId: "page", onlyIfAgentWork },
+          launch,
+        })
+        .pipe(
+          Effect.flatMap((claimed) =>
+            claimed === null
+              ? Effect.succeed(null)
+              : claimed.lease
+                ? Effect.succeed(claimed.lease)
+                : application.prepare({
+                    sessionId,
+                    projectId: "project",
+                    sourceCwd: repository,
+                    sourceRoots: [repository],
+                  }),
+          ),
+        ),
+    failCreation: () => {
+      failCreation = true;
+    },
     assignAgent: (assigned: boolean) => {
       hasAgentAssignee = assigned;
     },
@@ -375,6 +430,46 @@ it.effect(
         expect(f.workspace?.lifecycle).toBe("removed");
       }),
     ),
+);
+it.effect("joins chats at launch without creating anything, then prepares one checkout", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const f = yield* acquireFixture();
+      const owner = yield* f.owner;
+      // Admission records the intended checkout and returns: nothing waits on Git.
+      expect((yield* f.claim(owner))?.lease).toBeNull();
+      expect((yield* f.claim(owner, "two"))?.lease).toBeNull();
+      expect(f.workspace?.lifecycle).toBe("preparing");
+      expect(f.creations).toBe(0);
+      const first = yield* owner.prepare(f.consumer());
+      const second = yield* owner.prepare(f.consumer("two"));
+      expect(f.workspace?.lifecycle).toBe("ready");
+      expect(second?.location.cwd).toBe(first?.location.cwd);
+      expect(f.creations).toBe(1);
+      // A later chat finds the checkout at admission.
+      expect((yield* f.claim(owner, "three"))?.lease?.location.cwd).toBe(first?.location.cwd);
+      expect(yield* owner.prepare(f.consumer("stranger"))).toBeNull();
+    }),
+  ),
+);
+it.effect("a failed checkout is claimed and created again by the next preparation", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const f = yield* acquireFixture();
+      const owner = yield* f.owner;
+      yield* f.claim(owner);
+      const allocation = f.workspace!.allocation_operation_id;
+      f.failCreation();
+      expect((yield* Effect.exit(owner.prepare(f.consumer())))._tag).toBe("Failure");
+      expect(f.workspace?.lifecycle).toBe("failed");
+      expect(f.workspace?.failure).toContain("checked out elsewhere");
+      const retried = yield* owner.prepare(f.consumer());
+      expect(f.workspace?.lifecycle).toBe("ready");
+      expect(f.workspace?.allocation_operation_id).toBe(allocation);
+      expect(retried?.location.cwd).toBe(f.workspace?.worktree_path);
+      expect(f.creations).toBe(1);
+    }),
+  ),
 );
 it.effect("rechecks all consumers after sealing execution", () =>
   Effect.scoped(

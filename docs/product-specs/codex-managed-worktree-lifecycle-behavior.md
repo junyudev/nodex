@@ -252,15 +252,24 @@ The physical owner Thread is registration metadata; it is never the complete
 consumer set of a shared Workspace. A deleted Session remains a consumer until
 its Runtime execution cleanup is acknowledged.
 
+A chat joins its Page's Workspace as it launches. Joining records the claim, and the
+intended checkout when the Page has none, without creating anything, so the chat opens at
+once with its prompt. A checkout that exists is where the chat's Thread is created. One
+still to be created is prepared behind the chat's first Run, like every managed worktree:
+the Run waits as preparing, shows that progress, and starts only once its Thread is in the
+checkout on the attached branch, so its provider and first shell use them. A failed
+preparation says why on the Run, and Retry prepares the same Workspace again. Opening the
+chat at any point shows its conversation: while it launches, opening waits for the launch's
+own Thread instead of creating one in the source checkout.
+
 Allocation records its intended checkout before creation. The host creates a
 clean attached branch at the default branch's recorded commit, validates the
 name with Git and retries unrelated name collisions with a numeric suffix. An
 atomic Git reservation pairs the new branch with Workspace ownership evidence.
 A retry rejoins that allocation and does not adopt an unrelated branch merely
-because its name matches. Interrupted preparation is reconciled after restart. Session and
-transcript reads during allocation do not materialize a Thread in the source
-checkout. The launch releases execution only after its Page Workspace is ready;
-its Runtime Thread, provider and first shell use that checkout and attached branch.
+because its name matches. Preparation interrupted by a restart resumes, for the checkout
+and for each Run waiting on it. Every chat of a Page works at its own Project directory
+inside the one checkout.
 
 Done or Canceled records a cleanup request in the same transaction as the Status change.
 Cleanup waits for every consuming Session's root, delegated and background work

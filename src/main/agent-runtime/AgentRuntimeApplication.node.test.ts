@@ -57,6 +57,7 @@ import type {
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import type { NativeConversationImportInput } from "../../shared/native-session-catalog";
 import { agentRuntimeSnapshotFixture } from "../../shared/testing/agent-runtime-snapshot";
+import { PageWorkspaceError } from "../agent-backend/PageWorkspaceApplication";
 import {
   make,
   AgentRuntimeApplicationError,
@@ -80,6 +81,23 @@ const launch: AgentRuntimeLaunch = {
   modelSelection: { instanceId: "claude", model: "claude-sonnet" },
   interactionMode: "default",
   message: { messageId: "message:first", text: "Build it" },
+};
+const pageWorkspace = {
+  base_commit_oid: "a".repeat(40),
+  branch_name: "nodex-12-work",
+} as components["schemas"]["PageWorkspace"];
+/** The Page's one checkout, as a chat that works there leases it. */
+const pageCheckout = {
+  branchName: pageWorkspace.branch_name,
+  location: {
+    cwd: "/page-workspace",
+    workspaceRoots: ["/page-workspace"],
+    managedWorktreePath: "/page-workspace",
+    projectlessOutputDirectory: null,
+    projectlessWorkspaceBrowserRoot: null,
+  },
+  retain: Effect.void,
+  attach: () => Effect.void,
 };
 const codexImport: NativeConversationImportInput & {
   readonly title: string;
@@ -301,6 +319,8 @@ const setup = (
     automationAssessmentDecisionId: null as string | null,
     automationAssessmentValid: true,
     sessionWorkPage: null as string | null,
+    /** Core's durable record that a chat joined its Page's Workspace. */
+    joinedPageWorkspace: false,
     messageReplay: null as AgentRuntimeOperations["thread.message-replay"]["output"],
     nativeReceipt: null as AgentRuntimeOperations["native-message.receipt"]["output"],
   };
@@ -338,6 +358,13 @@ const setup = (
                 };
               if (input.kind === "session_work_page")
                 return { value: { kind: "session_work_page", page_id: state.sessionWorkPage } };
+              if (input.kind === "session_workspace")
+                return {
+                  value: {
+                    kind: "session_workspace",
+                    workspace: state.joinedPageWorkspace ? pageWorkspace : null,
+                  },
+                };
               if (input.kind === "page_work_launch")
                 return {
                   value: {
@@ -7858,39 +7885,27 @@ it.effect(
 );
 
 it.effect.each(["work", "inbox", "page", "active-chat"] as const)(
-  "prepares the %s Page Workspace after Core admission and before executable release",
+  "joins the %s Page Workspace at admission and prepares its checkout behind the first Run",
   (source) =>
     Effect.scoped(
       Effect.gen(function* () {
+        const created = yield* Deferred.make<void>();
         const fixture = setup({
-          ensurePageWorkspace: (input) =>
-            Effect.gen(function* () {
-              assert.isTrue(fixture.bindings.has(input.launch.sessionId));
-              assert.equal(input.launch.workPage?.pageId, "page:work");
-              if (source === "active-chat") {
-                const reading = yield* Effect.exit(
-                  owner.inspect({ sessionId: input.launch.sessionId }),
-                );
-                assert.equal(
-                  reading._tag,
-                  "Failure",
-                  "reads must wait for the Page launch to create its Thread",
-                );
-              }
-              fixture.order.push("workspace.page");
-              return {
-                branchName: "nodex-12-work",
-                location: {
-                  cwd: "/page-workspace",
-                  workspaceRoots: ["/page-workspace"],
-                  managedWorktreePath: "/page-workspace",
-                  projectlessOutputDirectory: null,
-                  projectlessWorkspaceBrowserRoot: null,
-                },
-                retain: Effect.void,
-                attach: () => Effect.void,
-              };
-            }),
+          prepareWorkspace: () => Effect.die("A Page chat never gets a worktree of its own"),
+          pageWorkspaces: {
+            claim: (input) =>
+              Effect.sync(() => {
+                assert.isTrue(fixture.bindings.has(input.sessionId));
+                assert.equal(input.workPage.pageId, "page:work");
+                fixture.order.push("workspace.claim");
+                return { workspace: pageWorkspace, lease: null };
+              }),
+            prepare: () =>
+              Deferred.await(created).pipe(
+                Effect.tap(() => Effect.sync(() => fixture.order.push("workspace.prepare"))),
+                Effect.as(pageCheckout),
+              ),
+          },
         });
         if (source === "work") fixture.state.workLaunchPage = "page:work";
         if (source === "active-chat") {
@@ -7904,16 +7919,218 @@ it.effect.each(["work", "inbox", "page", "active-chat"] as const)(
             ? {}
             : { workPage: { pageId: "page:work", onlyIfAgentWork: source === "page" } }),
         });
-        assert.isBelow(fixture.order.indexOf("core.bind"), fixture.order.indexOf("workspace.page"));
-        assert.isBelow(
-          fixture.order.indexOf("workspace.page"),
-          fixture.order.indexOf("engine.thread.create"),
+        // The launch returned without waiting on Git: the prompt is durable and its Run waits.
+        const waiting = fixture.snapshots.get(result.threadId)!.projection;
+        assert.equal(waiting.thread.worktreePath, "/workspace");
+        assert.equal(waiting.runs[0]?.status, "preparing");
+        assert.isFalse(fixture.order.includes("workspace.prepare"));
+        for (const [earlier, later] of [
+          ["core.bind", "workspace.claim"],
+          ["workspace.claim", "engine.thread.create"],
+          ["engine.thread.create", "engine.message.dispatch"],
+        ] as const)
+          assert.isBelow(fixture.order.indexOf(earlier), fixture.order.indexOf(later));
+        const dispatched = [...fixture.commands.values()].find(
+          (command) => command.type === "message.dispatch",
         );
+        assert.deepEqual(dispatched?.type === "message.dispatch" && dispatched.dispatchMode, {
+          type: "defer_start",
+          workspaceStrategy: {
+            type: "worktree",
+            baseRef: pageWorkspace.base_commit_oid,
+            branch: pageWorkspace.branch_name,
+          },
+        });
+        yield* Deferred.succeed(created, undefined);
+        yield* awaitCommand(fixture, "prepared-run.release");
         const thread = fixture.snapshots.get(result.threadId)!.projection.thread;
         assert.equal(thread.worktreePath, "/page-workspace");
         assert.equal(thread.branch, "nodex-12-work");
       }),
     ),
+);
+
+it.effect("a Page chat starts at once in the checkout its Page already has", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = setup({
+        pageWorkspaces: {
+          claim: () => Effect.succeed({ workspace: pageWorkspace, lease: pageCheckout }),
+          prepare: () => Effect.die("An existing checkout needs no preparation"),
+        },
+      });
+      const owner = yield* fixture.owner;
+      const result = yield* owner.launch({ ...launch, workPage: { pageId: "page:work" } });
+      const commands = [...fixture.commands.values()];
+      assert.deepEqual(
+        commands.map((command) => command.type),
+        ["thread.create", "message.dispatch"],
+      );
+      const dispatched = commands[1] as Extract<AgentCommand, { type: "message.dispatch" }>;
+      assert.equal(dispatched.dispatchMode.type, "start_immediately");
+      const thread = fixture.snapshots.get(result.threadId)!.projection.thread;
+      assert.equal(thread.worktreePath, "/page-workspace");
+      assert.equal(thread.branch, "nodex-12-work");
+    }),
+  ),
+);
+
+it.effect("opening a chat while it launches waits for the launch's own Thread", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const admitting = yield* Deferred.make<void>();
+      const admitted = yield* Deferred.make<void>();
+      const fixture = setup({
+        pageWorkspaces: {
+          claim: () =>
+            Deferred.succeed(admitting, undefined).pipe(
+              Effect.andThen(Deferred.await(admitted)),
+              Effect.as({ workspace: pageWorkspace, lease: pageCheckout }),
+            ),
+          prepare: () => Effect.die("An existing checkout needs no preparation"),
+        },
+      });
+      const owner = yield* fixture.owner;
+      const launching = yield* owner
+        .launch({ ...launch, workPage: { pageId: "page:work" } })
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(admitting);
+      // Core has bound the Session and its Thread does not exist yet: the moment a chat opens.
+      assert.isTrue(fixture.bindings.has(launch.sessionId));
+      const opening = yield* owner.read({ sessionId: launch.sessionId }).pipe(Effect.forkChild);
+      for (let turn = 0; turn < 50; turn += 1) yield* Effect.yieldNow;
+      assert.lengthOf(
+        [...fixture.commands.values()].filter((command) => command.type === "thread.create"),
+        0,
+        "A read never creates a Thread while the launch that owns it is admitting",
+      );
+      yield* Deferred.succeed(admitted, undefined);
+      const started = yield* Fiber.join(launching);
+      const opened = yield* Fiber.join(opening);
+      assert.equal(opened.threadId, started.threadId);
+      const creations = [...fixture.commands.values()].filter(
+        (command) => command.type === "thread.create",
+      );
+      assert.lengthOf(creations, 1);
+      assert.deepInclude(creations[0], {
+        modelSelection: launch.modelSelection,
+        worktreePath: "/page-workspace",
+        branch: "nodex-12-work",
+      });
+    }),
+  ),
+);
+
+it.effect("a Thread repaired in the source checkout moves to its Page's before the first Run", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = setup({
+        pageWorkspaces: {
+          claim: () => Effect.succeed({ workspace: pageWorkspace, lease: pageCheckout }),
+          prepare: () => Effect.succeed(pageCheckout),
+        },
+      });
+      const owner = yield* fixture.owner;
+      const input = { ...launch, workPage: { pageId: "page:work" } };
+      fixture.state.failThreadCreate = true;
+      assert.equal((yield* owner.launch(input).pipe(Effect.result))._tag, "Failure");
+      // Opening the chat repairs its missing Thread where the Project's work runs.
+      const opened = yield* owner.read({ sessionId: launch.sessionId });
+      assert.equal(
+        fixture.snapshots.get(opened.threadId)!.projection.thread.worktreePath,
+        "/workspace",
+      );
+      yield* owner.launch(input);
+      yield* awaitCommand(fixture, "prepared-run.release");
+      const types = [...fixture.commands.values()].map((command) => command.type);
+      assert.isBelow(
+        types.indexOf("thread.metadata.update"),
+        types.indexOf("prepared-run.release"),
+      );
+      assert.lengthOf(
+        types.filter((type) => type === "thread.create"),
+        1,
+      );
+      const thread = fixture.snapshots.get(opened.threadId)!.projection.thread;
+      assert.equal(thread.worktreePath, "/page-workspace");
+      assert.equal(thread.branch, "nodex-12-work");
+    }),
+  ),
+);
+
+it.effect("a failed Page checkout says why and Retry prepares the same Workspace again", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      let attempts = 0;
+      const fixture = setup({
+        prepareWorkspace: () => Effect.die("A Page chat never gets a worktree of its own"),
+        pageWorkspaces: {
+          claim: () => Effect.succeed({ workspace: pageWorkspace, lease: null }),
+          prepare: () =>
+            Effect.suspend(() =>
+              (attempts += 1) === 1
+                ? Effect.fail(
+                    new PageWorkspaceError({
+                      cause: new Error("Branch nodex-12-work is checked out elsewhere"),
+                    }),
+                  )
+                : Effect.succeed(pageCheckout),
+            ),
+        },
+      });
+      const owner = yield* fixture.owner;
+      const result = yield* owner.launch({ ...launch, workPage: { pageId: "page:work" } });
+      const failed = (yield* awaitCommand(fixture, "prepared-run.fail")) as Extract<
+        AgentCommand,
+        { type: "prepared-run.fail" }
+      >;
+      // The reason sits in the tagged error's cause; the chat still shows it.
+      assert.equal(failed.failure.message, "Branch nodex-12-work is checked out elsewhere");
+      yield* owner.retryPreparation({
+        sessionId: result.sessionId,
+        requestId: "retry-page",
+        runId: failed.runId,
+        workLocally: false,
+      });
+      yield* awaitCommand(fixture, "prepared-run.release");
+      assert.equal(attempts, 2);
+      assert.equal(
+        fixture.snapshots.get(result.threadId)!.projection.thread.worktreePath,
+        "/page-workspace",
+      );
+    }),
+  ),
+);
+
+it.effect("a Page checkout interrupted by a restart resumes from Core's record of the claim", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      let attempts = 0;
+      const fixture = setup({
+        pageWorkspaces: {
+          claim: () => Effect.succeed({ workspace: pageWorkspace, lease: null }),
+          prepare: () =>
+            Effect.suspend(() =>
+              (attempts += 1) === 1 ? Effect.never : Effect.succeed(pageCheckout),
+            ),
+        },
+      });
+      const owner = yield* fixture.owner;
+      const result = yield* owner.launch({ ...launch, workPage: { pageId: "page:work" } });
+      fixture.state.joinedPageWorkspace = true;
+      // A fresh Main process has no live preparation for the waiting Run.
+      const restarted = yield* fixture.owner;
+      yield* restarted.reconcileLiveExecutions();
+      yield* awaitCommand(fixture, "prepared-run.release");
+      assert.isFalse(
+        [...fixture.commands.values()].some((command) => command.type === "prepared-run.fail"),
+      );
+      assert.equal(
+        fixture.snapshots.get(result.threadId)!.projection.thread.worktreePath,
+        "/page-workspace",
+      );
+    }),
+  ),
 );
 
 it.effect("enumerates every chat sharing a Page worktree", () =>
@@ -7980,29 +8197,20 @@ it.effect("reconciles durable parent holds after Main restart and blocks Compose
   }),
 );
 
-it.effect("a withdrawn Automation cannot dispatch after blocked workspace preparation", () =>
+it.effect("a withdrawn Automation cannot dispatch after a blocked Workspace admission", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const entered = yield* Deferred.make<void>();
       const release = yield* Deferred.make<void>();
       const fixture = setup({
-        ensurePageWorkspace: () =>
-          Effect.gen(function* () {
-            yield* Deferred.succeed(entered, undefined);
-            yield* Deferred.await(release);
-            return {
-              branchName: "nodex-12-automation",
-              location: {
-                cwd: "/automation-workspace",
-                workspaceRoots: ["/automation-workspace"],
-                managedWorktreePath: "/automation-workspace",
-                projectlessOutputDirectory: null,
-                projectlessWorkspaceBrowserRoot: null,
-              },
-              retain: Effect.void,
-              attach: () => Effect.void,
-            };
-          }),
+        pageWorkspaces: {
+          claim: () =>
+            Deferred.succeed(entered, undefined).pipe(
+              Effect.andThen(Deferred.await(release)),
+              Effect.as({ workspace: pageWorkspace, lease: pageCheckout }),
+            ),
+          prepare: () => Effect.die("An existing checkout needs no preparation"),
+        },
       });
       const owner = yield* fixture.owner;
       const fiber = yield* owner
@@ -8030,29 +8238,20 @@ it.effect("a withdrawn Automation cannot dispatch after blocked workspace prepar
   ),
 );
 
-it.effect("an event Automation grant is rechecked after workspace preparation", () =>
+it.effect("an event Automation grant is rechecked after Workspace admission", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const entered = yield* Deferred.make<void>();
       const release = yield* Deferred.make<void>();
       const fixture = setup({
-        ensurePageWorkspace: () =>
-          Effect.gen(function* () {
-            yield* Deferred.succeed(entered, undefined);
-            yield* Deferred.await(release);
-            return {
-              branchName: "nodex-12-automation",
-              location: {
-                cwd: "/automation-workspace",
-                workspaceRoots: ["/automation-workspace"],
-                managedWorktreePath: "/automation-workspace",
-                projectlessOutputDirectory: null,
-                projectlessWorkspaceBrowserRoot: null,
-              },
-              retain: Effect.void,
-              attach: () => Effect.void,
-            };
-          }),
+        pageWorkspaces: {
+          claim: () =>
+            Deferred.succeed(entered, undefined).pipe(
+              Effect.andThen(Deferred.await(release)),
+              Effect.as({ workspace: pageWorkspace, lease: pageCheckout }),
+            ),
+          prepare: () => Effect.die("An existing checkout needs no preparation"),
+        },
       });
       fixture.state.workLaunchPage = "page:automation";
       fixture.state.automationAssessmentDecisionId = "decision:event";

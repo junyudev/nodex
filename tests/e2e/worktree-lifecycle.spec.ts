@@ -265,9 +265,14 @@ test("a worktree that cannot be prepared offers Retry and Work locally, and runs
     );
     await sendButton.click();
 
-    await expect(
-      page.getByText("The worktree could not be prepared.", { exact: true }),
-    ).toBeVisible({ timeout: 45_000 });
+    // The composer says what stands in the way, and the transcript keeps Git's own reason.
+    await expect(page.getByText("Couldn’t prepare the worktree", { exact: true })).toBeVisible({
+      timeout: 45_000,
+    });
+    await page.getByText("Request declined", { exact: true }).click();
+    await expect(page.getByRole("region", { name: "Recovery diagnostics" })).toContainText(
+      "fatal: invalid reference",
+    );
     await expect(page.getByText("Invalid Git source E2E", { exact: true }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
     const workLocally = page.getByRole("button", { name: "Work locally", exact: true });

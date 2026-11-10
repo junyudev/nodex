@@ -62,6 +62,7 @@ import { CoreModuleResponseError } from "../core-client/core-client";
 import { isRetryableCoreTransportError } from "../core-client/document-session-error";
 import { CoreRateLimitError, CoreTransportError } from "../core-client/local-http";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
+import { readActionableErrorMessage } from "../actionable-error-message";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import type { CodexTurnPresentation } from "../../host/TurnPresentation";
 import type {
@@ -209,7 +210,14 @@ export interface AgentRuntimeApplicationOptions {
     worktreePath: string,
   ) => Effect.Effect<readonly string[], unknown>;
   readonly refreshPageWorkspace?: (pageId: string) => Effect.Effect<void, unknown>;
-  readonly ensurePageWorkspace?: import("../agent-backend/PageWorkspaceApplication").PageWorkspaceApplication["ensure"];
+  /**
+   * A chat joins its work Page's Workspace at launch. A checkout that is still to be created is
+   * prepared behind the chat's first Run, like every managed worktree.
+   */
+  readonly pageWorkspaces?: Pick<
+    import("../agent-backend/PageWorkspaceApplication").PageWorkspaceApplication,
+    "claim" | "prepare"
+  >;
   readonly presentation?: CodexTurnPresentation["Service"];
   /** Desktop resources an archived or deleted Session's Agents held, such as Browser pages. */
   readonly releaseDesktopSession?: (sessionId: string) => Effect.Effect<void>;
@@ -523,6 +531,13 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         return yield* lane.withPermit(use);
       }),
     );
+  /**
+   * A Session's root Thread has one creator at a time: the launch that bound it, or the repair
+   * of a bound Session whose launch stopped first. A read that arrives while a launch is still
+   * admitting waits for the launch's Thread instead of failing or creating one of its own.
+   */
+  const creatingRootThread = <A, E, R>(sessionId: string, use: Effect.Effect<A, E, R>) =>
+    withSessionLane(`root-thread:${sessionId}`, use);
   const assertSessionLifecycleAvailable = Effect.fn(
     "AgentRuntimeApplication.assertSessionLifecycleAvailable",
   )(function* (sessionId: string, operation: string) {
@@ -893,6 +908,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   /**
    * A bound Session whose launch stopped before its root Thread existed. The binding is the
    * durable intent, so the Thread is created from product metadata the first time it is used.
+   * A launch delivered again finds this Thread and gives it the launch's own workspace.
    */
   const ensureRootThread = Effect.fn("AgentRuntimeApplication.ensureRootThread")(function* (
     connection: AgentRuntimeApplicationConnection,
@@ -902,61 +918,58 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       threadId: binding.runtime_thread_id,
     });
     if (existing) return existing;
-    // Page launches own workspace preparation. A transcript read must not win their
-    // Thread creation race with a default checkout while Git allocation is in flight.
-    if (options.ensurePageWorkspace) {
-      const work = yield* host(
-        core.workspace.read(
-          { kind: "session_work_page", session_id: binding.session_id },
-          undefined,
-          null,
-        ),
-      );
-      if (work.value.kind === "session_work_page" && work.value.page_id)
-        return yield* failure(
-          "thread",
-          "The Page chat is preparing its Workspace. Try again shortly.",
+    return yield* creatingRootThread(
+      binding.session_id,
+      Effect.gen(function* () {
+        // A launch or fork that was admitting this Session has created its Thread by now.
+        const created = yield* connection.request("thread.read", {
+          threadId: binding.runtime_thread_id,
+        });
+        if (created) return created;
+        if (binding.side_chat_source_session_id)
+          return yield* failure("thread", "The captured side conversation is unavailable");
+        if (binding.launch_request_id.startsWith(NATIVE_IMPORT_LAUNCH_PREFIX))
+          return yield* failure(
+            "import",
+            "This import was interrupted. Retry it from Conversations.",
+          );
+        const projectId = binding.project_id ?? null;
+        const scope = yield* projectScope(projectId, false);
+        const session = yield* host(readSession(binding.session_id, projectId));
+        const title =
+          session.value.kind === "session" ? session.value.session.display_title.trim() : "";
+        const providers = automaticModelCatalog(
+          yield* projectCatalog(yield* connection.request("providers.read", {})),
         );
-    }
-    if (binding.side_chat_source_session_id)
-      return yield* failure("thread", "The captured side conversation is unavailable");
-    if (binding.launch_request_id.startsWith(NATIVE_IMPORT_LAUNCH_PREFIX))
-      return yield* failure("import", "This import was interrupted. Retry it from Conversations.");
-    const projectId = binding.project_id ?? null;
-    const scope = yield* projectScope(projectId, false);
-    const session = yield* host(readSession(binding.session_id, projectId));
-    const title =
-      session.value.kind === "session" ? session.value.session.display_title.trim() : "";
-    const providers = automaticModelCatalog(
-      yield* projectCatalog(yield* connection.request("providers.read", {})),
-    );
-    const provider =
-      providers.find(
-        (entry) => entry.instanceId === "codex" && entry.enabled && entry.models.length > 0,
-      ) ?? providers.find((entry) => entry.enabled && entry.models.length > 0);
-    const model =
-      provider?.models.find((entry) => entry.isDefault)?.slug ?? provider?.models[0]?.slug;
-    if (!provider || !model)
-      return yield* failure("thread", "No Agent model is available to open this conversation");
-    yield* upsertProject(connection, scope);
-    yield* dispatch(connection, {
-      type: "thread.create",
-      commandId: commandId("launch-thread", {
-        launchId: binding.launch_request_id,
-        sessionId: binding.session_id,
+        const provider =
+          providers.find(
+            (entry) => entry.instanceId === "codex" && entry.enabled && entry.models.length > 0,
+          ) ?? providers.find((entry) => entry.enabled && entry.models.length > 0);
+        const model =
+          provider?.models.find((entry) => entry.isDefault)?.slug ?? provider?.models[0]?.slug;
+        if (!provider || !model)
+          return yield* failure("thread", "No Agent model is available to open this conversation");
+        yield* upsertProject(connection, scope);
+        yield* dispatch(connection, {
+          type: "thread.create",
+          commandId: commandId("launch-thread", {
+            launchId: binding.launch_request_id,
+            sessionId: binding.session_id,
+          }),
+          threadId: binding.runtime_thread_id,
+          projectId: scope.id,
+          title: title || "New chat",
+          modelSelection: { instanceId: provider.instanceId, model },
+          runtimeMode: yield* defaultRuntimeMode,
+          interactionMode: "default",
+          branch: null,
+          worktreePath: scope.workspaceRoot,
+          createdBy: "user",
+          creationSource: "web",
+        });
+        return yield* connection.request("thread.read", { threadId: binding.runtime_thread_id });
       }),
-      threadId: binding.runtime_thread_id,
-      projectId: scope.id,
-      title: title || "New chat",
-      modelSelection: { instanceId: provider.instanceId, model },
-      runtimeMode: yield* defaultRuntimeMode,
-      interactionMode: "default",
-      branch: null,
-      worktreePath: scope.workspaceRoot,
-      createdBy: "user",
-      creationSource: "web",
-    });
-    return yield* connection.request("thread.read", { threadId: binding.runtime_thread_id });
+    );
   });
 
   const load = Effect.fn("AgentRuntimeApplication.load")(function* (
@@ -1153,6 +1166,24 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   /** Preparations with a live owner in this Main process. */
   const preparing = new Set<string>();
   const preparationKey = (threadId: string, runId: string) => JSON.stringify([threadId, runId]);
+  /**
+   * What a preparation can still know after a restart forgot its launch: the Session, its
+   * Project's source checkout and the Thread's title.
+   */
+  const recoveredPreparation = Effect.fn("AgentRuntimeApplication.recoveredPreparation")(function* (
+    binding: Binding,
+    title: string,
+  ) {
+    const scope = yield* projectScope(binding.project_id ?? null, true);
+    return {
+      sessionId: binding.session_id,
+      projectId: binding.project_id ?? null,
+      title,
+      prompt: title,
+      sourceCwd: scope.workspaceRoot,
+      sourceRoots: scope.sourceRoots,
+    } satisfies DeferredPreparation;
+  });
   const preparationFailure = (message: string) => {
     // The engine stores trimmed text of at most 4,096 characters; a tool can report more.
     const text = Array.from(message.trim()).slice(0, 4_096).join("").trim();
@@ -1165,8 +1196,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   };
 
   /**
-   * Creates a launch's managed worktree while its Run waits as `preparing`. The Run starts only
-   * after the Thread records the new location; a failure leaves a retryable failed Run.
+   * Prepares a launch's managed checkout while its Run waits as `preparing`: the Page's Workspace
+   * for a chat that joined one, otherwise a worktree of its own. The Run starts only after the
+   * Thread records the new location; a failure leaves a retryable failed Run.
    */
   const prepareDeferredWorkspace = (
     connection: AgentRuntimeApplicationConnection,
@@ -1175,11 +1207,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     attempt: string,
   ) =>
     Effect.gen(function* () {
-      preparing.add(preparationKey(threadId, runId));
       const input = preparations.get(preparationKey(threadId, runId));
-      if (!input || !options.prepareWorkspace)
-        return yield* failure("workspace", "Worktree preparation is unavailable");
-      const prepare = options.prepareWorkspace;
+      if (!input) return yield* failure("workspace", "Worktree preparation is unavailable");
       yield* dispatch(connection, {
         type: "prepared-run.progress",
         commandId: commandId("preparation-progress", { threadId, runId, attempt }),
@@ -1189,29 +1218,39 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       });
       yield* Effect.scoped(
         Effect.gen(function* () {
-          const lease = yield* prepare({
-            projectId: input.projectId,
-            targetId: input.sessionId,
-            title: input.title,
-            prompt: input.prompt,
-            sourceCwd: input.sourceCwd,
-            sourceRoots: input.sourceRoots,
-            runInTarget: "newWorktree",
-            ...(input.worktreeStartingState
-              ? { worktreeStartingState: input.worktreeStartingState }
-              : {}),
-            localEnvironmentConfigPath: input.localEnvironmentConfigPath ?? null,
-            operationId: createStableOperationId("agent-runtime.workspace", 0, {
-              threadId,
-              runId,
-              attempt,
-            }),
-          });
+          // Core records which chats joined a Page Workspace, so this choice survives a restart.
+          const shared = options.pageWorkspaces
+            ? yield* options.pageWorkspaces.prepare(input)
+            : null;
+          const own = options.prepareWorkspace;
+          const lease =
+            shared ??
+            (own
+              ? yield* own({
+                  projectId: input.projectId,
+                  targetId: input.sessionId,
+                  title: input.title,
+                  prompt: input.prompt,
+                  sourceCwd: input.sourceCwd,
+                  sourceRoots: input.sourceRoots,
+                  runInTarget: "newWorktree",
+                  ...(input.worktreeStartingState
+                    ? { worktreeStartingState: input.worktreeStartingState }
+                    : {}),
+                  localEnvironmentConfigPath: input.localEnvironmentConfigPath ?? null,
+                  operationId: createStableOperationId("agent-runtime.workspace", 0, {
+                    threadId,
+                    runId,
+                    attempt,
+                  }),
+                })
+              : yield* failure("workspace", "Worktree preparation is unavailable"));
           yield* dispatch(connection, {
             type: "thread.metadata.update",
             commandId: commandId("preparation-location", { threadId, runId, attempt }),
             threadId,
             worktreePath: lease.location.cwd,
+            ...(shared?.branchName ? { branch: shared.branchName } : {}),
           });
           // The Thread owns the directory from here; a later failure must never remove it.
           yield* lease.attach(threadId);
@@ -1225,17 +1264,23 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       });
     }).pipe(
       Effect.catchCause((cause) =>
-        dispatch(connection, {
-          type: "prepared-run.fail",
-          commandId: commandId("preparation-failure", { threadId, runId, attempt }),
-          threadId,
-          runId,
-          failure: preparationFailure(
-            Cause.squash(cause) instanceof Error
-              ? (Cause.squash(cause) as Error).message
-              : "The worktree could not be prepared",
+        // Ownership ends before the failure is visible, so a retry can take it at once.
+        Effect.sync(() => preparing.delete(preparationKey(threadId, runId))).pipe(
+          Effect.andThen(
+            dispatch(connection, {
+              type: "prepared-run.fail",
+              commandId: commandId("preparation-failure", { threadId, runId, attempt }),
+              threadId,
+              runId,
+              // A tagged workspace error carries its reason in its cause, not its message.
+              failure: preparationFailure(
+                readActionableErrorMessage(Cause.squash(cause), {
+                  fallback: "",
+                  maximumLength: 4_096,
+                }),
+              ),
+            }),
           ),
-        }).pipe(
           Effect.catchCause((recordCause) =>
             Effect.logWarning("Worktree preparation failure could not be recorded").pipe(
               Effect.annotateLogs({ threadId, runId, cause: Cause.pretty(recordCause) }),
@@ -1245,6 +1290,26 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ),
       Effect.ensuring(Effect.sync(() => preparing.delete(preparationKey(threadId, runId)))),
     );
+  /**
+   * Gives a `preparing` Run its one live owner. The owner is registered before its fiber runs, so
+   * a repeated launch or a reconciliation pass never mistakes the Run for an abandoned one.
+   */
+  const startPreparation = (
+    connection: AgentRuntimeApplicationConnection,
+    threadId: string,
+    runId: string,
+    attempt: string,
+  ) =>
+    Effect.suspend(() => {
+      const key = preparationKey(threadId, runId);
+      if (preparing.has(key)) return Effect.void;
+      preparing.add(key);
+      return prepareDeferredWorkspace(connection, threadId, runId, attempt).pipe(
+        Effect.provideService(HostInvocation, null),
+        Effect.forkIn(ownerScope),
+        Effect.asVoid,
+      );
+    });
 
   const launch = Effect.fn("AgentRuntimeApplication.launch")(function* (input: AgentRuntimeLaunch) {
     const provenance = yield* CoreApplicationAgent;
@@ -1387,163 +1452,204 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ? { message: staged.message, hasConfig: preparation.hasConfig }
       : preparation;
     if (!input.resources?.length) yield* assertMessage(prepared.message);
-    // Core admits the product Session first. It rejects an unbindable Session before any
-    // execution or workspace effect exists, and the binding names the deterministic Thread
-    // that every later step creates idempotently.
-    const scope = yield* lifecycle.runExclusive(
-      projectId,
+    // The launch owns its Session's root Thread from Core admission until the Thread exists.
+    const admitted = yield* creatingRootThread(
+      input.sessionId,
       Effect.gen(function* () {
-        const scope = yield* projectScope(projectId, true);
-        if (previousBinding) {
-          yield* authorizeSession(input.sessionId);
-          return scope;
+        // Core admits the product Session first. It rejects an unbindable Session before any
+        // execution or workspace effect exists, and the binding names the deterministic Thread
+        // that every later step creates idempotently.
+        const scope = yield* lifecycle.runExclusive(
+          projectId,
+          Effect.gen(function* () {
+            const scope = yield* projectScope(projectId, true);
+            if (previousBinding) {
+              yield* authorizeSession(input.sessionId);
+              return scope;
+            }
+            if (input.sourceRoot !== undefined && !scope.sourceRoots.includes(input.sourceRoot))
+              return yield* failure("workspace", "Choose a configured Project source workspace");
+            yield* bindExecution({
+              binding,
+              operation: {
+                operationId: createStableOperationId("agent-runtime.launch", input.acceptedAt, {
+                  launchId: input.launchId,
+                }),
+                intent: {
+                  kind: "create_agent_runtime_session",
+                  ...(input.coordinator ? { coordinator: true } : {}),
+                  ...binding,
+                  title: input.title.trim(),
+                  initial_page_ids: [...new Set(input.initialPageIds ?? [])],
+                  agent_selection: agentRuntimeWorkSelection(
+                    prepared.message.modelSelection ?? input.modelSelection,
+                  ),
+                },
+              },
+            });
+            return scope;
+          }),
+        );
+        // No Project lifecycle permit crosses an engine request that can await host admission.
+        const existing = yield* connection.request("thread.read", { threadId });
+        if (existing)
+          yield* reconcileExecution(
+            connection,
+            yield* readBinding(connection, input.sessionId, true),
+          );
+        if (existing && input.messageFingerprint) {
+          const accepted = yield* replayMessage({
+            ...(input.messageOrigin === "host" ? { origin: "host" as const } : {}),
+            sessionId: input.sessionId,
+            threadId,
+            messageId: input.message.messageId,
+            fingerprint: input.messageFingerprint,
+          });
+          if (accepted) return null;
         }
-        if (input.sourceRoot !== undefined && !scope.sourceRoots.includes(input.sourceRoot))
-          return yield* failure("workspace", "Choose a configured Project source workspace");
-        yield* bindExecution({
-          binding,
-          operation: {
-            operationId: createStableOperationId("agent-runtime.launch", input.acceptedAt, {
-              launchId: input.launchId,
-            }),
-            intent: {
-              kind: "create_agent_runtime_session",
-              ...(input.coordinator ? { coordinator: true } : {}),
-              ...binding,
-              title: input.title.trim(),
-              initial_page_ids: [...new Set(input.initialPageIds ?? [])],
-              agent_selection: agentRuntimeWorkSelection(
-                prepared.message.modelSelection ?? input.modelSelection,
-              ),
-            },
-          },
-        });
-        return scope;
-      }),
-    );
-    // No Project lifecycle permit crosses an engine request that can await host admission.
-    const existing = yield* connection.request("thread.read", { threadId });
-    if (existing)
-      yield* reconcileExecution(connection, yield* readBinding(connection, input.sessionId, true));
-    if (existing && input.messageFingerprint) {
-      const accepted = yield* replayMessage({
-        ...(input.messageOrigin === "host" ? { origin: "host" as const } : {}),
-        sessionId: input.sessionId,
-        threadId,
-        messageId: input.message.messageId,
-        fingerprint: input.messageFingerprint,
-      });
-      if (accepted) return { sessionId: input.sessionId, threadId, projectId };
-    }
-    if (
-      existing &&
-      (existing.lineage.rootThreadId !== threadId ||
-        existing.deletedAt !== null ||
-        (!previousBinding && existing.activeRunId !== null))
-    )
-      return yield* failure("launch", "Launch metadata does not match this Session");
-    if ((yield* effectiveHolds(core, { kind: "session", session_id: input.sessionId })).length)
-      return yield* failure("launch", "Resume work before starting this chat");
-    const sourceCwd = input.sourceRoot ?? scope.workspaceRoot;
-    const workLaunch =
-      options.ensurePageWorkspace || (input.workPage && input.messageOrigin === "host")
-        ? yield* host(
-            core.workspace.read(
-              { kind: "page_work_launch", launch_id: input.launchId },
-              undefined,
-              projectId,
-            ),
-          )
-        : null;
-    const sessionWorkPage = options.ensurePageWorkspace
-      ? yield* host(
-          core.workspace.read(
-            { kind: "session_work_page", session_id: input.sessionId },
-            undefined,
-            projectId,
-          ),
+        if (
+          existing &&
+          (existing.lineage.rootThreadId !== threadId ||
+            existing.deletedAt !== null ||
+            (!previousBinding && existing.activeRunId !== null))
         )
-      : null;
-    const workPage =
-      sessionWorkPage?.value.kind === "session_work_page" && sessionWorkPage.value.page_id
-        ? { pageId: sessionWorkPage.value.page_id }
-        : workLaunch?.value.kind === "page_work_launch" &&
-            workLaunch.value.launch?.session_id === input.sessionId
-          ? { pageId: workLaunch.value.launch.page_id }
-          : input.workPage;
-    if (
-      workPage &&
-      (yield* effectiveHolds(core, { kind: "page", page_id: workPage.pageId })).length
-    )
-      return yield* failure("launch", "Resume work before starting this Page");
-    const pageLease =
-      workPage && options.ensurePageWorkspace
-        ? yield* options
-            .ensurePageWorkspace({
-              launch: { ...input, workPage },
-              sourceCwd,
-              sourceRoots: scope.sourceRoots,
-            })
-            .pipe(
-              Effect.mapError((cause) =>
-                failure("workspace", "Page Workspace could not be prepared", cause),
+          return yield* failure("launch", "Launch metadata does not match this Session");
+        if ((yield* effectiveHolds(core, { kind: "session", session_id: input.sessionId })).length)
+          return yield* failure("launch", "Resume work before starting this chat");
+        const sourceCwd = input.sourceRoot ?? scope.workspaceRoot;
+        const workLaunch =
+          options.pageWorkspaces || (input.workPage && input.messageOrigin === "host")
+            ? yield* host(
+                core.workspace.read(
+                  { kind: "page_work_launch", launch_id: input.launchId },
+                  undefined,
+                  projectId,
+                ),
+              )
+            : null;
+        const sessionWorkPage = options.pageWorkspaces
+          ? yield* host(
+              core.workspace.read(
+                { kind: "session_work_page", session_id: input.sessionId },
+                undefined,
+                projectId,
               ),
             )
-        : null;
-    const deferWorktree = !pageLease && !existing && input.runInTarget === "newWorktree";
-    // A checkout or projectless workspace is ready immediately; a managed worktree is prepared
-    // after the Run is durable, so the prompt survives and the user sees progress.
-    const lease =
-      pageLease ??
-      (!existing && !deferWorktree && options.prepareWorkspace
-        ? yield* options.prepareWorkspace({
-            projectId,
-            targetId: input.sessionId,
-            title: input.title.trim(),
-            prompt: prepared.message.text,
-            sourceCwd,
-            sourceRoots: scope.sourceRoots,
-            runInTarget: "localProject",
-            operationId: createStableOperationId("agent-runtime.workspace", input.acceptedAt, {
-              launchId: input.launchId,
-            }),
-          })
-        : null);
-    const cwd = lease?.location.cwd ?? existing?.worktreePath ?? input.worktreePath ?? sourceCwd;
-    yield* upsertProject(connection, scope);
-    if (lease) yield* lease.retain;
-    if (!existing)
-      yield* dispatch(
-        connection,
-        {
-          type: "thread.create",
-          commandId: commandId("launch-thread", {
-            launchId: input.launchId,
-            sessionId: input.sessionId,
-          }),
-          threadId,
-          projectId: scope.id,
-          title: input.title.trim(),
-          modelSelection: prepared.message.modelSelection ?? input.modelSelection,
-          runtimeMode,
-          interactionMode: prepared.message.interactionMode ?? input.interactionMode,
-          branch: pageLease?.branchName ?? input.branch ?? null,
-          worktreePath: cwd,
-          createdBy:
-            input.messageOrigin === "host" || input.messageOrigin === "automation"
-              ? "system"
-              : provenance
-                ? "agent"
-                : "user",
-          creationSource:
-            input.messageOrigin === "host" || input.messageOrigin === "automation"
-              ? "server"
-              : provenance
-                ? "mcp"
-                : "web",
-        },
-        input.modeLimit,
-      );
+          : null;
+        const workPage =
+          sessionWorkPage?.value.kind === "session_work_page" && sessionWorkPage.value.page_id
+            ? { pageId: sessionWorkPage.value.page_id }
+            : workLaunch?.value.kind === "page_work_launch" &&
+                workLaunch.value.launch?.session_id === input.sessionId
+              ? { pageId: workLaunch.value.launch.page_id }
+              : input.workPage;
+        if (
+          workPage &&
+          (yield* effectiveHolds(core, { kind: "page", page_id: workPage.pageId })).length
+        )
+          return yield* failure("launch", "Resume work before starting this Page");
+        // Joining the Page's Workspace is admission: it reads Git and writes Core, and creates
+        // nothing, so the Thread exists moments after the Session is bound.
+        const pageWorkspace =
+          workPage && options.pageWorkspaces
+            ? yield* options.pageWorkspaces
+                .claim({
+                  sessionId: input.sessionId,
+                  projectId,
+                  workPage,
+                  launch: input,
+                  sourceCwd,
+                  sourceRoots: scope.sourceRoots,
+                })
+                .pipe(
+                  Effect.mapError((cause) =>
+                    failure("workspace", "Page Workspace could not be prepared", cause),
+                  ),
+                )
+            : null;
+        // A Page chat's first Run starts in the Page's checkout. A new Thread is created there
+        // when the checkout exists; a Thread anywhere else is moved there before the Run starts.
+        const pageLease =
+          pageWorkspace?.lease &&
+          (!existing || existing.worktreePath === pageWorkspace.lease.location.cwd)
+            ? pageWorkspace.lease
+            : null;
+        // A checkout or projectless workspace is ready immediately. A managed worktree, the
+        // Page's or the chat's own, is prepared after the Run is durable, so the launch never
+        // waits on Git, the prompt survives and the user sees progress.
+        const deferred = pageWorkspace
+          ? pageLease
+            ? null
+            : {
+                baseRef: pageWorkspace.workspace.base_commit_oid,
+                branch: pageWorkspace.workspace.branch_name,
+              }
+          : !existing && input.runInTarget === "newWorktree"
+            ? {
+                baseRef:
+                  input.worktreeStartingState?.type === "branch"
+                    ? input.worktreeStartingState.branchName
+                    : "HEAD",
+              }
+            : null;
+        const lease =
+          pageLease ??
+          (!existing && !deferred && options.prepareWorkspace
+            ? yield* options.prepareWorkspace({
+                projectId,
+                targetId: input.sessionId,
+                title: input.title.trim(),
+                prompt: prepared.message.text,
+                sourceCwd,
+                sourceRoots: scope.sourceRoots,
+                runInTarget: "localProject",
+                operationId: createStableOperationId("agent-runtime.workspace", input.acceptedAt, {
+                  launchId: input.launchId,
+                }),
+              })
+            : null);
+        const cwd =
+          lease?.location.cwd ?? existing?.worktreePath ?? input.worktreePath ?? sourceCwd;
+        yield* upsertProject(connection, scope);
+        if (lease) yield* lease.retain;
+        if (!existing)
+          yield* dispatch(
+            connection,
+            {
+              type: "thread.create",
+              commandId: commandId("launch-thread", {
+                launchId: input.launchId,
+                sessionId: input.sessionId,
+              }),
+              threadId,
+              projectId: scope.id,
+              title: input.title.trim(),
+              modelSelection: prepared.message.modelSelection ?? input.modelSelection,
+              runtimeMode,
+              interactionMode: prepared.message.interactionMode ?? input.interactionMode,
+              branch: pageLease?.branchName ?? input.branch ?? null,
+              worktreePath: cwd,
+              createdBy:
+                input.messageOrigin === "host" || input.messageOrigin === "automation"
+                  ? "system"
+                  : provenance
+                    ? "agent"
+                    : "user",
+              creationSource:
+                input.messageOrigin === "host" || input.messageOrigin === "automation"
+                  ? "server"
+                  : provenance
+                    ? "mcp"
+                    : "web",
+            },
+            input.modeLimit,
+          );
+        return { scope, existing, sourceCwd, workLaunch, lease, cwd, deferred };
+      }),
+    );
+    // A repeated launch whose message the Thread already accepted has nothing left to do.
+    if (!admitted) return { sessionId: input.sessionId, threadId, projectId };
+    const { scope, existing, sourceCwd, workLaunch, lease, cwd, deferred } = admitted;
     const current = yield* targetInfo(connection, { sessionId: input.sessionId, threadId }, true);
     if (input.messageFingerprint)
       yield* connection.request("thread.message-admit", {
@@ -1625,18 +1731,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
 
     yield* dispatch(
       connection,
-      deferWorktree
+      deferred
         ? {
             ...command,
             dispatchMode: {
               type: "defer_start",
-              workspaceStrategy: {
-                type: "worktree",
-                baseRef:
-                  input.worktreeStartingState?.type === "branch"
-                    ? input.worktreeStartingState.branchName
-                    : "HEAD",
-              },
+              workspaceStrategy: { type: "worktree", ...deferred },
             },
           }
         : command,
@@ -1649,7 +1749,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       input.messageOrigin !== "host"
     )
       yield* recordAcceptedUserMessage(core, input.sessionId, message.messageId);
-    if (deferWorktree) {
+    if (deferred) {
       const outcome = yield* connection.request("run.outcome", {
         threadId,
         messageId: message.messageId,
@@ -1667,10 +1767,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             : {}),
           localEnvironmentConfigPath: input.runInEnvironmentPath ?? null,
         });
-        yield* prepareDeferredWorkspace(connection, threadId, outcome.runId, "1").pipe(
-          Effect.provideService(HostInvocation, null),
-          Effect.forkIn(ownerScope),
-        );
+        yield* startPreparation(connection, threadId, outcome.runId, "1");
       }
     }
     // An Agent names the chats it starts; a person's opening prompt is titled once.
@@ -1744,19 +1841,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const connection = yield* options.connect;
     const loaded = yield* targetInfo(connection, input, true);
     const key = preparationKey(loaded.threadId, input.runId);
-    if (!input.workLocally && !preparations.has(key)) {
-      // The original choices did not survive an application restart: start a fresh worktree
-      // from the source checkout's current branch.
-      const scope = yield* projectScope(loaded.binding.project_id ?? null, true);
-      preparations.set(key, {
-        sessionId: input.sessionId,
-        projectId: loaded.binding.project_id ?? null,
-        title: loaded.thread.title,
-        prompt: loaded.thread.title,
-        sourceCwd: scope.workspaceRoot,
-        sourceRoots: scope.sourceRoots,
-      });
-    }
+    if (!input.workLocally && !preparations.has(key))
+      // The original choices did not survive an application restart: a chat that joined a Page
+      // Workspace prepares that again, any other starts a fresh worktree from the source
+      // checkout's current branch.
+      preparations.set(key, yield* recoveredPreparation(loaded.binding, loaded.thread.title));
     yield* dispatch(connection, {
       type: "prepared-run.retry",
       commandId: commandId("preparation-retry", { requestId: input.requestId }),
@@ -1773,21 +1862,31 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       });
       return { retried: true as const };
     }
-    yield* prepareDeferredWorkspace(connection, loaded.threadId, input.runId, input.requestId).pipe(
-      Effect.provideService(HostInvocation, null),
-      Effect.forkIn(ownerScope),
-    );
+    yield* startPreparation(connection, loaded.threadId, input.runId, input.requestId);
     return { retried: true as const };
   });
 
-  /**
-   * A preparation interrupted by an application restart has no live owner. Its Run fails with a
-   * readable reason so the user can retry instead of waiting on a preparation that never ends.
-   */
+  /** Whether Core records this chat as working in a Page Workspace. */
+  const joinedPageWorkspace = (sessionId: string) =>
+    options.pageWorkspaces
+      ? host(
+          core.workspace.read(
+            { kind: "session_workspace", session_id: sessionId },
+            undefined,
+            null,
+          ),
+        ).pipe(
+          Effect.map((read) => read.value.kind === "session_workspace" && !!read.value.workspace),
+        )
+      : Effect.succeed(false);
+
   /**
    * After the engine starts, brings every live root in line with Core: placement and archive
    * changes made while it was unavailable, and worktree preparations a restart interrupted.
-   * Cost follows live work, never retained history.
+   * A preparation without a live owner never ends by itself. A Page Workspace's resumes, since
+   * Core kept the chat's claim; a worktree of the chat's own was chosen in memory, so its Run
+   * fails with a readable reason for the user to retry. Cost follows live work, never retained
+   * history.
    */
   const reconcileLiveExecutions = Effect.fn("AgentRuntimeApplication.reconcileLiveExecutions")(
     function* () {
@@ -1805,26 +1904,41 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               runtime_thread_id: root.rootThreadId,
             }),
           );
-          if (found.value.kind === "agent_runtime_session_binding" && found.value.binding)
-            yield* host(reconcileExecution(connection, found.value.binding)).pipe(
-              Effect.ignoreCause,
-            );
-          if (!root.activeRunId) continue;
-          if (preparing.has(preparationKey(root.rootThreadId, root.activeRunId))) continue;
+          const binding =
+            found.value.kind === "agent_runtime_session_binding" ? found.value.binding : null;
+          if (binding)
+            yield* host(reconcileExecution(connection, binding)).pipe(Effect.ignoreCause);
+          const { rootThreadId, activeRunId } = root;
+          if (!activeRunId) continue;
+          const key = preparationKey(rootThreadId, activeRunId);
+          if (preparing.has(key)) continue;
           const authority = yield* connection.request("thread.authority", {
-            threadId: root.rootThreadId,
-            runId: root.activeRunId,
+            threadId: rootThreadId,
+            runId: activeRunId,
           });
           if (authority?.status !== "preparing") continue;
+          const resumed = yield* Effect.gen(function* () {
+            if (!binding || !(yield* joinedPageWorkspace(binding.session_id))) return false;
+            const thread = yield* connection.request("thread.read", { threadId: rootThreadId });
+            preparations.set(key, yield* recoveredPreparation(binding, thread?.title ?? ""));
+            yield* startPreparation(
+              connection,
+              rootThreadId,
+              activeRunId,
+              `resume:${connection.identity.runtimeGeneration}`,
+            );
+            return true;
+          }).pipe(Effect.catchCause(() => Effect.succeed(false)));
+          if (resumed) continue;
           yield* dispatch(connection, {
             type: "prepared-run.fail",
             commandId: commandId("preparation-interrupted", {
-              threadId: root.rootThreadId,
-              runId: root.activeRunId,
+              threadId: rootThreadId,
+              runId: activeRunId,
               generation: connection.identity.runtimeGeneration,
             }),
-            threadId: root.rootThreadId,
-            runId: root.activeRunId,
+            threadId: rootThreadId,
+            runId: activeRunId,
             failure: preparationFailure(
               "Worktree preparation was interrupted when Nodex restarted. Retry to create it again.",
             ),
@@ -2510,51 +2624,60 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           });
     if (!existing && !input.sideChat && sourceRunId === null)
       return yield* failure("fork", "This chat has no finished Run to fork from");
-    // The product Session is admitted before any Thread or worktree exists.
-    const scope = yield* lifecycle.runExclusive(
-      projectId,
+    // The product Session is admitted before any Thread or worktree exists, and the fork owns
+    // its root Thread until the Thread does.
+    const scope = yield* creatingRootThread(
+      input.sessionId,
       Effect.gen(function* () {
-        const scope = yield* projectScope(projectId, true, false);
-        if (previous) return scope;
-        yield* bindExecution({
-          binding,
-          operation: {
-            operationId: createStableOperationId("agent-runtime.fork", input.acceptedAt, {
-              requestId: input.requestId,
-            }),
-            intent: {
-              kind: "create_agent_runtime_session",
-              ...binding,
+        const scope = yield* lifecycle.runExclusive(
+          projectId,
+          Effect.gen(function* () {
+            const scope = yield* projectScope(projectId, true, false);
+            if (previous) return scope;
+            yield* bindExecution({
+              binding,
+              operation: {
+                operationId: createStableOperationId("agent-runtime.fork", input.acceptedAt, {
+                  requestId: input.requestId,
+                }),
+                intent: {
+                  kind: "create_agent_runtime_session",
+                  ...binding,
+                  title,
+                  initial_page_ids: [],
+                  agent_selection: agentRuntimeWorkSelection(source.thread.modelSelection),
+                },
+              },
+            });
+            return scope;
+          }),
+        );
+        if (!existing && (input.sideChat || sourceRunId !== null))
+          yield* dispatch(
+            connection,
+            {
+              type: "thread.fork",
+              commandId: commandId("fork-thread", {
+                requestId: input.requestId,
+                sessionId: input.sessionId,
+              }),
+              sourceThreadId: source.threadId,
+              targetThreadId: threadId,
+              sourcePoint:
+                sourceRunId == null
+                  ? { type: "latest_stable" }
+                  : { type: "run", runId: sourceRunId },
+              ...(input.sideChat ? { sideChat: true } : {}),
+              rootPolicy: "independent_root",
               title,
-              initial_page_ids: [],
-              agent_selection: agentRuntimeWorkSelection(source.thread.modelSelection),
+              createdBy: provenance ? "agent" : "user",
+              creationSource: provenance ? "mcp" : "web",
             },
-          },
-        });
+            input.modeLimit,
+          );
         return scope;
       }),
     );
-    if (!existing && (input.sideChat || sourceRunId !== null))
-      yield* dispatch(
-        connection,
-        {
-          type: "thread.fork",
-          commandId: commandId("fork-thread", {
-            requestId: input.requestId,
-            sessionId: input.sessionId,
-          }),
-          sourceThreadId: source.threadId,
-          targetThreadId: threadId,
-          sourcePoint:
-            sourceRunId == null ? { type: "latest_stable" } : { type: "run", runId: sourceRunId },
-          ...(input.sideChat ? { sideChat: true } : {}),
-          rootPolicy: "independent_root",
-          title,
-          createdBy: provenance ? "agent" : "user",
-          creationSource: provenance ? "mcp" : "web",
-        },
-        input.modeLimit,
-      );
     // A worktree fork still sharing its source directory never finished relocating, including
     // a retry after the process stopped between the fork and the location update.
     const forked = existing ?? (yield* connection.request("thread.read", { threadId }));
