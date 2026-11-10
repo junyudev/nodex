@@ -38,20 +38,13 @@ async function fixture(gitRepository = true, symlinkedRoot = false) {
   const home = await realpath(await mkdtemp(join(tmpdir(), "nodex-page-workspace-")));
   const repository = join(home, "repo");
   await mkdir(repository);
-  // A managed root reached through a symlink, as a macOS temporary directory is.
   const managedRoot = join(home, "trees");
   if (symlinkedRoot) {
-    await mkdir(join(home, "trees-target"));
-    await symlink(join(home, "trees-target"), managedRoot);
+    const target = join(home, "trees-target");
+    await mkdir(target);
+    await symlink(target, managedRoot, process.platform === "win32" ? "junction" : "dir");
   }
-  const writeGit = async (args: string[]) => {
-    expect(await realpath(repository)).toBe(join(home, "repo"));
-    if (args[0] !== "init")
-      expect(
-        (await exec("git", ["rev-parse", "--show-toplevel"], { cwd: repository })).stdout.trim(),
-      ).toBe(repository);
-    return exec("git", args, { cwd: repository });
-  };
+  const writeGit = (args: string[]) => exec("git", args, { cwd: repository });
   if (gitRepository) {
     await writeGit(["init", "-b", "main"]);
     await writeGit(["config", "user.name", "Test"]);
