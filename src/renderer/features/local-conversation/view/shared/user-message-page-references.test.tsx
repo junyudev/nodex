@@ -17,11 +17,28 @@ test("transcript references expose canonical Page navigation and dispatch the op
   expect(open).toHaveBeenCalledExactlyOnceWith("page-a", "Plan");
 });
 
-test("Composer context removal identifies the Page independently of its title", async () => {
+test("a Composer Page offer is one toggle that includes the Page, then removes it, by identity", async () => {
+  const include = vi.fn();
   const remove = vi.fn();
-  const subject = render(<ComposerPageContextChips references={references} onRemove={remove} />);
+  const chips = (included: boolean) => (
+    <ComposerPageContextChips
+      offers={[{ reference: references[0]!, included }]}
+      onInclude={include}
+      onRemove={remove}
+    />
+  );
+  const subject = render(chips(false));
+  const toggle = subject.getByRole("button", { name: "Send Plan with this message" });
+  expect(toggle.getAttribute("aria-pressed")).toBe("false");
   await act(async () => {
-    fireEvent.click(subject.getByRole("button", { name: "Don't send Plan" }));
+    fireEvent.click(toggle);
+    await Promise.resolve();
+  });
+  expect(include).toHaveBeenCalledExactlyOnceWith("page-a");
+  subject.rerender(chips(true));
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  await act(async () => {
+    fireEvent.click(toggle);
     await Promise.resolve();
   });
   expect(remove).toHaveBeenCalledExactlyOnceWith("page-a");

@@ -1,22 +1,25 @@
 # Page references in chat
 
 The Composer offers each Page selected and visible beside its Session in the content panel as
-removable message context. Hidden tabs, collapsed panels, the bottom panel and split leaves hidden
-by maximization contribute no context. Several visible tabs of one Page contribute one reference;
-their selected Block identities are combined without duplicates.
+message context, and sends none of them until the user includes it. Hidden tabs, collapsed panels,
+the bottom panel and split leaves hidden by maximization offer nothing. Several visible tabs of one
+Page make one offer; their selected Block identities are combined without duplicates.
 
-A reference shows the live Page title and the number of selected Blocks. Only a non-empty editor
-selection contributes Block identities; a caret contributes none. Focusing the Composer preserves
-the Page's logical selection until Send to chat or Add to composer hands those Blocks to a chat,
-which releases it. Removing a reference excludes that Page for this draft, including
-later title, selection and visibility changes. The exclusion survives Composer remount and failed
-send attempts and resets after successful submission.
+An offer is a dashed chip showing the live Page title and the number of selected Blocks. Clicking it
+includes the Page in the next message, and the chip then reads as a reference the user added;
+clicking it again removes it. The chip is one toggle that keeps its place and leaves the caret in
+the prompt. Only a non-empty editor selection contributes Block identities; a caret contributes
+none. Focusing the Composer preserves the Page's logical selection until Send to chat or Add to
+composer hands those Blocks to a chat, which releases it. Inclusion belongs to this draft and to
+that Page: it follows later title, selection and visibility changes, survives Composer remount and
+failed send attempts, and resets after successful submission, so every message starts with offers
+only.
 
-Beside-Page references are ambient: they travel with a message but never make one, so a
-Composer holding only references cannot submit.
+Included references travel with a message but never make one, so a Composer holding only
+references cannot submit.
 
 At submit, Nodex freezes each Page id, title and selected Block ids before asynchronous preparation.
-It sends references, never Page content. Agents read a Page by id with `fetch`; `read_tab_content`
+It sends included references, never Page content. Agents read a Page by id with `fetch`; `read_tab_content`
 can synchronize and read the live editor of a Page visible beside the chat. `selectedBlockIds`
 identifies what the user highlighted. Page references never create Linked chat relationships.
 

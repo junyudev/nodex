@@ -1867,18 +1867,18 @@ function HydratedThreadComposer({
   const hasAppModelContextInput =
     hasVisibleAppModelContext ||
     appModelContext.attachments.some((entry) => entry.kind === "message");
-  // Beside Pages are ambient context: they show and travel with a message, never make one.
+  // Beside Pages are offered context: an included one travels with a message, never makes one.
   const hasAttachments =
     hasComposerAttachmentStateContent(attachmentState) || hasAppModelContextInput;
   const hasVisibleAttachments =
     hasComposerAttachmentStateContent(attachmentState) ||
     hasVisibleAppModelContext ||
-    pageContext.references.length > 0;
+    pageContext.offers.length > 0;
   const hasSubmittableAttachments =
     hasSubmittableComposerAttachmentState(attachmentState) || hasAppModelContextInput;
   const hasVisibleNonImageAttachments =
     hasVisibleAppModelContext ||
-    pageContext.references.length > 0 ||
+    pageContext.offers.length > 0 ||
     fileAttachments.length > 0 ||
     addedFiles.length > 0 ||
     appshotContexts.length > 0 ||
@@ -4550,7 +4550,8 @@ function HydratedThreadComposer({
                     onEdit={handleEditComposerImage}
                   >
                     <ComposerPageContextChips
-                      references={pageContext.references}
+                      offers={pageContext.offers}
+                      onInclude={pageContext.include}
                       onRemove={pageContext.remove}
                     />
                     <ComposerAppModelContextAttachments

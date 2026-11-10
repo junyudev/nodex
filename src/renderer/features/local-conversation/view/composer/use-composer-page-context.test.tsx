@@ -62,7 +62,7 @@ function setup() {
     useLayoutEffect(() => {
       current = context;
     });
-    return <output aria-label="Page references">{JSON.stringify(context.references)}</output>;
+    return <output aria-label="Page context">{JSON.stringify(context.offers)}</output>;
   }
   const tree = (mounted: boolean) => (
     <MaitaiProvider store={store}>
@@ -112,36 +112,50 @@ function setup() {
   };
 }
 
-test("removed Page context stays excluded across live title/selection updates and Composer remount, then resets after success", async () => {
+test("a Page beside the chat is offered but sent only once included, through live updates and Composer remount, until a message takes it", async () => {
   const subject = setup();
   try {
-    expect(subject.current().references).toEqual([
-      { pageId: "page-a", titleSnapshot: "Plan", selectedBlockIds: ["a"] },
+    expect(subject.current().offers).toEqual([
+      {
+        reference: { pageId: "page-a", titleSnapshot: "Plan", selectedBlockIds: ["a"] },
+        included: false,
+      },
     ]);
+    expect(subject.current().readSnapshot()).toEqual([]);
     await act(async () => {
-      subject.current().remove("page-a");
+      subject.current().include("page-a");
       subject.update();
     });
-    expect(subject.current().readSnapshot()).toEqual([]);
+    const revised = {
+      pageId: "page-a",
+      titleSnapshot: "Revised plan",
+      selectedBlockIds: ["b", "c"],
+    };
     subject.view.rerender(subject.tree(false));
     subject.view.rerender(subject.tree(true));
-    expect(subject.current().references).toEqual([]);
-    await act(async () => {
-      await subject.current().submit(async () => true);
-    });
     await waitFor(() =>
-      expect(subject.current().references).toEqual([
-        { pageId: "page-a", titleSnapshot: "Revised plan", selectedBlockIds: ["b", "c"] },
-      ]),
+      expect(subject.current().offers).toEqual([{ reference: revised, included: true }]),
     );
+    const deliver = vi.fn().mockResolvedValue(true);
+    await act(async () => {
+      await subject.current().submit(deliver);
+    });
+    expect(deliver).toHaveBeenCalledExactlyOnceWith([revised]);
+    await waitFor(() =>
+      expect(subject.current().offers).toEqual([{ reference: revised, included: false }]),
+    );
+    expect(subject.current().readSnapshot()).toEqual([]);
   } finally {
     subject.dispose();
   }
 });
 
-test("submit freezes the current title and selection and failed delivery preserves draft exclusions", async () => {
+test("submit freezes the current title and selection, and removal or failed delivery keeps the draft's choice", async () => {
   const subject = setup();
   try {
+    await act(async () => {
+      subject.current().include("page-a");
+    });
     const submitted = subject.current().readSnapshot();
     await act(async () => {
       subject.update();
@@ -150,14 +164,16 @@ test("submit freezes the current title and selection and failed delivery preserv
       { pageId: "page-a", titleSnapshot: "Plan", selectedBlockIds: ["a"] },
     ]);
     expect(subject.current().readSnapshot()[0]?.selectedBlockIds).toEqual(["b", "c"]);
-    await act(async () => {
-      subject.current().remove("page-a");
-    });
     const deliver = vi.fn().mockRejectedValue(new Error("Unavailable"));
     await act(async () => {
       await expect(subject.current().submit(deliver)).rejects.toThrow("Unavailable");
     });
-    expect(subject.current().references).toEqual([]);
+    expect(subject.current().offers[0]?.included).toBe(true);
+    await act(async () => {
+      subject.current().remove("page-a");
+    });
+    expect(subject.current().offers[0]?.included).toBe(false);
+    expect(subject.current().readSnapshot()).toEqual([]);
   } finally {
     subject.dispose();
   }

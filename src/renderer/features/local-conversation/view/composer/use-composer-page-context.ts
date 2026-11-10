@@ -16,8 +16,8 @@ import { usePageEditorSelections } from "@/lib/use-page-editor-selection";
 import { readPageEditorSelection } from "@/lib/page-editor-observation-registry";
 import type { PageReference } from "../../../../../shared/page-reference";
 
-const exclusionsAtom = scopedAtom<readonly string[]>(ComposerScope, [], {
-  debugLabel: "composer-page-context-exclusions",
+const inclusionsAtom = scopedAtom<readonly string[]>(ComposerScope, [], {
+  debugLabel: "composer-page-context-inclusions",
 });
 const sessionIdAtom = scopedDerivedAtom(
   ThreadScope,
@@ -25,7 +25,13 @@ const sessionIdAtom = scopedDerivedAtom(
   { debugLabel: "composer-page-context-session" },
 );
 
-/** Exclusion is authored draft intent; titles, visibility and selections remain live projections. */
+/** A Page beside the chat, offered as message context and sent only once the user includes it. */
+export interface ComposerPageContextOffer {
+  readonly reference: PageReference;
+  readonly included: boolean;
+}
+
+/** Inclusion is authored draft intent; titles, visibility and selections remain live projections. */
 export function useComposerPageContext(
   input: { readonly sessionId?: string | null; readonly composerScope?: ScopeHandle } = {},
 ) {
@@ -35,9 +41,9 @@ export function useComposerPageContext(
   const sessionId = input.sessionId ?? scopedSessionId;
   const owner = getWorkbenchWindowOwner(useScopeHandle(appScope));
   const presentation = useSyncExternalStore(owner.subscribe, owner.read, owner.read);
-  const subscribeExclusions = (listener: () => void) => scope.sub(exclusionsAtom, listener);
-  const readExclusions = () => scope.get(exclusionsAtom);
-  const exclusions = useSyncExternalStore(subscribeExclusions, readExclusions, readExclusions);
+  const subscribeInclusions = (listener: () => void) => scope.sub(inclusionsAtom, listener);
+  const readInclusions = () => scope.get(inclusionsAtom);
+  const inclusions = useSyncExternalStore(subscribeInclusions, readInclusions, readInclusions);
   const readPages = () =>
     selectComposerBesidePages(
       sessionId ? readWorkbenchAgentContext(owner.read(), { kind: "session", sessionId }) : null,
@@ -50,40 +56,40 @@ export function useComposerPageContext(
   const editorSelections = new Map(
     pages.flatMap((page) => page.editorKeys).map((key, index) => [key, selections[index] ?? []]),
   );
-  const references: readonly PageReference[] = pages.flatMap((page, index) =>
-    exclusions.includes(page.pageId)
-      ? []
-      : [
-          {
-            pageId: page.pageId,
-            titleSnapshot: titles.titles[index] ?? page.titleSnapshot,
-            selectedBlockIds: [
-              ...new Set(page.editorKeys.flatMap((key) => editorSelections.get(key) ?? [])),
-            ],
-          },
-        ],
-  );
+  const offers: readonly ComposerPageContextOffer[] = pages.map((page, index) => ({
+    reference: {
+      pageId: page.pageId,
+      titleSnapshot: titles.titles[index] ?? page.titleSnapshot,
+      selectedBlockIds: [
+        ...new Set(page.editorKeys.flatMap((key) => editorSelections.get(key) ?? [])),
+      ],
+    },
+    included: inclusions.includes(page.pageId),
+  }));
   /** Call synchronously at submit, before preparation can yield to another editor update. */
   const readSnapshot = (): readonly PageReference[] => {
-    const excluded = scope.get(exclusionsAtom);
+    const included = scope.get(inclusionsAtom);
     return readPages().flatMap((page) =>
-      excluded.includes(page.pageId)
-        ? []
-        : [
+      included.includes(page.pageId)
+        ? [
             {
               pageId: page.pageId,
               titleSnapshot: titles.readTitle(page.pageId, page.titleSnapshot),
               selectedBlockIds: [...new Set(page.editorKeys.flatMap(readPageEditorSelection))],
             },
-          ],
+          ]
+        : [],
     );
   };
   return {
-    references,
-    remove(pageId: string) {
-      scope.set(exclusionsAtom, (current) =>
+    offers,
+    include(pageId: string) {
+      scope.set(inclusionsAtom, (current) =>
         current.includes(pageId) ? current : [...current, pageId],
       );
+    },
+    remove(pageId: string) {
+      scope.set(inclusionsAtom, (current) => current.filter((id) => id !== pageId));
     },
     readSnapshot,
     async submit(
@@ -91,7 +97,7 @@ export function useComposerPageContext(
     ): Promise<boolean> {
       const snapshot = readSnapshot();
       const sent = await deliver(snapshot);
-      if (sent) scope.set(exclusionsAtom, []);
+      if (sent) scope.set(inclusionsAtom, []);
       return sent;
     },
   };
