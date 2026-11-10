@@ -6,6 +6,7 @@ import {
   formatAutomationConfirmation,
   formatAutomationNextRunDate,
   formatAutomationSubtitle,
+  unreadRunIdsForSession,
 } from "./automation-model";
 
 const NOW = new Date(2026, 9, 16, 12, 0);
@@ -154,6 +155,19 @@ describe("automation model", () => {
       ["new", "Running now", false],
       ["old", "Found two regressions", true],
     ]);
+  });
+
+  test("a chat's unread runs are its finished, unseen ones: every such beat of a heartbeat", () => {
+    const items = [
+      run({ runId: "beat-1", sessionId: "chat" }),
+      run({ runId: "beat-2", sessionId: "chat", status: "ACCEPTED" }),
+      run({ runId: "seen", sessionId: "chat", readAt: 5 }),
+      run({ runId: "running", sessionId: "chat", status: "IN_PROGRESS" }),
+      run({ runId: "archived", sessionId: "chat", status: "ARCHIVED" }),
+      run({ runId: "elsewhere", sessionId: "other-chat" }),
+    ];
+
+    expect(unreadRunIdsForSession(items, "chat")).toEqual(["beat-1", "beat-2"]);
   });
 
   test("Heartbeats never expand because each opens its chat", () => {

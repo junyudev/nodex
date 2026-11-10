@@ -152,6 +152,21 @@ export function formatAutomationRunTitle(item: AutomationInboxItem): string {
   return item.title?.trim() || "Run completed";
 }
 
+/** A finished run nobody has looked at yet; a run still in progress has nothing to read. */
+function isUnreadRun(item: AutomationInboxItem): boolean {
+  return item.readAt === null && (item.status === "PENDING_REVIEW" || item.status === "ACCEPTED");
+}
+
+/** The unread runs whose chat is `sessionId`: one for a cron run, every unseen beat of a heartbeat. */
+export function unreadRunIdsForSession(
+  items: readonly AutomationInboxItem[],
+  sessionId: string,
+): string[] {
+  return items
+    .filter((item) => item.sessionId === sessionId && isUnreadRun(item))
+    .map((item) => item.runId);
+}
+
 export function buildAutomationRunRows(
   items: readonly AutomationInboxItem[],
   automationId: string,
@@ -166,7 +181,7 @@ export function buildAutomationRunRows(
         sessionId,
         title: formatAutomationRunTitle(item),
         isRunning: item.status === "IN_PROGRESS",
-        isUnread: item.readAt === null && item.status !== "IN_PROGRESS",
+        isUnread: isUnreadRun(item),
         canOpen: sessionId !== null,
       };
     });

@@ -15,7 +15,7 @@ export interface UseConversationReadStateInput extends ConversationReadStateInpu
 }
 
 /** Native window focus remains authoritative when embedded guests own DOM focus. */
-function useConversationWindowFocus(): boolean {
+export function useConversationWindowFocus(): boolean {
   const [focused, setFocused] = useState(false);
   useEffect(() => {
     let disposed = false;

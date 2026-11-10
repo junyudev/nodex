@@ -531,10 +531,7 @@ export function AutomationsSidebar({
             expanded={isExpanded(row)}
             activeRunSessionId={navigation.activeRunSessionId}
             onSelect={() => selectRow(row)}
-            onOpenRun={(run) => {
-              if (run.isUnread) void tasks.markRunRead(run.runId);
-              navigation.onOpenRun(row.automation, run);
-            }}
+            onOpenRun={(run) => navigation.onOpenRun(row.automation, run)}
             onOpenInbox={() =>
               navigation.onOpenInbox(row.automation.heldDecision?.inboxProjectId ?? null)
             }

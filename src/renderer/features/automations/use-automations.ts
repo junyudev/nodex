@@ -7,7 +7,6 @@ import {
   createAutomation,
   deleteAutomation,
   runAutomationNow,
-  setAutomationRunReadState,
   updateAutomation,
 } from "@/lib/automations-runtime";
 import { readableIpcError } from "@/lib/ipc-error-message";
@@ -153,15 +152,6 @@ export function useAutomations() {
     );
   };
 
-  const markRunRead = async (runId: string): Promise<void> => {
-    try {
-      await setAutomationRunReadState({ runId, readAt: Date.now() });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.automationRuns.all() });
-    } catch {
-      // Read state is advisory; the next refresh shows the run as it is.
-    }
-  };
-
   const archiveRun = async (runId: string): Promise<void> => {
     try {
       await archiveAutomationRun({ runId });
@@ -184,7 +174,6 @@ export function useAutomations() {
     setTaskStatus,
     runNow,
     deleteTask,
-    markRunRead,
     archiveRun,
   };
 }

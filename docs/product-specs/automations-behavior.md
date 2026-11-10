@@ -214,9 +214,10 @@ roll back with an error toast on failure.
 
 The selected Automation shows its condition, action, schedule, target and recent
 decisions with reasons. Cron runs can expand beneath it, newest first; a held
-decision opens its Inbox. Runs open only after Session binding, mark themselves
-read and can be archived. A heartbeat opens its continued chat while retaining
-the Automations sidebar. Unavailable selections return to the landing page.
+decision opens its Inbox. Runs open only after Session binding and can be
+archived. A heartbeat opens its continued chat while retaining the Automations
+sidebar. A finished run is read once its chat is shown in a focused window,
+however that chat was reached; a heartbeat's chat reads every beat it holds. Unavailable selections return to the landing page.
 
 The editor keeps name, action, schedule, workspace, Agent/model, notification and
 runbook controls. Mode offers Dry run, Ask first and Run. Owner appears when the

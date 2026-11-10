@@ -1,4 +1,4 @@
-import type { Automation, AutomationUpdateInput } from "@/lib/types";
+import type { Automation, AutomationRunsInboxResponse, AutomationUpdateInput } from "@/lib/types";
 
 export function upsertAutomation(
   automations: Automation[] | undefined,
@@ -90,5 +90,27 @@ export function buildAutomationStatusUpdate(
     cwds: automation.cwds,
     executionEnvironment: automation.executionEnvironment,
     localEnvironmentConfigPath: automation.localEnvironmentConfigPath,
+  };
+}
+
+/** The runs as they will read once marked read, so an unread mark clears without a round trip. */
+export function applyOptimisticRunsRead(
+  runs: AutomationRunsInboxResponse | undefined,
+  runIds: readonly string[],
+  readAt: number,
+): AutomationRunsInboxResponse | undefined {
+  if (!runs) return runs;
+  const read = new Set(runIds);
+  const unreadRuns = runs.unreadRunCounts.unreadRuns.filter((run) => !read.has(run.runId));
+  const cleared = runs.unreadRunCounts.unreadRuns.length - unreadRuns.length;
+  return {
+    items: runs.items.map((item) =>
+      read.has(item.runId) && item.readAt === null ? { ...item, readAt } : item,
+    ),
+    unreadRunCounts: {
+      total: Math.max(0, runs.unreadRunCounts.total - cleared),
+      automationIds: [...new Set(unreadRuns.map((run) => run.automationId))],
+      unreadRuns,
+    },
   };
 }

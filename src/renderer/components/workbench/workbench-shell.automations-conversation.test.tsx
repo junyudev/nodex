@@ -532,6 +532,12 @@ describe("workbench session shell / automations-conversation", () => {
     const screen = renderWorkbench({
       sessionsByProject: {
         alpha: [
+          // The chat shown at launch, so neither Automation's chat has been seen yet.
+          makeAttachedSession({
+            id: "session:alpha:unrelated",
+            title: "Unrelated chat",
+            threadId: "thread-unrelated",
+          }),
           makeAttachedSession({
             id: "session:alpha:heartbeat",
             title: "Standup chat",
@@ -568,6 +574,18 @@ describe("workbench session shell / automations-conversation", () => {
           readAt: 50,
           status: "ARCHIVED",
         }),
+        ...["beat-1", "beat-2"].map((runId, index) =>
+          makeAutomationInboxItem({
+            id: runId,
+            runId,
+            sessionId: "session:alpha:heartbeat",
+            automationId: "automation-heartbeat",
+            automationName: "Standup check-in",
+            createdAt: 100 + index,
+            readAt: null,
+            status: "PENDING_REVIEW",
+          }),
+        ),
       ],
     });
     await openAutomations(screen);
@@ -602,12 +620,23 @@ describe("workbench session shell / automations-conversation", () => {
       ).not.toBeNull(),
     );
 
+    expect(within(taskRow(screen, "automation-heartbeat")).getByLabelText("Unread")).not.toBeNull();
     await click(
       within(taskRow(screen, "automation-heartbeat")).getByRole("button", {
         name: /Standup check-in/u,
       }),
     );
     await waitFor(() => expect(textContent(screen.container)).toContain("Thread:thread-heartbeat"));
+    // Every beat lands in the one chat, so showing it reads them all.
+    await waitFor(() =>
+      expect(within(taskRow(screen, "automation-heartbeat")).queryByLabelText("Unread")).toBeNull(),
+    );
+    expect(
+      screen
+        .getAutomationInboxItems()
+        .filter((item) => item.automationId === "automation-heartbeat")
+        .every((item) => item.readAt !== null),
+    ).toBe(true);
     expect(
       within(taskRow(screen, "automation-heartbeat"))
         .getByRole("button", { name: /Standup check-in/u })

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
-import type { Automation } from "@/lib/types";
-import { applyOptimisticAutomationUpdate, buildAutomationStatusUpdate } from "./automation-cache";
+import type { Automation, AutomationInboxItem } from "@/lib/types";
+import {
+  applyOptimisticAutomationUpdate,
+  applyOptimisticRunsRead,
+  buildAutomationStatusUpdate,
+} from "./automation-cache";
 
 const task: Automation = {
   id: "task",
@@ -43,5 +47,39 @@ describe("automation status updates", () => {
       mode: "ask_first",
       runbookPageId: "page:runbook",
     });
+  });
+});
+
+test("marking runs read clears them from the unread counts and leaves other runs unread", () => {
+  const item = (runId: string, automationId: string): AutomationInboxItem => ({
+    id: runId,
+    automationId,
+    automationName: null,
+    title: null,
+    description: null,
+    archivedAssistantMessage: null,
+    archivedUserMessage: null,
+    archivedReason: null,
+    sourceCwd: null,
+    runId,
+    sessionId: "chat",
+    readAt: null,
+    createdAt: 1,
+    status: "PENDING_REVIEW",
+  });
+  const items = [item("beat-1", "heartbeat"), item("beat-2", "heartbeat"), item("run", "cron")];
+  const unreadRuns = items.map(({ automationId, runId }) => ({ automationId, runId }));
+
+  const next = applyOptimisticRunsRead(
+    { items, unreadRunCounts: { total: 3, automationIds: ["heartbeat", "cron"], unreadRuns } },
+    ["beat-1", "beat-2"],
+    42,
+  );
+
+  expect(next?.items.map((entry) => entry.readAt)).toEqual([42, 42, null]);
+  expect(next?.unreadRunCounts).toEqual({
+    total: 1,
+    automationIds: ["cron"],
+    unreadRuns: [{ automationId: "cron", runId: "run" }],
   });
 });

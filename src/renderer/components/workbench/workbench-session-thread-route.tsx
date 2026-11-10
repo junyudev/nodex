@@ -1,4 +1,5 @@
 import { isHostedChat } from "@/lib/hosted-chat";
+import { useShownAutomationRunsRead } from "@/features/automations/use-shown-automation-runs-read";
 import { SessionStartNotice, useSessionStart } from "./session-start-notice";
 import { localProjectSourceRoots } from "../../../shared/project-sources";
 import {
@@ -852,6 +853,12 @@ function ConnectedRemoteSessionThread(
 }
 
 function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
+  useShownAutomationRunsRead({
+    sessionId: props.session.id,
+    shown: props.composerDock
+      ? props.composerDock.visible
+      : props.routeActive && props.threadBodyVisible,
+  });
   return (
     <ConversationPageNavigationProvider value={props.onOpenPage ?? null}>
       <ConnectedSessionThreadBody {...props} />
