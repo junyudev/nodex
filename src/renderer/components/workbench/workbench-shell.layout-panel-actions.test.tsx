@@ -3184,18 +3184,7 @@ describe("workbench session shell / layout-panel-actions", () => {
   test.each(["runtime", "native-import"] as const)(
     "selected-text side chat from %s captures context before Send and keeps its bound Session",
     async (sourceKind) => {
-      const browserTab = makeSessionTab({
-        id: "selection-source:browser",
-        sessionId: "selection-source",
-        kind: "browser",
-        title: "Browser",
-        config: { projectId: "alpha" },
-      });
-      const source = makeAttachedSession({
-        id: "selection-source",
-        tabs: [browserTab],
-        rightLayout: makePanelLayout([browserTab.id], browserTab.id),
-      });
+      const source = makeAttachedSession({ id: "selection-source" });
       if (sourceKind === "native-import") {
         source.executionRef = null;
         source.thread = {
@@ -3243,14 +3232,9 @@ describe("workbench session shell / layout-panel-actions", () => {
         message: { text: "Use this selected paragraph" },
       });
       expect(screen.queryByRole("tab", { name: "Side chat" })).toBeTruthy();
-      await act(async () => {
-        fireEvent.click(screen.getByRole("tab", { name: "Browser" }));
-        await Promise.resolve();
-      });
-      await act(async () => {
-        fireEvent.click(screen.getByRole("tab", { name: "Side chat" }));
-        await Promise.resolve();
-      });
+      await pointerActivate(await screen.findByRole("tab", { name: "DB View" }));
+      await screen.findByRole("tab", { name: "DB View", selected: true });
+      await pointerActivate(await screen.findByRole("tab", { name: "Side chat" }));
       await waitFor(() => {
         const sideChat = getConnectedThreadStagePropsByThreadId(`engine:${created.sessionId}`);
         expect(sideChat?.isNewThreadTab).toBe(false);
