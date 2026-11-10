@@ -69,16 +69,16 @@ test("opens and edits skills in their Project folders", async ({}, testInfo) => 
       const updatedParagraph = "Review the signed changes since the last release tag.";
       const paragraph = page.getByText(RELEASE_PARAGRAPH, { exact: true });
       await paragraph.click();
-      await paragraph.evaluate((element) => {
-        const range = document.createRange();
-        range.selectNodeContents(element);
-        const selection = window.getSelection()!;
-        selection.removeAllRanges();
-        selection.addRange(range);
-      });
+      await page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowLeft" : "Home");
+      await page.keyboard.press(
+        process.platform === "darwin" ? "Meta+Shift+ArrowRight" : "Shift+End",
+      );
+      await expect
+        .poll(() => page.evaluate(() => window.getSelection()?.toString()))
+        .toBe(RELEASE_PARAGRAPH);
       await page.keyboard.insertText(updatedParagraph);
       const updated = RELEASE_SKILL.replace(RELEASE_PARAGRAPH, updatedParagraph);
-      await expect.poll(() => readFile(skillPath)).toEqual(Buffer.from(updated));
+      await expect.poll(() => readFile(skillPath, "utf8")).toBe(updated);
 
       const externalParagraph = "Review the release notes against the signed tag.";
       await writeFile(skillPath, updated.replace(updatedParagraph, externalParagraph));
