@@ -152,7 +152,10 @@ export function startStartupController(): StartupController {
       );
       const [application, closeFlush, transport, sentry] = await measure("modules", () =>
         Promise.all([
-          import("../application-renderer"),
+          import("./renderer-markdown").then(async ({ initializeRendererMarkdown }) => {
+            await initializeRendererMarkdown();
+            return import("../application-renderer");
+          }),
           import("../lib/app-close-flush"),
           import("../lib/electron-renderer-transport"),
           import("../lib/sentry-renderer"),
