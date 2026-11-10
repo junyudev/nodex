@@ -1,15 +1,15 @@
 import { execFile } from "node:child_process";
 import {
-  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { parse } from "node-html-parser";
 import { vitePlusCommand } from "../../../scripts/vite-plus-command";
@@ -38,7 +38,8 @@ async function buildSite(root: string, outDir: string) {
     outDir,
   ]);
   await execFileAsync(invocation.command, invocation.args, {
-    cwd: root,
+    // Resolve the installed CLI from the workspace. Astro uses --root to load the site.
+    cwd: landingRoot,
     env: { ...process.env, ASTRO_TELEMETRY_DISABLED: "1" },
   });
 }
@@ -54,7 +55,7 @@ function readPage(route: string) {
 }
 
 test("builds independently of unrelated ancestor TypeScript projects", async () => {
-  const parent = mkdtempSync(join(tmpdir(), "nodex-landing-tsconfig-"));
+  const parent = mkdtempSync(join(generated, "landing-tsconfig-"));
   const root = join(parent, "site");
   const outDir = join(root, "dist");
   try {
@@ -68,10 +69,19 @@ test("builds independently of unrelated ancestor TypeScript projects", async () 
       JSON.stringify({ extends: "uninstalled-platform/tsconfig.json" }),
     );
     mkdirSync(join(root, "src/pages"), { recursive: true });
-    symlinkSync(join(landingRoot, "node_modules"), join(root, "node_modules"), "junction");
-    copyFileSync(resolve(landingRoot, "../../.node-version"), join(root, ".node-version"));
-    for (const file of ["astro.config.mjs", "tsconfig.json", "package.json"])
-      copyFileSync(join(landingRoot, file), join(root, file));
+    mkdirSync(join(root, "node_modules"));
+    symlinkSync(
+      realpathSync(join(landingRoot, "node_modules/astro")),
+      join(root, "node_modules/astro"),
+      "junction",
+    );
+    // Load the real config with its installed dependencies and build the fixture as its own site.
+    const configUrl = pathToFileURL(join(landingRoot, "astro.config.mjs"));
+    writeFileSync(
+      join(root, "astro.config.mjs"),
+      `export { default } from ${JSON.stringify(configUrl.href)};\n`,
+    );
+    writeFileSync(join(root, "tsconfig.json"), JSON.stringify({ include: ["src"] }));
     writeFileSync(join(root, "src/pages/index.astro"), "<h1>Isolated site</h1>");
 
     await buildSite(root, outDir);
