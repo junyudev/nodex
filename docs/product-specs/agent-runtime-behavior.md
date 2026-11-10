@@ -440,6 +440,8 @@ the chosen workspace and environment for the new Session; they do not
 resume a connected read-only native conversation or hydrate history to choose a workspace.
 Native forks use the source Run's captured native incarnation. If its provider binding
 has since changed, the fork carries the bounded source prefix through portable history.
+Codex native forks request metadata and live state with `excludeTurns: true`; inherited
+conversation context remains in the native fork without returning its history inline.
 
 Started Runtime chats offer Fork from both the sidebar context menu and the header's
 Chat actions menu, including Claude Code and OpenCode. Both menus use the same Session

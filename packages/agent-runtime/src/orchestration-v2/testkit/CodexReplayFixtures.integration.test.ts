@@ -515,6 +515,24 @@ function assertProviderThreadResumeSemantics(transcript: ProviderReplayTranscrip
   );
 }
 
+function assertMetadataOnlyForkSemantics(transcript: ProviderReplayTranscript) {
+  const forkCount = countLabel(transcript, "expect_outbound", "thread/fork");
+  for (let occurrence = 0; occurrence < forkCount; occurrence++) {
+    const request = findProtocolEntry(transcript, "expect_outbound", "thread/fork", occurrence);
+    const response = findProtocolEntry(transcript, "emit_inbound", "thread/fork", occurrence);
+    assert.equal(
+      readPath(request.frame, ["params", "excludeTurns"]),
+      true,
+      `${transcript.scenario}: native forks must request metadata without hydrating history`,
+    );
+    assert.lengthOf(
+      readArray(response.frame, ["result", "thread", "turns"]),
+      0,
+      `${transcript.scenario}: fork continuation must not rely on inline inherited turns`,
+    );
+  }
+}
+
 function assertContinuedForkSemantics(transcript: ProviderReplayTranscript) {
   if (transcript.scenario !== "thread_fork_native_continue") {
     return;
@@ -741,6 +759,7 @@ describe("Codex replay fixtures", () => {
 
         assertScenarioExpectations(transcript);
         assertProviderThreadResumeSemantics(transcript);
+        assertMetadataOnlyForkSemantics(transcript);
         assertContinuedForkSemantics(transcript);
         assertSiblingForkSemantics(transcript);
         assertMergeBackSemantics(transcript);
