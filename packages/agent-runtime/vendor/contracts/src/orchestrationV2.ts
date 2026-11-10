@@ -233,8 +233,10 @@ export const OrchestrationV2TurnCapabilities = Schema.Struct({
   emitsTurnCompleted: Schema.Boolean,
   supportsInterrupt: Schema.Boolean,
   supportsActiveSteering: Schema.Boolean,
-  // Delivers active-turn input at a native boundary without interrupting running tools.
-  supportsBoundarySteering: Schema.Boolean,
+  // Earlier snapshots did not certify delivery without interrupting running tools.
+  supportsBoundarySteering: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(false)),
+  ),
   supportsSteeringByInterruptRestart: Schema.Boolean,
   /** Omitted capabilities conservatively disable empty continuation. */
   supportsEmptyContinuation: Schema.Boolean.pipe(

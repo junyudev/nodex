@@ -411,7 +411,7 @@ describe("orchestration V2 contracts", () => {
     ).toThrow();
   });
 
-  it("decodes persisted capability snapshots that predate runtimePolicy", () => {
+  it("decodes persisted capability snapshots with conservative defaults for missing fields", () => {
     // Events written before the field existed must replay; absent decodes to
     // the weaker client-boundary guarantee so history never overclaims.
     const legacyCapabilities = {
@@ -437,7 +437,6 @@ describe("orchestration V2 contracts", () => {
         emitsTurnCompleted: true,
         supportsInterrupt: true,
         supportsActiveSteering: false,
-        supportsBoundarySteering: false,
         supportsSteeringByInterruptRestart: true,
         supportsQueuedMessages: true,
         terminalStatusQuality: "strong",
@@ -509,14 +508,17 @@ describe("orchestration V2 contracts", () => {
     const decoded = decodeOrchestrationV2ProviderCapabilities(legacyCapabilities);
     expect(decoded.runtimePolicy).toEqual({ enforcement: "client-boundary" });
     expect(decoded.sessions.supportsRuntimeModeSwitchInSession).toBe(false);
+    expect(decoded.turns.supportsBoundarySteering).toBe(false);
 
     const explicit = decodeOrchestrationV2ProviderCapabilities({
       ...legacyCapabilities,
       sessions: { ...legacyCapabilities.sessions, supportsRuntimeModeSwitchInSession: true },
+      turns: { ...legacyCapabilities.turns, supportsBoundarySteering: true },
       runtimePolicy: { enforcement: "native" },
     });
     expect(explicit.runtimePolicy).toEqual({ enforcement: "native" });
     expect(explicit.sessions.supportsRuntimeModeSwitchInSession).toBe(true);
+    expect(explicit.turns.supportsBoundarySteering).toBe(true);
   });
 
   it("lets legacy snapshot decoders ignore enrichment metadata", () => {

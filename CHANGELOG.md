@@ -35,6 +35,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Older chats open again after upgrading Nodex.
+
 - Dropping a tab on the edge of a tab group now splits the group instead of doing nothing.
 - Page history opens again after you edit a Page and pause. The automatic revision Nodex saves when you stop editing made the Page's history show a database error instead of its revisions.
 - Usage analytics that is off when Nodex starts no longer sends events an earlier launch left waiting. Setting `DO_NOT_TRACK`, or otherwise turning analytics off while Nodex was closed, now discards them as turning it off in Settings does.
