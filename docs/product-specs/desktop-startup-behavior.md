@@ -96,8 +96,9 @@ Windows storage and loader evidence are specified in the
 - Normal startup has no temporary BrowserWindow, startup-only preload, or startup renderer route.
 - Before post-Core activation, the renderer can use only the bootstrap IPC surface and cannot
   attach webviews, open popups, or navigate away from the app origin.
-- The startup JavaScript graph does not eagerly load React, Workbench, editor, diagnostics, or
-  telemetry code.
+- The startup JavaScript graph does not eagerly load React, Workbench, editor, Markdown WebAssembly,
+  diagnostics, or telemetry code. The Workbench initializes Markdown after native activation and
+  before loading the application renderer.
 - The production build enforces a 24 KiB inline-document budget and a 20 KiB gzip budget for eager
   renderer bootstrap JavaScript, including parser-time classic scripts.
 

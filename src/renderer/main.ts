@@ -1,26 +1,17 @@
-import markdownWasmUrl from "../shared/generated/nodex-markdown-wasm/nodex_markdown_bg.wasm?url";
-import { initMarkdown } from "../shared/nodex-markdown";
 import { initializeRendererDocument } from "./bootstrap/renderer-document";
 import { startStartupController } from "./bootstrap/startup-controller";
 
-const isGlobalDictationRenderer = (): boolean =>
-  new URLSearchParams(window.location.search).get("initialRoute") === "/global-dictation";
+initializeRendererDocument();
 
-const isAvatarOverlayRenderer = (): boolean =>
-  new URLSearchParams(window.location.search).get("initialRoute") === "/avatar-overlay";
-
-void initMarkdown(markdownWasmUrl).then(() => {
-  initializeRendererDocument();
-
-  if (isAvatarOverlayRenderer()) {
-    void import("./avatar-overlay-renderer").then(({ mountAvatarOverlayRenderer }) => {
-      mountAvatarOverlayRenderer();
-    });
-  } else if (isGlobalDictationRenderer()) {
-    void import("./global-dictation-renderer").then(({ mountGlobalDictationRenderer }) => {
-      mountGlobalDictationRenderer();
-    });
-  } else {
-    startStartupController();
-  }
-});
+const initialRoute = new URLSearchParams(window.location.search).get("initialRoute");
+if (initialRoute === "/avatar-overlay") {
+  void import("./avatar-overlay-renderer").then(({ mountAvatarOverlayRenderer }) => {
+    mountAvatarOverlayRenderer();
+  });
+} else if (initialRoute === "/global-dictation") {
+  void import("./global-dictation-renderer").then(({ mountGlobalDictationRenderer }) => {
+    mountGlobalDictationRenderer();
+  });
+} else {
+  startStartupController();
+}

@@ -13,15 +13,21 @@ export function shouldEmitSentrySourceMaps(): boolean {
 }
 
 export function createSentryPlugins() {
-  if (!hasSentrySourceMapUploadConfig()) return [];
+  const upload = hasSentrySourceMapUploadConfig();
+  const release = process.env.SENTRY_RELEASE?.trim() || undefined;
+  if (!release && !upload) return [];
 
   return sentryVitePlugin({
+    // Rehearse the same runtime instrumentation without contacting Sentry.
+    authToken: upload ? undefined : "",
     release: {
-      name: process.env.SENTRY_RELEASE?.trim() || undefined,
+      name: release,
+      create: upload,
+      finalize: upload,
     },
-    sourcemaps: {
-      filesToDeleteAfterUpload: "out/**/*.map",
-    },
+    sourcemaps: upload
+      ? { filesToDeleteAfterUpload: "out/**/*.map" }
+      : { disable: "disable-upload" },
     errorHandler: (error) => {
       throw error;
     },

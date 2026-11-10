@@ -6,6 +6,7 @@ import { startStartupController } from "./startup-controller";
 
 const mocks = vi.hoisted(() => ({
   initializeElectronRendererLocalCommitIngress: vi.fn(),
+  initializeRendererMarkdown: vi.fn<() => Promise<void>>(),
   initializeRendererSentry: vi.fn<() => Promise<void>>(),
   mountApplicationRenderer: vi.fn<() => Promise<void>>(),
   registerAppCloseFlushHandler: vi.fn<(handler: () => void) => () => void>(),
@@ -13,6 +14,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../application-renderer", () => ({
   mountApplicationRenderer: mocks.mountApplicationRenderer,
+}));
+
+vi.mock("./renderer-markdown", () => ({
+  initializeRendererMarkdown: mocks.initializeRendererMarkdown,
 }));
 
 vi.mock("../lib/app-close-flush", () => ({
@@ -93,6 +98,7 @@ describe("startup controller", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mocks.initializeElectronRendererLocalCommitIngress.mockReset();
+    mocks.initializeRendererMarkdown.mockReset().mockResolvedValue(undefined);
     mocks.initializeRendererSentry.mockReset().mockResolvedValue(undefined);
     mocks.mountApplicationRenderer.mockReset().mockResolvedValue(undefined);
     mocks.registerAppCloseFlushHandler.mockReset().mockReturnValue(() => undefined);
@@ -188,6 +194,7 @@ describe("startup controller", () => {
 
     await act(async () => Promise.resolve());
     expect(bridge.invoke).not.toHaveBeenCalled();
+    expect(mocks.initializeRendererMarkdown).not.toHaveBeenCalled();
     expect(mocks.mountApplicationRenderer).not.toHaveBeenCalled();
     expect(bridge.reportInitializationReady).not.toHaveBeenCalled();
 
@@ -208,6 +215,30 @@ describe("startup controller", () => {
       });
     });
     expect(mocks.mountApplicationRenderer).toHaveBeenCalledOnce();
+  });
+
+  test("offers startup recovery when Markdown initialization fails before the application mounts", async () => {
+    const bridge = installBridge();
+    mocks.initializeRendererMarkdown.mockRejectedValueOnce(new Error("Markdown could not load"));
+    const controller = startStartupController();
+
+    await act(async () => {
+      bridge.resolveInitialization();
+      await vi.waitFor(() => {
+        expect(bridge.reportInitializationReady).toHaveBeenCalledWith({
+          durationMs: expect.any(Number),
+          outcome: "failed",
+          timingsMs: {
+            native: expect.any(Number),
+            bootstrap: expect.any(Number),
+            modules: expect.any(Number),
+          },
+        });
+      });
+    });
+    expect(mocks.mountApplicationRenderer).not.toHaveBeenCalled();
+    expect(document.querySelector<HTMLButtonElement>("[data-startup-restart]")?.hidden).toBe(false);
+    controller.dispose();
   });
 
   test("reports the failed startup phase without mounting or inventing later timings", async () => {

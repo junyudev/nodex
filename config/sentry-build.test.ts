@@ -46,25 +46,39 @@ beforeAll(async () => {
   await build({
     stdin: {
       contents: `
-        import { mkdirSync, writeFileSync } from "node:fs";
+        import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
         import { join } from "node:path";
         import { runInNewContext } from "node:vm";
         import { createSentryPlugins } from "./config/sentry-build";
         import { calls } from "sentry";
         const main = async () => {
-          const [plugin] = createSentryPlugins();
+          const plugins = createSentryPlugins();
+          const [plugin] = plugins;
           const output = join(process.cwd(), "out", "main");
           mkdirSync(output, { recursive: true });
           const chunk = plugin.renderChunk("globalThis.fixtureValue = 42;", {
             fileName: "entry.js", isEntry: true, facadeModuleId: "entry.ts",
           });
+          const source = { type: "chunk", fileName: "entry.js", code: chunk.code };
+          const map = { type: "asset", fileName: "entry.js.map", source: String(chunk.map) };
+          const bundle = { [source.fileName]: source, [map.fileName]: map };
+          for (const { generateBundle } of plugins) generateBundle.handler({}, bundle);
           const context = {};
-          runInNewContext(chunk.code, context);
-          writeFileSync(join(output, "entry.js"), chunk.code);
-          writeFileSync(join(output, "entry.js.map"), String(chunk.map));
+          runInNewContext(source.code, context);
+          const mapPath = join(output, map.fileName);
+          writeFileSync(join(output, source.fileName), source.code);
+          writeFileSync(mapPath, map.source);
           try {
-            await plugin.writeBundle({ dir: output }, {});
-            console.log(JSON.stringify({ outcome: "resolved", calls, release: context.SENTRY_RELEASE?.id }));
+            await plugin.writeBundle({ dir: output }, bundle);
+            console.log(JSON.stringify({
+              outcome: "resolved",
+              calls,
+              release: context.SENTRY_RELEASE?.id,
+              debugId: Object.values(context._sentryDebugIds ?? {})[0],
+              retainedMapDebugId: existsSync(mapPath)
+                ? JSON.parse(readFileSync(mapPath, "utf8")).debug_id
+                : undefined,
+            }));
           } catch (error) {
             console.log(JSON.stringify({ outcome: "rejected", error: error.message, calls }));
             process.exitCode = 1;
@@ -98,7 +112,7 @@ async function runBuildHook(mode: string) {
       NODE_ENV: "production",
       SENTRY_AUTH_TOKEN: "fixture-only-token",
       SENTRY_ORG: "fixture-only-org",
-      SENTRY_PROJECT: "fixture-only-project",
+      ...(mode === "instrument-only" ? {} : { SENTRY_PROJECT: "fixture-only-project" }),
       SENTRY_RELEASE: "nodex@0.5.0",
     },
     timeout: 15_000,
@@ -112,6 +126,8 @@ async function runBuildHook(mode: string) {
     outcome: "resolved" | "rejected";
     error?: string;
     release?: string;
+    debugId?: string;
+    retainedMapDebugId?: string;
     calls: { operation: string; release: string; files?: number; debugId?: string }[];
   };
   return { ...result, receipt };
@@ -143,4 +159,20 @@ test("accepts uploaded debug-ID pairs for the same release injected into the app
     { operation: "upload", release: "nodex@0.5.0", files: 2, debugId: expect.any(String) },
   ]);
   expect(result.stdout).toContain("Successfully uploaded source maps to Sentry");
+});
+
+test("instruments release builds with matching debug IDs without upload credentials", async () => {
+  const [rehearsal, production] = await Promise.all([
+    runBuildHook("instrument-only"),
+    runBuildHook("success"),
+  ]);
+  expect(rehearsal.code).toBe(0);
+  expect(rehearsal.receipt).toMatchObject({
+    outcome: "resolved",
+    release: "nodex@0.5.0",
+    calls: [],
+    debugId: expect.any(String),
+  });
+  expect(rehearsal.receipt.debugId).toBe(production.receipt.debugId);
+  expect(rehearsal.receipt.retainedMapDebugId).toBe(rehearsal.receipt.debugId);
 });

@@ -671,9 +671,11 @@ A valid version transition runs this sequence:
     enclosure are checked after push.
 12. Upload the certified iOS build to TestFlight and submit it to the public beta.
 
-Sentry source maps are uploaded only by the production arm64 build. Main, preload,
-and renderer uploads use `SENTRY_RELEASE=nodex@<version>` so their app identity
-agrees. Release-registration and source-map upload errors fail the build.
+macOS distribution builds use `SENTRY_RELEASE=nodex@<version>` to inject the same
+release and debug ID instrumentation into main, preload, and renderer. Nightly
+and Rehearsal exercise the instrumented renderer startup budget without upload
+credentials. Only the production arm64 build registers the release and uploads
+source maps to Sentry. Either operation fails the build on error.
 Require the Sentry plugin's upload-success receipt for each target; the separate
 GitHub source-map artifact upload retains diagnostics and does not prove Sentry delivery.
 
