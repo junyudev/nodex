@@ -559,18 +559,18 @@ async function main(): Promise<void> {
     const quitNormally = async (): Promise<void> => {
       if (!application || desktopPid === undefined) throw new Error("Installed desktop is missing");
       const { descriptor } = readCoreRuntimeConnection(profile);
+      const quitTimeoutMs = 15_000;
       const quitStarted = Date.now();
       // Playwright requests app.quit() and detaches its debugger, but waits for
       // cmd.exe's stream closure too. Observe the exact Main and Core PIDs.
       const close = application.close();
       desktopCloses.push(close);
       void close.catch(() => undefined);
-      const coreExited = waitForProcessStopped(descriptor.pid, 5_000).then(
-        () => Date.now() - quitStarted,
-      );
+      // The Core drain has its own budget inside Main's shutdown sequence.
+      // From the quit request, both processes share the end-to-end deadline.
       const [coreExitMs] = await Promise.all([
-        coreExited,
-        waitForProcessStopped(desktopPid, 15_000),
+        waitForProcessStopped(descriptor.pid, quitTimeoutMs).then(() => Date.now() - quitStarted),
+        waitForProcessStopped(desktopPid, quitTimeoutMs),
       ]);
       normalQuitEvidence = {
         completed: true,

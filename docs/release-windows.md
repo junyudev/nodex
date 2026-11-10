@@ -252,8 +252,9 @@ focused. Showing and closing the last window must retain that same hidden window
 and live Core generation. `tray-lifecycle.json` records this evidence. The probe
 also verifies the per-user login command, writes a disabled Windows startup
 approval before install-over, verifies that it stays disabled, and checks both
-owned values are removed by uninstall. It then requests normal Electron quit and requires the selected Core to
-exit within five seconds and the exact Main PID within 15 seconds. It then
+owned values are removed by uninstall. It then requests normal Electron quit and requires the
+selected Core and exact Main PID to exit within 15 seconds of that request. This covers the full
+Main shutdown sequence, including the Core drain, and records the Core exit time separately. It then
 relaunches Desktop and force-terminates only Main, proving the same detached Core
 still answers authenticated health requests without Desktop. It installs over
 that running generation within three minutes, relaunches the installed app, and
