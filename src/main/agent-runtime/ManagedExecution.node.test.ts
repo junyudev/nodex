@@ -323,7 +323,15 @@ it.live(
           }),
           Effect.timeout("15 seconds"),
         );
-        const second = yield* f.start("Pause Beta");
+        // The fixture holds the first turn of each provider until interrupted.
+        const second = yield* f.start("Pause Beta", "codex-beta");
+        yield* f.runtime.request("thread.execution", { threadId: second.threadId }).pipe(
+          Effect.repeat({
+            until: (e) => e.status === "running",
+            schedule: Schedule.spaced("20 millis"),
+          }),
+          Effect.timeout("15 seconds"),
+        );
         yield* f.runtime.request("thread.send", {
           threadId: first.threadId,
           commandId: "continue:alpha",
