@@ -1,3 +1,5 @@
+import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplication";
+import { turnSessionFolderIntoProject } from "../../project-application/SessionFolderProjects";
 import { SessionFolders } from "../../agent-backend/SessionFolders";
 import { AgentChatWorktrees } from "../../codex-application/AgentChatWorktrees";
 import { sessionFolderFromCore } from "../../core-client/project-workspace-adapter";
@@ -7,6 +9,8 @@ import {
 } from "../../../shared/schemas/session-order";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as RcMap from "effect/RcMap";
+import * as Semaphore from "effect/Semaphore";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent, OpenDialogOptions } from "electron";
 import type { IpcApi } from "../../../shared/ipc-api";
@@ -75,6 +79,7 @@ export const live: Layer.Layer<
   | ProjectSessionCommands
   | SessionFolders
   | AgentChatWorktrees
+  | AgentRuntimeApplication
   | ProjectWorkspace
   | WindowRuntime
 > = Layer.effectDiscard(
@@ -88,8 +93,20 @@ export const live: Layer.Layer<
     const projectSessions = yield* ProjectSessionCommands;
     const folders = yield* SessionFolders;
     const agentChats = yield* AgentChatWorktrees;
+    const agentRuntime = yield* AgentRuntimeApplication;
+    const readExecutionCwd = (threadId: string) =>
+      agentChats.source.pipe(
+        Effect.flatMap((source) => source.location(threadId)),
+        Effect.map((location) => location?.cwd ?? null),
+      );
     const projects = yield* ProjectWorkspace;
     const windows = yield* WindowRuntime;
+    const folderLanes = yield* RcMap.make({ lookup: (_sessionId: string) => Semaphore.make(1) });
+    const withFolderSelection = <A, E>(sessionId: string, effect: Effect.Effect<A, E>) =>
+      Effect.scoped(
+        RcMap.get(folderLanes, sessionId).pipe(Effect.flatMap((lane) => lane.withPermit(effect))),
+      );
+
     const syncSectionsAfter = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(Effect.tap(() => sectionSync.request("local-mutation")));
     const { handleLocalCommitCommand, handlePlainCommand } = ipc;
@@ -567,21 +584,38 @@ export const live: Layer.Layer<
     yield* handlePlainCommand("session-folder:ensure", (event, sessionId) =>
       authorize(event).pipe(
         Effect.andThen(
-          folders.ensure(sessionId, {
-            readExecutionCwd: (threadId) =>
-              agentChats.source.pipe(
-                Effect.flatMap((source) => source.location(threadId)),
-                Effect.map((location) => location?.cwd ?? null),
-              ),
-          }),
+          withFolderSelection(sessionId, folders.ensure(sessionId, { readExecutionCwd })),
         ),
         Effect.map(sessionFolderFromCore),
       ),
     );
     yield* handlePlainCommand("session-folder:choose", (event, sessionId, path) =>
       authorize(event).pipe(
-        Effect.andThen(folders.choose(sessionId, path)),
+        Effect.andThen(withFolderSelection(sessionId, folders.choose(sessionId, path))),
         Effect.map(sessionFolderFromCore),
+      ),
+    );
+    yield* handlePlainCommand("session-folder:reset", (event, sessionId) =>
+      authorize(event).pipe(
+        Effect.andThen(withFolderSelection(sessionId, folders.reset(sessionId))),
+      ),
+    );
+    yield* handlePlainCommand("session-folder:turn-into-project", (event, sessionId, input) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          withFolderSelection(
+            sessionId,
+            turnSessionFolderIntoProject({
+              sessionId,
+              name: typeof input?.name === "string" ? input.name : undefined,
+              folders,
+              projects,
+              move: agentRuntime.moveSession,
+              readExecutionCwd,
+            }),
+          ),
+        ),
+        Effect.tap(() => sectionSync.request("local-mutation")),
       ),
     );
     yield* handleLocalCommitCommand("project-sessions:delete", (event, command) =>

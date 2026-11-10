@@ -8701,6 +8701,10 @@ export interface components {
                 readonly session_id: string;
             } | {
                 /** @enum {string} */
+                readonly kind: "reset_chat_folder";
+                readonly session_id: string;
+            } | {
+                /** @enum {string} */
                 readonly kind: "delete_session";
                 readonly session_id: string;
             } | {
@@ -12051,6 +12055,10 @@ export interface components {
             readonly session_id: string;
         } | {
             /** @enum {string} */
+            readonly kind: "reset_chat_folder";
+            readonly session_id: string;
+        } | {
+            /** @enum {string} */
             readonly kind: "delete_session";
             readonly session_id: string;
         } | {
@@ -13880,6 +13888,7 @@ export interface components {
                     readonly inbox_created_page_ids?: readonly string[];
                     readonly inbox_undo_token?: string | null;
                     readonly inbox_write?: components["schemas"]["InboxWriteResult"] | null;
+                    readonly replaced_chat_folder?: components["schemas"]["ChatFolder"] | null;
                 };
                 readonly receipt: components["schemas"]["ModuleMutationReceipt"] & {
                     readonly affected_project_ids: readonly string[];
@@ -13899,6 +13908,7 @@ export interface components {
                     readonly inbox_created_page_ids?: readonly string[];
                     readonly inbox_undo_token?: string | null;
                     readonly inbox_write?: components["schemas"]["InboxWriteResult"] | null;
+                    readonly replaced_chat_folder?: components["schemas"]["ChatFolder"] | null;
                 };
                 readonly receipt: components["schemas"]["ModuleMutationReceipt"] & {
                     readonly affected_project_ids: readonly string[];

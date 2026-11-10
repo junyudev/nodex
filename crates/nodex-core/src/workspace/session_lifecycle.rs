@@ -696,8 +696,8 @@ fn finish_lifecycle_mutation_with_folders(
         request_hash,
         &committed_at,
         super::mutation::FolderMutationResult {
-            bound: None,
             deleted: deleted_folders,
+            ..Default::default()
         },
         |scope| {
             super::page_chat::advance_handed_off_pages(

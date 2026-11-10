@@ -48,22 +48,25 @@ pub(super) fn read(
     ).optional()?.flatten())
 }
 
-/// A fork can still use a generated directory after its original Chat is deleted.
+/// A Project, Chat folder or native Thread can keep the directory in use.
 pub(super) fn still_referenced(
     connection: &Connection,
     folder: &ChatFolder,
 ) -> Result<bool, StoreError> {
     Ok(connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM project_session_chat_folders WHERE execution_host_id = ?1 AND path = ?2)
+        "SELECT EXISTS(SELECT 1 FROM project_session_chat_folders WHERE execution_host_id = ?1
+                   AND (path = ?2 OR instr(path, ?2 || '/') = 1 OR instr(path, ?2 || char(92)) = 1))
              OR EXISTS(SELECT 1 FROM project_session_threads link JOIN codex_threads thread ON thread.thread_id = link.thread_id
-                       WHERE thread.execution_host_id = ?1 AND thread.cwd = ?2)",
+                       WHERE thread.execution_host_id = ?1 AND thread.cwd = ?2)
+             OR EXISTS(SELECT 1 FROM project_sources WHERE ?1 = 'local'
+                       AND (root = ?2 OR instr(root, ?2 || '/') = 1 OR instr(root, ?2 || char(92)) = 1))",
         params![folder.execution_host_id, folder.path],
         |row| row.get(0),
     )?)
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn bind(
+pub(super) fn change(
     connection: &Connection,
     library_id: &str,
     context: &BoundModuleContext,
@@ -71,19 +74,12 @@ pub(super) fn bind(
     operation_id: &str,
     request_hash: &str,
     session_id: &str,
-    folder: &ChatFolder,
+    folder: Option<&ChatFolder>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     super::agent_runtime_binding::require_host(context)?;
     validate_id("session_id", session_id)?;
-    validate_id("execution_host_id", &folder.execution_host_id)?;
-    for path in std::iter::once(folder.path.as_str()).chain(folder.output_directory.as_deref()) {
-        if path.contains('\0') || !super::execution::valid_workspace_root(path) {
-            return Err(StoreError::new(
-                StoreErrorCode::InvalidInput,
-                "Chat folder paths must be absolute",
-                false,
-            ));
-        }
+    if let Some(folder) = folder {
+        validate_folder(folder)?;
     }
     let authority = require_session(connection, library_id, session_id)?;
     if let Some(project_id) = &authority.project_id {
@@ -98,8 +94,8 @@ pub(super) fn bind(
             return Err(conflict("This chat uses its Project folder"));
         }
     }
-    let existing = read(connection, session_id)?;
-    if folder.origin == ChatFolderOrigin::Chosen {
+    let generated = folder.is_some_and(|folder| folder.origin == ChatFolderOrigin::Generated);
+    if !generated {
         require(
             connection,
             library_id,
@@ -109,38 +105,58 @@ pub(super) fn bind(
         )?;
         if authority.thread_id.is_some()
             || connection.query_row(
-                    "SELECT EXISTS(SELECT 1 FROM project_session_execution_bindings WHERE session_id = ?1)",
-                    [session_id], |row| row.get::<_, bool>(0),
-                )?
+                "SELECT EXISTS(SELECT 1 FROM project_session_execution_bindings WHERE session_id = ?1)",
+                [session_id], |row| row.get::<_, bool>(0),
+            )?
         {
-            return Err(conflict("Choose a Chat folder before the chat starts"));
+            return Err(conflict("Change the Chat folder before the chat starts"));
         }
     }
+    let existing = read(connection, session_id)?;
     let now = sqlite_now(connection)?;
     let project_ids: Vec<_> = authority.project_id.iter().cloned().collect();
     let session_ids = vec![session_id.to_owned()];
-    if let Some(existing) = existing {
+    let operation_kind = if folder.is_some() {
+        "bind_chat_folder"
+    } else {
+        "reset_chat_folder"
+    };
+    if existing.as_ref() == folder || (generated && existing.is_some()) {
         return finish_no_op_with_folder(
             connection,
             context,
             store_epoch,
             operation_id,
             request_hash,
-            "bind_chat_folder",
+            operation_kind,
             project_ids,
             session_ids,
             &now,
-            Some(existing),
+            existing,
         );
     }
-    let origin = match folder.origin {
-        ChatFolderOrigin::Generated => "generated",
-        ChatFolderOrigin::Chosen => "chosen",
-    };
-    connection.execute(
-        "INSERT INTO project_session_chat_folders(session_id, execution_host_id, path, output_directory, origin) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![session_id, folder.execution_host_id, folder.path, folder.output_directory, origin],
-    )?;
+    if let Some(folder) = folder {
+        let origin = if generated { "generated" } else { "chosen" };
+        connection.execute(
+            "INSERT INTO project_session_chat_folders(session_id, execution_host_id, path, output_directory, origin)
+             VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(session_id) DO UPDATE SET
+             execution_host_id = excluded.execution_host_id, path = excluded.path,
+             output_directory = excluded.output_directory, origin = excluded.origin",
+            params![session_id, folder.execution_host_id, folder.path, folder.output_directory, origin],
+        )?;
+    } else {
+        connection.execute(
+            "DELETE FROM project_session_chat_folders WHERE session_id = ?1",
+            [session_id],
+        )?;
+    }
+    let mut deleted = Vec::new();
+    if let Some(previous) = &existing
+        && previous.origin == ChatFolderOrigin::Generated
+        && !still_referenced(connection, previous)?
+    {
+        deleted.push(previous.clone());
+    }
     run_mutation_with_folder_result(
         connection,
         context,
@@ -149,12 +165,13 @@ pub(super) fn bind(
         request_hash,
         &now,
         FolderMutationResult {
-            bound: Some(folder.clone()),
-            deleted: Vec::new(),
+            bound: folder.cloned(),
+            replaced: existing,
+            deleted,
         },
         |_| {
             Ok(WorkspaceMutationEffects {
-                operation_kind: "bind_chat_folder",
+                operation_kind,
                 project_catalog_change: None,
                 change_project_id: authority.project_id.clone(),
                 project_ids,
@@ -175,6 +192,20 @@ pub(super) fn bind(
             })
         },
     )
+}
+
+fn validate_folder(folder: &ChatFolder) -> Result<(), StoreError> {
+    validate_id("execution_host_id", &folder.execution_host_id)?;
+    for path in std::iter::once(folder.path.as_str()).chain(folder.output_directory.as_deref()) {
+        if path.contains('\0') || !super::execution::valid_workspace_root(path) {
+            return Err(StoreError::new(
+                StoreErrorCode::InvalidInput,
+                "Chat folder paths must be absolute",
+                false,
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn conflict(message: &str) -> StoreError {
@@ -239,7 +270,7 @@ mod tests {
                 &context(),
                 request(
                     "other",
-                    binding("draft", folder("/another", ChatFolderOrigin::Chosen)),
+                    binding("draft", folder("/another", ChatFolderOrigin::Generated)),
                 ),
             )
             .unwrap();
@@ -297,6 +328,106 @@ mod tests {
     }
 
     #[test]
+    fn chat_folder_choice_replaces_a_draft_and_reset_returns_its_displaced_record() {
+        let store = seeded_workspace();
+        let module = &store.module;
+        apply(module, "create", session("draft", None));
+        let generated = folder("/Chats/generated", ChatFolderOrigin::Generated);
+        let chosen = folder("/chosen", ChatFolderOrigin::Chosen);
+        let other = folder("/other", ChatFolderOrigin::Chosen);
+        apply(module, "generate", binding("draft", generated.clone()));
+        let result = module
+            .apply(
+                &context(),
+                request("choose", binding("draft", chosen.clone())),
+            )
+            .unwrap();
+        assert_eq!(result.committed.value.chat_folder.as_ref(), Some(&chosen));
+        assert_eq!(
+            result.committed.value.replaced_chat_folder.as_ref(),
+            Some(&generated)
+        );
+        assert_eq!(
+            result.committed.value.deleted_chat_folders,
+            vec![generated.clone()]
+        );
+        let result = module
+            .apply(
+                &context(),
+                request("choose-another", binding("draft", other.clone())),
+            )
+            .unwrap();
+        assert_eq!(result.committed.value.replaced_chat_folder, Some(chosen));
+        assert!(result.committed.value.deleted_chat_folders.is_empty());
+
+        let reset = || Intent::ResetChatFolder {
+            session_id: "draft".into(),
+        };
+        let result = module.apply(&context(), request("reset", reset())).unwrap();
+        assert_eq!(result.committed.value.replaced_chat_folder, Some(other));
+        assert!(result.committed.value.chat_folder.is_none());
+        let repeated = module
+            .apply(&context(), request("reset-again", reset()))
+            .unwrap();
+        assert!(repeated.event.is_none());
+        apply(
+            module,
+            "generate-again",
+            binding("draft", generated.clone()),
+        );
+        let result = module
+            .apply(&context(), request("reset-generated", reset()))
+            .unwrap();
+        assert_eq!(result.committed.value.deleted_chat_folders, vec![generated]);
+    }
+
+    #[test]
+    fn chat_folder_used_as_a_project_source_survives_session_deletion() {
+        let store = seeded_workspace();
+        let module = &store.module;
+        apply(module, "create", session("draft", None));
+        let directory = nodex_platform::fixture_path!("/Chats/generated");
+        apply(
+            module,
+            "bind",
+            binding("draft", folder(directory, ChatFolderOrigin::Generated)),
+        );
+        apply(
+            module,
+            "create-project",
+            Intent::CreateProject {
+                project_id: "project:folder".into(),
+                name: "Folder".into(),
+                description: String::new(),
+                appearance: None,
+                source_roots: vec![directory.into()],
+                page_key_prefix: None,
+            },
+        );
+        apply(
+            module,
+            "move",
+            Intent::MoveSession {
+                session_id: "draft".into(),
+                project_id: Some("project:folder".into()),
+                placement: None,
+            },
+        );
+        let result = module
+            .apply(
+                &context(),
+                request(
+                    "delete",
+                    Intent::DeleteSession {
+                        session_id: "draft".into(),
+                    },
+                ),
+            )
+            .unwrap();
+        assert!(result.committed.value.deleted_chat_folders.is_empty());
+    }
+
+    #[test]
     fn chat_folder_bind_checks_project_sources_paths_and_execution_binding() {
         let store = seeded_workspace();
         let module = &store.module;
@@ -349,6 +480,19 @@ mod tests {
                 .apply(
                     &context(),
                     request("late", binding("draft", chosen.clone()))
+                )
+                .is_err()
+        );
+        assert!(
+            module
+                .apply(
+                    &context(),
+                    request(
+                        "reset-after-start",
+                        Intent::ResetChatFolder {
+                            session_id: "draft".into()
+                        }
+                    )
                 )
                 .is_err()
         );

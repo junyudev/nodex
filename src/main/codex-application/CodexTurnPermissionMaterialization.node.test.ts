@@ -120,6 +120,8 @@ const prepare = (
 ) =>
   make.pipe(
     Effect.provideService(SessionFolders, {
+      existing: () => Effect.die("unused"),
+      reset: () => Effect.die("unused"),
       ensure: (sessionId) =>
         Effect.sync(() => {
           assert.equal(sessionId, "permission-session");

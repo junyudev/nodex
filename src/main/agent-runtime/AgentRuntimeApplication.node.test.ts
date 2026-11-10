@@ -1075,6 +1075,13 @@ const setup = (
         state.storeCoordinate = (input as { coordinate: string }).coordinate;
         return { recorded: true } as AgentRuntimeOperations[M]["output"];
       }
+      if (method === "execution.workspace-in-use") {
+        const { path } = input as AgentRuntimeOperations["execution.workspace-in-use"]["input"];
+        const inUse = [...snapshots.values()].some(
+          ({ projection: { thread } }) => thread.deletedAt === null && thread.worktreePath === path,
+        );
+        return { inUse } as AgentRuntimeOperations[M]["output"];
+      }
       if (method === "execution.roots") {
         const request = input as { cursor?: string; limit?: number };
         const roots = [...snapshots.values()]
@@ -1365,6 +1372,10 @@ const setup = (
         return yield* Effect.fail(new Error("Core rejected Session mutation"));
       return { value: yield* Effect.try(mutate), apply: {} as never };
     }).pipe(Effect.mapError((cause) => new ProjectWorkspaceError({ operation: method, cause })));
+  const deletedChatFolders = new Map<
+    string,
+    import("@nodex/core-protocol").components["schemas"]["ChatFolder"]
+  >();
   const owner = make({
     ...options,
     nativeImportSourceHome:
@@ -1448,7 +1459,29 @@ const setup = (
           if (state.failDeleteAcknowledgment)
             throw new Error("Core reply lost after committed deletion");
           return true;
-        }),
+        }).pipe(
+          Effect.map(({ value }) => ({
+            value,
+            apply: {
+              status: "no_op",
+              observed: { commit_head: 0, store_epoch: "epoch" },
+              receipt: {
+                duplicate: false,
+                operation_id: command.operationId,
+                affected_project_ids: [],
+                affected_session_ids: [command.payload.sessionId],
+              },
+              outcome: {
+                affected_project_ids: [],
+                affected_session_ids: [command.payload.sessionId],
+                affected_thread_ids: [],
+                deleted_chat_folders: deletedChatFolders.has(command.payload.sessionId)
+                  ? [deletedChatFolders.get(command.payload.sessionId)!]
+                  : [],
+              },
+            } satisfies import("../core-client/types").ProjectWorkspaceApplyResult,
+          })),
+        ),
     } satisfies Partial<ProjectWorkspace["Service"]> as unknown as ProjectWorkspace["Service"]),
     Effect.provideService(ProjectRuntimeLifecycleRuntime, {
       runExclusive: (_projectId, operation) =>
@@ -1481,6 +1514,7 @@ const setup = (
     order,
     state,
     cleanups,
+    deletedChatFolders,
   };
 };
 
@@ -3243,6 +3277,50 @@ it.effect(
       yield* owner.deleteSession(target);
       assert.deepEqual(fixture.calls, []);
       assert.equal(fixture.cleanups.size, 0);
+    }),
+);
+
+it.effect.each([true, false])(
+  "deletion cleans an empty folder only when Runtime execution released it (fork: %s)",
+  (forked) =>
+    Effect.gen(function* () {
+      const directory = "/tasks/shared";
+      const cleaned: string[] = [];
+      const f = setup({
+        cleanDeletedChatFolders: (folders) =>
+          Effect.sync(() => {
+            cleaned.push(...folders.map((folder) => folder.path));
+          }),
+      });
+      const owner = yield* f.owner;
+      const source = yield* owner.launch({ ...launch, projectId: null, worktreePath: directory });
+      if (forked) {
+        const snapshot = f.snapshots.get(source.threadId)!;
+        f.snapshots.set(source.threadId, {
+          ...snapshot,
+          projection: {
+            ...snapshot.projection,
+            runs: [{ id: "run:source", ordinal: 1, status: "completed" } as never],
+          },
+        });
+        yield* owner.fork({
+          source: { sessionId: source.sessionId },
+          sessionId: "session:fork",
+          requestId: "fork:request",
+          acceptedAt: launch.acceptedAt,
+          environment: "same-directory",
+        });
+      }
+      f.deletedChatFolders.set(source.sessionId, {
+        execution_host_id: "local",
+        path: directory,
+        origin: "generated",
+      });
+      yield* owner.deleteSession({
+        operationId: "delete",
+        payload: { sessionId: source.sessionId },
+      });
+      assert.deepEqual(cleaned, forked ? [] : [directory]);
     }),
 );
 

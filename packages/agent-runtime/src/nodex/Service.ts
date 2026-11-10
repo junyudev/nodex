@@ -173,6 +173,7 @@ const VoiceClaim = { claimId: Schema.String, source: NativeSource };
 const AgentRequest = Schema.Union([
   ...AcpManagement.Request.members,
   request("execution.roots", ExecutionRoots.Input),
+  request("execution.workspace-in-use", ExecutionRoots.WorkspaceInUseInput),
   request(
     "insights.read",
     Schema.Struct({
@@ -1088,6 +1089,10 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
               : { terminalCursor: input.input.terminalCursor }),
           })
           .pipe(Effect.flatMap(encodeOverview));
+      case "execution.workspace-in-use":
+        return yield* ExecutionRoots.workspaceInUse(input.input).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+        );
       case "execution.roots":
         return yield* ExecutionRoots.read(input.input).pipe(
           Effect.provideService(SqlClient.SqlClient, sql),

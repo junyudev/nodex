@@ -37,13 +37,38 @@ const fixture = (config: Partial<MainConfigValue>, projectlessRoot?: string) => 
           },
         } as ProjectWorkspaceReadSnapshot;
       }),
-    apply: ({ intent }) =>
+    apply: ({ intent, operationId }) =>
       Effect.sync(() => {
-        if (intent.kind !== "bind_chat_folder") throw new Error("Expected a Chat folder bind");
-        candidates += 1;
-        const winner = folders.get(intent.session_id) ?? intent.folder;
-        folders.set(intent.session_id, winner);
-        return { outcome: { chat_folder: winner } } as ProjectWorkspaceApplyResult;
+        if (intent.kind !== "bind_chat_folder" && intent.kind !== "reset_chat_folder")
+          throw new Error("Expected a Chat folder mutation");
+        const previous = folders.get(intent.session_id);
+        const next =
+          intent.kind === "reset_chat_folder"
+            ? undefined
+            : intent.folder.origin === "generated" && previous
+              ? previous
+              : intent.folder;
+        if (intent.kind === "bind_chat_folder") candidates += 1;
+        if (next) folders.set(intent.session_id, next);
+        else folders.delete(intent.session_id);
+        return {
+          status: "no_op",
+          observed: { commit_head: 0, store_epoch: "epoch" },
+          receipt: {
+            duplicate: false,
+            operation_id: operationId,
+            affected_project_ids: [],
+            affected_session_ids: [intent.session_id],
+          },
+          outcome: {
+            affected_project_ids: [],
+            affected_session_ids: [intent.session_id],
+            affected_thread_ids: [],
+            chat_folder: next,
+            deleted_chat_folders:
+              previous?.origin === "generated" && previous.path !== next?.path ? [previous] : [],
+          },
+        } satisfies ProjectWorkspaceApplyResult;
       }),
   } satisfies Pick<CoreModules["Service"]["workspace"], "read" | "apply">;
   const service = make.pipe(
@@ -143,5 +168,27 @@ it.effect("an isolated run generates Chat folders in its own home", () =>
     const service = yield* fixture({ nodexHome: root, isolatedRunId: "chat-folder-test" }).service;
     const folder = yield* service.ensure("draft");
     assert.equal(path.dirname(path.dirname(folder.path)), path.join(root, "workspace", "Chats"));
+  }),
+);
+
+it.effect("changing and resetting a draft folder removes only empty generated directories", () =>
+  Effect.gen(function* () {
+    const root = yield* tempDirectory;
+    const chosen = path.join(root, "chosen");
+    yield* Effect.promise(() => mkdir(chosen));
+    const service = yield* fixture({ projectsDirectory: root }).service;
+    const generated = yield* service.ensure("draft");
+    const picked = yield* service.choose("draft", chosen);
+    assert.equal(picked.path, chosen);
+    assert.isFalse(yield* exists(generated.path));
+    yield* service.reset("draft");
+    assert.isNull(yield* service.existing("draft"));
+    assert.isTrue(yield* exists(chosen));
+    const second = yield* service.ensure("draft");
+    const file = path.join(second.path, "outputs", "report.txt");
+    yield* Effect.promise(() => writeFile(file, "keep"));
+    yield* service.reset("draft");
+    assert.isNull(yield* service.existing("draft"));
+    assert.isTrue(yield* exists(file));
   }),
 );

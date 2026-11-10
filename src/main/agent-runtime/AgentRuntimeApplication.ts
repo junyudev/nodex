@@ -3836,20 +3836,51 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   ) {
     const result = yield* workspace.deleteProjectSession(command);
     yield* options.releaseDesktopSession?.(command.payload.sessionId) ?? Effect.void;
-    if (options.cleanDeletedChatFolders && !result.apply.receipt.duplicate)
-      yield* options.cleanDeletedChatFolders(result.apply.outcome.deleted_chat_folders ?? []);
     return result;
   });
+  const cleanDeletedChatFolders = Effect.fn("AgentRuntimeApplication.cleanDeletedChatFolders")(
+    function* (
+      result: Effect.Success<ReturnType<typeof deleteSessionContent>>,
+      runtime: Effect.Effect<AgentRuntimeApplicationConnection, unknown> | null,
+    ) {
+      const clean = options.cleanDeletedChatFolders;
+      if (!clean || result.apply.receipt.duplicate) return;
+      const candidates = result.apply.outcome.deleted_chat_folders ?? [];
+      if (candidates.length === 0) return;
+      if (!runtime) {
+        yield* clean(candidates);
+        return;
+      }
+      const unused = yield* Effect.gen(function* () {
+        const connection = yield* runtime;
+        return yield* Effect.filter(candidates, (folder) =>
+          connection
+            .request("execution.workspace-in-use", { path: folder.path })
+            .pipe(Effect.map((usage) => !usage.inUse)),
+        );
+      }).pipe(
+        Effect.catch((cause) =>
+          Effect.logWarning(
+            "Could not check whether a deleted Chat folder is still in use",
+            cause,
+          ).pipe(Effect.as([])),
+        ),
+      );
+      yield* clean(unused);
+    },
+  );
   const deleteSession = Effect.fn("AgentRuntimeApplication.deleteSession")(function* (
     command: ProjectSessionDeleteCommandInput,
   ) {
     const result = yield* deleteSessionContent(command);
-    if (!options.runtimeExists || (yield* options.runtimeExists))
+    const runtimeExists = !options.runtimeExists || (yield* options.runtimeExists);
+    if (runtimeExists)
       yield* afterCommit(
         command.operationId,
         "delete-session",
         asExecutionOwner(cleanupDeletedSessions()),
       );
+    yield* cleanDeletedChatFolders(result, runtimeExists ? options.connect : null);
     return result;
   });
 
@@ -3893,7 +3924,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             const binding = found.value.binding;
             if (root.deleted) {
               if (!binding) return;
-              yield* deleteSessionContent({
+              const deleted = yield* deleteSessionContent({
                 operationId: createDueWorkOperationId(
                   "agent-runtime.retire",
                   `${coordinate}:${root.rootThreadId}`,
@@ -3901,6 +3932,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
                 ),
                 payload: { sessionId: binding.session_id },
               });
+              yield* cleanDeletedChatFolders(deleted, Effect.succeed(connection));
               return;
             }
             if (pending.has(root.rootThreadId)) return;

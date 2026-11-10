@@ -35517,6 +35517,24 @@
                   "kind": {
                     "type": "string",
                     "enum": [
+                      "reset_chat_folder"
+                    ]
+                  },
+                  "session_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "session_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
                       "delete_session"
                     ]
                   },
@@ -49744,6 +49762,24 @@
               "kind": {
                 "type": "string",
                 "enum": [
+                  "reset_chat_folder"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
                   "delete_session"
                 ]
               },
@@ -58238,6 +58274,16 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "replaced_chat_folder": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/ChatFolder"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       },
@@ -58357,6 +58403,16 @@
                             "oneOf": [
                               {
                                 "$ref": "#/components/schemas/InboxWriteResult"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "replaced_chat_folder": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/ChatFolder"
                               },
                               {
                                 "type": "null"

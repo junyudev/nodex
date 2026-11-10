@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 82;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 83;
 
 /// Host-only admission: the model chooses an opaque key, never a clock or operation envelope.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -2358,6 +2358,9 @@ pub enum ProjectWorkspaceIntent {
         session_id: String,
         folder: ChatFolder,
     },
+    ResetChatFolder {
+        session_id: String,
+    },
     DeleteSession {
         session_id: String,
     },
@@ -2875,6 +2878,8 @@ pub struct InboxWriteResult {
 pub struct ProjectWorkspaceCommitValue {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chat_folder: Option<ChatFolder>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replaced_chat_folder: Option<ChatFolder>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub deleted_chat_folders: Vec<ChatFolder>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

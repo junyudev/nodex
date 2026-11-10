@@ -892,9 +892,13 @@ pub(super) fn apply(
                     project_id.as_deref(),
                     title,
                 ),
-                ProjectWorkspaceIntent::BindChatFolder { session_id, folder } => super::chat_folder::bind(
+                ProjectWorkspaceIntent::BindChatFolder { session_id, folder } => super::chat_folder::change(
                     transaction, &library_id, &context, &store_epoch, &request.operation_id,
-                    &request_hash, session_id, folder,
+                    &request_hash, session_id, Some(folder),
+                ),
+                ProjectWorkspaceIntent::ResetChatFolder { session_id } => super::chat_folder::change(
+                    transaction, &library_id, &context, &store_epoch, &request.operation_id,
+                    &request_hash, session_id, None,
                 ),
                 ProjectWorkspaceIntent::DeleteSession { session_id } => {
                     session_lifecycle::delete_session(
@@ -1453,6 +1457,7 @@ pub(super) fn run_mutation(
 #[derive(Default)]
 pub(super) struct FolderMutationResult {
     pub(super) bound: Option<nodex_core_contracts::workspace::ChatFolder>,
+    pub(super) replaced: Option<nodex_core_contracts::workspace::ChatFolder>,
     pub(super) deleted: Vec<nodex_core_contracts::workspace::ChatFolder>,
 }
 
@@ -1566,6 +1571,7 @@ pub(super) fn finish_no_op_with_folder(
             let committed = crate::ModuleWriterResult {
                 value: ProjectWorkspaceCommitValue {
                     chat_folder: folder,
+                    replaced_chat_folder: None,
                     deleted_chat_folders: Vec::new(),
                     inbox_write: None,
                     inbox_created_page_ids: Vec::new(),
@@ -1774,6 +1780,7 @@ fn seal_mutation_with_result(
     let committed = crate::ModuleWriterResult {
         value: ProjectWorkspaceCommitValue {
             chat_folder: folders.bound,
+            replaced_chat_folder: folders.replaced,
             deleted_chat_folders: folders.deleted,
             inbox_write: if matches!(effects.operation_kind, "inbox_write" | "inbox_write_replay") {
                 effects.page_ids.first().map(|id| {

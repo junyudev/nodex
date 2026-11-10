@@ -32,6 +32,8 @@ const threadId = "thread-steering";
 const prepare = (canonical: CodexCanonicalConversationState | null) =>
   make.pipe(
     Effect.provideService(SessionFolders, {
+      existing: () => Effect.die("unused"),
+      reset: () => Effect.die("unused"),
       ensure: () => Effect.die("unused"),
       choose: () => Effect.die("unused"),
       cleanDeleted: () => Effect.void,

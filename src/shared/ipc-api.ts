@@ -1310,6 +1310,11 @@ export interface IpcApi
   };
   "session-folder:ensure": { args: [sessionId: string]; result: SessionFolder };
   "session-folder:choose": { args: [sessionId: string, path: string]; result: SessionFolder };
+  "session-folder:reset": { args: [sessionId: string]; result: void };
+  "session-folder:turn-into-project": {
+    args: [sessionId: string, input: { name?: string }];
+    result: { projectId: string };
+  };
   "project-sessions:delete": {
     args: [command: ProjectSessionDeleteCommandInput];
     result: CoreLocalCommitResult<boolean>;

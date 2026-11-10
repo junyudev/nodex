@@ -1,3 +1,4 @@
+import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplication";
 import { SessionFolders } from "../../agent-backend/SessionFolders";
 import { live as agentChatWorktreesLive } from "../../codex-application/AgentChatWorktrees";
 import type { CreatePageForCommand } from "../../../shared/workspace-page-create";
@@ -222,7 +223,13 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
           Layer.mergeAll(
             Layer.succeed(ProjectWorkspace, workspace),
             agentChatWorktreesLive,
+            Layer.succeed(AgentRuntimeApplication, {} as AgentRuntimeApplication["Service"]),
             Layer.succeed(SessionFolders, {
+              existing: () => Effect.die("unused"),
+              reset: (sessionId) =>
+                Effect.sync(() => {
+                  assert.equal(sessionId, "session:test");
+                }),
               ensure: (sessionId) =>
                 Effect.sync(() => {
                   assert.equal(sessionId, "session:test");
@@ -305,7 +312,16 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       ),
     );
 
-    assert.strictEqual(handlers.size, 58);
+    yield* handlers.get("session-folder:reset")!(rendererEvent(17), "session:test");
+    assert.isTrue(
+      yield* handlers.get("session-folder:turn-into-project")!(
+        rendererEvent(99),
+        "session:test",
+        {},
+      ).pipe(Effect.isFailure),
+    );
+
+    assert.strictEqual(handlers.size, 60);
     assert.isTrue(handlers.has("projects:create"));
     assert.isTrue(handlers.has("project-sessions:start"));
     assert.isTrue(handlers.has("project-sessions:set-reminder"));

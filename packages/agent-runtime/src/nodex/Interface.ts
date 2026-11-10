@@ -438,6 +438,10 @@ export interface AgentRuntimeOperations
     };
     readonly output: AgentSubagentOverview;
   };
+  readonly "execution.workspace-in-use": {
+    readonly input: { readonly path: string };
+    readonly output: { readonly inUse: boolean };
+  };
   readonly "execution.roots": {
     readonly input: { readonly cursor?: string; readonly limit?: number };
     readonly output: {

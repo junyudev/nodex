@@ -44,6 +44,11 @@ export class SessionFolders extends Context.Service<
       sessionId: string,
       options?: EnsureOptions,
     ) => Effect.Effect<Folder, SessionFolderError>;
+    readonly existing: (
+      sessionId: string,
+      options?: Pick<EnsureOptions, "readExecutionCwd">,
+    ) => Effect.Effect<Folder | null, SessionFolderError>;
+    readonly reset: (sessionId: string) => Effect.Effect<void, SessionFolderError>;
     readonly choose: (
       sessionId: string,
       absolutePath: string,
@@ -81,11 +86,16 @@ export const make = Effect.gen(function* () {
         ),
       { discard: true },
     );
+  const cleanDisplaced = (applied: import("../core-client/types").ProjectWorkspaceApplyResult) =>
+    applied.receipt.duplicate
+      ? Effect.void
+      : cleanDeleted(applied.outcome.deleted_chat_folders ?? []);
   const bind = Effect.fn("SessionFolders.bind")(function* (sessionId: string, folder: Folder) {
     const applied = yield* core.workspace.apply({
       operationId: createOperationId("session-folder.bind"),
       intent: { kind: "bind_chat_folder", session_id: sessionId, folder },
     });
+    yield* cleanDisplaced(applied);
     const winner = applied.outcome.chat_folder;
     if (!winner) return yield* folderError(new Error("Core returned no Chat folder"));
     return winner;
@@ -96,13 +106,97 @@ export const make = Effect.gen(function* () {
       ? Effect.succeed(folder)
       : Effect.fail(folderError(new Error("This Chat folder is on another Host")));
 
+  const readSession = Effect.fn("SessionFolders.readSession")(function* (sessionId: string) {
+    const read = yield* core.workspace.read({ kind: "session", session_id: sessionId });
+    if (read.value.kind !== "session") return yield* folderError(new Error("Chat is unavailable"));
+    return read.value.session;
+  });
+
+  const readFolder = Effect.fn("SessionFolders.readFolder")(function* (
+    session: Effect.Success<ReturnType<typeof readSession>>,
+    options: EnsureOptions | undefined,
+    allowRecordedCwd: boolean,
+  ) {
+    const { folder, thread_id, execution_ref } = session;
+    if (folder) return yield* localFolder(folder);
+
+    // Older conversations already have an execution location. Their folders can be shared
+    // by forks, so retain the location without claiming it as a new Session-owned allocation.
+    if (thread_id) {
+      const result = yield* core.workspace.read({ kind: "thread", thread_id });
+      if (result.value.kind === "thread") {
+        const thread = result.value.thread;
+        if (thread.execution_host_id !== "local")
+          return yield* folderError(new Error("This chat runs on another Host"));
+        const projects = projectsDirectory();
+        const legacy = options?.legacyWorkspace;
+        const cwd = legacy?.cwd ?? thread.cwd ?? null;
+        const browserRoot = legacy?.browserRoot ?? thread.projectless_workspace_browser_root;
+        const existing = resolveExistingCodexProjectlessWorkspace({
+          cwd,
+          projectsDirectory: projects,
+          retainedWritableRoots: legacy?.writableRoots ?? [],
+          workspaceKind: "projectless",
+          workspaceBrowserRoot: browserRoot,
+        });
+        if (
+          existing &&
+          existing.cwd !== projects &&
+          (existing.cwd !== browserRoot || existing.cwd === cwd)
+        )
+          return {
+            execution_host_id: "local",
+            path: existing.cwd,
+            output_directory: thread.projectless_output_directory ?? null,
+            origin: "generated",
+          } satisfies Folder;
+        if (allowRecordedCwd && cwd && path.isAbsolute(cwd) && cwd !== projects)
+          return {
+            execution_host_id: "local",
+            path: cwd,
+            output_directory: cwd,
+            origin: "chosen",
+          } satisfies Folder;
+      }
+    }
+    if (execution_ref && options?.readExecutionCwd) {
+      const cwd = yield* options.readExecutionCwd(execution_ref.thread_id);
+      if (cwd && path.isAbsolute(cwd)) {
+        const generated = codexProjectlessWorkspaceRootFromCwd(cwd, projectsDirectory()) !== null;
+        return {
+          execution_host_id: "local",
+          path: cwd,
+          output_directory: generated ? null : cwd,
+          origin: generated ? "generated" : "chosen",
+        } satisfies Folder;
+      }
+    }
+    return null;
+  });
+
+  const mapError = Effect.mapError((cause: unknown) =>
+    Schema.is(SessionFolderError)(cause) ? cause : folderError(cause),
+  );
   return SessionFolders.of({
+    existing: Effect.fn("SessionFolders.existing")(function* (sessionId, options) {
+      const session = yield* readSession(sessionId);
+      return yield* readFolder(session, options, true);
+    }, mapError),
+    reset: Effect.fn("SessionFolders.reset")(
+      function* (sessionId) {
+        const applied = yield* core.workspace.apply({
+          operationId: createOperationId("session-folder.reset"),
+          intent: { kind: "reset_chat_folder", session_id: sessionId },
+        });
+        yield* cleanDisplaced(applied);
+      },
+      Effect.uninterruptible,
+      mapError,
+    ),
     ensure: Effect.fn("SessionFolders.ensure")(
       function* (sessionId, options) {
-        const read = yield* core.workspace.read({ kind: "session", session_id: sessionId });
-        if (read.value.kind !== "session")
-          return yield* folderError(new Error("Chat is unavailable"));
-        const { folder, project_id, thread_id, execution_ref } = read.value.session;
+        const session = yield* readSession(sessionId);
+        const { project_id } = session;
         if (project_id) {
           const result = yield* core.workspace.read({ kind: "project", project_id });
           if (
@@ -111,53 +205,8 @@ export const make = Effect.gen(function* () {
           )
             return yield* folderError(new Error("This chat uses its Project folder"));
         }
-        if (folder) return yield* localFolder(folder);
-
-        // Older conversations already have an execution location. Their folders can be shared
-        // by forks, so retain the location without claiming it as a new Session-owned allocation.
-        if (thread_id) {
-          const result = yield* core.workspace.read({ kind: "thread", thread_id });
-          if (result.value.kind === "thread") {
-            const thread = result.value.thread;
-            if (thread.execution_host_id !== "local")
-              return yield* folderError(new Error("This chat runs on another Host"));
-            const projects = projectsDirectory();
-            const legacy = options?.legacyWorkspace;
-            const cwd = legacy?.cwd ?? thread.cwd ?? null;
-            const browserRoot = legacy?.browserRoot ?? thread.projectless_workspace_browser_root;
-            const existing = resolveExistingCodexProjectlessWorkspace({
-              cwd,
-              projectsDirectory: projects,
-              retainedWritableRoots: legacy?.writableRoots ?? [],
-              workspaceKind: "projectless",
-              workspaceBrowserRoot: browserRoot,
-            });
-            if (
-              existing &&
-              existing.cwd !== projects &&
-              (existing.cwd !== browserRoot || existing.cwd === cwd)
-            )
-              return {
-                execution_host_id: "local",
-                path: existing.cwd,
-                output_directory: thread.projectless_output_directory ?? null,
-                origin: "generated",
-              } satisfies Folder;
-          }
-        }
-        if (execution_ref && options?.readExecutionCwd) {
-          const cwd = yield* options.readExecutionCwd(execution_ref.thread_id);
-          if (cwd && path.isAbsolute(cwd)) {
-            const generated =
-              codexProjectlessWorkspaceRootFromCwd(cwd, projectsDirectory()) !== null;
-            return {
-              execution_host_id: "local",
-              path: cwd,
-              output_directory: generated ? null : cwd,
-              origin: generated ? "generated" : "chosen",
-            } satisfies Folder;
-          }
-        }
+        const existing = yield* readFolder(session, options, false);
+        if (existing) return existing;
         const created = yield* fileOperation(() => {
           const projects = projectsDirectory();
           return createCodexProjectlessWorkspace({
@@ -191,9 +240,7 @@ export const make = Effect.gen(function* () {
         return yield* localFolder(winner);
       },
       Effect.uninterruptible,
-      Effect.mapError((cause) =>
-        Schema.is(SessionFolderError)(cause) ? cause : folderError(cause),
-      ),
+      mapError,
     ),
     choose: Effect.fn("SessionFolders.choose")(
       function* (sessionId, absolutePath) {
@@ -206,9 +253,8 @@ export const make = Effect.gen(function* () {
         });
         return yield* localFolder(winner);
       },
-      Effect.mapError((cause) =>
-        Schema.is(SessionFolderError)(cause) ? cause : folderError(cause),
-      ),
+      Effect.uninterruptible,
+      mapError,
     ),
     cleanDeleted,
   });

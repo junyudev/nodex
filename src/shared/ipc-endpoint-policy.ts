@@ -811,6 +811,8 @@ type PlainResultCommandEndpointPolicy =
   | "window-sessions:update-bounds"
   | "session-folder:ensure"
   | "session-folder:choose"
+  | "session-folder:reset"
+  | "session-folder:turn-into-project"
   | "workspace:pick-directory"
   | "worktrees:delete"
   | "worktrees:environments:config:save"

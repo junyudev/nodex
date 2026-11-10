@@ -58,3 +58,26 @@ export const read = Effect.fn("ExecutionRoots.read")(function* (input: typeof In
         : null,
   } satisfies AgentRuntimeOperations["execution.roots"]["output"];
 }, NodeSqliteClient.readOnly);
+
+export const WorkspaceInUseInput = Schema.Struct({ path: Schema.NonEmptyString });
+
+/** Includes side chats and retained subagents, which are absent from root discovery. */
+export const workspaceInUse = Effect.fn("ExecutionRoots.workspaceInUse")(function* (
+  input: typeof WorkspaceInUseInput.Type,
+) {
+  const sql = yield* SqlClient.SqlClient;
+  const directory = input.path;
+  const [row] = yield* sql<{ readonly in_use: number }>`
+    SELECT EXISTS(
+      SELECT 1 FROM orchestration_v2_projection_threads AS thread
+      WHERE thread.deleted_at IS NULL AND (
+        json_extract(thread.payload_json, '$.worktreePath') = ${directory}
+        OR instr(json_extract(thread.payload_json, '$.worktreePath'), ${directory} || '/') = 1
+        OR instr(json_extract(thread.payload_json, '$.worktreePath'), ${directory} || char(92)) = 1
+        OR json_extract(thread.payload_json, '$.executionLocation.cwd') = ${directory}
+        OR instr(json_extract(thread.payload_json, '$.executionLocation.cwd'), ${directory} || '/') = 1
+        OR instr(json_extract(thread.payload_json, '$.executionLocation.cwd'), ${directory} || char(92)) = 1
+      )
+    ) AS in_use`;
+  return { inUse: row?.in_use === 1 };
+}, NodeSqliteClient.readOnly);

@@ -113,6 +113,8 @@ const fixture = (
     Effect.provideService(
       SessionFolders,
       options.folders ?? {
+        existing: () => Effect.die("unused"),
+        reset: () => Effect.die("unused"),
         ensure: () => Effect.die("unused"),
         choose: () => Effect.die("unused"),
         cleanDeleted: () => Effect.void,
@@ -348,6 +350,8 @@ it.effect("first send uses the chosen Chat folder as its entire workspace", () =
       const cwd = path.resolve("/chosen");
       const f = fixture({
         folders: {
+          existing: () => Effect.die("unused"),
+          reset: () => Effect.die("unused"),
           ensure: (sessionId) =>
             Effect.sync(() => {
               assert.equal(sessionId, input.targetId);
