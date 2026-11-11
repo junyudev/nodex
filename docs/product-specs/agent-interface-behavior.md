@@ -170,10 +170,12 @@ shows the current Profile's peers as active and omits foreign desktop copies; un
 plugins remain available. Signed runtime resources and overlay configuration remain in the
 Nodex Profile, separate from native credentials, configuration, and sessions.
 
-Claude Code chats load the available peers from the same Profile copy as session plugins, so
-their skills appear to the Agent as `browser:control-in-app-browser`, `chrome:control-chrome`,
-and `computer-use:computer-use`. Peers load only while their capability is ready. The Agent
-chooses these skills from the request; the composer lists desktop peers for Codex chats only.
+Other local Agents get the same skills from that Profile copy, only while each capability is
+ready. Claude Code and OpenCode load them as their own skills (in Claude Code they appear as
+`browser:control-in-app-browser`, `chrome:control-chrome`, and `computer-use:computer-use`).
+ACP agents have no skill loading, so their instructions name each skill's file and tell the
+Agent to read it before using the tool. The Agent chooses these skills from the request; the
+composer lists desktop peers for Codex chats only.
 
 `describe_content_schema` and `query_content` expose the same public SQL relations
 as the CLI across the current Profile Library. Core verifies exact captured

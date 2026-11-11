@@ -528,7 +528,10 @@ disappears. Native click, layout, cursor, pet-wake, visibility, and service-loss
 one integration into Browser Use, Chrome Control, Computer Use, and the restricted avatar overlay;
 no renderer or ambient filesystem search can acquire the raw addon.
 
-Main prepares the Desktop Tool runtime and follows Turns for both local Agent providers. Codex launches the REPL itself, while Agent Runtime launches and owns it for Claude Code and gives each Claude process an in-process facade; see [ADR 0036](adr/0036-desktop-tool-runtime-native-trust-boundary.md).
+Main prepares the verified Desktop Tool runtime and owns native presentation. Codex launches
+its own REPL. For other local providers, Agent Runtime owns one REPL per Thread and exposes it
+through a credential-scoped MCP endpoint. Tool calls belong to the active Run attempt, while the
+REPL's lifetime is independent of the provider session. See [ADR 0036](adr/0036-desktop-tool-runtime-native-trust-boundary.md).
 
 User-visible availability, placement, focus, visibility, lifecycle, and privacy behavior is specified in [Desktop control surfaces](product-specs/desktop-control-surfaces.md).
 

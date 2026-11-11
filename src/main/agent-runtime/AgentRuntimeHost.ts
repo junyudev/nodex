@@ -62,6 +62,11 @@ const sameNativeFrame = (left: AgentHostExecutionIdentity, right: ExecutionProof
   (left.runId !== null || (right.runId === null && left.incarnationId === right.incarnationId)) &&
   isDeepStrictEqual(left.nativeThreadRef, right.nativeThreadRef);
 
+function hasExternalProviderServer(config: unknown): boolean {
+  if (typeof config !== "object" || config === null || !("serverUrl" in config)) return false;
+  return typeof config.serverUrl === "string" && config.serverUrl.trim().length > 0;
+}
+
 export const make = Effect.fn("AgentRuntimeHost.make")(function* (
   connection: AgentRuntimeProcessConnection,
   options: {
@@ -355,24 +360,24 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
             : null;
         const prepared = environment ? { environment } : {};
         if (
-          identity.nativeDriver !== "claudeAgent" ||
-          driverOf(identity.providerInstanceId) !== "claudeAgent" ||
+          identity.nativeDriver === "codex" ||
+          driverOf(identity.providerInstanceId) !== identity.nativeDriver ||
+          (identity.nativeDriver === "opencode" &&
+            hasExternalProviderServer(options.providers[identity.providerInstanceId]?.config)) ||
           !options.desktop
         )
           return prepared;
         const desktopTools = yield* options.desktop.desktopTools.pipe(
           Effect.catch(() =>
             // Preparation errors can contain launch environment values. Log no error payload.
-            Effect.logWarning("Desktop tools are unavailable for a Claude thread").pipe(
-              Effect.as(null),
-            ),
+            Effect.logWarning("Desktop tools are unavailable for the Thread").pipe(Effect.as(null)),
           ),
         );
         return desktopTools ? { ...prepared, desktopTools } : prepared;
       }
       if (request.operation === "turn.native") {
         const { identity } = request;
-        const nativeThreadId = identity.nativeThreadRef?.nativeId;
+        const { nativeThreadId } = request;
         if (!options.desktop || identity.runId === null || !nativeThreadId) return {};
         const turn = { nativeThreadId, nativeTurnId: request.nativeTurnId };
         // Ending only lets go of what the Turn held, so it needs the lease, not a live Run.

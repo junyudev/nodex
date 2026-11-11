@@ -1,3 +1,5 @@
+import { DesktopTools } from "../desktopTools/DesktopTools.ts";
+import type { McpProviderSessionConfig } from "@nodex/provider-core/server/mcpSession";
 import { RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
 import { SIDE_CHAT_DEVELOPER_INSTRUCTIONS } from "../nodex/SideChat.ts";
 import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
@@ -14,6 +16,7 @@ import {
   ProviderInstanceId,
   ProviderSessionId,
   ThreadId,
+  type ProviderDriverKind,
   type ProviderThreadId,
   type ProviderTurnId,
 } from "@nodex/runtime-contracts";
@@ -397,6 +400,7 @@ export const layerWithOptions = (
       const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
       const agentScope = yield* AgentScope;
       const executionHost = yield* ExecutionHost.ExecutionHost;
+      const desktopTools = Option.getOrUndefined(yield* Effect.serviceOption(DesktopTools));
       const agentAccessSettings = Effect.fn("ProviderSessionManagerV2.agentAccessSettings")(
         function* (threadId: ThreadId) {
           if (Option.isNone(serverSettings))
@@ -537,6 +541,51 @@ export const layerWithOptions = (
       const isMcpCredentialReserved = (threadId: ThreadId, mcpCredentialId: string) =>
         (mcpCredentialReservations.get(mcpReservationKey(threadId, mcpCredentialId)) ?? 0) > 0;
       const mcpPrepareLock = yield* KeyedLock.make<ThreadId>();
+      type DesktopPreparation = {
+        readonly driver: ProviderDriverKind;
+        readonly cwd: string | null;
+      };
+      const desktopPreparationCwds = new WeakMap<McpProviderSessionConfig, string | null>();
+      const withDesktopTools = Effect.fn("ProviderSessionManagerV2.prepareDesktopTools")(function* (
+        config: McpProviderSessionConfig,
+        preparation: DesktopPreparation | undefined,
+      ) {
+        if (
+          !desktopTools ||
+          !preparation ||
+          preparation.driver === "codex" ||
+          !executionHost.prepareThread ||
+          desktopPreparationCwds.get(config) === preparation.cwd
+        )
+          return config;
+        const prepared = yield* executionHost
+          .prepareThread({
+            threadId: config.threadId,
+            providerInstanceId: config.providerInstanceId,
+            nativeDriver: preparation.driver,
+            cwd: preparation.cwd,
+          })
+          .pipe(Effect.orElseSucceed(() => undefined));
+        const shell = yield* projectionStore
+          .getThreadShell(config.threadId)
+          .pipe(Effect.orElseSucceed(() => null));
+        const desktop = yield* Effect.tryPromise(() =>
+          desktopTools.prepare(
+            config,
+            config.endpoint,
+            prepared?.desktopTools === undefined || !shell || shell.archivedAt || shell.deletedAt
+              ? undefined
+              : {
+                  tools: prepared.desktopTools,
+                  cwd: preparation.cwd,
+                },
+          ),
+        ).pipe(Effect.orElseSucceed(() => undefined));
+        const { desktopTools: _previous, ...base } = config;
+        const updated = desktop ? { ...base, desktopTools: desktop } : base;
+        desktopPreparationCwds.set(updated, preparation.cwd);
+        return updated;
+      });
       /**
        * Resolves (or mints) the thread's MCP credential and returns it with a
        * reservation held; the caller must drop the reservation exactly once.
@@ -546,6 +595,7 @@ export const layerWithOptions = (
       const prepareMcpSession = (
         threadId: ThreadId,
         providerInstanceId: ProviderInstanceId,
+        desktopPreparation?: DesktopPreparation,
       ): Effect.Effect<PreparedMcpCredential> =>
         options.configureMcp === false
           ? mcpSessions
@@ -593,6 +643,16 @@ export const layerWithOptions = (
                     resolved.capabilities.has("preview") === browserToolsAvailable &&
                     resolved.capabilities.has("device") === deviceToolsAvailable
                   ) {
+                    yield* withDesktopTools(existing, desktopPreparation).pipe(
+                      Effect.tap((updated) =>
+                        updated === existing ? Effect.void : mcpSessions.set(updated),
+                      ),
+                      Effect.onInterrupt(() =>
+                        Effect.sync(() =>
+                          dropMcpCredentialReservation(threadId, existing.providerSessionId),
+                        ),
+                      ),
+                    );
                     return { mcpCredentialId: existing.providerSessionId, issued: false };
                   }
                   dropMcpCredentialReservation(threadId, existing.providerSessionId);
@@ -604,9 +664,17 @@ export const layerWithOptions = (
                   browserToolsAvailable,
                   capabilities,
                 });
-                yield* mcpSessions.set(credential.config);
-                reserveMcpCredential(threadId, credential.config.providerSessionId);
-                return { mcpCredentialId: credential.config.providerSessionId, issued: true };
+                const mcpCredentialId = credential.config.providerSessionId;
+                reserveMcpCredential(threadId, mcpCredentialId);
+                yield* withDesktopTools(credential.config, desktopPreparation).pipe(
+                  Effect.flatMap(mcpSessions.set),
+                  Effect.onInterrupt(() =>
+                    Effect.sync(() => dropMcpCredentialReservation(threadId, mcpCredentialId)).pipe(
+                      Effect.andThen(mcpSessionRegistry.revokeProviderSession(mcpCredentialId)),
+                    ),
+                  ),
+                );
+                return { mcpCredentialId, issued: true };
               }),
             );
       /**
@@ -1482,6 +1550,7 @@ export const layerWithOptions = (
         readonly providerSessionId: ProviderSessionId;
         readonly threadId: ThreadId;
         readonly providerInstanceId: ProviderInstanceId;
+        readonly desktopPreparation?: DesktopPreparation | undefined;
       }) =>
         Effect.suspend(() => {
           let attachedTo: ProviderAdapter.ProviderAdapterV2SessionRuntime | undefined;
@@ -1503,8 +1572,28 @@ export const layerWithOptions = (
               Effect.tap((runtime) => Effect.sync(() => (attachedTo = runtime))),
               Effect.uninterruptible,
             );
+            if (
+              attached === undefined &&
+              desktopTools &&
+              input.desktopPreparation &&
+              options.configureMcp !== false
+            ) {
+              yield* mcpPrepareLock.withLock(
+                input.threadId,
+                Effect.gen(function* () {
+                  const existing = yield* mcpSessions.read(input.threadId);
+                  if (existing?.providerInstanceId !== input.providerInstanceId) return;
+                  const updated = yield* withDesktopTools(existing, input.desktopPreparation);
+                  if (updated !== existing) yield* mcpSessions.set(updated);
+                }),
+              );
+            }
             if (attached !== undefined) {
-              const prepared = yield* prepareMcpSession(input.threadId, input.providerInstanceId);
+              const prepared = yield* prepareMcpSession(
+                input.threadId,
+                input.providerInstanceId,
+                input.desktopPreparation,
+              );
               preparedForCleanup = prepared;
               if (prepared.mcpCredentialId !== undefined) {
                 const mcpCredentialId = prepared.mcpCredentialId;
@@ -2009,6 +2098,10 @@ export const layerWithOptions = (
                 providerSessionId,
                 threadId: input.threadId,
                 providerInstanceId: runtime.instanceId,
+                desktopPreparation:
+                  input.runtimePolicy === undefined
+                    ? undefined
+                    : { driver: runtime.driver, cwd: input.runtimePolicy.cwd ?? null },
               }),
             ).pipe(
               Effect.andThen(requireCurrentRuntime),
@@ -2044,6 +2137,10 @@ export const layerWithOptions = (
                 providerSessionId,
                 threadId,
                 providerInstanceId: runtime.instanceId,
+                desktopPreparation:
+                  input.runtimePolicy === undefined
+                    ? undefined
+                    : { driver: runtime.driver, cwd: input.runtimePolicy.cwd ?? null },
               }),
             ).pipe(
               Effect.andThen(requireCurrentRuntime),
@@ -2102,6 +2199,10 @@ export const layerWithOptions = (
                 providerSessionId,
                 threadId: input.targetThreadId,
                 providerInstanceId: runtime.instanceId,
+                desktopPreparation:
+                  input.runtimePolicy === undefined
+                    ? undefined
+                    : { driver: runtime.driver, cwd: input.runtimePolicy.cwd ?? null },
               }),
             ).pipe(
               Effect.andThen(requireCurrentRuntime),
@@ -2140,6 +2241,10 @@ export const layerWithOptions = (
                     providerSessionId,
                     threadId: input.threadId,
                     providerInstanceId: runtime.instanceId,
+                    desktopPreparation: {
+                      driver: runtime.driver,
+                      cwd: input.runtimePolicy.cwd ?? null,
+                    },
                   }),
                 ).pipe(
                   Effect.andThen(
@@ -2811,6 +2916,10 @@ export const layerWithOptions = (
                   providerSessionId: input.providerSessionId,
                   threadId: input.threadId,
                   providerInstanceId: existing.runtime.instanceId,
+                  desktopPreparation: {
+                    driver: existing.runtime.driver,
+                    cwd: input.runtimePolicy.cwd ?? null,
+                  },
                 });
                 yield* touchActivity(input.providerSessionId);
                 return decorateRuntime(
@@ -2835,6 +2944,7 @@ export const layerWithOptions = (
               const prepared = yield* prepareMcpSession(
                 input.threadId,
                 input.modelSelection.instanceId,
+                { driver: adapter.driver, cwd: input.runtimePolicy.cwd ?? null },
               );
               const mcpCredentialId = prepared.mcpCredentialId;
               // The reservation from prepare protects the credential (which

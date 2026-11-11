@@ -44,6 +44,7 @@ import * as OpenCodeServerLedger from "@nodex/provider-opencode/server/OpenCodeS
 import type { AnyProviderDriver } from "@nodex/provider-core/server/driver";
 import * as CodexAdapter from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import * as ClaudeAdapter from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
+import * as DesktopTools from "../desktopTools/Layer.ts";
 import * as RuntimeLayer from "../orchestration-v2/runtimeLayer.ts";
 import * as ResourceCleanup from "../orchestration-v2/ResourceCleanupService.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
@@ -217,6 +218,12 @@ export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
   )
     .pipe(
       Layer.provide(ResourceCleanup.layer),
+      Layer.provideMerge(
+        DesktopTools.layer(configuration.home).pipe(
+          Layer.provide(RuntimeLayer.layerRuntimeApprovalsProvided),
+          Layer.provide(RuntimeLayer.layerEventSink),
+        ),
+      ),
       Layer.provide(layerServerActivation),
       Layer.provideMerge(layerActivation),
       Layer.provideMerge(ProjectionStore.layer),

@@ -3,6 +3,7 @@ import * as NodeHttp from "node:http";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as Layer from "effect/Layer";
 import { HttpRouter } from "effect/http";
+import * as DesktopToolsHttp from "../desktopTools/Http.ts";
 import * as Mcp from "./Mcp.ts";
 import * as Runtime from "./Runtime.ts";
 import * as HostTools from "./HostTools.ts";
@@ -17,8 +18,10 @@ import type { AgentRuntimeConfiguration } from "./Interface.ts";
 /** Loopback transport and session credentials share one process Scope with the engine. */
 export const layer = (configuration: AgentRuntimeConfiguration) => {
   const engine = Runtime.layerEngine(configuration);
-  const routes = HostTools.layer(configuration).pipe(
-    Layer.provideMerge(Mcp.layer),
+  const routes = Layer.merge(
+    HostTools.layer(configuration).pipe(Layer.provide(Mcp.layer)),
+    DesktopToolsHttp.layer,
+  ).pipe(
     Layer.provide(Projection.layer),
     Layer.provide(engine),
     Layer.provide(Secrets.layer.pipe(Layer.provide(engine))),

@@ -1002,6 +1002,7 @@ export type AgentHostRequest =
       readonly id: string;
       readonly operation: "turn.native";
       readonly identity: AgentHostTurnIdentity;
+      readonly nativeThreadId: string;
       readonly nativeTurnId: string;
       readonly phase: "started" | "ended";
     }

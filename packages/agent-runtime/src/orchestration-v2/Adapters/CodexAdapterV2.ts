@@ -2898,10 +2898,12 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
         const observeRootTurn = (context: ActiveCodexTurnContext, phase: "started" | "ended") =>
           context.subagent !== null ||
           context.hostExecutionIdentity === undefined ||
+          !context.providerThread.nativeThreadRef?.nativeId ||
           executionHost.observeNativeTurn === undefined
             ? Effect.void
             : executionHost.observeNativeTurn({
                 identity: context.hostExecutionIdentity,
+                nativeThreadId: context.providerThread.nativeThreadRef.nativeId,
                 nativeTurnId: codexTurnId(context.nativeTurnId),
                 phase,
               });

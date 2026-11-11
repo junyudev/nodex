@@ -161,6 +161,7 @@ const hostRequestSchema = z.discriminatedUnion("operation", [
     identity: hostIdentitySchema
       .extend({ threadId: z.string().min(1), runId: z.string().min(1) })
       .passthrough(),
+    nativeThreadId: z.string().min(1),
     nativeTurnId: z.string().min(1),
     phase: z.enum(["started", "ended"]),
   }),

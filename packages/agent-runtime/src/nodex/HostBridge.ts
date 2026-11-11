@@ -308,6 +308,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
   // Host tools that follow native Turns degrade when the host cannot be told; execution goes on.
   const observeNativeTurn = Effect.fn("AgentRuntime.observeNativeTurn")(function* (input: {
     readonly identity: ExecutionHost.HostTurnIdentity;
+    readonly nativeThreadId: string;
     readonly nativeTurnId: string;
     readonly phase: "started" | "ended";
   }) {
@@ -316,6 +317,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
       type: "host.request",
       operation: "turn.native",
       identity: { ...input.identity, runtimeId, runtimeGeneration },
+      nativeThreadId: input.nativeThreadId,
       nativeTurnId: input.nativeTurnId,
       phase: input.phase,
     }).pipe(

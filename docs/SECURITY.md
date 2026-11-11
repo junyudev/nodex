@@ -931,16 +931,21 @@ provides attribution, and removing it drops Agent authorship.
   Action confirmation remains an app-server elicitation decision; denial and
   native failures are delivered as typed tool errors rather than weakening the
   host boundary.
-- In Claude Code chats, Agent Runtime launches that same signed chain and owns
-  it directly, so the Claude CLI never holds the REPL's credentials, trust
-  environment, or host-only lifecycle tool. Agent Runtime stamps each call with
-  the conversation and Turn the host authorized, and the Browser still rejects
-  any session that does not own its route. It answers the REPL's elicitations
-  under the app-server rules: strict automatic review fails closed, Full access
-  accepts only forms with no fields, and everything else reaches a person.
-  Read-only hints on REPL tools are removed before Claude sees them, because
-  the REPL runs arbitrary code with full access, so the chat's permission mode
-  governs each call.
+- For every local provider other than Codex, Agent Runtime launches that same
+  signed chain, one REPL per chat, and serves it from its loopback MCP listener
+  under the chat's existing credential. No provider holds the REPL's trust
+  environment or its host-only lifecycle tool, and a chat's credential cannot
+  reach another chat's REPL. Agent Runtime stamps each call with the chat's
+  Desktop session and the Run attempt that is running; a call with no running
+  Run is refused, and the Browser still rejects any session that does not own
+  its route. Permission is the Runtime's own decision, so it holds for Agents
+  that never ask before calling a tool: running code asks the person unless
+  the chat is in Full access or they allowed JavaScript for the chat, and the
+  REPL's own consent requests follow the app-server rules (strict automatic
+  review fails closed, Full access accepts only forms with no fields,
+  everything else reaches a person). Read-only hints on REPL tools are removed
+  before any provider sees them, because the REPL runs arbitrary code. The REPL
+  cannot outlive Agent Runtime, even when that process is killed.
 - Nodex alone configures the Desktop Tool runtime of its process tree. Another
   desktop host's bindings — the private endpoints, executor identities,
   verifying keys, and trust roots it publishes to its own processes — are

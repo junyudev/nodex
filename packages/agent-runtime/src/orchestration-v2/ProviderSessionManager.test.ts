@@ -1,3 +1,6 @@
+import { DesktopTools } from "../desktopTools/DesktopTools.ts";
+import * as DesktopToolsLive from "../desktopTools/Layer.ts";
+import { RuntimeApprovals } from "./RuntimeApprovals.ts";
 import { makeProviderEventBuffer } from "./ProviderEventBuffer.ts";
 import * as NetAddress from "effect/net/NetAddress";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -312,6 +315,7 @@ function unimplemented(detail: string) {
 const makeProviderAdapter = Effect.fnUntraced(function* (
   state: Ref.Ref<TestProviderRuntimeState>,
   options: {
+    readonly driver?: ProviderDriverKind;
     readonly discardThread?: ProviderAdapter.ProviderAdapterV2["Service"]["discardThread"];
     readonly failEventStream?: boolean;
     readonly observations?: ProviderAdapter.ProviderAdapterV2SessionRuntime["observations"];
@@ -374,7 +378,7 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: ProviderInstanceId.make("codex"),
     ...(options.discardThread ? { discardThread: options.discardThread } : {}),
-    driver: CODEX_DRIVER,
+    driver: options.driver ?? CODEX_DRIVER,
     getCapabilities: () => Effect.succeed(options.capabilities ?? CodexCapabilities),
     planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" }),
     openSession: (input) =>
@@ -418,7 +422,7 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
 
         return {
           instanceId: ProviderInstanceId.make("codex"),
-          driver: CODEX_DRIVER,
+          driver: options.driver ?? CODEX_DRIVER,
           providerSessionId: input.providerSessionId,
           providerSession: session,
           ...(options.observations === undefined ? {} : { observations: options.observations }),
@@ -529,6 +533,7 @@ function layerTest(input: {
   readonly scopeClosed?: Deferred.Deferred<void>;
   readonly scopeCloseRelease?: Deferred.Deferred<void>;
   readonly serverSettingsLayer?: ReturnType<typeof ServerSettings.layerTest>;
+  readonly driver?: ProviderDriverKind;
   readonly projectServiceLayer?: Layer.Layer<ProjectService.ProjectService>;
 }) {
   const layerConfiguredEventSink =
@@ -541,6 +546,7 @@ function layerTest(input: {
           : layerTestEventSink;
   const layerRegistry = Layer.unwrap(
     makeProviderAdapter(input.state, {
+      ...(input.driver ? { driver: input.driver } : {}),
       ...(input.discardThread ? { discardThread: input.discardThread } : {}),
       failEventStream: input.failEventStream ?? false,
       ...(input.observations === undefined ? {} : { observations: input.observations }),
@@ -1930,6 +1936,126 @@ it.effect(
             idleTimeoutMs: 1_000,
             mcpConfigs,
           }),
+        ),
+      );
+    }),
+);
+
+it.effect.each(["available", "failed", "absent"] as const)(
+  "publishes a local provider's Desktop Tools configuration when preparation is %s",
+  (availability) =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      const mcpConfigs = yield* Ref.make<
+        ReadonlyArray<McpProviderSession.McpProviderSessionConfig | undefined>
+      >([]);
+      const cwds: Array<string | null> = [];
+      const driver = ProviderDriverKind.make("acpRegistry");
+      const host = ExecutionHost.ExecutionHost.of({
+        prepareTurn: () => Effect.succeed({}),
+        prepareThread: ({ cwd }) => {
+          cwds.push(cwd);
+          if (availability === "failed")
+            return Effect.fail(
+              new ExecutionHost.ExecutionHostError({
+                operation: "thread.prepare",
+                message: "unavailable",
+              }),
+            );
+          return Effect.succeed(
+            availability === "absent"
+              ? {}
+              : {
+                  desktopTools: {
+                    server: { command: "unused", args: [], env: {} },
+                    pluginRoots: [],
+                  },
+                },
+          );
+        },
+      });
+      yield* Effect.gen(function* () {
+        const eventSink = yield* EventSink.EventSinkV2;
+        const idAllocator = yield* IdAllocator.IdAllocatorV2;
+        const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+        const tools = yield* DesktopTools;
+        const threadId = ThreadId.make("thread-desktop-tools-prepare");
+        const providerSessionId = yield* idAllocator.allocate.providerSession({
+          providerInstanceId: modelSelection.instanceId,
+          threadId,
+        });
+        const now = yield* DateTime.now;
+        const created = yield* makeThreadCreatedEvent({ idAllocator, threadId, now });
+        yield* eventSink.write({ events: [created] });
+        const open = (cwd: string) =>
+          manager.open({
+            threadId,
+            providerSessionId,
+            modelSelection,
+            runtimePolicy: { ...runtimePolicy, cwd },
+          });
+        yield* open(".");
+        const captured = (yield* Ref.get(mcpConfigs))[0];
+        assert.isDefined(captured);
+        assert.deepEqual(
+          captured?.desktopTools,
+          availability === "available"
+            ? {
+                endpoint: "http://127.0.0.1:43123/mcp/node_repl",
+                pluginRoots: [],
+                skills: [],
+              }
+            : undefined,
+        );
+        yield* open(".");
+        yield* open("..");
+        assert.deepEqual(cwds, [".", ".."]);
+        assert.equal(tools.has(captured), availability === "available");
+        if (availability !== "available") return;
+        const launch = {
+          tools: { server: { command: "unused", args: [], env: {} }, pluginRoots: [] },
+          cwd: "..",
+        };
+        // The Runtime owner observes committed lifecycle events independently of a provider.
+        for (const type of ["thread.archived", "thread.deleted"] as const) {
+          yield* Effect.promise(async (): Promise<void> => {
+            assert.isDefined(await tools.prepare(captured, captured.endpoint, launch));
+          });
+          yield* eventSink.write({
+            events: [
+              {
+                id: yield* idAllocator.allocate.event({ threadId }),
+                type,
+                threadId,
+                occurredAt: now,
+                payload: {
+                  ...created.payload,
+                  archivedAt: now,
+                  deletedAt: type === "thread.deleted" ? now : null,
+                },
+              },
+            ],
+          });
+          yield* Effect.promise(() => vi.waitFor(() => assert.isFalse(tools.has(captured))));
+        }
+      }).pipe(
+        Effect.provide(
+          layerTest({ state, idleTimeoutMs: 1_000, driver, mcpConfigs }).pipe(
+            Layer.provideMerge(
+              DesktopToolsLive.layer(process.cwd()).pipe(
+                Layer.provide(Layer.merge(layerTestEventSink, layerTestStores)),
+                // Provisioning asks nobody; a card here would be a bug.
+                Layer.provide(
+                  Layer.succeed(RuntimeApprovals, {
+                    ask: () => Effect.die("unexpected approval"),
+                    isAllowedForChat: () => Effect.succeed(false),
+                    allowForChat: () => Effect.void,
+                  }),
+                ),
+              ),
+            ),
+            Layer.provide(Layer.succeed(ExecutionHost.ExecutionHost, host)),
+          ),
         ),
       );
     }),

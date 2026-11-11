@@ -532,6 +532,7 @@ const nativeTurn = (
   id: `native:${phase}`,
   operation: "turn.native",
   identity,
+  nativeThreadId: identity.nativeThreadRef?.nativeId ?? "desktop-session",
   nativeTurnId: "native-turn",
   phase,
 });
@@ -553,7 +554,9 @@ const prepareThread = (
         ? "codex"
         : providerInstanceId === "claude"
           ? "claudeAgent"
-          : "acpRegistry",
+          : providerInstanceId === "external"
+            ? "opencode"
+            : "acpRegistry",
   },
   cwd,
 });
@@ -568,12 +571,13 @@ it.effect("only the current lease's Codex threads receive the desktop tool confi
   }).pipe(Effect.scoped),
 );
 
-it.effect("other providers receive the Environment their worktree's setup prepared", () =>
+it.effect("local non-Codex providers receive the workspace Environment and Desktop Tools", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
     const environment = { set: { WORKTREE_READY: "prepared" }, exclude: ["NODE_ENV"] };
     assert.deepEqual(yield* f.execute(prepareThread("claude")), { environment, desktopTools });
-    assert.deepEqual(yield* f.execute(prepareThread("acp")), { environment });
+    assert.deepEqual(yield* f.execute(prepareThread("acp")), { environment, desktopTools });
+    assert.deepEqual(yield* f.execute(prepareThread("external")), { environment });
     assert.deepEqual(yield* f.execute(prepareThread("claude", "lease", "/checkout")), {
       desktopTools,
     });
@@ -692,7 +696,7 @@ it.effect(
       assert.deepEqual(result, {
         environment: { set: { WORKTREE_READY: "prepared" }, exclude: ["NODE_ENV"] },
       });
-      assert.deepEqual(logs, [["Desktop tools are unavailable for a Claude thread"]]);
+      assert.deepEqual(logs, [["Desktop tools are unavailable for the Thread"]]);
     }).pipe(Effect.scoped),
 );
 
@@ -707,7 +711,7 @@ it.effect("unavailable Claude desktop tools do not change Environment preparatio
   }).pipe(Effect.scoped),
 );
 
-it.effect("Claude native Turns retain start authorization and lease-only completion", () =>
+it.effect("Desktop Tool turns retain start authorization and lease-only completion", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
     const identity: AgentHostTurnIdentity = {
@@ -721,6 +725,7 @@ it.effect("Claude native Turns retain start authorization and lease-only complet
     };
     const started = {
       ...nativeTurn(identity, "started"),
+      nativeThreadId: "desktop-session",
       nativeTurnId: "turn:attempt:claude",
     } as const;
     yield* Effect.flip(f.execute(started));
@@ -729,6 +734,7 @@ it.effect("Claude native Turns retain start authorization and lease-only complet
     f.live.delete("run:claude");
     const ended = {
       ...nativeTurn(identity, "ended"),
+      nativeThreadId: "desktop-session",
       nativeTurnId: "turn:attempt:claude",
     } as const;
     yield* f.execute(ended);
@@ -737,7 +743,7 @@ it.effect("Claude native Turns retain start authorization and lease-only complet
     );
     assert.deepEqual(f.desktopCalls, [
       {
-        nativeThreadId: identity.nativeThreadRef!.nativeId,
+        nativeThreadId: "desktop-session",
         nativeTurnId: "turn:attempt:claude",
         threadId: identity.threadId,
         runId: identity.runId,
@@ -746,7 +752,7 @@ it.effect("Claude native Turns retain start authorization and lease-only complet
         phase: "started",
       },
       {
-        nativeThreadId: identity.nativeThreadRef!.nativeId,
+        nativeThreadId: "desktop-session",
         nativeTurnId: "turn:attempt:claude",
         phase: "ended",
       },

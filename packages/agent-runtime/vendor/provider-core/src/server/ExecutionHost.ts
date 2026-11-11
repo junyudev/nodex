@@ -146,9 +146,10 @@ export class ExecutionHost extends Context.Reference<{
     readonly nativeDriver: import("@nodex/runtime-contracts").ProviderDriverKind;
     readonly cwd: string | null;
   }) => Effect.Effect<HostThreadPreparation, ExecutionHostError>;
-  /** A host-owned native tool follows the provider's own Turns, which it addresses by native id. */
+  /** A host-owned tool follows Turns, which it addresses by their Desktop session and Turn ids. */
   readonly observeNativeTurn?: (input: {
     readonly identity: HostTurnIdentity;
+    readonly nativeThreadId: string;
     readonly nativeTurnId: string;
     readonly phase: "started" | "ended";
   }) => Effect.Effect<void>;

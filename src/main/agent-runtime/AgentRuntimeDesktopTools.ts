@@ -6,7 +6,7 @@ import type { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import type { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import type { WindowRuntime } from "../window-runtime/WindowRuntime";
 
-/** A root native Turn of Agent execution; a starting Turn belongs to an authorized Run. */
+/** A Desktop Tool turn of Agent execution. A starting Turn belongs to an authorized Run. */
 export type AgentRuntimeNativeTurn = {
   readonly nativeThreadId: string;
   readonly nativeTurnId: string;

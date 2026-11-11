@@ -6,6 +6,7 @@ import * as Runtime from "./Runtime.ts";
 import * as RunAdmission from "../orchestration-v2/RunAdmission.ts";
 import * as Service from "./Service.ts";
 import * as Bridge from "./HostBridge.ts";
+import { reapDesktopReplProcesses } from "../desktopTools/ReplProcess.ts";
 import * as RuntimeHomeLease from "./RuntimeHomeLease.ts";
 import * as Environment from "../environment/ServerEnvironment.ts";
 import * as ProviderEventIngestor from "../orchestration-v2/ProviderEventIngestor.ts";
@@ -47,6 +48,12 @@ export const layer = (
   return Service.layer(notify, configuration.providers).pipe(
     Layer.provide(startup),
     Layer.provideMerge(bridge),
-    Layer.provide(Layer.effectDiscard(RuntimeHomeLease.acquire(configuration.home))),
+    Layer.provide(
+      Layer.effectDiscard(
+        RuntimeHomeLease.acquire(configuration.home).pipe(
+          Effect.andThen(Effect.tryPromise(() => reapDesktopReplProcesses(configuration.home))),
+        ),
+      ),
+    ),
   );
 };

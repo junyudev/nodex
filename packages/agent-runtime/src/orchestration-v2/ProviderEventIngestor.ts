@@ -1,3 +1,5 @@
+import * as Option from "effect/Option";
+import { DesktopTools } from "../desktopTools/DesktopTools.ts";
 import { delegatedResultReceipts, observedTaskResults } from "./DelegatedResultReceipt.ts";
 import {
   NodeId,
@@ -325,6 +327,26 @@ export const layer: Layer.Layer<
     const analytics = yield* ProviderTurnAnalytics;
     const agentScope = yield* AgentScope;
     const completedTurnAnalytics = new Set<string>();
+    const desktopTools = Option.getOrUndefined(yield* Effect.serviceOption(DesktopTools));
+
+    const enrichDesktopTool = Effect.fn("ProviderEventIngestor.enrichDesktopTool")(function* (
+      item: OrchestrationV2TurnItem,
+    ) {
+      if (
+        !desktopTools?.hasCaptures(item.threadId) ||
+        item.type !== "dynamic_tool" ||
+        item.mcpToolCall ||
+        !item.runId ||
+        !item.providerTurnId ||
+        !["completed", "failed", "cancelled", "interrupted"].includes(item.status)
+      )
+        return item;
+      const state = yield* projections
+        .getHostToolAuthorityContext(item.threadId, item.runId)
+        .pipe(Effect.orElseSucceed(() => undefined));
+      const turn = state?.providerTurns.find((turn) => turn.id === item.providerTurnId);
+      return desktopTools.enrich(item, turn?.runAttemptId ?? null);
+    });
 
     /** Providers do not say why they compacted; the Run that asked for it does. */
     const withCompactionTrigger = Effect.fn("ProviderEventIngestor.withCompactionTrigger")(
@@ -717,7 +739,7 @@ export const layer: Layer.Layer<
               }),
             ];
           case "turn_item.updated": {
-            const item = input.event.turnItem;
+            const item = yield* enrichDesktopTool(input.event.turnItem);
             const results = observedTaskResults(item);
             const receipts =
               item.runId === null || results === undefined
@@ -742,9 +764,7 @@ export const layer: Layer.Layer<
               yield* makeDomainEvent(input, {
                 type: "turn-item.updated",
                 threadId: input.event.turnItem.threadId,
-                payload: stripUnservedToolOutputImageBytes(
-                  yield* withCompactionTrigger(input.event.turnItem),
-                ),
+                payload: stripUnservedToolOutputImageBytes(yield* withCompactionTrigger(item)),
                 runId: input.event.turnItem.runId,
                 nodeId: input.event.turnItem.nodeId,
               }),
