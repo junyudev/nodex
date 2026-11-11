@@ -22,10 +22,14 @@ import {
   NodexSettingsRow,
   NodexSettingsSection,
 } from "@/components/ui/settings";
-import { readChromeControlSettings } from "@/lib/chrome-control-settings";
+import {
+  readChromeControlSettings,
+  updateChromeControlSettings,
+} from "@/lib/chrome-control-settings";
 import {
   isChromeControlRuntimeSnapshot,
   type ChromeControlRuntimeSnapshot,
+  type ChromeControlSettingsAction,
 } from "../../../shared/chrome-control-settings";
 import type {
   BrowserDownloadAction,
@@ -300,7 +304,9 @@ function BrowserSettingsOverview({
       </BrowserOverviewSection>
       <BrowserOverviewSection anchor="extensions" title="Extensions">
         <CapabilityRow label="Extension manager" capability={capabilities.extensions} />
-        {host.browserControl ? <ChromeControlReadiness snapshot={chromeControl} /> : null}
+        {host.browserControl ? (
+          <ChromeControlReadiness snapshot={chromeControl} onUpdate={setChromeControl} />
+        ) : null}
         <NodexSettingsRow
           label="Manage extensions"
           description="Load and remove unpacked extensions from the shared Browser Profile."
@@ -350,6 +356,7 @@ function BrowserSettingsOverview({
 }
 
 const CHROME_CONTROL_STATUS_LABELS: Record<ChromeControlRuntimeSnapshot["status"], string> = {
+  disabled: "Off",
   "extension-disconnected": "Waiting for extension",
   faulted: "Needs repair",
   ready: "Ready",
@@ -360,16 +367,54 @@ const CHROME_CONTROL_STATUS_LABELS: Record<ChromeControlRuntimeSnapshot["status"
 
 function ChromeControlReadiness({
   snapshot,
+  onUpdate,
 }: {
   readonly snapshot: ChromeControlRuntimeSnapshot | null;
+  readonly onUpdate: (snapshot: ChromeControlRuntimeSnapshot) => void;
 }) {
   const ready = snapshot?.providerReady === true;
-  const label = snapshot ? CHROME_CONTROL_STATUS_LABELS[snapshot.status] : "Checking…";
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const windows = snapshot?.windows;
+  const state = snapshot?.status;
+  const label =
+    windows?.owner === "app"
+      ? "In use by another app"
+      : windows?.owner === "profile"
+        ? "In use by another Nodex Profile"
+        : snapshot
+          ? CHROME_CONTROL_STATUS_LABELS[snapshot.status]
+          : "Checking…";
   const description =
+    (failed ? "Couldn’t update browser control. Try again." : null) ??
+    (windows?.manifestPaths.length
+      ? windows.manifestPaths.map((path) => (
+          <span key={path} className="block break-all select-text">
+            {path}
+          </span>
+        ))
+      : null) ??
+    (windows && state === "extension-disconnected"
+      ? "Open Chrome or Edge with the ChatGPT extension."
+      : null) ??
+    (windows && state === "disabled" ? "Turn on to connect the ChatGPT extension." : null) ??
     snapshot?.reason ??
     (ready
       ? "Nodex can control tabs in a connected supported browser profile."
       : "Checking the signed browser-control runtime and extension connection.");
+
+  const update = async (action: ChromeControlSettingsAction) => {
+    setPending(true);
+    setFailed(false);
+    try {
+      onUpdate(await updateChromeControlSettings(action));
+    } catch {
+      setFailed(true);
+    }
+    setPending(false);
+  };
+  const token = windows?.takeoverToken;
+  const canTurnOff = windows && snapshot?.requested;
 
   return (
     <NodexSettingsRow label="Control existing browsers" description={description}>
@@ -384,6 +429,46 @@ function ChromeControlReadiness({
         />
         {label}
       </span>
+      {token ? (
+        <NodexButton
+          size="sm"
+          variant="secondary"
+          disabled={pending}
+          onClick={() => void update({ kind: "takeover", token })}
+        >
+          Use with Nodex
+        </NodexButton>
+      ) : null}
+      {windows && state === "disabled" ? (
+        <NodexButton
+          size="sm"
+          variant="secondary"
+          disabled={pending}
+          onClick={() => void update({ kind: "enable" })}
+        >
+          Turn on
+        </NodexButton>
+      ) : null}
+      {windows && state === "faulted" ? (
+        <NodexButton
+          size="sm"
+          variant="secondary"
+          disabled={pending}
+          onClick={() => void update({ kind: "repair" })}
+        >
+          Repair
+        </NodexButton>
+      ) : null}
+      {canTurnOff ? (
+        <NodexButton
+          size="sm"
+          variant="secondary"
+          disabled={pending}
+          onClick={() => void update({ kind: "disable" })}
+        >
+          {windows.canGiveBack ? "Give back" : "Turn off"}
+        </NodexButton>
+      ) : null}
     </NodexSettingsRow>
   );
 }

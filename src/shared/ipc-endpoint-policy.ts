@@ -740,6 +740,7 @@ type PlainResultCommandEndpointPolicy =
   | "codex:turn:question-reply"
   | "codex:user-input:auto-resolution:snooze"
   | "composer:pick-files"
+  | "chrome-control-settings-update"
   | "computer-use-settings-remove-app-approval"
   | "computer-use-settings-remove-message-approval"
   | "computer-use-settings-set-always-hide-pip"

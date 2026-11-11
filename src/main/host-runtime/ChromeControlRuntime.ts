@@ -8,11 +8,27 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import type { BrowserUsePeerAuthorizationMode } from "../../shared/browser-use-host-capability";
 import { BROWSER_PLUGIN_NODE_MODULE_DIR } from "../../shared/browser-runtime-metadata";
-import type { ChromeControlRuntimeSnapshot } from "../../shared/chrome-control-settings";
+import type {
+  ChromeControlRuntimeSnapshot,
+  ChromeControlSettingsAction,
+} from "../../shared/chrome-control-settings";
+import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
+import { WindowsDesktopTools } from "../platform/node/WindowsDesktopTools";
+import {
+  createWindowsChromeRegistration,
+  windowsChromeStatePath,
+  type WindowsChromeRegistrationState,
+} from "../browser-use/chrome/WindowsChromeRegistration";
+import {
+  createWindowsChromeNativeHost,
+  windowsChromeFileSecurity,
+} from "../browser-use/chrome/WindowsChromeNativeHost";
+import { createWindowsChromePipeTransport } from "../browser-use/chrome/WindowsChromePipeTransport";
 import {
   loadChromeBrowserAuthority,
   type ChromeBrowserAuthority,
@@ -66,6 +82,9 @@ export class ChromeControlRuntime extends Context.Service<
     readonly refresh: Effect.Effect<ChromeControlRuntimeSnapshot, ChromeControlRuntimeError>;
     readonly resolveBrowserIconPath: (family: string) => string | null;
     readonly snapshot: () => ChromeControlRuntimeSnapshot;
+    readonly updateWindowsRegistration?: (
+      action: ChromeControlSettingsAction,
+    ) => Effect.Effect<ChromeControlRuntimeSnapshot, ChromeControlRuntimeError>;
   }
 >()("nodex/main/host-runtime/ChromeControlRuntime") {}
 
@@ -90,6 +109,13 @@ export interface ChromeControlRuntimePorts {
   ) => ChromeControlExtensionRegistryPort;
   readonly requested: boolean;
   readonly runtimeUnavailableReason: string | null;
+  readonly windows?: {
+    readonly reconcile: (
+      action?: ChromeControlSettingsAction,
+    ) => Promise<WindowsChromeRegistrationState>;
+    readonly makeRegistry: () => ChromeControlExtensionRegistryPort;
+    readonly releaseRegistration?: () => Promise<void>;
+  };
 }
 
 export function resolveChromeNativeHostNodeModuleDirs(
@@ -220,8 +246,10 @@ function diffInstances(
 
 export const makeChromeControlRuntime = (
   ports: ChromeControlRuntimePorts,
-): Effect.Effect<ChromeControlRuntime["Service"], never, Scope.Scope> =>
-  Effect.gen(function* () {
+): Effect.Effect<ChromeControlRuntime["Service"], never, Scope.Scope> => {
+  if (ports.windows && ports.registrationKind !== "disabled")
+    return makeWindowsChromeControlRuntime(ports, ports.windows);
+  return Effect.gen(function* () {
     let installFailure: ChromeControlRuntimeError | null = null;
     let nativeHostInstalled = false;
     let registry: ChromeControlExtensionRegistryPort | null = null;
@@ -355,12 +383,163 @@ export const makeChromeControlRuntime = (
       snapshot,
     });
   });
+};
+
+function makeWindowsChromeControlRuntime(
+  ports: ChromeControlRuntimePorts,
+  windows: NonNullable<ChromeControlRuntimePorts["windows"]>,
+): Effect.Effect<ChromeControlRuntime["Service"], never, Scope.Scope> {
+  return Effect.gen(function* () {
+    const lane = yield* Semaphore.make(1);
+    let registry: ChromeControlExtensionRegistryPort | null = null;
+    let unsubscribe: (() => void) | undefined;
+    let registration: WindowsChromeRegistrationState | null = null;
+    let failure: string | null = null;
+    let revision = 0;
+    let previous = EMPTY_REGISTRY_SNAPSHOT.instances;
+    const listeners = new Set<(change: ChromeControlRuntimeChange) => void>();
+    const snapshot = (): ChromeControlRuntimeSnapshot => {
+      const current = registry?.snapshot() ?? EMPTY_REGISTRY_SNAPSHOT;
+      const inUse = registration?.status === "registration-in-use" ? registration : null;
+      const disabled = registration?.status === "disabled";
+      const ready = !failure && registration?.status === "owned" && current.providerReady;
+      return {
+        bundleSupported: ports.bundleSupported,
+        extensionConnected: ready,
+        nativeHostInstalled: registration?.status === "owned",
+        providerReady: ready,
+        reason:
+          failure ??
+          (ports.registrationKind === "development" && registration?.status === "owned"
+            ? "Registered for this development instance."
+            : null),
+        requested: !disabled,
+        revision,
+        status: failure
+          ? "faulted"
+          : inUse
+            ? "registration-in-use"
+            : disabled
+              ? "disabled"
+              : ready
+                ? "ready"
+                : "extension-disconnected",
+        windows: {
+          owner: inUse?.owner ?? null,
+          manifestPaths: inUse?.manifestPaths ?? [],
+          takeoverToken: inUse?.takeoverToken ?? null,
+          canGiveBack: registration?.status === "owned" && registration.canGiveBack,
+        },
+      };
+    };
+    const publish = () => {
+      const current = registry?.snapshot().instances ?? [];
+      const delta = diffInstances(previous, current);
+      previous = current;
+      revision += 1;
+      for (const listener of listeners) listener({ ...delta, snapshot: snapshot() });
+    };
+    const stopRegistry = () => {
+      unsubscribe?.();
+      unsubscribe = undefined;
+      registry?.stop();
+      registry = null;
+    };
+    yield* Effect.addFinalizer(() =>
+      Effect.gen(function* () {
+        stopRegistry();
+        const release = windows.releaseRegistration;
+        if (!release) return;
+        yield* Effect.tryPromise(release).pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning("Could not restore Chrome registration", cause),
+          ),
+        );
+      }).pipe(lane.withPermit),
+    );
+
+    const reconcile = (action?: ChromeControlSettingsAction) =>
+      Effect.tryPromise(async () => {
+        if (action?.kind === "disable" || action?.kind === "repair") stopRegistry();
+        registration = await windows.reconcile(action);
+        failure = null;
+        if (registration.status !== "owned") stopRegistry();
+        else if (!registry) {
+          registry = windows.makeRegistry();
+          await registry.start();
+          unsubscribe = registry.subscribe(publish);
+        }
+        publish();
+        return snapshot();
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            stopRegistry();
+            getLogger({ component: "chrome-control-runtime" }).warn(
+              "Browser control setup failed",
+              {
+                reason: boundedReason(error),
+              },
+            );
+            failure = "Nodex couldn’t set up browser control.";
+            publish();
+            return snapshot();
+          }),
+        ),
+        // Registry writes and their recovery receipts must finish before shutdown or the next command.
+        Effect.uninterruptible,
+        lane.withPermit,
+      );
+    yield* reconcile();
+    return ChromeControlRuntime.of({
+      available: () => snapshot().providerReady,
+      changes: Stream.callback(
+        (queue) =>
+          Effect.acquireRelease(
+            Effect.sync(() => {
+              const listener = (change: ChromeControlRuntimeChange) =>
+                Queue.offerUnsafe(queue, change);
+              listeners.add(listener);
+              return listener;
+            }),
+            (listener) => Effect.sync(() => listeners.delete(listener)),
+          ),
+        { bufferSize: 64, strategy: "sliding" },
+      ),
+      focusPresentation: (input) =>
+        Effect.tryPromise({
+          try: () => {
+            if (!registry || !snapshot().providerReady)
+              throw new Error("Browser control is unavailable");
+            return registry.focusPresentation(input);
+          },
+          catch: (cause) =>
+            new ChromeControlRuntimeError({ operation: "focus-presentation", cause }),
+        }),
+      isConnectedInstance: (family, extensionInstanceId) =>
+        snapshot().providerReady &&
+        (registry
+          ?.snapshot()
+          .instances.some(
+            (instance) =>
+              instance.family === family && instance.extensionInstanceId === extensionInstanceId,
+          ) ??
+          false),
+      refresh: reconcile(),
+      updateWindowsRegistration: reconcile,
+      resolveBrowserIconPath: (family) => ports.browserIconPaths?.get(family) ?? null,
+      snapshot,
+    });
+  });
+}
 
 export interface ChromeControlRuntimeOptions {
   readonly browserRuntime: BrowserRuntimeAvailability;
   readonly registration: ChromeHostRegistration;
   readonly peerAuthorizationMode: BrowserUsePeerAuthorizationMode;
   readonly platform: NodeJS.Platform;
+  readonly architecture?: string;
+  readonly localAppData?: string;
   readonly runtimeStateHome: string;
 }
 
@@ -392,7 +571,9 @@ async function verifyAttestedIconPaths(
   return result;
 }
 
-export const live = (options: ChromeControlRuntimeOptions): Layer.Layer<ChromeControlRuntime> =>
+export const live = (
+  options: ChromeControlRuntimeOptions,
+): Layer.Layer<ChromeControlRuntime, never, WindowsDesktopTools | ScopedCallbackRuntime> =>
   Layer.effect(
     ChromeControlRuntime,
     Effect.gen(function* () {
@@ -400,7 +581,10 @@ export const live = (options: ChromeControlRuntimeOptions): Layer.Layer<ChromeCo
       const bundle =
         options.browserRuntime.status === "available" ? options.browserRuntime.bundle : null;
       const chromeCapability = bundle?.manifest.capabilities.browserUse.backends.chrome ?? null;
-      const platformSupported = hostCapabilities(options.platform).browserControl;
+      const platformSupported = hostCapabilities(
+        options.platform,
+        options.architecture,
+      ).browserControl;
       const descriptorArtifact =
         bundle && chromeCapability?.status === "available"
           ? bundle.manifest.artifacts.find(
@@ -420,6 +604,7 @@ export const live = (options: ChromeControlRuntimeOptions): Layer.Layer<ChromeCo
                 expectedHostName: chromeCapability.nativeHost.hostName,
                 expectedSha256: descriptorArtifact.sha256,
                 expectedSize: descriptorArtifact.size,
+                platform: options.platform,
               }),
             ).pipe(
               Effect.match({
@@ -463,7 +648,7 @@ export const live = (options: ChromeControlRuntimeOptions): Layer.Layer<ChromeCo
           bundle.manifest.targetPlatform !== "darwin" ||
           !bundle.manifest.trust.chromeSigningTeamId
         ) {
-          throw new Error("Chrome native host requires its Windows adapter");
+          throw new Error("The macOS native host signing policy is unavailable");
         }
         return await installChromeNativeHost({
           authority,
@@ -507,9 +692,167 @@ export const live = (options: ChromeControlRuntimeOptions): Layer.Layer<ChromeCo
         });
       };
 
+      const runtimeUnavailableReason =
+        options.browserRuntime.status === "unavailable"
+          ? options.browserRuntime.message
+          : !platformSupported
+            ? "Existing browser control is unavailable on this platform"
+            : chromeCapability?.status === "unavailable"
+              ? chromeCapability.reason
+              : authorityResult.error
+                ? `Chrome runtime descriptor was rejected: ${authorityResult.error}`
+                : "Chrome runtime bundle is unsupported";
+      const manifest = bundle?.manifest;
+      const registrationPolicy = options.registration;
+      const windows =
+        options.platform === "win32" &&
+        (registrationPolicy.kind === "production" || registrationPolicy.kind === "development") &&
+        bundleSupported &&
+        bundle &&
+        manifest?.targetPlatform === "win32" &&
+        chromeCapability?.status === "available" &&
+        authority
+          ? yield* Effect.gen(function* () {
+              const native = yield* WindowsDesktopTools;
+              const callbacks = yield* ScopedCallbackRuntime;
+              const artifact = bundle.manifest.artifacts.find(
+                ({ path }) => path === chromeCapability.nativeHost.path,
+              );
+              const nativeHostPath = bundle.paths.chromeNativeHost;
+              if (!artifact || !nativeHostPath || !Object.hasOwn(manifest.trust.pe, artifact.path))
+                return undefined;
+              const security = windowsChromeFileSecurity((candidate) =>
+                callbacks.runPromise(native.inspectPath(candidate)),
+              );
+              const statePath = windowsChromeStatePath(options.runtimeStateHome);
+              const browsers = authority.families.flatMap(({ windows }) =>
+                windows?.registrationBrowser ? [windows.registrationBrowser] : [],
+              );
+              if (!browsers.includes("chrome") || !browsers.includes("edge")) return undefined;
+              const verifier = createBrowserRuntimePlatformArtifactVerifier({
+                platform: "win32",
+                windowsVerifier: {
+                  verifyClosurePaths: async () => ({
+                    ok: false,
+                    reason: "Expected a single native host executable",
+                  }),
+                  verifyAuthenticode: async (candidate, policy) => {
+                    const signature = await callbacks.runPromise(
+                      native.verifyAuthenticode(candidate),
+                    );
+                    if (
+                      signature.status !== "verified" ||
+                      !signature.codeSigningEku ||
+                      signature.revocation !== "cacheChecked"
+                    ) {
+                      return {
+                        ok: false,
+                        reason: "Browser native host signature could not be verified",
+                      };
+                    }
+                    const signer = signature.chain[0];
+                    if (signer?.subject !== policy.subject || signer.issuer !== policy.issuer) {
+                      return { ok: false, reason: "Browser native host publisher did not match" };
+                    }
+                    return { ok: true, value: signer };
+                  },
+                },
+              });
+              const installer = createWindowsChromeNativeHost({
+                authority,
+                channel:
+                  bundle.manifest.buildFlavor === "production"
+                    ? "prod"
+                    : bundle.manifest.buildFlavor === "internal"
+                      ? "internal"
+                      : "dev",
+                expectedNativeHost: artifact,
+                localAppData:
+                  options.localAppData ??
+                  path.join(registrationPolicy.homeDirectory, "AppData", "Local"),
+                runtimeStateHome: options.runtimeStateHome,
+                statePath,
+                runtimeVersion: chromeCapability.plugin.version,
+                runtimePaths: {
+                  browserClientPath: bundle.paths.browserPluginClient,
+                  browserServicePath: bundle.paths.browserPluginService,
+                  codexCliPath: bundle.paths.codexCli,
+                  nativeHostPath,
+                  nodePath: bundle.paths.node,
+                  nodeModuleDirs: resolveChromeNativeHostNodeModuleDirs(
+                    bundle.rootPath,
+                    bundle.manifest.browserPlugin.nodeModuleDirs,
+                  ),
+                  nodeReplPath: bundle.paths.nodeRepl,
+                  resourcesPath: bundle.rootPath,
+                },
+                security,
+                verifyPlatformArtifact: async (candidate) => {
+                  const failure = await verifier({
+                    artifact,
+                    artifactPath: candidate,
+                    manifest: bundle.manifest,
+                  });
+                  if (failure) throw new Error(failure);
+                },
+              });
+              const registration = createWindowsChromeRegistration({
+                statePath,
+                host: authority.hostName,
+                browsers,
+                security,
+                releaseResources: installer.releaseResources,
+                registry: {
+                  readRegistration: (key) => callbacks.runPromise(native.readRegistration(key)),
+                  writeRegistration: (key, expected, manifest) =>
+                    callbacks.runPromise(native.writeRegistration(key, expected, manifest)),
+                  restoreRegistration: (key, receipt) =>
+                    callbacks.runPromise(native.restoreRegistration(key, receipt)),
+                },
+              });
+              const transport = createWindowsChromePipeTransport({
+                callbacks,
+                native,
+                nativeHostPath: installer.nativeHostPath,
+                ownsRegistration: registration.ownsRegistration,
+                verifyHost: installer.verify,
+              });
+              let published = false;
+              return {
+                releaseRegistration:
+                  registrationPolicy.kind === "development" ? registration.release : undefined,
+                reconcile: async (action?: ChromeControlSettingsAction) => {
+                  const state = await registration.reconcile(async (target, repair) => {
+                    if (repair || !published) await installer.install(target);
+                    else await installer.checkInstallation(target);
+                    return async () => {
+                      if (repair || !published) await installer.publish();
+                      published = true;
+                    };
+                  }, action);
+                  if (state.status !== "owned") published = false;
+                  return state;
+                },
+                makeRegistry: () =>
+                  new ChromeExtensionPipeRegistry({
+                    authority,
+                    windows: transport,
+                    requestTimeoutMs: 4000,
+                    onDiagnostic: (diagnostic) =>
+                      logger.warn("Chrome provider diagnostic", diagnostic),
+                  }),
+              };
+            })
+          : undefined;
+
       return yield* makeChromeControlRuntime({
         browserIconPaths,
-        bundleSupported,
+        bundleSupported:
+          bundleSupported &&
+          (options.platform !== "win32" ||
+            registrationPolicy.kind === "disabled" ||
+            windows !== undefined),
+        windows,
         installNativeHost,
         registrationKind: options.registration.kind,
         makeRegistry: (peerIdentity) => {
@@ -533,15 +876,9 @@ export const live = (options: ChromeControlRuntimeOptions): Layer.Layer<ChromeCo
         },
         requested,
         runtimeUnavailableReason:
-          options.browserRuntime.status === "unavailable"
-            ? options.browserRuntime.message
-            : !platformSupported
-              ? "Chrome native control requires macOS"
-              : chromeCapability?.status === "unavailable"
-                ? chromeCapability.reason
-                : authorityResult.error
-                  ? `Chrome runtime descriptor was rejected: ${authorityResult.error}`
-                  : "Chrome runtime bundle is unsupported",
+          options.platform === "win32"
+            ? "Browser control isn’t available on this installation."
+            : runtimeUnavailableReason,
       });
     }),
   );

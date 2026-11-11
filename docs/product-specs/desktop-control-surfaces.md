@@ -6,17 +6,27 @@ Nodex presents Browser Use, control of supported browser profiles, and Computer 
 
 The built-in Browser is available when its verified runtime is ready. Control of an existing browser profile additionally requires a supported browser family, the installed native host, and a connected allowed extension instance. Browser Settings reports the live provider state as checking, unavailable, not registered, registered elsewhere, needs repair, waiting for extension, or ready. Agents can select the existing-browser backend only in the ready state.
 
-The installed app registers the host for the personal Profile and repairs registrations
+On macOS, the installed app registers the host for the personal Profile and repairs registrations
 whose host executable has disappeared. A registration pointing to another
 existing host stays with that owner. Development instances leave the user's
 registration alone by default. An explicitly opted-in development instance
 registers for the duration of that launch and gives back its registration on
-clean exit if it still owns it. Disposable Electron scenarios use a registration
-home inside their own Profile.
+clean exit if it still owns it. On macOS, disposable Electron scenarios use a
+registration home inside their own Profile. Windows scenarios leave HKCU untouched.
 
 Computer Use is available only when its verified helper and operating-system requirements are ready. Its service uses the bundled Agent runtime and the owning Profile without requiring a separately installed Codex app or sharing another Profile’s configuration. A failure in one control backend does not weaken or implicitly enable another. Desktop tools are available to local Agent execution.
 
 Local chats receive the desktop tools alongside the user's own MCP servers. Codex chats also receive Desktop features. When desktop tools cannot be prepared, the chat continues without them. The built-in Browser opens in the window that sent the message. A turn that no window sent, such as a queued, scheduled, or Agent-started turn, keeps the Browser window the chat already had. Archiving or deleting a chat releases its Browser pages and closes its Runtime-owned JavaScript session.
+
+### Existing browsers on Windows
+
+Nodex connects to Chrome and Edge through the ChatGPT extension. Browser Settings shows **Waiting for extension** until an allowed extension instance connects. **Ready** means Nodex can address that instance and its tabs. Browser discovery uses the extension's exact ID and instance ID. Windows on Arm works without the optional extension-storage lookup for profile names and ordering.
+
+Windows registers the browser host for the current user. The Chrome and Edge native-messaging keys under \`HKCU\Software\Google\Chrome\NativeMessagingHosts\` and \`HKCU\Software\Microsoft\Edge\NativeMessagingHosts\` are shared by the 32-bit and 64-bit registry views. Nodex writes each key once and leaves machine-wide entries alone. The browser opens the manifest in the owning Nodex Profile, which points to the verified host executable for the installed Windows architecture.
+
+The installed app registers for the personal Profile. Development instances can use `vp run dev --register-browser-host` to register for one launch and give back any registration they still own on clean exit. A durable Nodex registration remains owned by its Profile until released. Another Profile shows **In use by another Nodex Profile**. When another app has registered the host, Browser Settings shows **In use by another app** and the app's manifest path. **Use with Nodex** replaces the displayed registration. **Give back** restores the previous registration and turns browser control off. **Turn off** also releases registrations created by Nodex. A registration changed elsewhere after Nodex took ownership stays in place.
+
+The Profile keeps its recovery receipts at \`runtime/agent/chrome-control/windows/registration-v1.json\`. On uninstall, use those receipts to restore each default value only if it still equals that Profile's installed value. If the receipt records no previous value, remove the default value and remove a Nodex-created key only if it is empty. Restore before removing the Profile's manifest or host executable. The host resource lists in the Profile and LocalAppData keep entries for multiple applications. Remove only the entries for the uninstalled Profile and host. An upgrade keeps the manifest path and receipts while switching the manifest to the new verified executable.
 
 ## JavaScript sessions
 

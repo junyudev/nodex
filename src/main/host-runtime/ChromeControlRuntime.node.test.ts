@@ -281,6 +281,7 @@ it.live("leaves the user home untouched when a development instance has no regis
       );
       const registration = resolveChromeHostRegistration({
         isPackaged: false,
+        platform: "darwin",
         isolatedRunId: "dev",
         homeDirectory: homedir(),
         nodexHome: path.join(home, "profile"),
@@ -347,4 +348,50 @@ it.effect("reports an existing registration owner without claiming the provider 
       providerReady: false,
     });
   }),
+);
+
+it.effect(
+  "projects Windows registration conflicts, enables the provider after takeover, and turns it off",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = makeRegistry();
+        const runtime = yield* makeChromeControlRuntime(
+          makePorts(registry, {
+            windows: {
+              makeRegistry: () => registry,
+              reconcile: async (action) => {
+                if (action?.kind === "disable") return { status: "disabled" };
+                if (action?.kind === "takeover") return { status: "owned", canGiveBack: true };
+                return {
+                  status: "registration-in-use",
+                  owner: "app",
+                  takeoverToken: "test",
+                  manifestPaths: ["C:\\Other App\\manifest.json"],
+                };
+              },
+            },
+          }),
+        );
+        expect(runtime.snapshot()).toMatchObject({
+          status: "registration-in-use",
+          providerReady: false,
+          windows: { owner: "app" },
+        });
+        expect(
+          yield* runtime.updateWindowsRegistration!({ kind: "takeover", token: "test" }),
+        ).toMatchObject({
+          status: "extension-disconnected",
+          windows: { canGiveBack: true },
+        });
+        registry.connect("windows-instance");
+        expect(runtime.snapshot().status).toBe("ready");
+        expect(yield* runtime.updateWindowsRegistration!({ kind: "disable" })).toMatchObject({
+          status: "disabled",
+          providerReady: false,
+          requested: false,
+        });
+        expect(registry.stopped).toBe(true);
+      }),
+    ),
 );
