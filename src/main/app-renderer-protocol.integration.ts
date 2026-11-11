@@ -361,19 +361,18 @@ describe("development HTTP renderer origin", () => {
       }, buildAppFilesystemUrl(brokenImagePath));
       await expect(readLoadedImageDimensions(page, ["broken-source"])).rejects.toThrow();
     } catch (cause) {
-      const failures = await application?.evaluate(() => {
+      const diagnostics = await application?.evaluate(() => {
         const control = Reflect.get(
           globalThis,
           "nodexProtocolImages",
         ) as ProtocolImageFixtureControl;
-        return control.failures;
+        return {
+          failures: control.failures,
+          consoleErrors: control.consoleErrors,
+          fileReads: control.fileReads,
+        };
       });
-      throw new Error(
-        `Development media failed; native request failures: ${JSON.stringify(failures)}`,
-        {
-          cause,
-        },
-      );
+      throw new Error(`Development media failed: ${JSON.stringify(diagnostics)}`, { cause });
     } finally {
       if (application) await application.close();
       if (developmentServer) await developmentServer.close();

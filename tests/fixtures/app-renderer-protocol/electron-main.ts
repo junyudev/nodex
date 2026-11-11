@@ -1,8 +1,9 @@
 import path from "node:path";
-import { createReadStream } from "node:fs";
+import { createReadStream, mkdtempSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
+import { format } from "node:util";
 import {
   app,
   BrowserWindow,
@@ -15,6 +16,8 @@ import { APP_RENDERER_URL } from "../../../src/shared/app-renderer-policy";
 
 export interface ProtocolImageFixtureControl {
   readonly requested: Promise<void>;
+  readonly consoleErrors: readonly string[];
+  readonly fileReads: readonly string[];
   readonly failures: readonly {
     readonly url: string;
     readonly error: string;
@@ -30,6 +33,13 @@ function createSignal() {
     resolve = done;
   });
   return { promise, resolve };
+}
+
+// Chromium's caches and session files belong to this disposable application.
+if (!app.commandLine.hasSwitch("user-data-dir")) {
+  const userData = mkdtempSync(path.join(__dirname, "profile-"));
+  app.setPath("userData", userData);
+  app.setPath("sessionData", userData);
 }
 
 const diagnosticsScheme: Electron.CustomScheme = {
@@ -54,7 +64,14 @@ void app.whenReady().then(async () => {
   const holdImages = process.env.NODEX_TEST_HOLD_PROTOCOL_IMAGES === "1";
   const imageRequested = createSignal();
   const imageReleased = createSignal();
+  const fileReads: string[] = [];
   if (holdImages) {
+    const consoleErrors: string[] = [];
+    const logError = console.error;
+    console.error = (...args: unknown[]) => {
+      consoleErrors.push(format(...args));
+      logError(...args);
+    };
     const failures: ProtocolImageFixtureControl["failures"][number][] = [];
     session.defaultSession.webRequest.onErrorOccurred({ urls: ["app://fs/*"] }, (details) => {
       failures.push({
@@ -66,6 +83,8 @@ void app.whenReady().then(async () => {
     });
     const control: ProtocolImageFixtureControl = {
       requested: imageRequested.promise,
+      consoleErrors,
+      fileReads,
       failures,
       release: () => imageReleased.resolve(),
     };
@@ -78,6 +97,7 @@ void app.whenReady().then(async () => {
     protocol,
     ...(holdImages ? {
       stat: async (filePath) => {
+        fileReads.push(filePath);
         if (filePath.endsWith(".png")) {
           imageRequested.resolve();
           await imageReleased.promise;
