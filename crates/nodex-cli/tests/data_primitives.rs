@@ -2365,3 +2365,131 @@ fn profile_sql_and_schema_work_without_project_routing_from_an_unrelated_directo
     ]);
     assert_eq!(stale_identity["error"]["code"], "PROFILE_MISMATCH");
 }
+
+#[test]
+fn explicit_body_replacement_accepts_large_unrelated_markdown() {
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
+    let client = connect_or_launch(&home, "large-replacement", Some(&core_binary)).unwrap();
+    let _guard = CoreGuard(client.handshake.generation.pid);
+    seed(&client, &home);
+    nodex_platform::private_fs::write(home.join("brief.txt"), b"Replacement brief").unwrap();
+    success(
+        &home,
+        &[
+            "page",
+            "file",
+            "put",
+            PAGE_B,
+            "--path",
+            "brief.txt",
+            "--from",
+            "brief.txt",
+            "--if-manifest",
+            "0",
+        ],
+    );
+    let files = success(&home, &["page", "file", "list", PAGE_B]);
+    assert_eq!(files["files"].as_array().unwrap().len(), 1);
+    assert!(files["files"][0]["attachment"].is_object());
+
+    let body = |prefix| {
+        format!(
+            "Keep this paragraph about <nodex://pages/{PAGE_A}>.\n\n{}",
+            (0..600)
+                .map(|index| format!("{prefix} paragraph {index}"))
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        )
+    };
+    let original = body("Old");
+    let replacement = body("New");
+    let empty = success(&home, &["read", PAGE_B]);
+    let inserted = input_text(
+        &home,
+        &[
+            "page",
+            "replace",
+            PAGE_B,
+            "--if-match",
+            empty["validators"]["body_etag"].as_str().unwrap(),
+        ],
+        &original,
+    );
+    assert_eq!(inserted["ok"], true, "{inserted}");
+    let child = success(
+        &home,
+        &[
+            "page",
+            "create",
+            "--parent",
+            &format!("page:{PAGE_B}"),
+            "--title",
+            "Retained child",
+            "--empty",
+        ],
+    );
+    let child_id = child["page_id"].as_str().unwrap();
+    let directive = format!("::page{{id=\"{child_id}\"}}");
+    let replacement = format!("{replacement}\n\n{directive}");
+    let before = success(&home, &["read", PAGE_B]);
+    let replaced = input_text(
+        &home,
+        &[
+            "page",
+            "replace",
+            PAGE_B,
+            "--if-match",
+            before["validators"]["body_etag"].as_str().unwrap(),
+        ],
+        &replacement,
+    );
+    assert_eq!(replaced["ok"], true, "{replaced}");
+    let unchanged_id = &inserted["result"]["affected"]["created_block_ids"][0];
+    assert!(unchanged_id.is_string());
+    let retired = replaced["result"]["affected"]["deleted_block_ids"]
+        .as_array()
+        .unwrap();
+    assert!(
+        !retired.contains(unchanged_id),
+        "Unchanged Block {unchanged_id} was retired"
+    );
+
+    assert_eq!(
+        replaced["result"]["replacement"],
+        serde_json::json!({"preserved": 2, "recreated": 600})
+    );
+    assert_eq!(success(&home, &["read", child_id])["page_id"], child_id);
+    let retained_files = success(&home, &["page", "file", "list", PAGE_B]);
+    assert_eq!(retained_files["files"], files["files"]);
+    assert_eq!(
+        success(&home, &["read", PAGE_B])["content"],
+        format!("{replacement}\n")
+    );
+    let after = success(&home, &["read", PAGE_B]);
+    let with_toggle = format!(
+        "A summary.\n\n:::toggle[Original]\n  ## Heading\n\n  Keep this paragraph next to the heading.\n:::\n\n{directive}"
+    );
+    let nested = input_text(
+        &home,
+        &[
+            "page",
+            "replace",
+            PAGE_B,
+            "--if-match",
+            after["validators"]["body_etag"].as_str().unwrap(),
+        ],
+        &with_toggle,
+    );
+    assert_eq!(nested["ok"], true, "{nested}");
+    let actual = success(&home, &["read", PAGE_B]);
+    assert!(
+        actual["content"]
+            .as_str()
+            .unwrap()
+            .contains("Keep this paragraph next to the heading.")
+    );
+}

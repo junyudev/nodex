@@ -155,6 +155,12 @@ export const UpdatePageV3InputSchema = z
   );
 
 const PageUpdateEffectsV3Schema = z.strictObject({
+  replacement: z
+    .strictObject({
+      preserved: z.number().int().min(0),
+      recreated: z.number().int().min(0),
+    })
+    .optional(),
   created: z.number().int().min(0),
   updated: z.number().int().min(0),
   moved: z.number().int().min(0),

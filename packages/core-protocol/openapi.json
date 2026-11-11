@@ -19240,6 +19240,16 @@
               "type": "string"
             }
           },
+          "replacement": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DocumentReplacementSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "title_changed": {
             "type": "boolean"
           },
@@ -19658,6 +19668,26 @@
           },
           "update_id": {
             "type": "string"
+          }
+        }
+      },
+      "DocumentReplacementSummary": {
+        "type": "object",
+        "description": "Identity counts for a body replacement that retires Blocks.",
+        "required": [
+          "preserved",
+          "recreated"
+        ],
+        "properties": {
+          "preserved": {
+            "type": "integer",
+            "description": "Block IDs retained in the new body.",
+            "minimum": 0
+          },
+          "recreated": {
+            "type": "integer",
+            "description": "New Block IDs allocated for the replacement body.",
+            "minimum": 0
           }
         }
       },

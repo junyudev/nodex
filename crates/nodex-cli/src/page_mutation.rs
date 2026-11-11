@@ -600,6 +600,8 @@ pub(crate) struct SemanticMutationResult<'a> {
     pub commit_seq: i64,
     pub outcome: DocumentCommitOutcome,
     pub affected: SemanticAffected,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replacement: Option<nodex_core_contracts::document::DocumentReplacementSummary>,
     pub etags: SemanticEtags,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit: Option<&'a nodex_core_contracts::document::OwnedDocumentCommitValue>,
@@ -649,6 +651,7 @@ pub(crate) fn semantic_mutation_result(
         head_seq: outcome.head_seq,
         commit_seq: committed.commit_cursor(),
         outcome: outcome.outcome,
+        replacement: effect.and_then(|effect| effect.replacement.clone()),
         affected: SemanticAffected {
             created_block_ids: effect
                 .map(|v| v.created_block_ids.clone())
