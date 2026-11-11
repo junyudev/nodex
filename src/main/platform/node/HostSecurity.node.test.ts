@@ -37,17 +37,19 @@ test("an Agent shell receives no host secrets or host configuration in its envir
     },
     coreHome,
   );
-  const { stdout } = await exec(
-    process.execPath,
-    ["-e", "console.log(JSON.stringify(process.env))"],
-    { env: environment, timeout: 5_000 },
-  );
-  const observed = Object.fromEntries(
-    Object.entries(JSON.parse(stdout) as Record<string, string>).filter(
-      ([name]) => name !== "__CF_USER_TEXT_ENCODING",
-    ),
-  );
-  expect(observed).toEqual({ PATH: "/usr/bin:/bin", HOME: "/home/operator" });
+  const allowed = { PATH: "/usr/bin:/bin", HOME: "/home/operator" };
+  expect(environment).toEqual(allowed);
+  // Windows supplies required system variables when spawning a child with a custom environment.
+  const observe = async (env: NodeJS.ProcessEnv) => {
+    const { stdout } = await exec(
+      process.execPath,
+      ["-e", "console.log(JSON.stringify(process.env))"],
+      { env, timeout: 5_000 },
+    );
+    return JSON.parse(stdout) as Record<string, string>;
+  };
+  const [observed, baseline] = await Promise.all([observe(environment), observe(allowed)]);
+  expect(observed).toEqual(baseline);
   expect(isAgentProviderVariable("ANTHROPIC_API_KEY", "provider-credential", coreHome)).toBe(true);
   expect(isAgentProviderVariable("NODEX_CORE_AUTH", "secret", coreHome)).toBe(false);
   expect(isAgentProviderVariable("CUSTOM_PATH", `${coreHome}/run/core/core.auth`, coreHome)).toBe(
