@@ -4,7 +4,7 @@ import {
   useComposerDraftIntent,
   type ComposerChatKey,
 } from "@/lib/composer-draft-intents";
-import { afterEach, beforeAll, beforeEach, expect, vi } from "vite-plus/test";
+import { afterEach, beforeEach, expect, vi } from "vite-plus/test";
 import { initPrefersReducedMotion } from "motion";
 import { installMotionPreferenceForTest } from "@/test/browser-globals";
 import { ApplicationReadinessRoot } from "@/bootstrap/application-surface";
@@ -2154,12 +2154,8 @@ vi.mock(".././command-palette", () => ({
   },
 }));
 
-export let WorkbenchShell: (typeof import(".././workbench-runtime"))["WorkbenchRuntime"];
-
-beforeAll(async () => {
-  const workbenchRuntimeModule = await import(".././workbench-runtime");
-  WorkbenchShell = workbenchRuntimeModule.WorkbenchRuntime;
-}, 120_000);
+// Load the production graph after the fixture's mock bindings have initialized.
+const { WorkbenchRuntime: WorkbenchShell } = await import("../workbench-runtime");
 
 export function getPanelTabById(container: HTMLElement, tabId: string): HTMLElement {
   const tabShell = Array.from(container.querySelectorAll<HTMLElement>("[data-panel-tab-id]")).find(
@@ -5452,8 +5448,4 @@ export function setPendingWorktreeWarningListener(
   value: typeof pendingWorktreeWarningListener,
 ): void {
   pendingWorktreeWarningListener = value;
-}
-
-export function setWorkbenchShell(value: typeof WorkbenchShell): void {
-  WorkbenchShell = value;
 }
