@@ -128,10 +128,8 @@ describe("attachment chip Library Files", () => {
 
     try {
       await act(settleEditor);
-      const label = await view.findByText("review.webm");
-      const chip = label.closest("button");
-      expect(chip).not.toBeNull();
-      if (!chip) throw new Error("Attachment chip was not rendered");
+      const chip = await view.findByRole("button", { name: "Open review.webm" });
+      const label = within(chip).getByText("review.webm");
       expect(chip.getAttribute("data-inline-reference-chip")).toBe("true");
       expect(chip.getAttribute("data-attachment-inline-chip")).toBe("true");
       expect(chip.getAttribute("data-mention-inline-chip")).toBeNull();
@@ -260,7 +258,7 @@ describe("attachment chip Library Files", () => {
     );
 
     try {
-      await view.findByText("current.json");
+      const chip = await view.findByRole("button", { name: "Open current.json" });
       await act(async () => {
         runtime.invalidate({
           mode: "refresh",
@@ -271,15 +269,16 @@ describe("attachment chip Library Files", () => {
         await Promise.resolve();
       });
 
-      expect(view.getByText("current.json")).toBeVisible();
+      expect(within(chip).getByText("current.json")).toBeVisible();
       expect(metadata).toHaveBeenCalledTimes(2);
 
       await act(async () => {
         resolveRefresh(createFileMetadata({ default_name: "renamed.json", version: 2 }));
         await refresh;
       });
-      await view.findByText("renamed.json");
-      expect(view.queryByText("current.json")).toBeNull();
+      const renamedChip = await view.findByRole("button", { name: "Open renamed.json" });
+      expect(within(renamedChip).getByText("renamed.json")).toBeVisible();
+      expect(within(renamedChip).queryByText("current.json")).toBeNull();
     } finally {
       view.unmount();
       editor._tiptapEditor.destroy();
