@@ -2,6 +2,12 @@ name: Finalize Sparkle update channel
 description: Sign one architecture's appcast, enclosures, and compatible deltas
 
 inputs:
+  nightly_run_id:
+    description: Retained Nightly run to download builds from
+    required: false
+  rehearsal:
+    description: Use rehearsal notes
+    required: false
   architecture:
     description: arm64, windows-x64 or windows-arm64
     required: true
@@ -31,6 +37,8 @@ runs:
       with:
         name: nodex-${{ inputs.architecture == 'arm64' && 'macos-arm64' || inputs.architecture }}-${{ inputs.source_sha }}
         path: ${{ runner.temp }}/architecture
+        github-token: ${{ inputs.nightly_run_id != '' && github.token || '' }}
+        run-id: ${{ inputs.nightly_run_id || github.run_id }}
 
     - name: Fetch verified compatible update history
       if: inputs.architecture == 'arm64'
@@ -41,7 +49,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        build_version="$(node -p "require('${RUNNER_TEMP}/architecture/architecture-build.json').releaseIdentity.buildVersion")"
+        build_version="$(node -p "require('${RUNNER_TEMP}/architecture/architecture-build.json').buildIdentity.buildVersion")"
         vp run release:fetch:sparkle-history -- \
           --arch "${RELEASE_ARCH}" \
           --channel "${{ inputs.channel }}" \
@@ -62,10 +70,11 @@ runs:
       run: |
         set -euo pipefail
         test -n "${SPARKLE_ED25519_PRIVATE_KEY}"
-        if [[ "${{ inputs.channel }}" == "stable" ]]; then
-          vp run release:notes -- --version "${RELEASE_VERSION}" --output "${RUNNER_TEMP}/release-notes.md"
+        if [[ "${{ inputs.channel }}" == "stable" && "${{ inputs.rehearsal }}" != "true" ]]; then
+          git show "${RELEASE_SOURCE_SHA}:CHANGELOG.md" > "${RUNNER_TEMP}/CHANGELOG.md"
+          vp run release:notes -- --changelog "${RUNNER_TEMP}/CHANGELOG.md" --output "${RUNNER_TEMP}/release-notes.md"
         else
-          printf 'Nightly build from `%s`.\n' "${RELEASE_SOURCE_SHA}" > "${RUNNER_TEMP}/release-notes.md"
+          printf 'Build from `%s`.\n' "${RELEASE_SOURCE_SHA}" > "${RUNNER_TEMP}/release-notes.md"
         fi
         published_at="$(git show -s --format=%cI "${RELEASE_SOURCE_SHA}")"
         sparkle_args=(

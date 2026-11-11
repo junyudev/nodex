@@ -290,7 +290,7 @@ describe.skipIf(process.platform === "win32")("Sparkle code signing", () => {
       JSON.stringify({
         architecture: "arm64",
         artifacts,
-        buildChannel: "nightly",
+        updates: "enabled",
         feedUrls: {
           stable: "https://nodex.jyu.app/updates/stable/arm64/appcast.xml",
           nightly: "https://nodex.jyu.app/updates/nightly/arm64/appcast.xml",
@@ -315,7 +315,7 @@ describe.skipIf(process.platform === "win32")("Sparkle code signing", () => {
     });
     expect(manifest).toMatchObject({
       architecture: "arm64",
-      buildChannel: "nightly",
+      updates: "enabled",
       schemaVersion: 3,
     });
   });

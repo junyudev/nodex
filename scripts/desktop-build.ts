@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseReleaseIdentity } from "./release/model";
+import { parseBuildIdentity } from "./release/model";
 import { desktopBuildTarget, type DesktopBuildTarget } from "./desktop-build-target";
 import { runVitePlus } from "./vite-plus-command";
 import { stageStandaloneNodeRuntime } from "./standalone-node-runtime";
@@ -117,9 +117,9 @@ async function main(): Promise<void> {
       await stageNative(target);
     }
     tsx("prepared-electron-build", "verify");
-    const identityPath = process.env.NODEX_RELEASE_IDENTITY_PATH;
+    const identityPath = process.env.NODEX_BUILD_IDENTITY_PATH;
     const identity = identityPath
-      ? parseReleaseIdentity(JSON.parse(readFileSync(identityPath, "utf8")))
+      ? parseBuildIdentity(JSON.parse(readFileSync(identityPath, "utf8")))
       : null;
     const signing =
       target.platform === "win32" ? windowsSigningConfiguration({ kind: "unsigned" }) : {};

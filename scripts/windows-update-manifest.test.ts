@@ -6,12 +6,9 @@ import { windowsUpdateManifest } from "./windows-update-manifest";
 
 const identity = {
   schemaVersion: 1,
-  channel: "stable",
   sourceSha: "a".repeat(40),
   sourceTree: "b".repeat(40),
-  sourceVersion: "0.5.0",
   version: "0.5.0",
-  tag: "v0.5.0",
   mainlineOrdinal: 1201,
   sourceDate: "2026-11-03",
   buildVersion: "1.12.1",
@@ -22,7 +19,7 @@ test.each(["x64", "arm64"] as const)(
   (architecture) => {
     expect(windowsUpdateManifest(architecture, {})).toMatchObject({
       architecture,
-      buildChannel: "disabled",
+      updates: "disabled",
       buildVersion: "0.0.0",
       feedUrls: null,
     });
@@ -36,27 +33,21 @@ test("enabled packages use the shared Sparkle inputs and Release Identity build"
     writeFileSync(path, JSON.stringify(identity));
     expect(
       windowsUpdateManifest("arm64", {
-        NODEX_SPARKLE_CHANNEL: "stable",
-        NODEX_RELEASE_IDENTITY_PATH: path,
+        NODEX_APP_UPDATES: "enabled",
+        NODEX_BUILD_IDENTITY_PATH: path,
       }),
     ).toMatchObject({
       buildVersion: "1.12.1",
-      buildChannel: "stable",
+      updates: "enabled",
       feedUrls: { stable: "https://nodex.jyu.app/updates/stable/windows-arm64/appcast.xml" },
     });
-    expect(() =>
-      windowsUpdateManifest("x64", {
-        NODEX_SPARKLE_CHANNEL: "nightly",
-        NODEX_RELEASE_IDENTITY_PATH: path,
-      }),
-    ).toThrow("matching Release Identity");
-    expect(() => windowsUpdateManifest("x64", { NODEX_SPARKLE_CHANNEL: "stable" })).toThrow(
-      "matching Release Identity",
+    expect(() => windowsUpdateManifest("x64", { NODEX_APP_UPDATES: "enabled" })).toThrow(
+      "Build Identity",
     );
     expect(() =>
       windowsUpdateManifest("x64", {
-        NODEX_SPARKLE_CHANNEL: "invalid",
-        NODEX_RELEASE_IDENTITY_PATH: path,
+        NODEX_APP_UPDATES: "invalid",
+        NODEX_BUILD_IDENTITY_PATH: path,
       }),
     ).toThrow();
   } finally {

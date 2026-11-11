@@ -18,7 +18,7 @@ concurrency:
 jobs:
   resolve:
     name: resolve protected-main nightly candidate
-    if: vars.NODEX_NIGHTLY_RELEASES_ENABLED == 'true'
+    if: github.ref == 'refs/heads/main' && vars.NODEX_NIGHTLY_RELEASES_ENABLED == 'true'
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.candidate.outputs.should_release }}
@@ -30,35 +30,12 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: main
+          ref: ${{ github.sha }}
       - uses: ./.github/actions/setup-vite-plus
       - run: vp install --frozen-lockfile
 
-      - name: Require green CI for the exact main commit
-        id: ci
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          source_sha="$(git rev-parse HEAD)"
-          result="${RUNNER_TEMP}/nightly-source-ci.json"
-          vp exec tsx scripts/release/cli.ts check-nightly-ci \
-            --repo "${GITHUB_REPOSITORY}" --head "${source_sha}" --output "${result}"
-          node -e '
-            const fs = require("node:fs");
-            const result = require(process.argv[1]);
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `eligible=${result.decision === "eligible"}\n`);
-            const run = result.runUrl ? ` [Main CI](${result.runUrl})` : "";
-            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Nightly source CI: \`${result.decision}\` for \`${result.sourceSha}\`.${run}\n`);
-            if (result.decision === "failed") {
-              throw new Error(`Nightly blocked by unsuccessful Main CI for ${result.sourceSha}: ${result.runUrl}`);
-            }
-          ' "${result}"
-
       - name: Resolve deterministic candidate
         id: candidate
-        if: steps.ci.outputs.eligible == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -66,8 +43,9 @@ jobs:
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
           result="${RUNNER_TEMP}/nightly-candidate.json"
-          identity="${RUNNER_TEMP}/release-identity.json"
+          identity="${RUNNER_TEMP}/nightly-identity.json"
           vp run release:resolve:nightly -- --head "${source_sha}" --output "${result}"
+          # shellcheck disable=SC2016
           node -e '
             const fs = require("node:fs");
             const result = require(process.argv[1]);
@@ -76,15 +54,32 @@ jobs:
               fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Nightly decision: \`${result.reason}\` for \`${result.sourceSha}\`.\n`);
               process.exit(0);
             }
+            const { channel, tag, ...build } = result.identity;
             fs.writeFileSync(process.argv[2], `${JSON.stringify(result.identity, null, 2)}\n`);
-          ' "${result}" "${identity}"
+            fs.writeFileSync(process.argv[3], `${JSON.stringify(build, null, 2)}\n`);
+          ' "${result}" "${identity}" "${RUNNER_TEMP}/build-identity.json"
           if [[ "$(node -p "require('${result}').shouldRelease")" != "true" ]]; then exit 0; fi
+          ci_result="${RUNNER_TEMP}/nightly-source-ci.json"
+          vp exec tsx scripts/release/cli.ts check-nightly-ci \
+            --repo "${GITHUB_REPOSITORY}" --head "${source_sha}" --output "${ci_result}"
+          # shellcheck disable=SC2016
+          node -e '
+            const fs = require("node:fs");
+            const result = require(process.argv[1]);
+            const run = result.runUrl ? ` [Main CI](${result.runUrl})` : "";
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Nightly source CI: \`${result.decision}\` for \`${result.sourceSha}\`.${run}\n`);
+            if (result.decision === "failed") {
+              throw new Error(`Nightly blocked by unsuccessful Main CI for ${result.sourceSha}: ${result.runUrl}`);
+            }
+          ' "${ci_result}"
+
+          if [[ "$(node -p "require('${ci_result}').decision")" != "eligible" ]]; then exit 0; fi
           tag="$(node -p "require('${identity}').tag")"
           vp run release:check:nightly-remote -- --repo "${GITHUB_REPOSITORY}" --identity "${identity}" --output "${RUNNER_TEMP}/remote.json"
           remote_decision="$(node -p "require('${RUNNER_TEMP}/remote.json').decision")"
           if [[ "${remote_decision}" == "already-published" ]]; then
             printf 'should_release=false\nsource_sha=%s\n' "${source_sha}" > "${GITHUB_OUTPUT}"
-            echo 'Nightly decision: `no-source-change`; the exact source identity is already published.' >> "${GITHUB_STEP_SUMMARY}"
+            echo 'Nightly decision: no-source-change. the exact source identity is already published.' >> "${GITHUB_STEP_SUMMARY}"
             exit 0
           fi
           if [[ "${remote_decision}" != "publish" && "${remote_decision}" != "resume-draft" ]]; then
@@ -98,12 +93,12 @@ jobs:
             echo "version=$(node -p "require('${identity}').version")"
           } > "${GITHUB_OUTPUT}"
 
-      - name: Upload Release Identity
+      - name: Upload Build Identity
         if: steps.candidate.outputs.should_release == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nodex-release-identity-${{ steps.candidate.outputs.source_sha }}
-          path: ${{ runner.temp }}/release-identity.json
+          name: nodex-build-identity-${{ steps.candidate.outputs.source_sha }}
+          path: ${{ runner.temp }}/build-identity.json
           if-no-files-found: error
           retention-days: 14
 
@@ -124,16 +119,17 @@ jobs:
     with:
       source_sha: ${{ needs.resolve.outputs.source_sha }}
       source_tree: ${{ needs.certification.outputs.source_tree }}
-      version: ${{ needs.resolve.outputs.version }}
-      tag: ${{ needs.resolve.outputs.tag }}
       retention_days: 14
-      upload_sentry_sourcemaps: false
+      upload_sentry_sourcemaps: true
     secrets:
       apple_api_issuer: ${{ secrets.APPLE_API_ISSUER }}
       apple_api_key_b64: ${{ secrets.APPLE_API_KEY_B64 }}
       apple_api_key_id: ${{ secrets.APPLE_API_KEY_ID }}
       csc_key_password: ${{ secrets.CSC_KEY_PASSWORD }}
       csc_link: ${{ secrets.CSC_LINK }}
+      sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      sentry_org: ${{ secrets.SENTRY_ORG }}
+      sentry_project: ${{ secrets.SENTRY_PROJECT }}
 
   windows-distribution:
     name: build native Windows distributions
@@ -199,9 +195,9 @@ jobs:
       contents: read
     uses: ./.github/workflows/_assemble-release.yml
     with:
+      channel: nightly
       retention_days: 14
       source_sha: ${{ needs.resolve.outputs.source_sha }}
-      version: ${{ needs.resolve.outputs.version }}
 
   promote:
     if: needs.resolve.outputs.should_release == 'true'

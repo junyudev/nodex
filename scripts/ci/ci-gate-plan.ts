@@ -36,7 +36,6 @@ export interface CiGatePlan {
   readonly landingOnly: boolean;
   readonly protocolContracts: boolean;
   readonly relatedPaths: readonly string[];
-  readonly releaseTransition: boolean;
   readonly rustFast: boolean;
   readonly rustFull: boolean;
   readonly rustMigration: boolean;
@@ -52,7 +51,6 @@ const PLAN_KEYS = [
   "landingOnly",
   "protocolContracts",
   "relatedPaths",
-  "releaseTransition",
   "rustFast",
   "rustFull",
   "rustMigration",
@@ -138,7 +136,6 @@ export function assertCiGatePlan(value: unknown): asserts value is CiGatePlan {
     "docsOnly",
     "landingOnly",
     "protocolContracts",
-    "releaseTransition",
     "rustFast",
     "rustFull",
     "rustMigration",
@@ -164,14 +161,10 @@ export function assertCiGatePlan(value: unknown): asserts value is CiGatePlan {
   if (candidate.rustFull && !candidate.rustFast) {
     throw new Error("Full Rust selection requires the Rust fast lanes.");
   }
-  const narrowModes = [
-    candidate.docsOnly,
-    candidate.landingOnly,
-    candidate.releaseTransition,
-  ].filter(Boolean);
+  const narrowModes = [candidate.docsOnly, candidate.landingOnly].filter(Boolean);
   if (narrowModes.length > 1) throw new Error("CI gate plan narrow modes are mutually exclusive.");
-  if ((candidate.docsOnly || candidate.releaseTransition) && hasOrdinaryGates(candidate)) {
-    throw new Error("Docs-only and release-transition plans must not select ordinary gates.");
+  if (candidate.docsOnly && hasOrdinaryGates(candidate)) {
+    throw new Error("Docs-only plans must not select ordinary gates.");
   }
   if (
     candidate.testMode === "none" &&
@@ -214,7 +207,6 @@ export const parseCiGatePlan = (value: unknown): CiGatePlan => {
 };
 
 export const requiredJobIdsForGatePlan = (plan: CiGatePlan): readonly string[] => {
-  if (plan.releaseTransition) return ["release-transition"];
   const jobs: string[] = [];
   if (plan.staticGroups.length > 0) jobs.push("static-contracts");
   if (plan.appTestSuites.length > 0) jobs.push("app-tests");

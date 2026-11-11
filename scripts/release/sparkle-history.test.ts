@@ -189,7 +189,7 @@ test.skipIf(process.platform === "win32").each([
         fetchSparkleHistory({
           architecture: "arm64",
           channel: "nightly",
-          currentVersion: "0.2.3-nightly.20260909.1425",
+          currentVersion: "0.2.3",
           currentBuildVersion: "1.14.25",
           outputDirectory: output,
           repository: "junyudev/nodex",
@@ -206,10 +206,10 @@ test.skipIf(process.platform === "win32").each([
         mkdirSync(stage);
         const archives = stageSparkleDeltaSources(directories, stage);
         expect(archives.get("1.11.85")).toEqual({
-          archivePath: path.join(stage, fixture.fullName),
+          archivePath: path.join(stage, `1.11.85-${fixture.fullName}`),
           version: VERSION,
         });
-        expect(readdirSync(stage)).toEqual([fixture.fullName]);
+        expect(readdirSync(stage)).toEqual([`1.11.85-${fixture.fullName}`]);
         expect(() => stageSparkleDeltaSources(directories, stage)).toThrow(
           "Duplicate Sparkle history",
         );

@@ -23,7 +23,7 @@ import { NATIVE_RUNTIME_MINIMUM_MACOS } from "./native-runtime-manifest";
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export type SparkleRuntimeArchitecture = "arm64";
-export type SparkleRuntimeChannel = "disabled" | "stable" | "nightly";
+export type AppUpdates = "disabled" | "enabled";
 
 export interface SparkleRuntimeManifest {
   readonly artifacts: {
@@ -34,7 +34,7 @@ export interface SparkleRuntimeManifest {
     readonly updater: SparkleArtifactIdentity;
   };
   readonly architecture: SparkleRuntimeArchitecture;
-  readonly buildChannel: SparkleRuntimeChannel;
+  readonly updates: AppUpdates;
   readonly feedUrls: null | Readonly<Record<"stable" | "nightly", string>>;
   readonly minimumMacOS: typeof NATIVE_RUNTIME_MINIMUM_MACOS;
   readonly publicKey: string;
@@ -51,7 +51,7 @@ export interface SparkleArtifactIdentity {
 
 export interface BuildSparkleBridgeOptions {
   readonly architecture: SparkleRuntimeArchitecture;
-  readonly channel: SparkleRuntimeChannel;
+  readonly updates: AppUpdates;
   readonly outputPath: string;
   readonly projectRootPath?: string;
   readonly toolchainPath: string;
@@ -237,8 +237,8 @@ export async function buildSparkleBridge(
         ),
       },
       architecture: options.architecture,
-      buildChannel: options.channel,
-      feedUrls: options.channel === "disabled" ? null : feedUrlsFor(options.architecture),
+      updates: options.updates,
+      feedUrls: options.updates === "disabled" ? null : feedUrlsFor(options.architecture),
       minimumMacOS: NATIVE_RUNTIME_MINIMUM_MACOS,
       publicKey,
       schemaVersion: 3,
@@ -270,22 +270,22 @@ function parseCliOptions(argv: readonly string[]): BuildSparkleBridgeOptions {
     values.set(key, value);
   }
   const architecture = values.get("--arch");
-  const channel = values.get("--channel") ?? process.env.NODEX_SPARKLE_CHANNEL ?? "disabled";
+  const updates = values.get("--updates") ?? process.env.NODEX_APP_UPDATES ?? "disabled";
   const outputPath = values.get("--out");
   const toolchainPath =
     values.get("--toolchain") ??
     path.join(repositoryRoot, ".generated", "sparkle-toolchain", "2.9.4");
   if (
     architecture !== "arm64" ||
-    (channel !== "disabled" && channel !== "stable" && channel !== "nightly") ||
+    (updates !== "disabled" && updates !== "enabled") ||
     !outputPath
   ) {
     throw new Error(
       "Usage: build-sparkle-bridge.ts --arch <arm64> " +
-        "--channel <disabled|stable|nightly> --out <runtime-directory>.",
+        "--updates <disabled|enabled> --out <runtime-directory>.",
     );
   }
-  return { architecture, channel, outputPath, toolchainPath };
+  return { architecture, updates, outputPath, toolchainPath };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

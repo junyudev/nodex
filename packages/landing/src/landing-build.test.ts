@@ -112,13 +112,13 @@ test("the static build emits each public page with its canonical URL", () => {
   }
 });
 
-test("the release stamp equals the root app version", () => {
-  const packageJson = JSON.parse(
-    readFileSync(resolve(landingRoot, "../../package.json"), "utf8"),
-  ) as { version: string };
+test("the release stamp matches the latest dated changelog release", () => {
+  const latestVersion = /^## \[([0-9.]+)\] - /m.exec(
+    readFileSync(resolve(landingRoot, "../../CHANGELOG.md"), "utf8"),
+  )?.[1];
 
   expect(readPage("").querySelector(".landing-version-label")?.textContent).toBe(
-    `v${packageJson.version}`,
+    `v${latestVersion}`,
   );
 });
 
@@ -243,16 +243,16 @@ test("demo and social card capture pages stay out of search results", () => {
   expect(readFileSync(join(outputDir, "robots.txt"), "utf8")).toContain("Disallow: /capture/");
 });
 
-test("the changelog marks the app's version as Latest, after any release in development", () => {
-  const packageJson = JSON.parse(
-    readFileSync(resolve(landingRoot, "../../package.json"), "utf8"),
-  ) as { version: string };
+test("the changelog marks the latest dated release as Latest, after any release in development", () => {
+  const latestVersion = /^## \[([0-9.]+)\] - /m.exec(
+    readFileSync(resolve(landingRoot, "../../CHANGELOG.md"), "utf8"),
+  )?.[1];
   const releases = readPage("changelog").querySelectorAll("article[data-release]");
   const status = (release: (typeof releases)[number]) =>
     release.querySelector("[data-release-status]")?.textContent.trim();
   const dated = releases.filter((release) => release.id !== "unreleased");
 
-  expect(dated[0]?.id).toBe(`v${packageJson.version}`);
+  expect(dated[0]?.id).toBe(`v${latestVersion}`);
   expect(releases.filter((release) => status(release) === "Latest")).toEqual([dated[0]]);
   expect(
     releases

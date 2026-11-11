@@ -542,10 +542,9 @@ has.
   guard before it checks out or executes that source. The environment admits
   only protected-branch workflow definitions; the guard accepts only an
   immutable full SHA reachable from protected `main` with a successful `Main
-  CI` push run. The privileged release `workflow_run` additionally validates the
-  originating repository, protected-main push event, and successful conclusion.
-  Release and recovery also require the exact linear parent diff to be a
-  metadata-only Release Identity transition.
+  CI` push run. Stable promotion admits an immutable Nightly from a successful
+  protected-main run. The Release Module checks retained build bytes against
+  the published Nightly digests before entering the signing environments.
 - Release credentials use dedicated repository Action secrets and explicit,
   named `workflow_call.secrets` mappings. Lowercase reusable-workflow aliases
   prevent environment-secret precedence from changing the transport contract;
@@ -574,7 +573,7 @@ has.
   identities into package provenance. The Ed25519 public key is reviewed source;
   the private key is available only to protected
   `sparkle-feed-finalization` jobs and is streamed to official tools over
-  standard input. Top-level release, rehearsal, and recovery jobs bind that
+  standard input. Top-level Release, Nightly and Rehearsal jobs bind that
   environment directly; reusable native-build and Bundle-assembly workflows
   never receive the key. Repository guards reject reusable-workflow transport
   or references outside those protected finalizers. The key is never written

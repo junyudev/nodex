@@ -1,10 +1,15 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync, realpathSync, statSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, posix, relative, sep } from "node:path";
 import { parse as parseToml } from "smol-toml";
-import { extractReleaseNotes, prepareChangelog } from "./changelog";
-import { compareStableVersions, normalizeStableVersion, tagForVersion } from "./model";
+import {
+  advanceChangelog,
+  extractReleaseNotes,
+  extractUnreleasedNotes,
+  validateNextVersionChangelog,
+} from "./changelog";
+import { compareStableVersions, nextPatchVersion, normalizeStableVersion } from "./model";
 
 export const RELEASE_SOURCE_PATHS = [
   "package.json",
@@ -27,22 +32,6 @@ export interface ReleaseSourceSnapshot {
   readonly files: ReleaseSourceFiles;
   readonly packageVersion: string;
 }
-
-export interface ReleaseTransition {
-  readonly baseVersion: string;
-  readonly changedPaths: readonly string[];
-  readonly releaseNotes: string;
-  readonly shouldRelease: true;
-  readonly tag: string;
-  readonly version: string;
-}
-
-export interface NoReleaseTransition {
-  readonly shouldRelease: false;
-  readonly version: string;
-}
-
-export type ReleaseTransitionResult = ReleaseTransition | NoReleaseTransition;
 
 const run = (cwd: string, command: string, args: readonly string[]): string =>
   execFileSync(command, [...args], {
@@ -314,11 +303,6 @@ const updateCargoLockVersions = (
   return updated;
 };
 
-const ensureCleanWorktree = (cwd: string): void => {
-  const status = run(cwd, "git", ["status", "--porcelain", "--untracked-files=all"]);
-  if (status) throw new Error("Release preparation requires a clean git worktree.");
-};
-
 const writeFilesAtomically = (
   cwd: string,
   before: ReleaseSourceFiles,
@@ -330,11 +314,14 @@ const writeFilesAtomically = (
     ["Cargo.lock", after.cargoLock],
     ["CHANGELOG.md", after.changelog],
   ];
-  const temporaryPaths = values.map(([path, content]) => {
-    const temporaryPath = join(cwd, `.${path.replaceAll("/", "-")}.${randomUUID()}.tmp`);
-    writeFileSync(temporaryPath, content, "utf8");
-    return [path, temporaryPath] as const;
-  });
+  const prior = [before.packageJson, before.cargoToml, before.cargoLock, before.changelog];
+  const temporaryPaths = values
+    .filter(([, content], index) => content !== prior[index])
+    .map(([path, content]) => {
+      const temporaryPath = join(cwd, `.${path.replaceAll("/", "-")}.${randomUUID()}.tmp`);
+      writeFileSync(temporaryPath, content, "utf8");
+      return [path, temporaryPath] as const;
+    });
   try {
     for (const [path, temporaryPath] of temporaryPaths) renameSync(temporaryPath, join(cwd, path));
   } catch (error) {
@@ -348,121 +335,105 @@ const writeFilesAtomically = (
   }
 };
 
-export function prepareReleaseSource(options: {
-  readonly cwd: string;
-  readonly date: string;
-  readonly validateCargoMetadata?: boolean;
-  readonly version: string;
-}): { readonly releaseNotes: string; readonly tag: string; readonly version: string } {
-  const cwd = resolve(options.cwd);
-  ensureCleanWorktree(cwd);
-  const currentFiles = readReleaseSourceFiles(cwd);
-  const current = snapshotFromFiles(currentFiles);
-  const version = normalizeStableVersion(options.version);
-  if (compareStableVersions(version, current.packageVersion) <= 0) {
-    throw new Error(`Release version ${version} must be greater than ${current.packageVersion}.`);
-  }
-  const changelog = prepareChangelog(currentFiles.changelog, version, options.date);
-  const nextFiles: ReleaseSourceFiles = {
-    cargoPackages: currentFiles.cargoPackages,
-    packageJson: updatePackageVersion(currentFiles.packageJson, version),
-    cargoToml: updateCargoTomlVersion(currentFiles.cargoToml, current.cargoVersion, version),
+function versionFiles(current: ReleaseSourceSnapshot, version: string): ReleaseSourceFiles {
+  const files = current.files;
+  return {
+    ...files,
+    packageJson: updatePackageVersion(files.packageJson, version),
+    cargoToml: updateCargoTomlVersion(files.cargoToml, current.cargoVersion, version),
     cargoLock: updateCargoLockVersions(
-      currentFiles.cargoLock,
+      files.cargoLock,
       current.cargoVersion,
       version,
-      currentFiles.cargoPackages,
+      files.cargoPackages,
     ),
-    changelog: changelog.changelogContent,
   };
-  snapshotFromFiles(nextFiles);
-  writeFilesAtomically(cwd, currentFiles, nextFiles);
-  try {
-    if (options.validateCargoMetadata !== false) {
-      execFileSync("cargo", ["metadata", "--locked", "--format-version", "1", "--no-deps"], {
-        cwd,
-        stdio: ["ignore", "ignore", "pipe"],
-      });
+}
+
+export function setSourceVersion(cwd: string, target: string): void {
+  const version = normalizeStableVersion(target);
+  const current = inspectReleaseSource(cwd);
+  validateNextVersionChangelog(current.changelog, version);
+  if (version === current.packageVersion) return;
+  if (compareStableVersions(version, current.packageVersion) < 0) {
+    throw new Error("Source version must increase.");
+  }
+  const next = versionFiles(current, version);
+  snapshotFromFiles(next);
+  writeFilesAtomically(cwd, current.files, next);
+}
+
+function advancedFiles(
+  current: ReleaseSourceSnapshot,
+  version: string,
+  notes: string,
+  date: string,
+): ReleaseSourceFiles | null {
+  const comparison = compareStableVersions(current.packageVersion, version);
+  if (comparison < 0) throw new Error("Main source version is older than the published release.");
+  if (comparison > 0) {
+    try {
+      if (extractReleaseNotes(current.changelog, version) === notes) return null;
+    } catch {
+      // Main may have selected a higher next version during promotion.
     }
-  } catch (error) {
-    writeFileSync(join(cwd, "package.json"), currentFiles.packageJson, "utf8");
-    writeFileSync(join(cwd, "Cargo.toml"), currentFiles.cargoToml, "utf8");
-    writeFileSync(join(cwd, "Cargo.lock"), currentFiles.cargoLock, "utf8");
-    writeFileSync(join(cwd, "CHANGELOG.md"), currentFiles.changelog, "utf8");
-    throw new Error("Cargo rejected the prepared release identity; restored the original files.", {
-      cause: error,
-    });
   }
-  return { releaseNotes: changelog.releaseNotes, tag: tagForVersion(version), version };
-}
-
-export function evaluateReleaseTransition(options: {
-  readonly base: ReleaseSourceSnapshot;
-  readonly changedPaths: readonly string[];
-  readonly head: ReleaseSourceSnapshot;
-}): ReleaseTransitionResult {
-  if (options.base.packageVersion === options.head.packageVersion) {
-    return { shouldRelease: false, version: options.head.packageVersion };
-  }
-  if (compareStableVersions(options.head.packageVersion, options.base.packageVersion) <= 0) {
-    throw new Error("Release versions must increase monotonically.");
-  }
-  const actual = [...new Set(options.changedPaths)].sort();
-  const expected = [...RELEASE_SOURCE_PATHS].sort();
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(
-      `A release commit may change only ${expected.join(", ")}; got ${actual.join(", ") || "no files"}.`,
-    );
-  }
-  const releaseNotes = extractReleaseNotes(options.head.changelog, options.head.packageVersion);
   return {
-    baseVersion: options.base.packageVersion,
-    changedPaths: actual,
-    releaseNotes,
-    shouldRelease: true,
-    tag: tagForVersion(options.head.packageVersion),
-    version: options.head.packageVersion,
+    ...(comparison === 0 ? versionFiles(current, nextPatchVersion(version)) : current.files),
+    changelog: advanceChangelog(current.changelog, notes, version, date),
   };
 }
 
-export function detectReleaseTransition(
+export function advanceReleaseSource(
   cwd: string,
-  base: string,
-  head: string,
-): ReleaseTransitionResult {
-  const baseFiles = filesAtRef(cwd, base);
-  const headFiles = filesAtRef(cwd, head);
-  const headSnapshot = snapshotFromFiles(headFiles);
-  const basePackageVersion = parsePackageVersion(baseFiles.packageJson);
-  if (basePackageVersion === headSnapshot.packageVersion) {
-    return { shouldRelease: false, version: headSnapshot.packageVersion };
-  }
-  const changedPaths = run(cwd, "git", ["diff", "--name-only", base, head, "--"])
-    .split("\n")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  return evaluateReleaseTransition({
-    base: snapshotFromFiles(baseFiles),
-    changedPaths,
-    head: headSnapshot,
-  });
+  version: string,
+  notes: string,
+  date: string,
+): boolean {
+  const current = inspectReleaseSource(cwd);
+  const next = advancedFiles(current, version, notes, date);
+  if (!next) return false;
+  snapshotFromFiles(next);
+  validateNextVersionChangelog(next.changelog, parsePackageVersion(next.packageJson));
+  writeFilesAtomically(cwd, current.files, next);
+  return true;
 }
 
-export function checkWorktreeReleaseTransition(cwd: string, base: string): ReleaseTransitionResult {
-  const baseFiles = filesAtRef(cwd, base);
-  const head = inspectReleaseSource(cwd);
-  const basePackageVersion = parsePackageVersion(baseFiles.packageJson);
-  if (basePackageVersion === head.packageVersion) {
-    return { shouldRelease: false, version: head.packageVersion };
+/** Only the exact release notes and version roll-forward bypass push-triggered CI admission. */
+export function isVersionAdvance(cwd: string, base: string, head: string): boolean {
+  const paths = run(cwd, "git", ["diff", "--name-only", base, head, "--"]).split("\n");
+  if (
+    !paths.includes("CHANGELOG.md") ||
+    paths.some((path) => !RELEASE_SOURCE_PATHS.some((allowed) => allowed === path))
+  )
+    return false;
+  const message = run(cwd, "git", ["show", "-s", "--format=%B", head]);
+  const source = /^Nodex-Release-Source: ([a-f0-9]{40})$/m.exec(message)?.[1];
+  if (!source) return false;
+  try {
+    run(cwd, "git", ["merge-base", "--is-ancestor", source, base]);
+  } catch {
+    return false;
   }
-  const trackedPaths = run(cwd, "git", ["diff", "--name-only", base, "--"])
+  const released = inspectReleaseSourceAtRef(cwd, source);
+  const before = inspectReleaseSourceAtRef(cwd, base);
+  const after = inspectReleaseSourceAtRef(cwd, head).files;
+  const date = after.changelog
     .split("\n")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const untrackedPaths = run(cwd, "git", ["ls-files", "--others", "--exclude-standard"])
-    .split("\n")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const changedPaths = [...trackedPaths, ...untrackedPaths];
-  return evaluateReleaseTransition({ base: snapshotFromFiles(baseFiles), changedPaths, head });
+    .find((line) => line.startsWith(`## [${released.packageVersion}] - `))
+    ?.slice(-10);
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const expected = advancedFiles(
+    before,
+    released.packageVersion,
+    extractUnreleasedNotes(released.changelog),
+    date,
+  );
+  return (
+    !!expected &&
+    after.packageJson === expected.packageJson &&
+    after.cargoToml === expected.cargoToml &&
+    after.cargoLock === expected.cargoLock &&
+    after.changelog === expected.changelog
+  );
 }

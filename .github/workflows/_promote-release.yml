@@ -58,16 +58,11 @@ jobs:
             ) throw new Error("Release Bundle does not match promotion inputs");
           ' "${bundle}"
           gh release verify --help >/dev/null
-          vp run release:check:remote -- \
-            --repo "${GITHUB_REPOSITORY}" \
-            --source-sha "${{ inputs.source_sha }}" \
-            --version "${{ inputs.version }}"
           echo "GitHub CLI: $(gh --version | head -1)" >> "${GITHUB_STEP_SUMMARY}"
         env:
           EXPECTED_SHA: ${{ inputs.source_sha }}
           EXPECTED_TAG: ${{ inputs.tag }}
           EXPECTED_VERSION: ${{ inputs.version }}
-          GH_TOKEN: ${{ github.token }}
 
       - name: Create or reuse exact annotated tag
         env:

@@ -13,7 +13,10 @@ import { basename, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 import {
+  buildIdentityOf,
   normalizeReleaseVersion,
+  parseBuildIdentity,
+  type BuildIdentity,
   normalizeStableVersion,
   parseReleaseIdentity,
   sha256File,
@@ -43,11 +46,11 @@ import {
   type MobilePlatform,
 } from "./mobile";
 export type { MacArchitecture } from "./targets";
-export const RELEASE_BUNDLE_SCHEMA_VERSION = 5;
+export const RELEASE_BUNDLE_SCHEMA_VERSION = 6;
 /** Bundles that carry every desktop target; schema 5 adds Nodex Mobile. */
-export const COMPLETE_RELEASE_BUNDLE_SCHEMA_VERSIONS: readonly number[] = [4, 5];
+export const COMPLETE_RELEASE_BUNDLE_SCHEMA_VERSIONS: readonly number[] = [4, 5, 6];
 /** Every bundle a published release may carry, back to the last macOS-only format. */
-export const RELEASE_HISTORY_SCHEMA_VERSIONS: readonly number[] = [3, 4, 5];
+export const RELEASE_HISTORY_SCHEMA_VERSIONS: readonly number[] = [3, 4, 5, 6];
 /** Where a bundle keeps its certified iOS build: TestFlight receives it, GitHub never does. */
 export const TESTFLIGHT_DIRECTORY = "testflight";
 
@@ -73,7 +76,7 @@ export interface AgentSkillsIdentity {
 }
 
 export interface ArchitectureBuildManifest {
-  readonly buildChannel?: "disabled" | ReleaseIdentity["channel"];
+  readonly updates: "disabled" | "enabled";
   readonly agentSkills: AgentSkillsIdentity;
   readonly architecture: ReleaseArchitecture;
   readonly artifacts: readonly ReleaseArtifactIdentity[];
@@ -90,11 +93,10 @@ export interface ArchitectureBuildManifest {
     readonly browserSha256: string;
     readonly sparkleSha256: string;
   };
-  readonly schemaVersion: 2;
-  readonly releaseIdentity: ReleaseIdentity;
+  readonly schemaVersion: 3;
+  readonly buildIdentity: BuildIdentity;
   readonly sourceSha: string;
   readonly sourceTree: string;
-  readonly tag: string;
   readonly version: string;
 }
 
@@ -158,7 +160,6 @@ const legacyStableIdentity = (options: {
   channel: "stable",
   sourceSha: options.sourceSha,
   sourceTree: options.sourceTree,
-  sourceVersion: normalizeStableVersion(options.version),
   version: options.version,
   buildVersion: options.version,
   tag: `v${options.version}`,
@@ -234,10 +235,10 @@ export function parseArchitectureBuildManifest(value: unknown): ArchitectureBuil
   if (!isRecord(value)) throw new Error("Architecture build manifest is invalid.");
   const candidate = value as Partial<ArchitectureBuildManifest>;
   if (
-    candidate.schemaVersion !== 2 ||
+    candidate.schemaVersion !== 3 ||
     !RELEASE_ARCHITECTURES.includes(candidate.architecture as ReleaseArchitecture) ||
     typeof candidate.version !== "string" ||
-    typeof candidate.tag !== "string" ||
+    (candidate.updates !== "disabled" && candidate.updates !== "enabled") ||
     typeof candidate.sourceSha !== "string" ||
     typeof candidate.sourceTree !== "string" ||
     !candidate.preparedBuild ||
@@ -249,19 +250,12 @@ export function parseArchitectureBuildManifest(value: unknown): ArchitectureBuil
   ) {
     throw new Error("Architecture build manifest is invalid.");
   }
-  const version = normalizeReleaseVersion(candidate.version);
-  const releaseIdentity = candidate.releaseIdentity
-    ? parseReleaseIdentity(candidate.releaseIdentity)
-    : legacyStableIdentity({
-        sourceSha: candidate.sourceSha,
-        sourceTree: candidate.sourceTree,
-        version,
-      });
+  const version = normalizeStableVersion(candidate.version);
+  const buildIdentity = parseBuildIdentity(candidate.buildIdentity);
   if (
-    candidate.tag !== releaseIdentity.tag ||
-    version !== releaseIdentity.version ||
-    candidate.sourceSha !== releaseIdentity.sourceSha ||
-    candidate.sourceTree !== releaseIdentity.sourceTree
+    version !== buildIdentity.version ||
+    candidate.sourceSha !== buildIdentity.sourceSha ||
+    candidate.sourceTree !== buildIdentity.sourceTree
   )
     throw new Error("Architecture build source identity does not match its release identity.");
   if (
@@ -278,12 +272,6 @@ export function parseArchitectureBuildManifest(value: unknown): ArchitectureBuil
   assertSha(candidate.packageProvenanceSha256, "package provenance");
   if (candidate.architecture !== "arm64") {
     assertSha(candidate.runtimeLocks.nodeSha256 ?? "", "Windows Node runtime lock");
-    if (
-      candidate.buildChannel !== "disabled" &&
-      candidate.buildChannel !== releaseIdentity.channel
-    ) {
-      throw new Error("Windows build channel does not match its Release Identity.");
-    }
   }
   return {
     ...candidate,
@@ -293,7 +281,7 @@ export function parseArchitectureBuildManifest(value: unknown): ArchitectureBuil
     ),
     artifacts: candidate.artifacts.map(parseArtifact),
     version,
-    releaseIdentity,
+    buildIdentity,
   } as ArchitectureBuildManifest;
 }
 
@@ -301,14 +289,14 @@ type ReleaseHistoryBundle = Omit<
   ReleaseBundleManifest,
   "schemaVersion" | "architectures" | "mobile"
 > & {
-  readonly schemaVersion: 3 | 4 | 5;
+  readonly schemaVersion: 3 | 4 | 5 | 6;
   readonly architectures: Readonly<Partial<ReleaseBundleManifest["architectures"]>>;
   readonly mobile?: ReleaseBundleManifest["mobile"];
 };
 
 const parseMobileBuilds = (
   value: unknown,
-  identity: ReleaseIdentity,
+  identity: BuildIdentity,
 ): ReleaseBundleManifest["mobile"] => {
   if (!isRecord(value) || JSON.stringify(Object.keys(value).sort()) !== '["android","ios"]')
     throw new Error("Release Bundle mobile builds are invalid.");
@@ -356,7 +344,8 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
   if (!isRecord(value)) throw new Error("Release Bundle manifest is invalid.");
   const candidate = value as Partial<ReleaseHistoryBundle>;
   const macOnlyHistory = allowHistory && candidate.schemaVersion === 3;
-  const hasMobile = candidate.schemaVersion === RELEASE_BUNDLE_SCHEMA_VERSION;
+  const current = candidate.schemaVersion === RELEASE_BUNDLE_SCHEMA_VERSION;
+  const hasMobile = current || candidate.schemaVersion === 5;
   const architectures = macOnlyHistory ? (["arm64"] as const) : RELEASE_ARCHITECTURES;
   if (
     !(allowHistory ? RELEASE_HISTORY_SCHEMA_VERSIONS : [RELEASE_BUNDLE_SCHEMA_VERSION]).includes(
@@ -377,13 +366,14 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
   }
   const version = normalizeReleaseVersion(candidate.version);
   const hasEmbeddedIdentity = candidate.releaseIdentity !== undefined;
-  const releaseIdentity = candidate.releaseIdentity
+  const releaseIdentity = current
     ? parseReleaseIdentity(candidate.releaseIdentity)
-    : legacyStableIdentity({
+    : (candidate.releaseIdentity ??
+      legacyStableIdentity({
         sourceSha: candidate.sourceSha,
         sourceTree: candidate.sourceTree,
         version,
-      });
+      }));
   if (
     candidate.tag !== releaseIdentity.tag ||
     version !== releaseIdentity.version ||
@@ -420,14 +410,19 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
   assertSha(candidate.runtimeLocks.sparkleSha256, "Release Bundle Sparkle runtime lock");
   if (!macOnlyHistory)
     assertSha(candidate.runtimeLocks.nodeSha256 ?? "", "Release Bundle Node runtime lock");
-  const mobile = hasMobile ? parseMobileBuilds(candidate.mobile, releaseIdentity) : undefined;
+  const mobile = current
+    ? parseMobileBuilds(candidate.mobile, buildIdentityOf(releaseIdentity))
+    : undefined;
   const assets = candidate.assets.map(parseArtifact);
   const names = assets.map(({ name }) => name);
   if (new Set(names).size !== names.length)
     throw new Error("Release Bundle contains duplicate asset names.");
   const required = [
     ...(releaseIdentity.channel === "stable"
-      ? ([["Nodex-latest-arm64.dmg", "dmg", "arm64"]] as const)
+      ? ([
+          ["Nodex-latest-arm64.dmg", "dmg", "arm64"],
+          ...(current ? ([[`Nodex-${version}-arm64.dmg`, "dmg", "arm64"]] as const) : []),
+        ] as const)
       : ([[`Nodex-${version}-arm64.dmg`, "dmg", "arm64"]] as const)),
     [
       allowHistory
@@ -471,9 +466,9 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
             `windows-${architecture}`,
           ] as const,
         ])),
-    ...(mobile
+    ...(hasMobile && candidate.mobile
       ? ([
-          [mobile.android.artifact.name, "android-apk", undefined],
+          [candidate.mobile.android.artifact.name, "android-apk", undefined],
           ...(releaseIdentity.channel === "stable"
             ? ([[ANDROID_LATEST_APK, "android-apk", undefined]] as const)
             : []),
@@ -493,6 +488,13 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
     )
   ) {
     throw new Error("Release Bundle is missing a required stable application asset.");
+  }
+  if (current && releaseIdentity.channel === "stable") {
+    const versioned = assets.find(({ name }) => name === `Nodex-${version}-arm64.dmg`);
+    const alias = assets.find(({ name }) => name === "Nodex-latest-arm64.dmg");
+    if (alias?.sha256 !== versioned?.sha256 || alias?.bytes !== versioned?.bytes) {
+      throw new Error("Stable DMG alias must have identical bytes to its versioned download.");
+    }
   }
   for (const architecture of WINDOWS_ARCHITECTURES) {
     const versioned = assets.find(
@@ -575,9 +577,9 @@ export function recordArchitectureBuild(options: {
   readonly identityPath: string;
 }): ArchitectureBuildManifest {
   const cwd = resolve(options.cwd);
-  const releaseIdentity = parseReleaseIdentity(readJson(resolve(options.identityPath)));
-  const version = releaseIdentity.version;
-  const sourceSha = releaseIdentity.sourceSha;
+  const buildIdentity = parseBuildIdentity(readJson(resolve(options.identityPath)));
+  const version = buildIdentity.version;
+  const sourceSha = buildIdentity.sourceSha;
   if (!/^[a-f0-9]{40}$/u.test(sourceSha)) throw new Error("Source SHA must be a full commit SHA.");
   const actualHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim();
   const sourceTree = execFileSync("git", ["rev-parse", "HEAD^{tree}"], {
@@ -588,7 +590,7 @@ export function recordArchitectureBuild(options: {
     cwd,
     encoding: "utf8",
   }).trim();
-  if (actualHead !== sourceSha || sourceTree !== releaseIdentity.sourceTree || status) {
+  if (actualHead !== sourceSha || sourceTree !== buildIdentity.sourceTree || status) {
     throw new Error("Architecture build must come from the exact clean release identity.");
   }
   if (process.platform !== "darwin" || process.arch !== options.architecture) {
@@ -612,7 +614,7 @@ export function recordArchitectureBuild(options: {
   const prepared = readJson(preparedPath) as {
     readonly generationId?: unknown;
     readonly product?: { readonly version?: unknown };
-    readonly releaseIdentity?: unknown;
+    readonly buildIdentity?: unknown;
     readonly source?: {
       readonly baseCommit?: unknown;
       readonly baseTree?: unknown;
@@ -622,7 +624,7 @@ export function recordArchitectureBuild(options: {
   if (
     typeof prepared.generationId !== "string" ||
     prepared.product?.version !== version ||
-    JSON.stringify(prepared.releaseIdentity) !== JSON.stringify(releaseIdentity) ||
+    JSON.stringify(prepared.buildIdentity) !== JSON.stringify(buildIdentity) ||
     prepared.source?.state !== "clean" ||
     prepared.source.baseCommit !== sourceSha ||
     prepared.source.baseTree !== sourceTree
@@ -637,6 +639,7 @@ export function recordArchitectureBuild(options: {
   const manifest: ArchitectureBuildManifest = {
     agentSkills: parseAgentSkillsIdentity(provenance.agentSkills, "Packaged Agent Skills identity"),
     architecture: options.architecture,
+    updates: "enabled",
     artifacts,
     packageProvenanceSha256: sha256File(provenancePath),
     preparedBuild: {
@@ -656,11 +659,10 @@ export function recordArchitectureBuild(options: {
       browserSha256: sha256File(join(cwd, "resources/browser-runtime/browser-runtime.lock.json")),
       sparkleSha256: sha256File(join(cwd, "resources/sparkle/sparkle.lock.json")),
     },
-    schemaVersion: 2,
-    releaseIdentity,
+    schemaVersion: 3,
+    buildIdentity,
     sourceSha,
     sourceTree,
-    tag: releaseIdentity.tag,
     version,
   };
   writeFileSync(
@@ -692,8 +694,8 @@ export const readArchitectureDirectory = (directory: string): ArchitectureBuildM
       provenance.schemaVersion !== 1 ||
       sha256File(provenancePath) !== manifest.packageProvenanceSha256 ||
       provenance.architecture !== manifest.architecture ||
-      provenance.buildChannel !== manifest.buildChannel ||
-      !isDeepStrictEqual(provenance.releaseIdentity, manifest.releaseIdentity) ||
+      provenance.updates !== manifest.updates ||
+      !isDeepStrictEqual(provenance.buildIdentity, manifest.buildIdentity) ||
       !isDeepStrictEqual(provenance.artifacts, manifest.artifacts) ||
       !isDeepStrictEqual(provenance.runtimeLocks, manifest.runtimeLocks) ||
       provenance.preparedManifestSha256 !== manifest.preparedBuild.manifestSha256 ||
@@ -769,25 +771,10 @@ export function assembleReleaseBundle(options: {
   readonly androidDirectory: string;
   readonly iosDirectory: string;
   readonly outputDirectory: string;
-  readonly identityPath?: string;
-  readonly sourceSha?: string;
-  readonly version?: string;
+  readonly identity: ReleaseIdentity;
 }): ReleaseBundleManifest {
-  const legacyArchitecture = readJson(
-    join(resolve(options.arm64Directory), "architecture-build.json"),
-  ) as {
-    readonly releaseIdentity?: unknown;
-    readonly sourceTree?: unknown;
-  };
-  const releaseIdentity = options.identityPath
-    ? parseReleaseIdentity(readJson(resolve(options.identityPath)))
-    : legacyArchitecture.releaseIdentity
-      ? parseReleaseIdentity(legacyArchitecture.releaseIdentity)
-      : legacyStableIdentity({
-          sourceSha: options.sourceSha ?? "",
-          sourceTree: String(legacyArchitecture.sourceTree ?? ""),
-          version: options.version ?? "",
-        });
+  const releaseIdentity = parseReleaseIdentity(options.identity);
+  const buildIdentity = buildIdentityOf(releaseIdentity);
   const version = releaseIdentity.version;
   const sourceSha = releaseIdentity.sourceSha;
   const output = resolve(options.outputDirectory);
@@ -798,7 +785,9 @@ export function assembleReleaseBundle(options: {
   if (
     arm64.sourceSha !== sourceSha ||
     arm64.sourceTree !== releaseIdentity.sourceTree ||
-    JSON.stringify(arm64.releaseIdentity) !== JSON.stringify(releaseIdentity) ||
+    !isDeepStrictEqual(arm64.buildIdentity, buildIdentity) ||
+    arm64.updates !== "enabled" ||
+    arm64Update.manifest.tag !== releaseIdentity.tag ||
     arm64Update.manifest.sourceSha !== sourceSha ||
     arm64Update.manifest.channel !== releaseIdentity.channel ||
     arm64Update.manifest.target.buildVersion !== releaseIdentity.buildVersion
@@ -833,14 +822,17 @@ export function assembleReleaseBundle(options: {
     ) {
       throw new Error(`${architecture} full update does not match its Sparkle manifest.`);
     }
-    copy(
-      architectureRoot,
-      `Nodex-${version}-${architecture}.dmg`,
-      "dmg",
-      architecture,
-      releaseIdentity.channel === "stable" ? `Nodex-latest-${architecture}.dmg` : undefined,
-    );
+    copy(architectureRoot, `Nodex-${version}-${architecture}.dmg`, "dmg", architecture, undefined);
     copy(architectureRoot, fullName, "sparkle-full", architecture);
+    if (releaseIdentity.channel === "stable") {
+      copy(
+        architectureRoot,
+        `Nodex-${version}-${architecture}.dmg`,
+        "dmg",
+        architecture,
+        `Nodex-latest-${architecture}.dmg`,
+      );
+    }
     copy(update.root, update.manifest.appcast.name, "sparkle-appcast", architecture);
     copy(update.root, update.manifestName, "sparkle-update-manifest", architecture);
     for (const delta of update.manifest.deltas) {
@@ -861,8 +853,8 @@ export function assembleReleaseBundle(options: {
     const update = parseWindowsArchitectureUpdateManifest(readJson(updatePath));
     if (
       build.architecture !== target ||
-      build.buildChannel !== releaseIdentity.channel ||
-      JSON.stringify(build.releaseIdentity) !== JSON.stringify(releaseIdentity) ||
+      build.updates !== "enabled" ||
+      !isDeepStrictEqual(build.buildIdentity, buildIdentity) ||
       JSON.stringify(update.releaseIdentity) !== JSON.stringify(releaseIdentity) ||
       update.architecture !== target ||
       JSON.stringify(build.agentSkills) !== JSON.stringify(arm64.agentSkills) ||
@@ -918,7 +910,7 @@ export function assembleReleaseBundle(options: {
   const mobile = Object.fromEntries(
     MOBILE_PLATFORMS.map((platform) => {
       const directory = platform === "android" ? options.androidDirectory : options.iosDirectory;
-      const build = readMobileBuildDirectory(directory, platform, releaseIdentity);
+      const build = readMobileBuildDirectory(directory, platform, buildIdentity);
       if (platform === "android") {
         const root = resolve(directory);
         copy(root, build.manifest.artifact.name, "android-apk", undefined);

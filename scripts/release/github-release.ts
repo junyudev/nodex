@@ -10,15 +10,7 @@ import {
   COMPLETE_RELEASE_BUNDLE_SCHEMA_VERSIONS,
   type ReleaseBundleManifest,
 } from "./bundle";
-import {
-  compareStableVersions,
-  latestStableAppVersion,
-  normalizeStableVersion,
-  sha256File,
-  stableVersionFromAppTag,
-  tagForVersion,
-  type ReleaseIdentity,
-} from "./model";
+import { sha256File, type ReleaseIdentity } from "./model";
 
 interface GitHubAsset {
   readonly digest?: string | null;
@@ -26,8 +18,10 @@ interface GitHubAsset {
   readonly size: number;
 }
 
-interface GitHubRelease {
+export interface GitHubRelease {
   readonly assets: readonly GitHubAsset[];
+  readonly published_at?: string | null;
+  readonly body?: string;
   readonly draft: boolean;
   readonly immutable?: boolean;
   readonly prerelease: boolean;
@@ -79,7 +73,7 @@ const verifyChecksumAllowlist = (
   return checksumPath;
 };
 
-const gh = (
+export const gh = (
   args: readonly string[],
   options?: { readonly allowFailure?: boolean; readonly timeoutMs?: number },
 ): string => {
@@ -403,12 +397,12 @@ interface GitReference {
   readonly ref: string;
 }
 
-const readTagReference = (repo: string, tag: string): GitReference | null => {
+export const readTagReference = (repo: string, tag: string): GitReference | null => {
   const response = gh(["api", `repos/${repo}/git/ref/tags/${tag}`], { allowFailure: true });
   return response ? (JSON.parse(response) as GitReference) : null;
 };
 
-const resolveTagTargetSha = (repo: string, reference: GitReference): string => {
+export const resolveTagTargetSha = (repo: string, reference: GitReference): string => {
   let object = reference.object;
   for (let depth = 0; depth < 4; depth += 1) {
     if (object.type === "commit") return object.sha;
@@ -432,36 +426,6 @@ export function planTag(existingTargetSha: string | null, sourceSha: string): "c
   return "reuse";
 }
 
-const readStableTagNames = (repo: string): readonly string[] => {
-  const response = gh(["api", `repos/${repo}/git/matching-refs/tags/v`, "--paginate", "--slurp"]);
-  return (JSON.parse(response) as GitReference[][])
-    .flat()
-    .map(({ ref }) => ref.replace(/^refs\/tags\//u, ""))
-    .filter((tag) => stableVersionFromAppTag(tag) !== null);
-};
-
-export function assertRemoteReleaseCandidate(options: {
-  readonly repo: string;
-  readonly sourceSha: string;
-  readonly version: string;
-}): { readonly tag: string; readonly tagPlan: "create" | "reuse" } {
-  const version = normalizeStableVersion(options.version);
-  const tag = tagForVersion(version);
-  const reference = readTagReference(options.repo, tag);
-  const tagPlan = planTag(
-    reference ? resolveTagTargetSha(options.repo, reference) : null,
-    options.sourceSha,
-  );
-  const otherTags = readStableTagNames(options.repo).filter((candidate) => candidate !== tag);
-  const latestVersion = latestStableAppVersion(otherTags);
-  if (tagPlan === "create" && latestVersion && compareStableVersions(version, latestVersion) <= 0) {
-    throw new Error(
-      `Release ${version} must be newer than remote stable app version ${latestVersion}.`,
-    );
-  }
-  return { tag, tagPlan };
-}
-
 export function ensureGitHubReleaseTag(options: {
   readonly bundlePath: string;
   readonly repo: string;
@@ -470,14 +434,10 @@ export function ensureGitHubReleaseTag(options: {
   releaseAssetPaths(bundlePath);
   const bundle = parseReleaseBundleManifest(JSON.parse(readFileSync(bundlePath, "utf8")));
   const reference = readTagReference(options.repo, bundle.tag);
-  const tagPlan =
-    bundle.releaseIdentity.channel === "stable"
-      ? assertRemoteReleaseCandidate({
-          repo: options.repo,
-          sourceSha: bundle.sourceSha,
-          version: bundle.version,
-        }).tagPlan
-      : planTag(reference ? resolveTagTargetSha(options.repo, reference) : null, bundle.sourceSha);
+  const tagPlan = planTag(
+    reference ? resolveTagTargetSha(options.repo, reference) : null,
+    bundle.sourceSha,
+  );
   if (tagPlan === "reuse") return "reuse";
   const annotation = [
     `Nodex ${bundle.tag}`,

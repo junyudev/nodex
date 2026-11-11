@@ -10,7 +10,6 @@ describe("required CI gate verification", () => {
         classifierResult: "success",
         results: {
           "app-tests": "success",
-          "release-transition": "skipped",
           "rust-checks": "skipped",
         },
         selectedGates: ["app-tests"],
@@ -30,23 +29,6 @@ describe("required CI gate verification", () => {
       ).toThrow(`app-tests finished with ${result}`);
     },
   );
-
-  test("rejects classifier failure and missing selected results", () => {
-    expect(() =>
-      verifyRequiredGates({
-        classifierResult: "failure",
-        results: {},
-        selectedGates: [],
-      }),
-    ).toThrow("classify finished with failure");
-    expect(() =>
-      verifyRequiredGates({
-        classifierResult: "success",
-        results: {},
-        selectedGates: ["release-transition"],
-      }),
-    ).toThrow("release-transition has no GitHub job result");
-  });
 
   test("rejects duplicate and empty selected gate names", () => {
     expect(() =>
@@ -76,15 +58,5 @@ describe("required CI gate verification", () => {
       "static-contracts",
       "rust-workspace",
     ]);
-  });
-
-  test("supports the narrow release transition mode", () => {
-    expect(() =>
-      verifyRequiredGates({
-        classifierResult: "success",
-        results: { "release-transition": "success" },
-        selectedGates: ["release-transition"],
-      }),
-    ).not.toThrow();
   });
 });

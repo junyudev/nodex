@@ -239,7 +239,7 @@ const writeSparkleRuntime = (appPath: string): void => {
   writeJson(path.join(appPath, "Contents/Resources/native/sparkle-runtime.json"), {
     artifacts,
     architecture: "arm64",
-    buildChannel: "stable",
+    updates: "enabled",
     feedUrls: {
       stable: "https://nodex.jyu.app/updates/stable/arm64/appcast.xml",
       nightly: "https://nodex.jyu.app/updates/nightly/arm64/appcast.xml",

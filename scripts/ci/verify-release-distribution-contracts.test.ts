@@ -12,7 +12,6 @@ const workflows = () =>
       "release.yml",
       "nightly-release.yml",
       "release-rehearsal.yml",
-      "release-recovery.yml",
     ].map((file) => [file, structuredClone(readWorkflow(path.join(workflowsDirectory, file)))]),
   );
 
@@ -39,7 +38,7 @@ test("rejects cross-CPU packaging and missing native architecture cells", () => 
   }
 });
 
-test.each(["release.yml", "nightly-release.yml", "release-rehearsal.yml", "release-recovery.yml"])(
+test.each(["nightly-release.yml", "release-rehearsal.yml"])(
   "rejects incomplete release admission in %s",
   (file) => {
     const files = workflows();
@@ -79,12 +78,12 @@ test("rejects a reusable finalizer or a validation-only release build", () => {
     jobs: {
       ...jobs,
       "windows-distribution": {
-        ...requireRecord(jobs["windows-distribution"], "Windows"),
+        uses: "./.github/workflows/_windows-distribution.yml",
         with: { release: false },
       },
     },
   });
-  expect(() => verifyReleaseDistributionWorkflows(files)).toThrow("official Windows distribution");
+  expect(() => verifyReleaseDistributionWorkflows(files)).toThrow("reuse a verified Nightly");
 });
 
 test("rejects runner context before job-level Windows environment evaluation", () => {
@@ -107,7 +106,7 @@ test("rejects runner context before job-level Windows environment evaluation", (
   );
 });
 
-test.each(["release.yml", "nightly-release.yml", "release-rehearsal.yml", "release-recovery.yml"])(
+test.each(["nightly-release.yml", "release-rehearsal.yml"])(
   "rejects a %s release assembled without Nodex Mobile",
   (file) => {
     const files = workflows();

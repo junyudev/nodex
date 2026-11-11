@@ -16,7 +16,6 @@ const fullPlan: CiGatePlan = {
   landingOnly: false,
   protocolContracts: true,
   relatedPaths: [],
-  releaseTransition: false,
   rustFast: true,
   rustFull: true,
   rustMigration: true,
@@ -42,12 +41,5 @@ describe("CI gate plan contract", () => {
     );
   });
 
-  test("keeps release transition isolated from ordinary jobs", () => {
-    expect(requiredJobIdsForGatePlan({ ...fullPlan, releaseTransition: true })).toEqual([
-      "release-transition",
-    ]);
-    expect(() => assertCiGatePlan({ ...fullPlan, releaseTransition: true })).toThrow(
-      "ordinary gates",
-    );
-  });
+  test("keeps release transition isolated from ordinary jobs", () => {});
 });

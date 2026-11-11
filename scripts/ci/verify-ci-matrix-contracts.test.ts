@@ -28,7 +28,6 @@ const nightlyWorkflow = ({
     landingOnly: false,
     protocolContracts: true,
     relatedPaths: [],
-    releaseTransition: false,
     rustFast: true,
     rustFull: true,
     rustMigration: true,

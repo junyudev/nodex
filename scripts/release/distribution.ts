@@ -17,7 +17,7 @@ import {
   type ArchitectureBuildManifest,
   type MacArchitecture,
 } from "./bundle";
-import { parseReleaseIdentity, type ReleaseIdentity } from "./model";
+import { parseBuildIdentity, type BuildIdentity } from "./model";
 import { releaseBuildEnvironment } from "./targets";
 import { inspectReleaseSource } from "./source";
 
@@ -86,7 +86,7 @@ const requireNativeMac = (architecture: MacArchitecture): void => {
   }
 };
 
-export const assertSourceIdentity = (cwd: string, identity: ReleaseIdentity): void => {
+export const assertSourceIdentity = (cwd: string, identity: BuildIdentity): void => {
   const { sourceSha, sourceTree } = identity;
   if (!/^[a-f0-9]{40}$/u.test(sourceSha)) throw new Error("Source SHA must be a full commit SHA.");
   if (!/^[a-f0-9]{40}$/u.test(sourceTree)) throw new Error("Source tree must be a full tree SHA.");
@@ -99,7 +99,7 @@ export const assertSourceIdentity = (cwd: string, identity: ReleaseIdentity): vo
   if (run(cwd, "git", ["status", "--porcelain", "--untracked-files=normal"])) {
     throw new Error("Release distribution requires a clean source checkout.");
   }
-  if (inspectReleaseSource(cwd).packageVersion !== identity.sourceVersion) {
+  if (inspectReleaseSource(cwd).packageVersion !== identity.version) {
     throw new Error("Release distribution source version does not match the requested version.");
   }
 };
@@ -161,7 +161,7 @@ const verifyApp = async (options: {
     | { readonly kind: "structure" };
   readonly version: string;
   readonly buildVersion: string;
-  readonly channel: ReleaseIdentity["channel"];
+  readonly updates: "enabled";
 }): Promise<VerifiedAppIdentity> => {
   const provenance = verifyPackagedBuildProvenance(options.appPath, {
     expectedArch: options.architecture,
@@ -183,7 +183,7 @@ const verifyApp = async (options: {
     appPath: options.appPath,
     expectedBuildVersion: options.buildVersion,
     expectedVersion: options.version,
-    expectedUpdateChannel: options.channel,
+    expectedUpdates: options.updates,
     requireDeveloperId: true,
     targetArch: options.architecture,
     verifyNotarization: true,
@@ -209,8 +209,8 @@ const verifyApp = async (options: {
       options.version,
       "--expected-build-version",
       options.buildVersion,
-      "--expected-update-channel",
-      options.channel,
+      "--expected-updates",
+      options.updates,
       "--verify-signatures",
       "--require-developer-id",
       "--verify-notarization",
@@ -229,7 +229,7 @@ export async function buildMacDistribution(options: {
   readonly identityPath: string;
 }): Promise<ArchitectureBuildManifest> {
   const cwd = resolve(options.cwd);
-  const identity = parseReleaseIdentity(
+  const identity = parseBuildIdentity(
     JSON.parse(readFileSync(resolve(options.identityPath), "utf8")) as unknown,
   );
   const version = identity.version;
@@ -301,7 +301,7 @@ export async function buildMacDistribution(options: {
       runtimeCheck: { kind: "smoke", launchApp: true },
       version,
       buildVersion: identity.buildVersion,
-      channel: identity.channel,
+      updates: "enabled",
     });
 
     mkdirSync(mountRoot);
@@ -322,7 +322,7 @@ export async function buildMacDistribution(options: {
       runtimeCheck: { kind: "structure" },
       version,
       buildVersion: identity.buildVersion,
-      channel: identity.channel,
+      updates: "enabled",
     });
     if (JSON.stringify(archiveProvenance) !== JSON.stringify(dmgProvenance)) {
       throw new Error(

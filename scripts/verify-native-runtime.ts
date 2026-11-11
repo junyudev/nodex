@@ -88,7 +88,7 @@ export interface PackagedNativeRuntimeStructureOptions {
   readonly expectedBuildVersion: string;
   readonly requireDeveloperId: boolean;
   readonly targetArch: NativeRuntimeArchitecture;
-  readonly expectedUpdateChannel?: "disabled" | "stable" | "nightly";
+  readonly expectedUpdates?: "disabled" | "enabled";
   readonly verifyNotarization: boolean;
   readonly verifySignatures: boolean;
 }
@@ -476,7 +476,7 @@ const verifySparkleRuntime = (
       string,
       { readonly path?: unknown; readonly sha256?: unknown; readonly size?: unknown }
     >;
-    readonly buildChannel?: unknown;
+    readonly updates?: unknown;
     readonly feedUrls?: Record<string, unknown> | null;
     readonly minimumMacOS?: unknown;
     readonly publicKey?: unknown;
@@ -493,10 +493,8 @@ const verifySparkleRuntime = (
   if (
     manifest.schemaVersion !== 3 ||
     manifest.architecture !== options.targetArch ||
-    (manifest.buildChannel !== "disabled" &&
-      manifest.buildChannel !== "stable" &&
-      manifest.buildChannel !== "nightly") ||
-    (options.expectedUpdateChannel && manifest.buildChannel !== options.expectedUpdateChannel) ||
+    (manifest.updates !== "disabled" && manifest.updates !== "enabled") ||
+    (options.expectedUpdates && manifest.updates !== options.expectedUpdates) ||
     manifest.minimumMacOS !== "15.0" ||
     manifest.sparkleVersion !== "2.9.4" ||
     typeof manifest.publicKey !== "string" ||
@@ -509,12 +507,12 @@ const verifySparkleRuntime = (
     nightly: `https://nodex.jyu.app/updates/nightly/${options.targetArch}/appcast.xml`,
   };
   if (
-    (manifest.buildChannel === "disabled" && manifest.feedUrls !== null) ||
-    (manifest.buildChannel !== "disabled" &&
+    (manifest.updates === "disabled" && manifest.feedUrls !== null) ||
+    (manifest.updates !== "disabled" &&
       (manifest.feedUrls?.stable !== expectedFeeds.stable ||
         manifest.feedUrls?.nightly !== expectedFeeds.nightly))
   ) {
-    throw new Error("Packaged Sparkle feed does not match its channel.");
+    throw new Error("Packaged Sparkle feeds do not match update availability.");
   }
   for (const [name, relativePath] of Object.entries(expectedPaths)) {
     const identity = manifest.artifacts?.[name];
@@ -1623,21 +1621,20 @@ const main = Effect.gen(function* () {
           "--expected-version <semver> [--expected-build-version <build>] " +
           "[--previous-store-fixture <store-v130.db>] [--verify-signatures] " +
           "[--require-developer-id] [--verify-notarization] [--launch-app] " +
-          "[--expected-update-channel disabled|stable|nightly]",
+          "[--expected-updates disabled|enabled]",
       );
     }
     const requireDeveloperId = arguments_.includes("--require-developer-id");
     const verifyNotarization = arguments_.includes("--verify-notarization");
-    const expectedUpdateChannel = readOption(arguments_, "--expected-update-channel");
+    const expectedUpdates = readOption(arguments_, "--expected-updates");
     const expectedBuildVersion =
       readOption(arguments_, "--expected-build-version") ?? expectedVersion;
     if (
-      expectedUpdateChannel !== null &&
-      expectedUpdateChannel !== "disabled" &&
-      expectedUpdateChannel !== "stable" &&
-      expectedUpdateChannel !== "nightly"
+      expectedUpdates !== null &&
+      expectedUpdates !== "disabled" &&
+      expectedUpdates !== "enabled"
     ) {
-      throw new Error("--expected-update-channel must be disabled, stable, or nightly");
+      throw new Error("--expected-updates must be disabled or enabled");
     }
     return {
       appPath,
@@ -1647,7 +1644,7 @@ const main = Effect.gen(function* () {
       previousStoreFixturePath: readOption(arguments_, "--previous-store-fixture") ?? undefined,
       requireDeveloperId,
       targetArch,
-      expectedUpdateChannel: expectedUpdateChannel ?? undefined,
+      expectedUpdates: expectedUpdates ?? undefined,
       verifyNotarization,
       verifySignatures:
         arguments_.includes("--verify-signatures") || requireDeveloperId || verifyNotarization,

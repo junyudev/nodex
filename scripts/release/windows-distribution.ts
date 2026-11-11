@@ -18,21 +18,21 @@ import { installedPayloadInventory } from "../installed-payload.mjs";
 import { runVitePlus } from "../vite-plus-command";
 import { assertSourceIdentity } from "./distribution";
 import { parseArchitectureBuildManifest, type ArchitectureBuildManifest } from "./bundle";
-import { parseReleaseIdentity, sha256File, type ReleaseIdentity } from "./model";
+import { parseBuildIdentity, sha256File, type BuildIdentity } from "./model";
 import { releaseBuildEnvironment, windowsInstallerName } from "./targets";
 
 export function verifyWindowsPreparedIdentity(
   prepared: PreparedElectronBuildManifest,
-  identity: ReleaseIdentity,
+  identity: BuildIdentity,
 ): void {
   if (
     prepared.source.state !== "clean" ||
     prepared.source.baseCommit !== identity.sourceSha ||
     prepared.source.baseTree !== identity.sourceTree ||
     prepared.product.version !== identity.version ||
-    JSON.stringify(parseReleaseIdentity(prepared.releaseIdentity)) !== JSON.stringify(identity)
+    JSON.stringify(parseBuildIdentity(prepared.buildIdentity)) !== JSON.stringify(identity)
   ) {
-    throw new Error("Windows prepared build does not match the exact clean Release Identity.");
+    throw new Error("Windows prepared build does not match the exact clean Build Identity.");
   }
 }
 
@@ -95,15 +95,15 @@ export function buildWindowsDistribution(options: {
     throw new Error("Windows distribution requires the matching native runner and Node CPU.");
   const cwd = resolve(options.cwd);
   const identityPath = resolve(options.identityPath);
-  const identity = parseReleaseIdentity(JSON.parse(readFileSync(identityPath, "utf8")));
+  const identity = parseBuildIdentity(JSON.parse(readFileSync(identityPath, "utf8")));
   assertSourceIdentity(cwd, identity);
   const output = resolve(options.outputDirectory);
   if (existsSync(output) && readdirSync(output).length > 0)
     throw new Error("Windows distribution output must be empty.");
-  const buildChannel = options.release ? identity.channel : "disabled";
+  const updates = options.release ? "enabled" : "disabled";
   const env = {
     ...releaseBuildEnvironment(identity, identityPath),
-    NODEX_SPARKLE_CHANNEL: buildChannel,
+    NODEX_APP_UPDATES: updates,
     CSC_IDENTITY_AUTO_DISCOVERY: "false",
   };
   const task = (...args: string[]): void => runVitePlus(args, { cwd, env });
@@ -140,7 +140,7 @@ export function buildWindowsDistribution(options: {
     extractFile(join(resources, "app.asar"), "package.json").toString(),
   ) as { version?: unknown };
   if (metadata.version !== identity.version)
-    throw new Error("Windows packaged app version does not match its Release Identity.");
+    throw new Error("Windows packaged app version does not match its Build Identity.");
   const agentSkills = inspectOfficialAgentSkillsArtifact(join(resources, "agent-skills"));
   if (
     agentSkills.manifestSha256 !== prepared.agentSkills.manifestSha256 ||
@@ -190,8 +190,8 @@ export function buildWindowsDistribution(options: {
       {
         schemaVersion: 1,
         architecture,
-        releaseIdentity: identity,
-        buildChannel,
+        buildIdentity: identity,
+        updates,
         runtimeLocks,
         artifacts,
         preparedManifestSha256: sha256File(preparedPath),
@@ -207,9 +207,9 @@ export function buildWindowsDistribution(options: {
   );
   copyFileSync(probePath, join(output, "installed-app-probe.json"));
   const manifest = parseArchitectureBuildManifest({
-    schemaVersion: 2,
+    schemaVersion: 3,
     architecture,
-    buildChannel,
+    updates,
     artifacts,
     runtimeLocks,
     agentSkills: { manifestSha256: agentSkills.manifestSha256, treeSha256: agentSkills.treeSha256 },
@@ -219,10 +219,9 @@ export function buildWindowsDistribution(options: {
       state: "clean",
     },
     packageProvenanceSha256: sha256File(provenancePath),
-    releaseIdentity: identity,
+    buildIdentity: identity,
     sourceSha: identity.sourceSha,
     sourceTree: identity.sourceTree,
-    tag: identity.tag,
     version: identity.version,
     runner: {
       image: process.env.ImageOS ?? process.env.RUNNER_OS ?? "local",

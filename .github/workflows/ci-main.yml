@@ -60,24 +60,6 @@ jobs:
         id: outputs
         run: node --no-warnings scripts/ci/write-github-outputs.ts --input "${RUNNER_TEMP}/classification.json"
 
-  release-transition:
-    name: release transition
-    if: ${{ fromJSON(needs.classify.outputs.plan).releaseTransition }}
-    needs: classify
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: ./.github/actions/setup-vite-plus
-      - run: vp install --frozen-lockfile --ignore-scripts
-      - name: Verify landed release metadata
-        env:
-          BASE_SHA: ${{ needs.classify.outputs.base_sha }}
-          HEAD_SHA: ${{ github.sha }}
-        run: vp run release:detect -- --base "${BASE_SHA}" --head "${HEAD_SHA}" --output "${RUNNER_TEMP}/release-transition.json"
-
   static-contracts:
     name: main static contracts
     if: ${{ toJSON(fromJSON(needs.classify.outputs.plan).staticGroups) != '[]' }}
@@ -115,7 +97,6 @@ jobs:
     if: always()
     needs:
       - classify
-      - release-transition
       - static-contracts
       - rust-checks
       - app-tests

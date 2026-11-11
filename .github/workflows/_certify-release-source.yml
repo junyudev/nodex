@@ -54,7 +54,7 @@ jobs:
     needs: guard
     uses: ./.github/workflows/_app-tests.yml
     with:
-      gate_plan_json: '{"allGates":true,"appTestSuites":["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"],"dependencyKind":"source","docsOnly":false,"landingOnly":false,"protocolContracts":true,"relatedPaths":[],"releaseTransition":false,"rustFast":true,"rustFull":true,"rustMigration":true,"staticGroups":["types","source-ownership","ui-contracts","ci-contracts","repository-contracts","dependency-security","generated","landing"],"testMode":"full"}'
+      gate_plan_json: '{"allGates":true,"appTestSuites":["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"],"dependencyKind":"source","docsOnly":false,"landingOnly":false,"protocolContracts":true,"relatedPaths":[],"rustFast":true,"rustFull":true,"rustMigration":true,"staticGroups":["types","source-ownership","ui-contracts","ci-contracts","repository-contracts","dependency-security","generated","landing"],"testMode":"full"}'
       source_sha: ${{ inputs.source_sha }}
       suites_json: '["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"]'
       timing_prefix: certify-app
@@ -111,6 +111,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ inputs.source_sha }}
+      - uses: ./.github/actions/setup-vite-plus
+      - run: vp install --frozen-lockfile
       - name: Materialize exact-source certificate
         id: identity
         env:
@@ -119,21 +121,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${SOURCE_SHA}"
-          source_tree="$(git rev-parse 'HEAD^{tree}')"
-          echo "source_tree=${source_tree}" >> "${GITHUB_OUTPUT}"
-          # shellcheck disable=SC2016
-          SOURCE_TREE="${source_tree}" node -e '
-            const fs = require("node:fs");
-            fs.writeFileSync(process.argv[1], `${JSON.stringify({
-              schemaVersion: 1,
-              sourceSha: process.env.SOURCE_SHA,
-              sourceTree: process.env.SOURCE_TREE,
-              workflowRunId: process.env.GITHUB_RUN_ID,
-              workflowRunAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
-              repository: process.env.GITHUB_REPOSITORY,
-              issuedAt: new Date().toISOString(),
-            }, null, 2)}\n`);
-          ' "${RUNNER_TEMP}/source-certification.json"
+          echo "source_tree=$(git rev-parse 'HEAD^{tree}')" >> "${GITHUB_OUTPUT}"
+          vp exec tsx scripts/release/cli.ts certify --head "${SOURCE_SHA}" --output "${RUNNER_TEMP}/source-certification.json"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nodex-source-certification-${{ inputs.source_sha }}

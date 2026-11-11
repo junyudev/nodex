@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import {
@@ -7,7 +6,7 @@ import {
   recordArchitectureBuild,
   type MacArchitecture,
 } from "./bundle";
-import { extractReleaseNotes } from "./changelog";
+import { extractUnreleasedNotes, validateNextVersionChangelog } from "./changelog";
 import { publishBrowserRuntime } from "./browser-runtime";
 import { buildWindowsDistribution } from "./windows-distribution";
 import { buildAndroidDistribution, buildIosDistribution } from "./mobile-distribution";
@@ -16,27 +15,26 @@ import { finalizeWindowsArchitectureUpdate } from "./windows-updates";
 import { buildMacDistribution } from "./distribution";
 import { generateHomebrewCaskFromBundle } from "./homebrew";
 import {
-  assertRemoteReleaseCandidate,
   ensureGitHubReleaseTag,
   inspectNightlyRemoteCandidate,
   publishGitHubRelease,
   releaseAssetPaths,
   verifyRemoteRelease,
 } from "./github-release";
+import { inspectReleaseSource, inspectReleaseSourceAtRef, setSourceVersion } from "./source";
+import { parseBuildIdentity, parseReleaseIdentity, publicationIdentity } from "./model";
 import {
-  checkWorktreeReleaseTransition,
-  detectReleaseTransition,
-  inspectReleaseSourceAtRef,
-  prepareReleaseSource,
-} from "./source";
-import { tagForVersion } from "./model";
-import { parseReleaseIdentity } from "./model";
-import {
+  assertSameBuildIdentity,
   resolveNightlyCandidate,
-  resolveReleaseIdentity,
-  resolveStableReleaseIdentity,
-  verifyReleaseIdentityAtRef,
+  resolveBuildIdentity,
+  verifyBuildIdentityAtRef,
 } from "./candidate";
+import {
+  advancePublishedRelease,
+  preparePromotion,
+  promoteFromLocal,
+  verifyPromotedBundle,
+} from "./promotion";
 import { runSparkleFinalizeCli, runSparkleHistoryCli } from "./sparkle";
 import { projectReleaseAppcasts, verifyPublishedAppcasts } from "./pages";
 import { runNightlyRetention } from "./retention";
@@ -55,10 +53,6 @@ const parseFlags = (
     const argument = args[index];
     if (!argument.startsWith("--")) {
       positional.push(argument);
-      continue;
-    }
-    if (argument === "--worktree") {
-      flags.set("worktree", "true");
       continue;
     }
     const value = args[index + 1];
@@ -89,75 +83,80 @@ const writeJson = (path: string | undefined, value: unknown): void => {
 const main = async (): Promise<void> => {
   const [command, ...rest] = normalizedArgs();
   const { flags, positional } = parseFlags(rest);
-  if (command === "prepare") {
-    const version = positional[0];
-    if (!version || positional.length !== 1) throw new Error("Usage: release prepare <version>.");
-    const result = prepareReleaseSource({
-      cwd: projectRoot,
-      date: flags.get("date") ?? new Date().toISOString().slice(0, 10),
-      version,
-    });
-    process.stdout.write(
-      `Prepared ${result.tag}; review and commit the four release metadata files.\n`,
-    );
+  if (command === "version") {
+    const [version] = positional;
+    if (!version || positional.length !== 1)
+      throw new Error("Usage: vp run release:version -- <x.y.z>.");
+    setSourceVersion(projectRoot, version);
     return;
   }
   if (command === "check") {
-    const base = flags.get("base");
-    if (base && flags.get("worktree") === "true") {
-      writeJson(flags.get("output"), checkWorktreeReleaseTransition(projectRoot, base));
-      return;
-    }
-    const head = flags.get("head") ?? "HEAD";
-    if (base) {
-      writeJson(flags.get("output"), detectReleaseTransition(projectRoot, base, head));
-      return;
-    }
-    const snapshot = inspectReleaseSourceAtRef(projectRoot, head);
-    writeJson(flags.get("output"), {
-      sourceSha: execFileSync("git", ["rev-parse", `${head}^{commit}`], {
-        cwd: projectRoot,
-        encoding: "utf8",
-      }).trim(),
-      sourceTree: execFileSync("git", ["rev-parse", `${head}^{tree}`], {
-        cwd: projectRoot,
-        encoding: "utf8",
-      }).trim(),
-      tag: tagForVersion(snapshot.packageVersion),
-      version: snapshot.packageVersion,
-    });
-    return;
-  }
-  if (command === "detect") {
-    writeJson(
-      required(flags, "output"),
-      detectReleaseTransition(projectRoot, required(flags, "base"), required(flags, "head")),
-    );
-    return;
-  }
-  if (command === "resolve-stable") {
-    writeJson(
-      required(flags, "output"),
-      resolveStableReleaseIdentity({
-        base: required(flags, "base"),
-        cwd: projectRoot,
-        head: required(flags, "head"),
-      }),
-    );
+    const snapshot = flags.has("head")
+      ? inspectReleaseSourceAtRef(projectRoot, required(flags, "head"))
+      : inspectReleaseSource(projectRoot);
+    validateNextVersionChangelog(snapshot.changelog, snapshot.packageVersion);
+    writeJson(flags.get("output"), { version: snapshot.packageVersion });
     return;
   }
   if (command === "resolve-source") {
-    const channel = required(flags, "channel");
-    if (channel !== "stable" && channel !== "nightly")
-      throw new Error("--channel must be stable or nightly.");
     writeJson(
       required(flags, "output"),
-      resolveReleaseIdentity({
-        channel,
+      resolveBuildIdentity({
         cwd: projectRoot,
         ref: flags.get("head") ?? "HEAD",
       }),
     );
+    return;
+  }
+  if (command === "resolve-promotion") {
+    const result = preparePromotion(
+      projectRoot,
+      required(flags, "repo"),
+      required(flags, "dir"),
+      flags.get("tag"),
+    );
+    writeJson(required(flags, "output"), result);
+    return;
+  }
+  if (command === "verify-promotion") {
+    verifyPromotedBundle(required(flags, "nightly"), required(flags, "bundle"));
+    return;
+  }
+  if (command === "promote") {
+    if (positional.length > 1) throw new Error("Usage: vp run release:promote [-- <nightly-tag>].");
+    promoteFromLocal(projectRoot, flags.get("repo") ?? "junyudev/nodex", positional[0]);
+    return;
+  }
+  if (command === "advance") {
+    const [tag] = positional;
+    if (!tag || positional.length !== 1)
+      throw new Error("Usage: vp run release:advance -- <stable-tag>.");
+    advancePublishedRelease(projectRoot, flags.get("repo") ?? "junyudev/nodex", tag);
+    return;
+  }
+  if (command === "certify") {
+    const buildIdentity = resolveBuildIdentity({ cwd: projectRoot, ref: required(flags, "head") });
+    writeJson(required(flags, "output"), {
+      schemaVersion: 2,
+      buildIdentity,
+      repository: process.env.GITHUB_REPOSITORY,
+      workflowRunId: process.env.GITHUB_RUN_ID,
+      workflowRunAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+      issuedAt: new Date().toISOString(),
+    });
+    return;
+  }
+  if (command === "verify-certificate") {
+    const build = parseBuildIdentity(JSON.parse(readFileSync(required(flags, "identity"), "utf8")));
+    const cert = JSON.parse(readFileSync(required(flags, "certificate"), "utf8"));
+    if (
+      cert.schemaVersion !== 2 ||
+      cert.repository !== process.env.GITHUB_REPOSITORY ||
+      cert.workflowRunId !== (flags.get("run-id") ?? process.env.GITHUB_RUN_ID)
+    ) {
+      throw new Error("Source certificate does not match the producing run.");
+    }
+    assertSameBuildIdentity(build, parseBuildIdentity(cert.buildIdentity));
     return;
   }
   if (command === "resolve-nightly") {
@@ -178,12 +177,12 @@ const main = async (): Promise<void> => {
     return;
   }
   if (command === "verify-identity") {
-    const identity = parseReleaseIdentity(
+    const identity = parseBuildIdentity(
       JSON.parse(readFileSync(resolve(required(flags, "identity")), "utf8")),
     );
     writeJson(
       flags.get("output"),
-      verifyReleaseIdentityAtRef({
+      verifyBuildIdentityAtRef({
         cwd: projectRoot,
         identity,
         ref: required(flags, "head"),
@@ -250,10 +249,14 @@ const main = async (): Promise<void> => {
     return;
   }
   if (command === "publish-testflight") {
-    const bundlePath = flags.get("bundle");
-    const receipt = await publishTestFlight(
-      bundlePath ? { bundlePath } : { buildDirectory: required(flags, "build-dir") },
-    );
+    const bundlePath = required(flags, "bundle");
+    const channel = flags.get("channel");
+    if (channel) {
+      const bundle = parseReleaseBundleManifest(JSON.parse(readFileSync(bundlePath, "utf8")));
+      if (bundle.releaseIdentity.channel !== channel)
+        throw new Error("TestFlight bundle channel mismatch.");
+    }
+    const receipt = await publishTestFlight({ bundlePath });
     writeJson(flags.get("output"), receipt);
     return;
   }
@@ -278,6 +281,10 @@ const main = async (): Promise<void> => {
     return;
   }
   if (command === "assemble") {
+    const channel = required(flags, "channel");
+    if (channel !== "stable" && channel !== "nightly")
+      throw new Error("Invalid publication channel.");
+    const build = parseBuildIdentity(JSON.parse(readFileSync(required(flags, "identity"), "utf8")));
     assembleReleaseBundle({
       arm64Directory: required(flags, "arm64-dir"),
       arm64UpdateDirectory: required(flags, "arm64-update-dir"),
@@ -287,7 +294,7 @@ const main = async (): Promise<void> => {
       windowsArm64UpdateDirectory: required(flags, "windows-arm64-update-dir"),
       androidDirectory: required(flags, "android-dir"),
       iosDirectory: required(flags, "ios-dir"),
-      identityPath: required(flags, "identity"),
+      identity: publicationIdentity(build, channel),
       outputDirectory: required(flags, "output"),
     });
     return;
@@ -316,10 +323,8 @@ const main = async (): Promise<void> => {
     return;
   }
   if (command === "extract-notes") {
-    const version = required(flags, "version");
-    const notes = extractReleaseNotes(
+    const notes = extractUnreleasedNotes(
       readFileSync(resolve(flags.get("changelog") ?? "CHANGELOG.md"), "utf8"),
-      version,
     );
     const output = flags.get("output");
     if (output) writeFileSync(resolve(output), notes, "utf8");
@@ -343,17 +348,6 @@ const main = async (): Promise<void> => {
       notesPath: required(flags, "notes"),
       repo: required(flags, "repo"),
     });
-    return;
-  }
-  if (command === "check-remote-candidate") {
-    writeJson(
-      flags.get("output"),
-      assertRemoteReleaseCandidate({
-        repo: required(flags, "repo"),
-        sourceSha: required(flags, "source-sha"),
-        version: required(flags, "version"),
-      }),
-    );
     return;
   }
   if (command === "check-nightly-remote") {

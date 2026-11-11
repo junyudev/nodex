@@ -7,43 +7,37 @@ const NIGHTLY_VERSION_PATTERN =
 const APPLE_BUILD_VERSION_PATTERN = /^(0|[1-9]\d{0,3})\.(0|[1-9]\d?)\.(0|[1-9]\d?)$/;
 const GIT_OBJECT_PATTERN = /^[0-9a-f]{40}$/;
 const RELEASE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const RELEASE_IDENTITY_KEYS = [
-  "buildVersion",
-  "channel",
-  "mainlineOrdinal",
+const BUILD_IDENTITY_KEYS = [
   "schemaVersion",
-  "sourceDate",
   "sourceSha",
   "sourceTree",
-  "sourceVersion",
-  "tag",
   "version",
+  "buildVersion",
+  "mainlineOrdinal",
+  "sourceDate",
 ] as const;
 
 export type ReleaseChannel = "stable" | "nightly";
 
-export interface ReleaseIdentity {
+export interface BuildIdentity {
   readonly schemaVersion: 1;
-  readonly channel: ReleaseChannel;
   readonly sourceSha: string;
   readonly sourceTree: string;
-  readonly sourceVersion: string;
   readonly version: string;
   readonly buildVersion: string;
-  readonly tag: string;
   readonly mainlineOrdinal: number;
   readonly sourceDate: string;
+}
+
+export interface ReleaseIdentity extends BuildIdentity {
+  readonly channel: ReleaseChannel;
+  readonly tag: string;
 }
 
 interface StableVersionParts {
   readonly major: bigint;
   readonly minor: bigint;
   readonly patch: bigint;
-}
-
-interface NightlyVersionParts extends StableVersionParts {
-  readonly compactDate: string;
-  readonly mainlineOrdinal: number;
 }
 
 function stableVersionParts(value: string, label: string): StableVersionParts {
@@ -60,19 +54,6 @@ function normalizeNightlyVersion(value: string, label = "version"): string {
     );
   }
   return normalized;
-}
-
-function nightlyVersionParts(value: string, label: string): NightlyVersionParts {
-  const normalized = normalizeNightlyVersion(value, label);
-  const match = NIGHTLY_VERSION_PATTERN.exec(normalized);
-  if (!match) throw new Error(`${label} is not a nightly version.`);
-  return {
-    major: BigInt(match[1]),
-    minor: BigInt(match[2]),
-    patch: BigInt(match[3]),
-    compactDate: match[4],
-    mainlineOrdinal: normalizeMainlineOrdinal(Number(match[5]), `${label} ordinal`),
-  };
 }
 
 function normalizeMainlineOrdinal(value: number, label = "mainlineOrdinal"): number {
@@ -99,15 +80,11 @@ function normalizeReleaseDate(value: unknown, label = "sourceDate"): string {
   return value;
 }
 
-function assertExactIdentityKeys(value: Record<string, unknown>): void {
-  const actualKeys = Object.keys(value).sort();
-  const expectedKeys = [...RELEASE_IDENTITY_KEYS].sort();
-  if (
-    actualKeys.length !== expectedKeys.length ||
-    actualKeys.some((key, index) => key !== expectedKeys[index])
-  ) {
-    throw new Error(`Release Identity must contain exactly: ${expectedKeys.join(", ")}.`);
+function identityRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Identity must be a JSON object.");
   }
+  return value as Record<string, unknown>;
 }
 
 export function normalizeStableVersion(value: string, label = "version"): string {
@@ -141,14 +118,14 @@ export function nextPatchVersion(value: string): string {
   return `${major}.${minor}.${patch + 1n}`;
 }
 
-export function nightlyVersionFor(
-  sourceVersion: string,
+export function nightlyLabelFor(
+  version: string,
   sourceDate: string,
   mainlineOrdinal: number,
 ): string {
   const date = normalizeReleaseDate(sourceDate).replaceAll("-", "");
   const ordinal = normalizeMainlineOrdinal(mainlineOrdinal);
-  return `${nextPatchVersion(sourceVersion)}-nightly.${date}.${ordinal}`;
+  return `${normalizeStableVersion(version)}-nightly.${date}.${ordinal}`;
 }
 
 export function buildVersionForMainlineOrdinal(mainlineOrdinal: number): string {
@@ -182,10 +159,6 @@ export function compareBuildVersions(leftValue: string, rightValue: string): num
   return 0;
 }
 
-export function tagForVersion(version: string): string {
-  return `v${normalizeStableVersion(version)}`;
-}
-
 export function tagForReleaseVersion(version: string): string {
   return `v${normalizeReleaseVersion(version)}`;
 }
@@ -199,80 +172,68 @@ export function stableVersionFromAppTag(tag: string): string | null {
   }
 }
 
-export function latestStableAppVersion(tags: readonly string[]): string | null {
-  const versions = tags
-    .map(stableVersionFromAppTag)
-    .filter((version): version is string => version !== null);
-  return versions.reduce<string | null>(
-    (latest, version) =>
-      latest === null || compareStableVersions(version, latest) > 0 ? version : latest,
-    null,
-  );
-}
-
-export function parseReleaseIdentity(input: unknown): ReleaseIdentity {
-  const value = typeof input === "string" ? (JSON.parse(input) as unknown) : input;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("Release Identity must be a JSON object.");
-  }
-  const record = value as Record<string, unknown>;
-  assertExactIdentityKeys(record);
-  if (record.schemaVersion !== 1) throw new Error("Release Identity schemaVersion must be 1.");
-  if (record.channel !== "stable" && record.channel !== "nightly") {
-    throw new Error("Release Identity channel must be stable or nightly.");
+export function parseBuildIdentity(input: unknown): BuildIdentity {
+  const record = identityRecord(input);
+  if (
+    Object.keys(record).length !== BUILD_IDENTITY_KEYS.length ||
+    BUILD_IDENTITY_KEYS.some((key) => !Object.hasOwn(record, key))
+  ) {
+    throw new Error("Build Identity contains unexpected or missing fields.");
   }
   assertGitObject(record.sourceSha, "sourceSha");
   assertGitObject(record.sourceTree, "sourceTree");
-  if (typeof record.sourceVersion !== "string") throw new Error("sourceVersion must be a string.");
-  if (typeof record.version !== "string") throw new Error("version must be a string.");
-  if (typeof record.buildVersion !== "string") throw new Error("buildVersion must be a string.");
-  if (typeof record.tag !== "string") throw new Error("tag must be a string.");
-  if (typeof record.mainlineOrdinal !== "number") {
-    throw new Error("mainlineOrdinal must be a number.");
+  if (
+    record.schemaVersion !== 1 ||
+    typeof record.version !== "string" ||
+    typeof record.mainlineOrdinal !== "number"
+  ) {
+    throw new Error("Build Identity schema, version or ordinal is invalid.");
   }
-
-  const sourceVersion = normalizeStableVersion(record.sourceVersion, "sourceVersion");
   const sourceDate = normalizeReleaseDate(record.sourceDate);
   const mainlineOrdinal = normalizeMainlineOrdinal(record.mainlineOrdinal);
-  const expectedVersion =
-    record.channel === "stable"
-      ? sourceVersion
-      : nightlyVersionFor(sourceVersion, sourceDate, mainlineOrdinal);
-  const expectedBuildVersion = buildVersionForMainlineOrdinal(mainlineOrdinal);
-
-  if (record.version !== expectedVersion) {
-    throw new Error(
-      `Release Identity version must be ${expectedVersion} for its source and channel.`,
-    );
+  const buildVersion = buildVersionForMainlineOrdinal(mainlineOrdinal);
+  const version = normalizeStableVersion(record.version);
+  if (record.buildVersion !== buildVersion || record.version !== version) {
+    throw new Error("Build Identity version or buildVersion does not match its source.");
   }
-  if (record.buildVersion !== expectedBuildVersion) {
-    throw new Error(`Release Identity buildVersion must be ${expectedBuildVersion}.`);
-  }
-  if (record.tag !== tagForReleaseVersion(expectedVersion)) {
-    throw new Error(`Release Identity tag must be ${tagForReleaseVersion(expectedVersion)}.`);
-  }
-  if (record.channel === "nightly") {
-    const parts = nightlyVersionParts(record.version, "version");
-    if (
-      parts.compactDate !== sourceDate.replaceAll("-", "") ||
-      parts.mainlineOrdinal !== mainlineOrdinal
-    ) {
-      throw new Error("Nightly version does not match sourceDate and mainlineOrdinal.");
-    }
-  }
-
   return {
     schemaVersion: 1,
-    channel: record.channel,
     sourceSha: record.sourceSha,
     sourceTree: record.sourceTree,
-    sourceVersion,
-    version: expectedVersion,
-    buildVersion: expectedBuildVersion,
-    tag: record.tag,
+    version,
+    buildVersion,
     mainlineOrdinal,
     sourceDate,
   };
+}
+
+export function buildIdentityOf({
+  channel: _channel,
+  tag: _tag,
+  ...build
+}: ReleaseIdentity): BuildIdentity {
+  return build;
+}
+
+export function publicationIdentity(
+  build: BuildIdentity,
+  channel: ReleaseChannel,
+): ReleaseIdentity {
+  const label =
+    channel === "stable"
+      ? build.version
+      : nightlyLabelFor(build.version, build.sourceDate, build.mainlineOrdinal);
+  return { ...build, channel, tag: tagForReleaseVersion(label) };
+}
+
+export function parseReleaseIdentity(input: unknown): ReleaseIdentity {
+  const { channel, tag, ...record } = identityRecord(input);
+  if (channel !== "stable" && channel !== "nightly") {
+    throw new Error("Release Identity channel must be stable or nightly.");
+  }
+  const identity = publicationIdentity(parseBuildIdentity(record), channel);
+  if (tag !== identity.tag) throw new Error(`Release Identity tag must be ${identity.tag}.`);
+  return identity;
 }
 
 export function sha256File(filePath: string): string {

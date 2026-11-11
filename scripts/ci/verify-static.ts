@@ -121,6 +121,12 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     name: "product identity",
   },
   {
+    command: ["run", "release:check"],
+    group: "repository-contracts",
+    id: "next-release-version",
+    name: "next release version and changelog",
+  },
+  {
     command: ["run", "version-surfaces:audit"],
     group: "repository-contracts",
     id: "version-surfaces",

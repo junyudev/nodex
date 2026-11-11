@@ -8,11 +8,6 @@ const EMPTY_UNRELEASED_SECTION = [
   "### Fixed",
 ].join("\n");
 
-export interface PreparedChangelog {
-  readonly changelogContent: string;
-  readonly releaseNotes: string;
-}
-
 interface SectionRange {
   readonly content: string;
   readonly end: number;
@@ -27,7 +22,7 @@ const hasMeaningfulReleaseNotes = (content: string): boolean =>
   content
     .split("\n")
     .map((line) => line.trim())
-    .some((line) => line.length > 0 && !line.startsWith("### "));
+    .some((line) => /^[-*]\s+\S/u.test(line));
 
 const trimBlankLines = (lines: readonly string[]): string[] => {
   let start = 0;
@@ -92,38 +87,74 @@ export function extractReleaseNotes(changelogContent: string, version: string): 
   return `${trimTrailingWhitespace(notes)}\n`;
 }
 
-export function prepareChangelog(
-  changelogContent: string,
+const UNRELEASED = /^## \[Unreleased\]$/;
+
+export function validateNextVersionChangelog(content: string, version: string): void {
+  sectionRange(content, UNRELEASED);
+  if (
+    new RegExp(`^## \\[${escapeRegExp(version)}\\] - \\d{4}-\\d{2}-\\d{2}$`, "m").test(
+      normalizeContent(content),
+    )
+  ) {
+    throw new Error(`Source version ${version} already has a dated changelog section.`);
+  }
+}
+
+export function extractUnreleasedNotes(content: string): string {
+  const notes = omitEmptySubsections(
+    sectionRange(content, UNRELEASED).content.slice("## [Unreleased]".length),
+  );
+  if (!hasMeaningfulReleaseNotes(notes))
+    throw new Error("The Unreleased changelog section is empty.");
+  return `${notes}\n`;
+}
+
+// Match whole Markdown entries within their category, including continuation lines.
+function changelogEntries(notes: string): Map<string, string[]> {
+  const entries = new Map<string, string[]>();
+  for (const section of trimTrailingWhitespace(notes).split(/(?=^### )/m)) {
+    const heading = /^### .+$/m.exec(section)?.[0] ?? "";
+    const body = section.slice(heading.length).trim();
+    const category = entries.get(heading) ?? [];
+    if (body) category.push(...body.split(/\n(?=[-*] )/u).map((entry) => entry.trim()));
+    entries.set(heading, category);
+  }
+  return entries;
+}
+
+export function advanceChangelog(
+  content: string,
+  notes: string,
   version: string,
   date: string,
-): PreparedChangelog {
-  const normalized = normalizeContent(changelogContent);
-  const releasedHeading = new RegExp(
-    `^## \\[${escapeRegExp(version)}\\] - \\d{4}-\\d{2}-\\d{2}$`,
-    "m",
+): string {
+  validateNextVersionChangelog(content, version);
+  const normalized = normalizeContent(content);
+  const unreleased = sectionRange(normalized, UNRELEASED);
+  const remaining = changelogEntries(unreleased.content.slice("## [Unreleased]".length));
+  for (const [heading, entries] of changelogEntries(notes)) {
+    const candidates = remaining.get(heading);
+    if (!candidates) continue;
+    for (const entry of entries) {
+      const index = candidates.indexOf(entry);
+      if (index !== -1) candidates.splice(index, 1);
+    }
+  }
+  const sections = new Map([
+    ...changelogEntries(EMPTY_UNRELEASED_SECTION.slice("## [Unreleased]".length)),
+    ...remaining,
+  ]);
+  const pending = [...sections]
+    .map(([heading, entries]) => [heading, entries.join("\n")].filter(Boolean).join("\n\n"))
+    .filter(Boolean);
+  return (
+    [
+      normalized.slice(0, unreleased.start).trimEnd(),
+      ["## [Unreleased]", ...pending].join("\n\n"),
+      `## [${version}] - ${date}\n\n${notes.trim()}`,
+      normalized.slice(unreleased.end).trim(),
+    ]
+      .filter(Boolean)
+      .join("\n\n") + "\n"
   );
-  if (releasedHeading.test(normalized)) {
-    throw new Error(`Release ${version} already exists in CHANGELOG.md.`);
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new Error("Release date must use YYYY-MM-DD.");
-  }
-
-  const unreleased = sectionRange(normalized, /^## \[Unreleased\]$/);
-  const heading = unreleased.content.match(/^## \[Unreleased\]$/m)?.[0];
-  if (!heading) throw new Error("Unable to read the Unreleased changelog heading.");
-  const notes = omitEmptySubsections(unreleased.content.slice(heading.length).trim());
-  if (!hasMeaningfulReleaseNotes(notes)) {
-    throw new Error(
-      "The Unreleased changelog section is empty. Refusing to prepare a release without notes.",
-    );
-  }
-
-  const before = normalized.slice(0, unreleased.start).trimEnd();
-  const after = normalized.slice(unreleased.end).trimStart();
-  const releaseSection = `## [${version}] - ${date}\n\n${notes}`;
-  const next = [before, EMPTY_UNRELEASED_SECTION, releaseSection, after]
-    .filter(Boolean)
-    .join("\n\n");
-  return { changelogContent: `${next}\n`, releaseNotes: `${notes}\n` };
 }

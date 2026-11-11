@@ -8,13 +8,11 @@ import { TESTFLIGHT_DIRECTORY, parseReleaseBundleManifest } from "./bundle";
 import {
   APP_STORE_CONNECT_APP_ID,
   MOBILE_APP_ID,
-  MOBILE_BUILD_MANIFEST,
   TESTFLIGHT_PUBLIC_GROUP,
-  parseMobileBuildManifest,
   readMobileBuildDirectory,
   type MobileApp,
 } from "./mobile";
-import { sha256File, type ReleaseIdentity } from "./model";
+import { buildIdentityOf, sha256File } from "./model";
 
 const API = "https://api.appstoreconnect.apple.com";
 const SECOND = 1000;
@@ -254,24 +252,21 @@ const SUBMITTED_STATES = new Set([
 ]);
 
 /** The iOS build to publish, proven against its Release Bundle when there is one. */
-function certifiedBuild(options: {
-  readonly bundlePath?: string;
-  readonly buildDirectory?: string;
-}): { app: MobileApp; identity: ReleaseIdentity; artifactPath: string | null } {
-  if (options.buildDirectory) {
-    const root = resolve(options.buildDirectory);
-    const { releaseIdentity } = parseMobileBuildManifest(
-      JSON.parse(readFileSync(join(root, MOBILE_BUILD_MANIFEST), "utf8")),
-    );
-    const build = readMobileBuildDirectory(root, "ios", releaseIdentity);
-    return { app: build.manifest.app, identity: releaseIdentity, artifactPath: build.artifactPath };
-  }
-  const bundlePath = resolve(options.bundlePath ?? "");
+function certifiedBuild(path: string): {
+  app: MobileApp;
+  publicBeta: boolean;
+  artifactPath: string | null;
+} {
+  const bundlePath = resolve(path);
   const bundle = parseReleaseBundleManifest(JSON.parse(readFileSync(bundlePath, "utf8")));
   const root = join(dirname(bundlePath), TESTFLIGHT_DIRECTORY);
   if (!existsSync(root))
-    return { app: bundle.mobile.ios.app, identity: bundle.releaseIdentity, artifactPath: null };
-  const build = readMobileBuildDirectory(root, "ios", bundle.releaseIdentity);
+    return {
+      app: bundle.mobile.ios.app,
+      publicBeta: bundle.releaseIdentity.channel === "stable",
+      artifactPath: null,
+    };
+  const build = readMobileBuildDirectory(root, "ios", buildIdentityOf(bundle.releaseIdentity));
   if (
     sha256File(build.manifestPath) !== bundle.mobile.ios.manifestSha256 ||
     build.manifest.artifact.sha256 !== bundle.mobile.ios.artifact.sha256
@@ -279,7 +274,7 @@ function certifiedBuild(options: {
     throw new Error("The iOS build is not the one its Release Bundle certified.");
   return {
     app: build.manifest.app,
-    identity: bundle.releaseIdentity,
+    publicBeta: bundle.releaseIdentity.channel === "stable",
     artifactPath: build.artifactPath,
   };
 }
@@ -293,24 +288,19 @@ export interface TestFlightReceipt {
 }
 
 /**
- * Puts one certified iOS build on TestFlight. Every step is idempotent, so Recovery can repeat
- * it: an existing build is reused rather than uploaded again, and a stable release joins the
- * public group and Beta App Review once. Nightly and local builds reach internal testers only.
+ * Puts one certified iOS build on TestFlight. An existing build is reused, and a stable release
+ * joins the public group and Beta App Review once. Nightly builds reach internal testers only.
  * A release publishes from its Release Bundle, which binds the exact IPA; once that private copy
  * has expired, publishing can still finish a build Apple already holds, but never uploads another.
  */
-export async function publishTestFlight(
-  options: (
-    | { readonly bundlePath: string; readonly buildDirectory?: undefined }
-    | { readonly buildDirectory: string; readonly bundlePath?: undefined }
-  ) & {
-    readonly client?: AppStoreConnect;
-    readonly credentials?: AppStoreConnectCredentials;
-    readonly uploadPackage?: typeof upload;
-    readonly poll?: { readonly interval?: number; readonly timeout?: number };
-  },
-): Promise<TestFlightReceipt> {
-  const { app, identity, artifactPath } = certifiedBuild(options);
+export async function publishTestFlight(options: {
+  readonly bundlePath: string;
+  readonly client?: AppStoreConnect;
+  readonly credentials?: AppStoreConnectCredentials;
+  readonly uploadPackage?: typeof upload;
+  readonly poll?: { readonly interval?: number; readonly timeout?: number };
+}): Promise<TestFlightReceipt> {
+  const { app, publicBeta, artifactPath } = certifiedBuild(options.bundlePath);
   if (app.id !== MOBILE_APP_ID) throw new Error("The iOS build is not Nodex Mobile.");
   const credentials = options.credentials ?? credentialsFromEnvironment();
   const client = options.client ?? appStoreConnect(credentials);
@@ -336,7 +326,6 @@ export async function publishTestFlight(
   }
   let build = await waitForProcessedBuild(client, app, options.poll);
 
-  const publicBeta = identity.channel === "stable";
   if (publicBeta) {
     await setTesterNotes(client, build.id, testerNotes(app.version));
     const group = await findGroup(client, TESTFLIGHT_PUBLIC_GROUP);

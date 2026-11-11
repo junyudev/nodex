@@ -1,3 +1,4 @@
+import { readArchitectureDirectory } from "./bundle";
 import { extractSparkleArchive, sparkleFullArchiveName } from "./sparkle-archive";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
@@ -23,12 +24,12 @@ import { materializeSparkleRuntime } from "../materialize-sparkle-runtime";
 import {
   compareStableVersions,
   compareBuildVersions,
-  buildVersionForMainlineOrdinal,
   normalizeReleaseVersion,
+  normalizeStableVersion,
   normalizeAppleBuildVersion,
   sha256File,
   stableVersionFromAppTag,
-  tagForReleaseVersion,
+  publicationIdentity,
   type ReleaseChannel,
 } from "./model";
 import {
@@ -240,7 +241,7 @@ export const normalizeGeneratedAppcast = (options: {
     const originalName = decodeURIComponent(new URL(originalUrl).pathname.split("/").at(-1) ?? "");
     const originalPath = findFileRecursively(options.workingDirectory, originalName);
     if (!originalPath) throw new Error(`Generated Sparkle delta is missing: ${originalName}`);
-    const deltaName = `Nodex-${fromVersion}-to-${options.version}-${options.architecture}.delta`;
+    const deltaName = `Nodex-${fromBuildVersion}-to-${options.version}-${options.architecture}.delta`;
     const deltaPath = path.join(options.workingDirectory, deltaName);
     if (path.resolve(originalPath) !== path.resolve(deltaPath)) renameSync(originalPath, deltaPath);
     const deltaUrl = normalizedReleaseUrl(options.tag, deltaName);
@@ -327,7 +328,7 @@ export const stageSparkleDeltaSources = (
       (asset) => asset.role === "sparkle-full" && asset.architecture === "arm64",
     );
     if (!full) throw new Error(`Sparkle history ${version} has no macOS full archive.`);
-    const archivePath = path.join(workingDirectory, full.name);
+    const archivePath = path.join(workingDirectory, `${buildVersion}-${full.name}`);
     if (archives.has(buildVersion) || existsSync(archivePath)) {
       throw new Error(`Duplicate Sparkle history archive for build ${buildVersion}.`);
     }
@@ -341,8 +342,17 @@ export async function finalizeSparkleArchitectureUpdate(
   options: FinalizeSparkleOptions,
 ): Promise<SparkleArchitectureUpdateManifest> {
   if (process.platform !== "darwin") throw new Error("Sparkle finalization requires macOS.");
-  const version = normalizeReleaseVersion(options.version);
-  const tag = tagForReleaseVersion(version);
+  const version = normalizeStableVersion(options.version);
+  const build = readArchitectureDirectory(options.architectureDirectory);
+  if (
+    build.architecture !== options.architecture ||
+    build.version !== version ||
+    build.sourceSha !== options.sourceSha ||
+    build.updates !== "enabled"
+  ) {
+    throw new Error("Sparkle finalizer inputs do not match the architecture build.");
+  }
+  const { tag } = publicationIdentity(build.buildIdentity, options.channel);
   if (!/^[a-f0-9]{40}$/u.test(options.sourceSha)) throw new Error("Sparkle source SHA is invalid.");
   if (!options.privateKey.trim()) throw new Error("Sparkle private key is required.");
   const architectureRoot = path.resolve(options.architectureDirectory);
@@ -371,6 +381,7 @@ export async function finalizeSparkleArchitectureUpdate(
     const identity = readAppIdentity(currentAppPath);
     if (
       identity.version !== version ||
+      identity.buildVersion !== build.buildIdentity.buildVersion ||
       identity.bundleId !== PRODUCT_BUNDLE_ID ||
       identity.packageProvenanceSchema !== PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION ||
       identity.publicKey !== publicKey ||
@@ -443,7 +454,7 @@ export async function finalizeSparkleArchitectureUpdate(
       },
       deltas: normalized.deltas,
       full: normalized.full,
-      schemaVersion: 2,
+      schemaVersion: 3,
       sourceSha: options.sourceSha,
       tag,
       target: {
@@ -554,27 +565,27 @@ const assertDownloadedGitHubAsset = (release: GitHubReleaseSummary, filePath: st
 export function fetchSparkleHistory(options: {
   readonly architecture: MacArchitecture;
   readonly channel?: ReleaseChannel;
-  readonly currentBuildVersion?: string;
+  readonly currentBuildVersion: string;
   readonly currentVersion: string;
   readonly limit?: number;
   readonly outputDirectory: string;
   readonly repository: string;
 }): readonly string[] {
   const channel = options.channel ?? "stable";
-  const currentVersion = normalizeReleaseVersion(options.currentVersion);
-  const nightlyOrdinal = /-nightly\.\d{8}\.([1-9]\d*)$/u.exec(currentVersion)?.[1];
-  const currentBuildVersion = options.currentBuildVersion
-    ? normalizeAppleBuildVersion(options.currentBuildVersion)
-    : channel === "stable"
-      ? normalizeAppleBuildVersion(currentVersion)
-      : buildVersionForMainlineOrdinal(Number(nightlyOrdinal));
+  const currentVersion = normalizeStableVersion(options.currentVersion);
+  const currentBuildVersion = normalizeAppleBuildVersion(options.currentBuildVersion);
   const output = path.resolve(options.outputDirectory);
   ensureEmptyDirectory(output);
-  const releases = (
-    JSON.parse(
-      gh(["api", `repos/${options.repository}/releases?per_page=30`]),
-    ) as GitHubReleaseSummary[]
-  )
+  const endpoint = `repos/${options.repository}/releases`;
+  const history =
+    channel === "stable"
+      ? (
+          JSON.parse(
+            gh(["api", `${endpoint}?per_page=100`, "--paginate", "--slurp"]),
+          ) as GitHubReleaseSummary[][]
+        ).flat()
+      : (JSON.parse(gh(["api", `${endpoint}?per_page=30`])) as GitHubReleaseSummary[]);
+  const releases = history
     .filter((release) => isEligibleSparkleHistoryRelease(release, channel))
     .map((release) => ({
       release,
@@ -736,7 +747,7 @@ export function runSparkleHistoryCli(args: ReadonlyMap<string, string>): void {
         throw new Error("Sparkle history --channel must be stable or nightly.");
       return channel;
     })(),
-    currentBuildVersion: args.get("build-version"),
+    currentBuildVersion: required("build-version"),
     currentVersion: required("version"),
     outputDirectory: required("output"),
     repository: required("repo"),

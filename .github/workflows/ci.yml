@@ -51,55 +51,6 @@ jobs:
         id: outputs
         run: node --no-warnings scripts/ci/write-github-outputs.ts --input "${RUNNER_TEMP}/classification.json"
 
-  release-transition:
-    name: release transition
-    if: ${{ fromJSON(needs.classify.outputs.plan).releaseTransition }}
-    needs: classify
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: ./.github/actions/setup-vite-plus
-      - run: vp install --frozen-lockfile --ignore-scripts
-      - name: Verify exact stable release transition
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          transition="${RUNNER_TEMP}/release-transition.json"
-          identity="${RUNNER_TEMP}/release-identity.json"
-          vp run release:detect -- \
-            --base "${BASE_SHA}" \
-            --head "${HEAD_SHA}" \
-            --output "${transition}"
-          test "$(node -p "require('${transition}').shouldRelease")" = true
-          vp run release:resolve:stable -- \
-            --base "${BASE_SHA}" \
-            --head "${HEAD_SHA}" \
-            --output "${identity}"
-          version="$(node -p "require('${identity}').version")"
-          vp run release:check:remote -- \
-            --repo "${GITHUB_REPOSITORY}" \
-            --source-sha "${HEAD_SHA}" \
-            --version "${version}"
-          {
-            echo "## Release transition"
-            echo
-            echo '```json'
-            cat "${transition}"
-            echo '```'
-            echo
-            echo '```json'
-            cat "${identity}"
-            echo '```'
-          } >> "${GITHUB_STEP_SUMMARY}"
-
   static-contracts:
     name: static contracts
     if: ${{ toJSON(fromJSON(needs.classify.outputs.plan).staticGroups) != '[]' }}
@@ -137,7 +88,6 @@ jobs:
     if: always()
     needs:
       - classify
-      - release-transition
       - static-contracts
       - rust-checks
       - app-tests

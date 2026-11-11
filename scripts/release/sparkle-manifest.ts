@@ -4,6 +4,8 @@ import { basename } from "node:path";
 import { PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION } from "../package-provenance.mjs";
 import {
   compareBuildVersions,
+  buildVersionForMainlineOrdinal,
+  nightlyLabelFor,
   normalizeAppleBuildVersion,
   normalizeReleaseVersion,
   tagForReleaseVersion,
@@ -37,7 +39,7 @@ export interface SparkleArchitectureUpdateManifest {
   };
   readonly deltas: readonly SparkleDeltaIdentity[];
   readonly full: SparkleFileIdentity;
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly sourceSha: string;
   readonly tag: string;
   readonly target: {
@@ -181,7 +183,8 @@ function parseUpdateManifest(
   allowZipHistory: boolean,
 ): SparkleArchitectureUpdateManifest {
   if (!isRecord(value)) throw new Error("Sparkle architecture update manifest is invalid.");
-  const legacyStable = value.schemaVersion === 1;
+  const legacyStable = allowZipHistory && value.schemaVersion === 1;
+  const historical = legacyStable || (allowZipHistory && value.schemaVersion === 2);
   assertExactKeys(
     value,
     [
@@ -199,7 +202,7 @@ function parseUpdateManifest(
   );
   const channel = legacyStable ? "stable" : value.channel;
   if (
-    (!legacyStable && value.schemaVersion !== 2) ||
+    (!historical && value.schemaVersion !== 3) ||
     value.architecture !== "arm64" ||
     (channel !== "stable" && channel !== "nightly")
   ) {
@@ -217,10 +220,20 @@ function parseUpdateManifest(
     "Sparkle update target",
   );
   const version = normalizeReleaseVersion(String(value.target.version));
-  const tag = tagForReleaseVersion(version);
+  const nightlyTag = /^v[^-]+-nightly\.(\d{4})(\d{2})(\d{2})\.([1-9]\d*)$/u.exec(String(value.tag));
+  const tag =
+    channel === "nightly" && !historical && nightlyTag
+      ? tagForReleaseVersion(
+          nightlyLabelFor(version, nightlyTag.slice(1, 4).join("-"), Number(nightlyTag[4])),
+        )
+      : tagForReleaseVersion(version);
   const targetBuildVersion = normalizeAppleBuildVersion(String(value.target.buildVersion));
   if (
     value.tag !== tag ||
+    (channel === "nightly" &&
+      !historical &&
+      (!nightlyTag ||
+        buildVersionForMainlineOrdinal(Number(nightlyTag[4])) !== targetBuildVersion)) ||
     value.target.bundleId !== "app.jyu.nodex" ||
     value.target.packageProvenanceSchema !== PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION ||
     value.target.teamIdentifier !== NODEX_MACOS_TEAM_IDENTIFIER
@@ -252,7 +265,8 @@ function parseUpdateManifest(
       (delta) =>
         delta.toVersion !== version ||
         delta.toBuildVersion !== targetBuildVersion ||
-        delta.name !== `Nodex-${delta.fromVersion}-to-${version}-${value.architecture}.delta`,
+        delta.name !==
+          `Nodex-${historical ? delta.fromVersion : delta.fromBuildVersion}-to-${version}-${value.architecture}.delta`,
     )
   ) {
     throw new Error("Sparkle delta set does not match its target release.");
@@ -268,7 +282,7 @@ function parseUpdateManifest(
     },
     deltas,
     full,
-    schemaVersion: 2,
+    schemaVersion: 3,
     sourceSha: value.sourceSha,
     tag,
     target: {

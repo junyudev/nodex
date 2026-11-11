@@ -49,7 +49,7 @@ jobs:
       - uses: ./.github/actions/setup-vite-plus
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: nodex-release-identity-${{ inputs.source_sha }}
+          name: nodex-build-identity-${{ inputs.source_sha }}
           path: ${{ runner.temp }}/identity
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -64,15 +64,8 @@ jobs:
           test "$(git rev-parse 'HEAD^{tree}')" = "${RELEASE_SOURCE_TREE}"
           test -z "$(git status --porcelain)"
           vp install --frozen-lockfile
-          node -e '
-            const certificate = require(process.argv[1]);
-            if (certificate.schemaVersion !== 1
-              || certificate.sourceSha !== process.env.RELEASE_SOURCE_SHA
-              || certificate.sourceTree !== process.env.RELEASE_SOURCE_TREE) {
-              throw new Error("Release source certification does not match the exact source tree");
-            }
-          ' "${RUNNER_TEMP}/certification/source-certification.json"
-          vp run release:verify:identity -- --identity "${RUNNER_TEMP}/identity/release-identity.json" --head "${RELEASE_SOURCE_SHA}" --output "${RUNNER_TEMP}/source.json"
+          vp exec tsx scripts/release/cli.ts verify-certificate --identity "${RUNNER_TEMP}/identity/build-identity.json" --certificate "${RUNNER_TEMP}/certification/source-certification.json"
+          vp run release:verify:identity -- --identity "${RUNNER_TEMP}/identity/build-identity.json" --head "${RELEASE_SOURCE_SHA}" --output "${RUNNER_TEMP}/source.json"
 
       - name: Prepare the Android toolchain
         shell: bash
@@ -101,7 +94,7 @@ jobs:
           (umask 077 && printf '%s' "${ANDROID_RELEASE_KEYSTORE_B64}" | base64 -d > "${NODEX_ANDROID_KEYSTORE}")
           unset ANDROID_RELEASE_KEYSTORE_B64
           vp run release:build:android -- \
-            --identity "${RUNNER_TEMP}/identity/release-identity.json" \
+            --identity "${RUNNER_TEMP}/identity/build-identity.json" \
             --output "${RELEASE_OUTPUT}"
 
       - name: Summarize Android build
@@ -140,7 +133,7 @@ jobs:
       - uses: ./.github/actions/setup-vite-plus
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: nodex-release-identity-${{ inputs.source_sha }}
+          name: nodex-build-identity-${{ inputs.source_sha }}
           path: ${{ runner.temp }}/identity
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -155,15 +148,8 @@ jobs:
           test "$(git rev-parse 'HEAD^{tree}')" = "${RELEASE_SOURCE_TREE}"
           test -z "$(git status --porcelain)"
           vp install --frozen-lockfile
-          node -e '
-            const certificate = require(process.argv[1]);
-            if (certificate.schemaVersion !== 1
-              || certificate.sourceSha !== process.env.RELEASE_SOURCE_SHA
-              || certificate.sourceTree !== process.env.RELEASE_SOURCE_TREE) {
-              throw new Error("Release source certification does not match the exact source tree");
-            }
-          ' "${RUNNER_TEMP}/certification/source-certification.json"
-          vp run release:verify:identity -- --identity "${RUNNER_TEMP}/identity/release-identity.json" --head "${RELEASE_SOURCE_SHA}" --output "${RUNNER_TEMP}/source.json"
+          vp exec tsx scripts/release/cli.ts verify-certificate --identity "${RUNNER_TEMP}/identity/build-identity.json" --certificate "${RUNNER_TEMP}/certification/source-certification.json"
+          vp run release:verify:identity -- --identity "${RUNNER_TEMP}/identity/build-identity.json" --head "${RELEASE_SOURCE_SHA}" --output "${RUNNER_TEMP}/source.json"
 
       - name: Ensure CocoaPods
         shell: bash
@@ -184,7 +170,7 @@ jobs:
             exit 1
           fi
           vp run release:build:ios -- \
-            --identity "${RUNNER_TEMP}/identity/release-identity.json" \
+            --identity "${RUNNER_TEMP}/identity/build-identity.json" \
             --output "${RELEASE_OUTPUT}"
 
       - name: Summarize iOS build

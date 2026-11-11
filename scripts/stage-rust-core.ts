@@ -94,14 +94,9 @@ const readProductVersion = (repositoryRoot: string): string => {
   const value = JSON.parse(readFileSync(path.join(repositoryRoot, "package.json"), "utf8")) as {
     readonly version?: unknown;
   };
-  const version = process.env.NODEX_RELEASE_VERSION ?? value.version;
-  if (
-    typeof version !== "string" ||
-    !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-nightly\.\d{8}\.[1-9]\d*)?$/u.test(version)
-  ) {
-    throw new Error(
-      "Product version must be a stable semantic version or <stable>-nightly.YYYYMMDD.N.",
-    );
+  const version = value.version;
+  if (typeof version !== "string" || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.test(version)) {
+    throw new Error("Product version must use x.y.z.");
   }
   return version;
 };

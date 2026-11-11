@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vite-plus/test";
 
 import { TESTFLIGHT_DIRECTORY, assembleReleaseBundle } from "./bundle";
-import { makeMobileBuild } from "./mobile-release.fixture";
 import {
   appStoreConnect,
   publishTestFlight,
@@ -13,6 +12,7 @@ import {
   type AppStoreConnect,
   type AppStoreConnectCredentials,
 } from "./testflight";
+import { makeMobileBuild } from "./mobile-release.fixture";
 import { fixtureIdentity, makeReleaseFixture } from "./windows-release.fixture";
 
 let root = "";
@@ -104,13 +104,25 @@ function fakeAppStoreConnect(initial: { processing?: number; externalState?: str
   return { calls, client, uploadPackage, notes: () => notes };
 }
 
+function assembleTestFlightBundle(channel: "stable" | "nightly"): string {
+  const output = join(root, "bundle");
+  assembleReleaseBundle({ ...makeReleaseFixture(root, channel), outputDirectory: output });
+  return join(output, "release-bundle.json");
+}
+
 const poll = { interval: 0, timeout: 1000 };
 
 test("a stable release uploads once, waits for processing, and opens to the public beta", async () => {
-  const identity = fixtureIdentity("stable");
-  const buildDirectory = makeMobileBuild(root, "ios", identity);
+  const inputs = makeReleaseFixture(root);
+  const output = join(root, "bundle");
+  assembleReleaseBundle({ ...inputs, outputDirectory: output });
   const asc = fakeAppStoreConnect({ processing: 2 });
-  const receipt = await publishTestFlight({ buildDirectory, credentials, poll, ...asc });
+  const receipt = await publishTestFlight({
+    bundlePath: join(output, "release-bundle.json"),
+    credentials,
+    poll,
+    ...asc,
+  });
 
   expect(receipt).toMatchObject({
     uploaded: true,
@@ -124,11 +136,11 @@ test("a stable release uploads once, waits for processing, and opens to the publ
 });
 
 test("publishing again reuses the build and its review", async () => {
-  const buildDirectory = makeMobileBuild(root, "ios", fixtureIdentity("stable"));
+  const bundlePath = assembleTestFlightBundle("stable");
   const asc = fakeAppStoreConnect({ externalState: "IN_BETA_TESTING" });
   let uploads = 0;
   const receipt = await publishTestFlight({
-    buildDirectory,
+    bundlePath,
     credentials,
     poll,
     client: asc.client,
@@ -142,10 +154,10 @@ test("publishing again reuses the build and its review", async () => {
 });
 
 test("a duplicate upload waits for the build Apple is still processing", async () => {
-  const buildDirectory = makeMobileBuild(root, "ios", fixtureIdentity("nightly"));
+  const bundlePath = assembleTestFlightBundle("nightly");
   const asc = fakeAppStoreConnect({ processing: 2 });
   const receipt = await publishTestFlight({
-    buildDirectory,
+    bundlePath,
     credentials,
     poll,
     client: asc.client,
@@ -159,9 +171,9 @@ test("a duplicate upload waits for the build Apple is still processing", async (
 });
 
 test("a Nightly reaches internal testers only", async () => {
-  const buildDirectory = makeMobileBuild(root, "ios", fixtureIdentity("nightly"));
+  const bundlePath = assembleTestFlightBundle("nightly");
   const asc = fakeAppStoreConnect();
-  const receipt = await publishTestFlight({ buildDirectory, credentials, poll, ...asc });
+  const receipt = await publishTestFlight({ bundlePath, credentials, poll, ...asc });
   expect(receipt.publicBeta).toBe(false);
   expect(asc.calls.some((call) => call.includes("betaGroups") || call.includes("Review"))).toBe(
     false,
