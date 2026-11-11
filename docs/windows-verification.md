@@ -157,3 +157,16 @@ On a physical x64 PC, repeat checklist items 1, 2, 6, and 7, then verify hardwar
 accelerated rendering of large Pages and Canvases, startup time with Defender
 enabled, sleep and resume with an active agent turn, and a mixed-DPI multi-monitor
 setup.
+
+## Existing-browser control
+
+Run in an interactive standard-user Windows 11 session on x64 and arm64 with a disposable Nodex Profile and disposable browser profiles. Record the architecture, Nodex build, browser and extension versions, Settings states, and the before/after HKCU default values. For the production extension host, query both of these keys with `/ve /reg:32` and `/ve /reg:64`.
+
+- `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.openai.codexextension`
+- `HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.openai.codexextension`
+
+- **Clean install.** Start with the other desktop app absent. Install the published ChatGPT extension in Chrome and Edge. Test Edge with the Edge Add-ons ID and Chrome with the Chrome Web Store ID. Confirm **Waiting for extension** before connection and **Ready** after connection. From a local Agent, read a test page and select its exact tab. Repeat with two browser profiles and confirm commands reach the selected extension instance. On arm64, verify routing when optional browser-profile names are absent.
+- **Repair.** Close both browsers, remove the Profile's native-messaging manifest and reopen Nodex. If it reports **Needs repair**, choose **Repair**. Verify the manifest is regenerated with the exact extension origins and the verified host path. Restart both browsers and repeat the handshake. Test the 32-bit and 64-bit registry queries and confirm they see the same HKCU default.
+- **Co-install and take over.** Install and connect the other desktop app first. Record its Chrome registration and any Edge-specific registration. Open Nodex and confirm **In use by another app**, the original manifest path and unchanged values. Choose **Use with Nodex**, reconnect both browsers, and repeat the handshake. Launch a second Nodex Profile and confirm **In use by another Nodex Profile** and unchanged ownership.
+- **Give back and turn off.** Choose **Give back** in the owning Profile. Verify the original default values return and keys previously absent lose Nodex's default. Restart Nodex and confirm control stays **Off**. Reconnect both browsers to the original app. Repeat **Turn off** from a clean install, and repeat **Give back** after independently changing one default value to verify the stale receipt leaves that value in place.
+- **Upgrade and uninstall.** Take over again, upgrade Nodex and verify the stable manifest now points to the new verified executable, both browsers reconnect, and the original receipt still gives back the same value. Then uninstall while Nodex owns the keys and verify the previous defaults are restored before the host files are removed. Repeat with no previous owner and with an independently replaced default. Confirm unrelated values and machine-wide registrations are unchanged.

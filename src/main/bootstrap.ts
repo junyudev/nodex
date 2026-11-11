@@ -255,6 +255,7 @@ function launchMainApplication(): void {
       bootstrapConfig.environment.NODEX_COMPOSER_APPSHOT_HELPER?.trim() || null,
     chromeHostRegistration: resolveChromeHostRegistration({
       isPackaged: app.isPackaged,
+      platform: process.platform,
       isolatedRunId: primaryIsolatedRunId,
       homeDirectory: browserRegistrationHome,
       nodexHome,

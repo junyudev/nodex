@@ -1,3 +1,5 @@
+import { windowsDesktopToolsLayer } from "../platform/node/WindowsDesktopTools";
+import { resolveCoreExecutable } from "../core-client/core-launcher";
 import { SkillFileMutationLane } from "../host-runtime/SkillFileMutationLane";
 import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import { live as workspaceRuntimeLive } from "../../host/WorkspaceRuntimeLive";
@@ -165,13 +167,32 @@ const chromeControl = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const codex = yield* CodexPlatform;
+    const platform = config.platform as NodeJS.Platform;
     return chromeControlRuntimeLive({
+      architecture: config.arch,
+      localAppData: Object.entries(config.environment).find(
+        ([key]) => key.toUpperCase() === "LOCALAPPDATA",
+      )?.[1],
       browserRuntime: codex.runtime.browserRuntime,
       registration: config.chromeHostRegistration ?? { kind: "disabled" },
       peerAuthorizationMode: codex.runtime.source === "bundled" ? "packaged" : "development",
-      platform: config.platform as NodeJS.Platform,
+      platform,
       runtimeStateHome: codex.runtimeStateHome,
-    });
+    }).pipe(
+      Layer.provide(
+        windowsDesktopToolsLayer(
+          platform,
+          platform === "win32"
+            ? resolveCoreExecutable({
+                environment: config.environment,
+                isPackaged: config.isPackaged,
+                appResourcesPath: config.resourcesPath,
+                repositoryRoot: config.projectRootPath,
+              })
+            : "",
+        ),
+      ),
+    );
   }),
 );
 const browserUse = Layer.unwrap(

@@ -10,6 +10,7 @@ export type ChromeHostRegistration =
 /** Launchers declare intent. Only Main selects the destination and grants real-home access. */
 export function resolveChromeHostRegistration(input: {
   readonly isPackaged: boolean;
+  readonly platform: NodeJS.Platform;
   readonly isolatedRunId: string | null;
   readonly homeDirectory: string;
   readonly nodexHome: string;
@@ -17,6 +18,9 @@ export function resolveChromeHostRegistration(input: {
   readonly launchMode: string | undefined;
   readonly hasScenarioHome: boolean;
 }): ChromeHostRegistration {
+  if (input.platform === "win32" && (input.hasScenarioHome || input.launchMode === "disposable")) {
+    return { kind: "disabled" };
+  }
   if (input.launchMode === "disposable") {
     return { kind: "disposable", homeDirectory: path.join(input.nodexHome, "browser-host-home") };
   }

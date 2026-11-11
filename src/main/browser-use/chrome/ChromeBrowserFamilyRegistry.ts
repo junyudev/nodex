@@ -19,6 +19,21 @@ export interface ChromeBrowserFamilyDescriptor {
   readonly shortDisplayName: string;
   readonly storeUrl: string;
   readonly userDataDirectorySegments: readonly string[];
+  readonly windows?: WindowsChromeBrowserFamily;
+}
+
+export interface WindowsChromeBrowserFamily {
+  readonly processNames: readonly string[];
+  readonly userDataDirectorySegments: readonly string[];
+  readonly registrationBrowser: "chrome" | "edge" | null;
+}
+
+export function resolveWindowsChromeProfileRoot(
+  localAppData: string,
+  family: WindowsChromeBrowserFamily,
+): string {
+  if (!path.win32.isAbsolute(localAppData)) throw new Error("LocalAppData must be absolute");
+  return path.win32.join(localAppData, ...family.userDataDirectorySegments);
 }
 
 /** Authority projected from the hash-attested Chrome runtime family descriptor. */
@@ -34,6 +49,7 @@ export interface LoadChromeBrowserAuthorityOptions {
   readonly expectedHostName: string;
   readonly expectedSha256: string;
   readonly expectedSize: number;
+  readonly platform?: NodeJS.Platform;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -186,11 +202,28 @@ function parseMacosFamily(
   };
 }
 
+function parseWindowsFamily(value: unknown, family: string): WindowsChromeBrowserFamily {
+  if (!isRecord(value)) throw new Error(`Chrome ${family} Windows descriptor is invalid`);
+  const segments = safePathSegments(
+    value.userDataDirectorySegments,
+    `Chrome ${family} profile path`,
+  );
+  if (segments.some((segment) => /[<>:"|?*]|[ .]$/u.test(segment))) {
+    throw new Error(`Chrome ${family} Windows profile path is invalid`);
+  }
+  return {
+    processNames: stringArray(value.processNames, `Chrome ${family} Windows process names`),
+    userDataDirectorySegments: segments,
+    registrationBrowser: family === "chrome" || family === "edge" ? family : null,
+  };
+}
+
 export function parseChromeBrowserAuthority(
   value: unknown,
   expected: {
     readonly extensionIds: readonly string[];
     readonly hostName: string;
+    readonly platform?: NodeJS.Platform;
   },
 ): ChromeBrowserAuthority {
   if (!isRecord(value)) throw new Error("Chrome browser family descriptor must be an object");
@@ -233,6 +266,9 @@ export function parseChromeBrowserAuthority(
     const macos = parseMacosFamily(diagnostic.macos, family);
     families.push({
       ...macos,
+      ...(expected.platform === "win32" && diagnostic.windows !== undefined
+        ? { windows: parseWindowsFamily(diagnostic.windows, family) }
+        : {}),
       browserIconAssetPath: browserExtension.browserIconAssetPath,
       displayName: boundedString(diagnostic.displayName, `Chrome ${family} display name`),
       extensionIds: browserExtension.extensionIds,
@@ -288,6 +324,7 @@ export async function loadChromeBrowserAuthority(
     return parseChromeBrowserAuthority(JSON.parse(bytes.toString("utf8")) as unknown, {
       extensionIds: options.expectedExtensionIds,
       hostName: options.expectedHostName,
+      platform: options.platform,
     });
   } finally {
     await handle.close();

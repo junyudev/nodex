@@ -9,6 +9,7 @@ import {
   loadChromeBrowserAuthority,
   parseChromeBrowserAuthority,
   resolveChromeNativeMessagingManifestPaths,
+  resolveWindowsChromeProfileRoot,
 } from "./ChromeBrowserFamilyRegistry";
 import {
   TEST_CHROME_AUTHORITY,
@@ -96,4 +97,36 @@ describe("Chrome browser family registry", () => {
       destinations.every((destination) => destination.endsWith(`${TEST_CHROME_HOST_NAME}.json`)),
     ).toBe(true);
   });
+});
+
+test("projects the attested Windows profile root and rejects unsafe segments", () => {
+  const windows = {
+    processNames: ["msedge.exe"],
+    userDataDirectorySegments: ["Microsoft", "Edge", "User Data"],
+  };
+  const descriptor = {
+    ...TEST_CHROME_FAMILY_DESCRIPTOR,
+    browserDiagnostics: TEST_CHROME_FAMILY_DESCRIPTOR.browserDiagnostics.map((family) =>
+      family.browserFamily === "edge" ? { ...family, windows } : family,
+    ),
+  };
+  const expected = {
+    extensionIds: TEST_CHROME_EXTENSION_IDS,
+    hostName: TEST_CHROME_HOST_NAME,
+    platform: "win32" as const,
+  };
+  const authority = parseChromeBrowserAuthority(descriptor, expected);
+  const edge = authority.families.find(({ family }) => family === "edge")?.windows;
+  expect(edge?.registrationBrowser).toBe("edge");
+  expect(resolveWindowsChromeProfileRoot("C:\\Users\\test\\AppData\\Local", edge!)).toBe(
+    "C:\\Users\\test\\AppData\\Local\\Microsoft\\Edge\\User Data",
+  );
+  const unsafe = {
+    ...descriptor,
+    browserDiagnostics: descriptor.browserDiagnostics.map((family) => ({
+      ...family,
+      windows: { ...windows, userDataDirectorySegments: ["..", "Edge"] },
+    })),
+  };
+  expect(() => parseChromeBrowserAuthority(unsafe, expected)).toThrow("profile path is invalid");
 });
