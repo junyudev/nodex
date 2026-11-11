@@ -131,12 +131,9 @@ describe("OwnedBlockDocumentBoundary", () => {
       expect(view.getByTestId("authority").textContent).toContain("Core is busy");
     });
     expect(view.getByTestId("authority").textContent).not.toContain("deadline exceeded");
-    await waitFor(
-      () => {
-        expect(view.getByTestId("authority").textContent).toBe("ready");
-      },
-      { timeout: 2_000 },
-    );
+    await waitFor(() => {
+      expect(view.getByTestId("authority").textContent).toBe("ready");
+    });
     expect(fetches).toBe(3);
   });
 

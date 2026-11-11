@@ -34,7 +34,7 @@ test("the review answers what each draft adds and leads to one decision", async 
       const { projectId } = manifest;
 
       const issues = page.getByRole("button", { name: "Content issues", exact: true });
-      await expect(issues).toBeVisible({ timeout: 15_000 });
+      await expect(issues).toBeVisible();
       await issues.click();
       await page.getByRole("button", { name: "Review edits", exact: true }).first().click();
       const dialog = reviewDialog(page);

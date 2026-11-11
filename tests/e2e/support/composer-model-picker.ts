@@ -10,7 +10,7 @@ export const openComposerModelPicker = async (page: Page) => {
       await page.getByRole("button", { name: "Select model", exact: true }).click();
     await expect(search).toBeVisible({ timeout: 1_000 });
     await expect(closing).toHaveCount(0);
-  }).toPass({ timeout: 15_000 });
+  }).toPass();
   // The first catalog read starts Agent execution and probes every provider.
   await expect(page.getByRole("listbox").getByText("Loading models…")).toHaveCount(0, {
     timeout: 60_000,

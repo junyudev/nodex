@@ -562,7 +562,6 @@ describe("ClaudeDesktopToolBridge", () => {
               expect(isAlive(descendant.pid)).toBe(false);
             },
             {
-              timeout: 3000,
               interval: 20,
             },
           ),

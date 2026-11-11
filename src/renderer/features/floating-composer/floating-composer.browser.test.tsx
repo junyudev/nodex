@@ -244,14 +244,11 @@ describe("FloatingComposer", () => {
     expect(states.at(-1)).toMatchObject({ visible: false });
     // The surface collapses onto its bubble; the conversation stays mounted, out of reach.
     // The surface glides into the corner as it collapses.
-    await waitFor(
-      () => {
-        const rect = paneRect(restore);
-        expect(rect.right).toBeCloseTo(16, 0);
-        expect(rect.bottom).toBeCloseTo(16, 0);
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      const rect = paneRect(restore);
+      expect(rect.right).toBeCloseTo(16, 0);
+      expect(rect.bottom).toBeCloseTo(16, 0);
+    });
     expect(log.isConnected).toBe(true);
     expect(log.closest("[inert]")).not.toBeNull();
     const logRect = log.getBoundingClientRect();
@@ -320,14 +317,11 @@ describe("FloatingComposer", () => {
       { x: PANE.left + 60, y: PANE.top + 80 },
     );
     await waitFor(() => expect(states.at(-1)).toMatchObject({ minimizedDock: "top-left" }));
-    await waitFor(
-      () => {
-        const resting = paneRect(bubble);
-        expect(resting.left).toBeCloseTo(16, 0);
-        expect(resting.top).toBeCloseTo(paneToolbarHeight() + 16, 0);
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      const resting = paneRect(bubble);
+      expect(resting.left).toBeCloseTo(16, 0);
+      expect(resting.top).toBeCloseTo(paneToolbarHeight() + 16, 0);
+    });
     expect(states.at(-1)).toMatchObject({ visible: false });
   });
 

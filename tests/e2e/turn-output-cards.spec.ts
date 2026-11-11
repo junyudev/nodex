@@ -187,7 +187,7 @@ test("a turn's deliverable appears as a card and in the summary, while its sourc
         if ((await summaryToggle.getAttribute("aria-pressed")) !== "true")
           await summaryToggle.click();
         await expect(summaryToggle).toHaveAttribute("aria-pressed", "true");
-        await expect(page.getByText("Outputs", { exact: true })).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText("Outputs", { exact: true })).toBeVisible();
         await expect(page.getByText("Changes", { exact: true })).toBeVisible();
         await expect(
           page.getByRole("button", { name: "report/index.html", exact: true }),

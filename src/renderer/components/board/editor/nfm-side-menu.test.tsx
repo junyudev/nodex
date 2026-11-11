@@ -779,12 +779,9 @@ describe("markdown side menu surface", () => {
       />,
     );
 
-    await waitFor(
-      () => {
-        expect(loadingView.getByText("Loading…")).not.toBeNull();
-      },
-      { timeout: 650 },
-    );
+    await waitFor(() => {
+      expect(loadingView.getByText("Loading…")).not.toBeNull();
+    });
     loadingView.unmount();
 
     const emptyView = renderWithQuery(

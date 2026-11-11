@@ -158,10 +158,8 @@ const renderReview = async (
     await Promise.all(inclusion.mock.results.map((result) => result.value as Promise<void>));
   });
   const click = async (name: string) => {
-    const button = await view.findByRole("button", { name }, { timeout: 5_000 });
-    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false), {
-      timeout: 5_000,
-    });
+    const button = await view.findByRole("button", { name });
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
     await act(async () => {
       fireEvent.click(button);
       await Promise.resolve();
@@ -170,10 +168,8 @@ const renderReview = async (
   // The trigger's own press ingress, then the frame in which closing the menu returns focus to it
   // and its tooltip positions itself, all inside act.
   const clickMenuItem = async (name: string) => {
-    const trigger = await view.findByRole("button", { name: "More actions" }, { timeout: 5_000 });
-    await waitFor(() => expect((trigger as HTMLButtonElement).disabled).toBe(false), {
-      timeout: 5_000,
-    });
+    const trigger = await view.findByRole("button", { name: "More actions" });
+    await waitFor(() => expect((trigger as HTMLButtonElement).disabled).toBe(false));
     await openNodexMenu(trigger);
     const item = await view.findByRole("menuitem", { name });
     await act(async () => {

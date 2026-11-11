@@ -71,12 +71,12 @@ test("moves a Database Page across Projects and undoes the relocation", async ({
       const sourceTarget = page.locator(
         `[data-database-view-page-menu-target="${relocation.sourcePageId}"]`,
       );
-      await expect(sourceTarget).toHaveCount(0, { timeout: 15_000 });
+      await expect(sourceTarget).toHaveCount(0);
       const undo = page.getByRole("button", { name: "Undo", exact: true });
       await expect(undo).toBeVisible();
       await undo.click();
       await expect(page.getByText("Move undone", { exact: true })).toBeVisible();
-      await expect(sourceTarget).toBeVisible({ timeout: 15_000 });
+      await expect(sourceTarget).toBeVisible();
     },
   );
 });
@@ -112,12 +112,12 @@ test("moves a Sidebar Page into a Database and restores its Library position", a
       await expect(betaDatabase).toBeVisible();
       await betaDatabase.click();
 
-      await expect(sidebarPage).toHaveCount(0, { timeout: 15_000 });
+      await expect(sidebarPage).toHaveCount(0);
       const undo = page.getByRole("button", { name: "Undo", exact: true });
       await expect(undo).toBeVisible();
       await undo.click();
       await expect(page.getByText("Move undone", { exact: true })).toBeVisible();
-      await expect(sidebarPage).toBeVisible({ timeout: 15_000 });
+      await expect(sidebarPage).toBeVisible();
       expect(relocation.standalonePageId).toBeTruthy();
     },
   );

@@ -138,8 +138,8 @@ test("carries synthetic buffered audio and string initialization over a local We
     await Promise.all(
       localCandidates.splice(0).map((candidate) => local.addIceCandidate(candidate)),
     );
-    await expect.poll(() => local.connectionState, { timeout: 10_000 }).toBe("connected");
-    await expect.poll(() => remoteEvents?.readyState, { timeout: 10_000 }).toBe("open");
+    await expect.poll(() => local.connectionState).toBe("connected");
+    await expect.poll(() => remoteEvents?.readyState).toBe("open");
     const events = remoteEvents as RTCDataChannel | null;
     if (!events) throw new Error("The oai-events channel did not arrive");
     expect(events.label).toBe("oai-events");
@@ -148,18 +148,15 @@ test("carries synthetic buffered audio and string initialization over a local We
     expect(onInitialized).toHaveBeenCalledWith("local-v3-session");
     expect(onConnected).toHaveBeenCalledTimes(1);
     await expect
-      .poll(
-        async () => {
-          const stats = await local.getStats();
-          let energy = 0;
-          stats.forEach((report) => {
-            if (report.type === "media-source" && report.kind === "audio")
-              energy += Number(report.totalAudioEnergy ?? 0);
-          });
-          return energy;
-        },
-        { timeout: 10_000 },
-      )
+      .poll(async () => {
+        const stats = await local.getStats();
+        let energy = 0;
+        stats.forEach((report) => {
+          if (report.type === "media-source" && report.kind === "audio")
+            energy += Number(report.totalAudioEnergy ?? 0);
+        });
+        return energy;
+      })
       .toBeGreaterThan(0);
     await expect
       .poll(async () => {

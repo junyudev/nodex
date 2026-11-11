@@ -42,9 +42,7 @@ test("shows the local loading fallback before a cold player module mounts the ad
   expect(view.container.querySelector("video")).toBeNull();
   expect(view.getByRole("button", { name: "Clip" }).hasAttribute("disabled")).toBe(true);
   // A cold module load can take longer than the default wait on a loaded machine.
-  await waitFor(() => expect(view.getByLabelText("Clip").tagName).toBe("VIDEO"), {
-    timeout: 5000,
-  });
+  await waitFor(() => expect(view.getByLabelText("Clip").tagName).toBe("VIDEO"));
   const player = view.getByLabelText("Clip");
   expect(player.getAttribute("src")).toBe("app://fs/@fs/media/clip.webm");
   await act(async () => {

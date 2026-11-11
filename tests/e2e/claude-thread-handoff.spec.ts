@@ -123,7 +123,7 @@ test("moves a Claude Code chat with its uncommitted files and native history acr
       const expand = projectRow.getByRole("button", { name: "Expand project", exact: true });
       if (await expand.count()) await expand.click({ timeout: 1_000 });
       await expect(chatRow).toBeVisible({ timeout: 1_000 });
-    }).toPass({ timeout: 15_000 });
+    }).toPass();
     await chatRow.click();
     await chooseComposerModel(page, "Claude Opus 5", "Claude Opus 5");
     await page.keyboard.press("Escape");

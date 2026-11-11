@@ -18,30 +18,25 @@ describe("WorkspacePdfPreview browser runtime", () => {
     );
 
     try {
-      const preview = await view.findByLabelText("PDF preview for runtime-check.pdf", undefined, {
-        timeout: 10_000,
+      const preview = await view.findByLabelText("PDF preview for runtime-check.pdf");
+      await waitFor(() => {
+        const canvas = preview.querySelector("canvas");
+        expect(canvas).not.toBeNull();
+        expect(canvas?.width ?? 0).toBeGreaterThan(0);
+        expect(canvas?.height ?? 0).toBeGreaterThan(0);
+        expect(preview.querySelector(".textLayer")?.textContent).toContain("Nodex PDF Preview");
+        const text = preview.querySelector<HTMLElement>('.textLayer span[role="presentation"]');
+        if (text === null) throw new Error("Expected selectable PDF text");
+        const page = text.closest<HTMLElement>("[data-workspace-pdf-page]")!;
+        const scale = page.getBoundingClientRect().width / 612;
+        expect(Number.parseFloat(getComputedStyle(text).fontSize)).toBeCloseTo(24 * scale, 1);
+        expect(text.getBoundingClientRect().width).toBeGreaterThan(100 * scale);
+        expect(
+          preview.querySelector<HTMLAnchorElement>(
+            '.annotationLayer a[href="https://example.com/spec"]',
+          ),
+        ).not.toBeNull();
       });
-      await waitFor(
-        () => {
-          const canvas = preview.querySelector("canvas");
-          expect(canvas).not.toBeNull();
-          expect(canvas?.width ?? 0).toBeGreaterThan(0);
-          expect(canvas?.height ?? 0).toBeGreaterThan(0);
-          expect(preview.querySelector(".textLayer")?.textContent).toContain("Nodex PDF Preview");
-          const text = preview.querySelector<HTMLElement>('.textLayer span[role="presentation"]');
-          if (text === null) throw new Error("Expected selectable PDF text");
-          const page = text.closest<HTMLElement>("[data-workspace-pdf-page]")!;
-          const scale = page.getBoundingClientRect().width / 612;
-          expect(Number.parseFloat(getComputedStyle(text).fontSize)).toBeCloseTo(24 * scale, 1);
-          expect(text.getBoundingClientRect().width).toBeGreaterThan(100 * scale);
-          expect(
-            preview.querySelector<HTMLAnchorElement>(
-              '.annotationLayer a[href="https://example.com/spec"]',
-            ),
-          ).not.toBeNull();
-        },
-        { timeout: 10_000 },
-      );
 
       const externalLink = preview.querySelector<HTMLAnchorElement>(
         '.annotationLayer a[href="https://example.com/spec"]',
@@ -61,7 +56,7 @@ describe("WorkspacePdfPreview browser runtime", () => {
         fireEvent.click(pageLink);
         await Promise.resolve();
       });
-      expect(await view.findByText("2/2", undefined, { timeout: 10_000 })).not.toBeNull();
+      expect(await view.findByText("2/2")).not.toBeNull();
     } finally {
       view.unmount();
     }

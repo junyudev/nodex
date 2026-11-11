@@ -1,3 +1,4 @@
+import { vitestTimeouts } from "./config/test-timeouts";
 import { resolveVitestTestTier } from "./config/vitest-test-tier";
 import { TEST_ENVIRONMENT } from "./config/test-environment";
 import { testObservation } from "./config/vitest-observation";
@@ -10,7 +11,7 @@ const testFiles = filesForSuite("unit", resolveVitestTestTier());
 export default defineConfig({
   resolve: rendererViteResolve,
   test: {
-    setupFiles: ["./config/setup-markdown.ts"],
+    setupFiles: ["./config/setup-markdown.ts", "./config/setup-test-timeouts.ts"],
     ...testObservation("unit"),
     env: TEST_ENVIRONMENT,
     environment: "node",
@@ -19,6 +20,6 @@ export default defineConfig({
     maxWorkers: testFiles.isStress ? 1 : 4,
     fileParallelism: !testFiles.isStress,
     passWithNoTests: testFiles.isStress,
-    testTimeout: testFiles.isStress ? 60_000 : 30_000,
+    ...vitestTimeouts(testFiles.isStress),
   },
 });

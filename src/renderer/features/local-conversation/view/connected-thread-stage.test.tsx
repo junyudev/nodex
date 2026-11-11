@@ -2211,13 +2211,10 @@ describe("ConnectedThreadStage archived resume behavior", () => {
         connection("connected", 2);
       });
       // The foreground recovery fallback waits ten seconds. The mounted view must resume first.
-      await waitFor(
-        () => {
-          expect(resumes()).toHaveLength(initialResumes + 1);
-          expect(manager.readConversation("thread_active")?.resumeState).toBe("resumed");
-        },
-        { timeout: 1_000 },
-      );
+      await waitFor(() => {
+        expect(resumes()).toHaveLength(initialResumes + 1);
+        expect(manager.readConversation("thread_active")?.resumeState).toBe("resumed");
+      });
       expect(resumes().at(-1)?.args[0]).toMatchObject({ scheduling: { priority: "critical" } });
       expect(manager.getStreamRole("thread_active")?.role).toBe("owner");
       await act(async () => {

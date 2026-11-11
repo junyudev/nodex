@@ -1,4 +1,4 @@
-import { act, fireEvent, getConfig, waitFor } from "@testing-library/react";
+import { act, configure, fireEvent, getConfig, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vite-plus/test";
 import type { HighlightResult } from "@streamdown/code";
 import {
@@ -12,6 +12,8 @@ import { ReadonlyCodeBlock } from "@/components/shared/readonly-code-block";
 import { installAsyncRequestAnimationFrame } from "./browser-globals";
 import { renderWithAppMaitai } from "./app-maitai";
 import { openNodexMenu, render, waitForCodeHighlight } from "./dom";
+
+const CODE_READINESS_PROBE_TIMEOUT_MS = 1_000;
 
 test("code readiness waits for the plugin beyond the DOM polling budget", async () => {
   const { streamdownCodePlugin } = await import("@/lib/markdown/markdown-code-highlighter");
@@ -34,6 +36,9 @@ test("code readiness waits for the plugin beyond the DOM polling budget", async 
       if (immediate) accept(immediate);
       return null;
     });
+  const { asyncUtilTimeout } = getConfig();
+  // Exercise the contrast with ordinary DOM polling without tying the delay to the suite budget.
+  configure({ asyncUtilTimeout: CODE_READINESS_PROBE_TIMEOUT_MS });
   try {
     view = renderWithAppMaitai(
       <ReadonlyCodeBlock code="const delayedGrammarProbe = 42;" language="typescript" />,
@@ -51,6 +56,7 @@ test("code readiness waits for the plugin beyond the DOM polling budget", async 
       "const delayedGrammarProbe = 42;",
     );
   } finally {
+    configure({ asyncUtilTimeout });
     view?.unmount();
     if (releaseTask !== undefined) clearTimeout(releaseTask);
     release();
@@ -63,9 +69,9 @@ test("code readiness rejects an unhighlighted plain-text fallback", async () => 
     <ReadonlyCodeBlock code="const answer = 42;" language="unknown-grammar" />,
   );
   expect(view.container.querySelector("code")?.textContent).toBe("const answer = 42;");
-  await expect(waitForCodeHighlight(view.container)).rejects.toThrow(
-    "Expected code block highlighting to finish.",
-  );
+  await expect(
+    waitForCodeHighlight(view.container, { timeout: CODE_READINESS_PROBE_TIMEOUT_MS }),
+  ).rejects.toThrow("Expected code block highlighting to finish.");
 });
 
 test("a menu opened with the mouse stays dismissed after selecting an item", async () => {

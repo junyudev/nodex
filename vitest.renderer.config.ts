@@ -1,3 +1,4 @@
+import { vitestTimeouts } from "./config/test-timeouts";
 import { resolveVitestTestTier } from "./config/vitest-test-tier";
 import { TEST_ENVIRONMENT } from "./config/test-environment";
 import { availableParallelism, totalmem } from "node:os";
@@ -39,8 +40,11 @@ export default defineConfig(async () => ({
     }),
     fileParallelism: !testFiles.isStress,
     passWithNoTests: testFiles.isStress,
-    setupFiles: ["./config/setup-markdown.ts", "./src/renderer/test/setup.ts"],
-    hookTimeout: testFiles.isStress ? 60_000 : 30_000,
-    testTimeout: testFiles.isStress ? 60_000 : 30_000,
+    setupFiles: [
+      "./config/setup-markdown.ts",
+      "./config/setup-test-timeouts.ts",
+      "./src/renderer/test/setup.ts",
+    ],
+    ...vitestTimeouts(testFiles.isStress),
   },
 }));

@@ -1,3 +1,4 @@
+import { vitestTimeouts } from "./config/test-timeouts";
 import { resolveVitestTestTier } from "./config/vitest-test-tier";
 import { TEST_ENVIRONMENT } from "./config/test-environment";
 import { testObservation } from "./config/vitest-observation";
@@ -11,7 +12,7 @@ const testFiles = filesForSuite("main", resolveVitestTestTier());
 
 export default defineConfig({
   test: {
-    setupFiles: ["./config/setup-markdown.ts"],
+    setupFiles: ["./config/setup-markdown.ts", "./config/setup-test-timeouts.ts"],
     ...testObservation("main"),
     env: TEST_ENVIRONMENT,
     environment: "node",
@@ -21,6 +22,6 @@ export default defineConfig({
     fileParallelism: !testFiles.isStress,
     passWithNoTests: testFiles.isStress,
     pool: "forks",
-    testTimeout: testFiles.isStress ? 60_000 : 20_000,
+    ...vitestTimeouts(testFiles.isStress),
   },
 });

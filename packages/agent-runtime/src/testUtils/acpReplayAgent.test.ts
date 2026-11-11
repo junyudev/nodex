@@ -110,7 +110,7 @@ async function withReplayAgent(
     stderr += chunk;
   });
   try {
-    await expect.poll(() => existsSync(statusPath), { timeout: 5_000 }).toBe(true);
+    await expect.poll(() => existsSync(statusPath)).toBe(true);
     await run({
       start: () => {
         child.stdin.write(
@@ -135,20 +135,20 @@ async function withReplayAgent(
 it("keeps the prior complete status readable while the next snapshot is being written", () =>
   withReplayAgent("write", async (agent) => {
     agent.start();
-    await expect.poll(agent.reached, { timeout: 5_000 }).toBe(true);
+    await expect.poll(agent.reached).toBe(true);
     expect(agent.readStatus()).toMatchObject({ cursor: 0, total: 3 });
   }));
 
 it("publishes the inbound segment and trailing runtime exit before delivering its last frame", () =>
   withReplayAgent("output", async (agent) => {
     agent.start();
-    await expect.poll(agent.stdout, { timeout: 5_000 }).toContain('"method":"probe/done"');
+    await expect.poll(agent.stdout).toContain('"method":"probe/done"');
     expect(agent.readStatus()).toMatchObject({ cursor: 3, total: 3 });
   }));
 
 it("retains the offending frame when an inbound response has no pending request", () =>
   withReplayAgent("failure", async (agent) => {
-    await expect.poll(agent.stderr, { timeout: 5_000 }).toContain("ACP replay mismatch");
+    await expect.poll(agent.stderr).toContain("ACP replay mismatch");
     expect(agent.stdout()).toBe("");
     expect(agent.readStatus()).toMatchObject({
       cursor: 0,
@@ -167,7 +167,7 @@ it("retains the offending frame when an inbound response has no pending request"
 it("publishes a replay mismatch before returning its error response after completion", () =>
   withReplayAgent("mismatch", async (agent) => {
     agent.start();
-    await expect.poll(agent.stdout, { timeout: 5_000 }).toContain('"code":-32603');
+    await expect.poll(agent.stdout).toContain('"code":-32603');
     expect(agent.readStatus()).toMatchObject({
       cursor: 0,
       total: 0,

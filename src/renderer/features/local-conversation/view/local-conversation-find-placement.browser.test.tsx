@@ -655,26 +655,23 @@ describe("actual transcript Find placement", () => {
         expect(latePageEvidence.at(-1)!.height).toBeGreaterThan(latePageEvidence[0]!.height);
         expect(latePageEvidence[1]!.atMs).toBeGreaterThan(latePageEvidence[0]!.atMs);
       }
-      await waitFor(
-        () => {
-          const mark = view.container.querySelector<HTMLElement>("mark.codex-thread-find-active");
-          expect(mark?.textContent).toBe(term);
-          const rect = mark!.getBoundingClientRect();
-          const clip = viewport.getBoundingClientRect();
-          expect(rect.height).toBeGreaterThan(0);
-          expect(rect.bottom).toBeGreaterThan(clip.top);
-          expect(rect.top).toBeLessThan(clip.bottom);
-          if (latePage || alreadyCentered) {
-            const style = getComputedStyle(viewport);
-            const visibleTop = clip.top + (parseFloat(style.scrollPaddingTop) || 0);
-            const visibleBottom = clip.bottom - (parseFloat(style.scrollPaddingBottom) || 0);
-            expect(
-              Math.abs((rect.top + rect.bottom) / 2 - (visibleTop + visibleBottom) / 2),
-            ).toBeLessThanOrEqual(2);
-          }
-        },
-        { timeout: 3_000 },
-      );
+      await waitFor(() => {
+        const mark = view.container.querySelector<HTMLElement>("mark.codex-thread-find-active");
+        expect(mark?.textContent).toBe(term);
+        const rect = mark!.getBoundingClientRect();
+        const clip = viewport.getBoundingClientRect();
+        expect(rect.height).toBeGreaterThan(0);
+        expect(rect.bottom).toBeGreaterThan(clip.top);
+        expect(rect.top).toBeLessThan(clip.bottom);
+        if (latePage || alreadyCentered) {
+          const style = getComputedStyle(viewport);
+          const visibleTop = clip.top + (parseFloat(style.scrollPaddingTop) || 0);
+          const visibleBottom = clip.bottom - (parseFloat(style.scrollPaddingBottom) || 0);
+          expect(
+            Math.abs((rect.top + rect.bottom) / 2 - (visibleTop + visibleBottom) / 2),
+          ).toBeLessThanOrEqual(2);
+        }
+      });
       if (alreadyCentered) {
         expect(readController().nativeFindTurnKey).toBeNull();
         expect(readController().getScrollMode()).not.toBe("programmaticFind");

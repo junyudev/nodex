@@ -1098,7 +1098,7 @@ test.describe("parallel functional Electron smoke", () => {
           .click();
         await openProjectBoard(page);
         const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');
-        await expect(board).toBeVisible({ timeout: 15_000 });
+        await expect(board).toBeVisible();
         await openBoardPageFromCard({
           card: board.locator(`[data-board-uuid-v7="${source.pageId}"]`),
           page,
@@ -1109,7 +1109,7 @@ test.describe("parallel functional Electron smoke", () => {
         const sourceEditor = sourcePanel.locator(
           '.nfm-editor .ProseMirror[contenteditable="true"]',
         );
-        await expect(sourceEditor).toBeVisible({ timeout: 15_000 });
+        await expect(sourceEditor).toBeVisible();
         const firstInline = sourceEditor
           .locator(`.bn-block[data-id="${seeded.blockIds[0]}"]`)
           .locator(":scope > .bn-block-content .bn-inline-content");
@@ -1157,12 +1157,8 @@ test.describe("parallel functional Electron smoke", () => {
         await page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowRight" : "End");
         await page.keyboard.press("Enter");
         await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+V`);
-        await expect(targetEditor.getByText("Parent child", { exact: true })).toBeVisible({
-          timeout: 15_000,
-        });
-        await expect(targetEditor.getByText("After child", { exact: true })).toBeVisible({
-          timeout: 15_000,
-        });
+        await expect(targetEditor.getByText("Parent child", { exact: true })).toBeVisible();
+        await expect(targetEditor.getByText("After child", { exact: true })).toBeVisible();
 
         const hierarchy = await targetEditor.evaluate((editor) => {
           const records = Array.from(editor.querySelectorAll<HTMLElement>(".bn-block-outer")).map(
@@ -1254,7 +1250,7 @@ test.describe("parallel functional Electron smoke", () => {
       await page.getByRole("button", { name: "Open Structural subpage edit", exact: true }).click();
       await openProjectBoard(page);
       const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');
-      await expect(board).toBeVisible({ timeout: 15_000 });
+      await expect(board).toBeVisible();
       await openBoardPageFromCard({
         card: board.locator(`[data-board-uuid-v7="${source.pageId}"]`),
         page,
@@ -1266,7 +1262,7 @@ test.describe("parallel functional Electron smoke", () => {
       const before = sourceEditor.locator(`.bn-block[data-id="${seeded.blockIds[0]}"]`);
       const owner = sourceEditor.locator(`.bn-block[data-id="${subpage.pageId}"]`);
       const after = sourceEditor.locator(`.bn-block[data-id="${seeded.blockIds[1]}"]`);
-      await expect(owner).toBeVisible({ timeout: 15_000 });
+      await expect(owner).toBeVisible();
 
       await owner.getByRole("button", { name: "Edit abc title" }).click();
       const ownerTitle = owner.getByRole("textbox", { name: "Edit abc title" });
@@ -1339,7 +1335,7 @@ test.describe("parallel functional Electron smoke", () => {
       await expect(after).toHaveCount(0);
       await expect(before).toContainText("beforeafter");
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Z`);
-      await expect(after).toBeVisible({ timeout: 15_000 });
+      await expect(after).toBeVisible();
       await expect(before).toHaveText("before");
 
       await selectEditorBlockRange({
@@ -1355,9 +1351,9 @@ test.describe("parallel functional Electron smoke", () => {
       const samePageClone = sourceEditor
         .locator(".bn-block[data-id]")
         .filter({ hasText: "abc (1)" });
-      await expect(samePageClone).toHaveCount(1, { timeout: 15_000 });
+      await expect(samePageClone).toHaveCount(1);
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Z`);
-      await expect(samePageClone).toHaveCount(0, { timeout: 15_000 });
+      await expect(samePageClone).toHaveCount(0);
 
       await selectEditorBlockRange({
         page,
@@ -1366,7 +1362,7 @@ test.describe("parallel functional Electron smoke", () => {
         lastBlock: after,
       });
       await page.keyboard.press("Backspace");
-      await expect(owner).toHaveCount(0, { timeout: 15_000 });
+      await expect(owner).toHaveCount(0);
       await expect
         .poll(
           async () =>
@@ -1375,7 +1371,7 @@ test.describe("parallel functional Electron smoke", () => {
         .toBe(true);
 
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Z`);
-      await expect(owner).toBeVisible({ timeout: 15_000 });
+      await expect(owner).toBeVisible();
       await expect(before).toBeVisible();
       await expect(after).toBeVisible();
 
@@ -1403,27 +1399,25 @@ test.describe("parallel functional Electron smoke", () => {
       const targetEditor = targetPanel
         .locator('.nfm-editor .ProseMirror[contenteditable="true"]')
         .first();
-      await expect(targetEditor).toBeVisible({ timeout: 15_000 });
+      await expect(targetEditor).toBeVisible();
       const nestedTargetOwner = targetEditor.locator(`.bn-block[data-id="${nestedTarget.pageId}"]`);
-      await expect(nestedTargetOwner).toBeVisible({ timeout: 15_000 });
+      await expect(nestedTargetOwner).toBeVisible();
       await nestedTargetOwner.getByRole("button", { name: "Expand Nested target" }).click();
       const nestedTargetEditor = nestedTargetOwner
         .locator('[data-page-outliner-body] .nfm-editor .ProseMirror[contenteditable="true"]')
         .first();
-      await expect(nestedTargetEditor).toBeVisible({ timeout: 15_000 });
+      await expect(nestedTargetEditor).toBeVisible();
       await nestedTargetEditor.click();
       await page.keyboard.press("End");
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+V`);
       const clonedOwner = nestedTargetEditor
         .locator(".bn-block[data-id]")
         .filter({ hasText: "abc (1)" });
-      await expect(clonedOwner).toHaveCount(1, { timeout: 15_000 });
+      await expect(clonedOwner).toHaveCount(1);
       const expandClonedOwner = clonedOwner.getByRole("button", { name: "Expand abc (1)" });
       await expect(expandClonedOwner).toBeVisible();
       await expandClonedOwner.click();
-      await expect(clonedOwner.getByText("abc owned body", { exact: true })).toBeVisible({
-        timeout: 15_000,
-      });
+      await expect(clonedOwner.getByText("abc owned body", { exact: true })).toBeVisible();
       await expect
         .poll(
           async () =>
@@ -1432,7 +1426,7 @@ test.describe("parallel functional Electron smoke", () => {
         .toBe(true);
 
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Z`);
-      await expect(clonedOwner).toHaveCount(0, { timeout: 15_000 });
+      await expect(clonedOwner).toHaveCount(0);
       await expect(page.getByRole("alert").filter({ hasText: "Something went wrong" })).toHaveCount(
         0,
       );
@@ -1475,7 +1469,7 @@ test.describe("parallel functional Electron smoke", () => {
       await page.getByRole("button", { name: "Open Subpage turn into", exact: true }).click();
       await openProjectBoard(page);
       const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');
-      await expect(board).toBeVisible({ timeout: 15_000 });
+      await expect(board).toBeVisible();
       await openBoardPageFromCard({
         card: board.locator(`[data-board-uuid-v7="${source.pageId}"]`),
         page,
@@ -1487,7 +1481,7 @@ test.describe("parallel functional Electron smoke", () => {
       const before = sourceEditor.locator(`.bn-block[data-id="${seeded.blockIds[0]}"]`);
       const owner = sourceEditor.locator(`.bn-block[data-id="${subpage.pageId}"]`);
       const after = sourceEditor.locator(`.bn-block[data-id="${seeded.blockIds[1]}"]`);
-      await expect(owner).toBeVisible({ timeout: 15_000 });
+      await expect(owner).toBeVisible();
 
       await selectEditorBlockRange({
         page,
@@ -1505,7 +1499,7 @@ test.describe("parallel functional Electron smoke", () => {
       const turnedOwner = sourceEditor.locator(`.bn-block[data-id="${subpage.pageId}"]`);
       await expect(
         turnedOwner.locator(':scope > .bn-block-content[data-content-type="toggleListItem"]'),
-      ).toBeVisible({ timeout: 15_000 });
+      ).toBeVisible();
       await expect(
         before.locator(':scope > .bn-block-content[data-content-type="toggleListItem"]'),
       ).toBeVisible();
@@ -1526,9 +1520,7 @@ test.describe("parallel functional Electron smoke", () => {
       const restoredOwner = sourceEditor.locator(`.bn-block[data-id="${subpage.pageId}"]`);
       await expect(
         restoredOwner.getByRole("button", { name: "Edit Owned details title" }),
-      ).toBeVisible({
-        timeout: 15_000,
-      });
+      ).toBeVisible();
       await expect(
         before.locator(':scope > .bn-block-content[data-content-type="paragraph"]'),
       ).toBeVisible();
@@ -1536,16 +1528,14 @@ test.describe("parallel functional Electron smoke", () => {
         after.locator(':scope > .bn-block-content[data-content-type="paragraph"]'),
       ).toBeVisible();
       await restoredOwner.getByRole("button", { name: "Expand Owned details" }).click();
-      await expect(restoredOwner.getByText("owned body", { exact: true })).toBeVisible({
-        timeout: 15_000,
-      });
+      await expect(restoredOwner.getByText("owned body", { exact: true })).toBeVisible();
 
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Shift+Z`);
       await expect(
         sourceEditor
           .locator(`.bn-block[data-id="${subpage.pageId}"]`)
           .locator(':scope > .bn-block-content[data-content-type="toggleListItem"]'),
-      ).toBeVisible({ timeout: 15_000 });
+      ).toBeVisible();
       await expect(page.getByRole("alert")).toHaveCount(0);
       expect(pageErrors).toEqual([]);
     } finally {
@@ -1614,7 +1604,7 @@ test.describe("parallel functional Electron smoke", () => {
       const parentEditor = parentPanel.locator('.nfm-editor .ProseMirror[contenteditable="true"]');
       const copiedOwner = parentEditor.locator(`.bn-block[data-id="${copiedSubpage.pageId}"]`);
       const targetOwner = parentEditor.locator(`.bn-block[data-id="${targetSubpage.pageId}"]`);
-      await expect(copiedOwner).toBeVisible({ timeout: 15_000 });
+      await expect(copiedOwner).toBeVisible();
       await targetOwner.hover();
       await targetOwner.getByRole("button", { name: "Open Retained child B" }).click();
       await page.getByRole("tab", { name: "Retained child B" }).waitFor();
@@ -1622,10 +1612,10 @@ test.describe("parallel functional Electron smoke", () => {
         page
           .getByRole("tabpanel", { name: /Retained child B$/ })
           .locator('.nfm-editor .ProseMirror[contenteditable="true"]'),
-      ).toBeVisible({ timeout: 15_000 });
+      ).toBeVisible();
 
       await page.getByRole("tab", { name: "Retained parent" }).click();
-      await expect(parentEditor).toBeVisible({ timeout: 15_000 });
+      await expect(parentEditor).toBeVisible();
       const before = parentEditor.locator(`.bn-block[data-id="${parentSeeded.blockIds[0]}"]`);
       const after = parentEditor.locator(`.bn-block[data-id="${parentSeeded.blockIds[1]}"]`);
       await selectEditorBlockRange({
@@ -1638,7 +1628,7 @@ test.describe("parallel functional Electron smoke", () => {
       await page.getByRole("tab", { name: "Retained child B" }).click();
       const targetPanel = page.getByRole("tabpanel", { name: /Retained child B$/ });
       const targetEditor = targetPanel.locator('.nfm-editor .ProseMirror[contenteditable="true"]');
-      await expect(targetEditor).toBeVisible({ timeout: 15_000 });
+      await expect(targetEditor).toBeVisible();
       await targetEditor.locator(`.bn-block[data-id="${targetSeeded.blockIds[0]}"]`).click();
       await page.keyboard.press("End");
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+V`);
@@ -1646,11 +1636,9 @@ test.describe("parallel functional Electron smoke", () => {
       const clonedOwner = targetEditor.locator(".bn-block[data-id]").filter({
         hasText: "Retained child A (1)",
       });
-      await expect(clonedOwner).toHaveCount(1, { timeout: 15_000 });
+      await expect(clonedOwner).toHaveCount(1);
       await clonedOwner.getByRole("button", { name: "Expand Retained child A (1)" }).click();
-      await expect(clonedOwner.getByText("retained owned body", { exact: true })).toBeVisible({
-        timeout: 15_000,
-      });
+      await expect(clonedOwner.getByText("retained owned body", { exact: true })).toBeVisible();
       await expect
         .poll(async () => await readTestClipboard(harness.application))
         .toMatchObject({
@@ -1747,7 +1735,7 @@ test.describe("parallel functional Electron smoke", () => {
       const afterFirst = sourceEditor.locator(`.bn-block[data-id="${seeded.blockIds[1]}"]`);
       const beforeSecond = sourceEditor.locator(`.bn-block[data-id="${seeded.blockIds[2]}"]`);
       const afterSecond = sourceEditor.locator(`.bn-block[data-id="${seeded.blockIds[3]}"]`);
-      await expect(firstOwner).toBeVisible({ timeout: 15_000 });
+      await expect(firstOwner).toBeVisible();
       await expect(secondOwner).toBeVisible();
 
       await selectEditorBlockRange({
@@ -1757,7 +1745,7 @@ test.describe("parallel functional Electron smoke", () => {
         lastBlock: afterFirst,
       });
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+X`);
-      await expect(firstOwner).toHaveCount(0, { timeout: 15_000 });
+      await expect(firstOwner).toHaveCount(0);
 
       await selectEditorBlockRange({
         page,
@@ -1766,7 +1754,7 @@ test.describe("parallel functional Electron smoke", () => {
         lastBlock: afterSecond,
       });
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+X`);
-      await expect(secondOwner).toHaveCount(0, { timeout: 15_000 });
+      await expect(secondOwner).toHaveCount(0);
       await expect(
         page.getByText("Nodex blocked an incomplete structural change.", { exact: false }),
       ).toHaveCount(0);
@@ -1785,17 +1773,17 @@ test.describe("parallel functional Electron smoke", () => {
       const nestedTargetEditor = nestedTargetOwner.locator(
         '[data-page-outliner-body] .nfm-editor .ProseMirror[contenteditable="true"]',
       );
-      await expect(nestedTargetEditor).toBeVisible({ timeout: 15_000 });
+      await expect(nestedTargetEditor).toBeVisible();
       await nestedTargetEditor.click();
       await page.keyboard.press("End");
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+V`);
 
       const expandMovedOwner = nestedTargetEditor.getByRole("button", { name: "Expand Cut two" });
-      await expect(expandMovedOwner).toBeVisible({ timeout: 15_000 });
+      await expect(expandMovedOwner).toBeVisible();
       await expandMovedOwner.click();
-      await expect(nestedTargetEditor.getByText("second owned body", { exact: true })).toBeVisible({
-        timeout: 15_000,
-      });
+      await expect(
+        nestedTargetEditor.getByText("second owned body", { exact: true }),
+      ).toBeVisible();
       await expect(
         page.getByText("This structural content is still preparing.", { exact: false }),
       ).toHaveCount(0);
@@ -1825,7 +1813,7 @@ test.describe("parallel functional Electron smoke", () => {
       await page.getByRole("button", { name: "Open Structural subpage cut", exact: true }).click();
       await openProjectBoard(page);
       const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');
-      await expect(board).toBeVisible({ timeout: 15_000 });
+      await expect(board).toBeVisible();
       await openBoardPageFromCard({
         card: board.locator(`[data-board-uuid-v7="${source.pageId}"]`),
         page,
@@ -1837,7 +1825,7 @@ test.describe("parallel functional Electron smoke", () => {
       const before = sourceEditor.locator(`.bn-block[data-id="${seeded.blockIds[0]}"]`);
       const owner = sourceEditor.locator(`.bn-block[data-id="${subpage.pageId}"]`);
       const after = sourceEditor.locator(`.bn-block[data-id="${seeded.blockIds[1]}"]`);
-      await expect(owner).toBeVisible({ timeout: 15_000 });
+      await expect(owner).toBeVisible();
       const clipboardBefore = (await readTestClipboard(harness.application)).html;
       await selectEditorBlockRange({
         page,
@@ -1846,7 +1834,7 @@ test.describe("parallel functional Electron smoke", () => {
         lastBlock: after,
       });
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+X`);
-      await expect(owner).toHaveCount(0, { timeout: 15_000 });
+      await expect(owner).toHaveCount(0);
       await expect
         .poll(async () =>
           readTestClipboard(harness.application).then(
@@ -1857,7 +1845,7 @@ test.describe("parallel functional Electron smoke", () => {
         .toBe(true);
 
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Z`);
-      await expect(owner).toBeVisible({ timeout: 15_000 });
+      await expect(owner).toBeVisible();
       const firstCutClipboard = (await readTestClipboard(harness.application)).html;
       await selectEditorBlockRange({
         page,
@@ -1866,7 +1854,7 @@ test.describe("parallel functional Electron smoke", () => {
         lastBlock: after,
       });
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+X`);
-      await expect(owner).toHaveCount(0, { timeout: 15_000 });
+      await expect(owner).toHaveCount(0);
       await expect
         .poll(async () =>
           readTestClipboard(harness.application).then(
@@ -1883,20 +1871,20 @@ test.describe("parallel functional Electron smoke", () => {
       });
       const targetPanel = page.getByRole("tabpanel", { name: /Cut target$/ });
       const targetEditor = targetPanel.locator('.nfm-editor .ProseMirror[contenteditable="true"]');
-      await expect(targetEditor).toBeVisible({ timeout: 15_000 });
+      await expect(targetEditor).toBeVisible();
       await targetEditor.click();
       await page.keyboard.press("End");
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+V`);
       const pastedOwner = targetEditor.locator(".bn-block[data-id]").filter({ hasText: /abc/ });
-      await expect(pastedOwner).toHaveCount(1, { timeout: 15_000 });
+      await expect(pastedOwner).toHaveCount(1);
       await expect(pastedOwner).toHaveAttribute("data-id", subpage.pageId);
       await expect(page.getByRole("alert")).toHaveCount(0);
       const movedOwner = targetEditor.locator(`.bn-block[data-id="${subpage.pageId}"]`);
 
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Z`);
-      await expect(movedOwner).toHaveCount(0, { timeout: 15_000 });
+      await expect(movedOwner).toHaveCount(0);
       await page.getByRole("tab", { name: "Cut source" }).click();
-      await expect(owner).toBeVisible({ timeout: 15_000 });
+      await expect(owner).toBeVisible();
     } finally {
       await harness.close();
     }
@@ -2040,10 +2028,8 @@ test.describe("parallel functional Electron smoke", () => {
         )
         .toBe(true);
       const canvasBlock = page.locator("[data-canvas-block]").first();
-      await expect(canvasBlock).toBeVisible({ timeout: 5_000 });
-      await expect(canvasBlock).toHaveAttribute("data-canvas-block-active", "true", {
-        timeout: 15_000,
-      });
+      await expect(canvasBlock).toBeVisible();
+      await expect(canvasBlock).toHaveAttribute("data-canvas-block-active", "true");
       await expect(canvasBlock.locator("[data-canvas-create-pending]")).toHaveCount(0);
       const boundary = canvasBlock.locator('[data-excalidraw-embed-boundary="inline"]');
       await expect(boundary.locator(".excalidraw")).toBeVisible();
@@ -2127,7 +2113,7 @@ test.describe("parallel functional Electron smoke", () => {
       );
       await page.mouse.up();
 
-      await expect.poll(readCanvasHead, { timeout: 10_000 }).toBeGreaterThan(initialHead);
+      await expect.poll(readCanvasHead).toBeGreaterThan(initialHead);
     } finally {
       await harness.close();
     }
@@ -2181,7 +2167,6 @@ test.describe("parallel functional Electron smoke", () => {
                 exact: true,
               })
               .count(),
-          { timeout: 5_000 },
         )
         .toBe(0);
       await expect(
@@ -2232,14 +2217,12 @@ test.describe("parallel functional Electron smoke", () => {
         .click();
       await openProjectBoard(page);
       const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
-      await expect(triageColumn).toBeVisible({ timeout: 15_000 });
+      await expect(triageColumn).toBeVisible();
 
       const createButton = triageColumn.locator(
         '[data-page-create-trigger="auto-collapsed-column"]',
       );
-      await expect(createButton).toHaveAttribute("aria-disabled", "false", {
-        timeout: 15_000,
-      });
+      await expect(createButton).toHaveAttribute("aria-disabled", "false");
       await createButton.click();
       const dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible();
@@ -2272,14 +2255,12 @@ test.describe("parallel functional Electron smoke", () => {
       const createdCard = triageColumn.locator("[data-board-uuid-v7]").filter({
         hasText: "Modal-created Page",
       });
-      await expect(createdCard).toHaveCount(1, { timeout: 15_000 });
+      await expect(createdCard).toHaveCount(1);
       const createdPageId = requireString(
         await createdCard.getAttribute("data-board-uuid-v7"),
         "Modal-created Page id",
       );
-      await expect
-        .poll(async () => await readConvergenceBoardTotal(page, project), { timeout: 15_000 })
-        .toBe(1);
+      await expect.poll(async () => await readConvergenceBoardTotal(page, project)).toBe(1);
       await page.evaluate(async () => {
         await new Promise<void>((resolve) => {
           let remaining = 8;
@@ -2332,7 +2313,7 @@ test.describe("parallel functional Electron smoke", () => {
         page.getByLabel("Selected Tags").getByText("Context created", {
           exact: true,
         }),
-      ).toBeVisible({ timeout: 15_000 });
+      ).toBeVisible();
       await tagsSearch.press("Escape");
       await expect(tagsSearch).toHaveCount(0);
       await closePageMenu();
@@ -2397,18 +2378,16 @@ test.describe("parallel functional Electron smoke", () => {
         doingColumn.locator("[data-board-uuid-v7]").filter({
           hasText: "Modal-created Page",
         }),
-      ).toHaveCount(1, { timeout: 15_000 });
+      ).toHaveCount(1);
       await expect(createdCard).toHaveCount(0);
-      await expect
-        .poll(async () => await readConvergenceBoardTotal(page, project), { timeout: 15_000 })
-        .toBe(1);
+      await expect.poll(async () => await readConvergenceBoardTotal(page, project)).toBe(1);
 
       await page
         .getByRole("tablist", { name: "Database views" })
         .getByRole("tab", { name: "List", exact: true })
         .click();
       const listGrid = page.getByRole("grid", { name: /List$/ });
-      await expect(listGrid).toBeVisible({ timeout: 15_000 });
+      await expect(listGrid).toBeVisible();
       const createdRow = listGrid.locator(
         `[data-list-row="true"][data-database-view-page-id="${createdPageId}"]`,
       );
@@ -2423,39 +2402,36 @@ test.describe("parallel functional Electron smoke", () => {
         }
         await priorityItem.click({ timeout: 2_000 });
         await expect(priorityOption).toBeVisible({ timeout: 2_000 });
-      }).toPass({ timeout: 15_000 });
+      }).toPass();
       await priorityOption.click({ timeout: 2_000 });
 
       await expect
-        .poll(
-          async () => {
-            const snapshot = requireIpcValue<Record<string, unknown>>(
-              await invokeIpc(page, "database:list-window:get", project.projectId, {
-                databaseViewId: project.defaultDatabaseViewId,
-                first: 50,
-                preferencesOverride: {
-                  rulesOverride: {},
-                  presentationOverride: {},
-                },
-              }),
-              "Read Property-edited List window",
-            );
-            if (!Array.isArray(snapshot.rows)) return null;
-            for (const occurrence of snapshot.rows) {
-              if (!isRecord(occurrence) || !isRecord(occurrence.row)) continue;
-              const row = occurrence.row;
-              if (!isRecord(row.page) || row.page.pageId !== createdPageId) continue;
-              if (!isRecord(row.values) || !isRecord(row.values.priority)) return null;
-              if (!isRecord(row.values.tags) || !Array.isArray(row.values.tags.value)) return null;
-              return {
-                priority: row.values.priority.value,
-                tagCount: row.values.tags.value.length,
-              };
-            }
-            return null;
-          },
-          { timeout: 15_000 },
-        )
+        .poll(async () => {
+          const snapshot = requireIpcValue<Record<string, unknown>>(
+            await invokeIpc(page, "database:list-window:get", project.projectId, {
+              databaseViewId: project.defaultDatabaseViewId,
+              first: 50,
+              preferencesOverride: {
+                rulesOverride: {},
+                presentationOverride: {},
+              },
+            }),
+            "Read Property-edited List window",
+          );
+          if (!Array.isArray(snapshot.rows)) return null;
+          for (const occurrence of snapshot.rows) {
+            if (!isRecord(occurrence) || !isRecord(occurrence.row)) continue;
+            const row = occurrence.row;
+            if (!isRecord(row.page) || row.page.pageId !== createdPageId) continue;
+            if (!isRecord(row.values) || !isRecord(row.values.priority)) return null;
+            if (!isRecord(row.values.tags) || !Array.isArray(row.values.tags.value)) return null;
+            return {
+              priority: row.values.priority.value,
+              tagCount: row.values.tags.value.length,
+            };
+          }
+          return null;
+        })
         .toEqual({ priority: "p1-high", tagCount: 1 });
     } finally {
       await harness.close();
@@ -2483,9 +2459,7 @@ test.describe("parallel functional Electron smoke", () => {
       await openProjectBoard(page);
       await expect(
         page.locator('[data-board-column-root][data-board-column-id="triage"]'),
-      ).toBeVisible({
-        timeout: 10_000,
-      });
+      ).toBeVisible();
 
       const receipt = requireIpcValue<Record<string, unknown>>(
         await invokeIpc(page, "blocks:transfer", project.projectId, {
@@ -2545,7 +2519,7 @@ test.describe("parallel functional Electron smoke", () => {
       });
 
       const card = page.locator(`[data-board-uuid-v7="${resultPageId}"]`);
-      await expect(card).toBeVisible({ timeout: 5_000 });
+      await expect(card).toBeVisible();
       await expect(card).toContainText("Dragged source");
     } finally {
       await harness.close();
@@ -2574,13 +2548,13 @@ test.describe("parallel functional Electron smoke", () => {
         .click();
       await openProjectBoard(page);
       const card = page.locator(`[data-board-uuid-v7="${fixturePage.pageId}"]`);
-      await expect(card).toBeVisible({ timeout: 15_000 });
+      await expect(card).toBeVisible();
       await card.click();
       await page.getByRole("tab", { name: "Stable editor Page" }).waitFor();
 
       const surface = page.locator('[data-page-stage-surface="true"]:visible');
       const editor = surface.locator('.nfm-editor .ProseMirror[contenteditable="true"]');
-      await expect(editor).toBeVisible({ timeout: 15_000 });
+      await expect(editor).toBeVisible();
       const detailBefore = requireIpcValue<Record<string, unknown>>(
         await invokeIpc(page, "pages:detail:get", project.projectId, fixturePage.pageId),
         "Read Page detail before editing",
@@ -2636,16 +2610,13 @@ test.describe("parallel functional Electron smoke", () => {
       await page.keyboard.press("End");
       await page.keyboard.type("x");
       await expect
-        .poll(
-          async () => {
-            const detail = requireIpcValue<Record<string, unknown>>(
-              await invokeIpc(page, "pages:detail:get", project.projectId, fixturePage.pageId),
-              "Read Page detail after editing",
-            );
-            return detail.commitSeq;
-          },
-          { timeout: 15_000 },
-        )
+        .poll(async () => {
+          const detail = requireIpcValue<Record<string, unknown>>(
+            await invokeIpc(page, "pages:detail:get", project.projectId, fixturePage.pageId),
+            "Read Page detail after editing",
+          );
+          return detail.commitSeq;
+        })
         .toBeGreaterThan(commitSeqBefore);
       await page.waitForTimeout(100);
 
@@ -2709,13 +2680,13 @@ test.describe("parallel functional Electron smoke", () => {
         await openProjectBoard(window);
         const board = window.locator('[data-board-column-root][data-board-column-id="triage"]');
         const card = board.locator(`[data-board-uuid-v7="${fixturePage.pageId}"]`);
-        await expect(card).toBeVisible({ timeout: 15_000 });
+        await expect(card).toBeVisible();
         await card.click();
         await window.getByRole("tab", { name: "Block children contract" }).waitFor();
         const editor = window
           .getByRole("tabpanel", { name: /Block children contract$/ })
           .locator('.nfm-editor .ProseMirror[contenteditable="true"]');
-        await expect(editor).toBeVisible({ timeout: 15_000 });
+        await expect(editor).toBeVisible();
         return editor;
       };
 
@@ -2841,7 +2812,7 @@ test.describe("parallel functional Electron smoke", () => {
         .click();
       await openProjectBoard(page);
       const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
-      await expect(triageColumn).toBeVisible({ timeout: 15_000 });
+      await expect(triageColumn).toBeVisible();
       await expect(triageColumn.locator("[data-board-uuid-v7]")).toHaveCount(1);
 
       await openBoardPageFromCard({
@@ -2860,7 +2831,7 @@ test.describe("parallel functional Electron smoke", () => {
           hasText: "Picker promoted title",
         })
         .first();
-      await expect(sourceBlock).toBeVisible({ timeout: 15_000 });
+      await expect(sourceBlock).toBeVisible();
       await sourceBlock.click();
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+/`);
 
@@ -2875,15 +2846,13 @@ test.describe("parallel functional Electron smoke", () => {
         .filter({ hasText: "Triage" })
         .click();
 
-      await expect(triageColumn.locator("[data-board-uuid-v7]")).toHaveCount(2, {
-        timeout: 15_000,
-      });
+      await expect(triageColumn.locator("[data-board-uuid-v7]")).toHaveCount(2);
       await expect(
         triageColumn.locator("[data-board-uuid-v7]").filter({
           hasText: "Picker promoted title",
         }),
       ).toHaveCount(1);
-      await expect(sourceBlock).toHaveCount(0, { timeout: 15_000 });
+      await expect(sourceBlock).toHaveCount(0);
       await expect(
         sourceSurface.locator(".bn-block[data-id]").filter({
           hasText: "Before picker sibling",
@@ -2950,7 +2919,7 @@ test.describe("parallel functional Electron smoke", () => {
       const sourceOuter = sourceSurface.locator(`.bn-block-outer[data-id="${sourceRootId}"]`);
       const child = sourceOuter.locator(`.bn-block[data-id="${childId}"]`);
       const tail = sourceSurface.locator(`.bn-block[data-id="${tailId}"]`);
-      await expect(sourceBlock).toBeVisible({ timeout: 15_000 });
+      await expect(sourceBlock).toBeVisible();
       await expect(child).toBeVisible();
       await expect(sourceSurface.locator(`.bn-block[data-id="${subpage.pageId}"]`)).toBeVisible();
       await expect(tail).toBeVisible();
@@ -2965,16 +2934,13 @@ test.describe("parallel functional Electron smoke", () => {
       });
 
       await expect
-        .poll(
-          async () => {
-            const [sourceBox, tailBox] = await Promise.all([
-              sourceBlock.boundingBox(),
-              tail.boundingBox(),
-            ]);
-            return Boolean(sourceBox && tailBox && sourceBox.y > tailBox.y);
-          },
-          { timeout: 15_000 },
-        )
+        .poll(async () => {
+          const [sourceBox, tailBox] = await Promise.all([
+            sourceBlock.boundingBox(),
+            tail.boundingBox(),
+          ]);
+          return Boolean(sourceBox && tailBox && sourceBox.y > tailBox.y);
+        })
         .toBe(true);
       await expect(child).toBeVisible();
       await expect(
@@ -2984,16 +2950,13 @@ test.describe("parallel functional Electron smoke", () => {
       await sourceBlock.click();
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Z`);
       await expect
-        .poll(
-          async () => {
-            const [sourceBox, tailBox] = await Promise.all([
-              sourceBlock.boundingBox(),
-              tail.boundingBox(),
-            ]);
-            return Boolean(sourceBox && tailBox && sourceBox.y < tailBox.y);
-          },
-          { timeout: 15_000 },
-        )
+        .poll(async () => {
+          const [sourceBox, tailBox] = await Promise.all([
+            sourceBlock.boundingBox(),
+            tail.boundingBox(),
+          ]);
+          return Boolean(sourceBox && tailBox && sourceBox.y < tailBox.y);
+        })
         .toBe(true);
       await expect(child).toBeVisible();
     } finally {
@@ -3048,7 +3011,7 @@ test.describe("parallel functional Electron smoke", () => {
       const toggleOuter = sourceSurface.locator(`.bn-block-outer[data-id="${toggleId}"]`);
       const toggleContent = toggleBlock.locator(":scope > .bn-block-content");
       const toggleWrapper = toggleContent.locator(".bn-toggle-wrapper");
-      await expect(sourceBlock).toBeVisible({ timeout: 15_000 });
+      await expect(sourceBlock).toBeVisible();
       await expect(sourceChild).toBeVisible();
       await expect(toggleBlock).toBeVisible();
       await expect(toggleWrapper).toHaveAttribute("data-show-children", "false");
@@ -3066,7 +3029,7 @@ test.describe("parallel functional Electron smoke", () => {
         },
       });
 
-      await expect(sourceBlock).toBeHidden({ timeout: 15_000 });
+      await expect(sourceBlock).toBeHidden();
       await expect(toggleWrapper).toHaveAttribute("data-show-children", "false");
       await expect
         .poll(async () =>
@@ -3080,9 +3043,7 @@ test.describe("parallel functional Electron smoke", () => {
 
       await toggleWrapper.locator(".bn-toggle-button").click();
       await expect(toggleOuter.locator(`.bn-block[data-id="${existingChildId}"]`)).toBeVisible();
-      await expect(toggleOuter.locator(`.bn-block[data-id="${sourceRootId}"]`)).toBeVisible({
-        timeout: 15_000,
-      });
+      await expect(toggleOuter.locator(`.bn-block[data-id="${sourceRootId}"]`)).toBeVisible();
       await expect(toggleOuter.locator(`.bn-block[data-id="${sourceChildId}"]`)).toBeVisible();
       await expect
         .poll(async () => {
@@ -3099,7 +3060,7 @@ test.describe("parallel functional Electron smoke", () => {
 
       await toggleBlock.click();
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Z`);
-      await expect(sourceBlock).toBeVisible({ timeout: 15_000 });
+      await expect(sourceBlock).toBeVisible();
       await expect(toggleOuter.locator(`.bn-block[data-id="${sourceRootId}"]`)).toHaveCount(0);
       await expect(sourceChild).toBeVisible();
     } finally {
@@ -3134,7 +3095,7 @@ test.describe("parallel functional Electron smoke", () => {
       await page.getByRole("button", { name: "Open Instant structural DnD", exact: true }).click();
       await openProjectBoard(page);
       const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
-      await expect(triageColumn).toBeVisible({ timeout: 15_000 });
+      await expect(triageColumn).toBeVisible();
       const sourceCard = triageColumn.locator(`[data-board-uuid-v7="${source.pageId}"]`);
       await expect(sourceCard).toBeVisible();
       await openBoardPageFromCard({ card: sourceCard, page, tabName: "Instant source Page" });
@@ -3142,7 +3103,7 @@ test.describe("parallel functional Electron smoke", () => {
       const sourcePanel = page.getByRole("tabpanel", { name: /Instant source Page$/ });
       const sourceEditor = sourcePanel.locator(".nfm-editor");
       const sourceSurface = sourceEditor.locator('.ProseMirror[contenteditable="true"]');
-      await expect(sourceSurface).toBeVisible({ timeout: 15_000 });
+      await expect(sourceSurface).toBeVisible();
       const sourceBlock = sourceSurface
         .locator(".bn-block[data-id]")
         .filter({ hasText: "Instant projected Page" })
@@ -3332,8 +3293,8 @@ test.describe("parallel functional Electron smoke", () => {
       const promotedCards = triageColumn
         .locator("[data-board-uuid-v7]")
         .filter({ hasText: "Instant projected Page" });
-      await expect(promotedCards).toHaveCount(1, { timeout: 15_000 });
-      await expect(sourceBlock).toHaveCount(0, { timeout: 15_000 });
+      await expect(promotedCards).toHaveCount(1);
+      await expect(sourceBlock).toHaveCount(0);
       await expect(page.getByText("Moving blocks", { exact: false })).toHaveCount(0);
     } finally {
       await harness.close();
@@ -3400,15 +3361,13 @@ test.describe("parallel functional Electron smoke", () => {
         .click();
       await openProjectBoard(page);
       const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
-      await expect(triageColumn).toBeVisible({ timeout: 15_000 });
-      await expect(triageColumn.locator("[data-board-uuid-v7]")).toHaveCount(3, {
-        timeout: 15_000,
-      });
+      await expect(triageColumn).toBeVisible();
+      await expect(triageColumn.locator("[data-board-uuid-v7]")).toHaveCount(3);
 
       const sourceCard = triageColumn.locator(`[data-board-uuid-v7="${source.pageId}"]`);
       await expect(sourceCard).toBeVisible();
       await openBoardPageFromCard({ card: sourceCard, page, tabName: "DnD source Page" });
-      await expect(triageColumn).toBeVisible({ timeout: 15_000 });
+      await expect(triageColumn).toBeVisible();
 
       const sourcePanel = page.getByRole("tabpanel", {
         name: /DnD source Page$/,
@@ -3416,7 +3375,7 @@ test.describe("parallel functional Electron smoke", () => {
       await expect(sourcePanel).toBeVisible();
       const sourceEditor = sourcePanel.locator(".nfm-editor");
       const sourceSurface = sourceEditor.locator('.ProseMirror[contenteditable="true"]');
-      await expect(sourceSurface).toBeVisible({ timeout: 15_000 });
+      await expect(sourceSurface).toBeVisible();
       const sourceBlock = sourceSurface
         .locator(".bn-block[data-id]")
         .filter({
@@ -3480,18 +3439,14 @@ test.describe("parallel functional Electron smoke", () => {
       await triageHeader.getByRole("button", { name: "More options for Triage" }).click();
       await page.getByRole("button", { name: "Expand column", exact: true }).click();
       await expect(triageColumn).toHaveAttribute("data-board-column-collapsed", "false");
-      await expect(triageColumn.locator("[data-board-uuid-v7]")).toHaveCount(4, {
-        timeout: 15_000,
-      });
-      await expect
-        .poll(async () => await readConvergenceBoardTotal(page, project), { timeout: 15_000 })
-        .toBe(4);
+      await expect(triageColumn.locator("[data-board-uuid-v7]")).toHaveCount(4);
+      await expect.poll(async () => await readConvergenceBoardTotal(page, project)).toBe(4);
       const promotedCards = triageColumn
         .locator(`[data-board-uuid-v7]:not([data-board-uuid-v7="${source.pageId}"])`)
         .filter({ hasText: "DnD Board title" });
-      await expect(promotedCards).toHaveCount(1, { timeout: 15_000 });
+      await expect(promotedCards).toHaveCount(1);
       await expect(promotedCards).toBeVisible();
-      await expect(sourceBlock).toHaveCount(0, { timeout: 15_000 });
+      await expect(sourceBlock).toHaveCount(0);
       await expect(
         sourceSurface.locator(".bn-block[data-id]").filter({
           hasText: "Before smoke sibling",
@@ -3546,7 +3501,7 @@ test.describe("parallel functional Electron smoke", () => {
         .locator(".bn-block[data-id]")
         .filter({ hasText: "1XL(ui, unclear) DnD List title" })
         .first();
-      await expect(listSourceBlock).toBeVisible({ timeout: 15_000 });
+      await expect(listSourceBlock).toBeVisible();
 
       await openProjectBoard(page);
       await page
@@ -3554,11 +3509,11 @@ test.describe("parallel functional Electron smoke", () => {
         .locator(`[data-database-view-tab-menu-target="${listViewId}"]`)
         .click();
       const list = page.getByRole("grid", { name: /List$/ });
-      await expect(list).toBeVisible({ timeout: 15_000 });
+      await expect(list).toBeVisible();
       const listTarget = list.locator(
         `[data-list-row="true"][data-database-view-page-id="${firstBoardFixture.pageId}"]`,
       );
-      await expect(listTarget).toBeVisible({ timeout: 15_000 });
+      await expect(listTarget).toBeVisible();
 
       await dragBlockFromEditorWithMouse({
         page,
@@ -3572,8 +3527,8 @@ test.describe("parallel functional Electron smoke", () => {
       const promotedListRows = list
         .locator('[data-list-row="true"][data-database-view-page-id]')
         .filter({ hasText: "DnD List title" });
-      await expect(promotedListRows).toHaveCount(1, { timeout: 15_000 });
-      await expect(listSourceBlock).toHaveCount(0, { timeout: 15_000 });
+      await expect(promotedListRows).toHaveCount(1);
+      await expect(listSourceBlock).toHaveCount(0);
       await expect(sourcePanel.getByRole("button", { name: "Reload" })).toHaveCount(0);
       await expect(sourceSurface).toHaveAttribute("contenteditable", "true");
       const promotedListPageId = requireString(
@@ -3636,7 +3591,7 @@ test.describe("parallel functional Electron smoke", () => {
       await page.getByRole("button", { name: "Open Page File placement", exact: true }).click();
       await openProjectBoard(page);
       const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
-      await expect(triageColumn).toBeVisible({ timeout: 15_000 });
+      await expect(triageColumn).toBeVisible();
       const sourceCard = triageColumn.locator(`[data-board-uuid-v7="${source.pageId}"]`);
       await openBoardPageFromCard({ card: sourceCard, page, tabName: "Image source Page" });
 
@@ -3667,7 +3622,6 @@ test.describe("parallel functional Electron smoke", () => {
       await expect(sourceImage.locator("img")).toHaveAttribute(
         "src",
         /^(?:blob:|data:image\/png;base64,)/u,
-        { timeout: 15_000 },
       );
       sourceFileUrl = requireString(
         await sourceImage.getAttribute("data-url"),
@@ -3691,17 +3645,15 @@ test.describe("parallel functional Electron smoke", () => {
         target: collapsedTriageRail,
         expectedFeedback: triageHeader.locator('[data-board-collapsed-drop-indicator="true"]'),
       });
-      await expect
-        .poll(async () => await readConvergenceBoardTotal(page, project), { timeout: 15_000 })
-        .toBe(3);
+      await expect.poll(async () => await readConvergenceBoardTotal(page, project)).toBe(3);
       await collapsedTriageRail.focus();
       await page.keyboard.press("Enter");
 
       const promotedCard = triageColumn
         .locator(`[data-board-uuid-v7]:not([data-board-uuid-v7="${source.pageId}"])`)
         .filter({ hasText: "Image placement promotion" });
-      await expect(promotedCard).toHaveCount(1, { timeout: 15_000 });
-      await expect(sourceBlock).toHaveCount(0, { timeout: 15_000 });
+      await expect(promotedCard).toHaveCount(1);
+      await expect(sourceBlock).toHaveCount(0);
       await openBoardPageFromCard({
         card: promotedCard,
         page,
@@ -3715,7 +3667,6 @@ test.describe("parallel functional Electron smoke", () => {
       await expect(promotedImage.locator("img")).toHaveAttribute(
         "src",
         /^(?:blob:|data:image\/png;base64,)/u,
-        { timeout: 15_000 },
       );
       await expect((await pageFilesTree(promotedPanel, 1)).getByRole("treeitem")).toHaveCount(1);
       await expect(page.getByText("Image unavailable", { exact: true })).toHaveCount(0);
@@ -3726,9 +3677,9 @@ test.describe("parallel functional Electron smoke", () => {
       await triageHeader.hover();
       await triageHeader.getByRole("button", { name: "More options for Triage" }).focus();
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
-      await expect(promotedCard).toHaveCount(0, { timeout: 15_000 });
+      await expect(promotedCard).toHaveCount(0);
       await page.getByRole("tab", { name: "Image source Page" }).click();
-      await expect(sourceBlock).toHaveCount(1, { timeout: 15_000 });
+      await expect(sourceBlock).toHaveCount(1);
       const restoredImage = sourceBlock.locator(
         '[data-content-type="image"][data-url^="nodex://files/"]',
       );
@@ -3736,7 +3687,6 @@ test.describe("parallel functional Electron smoke", () => {
       await expect(restoredImage.locator("img")).toHaveAttribute(
         "src",
         /^(?:blob:|data:image\/png;base64,)/u,
-        { timeout: 15_000 },
       );
       const restoredSourceFiles = await readConvergencePageFiles(
         page,
@@ -3792,7 +3742,7 @@ test.describe("parallel functional Electron smoke", () => {
       await page.getByRole("button", { name: "Open Page File move", exact: true }).click();
       await openProjectBoard(page);
       const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
-      await expect(triageColumn).toBeVisible({ timeout: 15_000 });
+      await expect(triageColumn).toBeVisible();
       const targetCard = triageColumn.locator(`[data-board-uuid-v7="${target.pageId}"]`);
       const sourceCard = triageColumn.locator(`[data-board-uuid-v7="${source.pageId}"]`);
 
@@ -3825,7 +3775,6 @@ test.describe("parallel functional Electron smoke", () => {
       await expect(targetImage.locator("img")).toHaveAttribute(
         "src",
         /^(?:blob:|data:image\/png;base64,)/u,
-        { timeout: 15_000 },
       );
 
       await openBoardPageFromCard({
@@ -3853,7 +3802,6 @@ test.describe("parallel functional Electron smoke", () => {
       await expect(sourceImage.locator("img")).toHaveAttribute(
         "src",
         /^(?:blob:|data:image\/png;base64,)/u,
-        { timeout: 15_000 },
       );
       const sourceFileUrl = requireString(
         await sourceImage.getAttribute("data-url"),
@@ -3879,7 +3827,7 @@ test.describe("parallel functional Electron smoke", () => {
       const targetWindowColumn = targetPage.locator(
         '[data-board-column-root][data-board-column-id="triage"]',
       );
-      await expect(targetWindowColumn).toBeVisible({ timeout: 15_000 });
+      await expect(targetWindowColumn).toBeVisible();
       await openBoardPageFromCard({
         card: targetWindowColumn.locator(`[data-board-uuid-v7="${target.pageId}"]`),
         page: targetPage,
@@ -3895,13 +3843,11 @@ test.describe("parallel functional Electron smoke", () => {
         .locator(".bn-block[data-id]")
         .filter({ hasText: "Target image owner" })
         .first();
-      await expect(targetWindowParent).toBeVisible({ timeout: 15_000 });
+      await expect(targetWindowParent).toBeVisible();
       const targetWindowExistingImage = targetWindowParent.locator(
         '[data-content-type="image"] img',
       );
-      await expect(targetWindowExistingImage).toHaveAttribute("src", /^blob:|^data:image\//u, {
-        timeout: 15_000,
-      });
+      await expect(targetWindowExistingImage).toHaveAttribute("src", /^blob:|^data:image\//u);
       const existingImageSrc = requireString(
         await targetWindowExistingImage.getAttribute("src"),
         "Existing target image source",
@@ -3916,16 +3862,13 @@ test.describe("parallel functional Electron smoke", () => {
       await targetPage.keyboard.press("End");
       await targetPage.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+v`);
 
-      await expect(sourceImage).toHaveCount(0, { timeout: 15_000 });
+      await expect(sourceImage).toHaveCount(0);
       await expect(sourceParent).toHaveCount(1);
       await expect
-        .poll(
-          async () => ({
-            source: (await readConvergencePageFiles(page, project.projectId, source.pageId)).total,
-            target: (await readConvergencePageFiles(page, project.projectId, target.pageId)).total,
-          }),
-          { timeout: 15_000 },
-        )
+        .poll(async () => ({
+          source: (await readConvergencePageFiles(page, project.projectId, source.pageId)).total,
+          target: (await readConvergencePageFiles(page, project.projectId, target.pageId)).total,
+        }))
         .toEqual({ source: 0, target: 2 });
       const targetAfter = await readConvergencePageFiles(page, project.projectId, target.pageId);
       expect(targetAfter.files).toEqual(
@@ -3945,7 +3888,6 @@ test.describe("parallel functional Electron smoke", () => {
       await expect(movedImages.locator("img")).toHaveAttribute(
         "src",
         /^(?:blob:|data:image\/png;base64,)/u,
-        { timeout: 15_000 },
       );
       await expect(targetWindowExistingImage).toHaveAttribute("data-file-cache-marker", "stable");
       await expect(targetWindowExistingImage).toHaveAttribute("src", existingImageSrc);
@@ -3977,7 +3919,7 @@ test.describe("parallel functional Electron smoke", () => {
       await targetWindowParent.locator(":scope > .bn-block-content").click();
       await targetPage.keyboard.press("End");
       await targetPage.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+v`);
-      await expect(movedImages).toHaveCount(2, { timeout: 15_000 });
+      await expect(movedImages).toHaveCount(2);
       const pastedBlockIds = await movedImages.evaluateAll((images) =>
         images.map((image) => image.closest<HTMLElement>(".bn-block[data-id]")?.dataset.id ?? ""),
       );
@@ -4001,27 +3943,23 @@ test.describe("parallel functional Electron smoke", () => {
       );
 
       await targetPage.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
-      await expect(movedImages).toHaveCount(1, { timeout: 15_000 });
+      await expect(movedImages).toHaveCount(1);
       await targetPage.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
-      await expect(movedImages).toHaveCount(0, { timeout: 15_000 });
+      await expect(movedImages).toHaveCount(0);
       await page.getByRole("tab", { name: "Exclusive source Page" }).click();
-      await expect(sourceParent).toHaveCount(1, { timeout: 15_000 });
+      await expect(sourceParent).toHaveCount(1);
       const restoredImage = sourceSurface.locator(
         `[data-content-type="image"][data-url="${sourceFileUrl}"]`,
       );
       await expect(restoredImage.locator("img")).toHaveAttribute(
         "src",
         /^(?:blob:|data:image\/png;base64,)/u,
-        { timeout: 15_000 },
       );
       await expect
-        .poll(
-          async () => ({
-            source: await readConvergencePageFiles(page, project.projectId, source.pageId),
-            target: await readConvergencePageFiles(page, project.projectId, target.pageId),
-          }),
-          { timeout: 15_000 },
-        )
+        .poll(async () => ({
+          source: await readConvergencePageFiles(page, project.projectId, source.pageId),
+          target: await readConvergencePageFiles(page, project.projectId, target.pageId),
+        }))
         .toMatchObject({
           source: {
             total: 1,
@@ -4116,32 +4054,29 @@ test.describe("parallel functional Electron smoke", () => {
         .click();
       await openProjectBoard(page);
       const board = page.locator("[data-board-column-root]").first();
-      await expect(board).toBeVisible({ timeout: 15_000 });
+      await expect(board).toBeVisible();
       await page
         .getByRole("tablist", { name: "Database views" })
         .getByRole("tab", { name: "List", exact: true })
         .click();
 
       const grid = page.getByRole("grid", { name: /List$/ });
-      await expect(grid).toBeVisible({ timeout: 15_000 });
+      await expect(grid).toBeVisible();
       const rows = grid.locator('[data-list-row="true"][data-database-view-page-id]');
       for (const fixture of [firstFixture, secondFixture, thirdFixture]) {
         await expect(
           grid.locator(`[data-list-row="true"][data-database-view-page-id="${fixture.pageId}"]`),
-        ).toHaveCount(1, { timeout: 15_000 });
+        ).toHaveCount(1);
       }
       const fixturePageIds = [firstFixture.pageId, secondFixture.pageId, thirdFixture.pageId];
       let initialOrder: string[] = [];
       await expect
-        .poll(
-          async () => {
-            initialOrder = await rows.evaluateAll((elements) =>
-              elements.map((element) => element.getAttribute("data-database-view-page-id") ?? ""),
-            );
-            return initialOrder;
-          },
-          { timeout: 15_000 },
-        )
+        .poll(async () => {
+          initialOrder = await rows.evaluateAll((elements) =>
+            elements.map((element) => element.getAttribute("data-database-view-page-id") ?? ""),
+          );
+          return initialOrder;
+        })
         .toEqual(expect.arrayContaining(fixturePageIds));
       const sourcePageId = firstFixture.pageId;
       const childPageId = secondFixture.pageId;
@@ -4178,50 +4113,46 @@ test.describe("parallel functional Electron smoke", () => {
             await rows.evaluateAll((elements) =>
               elements.map((element) => element.getAttribute("data-database-view-page-id") ?? ""),
             ),
-          { timeout: 15_000 },
         )
         .toEqual(expectedOrder);
       await expect
-        .poll(
-          async () => {
-            const result = requireIpcValue<{
-              readonly rows: readonly {
-                readonly kind: string;
-                readonly row?: {
-                  readonly page?: { readonly pageId?: string };
-                  readonly taskParent?: { readonly parentPageId?: string | null };
-                };
-              }[];
-            }>(
-              await invokeIpc(page, "database:list-window:get", project.projectId, {
-                databaseViewId: listViewId,
-                first: 50,
-                preferencesOverride: {
-                  rulesOverride: {},
-                  presentationOverride: {
-                    hierarchy: { showSubPages: true, nestedSubPages: true },
-                  },
+        .poll(async () => {
+          const result = requireIpcValue<{
+            readonly rows: readonly {
+              readonly kind: string;
+              readonly row?: {
+                readonly page?: { readonly pageId?: string };
+                readonly taskParent?: { readonly parentPageId?: string | null };
+              };
+            }[];
+          }>(
+            await invokeIpc(page, "database:list-window:get", project.projectId, {
+              databaseViewId: listViewId,
+              first: 50,
+              preferencesOverride: {
+                rulesOverride: {},
+                presentationOverride: {
+                  hierarchy: { showSubPages: true, nestedSubPages: true },
                 },
-              }),
-              "Read reordered List window",
-            );
-            const order = result.rows.flatMap((row) =>
-              row.kind === "page" && row.row?.page?.pageId ? [row.row.page.pageId] : [],
-            );
-            const source = result.rows.find(
-              (row) => row.kind === "page" && row.row?.page?.pageId === sourcePageId,
-            );
-            const child = result.rows.find(
-              (row) => row.kind === "page" && row.row?.page?.pageId === childPageId,
-            );
-            return {
-              order,
-              sourceParentPageId: source?.row?.taskParent?.parentPageId ?? null,
-              childParentPageId: child?.row?.taskParent?.parentPageId ?? null,
-            };
-          },
-          { timeout: 15_000 },
-        )
+              },
+            }),
+            "Read reordered List window",
+          );
+          const order = result.rows.flatMap((row) =>
+            row.kind === "page" && row.row?.page?.pageId ? [row.row.page.pageId] : [],
+          );
+          const source = result.rows.find(
+            (row) => row.kind === "page" && row.row?.page?.pageId === sourcePageId,
+          );
+          const child = result.rows.find(
+            (row) => row.kind === "page" && row.row?.page?.pageId === childPageId,
+          );
+          return {
+            order,
+            sourceParentPageId: source?.row?.taskParent?.parentPageId ?? null,
+            childParentPageId: child?.row?.taskParent?.parentPageId ?? null,
+          };
+        })
         .toEqual({
           order: expectedOrder,
           sourceParentPageId: null,
@@ -4231,10 +4162,9 @@ test.describe("parallel functional Electron smoke", () => {
       const targetPoint = await listRowSurfacePoint(targetRow);
       await page.mouse.click(targetPoint.x, targetPoint.y);
       const pageStage = page.locator('[data-page-stage-surface="true"]:visible');
-      await expect(pageStage).toBeVisible({ timeout: 15_000 });
+      await expect(pageStage).toBeVisible();
       await expect(pageStage.getByRole("textbox", { name: "Page title" })).toHaveText(
         "List fixture three",
-        { timeout: 15_000 },
       );
       await expect(page.locator('[data-slot="toast-item"] [role="alert"]')).toHaveCount(0);
     } finally {
@@ -4307,7 +4237,7 @@ test("keeps Page ready and idle CPU bounded with 14k LocalCommit history @perfor
       .click();
     await openProjectBoard(page);
     await expect
-      .poll(async () => await page.locator("[data-board-uuid-v7]").count(), { timeout: 15_000 })
+      .poll(async () => await page.locator("[data-board-uuid-v7]").count())
       .toBe(PAGE_READY_ROUNDS);
 
     const pageReadySamples: Array<{
@@ -4317,7 +4247,7 @@ test("keeps Page ready and idle CPU bounded with 14k LocalCommit history @perfor
     }> = [];
     for (const [round, fixturePage] of fixturePages.entries()) {
       const card = page.locator(`[data-board-uuid-v7="${fixturePage.pageId}"]`);
-      await expect(card).toBeVisible({ timeout: 15_000 });
+      await expect(card).toBeVisible();
       await page.evaluate((loadingLabel) => {
         const target = globalThis as typeof globalThis & {
           __nodexPageReadyMeasurement?: {
@@ -4375,9 +4305,6 @@ test("keeps Page ready and idle CPU bounded with 14k LocalCommit history @perfor
                   }
                 ).__nodexPageReadyMeasurement?.durationMs ?? null,
             ),
-          {
-            timeout: 15_000,
-          },
         )
         .not.toBeNull();
       const durationMs = await page.evaluate(
@@ -4398,7 +4325,7 @@ test("keeps Page ready and idle CPU bounded with 14k LocalCommit history @perfor
             '.nfm-editor .ProseMirror[contenteditable="true"]',
         )
         .last();
-      await expect(editor).toBeVisible({ timeout: 15_000 });
+      await expect(editor).toBeVisible();
       pageReadySamples.push({
         cold: round === 0,
         durationMs,
@@ -4622,25 +4549,25 @@ test("converges a high-pressure Page promotion across tab groups and WebContents
       .click();
     await openProjectBoard(page);
     const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
-    await expect(triageColumn).toBeVisible({ timeout: 15_000 });
+    await expect(triageColumn).toBeVisible();
     await expect
-      .poll(async () => await page.locator("[data-board-uuid-v7]").count(), { timeout: 15_000 })
+      .poll(async () => await page.locator("[data-board-uuid-v7]").count())
       .toBe(HIGH_PRESSURE_BOARD_PAGE_COUNT);
 
     const sourceCard = page.locator(`[data-board-uuid-v7="${source.pageId}"]`);
-    await expect(sourceCard).toBeVisible({ timeout: 15_000 });
+    await expect(sourceCard).toBeVisible();
     await openBoardPageFromCard({ card: sourceCard, page, tabName: "Cross-tab source" });
-    await expect(triageColumn).toBeVisible({ timeout: 15_000 });
+    await expect(triageColumn).toBeVisible();
 
     const sourceEditor = page.locator('.nfm-editor .ProseMirror[contenteditable="true"]').last();
-    await expect(sourceEditor).toBeVisible({ timeout: 15_000 });
+    await expect(sourceEditor).toBeVisible();
     const titleBlock = sourceEditor
       .locator(".bn-block[data-id]")
       .filter({
         hasText: "title-A-cross-tab",
       })
       .first();
-    await expect(titleBlock).toBeVisible({ timeout: 15_000 });
+    await expect(titleBlock).toBeVisible();
 
     const audiencePage = await openNodexWindow(application, async () => {
       expect(await invokeIpc(page, "window:new", {})).toBe(true);
@@ -4662,29 +4589,27 @@ test("converges a high-pressure Page promotion across tab groups and WebContents
     const audienceTriageColumn = audiencePage.locator(
       '[data-board-column-root][data-board-column-id="triage"]',
     );
-    await expect(audienceTriageColumn).toBeVisible({ timeout: 15_000 });
+    await expect(audienceTriageColumn).toBeVisible();
     await expect
-      .poll(async () => await audiencePage.locator("[data-board-uuid-v7]").count(), {
-        timeout: 15_000,
-      })
+      .poll(async () => await audiencePage.locator("[data-board-uuid-v7]").count())
       .toBe(HIGH_PRESSURE_BOARD_PAGE_COUNT);
     const audienceSourceCard = audiencePage.locator(`[data-board-uuid-v7="${source.pageId}"]`);
-    await expect(audienceSourceCard).toBeVisible({ timeout: 15_000 });
+    await expect(audienceSourceCard).toBeVisible();
     await openBoardPageFromCard({
       card: audienceSourceCard,
       page: audiencePage,
       tabName: "Cross-tab source",
     });
-    await expect(audienceTriageColumn).toBeVisible({ timeout: 15_000 });
+    await expect(audienceTriageColumn).toBeVisible();
     const audienceSourceEditor = audiencePage
       .locator('.nfm-editor .ProseMirror[contenteditable="true"]')
       .last();
-    await expect(audienceSourceEditor).toBeVisible({ timeout: 15_000 });
+    await expect(audienceSourceEditor).toBeVisible();
     const audienceTitleBlock = audienceSourceEditor
       .locator(".bn-block[data-id]")
       .filter({ hasText: "title-A-cross-tab" })
       .first();
-    await expect(audienceTitleBlock).toBeVisible({ timeout: 15_000 });
+    await expect(audienceTitleBlock).toBeVisible();
 
     const triageBeforeTransfer = requireIpcValue<Record<string, unknown>>(
       await invokeIpc(page, "database:view-window:get", project.projectId, {
@@ -4851,7 +4776,6 @@ test("converges a high-pressure Page promotion across tab groups and WebContents
                 return payload?.kind === "packet" && identity?.commit_seq === targetCommitSeq;
               });
             }, commitSeq),
-          { timeout: 5_000 },
         )
         .toBe(true);
     } catch (error) {
@@ -4935,22 +4859,22 @@ test("converges a high-pressure Page promotion across tab groups and WebContents
     const [cardVisibleAt, sourceRemovedAt, audienceCardVisibleAt, audienceSourceRemovedAt] =
       await Promise.all([
         expect(transferredCard)
-          .toBeVisible({ timeout: 15_000 })
+          .toBeVisible()
           .then(async () => {
             await expect(transferredCard).toContainText("title-A-cross-tab");
             return performance.now();
           }),
         expect(titleBlock)
-          .toHaveCount(0, { timeout: 15_000 })
+          .toHaveCount(0)
           .then(() => performance.now()),
         expect(audienceTransferredCard)
-          .toBeVisible({ timeout: 15_000 })
+          .toBeVisible()
           .then(async () => {
             await expect(audienceTransferredCard).toContainText("title-A-cross-tab");
             return performance.now();
           }),
         expect(audienceTitleBlock)
-          .toHaveCount(0, { timeout: 15_000 })
+          .toHaveCount(0)
           .then(() => performance.now()),
       ]);
     const sourceDescriptorAfter = requireIpcValue<Record<string, unknown>>(
@@ -5080,10 +5004,10 @@ test("measures high-pressure nested Block transfer into a populated Board @perfo
       .click();
     await openProjectBoard(page);
     const boardColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
-    await expect(boardColumn).toBeVisible({ timeout: 15_000 });
+    await expect(boardColumn).toBeVisible();
     const initialBoardCards = page.locator("[data-board-uuid-v7]");
     await expect
-      .poll(async () => await initialBoardCards.count(), { timeout: 15_000 })
+      .poll(async () => await initialBoardCards.count())
       .toBe(HIGH_PRESSURE_BOARD_PAGE_COUNT);
     const boardInitialRenderMs = performance.now() - openProjectStartedAt;
     const initialDomNodes = await page.evaluate(() => document.getElementsByTagName("*").length);
@@ -5227,7 +5151,7 @@ test("measures high-pressure nested Block transfer into a populated Board @perfo
         ),
       }));
       const cardObservation = expect(card)
-        .toBeVisible({ timeout: 15_000 })
+        .toBeVisible()
         .then(async () => {
           await expect(card).toContainText(`title-A-${index}`);
           return performance.now();
@@ -5265,9 +5189,7 @@ test("measures high-pressure nested Block transfer into a populated Board @perfo
         });
       }
       await expect
-        .poll(async () => await readConvergenceBoardTotal(page, project, commitSeq), {
-          timeout: 15_000,
-        })
+        .poll(async () => await readConvergenceBoardTotal(page, project, commitSeq))
         .toBe(HIGH_PRESSURE_BOARD_PAGE_COUNT + index + 1);
     }
     expect(await readConvergenceBoardTotal(page, project, lastChangeLogSeq)).toBe(

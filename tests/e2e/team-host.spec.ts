@@ -1334,7 +1334,7 @@ test("a joined desktop starts host work, answers its question and accepts it acr
         );
         await stop();
         await expect
-          .poll(() => foregroundHost.exitCode ?? foregroundHost.signalCode, { timeout: 15_000 })
+          .poll(() => foregroundHost.exitCode ?? foregroundHost.signalCode)
           .not.toBeNull();
         await writeFile(testInfo.outputPath("foreground.log"), foregroundLog);
       },

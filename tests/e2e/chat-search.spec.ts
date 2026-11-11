@@ -97,7 +97,7 @@ test("finds old chats across the complete catalog with CJK substrings and typos,
       await page.keyboard.insertText("服务器");
       await expect(search).toHaveValue("服务器");
       const cjkResult = palette.getByRole("option", { name: new RegExp(CJK_TITLE) });
-      await expect(cjkResult).toBeVisible({ timeout: 5_000 });
+      await expect(cjkResult).toBeVisible();
       const catalogFailure = palette
         .getByRole("status")
         .filter({ hasText: "Chats couldn’t be searched" });
@@ -108,14 +108,12 @@ test("finds old chats across the complete catalog with CJK substrings and typos,
       await testInfo.attach("palette-cjk-result", { path: screenshot, contentType: "image/png" });
 
       await search.fill("rotat stagng");
-      await expect(palette.getByRole("option", { name: new RegExp(ENGLISH_TITLE) })).toBeVisible({
-        timeout: 5_000,
-      });
+      await expect(palette.getByRole("option", { name: new RegExp(ENGLISH_TITLE) })).toBeVisible();
       await expect(catalogFailure).toHaveCount(0);
 
       await search.fill("");
       await page.keyboard.insertText("服务器");
-      await expect(cjkResult).toBeVisible({ timeout: 5_000 });
+      await expect(cjkResult).toBeVisible();
       await expect(cjkResult).toHaveAttribute("aria-selected", "true");
       await search.press("Enter");
       await expect(palette).toHaveCount(0);

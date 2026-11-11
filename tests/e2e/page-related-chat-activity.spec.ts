@@ -48,7 +48,7 @@ const waitForStableActivityControl = async (control: Locator): Promise<void> => 
         }),
     );
     expect(await element.evaluate((node) => node.isConnected)).toBe(true);
-  }).toPass({ timeout: 5_000 });
+  }).toPass();
 };
 
 test("persists Page-related Chats and projects their activity across Board, List, and Page Stage", async ({}, testInfo) => {

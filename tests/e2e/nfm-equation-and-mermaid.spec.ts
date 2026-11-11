@@ -39,7 +39,7 @@ async function openNfmScene(
   const mermaidSurface = editor
     .locator('[data-nfm-code-block-surface][data-language="mermaid"]')
     .first();
-  await expect(mermaidSurface).toBeVisible({ timeout: 15_000 });
+  await expect(mermaidSurface).toBeVisible();
   return { editor, mermaidSurface };
 }
 
@@ -99,9 +99,7 @@ test("Equation and Mermaid survive the public Core-to-Electron document path", a
       await page.keyboard.press("Escape");
 
       await expect(mermaidSurface).toHaveAttribute("data-mermaid-preview-mode", "split");
-      await expect(mermaidSurface.locator('[data-nfm-mermaid-status="ready"]')).toBeVisible({
-        timeout: 15_000,
-      });
+      await expect(mermaidSurface.locator('[data-nfm-mermaid-status="ready"]')).toBeVisible();
       const diagram = mermaidSurface.locator("[data-nfm-mermaid-svg] svg");
       await expect(diagram).toBeVisible();
       const diagramSize = await diagram.evaluate((svg: SVGSVGElement) => ({
@@ -148,9 +146,7 @@ test("Page Stage preserves its viewport across remount and delayed Block layout"
         pageKey: NFM_VIEWPORT_CONTINUITY_PAGE_KEY,
         tabName: "Exercise Viewport Continuity",
       });
-      await expect(mermaidSurface.locator('[data-nfm-mermaid-status="ready"]')).toBeVisible({
-        timeout: 15_000,
-      });
+      await expect(mermaidSurface.locator('[data-nfm-mermaid-status="ready"]')).toBeVisible();
 
       const anchor = editor
         .locator(".bn-block[data-id]")
@@ -181,9 +177,7 @@ test("Page Stage preserves its viewport across remount and delayed Block layout"
         .locator(".bn-block[data-id]")
         .filter({ hasText: "Viewport restoration anchor" })
         .first();
-      await expect(restoredEditor.locator('[data-nfm-mermaid-status="ready"]')).toBeVisible({
-        timeout: 15_000,
-      });
+      await expect(restoredEditor.locator('[data-nfm-mermaid-status="ready"]')).toBeVisible();
       await expect
         .poll(async () => {
           return await restoredAnchor.evaluate((element, targetOffset) => {

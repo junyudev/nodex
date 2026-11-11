@@ -1,7 +1,10 @@
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { MotionGlobalConfig } from "motion";
 import { afterEach } from "vite-plus/test";
+import { ASYNC_WAIT_TIMEOUT_MS } from "../../../config/test-timeouts";
 import { installMotionPreferenceForTest } from "./browser-globals";
+
+configure({ asyncUtilTimeout: ASYNC_WAIT_TIMEOUT_MS });
 
 const nativeRequest = Request;
 const nativeResponse = Response;

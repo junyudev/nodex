@@ -469,7 +469,7 @@ test("the time becomes another link to the message's Page once it shows", async 
   await act(async () => {
     await userEvent.hover(screen.getByText("Homepage feels like a dev tool"));
   });
-  await expect.poll(() => getComputedStyle(time).visibility, { timeout: 3_000 }).toBe("visible");
+  await expect.poll(() => getComputedStyle(time).visibility).toBe("visible");
   await act(async () => {
     await userEvent.click(screen.getByRole("button", { name: shown }));
   });
@@ -527,7 +527,7 @@ test("a chat suggestion reads as its prompt: full width, the message's size, why
     await userEvent.hover(screen.getByRole("button", { name: "New chat in Nodex" }));
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   });
-  expect(await screen.findByText("整理合并前的提交历史", {}, { timeout: 3_000 })).toBeTruthy();
+  expect(await screen.findByText("整理合并前的提交历史")).toBeTruthy();
   expect(screen.getByText("A clear task for a new chat.")).toBeTruthy();
   // What the chat runs on is never confused with the Agent that wrote the suggestion.
   expect(screen.getByText("Codex · GPT-6 Astra · Medium")).toBeTruthy();

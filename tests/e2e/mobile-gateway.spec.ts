@@ -25,7 +25,7 @@ const createUuidV7 = (now = Date.now()) =>
 
 async function answerApproval(phone: PhoneChannel, sessionId: string) {
   await expect
-    .poll(() => phone.chat(sessionId).state, { timeout: 10_000 })
+    .poll(() => phone.chat(sessionId).state)
     .toMatchObject({
       status: "waiting",
       requests: [expect.objectContaining({ kind: "approval" })],

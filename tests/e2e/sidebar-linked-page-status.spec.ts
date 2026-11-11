@@ -79,7 +79,7 @@ test("shows the earliest linked Page's Status, opens the Page, and follows live 
         await expect(
           page.locator(`[data-app-action-sidebar-project-list-id="${manifest.projectId}"]:visible`),
         ).toBeVisible({ timeout: 1_000 });
-      }).toPass({ timeout: 15_000 });
+      }).toPass();
       const projectList = page.locator(
         `[data-app-action-sidebar-project-list-id="${manifest.projectId}"]:visible`,
       );
@@ -127,7 +127,7 @@ test("shows the earliest linked Page's Status, opens the Page, and follows live 
           timeout: 2_000,
         });
         await expect(hoverCard).toBeVisible({ timeout: 2_000 });
-      }).toPass({ timeout: 10_000 });
+      }).toPass();
       const linkedPage = hoverCard.locator(
         `button[data-app-action-sidebar-thread-hover-card-linked-page="${doingPage.pageId}"]`,
       );

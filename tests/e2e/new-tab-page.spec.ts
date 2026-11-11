@@ -159,7 +159,7 @@ test("creates a chat's New page where the chat works and links it to the chat", 
         await expect(
           page.locator(`[data-app-action-sidebar-project-list-id="${manifest.projectId}"]:visible`),
         ).toBeVisible({ timeout: 1_000 });
-      }).toPass({ timeout: 15_000 });
+      }).toPass();
       await page
         .locator(
           '[data-app-action-sidebar-thread-row][data-app-action-sidebar-thread-title="Update implementation notes"]:visible',

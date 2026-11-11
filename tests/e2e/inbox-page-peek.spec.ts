@@ -64,7 +64,7 @@ test("opens a message's Page beside its Inbox and lists the Inbox Database in Sp
             .getByRole("button", { name: "Open page", exact: true })
             .hover({ timeout: 2_000 });
           await expect(page.getByRole("tooltip")).toContainText("Open page", { timeout: 2_000 });
-        }).toPass({ timeout: 15_000 });
+        }).toPass();
         claim(
           "Open page leads the actions on the message text",
           ["Open page", "Copy", "Edit"],

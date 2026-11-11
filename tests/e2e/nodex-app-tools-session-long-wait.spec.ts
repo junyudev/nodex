@@ -190,9 +190,8 @@ test("keeps a real provider MCP wait alive beyond 185 seconds and cancels its ex
           runId: callerRunId,
         });
         await expect
-          .poll(
-            () => frames().filter((frame) => frame.type === "host.cancel" && frame.id === wait.id),
-            { timeout: 15_000 },
+          .poll(() =>
+            frames().filter((frame) => frame.type === "host.cancel" && frame.id === wait.id),
           )
           .toHaveLength(1);
         measurements.cancelLatencyMs =

@@ -478,13 +478,10 @@ for (const mode of ["full-access", "approval-required"] as const) {
         .poll(
           async () =>
             (await readRuntimeConversation(page, target)).snapshot.projection.runs.at(-1)?.status,
-          { timeout: 10_000 },
         )
         .toBe("interrupted");
-      await expect
-        .poll(() => activeExecs(harness.profile.codexHome), { timeout: 5_000 })
-        .toEqual([]);
-      await expect.poll(() => alive(records[0]!.kernelPid), { timeout: 5000 }).toBe(false);
+      await expect.poll(() => activeExecs(harness.profile.codexHome)).toEqual([]);
+      await expect.poll(() => alive(records[0]!.kernelPid)).toBe(false);
       saveEvidence(`${mode}-stop.json`, { elapsedMs: Date.now() - stoppedAt, records, bridgePids });
       await sendAgentFollowUp(
         page,
@@ -511,9 +508,7 @@ for (const mode of ["full-access", "approval-required"] as const) {
         operationId: createBoundedOperationId("e2e.cdt.archive"),
         payload: { sessionId: draft.projectSessionId },
       });
-      await expect
-        .poll(() => ownedPids.map(alive), { timeout: 5_000 })
-        .toEqual(ownedPids.map(() => false));
+      await expect.poll(() => ownedPids.map(alive)).toEqual(ownedPids.map(() => false));
       saveEvidence("lifecycle.json", {
         bridgePids,
         ownedPids,
@@ -815,11 +810,9 @@ test("Claude chat grants survive Stop and restart, and end on a permission mode 
   const stop = async () => {
     await page!.getByRole("button", { name: "Stop", exact: true }).click();
     await expect
-      .poll(async () => (await state()).snapshot.projection.runs.at(-1)?.status, {
-        timeout: 10_000,
-      })
+      .poll(async () => (await state()).snapshot.projection.runs.at(-1)?.status)
       .toBe("interrupted");
-    await expect.poll(() => activeExecs(harness.profile.codexHome), { timeout: 5000 }).toEqual([]);
+    await expect.poll(() => activeExecs(harness.profile.codexHome)).toEqual([]);
   };
   const answerApproval = async (choose: () => Promise<void>) => {
     const pending = (await state()).snapshot.projection.runtimeRequests.find(

@@ -71,7 +71,7 @@ test("keeps every final Claude reply block visible while completed work is colla
     await expect(async () => {
       await composer.fill(prompt);
       await expect(composer).toHaveText(prompt, { timeout: 1_000 });
-    }).toPass({ timeout: 10_000 });
+    }).toPass();
     await page.getByRole("button", { name: "Send prompt", exact: true }).click();
 
     let session: ProjectSession | null = null;

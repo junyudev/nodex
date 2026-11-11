@@ -114,9 +114,7 @@ test("ordinary save progress stays local and never moves the content", async () 
       listeners.forEach((listener) => listener());
     });
     expect(view.queryByRole("status")).toBeNull();
-    await waitFor(() => expect(view.getByRole("status").textContent).toBe("Saving…"), {
-      timeout: 2000,
-    });
+    await waitFor(() => expect(view.getByRole("status").textContent).toBe("Saving…"));
     await act(async () => {
       activity = { pending: 0, acknowledged: 1, unknown: 0 };
       listeners.forEach((listener) => listener());

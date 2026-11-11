@@ -133,7 +133,7 @@ test("searches file contents, filters file types and opens the exact matching ca
           exact: true,
         });
         const excluded = palette.getByRole("option", { name: `${excludedPath}:1`, exact: true });
-        await expect(target).toBeVisible({ timeout: 15_000 });
+        await expect(target).toBeVisible();
         await expect(excluded).toBeVisible();
         await expect(target.locator("mark")).toHaveText(needle);
         claim(

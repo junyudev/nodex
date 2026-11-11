@@ -41,7 +41,7 @@ const startParagraphAfterBlock = async (
 
 const waitForMentionOrFailure = async (page: Page, mention: Locator): Promise<void> => {
   try {
-    await mention.waitFor({ state: "visible", timeout: 15_000 });
+    await expect(mention).toBeVisible();
   } catch {
     const operationAlerts = await page
       .getByRole("alert")
@@ -189,18 +189,18 @@ test("creates Page mentions atomically under current and chosen parent Pages", a
       const createdPageId = target?.pageId;
       if (!createdPageId) throw new Error("Created Page mention has no canonical Page URL");
       const owningShell = editor.locator(`[data-page-outliner-target="${createdPageId}"]`);
-      await expect(owningShell).toBeVisible({ timeout: 15_000 });
+      await expect(owningShell).toBeVisible();
 
       await page.keyboard.press(primaryShortcut("z"));
-      await expect(mention).toHaveCount(0, { timeout: 15_000 });
-      await expect(owningShell).toHaveCount(0, { timeout: 15_000 });
+      await expect(mention).toHaveCount(0);
+      await expect(owningShell).toHaveCount(0);
       await expect(
         editor.locator(".bn-block[data-id]").filter({ hasText: `+${title}` }),
       ).toBeVisible();
 
       await page.keyboard.press(primaryShortcut("Shift+z"));
-      await expect(mention).toBeVisible({ timeout: 15_000 });
-      await expect(owningShell).toBeVisible({ timeout: 15_000 });
+      await expect(mention).toBeVisible();
+      await expect(owningShell).toBeVisible();
       await expect(mention).toHaveAttribute(
         "href",
         buildPageDeepLink({ pageId: createdPageId, spaceId }),
@@ -242,7 +242,7 @@ test("creates Page mentions atomically under current and chosen parent Pages", a
       await expect(destinationEditor).toBeVisible();
       await expect(
         destinationEditor.locator(`[data-page-outliner-target="${remotePageId}"]`),
-      ).toBeVisible({ timeout: 15_000 });
+      ).toBeVisible();
     },
   );
 });

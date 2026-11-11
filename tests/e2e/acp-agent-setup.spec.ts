@@ -275,7 +275,7 @@ test("installs an ACP Agent from the Registry and chats with the installed Agent
       await expect(async () => {
         await composer.fill(userMessage);
         await expect(composer).toHaveText(userMessage, { timeout: 1_000 });
-      }).toPass({ timeout: 10_000 });
+      }).toPass();
       // The installed Agent's discovered model, disambiguated by the name the user gave it.
       await chooseComposerModel(page, `${instanceName} ${fixture.modelId}`);
       await expect(composer).toHaveText(userMessage);

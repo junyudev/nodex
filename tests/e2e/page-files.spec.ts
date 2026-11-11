@@ -99,7 +99,7 @@ test("previews a pasted image above editor chrome and refreshes Files only for p
         .locator('[data-content-type="image"][data-url^="nodex://files/"]')
         .last();
       const pastedImage = pastedImageBlock.locator("img");
-      await expect(pastedImage).toBeVisible({ timeout: 15_000 });
+      await expect(pastedImage).toBeVisible();
       await expect(pastedImage).toHaveAttribute("src", /^blob:/u);
       await expect(stage.getByText("Add image", { exact: true })).toHaveCount(0);
       const tree = await pageFilesTree(stage, 1);
@@ -162,7 +162,7 @@ test("copies portable File references by default and local blob paths when enabl
       const imageBlock = stage
         .locator('[data-content-type="image"][data-url^="nodex://files/"]')
         .last();
-      await expect(imageBlock.locator("img")).toBeVisible({ timeout: 15_000 });
+      await expect(imageBlock.locator("img")).toBeVisible();
       await imageBlock.click();
       await page.keyboard.press(primaryShortcut("c"));
       await expect
@@ -299,7 +299,7 @@ test("imports native files and folders with canonical identities", async () => {
         dialog
           .getByRole("button", { name: "Preview dropped-notes.txt" })
           .locator('[data-file-tab-icon="document"]'),
-      ).toBeVisible({ timeout: 15_000 });
+      ).toBeVisible();
       await expect(
         dialog.getByRole("button", { name: "Preview dropped-references/api.md" }),
       ).toBeVisible();
@@ -315,7 +315,7 @@ test("imports native files and folders with canonical identities", async () => {
         dialog
           .getByRole("button", { name: "Preview picked-data.json" })
           .locator('[data-file-tab-icon="json"]'),
-      ).toBeVisible({ timeout: 15_000 });
+      ).toBeVisible();
       await expect(
         dialog
           .getByRole("button", { name: "Preview picked-reference.md" })

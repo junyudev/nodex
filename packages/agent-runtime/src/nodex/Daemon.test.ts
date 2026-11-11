@@ -173,17 +173,14 @@ setInterval(() => {}, 1000);
     runtime.child.stdin.write(`${JSON.stringify({ type: "request.cancel", id: "rewrite" })}\n`);
     expect((await reply).success).toBe(false);
     await expect
-      .poll(
-        () => {
-          try {
-            process.kill(pid!, 0);
-            return true;
-          } catch {
-            return false;
-          }
-        },
-        { timeout: 5_000 },
-      )
+      .poll(() => {
+        try {
+          process.kill(pid!, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      })
       .toBe(false);
     expect((await runtime.request("runtime.identity")).success).toBe(true);
     expect(await runtime.close()).toBe(0);

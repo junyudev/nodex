@@ -12,5 +12,5 @@ export async function openInboxMessagePage(message: Locator): Promise<void> {
   await expect(async () => {
     await message.getByTestId("inbox-message-unit").hover();
     await open.click({ timeout: 2_000 });
-  }).toPass({ timeout: 15_000 });
+  }).toPass();
 }

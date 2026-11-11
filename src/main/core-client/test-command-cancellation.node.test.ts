@@ -50,9 +50,7 @@ test.skipIf(process.platform === "win32")(
       });
       expect(result.exitCode).toBe(130);
       expect(corePid).toBeGreaterThan(0);
-      await expect
-        .poll(() => corePid !== undefined && isAlive(corePid), { timeout: 3_000 })
-        .toBe(false);
+      await expect.poll(() => corePid !== undefined && isAlive(corePid)).toBe(false);
     } finally {
       controller.abort();
       if (corePid !== undefined && isAlive(corePid)) process.kill(corePid, "SIGKILL");

@@ -46,7 +46,7 @@ test("the real Desktop binds plain nodex to its connected Profile and task Proje
         timeout: 1_000,
       });
       await expect(send).toBeEnabled({ timeout: 1_000 });
-    }).toPass({ timeout: 10_000 });
+    }).toPass();
     await send.click();
     const log = path.join(harness.profile.runRoot, ".fake-codex/requests.jsonl");
     let threadId: string | undefined;

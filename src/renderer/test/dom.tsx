@@ -61,7 +61,7 @@ export async function openNodexMenu(trigger: HTMLElement) {
   await settleAsyncRender();
 }
 
-export async function waitForCodeHighlight(node: ParentNode) {
+export async function waitForCodeHighlight(node: ParentNode, options?: { timeout?: number }) {
   await settleLazyRender();
   await act(async () => {
     const [{ streamdownCodePlugin }, { CODE_BLOCK_THEME_PAIR }, { resolveReadonlyCodeLanguage }] =
@@ -106,7 +106,7 @@ export async function waitForCodeHighlight(node: ParentNode) {
     if (!highlightedCode) {
       throw new Error("Expected code block highlighting to finish.");
     }
-  });
+  }, options);
 }
 
 export async function waitForStreamdownMermaidBlock(node: ParentNode) {

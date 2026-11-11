@@ -1,3 +1,4 @@
+import { vitestTimeouts } from "./config/test-timeouts";
 import { resolveVitestTestTier } from "./config/vitest-test-tier";
 import { testObservation } from "./config/vitest-observation";
 import {
@@ -64,7 +65,7 @@ export default defineConfig(async () => ({
     include: testFiles.include,
     fileParallelism: false,
     passWithNoTests: testFiles.isStress,
-    setupFiles: ["./src/renderer/test/setup-browser.ts"],
-    ...(testFiles.isStress ? { testTimeout: 60_000 } : {}),
+    setupFiles: ["./config/setup-test-timeouts.ts", "./src/renderer/test/setup-browser.ts"],
+    ...vitestTimeouts(testFiles.isStress),
   },
 }));

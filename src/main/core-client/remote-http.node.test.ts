@@ -526,9 +526,7 @@ test("a rate-limited Page edit waits for its device window and commits once with
         },
       };
       const pending = client.libraryApply({ operationId, intent });
-      await expect
-        .poll(async () => (await stats()).devices[device.device_id]!.refusals, { timeout: 10_000 })
-        .toBe(1);
+      await expect.poll(async () => (await stats()).devices[device.device_id]!.refusals).toBe(1);
       const result = await pending;
       expect(result.status).toBe("committed");
       const receipt = await client.libraryApply({ operationId, intent });

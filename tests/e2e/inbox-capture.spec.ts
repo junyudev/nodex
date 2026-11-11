@@ -11,7 +11,7 @@ const openProjectChat = async (page: Page, projectId: string, title: string) => 
     await expect(
       page.locator(`[data-app-action-sidebar-project-list-id="${projectId}"]:visible`),
     ).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 15_000 });
+  }).toPass();
   await page
     .locator(
       `[data-app-action-sidebar-thread-row][data-app-action-sidebar-thread-title="${title}"]:visible`,

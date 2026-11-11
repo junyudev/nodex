@@ -71,7 +71,7 @@ test("editing, native reorder and cancelled structural waits recover through Ele
         .filter({ hasText: /^Last paragraph$/ })
         .first();
       const owner = surface.locator(`.bn-block[data-id="${childId}"]`);
-      await expect(owner).toBeVisible({ timeout: 15_000 });
+      await expect(owner).toBeVisible();
       const firstId = await first.getAttribute("data-id");
       const lastId = await last.getAttribute("data-id");
       if (!firstId || !lastId) throw new Error("Paragraphs have no stable identity");
@@ -152,7 +152,7 @@ test("editing, native reorder and cancelled structural waits recover through Ele
           expectedFeedback: editor.locator("[data-block-transfer-drop-indicator]"),
         });
         const cancel = page.getByRole("button", { name: "Cancel", exact: true });
-        await expect(cancel).toBeVisible({ timeout: 5000 });
+        await expect(cancel).toBeVisible();
         await cancel.click();
         await expect(cancel).toHaveCount(0);
       } finally {
@@ -166,7 +166,7 @@ test("editing, native reorder and cancelled structural waits recover through Ele
       await page.reload();
       await expect(
         page.locator(`[data-page-stage-page-id="${sourceId}"]:visible .nfm-editor`),
-      ).toBeVisible({ timeout: 15000 });
+      ).toBeVisible();
       expect((await seed.readPage(manifest.projectId, sourceId)).descriptionPreview).toBe(
         beforeReload,
       );
@@ -294,7 +294,7 @@ test("editing, native reorder and cancelled structural waits recover through Ele
       );
       await page.reload();
       const review = page.getByRole("button", { name: "Review", exact: true });
-      await expect(review).toBeVisible({ timeout: 15000 });
+      await expect(review).toBeVisible();
       // A background window must converge through Core delivery without a focus refresh.
       const audience = await openNodexWindow(application, async () => {
         expect(await page.evaluate(() => window.api?.invoke("window:new", {}))).toBe(true);

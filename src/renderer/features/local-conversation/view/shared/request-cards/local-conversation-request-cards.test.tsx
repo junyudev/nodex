@@ -158,13 +158,10 @@ describe("local-conversation request cards", () => {
         await Promise.resolve();
       });
 
-      await waitFor(
-        () => {
-          const input = view.getByPlaceholderText("Type your answer");
-          expect(document.activeElement).toBe(input);
-        },
-        { timeout: 2_000 },
-      );
+      await waitFor(() => {
+        const input = view.getByPlaceholderText("Type your answer");
+        expect(document.activeElement).toBe(input);
+      });
     } finally {
       restoreMotionPreference();
     }
@@ -191,12 +188,9 @@ describe("local-conversation request cards", () => {
       await Promise.resolve();
     });
 
-    await waitFor(
-      () => {
-        expect(document.activeElement).toBe(view.getByRole("radio", { name: "Approve" }));
-      },
-      { timeout: 2_000 },
-    );
+    await waitFor(() => {
+      expect(document.activeElement).toBe(view.getByRole("radio", { name: "Approve" }));
+    });
   });
 
   test("ignores activation from an outgoing wait-mode question panel", async () => {
@@ -236,12 +230,9 @@ describe("local-conversation request cards", () => {
       });
       expect(draftChanges).toHaveLength(1);
 
-      await waitFor(
-        () => {
-          expect(view.getByPlaceholderText("Type your answer")).not.toBeNull();
-        },
-        { timeout: 2_000 },
-      );
+      await waitFor(() => {
+        expect(view.getByPlaceholderText("Type your answer")).not.toBeNull();
+      });
     } finally {
       restoreMatchMedia();
     }

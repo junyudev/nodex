@@ -94,7 +94,7 @@ const requireLocatorGeometry = async (
   await expect(async () => {
     geometry = await locator.boundingBox();
     expect(geometry, `${label} geometry is unavailable`).not.toBeNull();
-  }).toPass({ timeout: 10_000 });
+  }).toPass();
   if (!geometry) throw new Error(`${label} geometry is unavailable`);
   return geometry;
 };
@@ -103,7 +103,7 @@ const revealWithHover = async (target: Locator, revealed: Locator): Promise<void
   await expect(async () => {
     await target.hover({ timeout: 2_000 });
     await expect(revealed).toBeVisible({ timeout: 2_000 });
-  }).toPass({ timeout: 15_000 });
+  }).toPass();
 };
 
 const clearQueryAndCloseCommandPalette = async ({
@@ -369,17 +369,15 @@ test("moves Board cards and List rows into NFM as real Page blocks", async () =>
       await dragDatabasePageToEditorWithMouse({ page, source: boardSource, editor });
       await expect(
         editor.locator(`[data-page-outliner-target="${boardSourcePageId}"]`),
-      ).toBeVisible({ timeout: 15_000 });
-      await expect(page.locator(`[data-board-uuid-v7="${boardSourcePageId}"]`)).toHaveCount(0, {
-        timeout: 15_000,
-      });
+      ).toBeVisible();
+      await expect(page.locator(`[data-board-uuid-v7="${boardSourcePageId}"]`)).toHaveCount(0);
 
       await page
         .getByRole("tablist", { name: "Database views" })
         .getByRole("tab", { name: "List", exact: true })
         .click();
       const list = page.getByRole("grid", { name: /List$/ });
-      await expect(list).toBeVisible({ timeout: 15_000 });
+      await expect(list).toBeVisible();
       const listSource = list.locator(
         `[data-list-row="true"][data-database-view-page-id="${listSourcePageId}"]`,
       );
@@ -389,10 +387,10 @@ test("moves Board cards and List rows into NFM as real Page blocks", async () =>
         source: listSource.locator('[data-database-view-page-drag-handle="true"]'),
         editor,
       });
-      await expect(editor.locator(`[data-page-outliner-target="${listSourcePageId}"]`)).toBeVisible(
-        { timeout: 15_000 },
-      );
-      await expect(listSource).toHaveCount(0, { timeout: 15_000 });
+      await expect(
+        editor.locator(`[data-page-outliner-target="${listSourcePageId}"]`),
+      ).toBeVisible();
+      await expect(listSource).toHaveCount(0);
     },
   );
 });
@@ -445,10 +443,8 @@ test("round-trips a Board Page through a Subpage without stale presentation", as
       await dragDatabasePageToEditorWithMouse({ page, source: boardSource, editor });
       await expect(
         editor.locator(`[data-page-outliner-target="${boardSourcePageId}"]`),
-      ).toBeVisible({ timeout: 15_000 });
-      await expect(page.locator(`[data-board-uuid-v7="${boardSourcePageId}"]`)).toHaveCount(0, {
-        timeout: 15_000,
-      });
+      ).toBeVisible();
+      await expect(page.locator(`[data-board-uuid-v7="${boardSourcePageId}"]`)).toHaveCount(0);
 
       const subpageBlock = editor.locator(`.bn-block[data-id="${boardSourcePageId}"]`);
       await expect(subpageBlock).toBeVisible({ timeout: 30_000 });
@@ -547,17 +543,15 @@ test("round-trips a Board Page through a Subpage without stale presentation", as
         target: triageColumn,
       });
       await expect
-        .poll(
-          async () =>
-            page.evaluate(
-              () =>
-                (
-                  globalThis as typeof globalThis & {
-                    __nodexSubpageBoardRoundTrip?: { readonly settled: boolean };
-                  }
-                ).__nodexSubpageBoardRoundTrip?.settled ?? false,
-            ),
-          { timeout: 15_000 },
+        .poll(async () =>
+          page.evaluate(
+            () =>
+              (
+                globalThis as typeof globalThis & {
+                  __nodexSubpageBoardRoundTrip?: { readonly settled: boolean };
+                }
+              ).__nodexSubpageBoardRoundTrip?.settled ?? false,
+          ),
         )
         .toBe(true);
       const roundTrip = await page.evaluate(
@@ -650,12 +644,8 @@ test("keeps the canonical Board while grouping and dragging by Priority", async 
       await settings.getByRole("button", { name: "Close settings", exact: true }).click();
 
       const highColumn = page.locator('[data-board-column-root][data-board-column-id="p1-high"]');
-      await expect(highColumn.locator(`[data-board-uuid-v7="${sourcePageId}"]`)).toBeVisible({
-        timeout: 15_000,
-      });
-      await expect(highColumn.locator(`[data-board-uuid-v7="${targetPageId}"]`)).toBeVisible({
-        timeout: 15_000,
-      });
+      await expect(highColumn.locator(`[data-board-uuid-v7="${sourcePageId}"]`)).toBeVisible();
+      await expect(highColumn.locator(`[data-board-uuid-v7="${targetPageId}"]`)).toBeVisible();
       const initialManualOrder = await highColumn.locator("[data-board-uuid-v7]").evaluateAll(
         (elements, pageIds) =>
           elements
@@ -696,9 +686,6 @@ test("keeps the canonical Board while grouping and dragging by Priority", async 
                   .filter((pageId) => pageIds.includes(pageId)),
               initialManualOrder,
             ),
-          {
-            timeout: 15_000,
-          },
         )
         .toEqual([manualTargetPageId, manualSourcePageId]);
       await page.waitForTimeout(500);
@@ -733,7 +720,7 @@ test("keeps the canonical Board while grouping and dragging by Priority", async 
 
       const lowColumn = page.locator('[data-board-column-root][data-board-column-id="p3-low"]');
       const sourceCard = highColumn.locator(`[data-board-uuid-v7="${sourcePageId}"]`);
-      await expect(sourceCard).toBeVisible({ timeout: 15_000 });
+      await expect(sourceCard).toBeVisible();
       const targetCard = lowColumn.locator(`[data-board-uuid-v7="${targetPageId}"]`);
       await expect(targetCard).toBeVisible();
       await expect(sourceCard).toHaveAttribute("data-database-board-card", "true");
@@ -757,7 +744,6 @@ test("keeps the canonical Board while grouping and dragging by Priority", async 
                   element.closest<HTMLElement>("[data-board-column-root]")?.dataset.boardColumnId ??
                   "missing",
               ),
-          { timeout: 15_000 },
         )
         .toBe("p3-low");
       await expect(highColumn.locator(`[data-board-uuid-v7="${sourcePageId}"]`)).toHaveCount(0);
@@ -1534,7 +1520,7 @@ test("materializes and opens the authoritative board/dense environment", async (
         sourceEditor.getByRole("button", {
           name: "Edit Reference model child title",
         }),
-      ).toBeVisible({ timeout: 15_000 });
+      ).toBeVisible();
       const childSearch = await page.evaluate(
         async ({ projectId }) => {
           return await window.api?.invoke(

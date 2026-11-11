@@ -199,7 +199,7 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
       });
       if (await expandProject.count()) await expandProject.click({ timeout: 1_000 });
       await expect(chatRow).toBeVisible({ timeout: 1_000 });
-    }).toPass({ timeout: 15_000 });
+    }).toPass();
     await chatRow.click();
     const composer = page
       .locator('[data-codex-composer="true"][contenteditable="true"]:visible')
@@ -339,9 +339,7 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
     await page.getByRole("button", { name: "Stop", exact: true }).click();
     // Stop settles promptly; it never waits out the query close timeout.
     await expect
-      .poll(async () => (await control()).snapshot.projection.runs.at(-1)?.status, {
-        timeout: 3_000,
-      })
+      .poll(async () => (await control()).snapshot.projection.runs.at(-1)?.status)
       .toBe("interrupted");
     await composer.fill("Keep this draft");
     await expect(page.getByRole("button", { name: "Send prompt", exact: true })).toBeVisible();

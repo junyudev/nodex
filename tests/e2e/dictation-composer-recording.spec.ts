@@ -27,13 +27,10 @@ const readRecordings = (page: Page) =>
 
 const waitForRecordedAudio = (page: Page) =>
   expect
-    .poll(
-      async () => {
-        const recordings = await readRecordings(page);
-        return recordings.find((recording) => recording.status === "recording")?.sizeBytes ?? 0;
-      },
-      { timeout: 10_000 },
-    )
+    .poll(async () => {
+      const recordings = await readRecordings(page);
+      return recordings.find((recording) => recording.status === "recording")?.sizeBytes ?? 0;
+    })
     .toBeGreaterThan(0);
 
 /** A continuously varying fake microphone signal, processed by Chromium's real capture device. */

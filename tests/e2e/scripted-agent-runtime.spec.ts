@@ -1716,13 +1716,10 @@ test("keeps a real collaboration subagent Active until completion, then converge
             target,
           )) as AgentSubagentOverview;
         await expect
-          .poll(
-            async () => {
-              const current = await overview();
-              return { active: current.active.items.length, done: current.terminal.items.length };
-            },
-            { timeout: 15_000 },
-          )
+          .poll(async () => {
+            const current = await overview();
+            return { active: current.active.items.length, done: current.terminal.items.length };
+          })
           .toEqual({ active: 1, done: 0 });
         const childThreadId = (await overview()).active.items[0]?.childThreadId;
         expect(typeof childThreadId).toBe("string");

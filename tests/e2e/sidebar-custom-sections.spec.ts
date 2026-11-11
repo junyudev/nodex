@@ -103,7 +103,7 @@ async function dragSidebarRow(
           await mouse.wheel(0, Math.sign(delta) * Math.min(Math.abs(delta), 600));
           return false;
         },
-        { intervals: [100, 200], timeout: 10_000 },
+        { intervals: [100, 200] },
       )
       .toBe(true);
     const scrollBox = await page

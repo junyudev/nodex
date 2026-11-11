@@ -298,7 +298,7 @@ test("lost Work, Inbox and question responses retain Member receipts and exactly
                 if (requestFailure) throw requestFailure;
                 return countReceipt(operationId);
               },
-              { timeout: 10_000, message: `Missing durable receipt for ${intent.kind}` },
+              { message: `Missing durable receipt for ${intent.kind}` },
             )
             .toBe(1);
         } catch (error) {
@@ -675,7 +675,7 @@ test("a black-holed pinned TLS handshake returns a typed timeout and releases it
           { code: "not-sent-before-the-pin", display_name: "Bob", device_label: "Bob" },
         ),
       ).rejects.toMatchObject({ kind: "timeout", code: "ETIMEDOUT" });
-      await expect.poll(() => proxy.connections, { timeout: 3_000 }).toBe(0);
+      await expect.poll(() => proxy.connections).toBe(0);
     } finally {
       await proxy.close();
     }
@@ -744,9 +744,7 @@ test("shared HTTPS reads keep surviving callers and release the socket after the
       expect((await abandoned).error).toMatchObject({ kind: "aborted" });
       // Module cancellation may open its own bounded control request. The
       // abandoned read's socket must close even while that reply is paused.
-      await expect
-        .poll(() => proxy.accepted - proxy.connections, { timeout: 3_000 })
-        .toBe(closed + 1);
+      await expect.poll(() => proxy.accepted - proxy.connections).toBe(closed + 1);
       proxy.pauseResponses(false);
       before = await count();
       await Promise.all([

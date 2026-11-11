@@ -229,7 +229,7 @@ describe("PageCreateDialog", () => {
     const view = renderWithMaitai(<TestShell onAncestorPointerDown={onAncestorPointerDown} />);
 
     fireEvent.click(view.getByRole("button", { name: "Open Page create" }));
-    expect(await view.findByRole("dialog", {}, { timeout: 10_000 })).toBeTruthy();
+    expect(await view.findByRole("dialog")).toBeTruthy();
     fireEvent.pointerDown(view.getByLabelText("Page title"));
     expect(onAncestorPointerDown).not.toHaveBeenCalled();
 

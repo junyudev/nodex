@@ -38,7 +38,7 @@ const openChat = async (page: Page, projectId: string, title: string): Promise<v
       timeout: 1_000,
     });
     await expect(chatRow).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 15_000 });
+  }).toPass();
   await chatRow.click();
 };
 

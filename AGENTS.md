@@ -188,7 +188,7 @@ Each runtime has its own runner; the wrong one fails, or passes, for the wrong r
 - Electron E2E: `vp run test:e2e tests/e2e/<spec>.spec.ts`. A standalone `--` before the file makes Playwright collect the whole suite; a focused run's banner reads `Running 1 test`.
 - Semantic gate: `vp run typecheck`, the same task as `lint` and `check:semantic` with a shared cache, covers types and lint; `vp run --no-cache check:semantic` forces real analysis.
 - Broader: `vp run build` for build configuration, entrypoints, packaging, or startup failures; `vp run test` when targeted suites cannot bound a change's impact; `vp run test:all` for a release gate.
-- Electron and renderer suites can turn flaky when run in parallel with each other.
+- Test suites, E2E runs, and Rust tests from all worktrees queue for one computer-wide CPU budget. A `[machine-budget] ... is waiting` line is the queue working: let the command wait, in the background if needed, rather than cancelling or retrying it. See [Sharing the computer between checkouts](docs/development.md#sharing-the-computer-between-checkouts).
 
 ### Blind spots
 
@@ -200,6 +200,7 @@ Each runtime has its own runner; the wrong one fails, or passes, for the wrong r
 
 - Test behavior and domain contracts, not implementation. Avoid source-string checks, long `className` matching, and broad `textContent.includes(...)` unless the string is a real user-visible or accessibility contract.
 - Renderer tests are act-clean: an `act(...)` warning is a failing test. Prefer awaited Testing Library patterns. Wrap low-level events, timers, and gestures in `await act(async () => { ...; await Promise.resolve(); })`, then await the observable outcome, and release gestures in `try/finally`.
+- Let positive waits inherit the deliberately generous defaults in [test-timeouts.ts](config/test-timeouts.ts). Use an explicit short timeout only when the wait is expected to time out.
 - Renderer seams and conventions live in `docs/FRONTEND.md`; scenario consumers, fixture classes, and evidence boundaries live in `docs/development.md`.
 
 ### Real data

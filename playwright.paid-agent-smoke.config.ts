@@ -18,5 +18,4 @@ export default defineConfig(baseElectronE2eConfig, {
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  timeout: 180_000,
 });

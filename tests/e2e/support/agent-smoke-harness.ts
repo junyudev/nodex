@@ -191,7 +191,6 @@ export const setAgentExecutionProfile = async (
         return model?.slug ?? null;
       },
       {
-        timeout: 15_000,
         message: "The Composer Runtime catalog must advertise a selectable Codex model",
       },
     )
@@ -252,32 +251,29 @@ export const waitForAgentThreadExecutionProfile = async (
   expectedProfile: CodexExecutionProfile,
 ): Promise<void> => {
   await expect
-    .poll(
-      async () => {
-        const conversation = (await invokeIpc(
-          page,
-          "agent-runtime:session:control",
-          target,
-        )) as AgentRuntimeConversation;
-        const selection = conversation.snapshot.projection.thread.modelSelection;
-        const providers = (await invokeIpc(
-          page,
-          "agent-runtime:providers:read",
-          {},
-        )) as IpcApi["agent-runtime:providers:read"]["result"];
-        const defaultEffort = providers
-          .find((provider) => provider.instanceId === selection.instanceId)
-          ?.models.find((model) => model.slug === selection.model)
-          ?.capabilities?.optionDescriptors?.find((option) => option.id === "reasoningEffort");
-        return {
-          modelId: selection.model,
-          reasoningEffort:
-            selection.options?.find((option) => option.id === "reasoningEffort")?.value ??
-            (defaultEffort?.type === "select" ? (defaultEffort.currentValue ?? null) : null),
-        };
-      },
-      { timeout: 15_000 },
-    )
+    .poll(async () => {
+      const conversation = (await invokeIpc(
+        page,
+        "agent-runtime:session:control",
+        target,
+      )) as AgentRuntimeConversation;
+      const selection = conversation.snapshot.projection.thread.modelSelection;
+      const providers = (await invokeIpc(
+        page,
+        "agent-runtime:providers:read",
+        {},
+      )) as IpcApi["agent-runtime:providers:read"]["result"];
+      const defaultEffort = providers
+        .find((provider) => provider.instanceId === selection.instanceId)
+        ?.models.find((model) => model.slug === selection.model)
+        ?.capabilities?.optionDescriptors?.find((option) => option.id === "reasoningEffort");
+      return {
+        modelId: selection.model,
+        reasoningEffort:
+          selection.options?.find((option) => option.id === "reasoningEffort")?.value ??
+          (defaultEffort?.type === "select" ? (defaultEffort.currentValue ?? null) : null),
+      };
+    })
     .toEqual({
       modelId: expectedProfile.modelId,
       reasoningEffort: expectedProfile.reasoningEffort,
@@ -311,7 +307,7 @@ export const sendAgentPromptWithEvidence = async (
     // current editor if that one-time remount replaces the DOM node we initially targeted.
     await composer.fill(prompt);
     await expect(composer).toHaveText(prompt, { timeout: 1_000 });
-  }).toPass({ timeout: 10_000 });
+  }).toPass();
   const sendButton = page.getByRole("button", { name: "Send prompt" });
   await expect(sendButton).toBeEnabled();
   await beforeSend();
@@ -358,9 +354,9 @@ export const sendAgentPromptWithEvidence = async (
   }, prompt);
   await sendButton.click();
 
-  await expect(page.locator("[data-user-message-bubble='true']", { hasText: prompt })).toBeVisible({
-    timeout: 10_000,
-  });
+  await expect(
+    page.locator("[data-user-message-bubble='true']", { hasText: prompt }),
+  ).toBeVisible();
 
   let threadId: string | null = null;
   let launchFailure: string | null = null;
@@ -458,7 +454,7 @@ export const sendAgentFollowUp = async (page: Page, prompt: string): Promise<voi
   await expect(async () => {
     await composer.fill(prompt);
     await expect(composer).toHaveText(prompt, { timeout: 1_000 });
-  }).toPass({ timeout: 10_000 });
+  }).toPass();
   await page.evaluate((expected) => {
     const scope = window as typeof window & {
       __followUpBlankFrames?: number;
@@ -479,7 +475,6 @@ export const sendAgentFollowUp = async (page: Page, prompt: string): Promise<voi
   await page.getByRole("button", { name: "Send prompt" }).click();
   await expect(page.locator("[data-user-message-bubble='true']", { hasText: prompt })).toHaveCount(
     1,
-    { timeout: 10_000 },
   );
   const blankFrames = await page.evaluate(() => {
     const scope = window as typeof window & {

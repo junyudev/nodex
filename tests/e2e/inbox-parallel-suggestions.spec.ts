@@ -286,7 +286,7 @@ test("Inbox advice runs in parallel, says why it failed, and stops when asked", 
         path.join(artifacts, "6-settings-limit.png"),
       );
       // Sooner than the safety poll, and nothing else happens in the Inbox meanwhile.
-      await expect.poll(() => generationsOf(beside).length, { timeout: 15_000 }).toBe(1);
+      await expect.poll(() => generationsOf(beside).length).toBe(1);
       claim(
         "Raising the limit in Settings starts the waiting message at once, beside the first",
         true,

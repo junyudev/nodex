@@ -52,7 +52,7 @@ function shadow(container: HTMLElement): ShadowRoot {
 }
 
 async function settle<T>(read: () => T): Promise<T> {
-  return waitFor(read, { timeout: 10_000 });
+  return waitFor(read);
 }
 
 function spyOnEditor() {

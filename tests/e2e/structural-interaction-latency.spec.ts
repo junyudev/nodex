@@ -279,13 +279,11 @@ test("structural gestures preserve Files and hand off source and target independ
             });
             await expect(sourceRoot).toHaveCount(0, { timeout: 45_000 });
             const result = board.locator(`[data-board-uuid-v7="${fixture.paragraphRootId}"]`);
-            await expect(result).toBeVisible({ timeout: 15_000 });
+            await expect(result).toBeVisible();
             await expect(result).toContainText(
               settings ? "Structural batch" : "1XL Structural batch",
             );
-            await expect(page.locator("[data-pending-promotion]")).toHaveCount(0, {
-              timeout: 15_000,
-            });
+            await expect(page.locator("[data-pending-promotion]")).toHaveCount(0);
             const timing = await finishGesture(page);
             expect(timing.feedbackPaintMs).not.toBeNull();
             expect(timing.sourceDomMs).not.toBeNull();
@@ -301,10 +299,10 @@ test("structural gestures preserve Files and hand off source and target independ
           }
           await sourceSurface.focus();
           await page.keyboard.press("Meta+Z");
-          await expect(sourceRoot).toBeVisible({ timeout: 15_000 });
+          await expect(sourceRoot).toBeVisible();
           await expect(
             board.locator(`[data-board-uuid-v7="${fixture.paragraphRootId}"]`),
-          ).toHaveCount(0, { timeout: 15_000 });
+          ).toHaveCount(0);
 
           await selectEditorBlockRange({
             page,
@@ -319,12 +317,10 @@ test("structural gestures preserve Files and hand off source and target independ
           samples.push({ ...(await finishGesture(page)), settings, temperature, iteration });
           if (settings)
             await expect
-              .poll(
-                () =>
-                  application.evaluate(async ({ clipboard }) =>
-                    (await clipboard.readText()).includes("nodex://files/"),
-                  ),
-                { timeout: 15_000 },
+              .poll(() =>
+                application.evaluate(async ({ clipboard }) =>
+                  (await clipboard.readText()).includes("nodex://files/"),
+                ),
               )
               .toBe(false);
           if (iteration === 0) {
@@ -348,7 +344,7 @@ test("structural gestures preserve Files and hand off source and target independ
             await targetWindow.keyboard.press("Meta+ArrowRight");
             await targetWindow.keyboard.press("Meta+V");
             const pasted = targetEditor.locator(`.bn-block[data-id="${fixture.paragraphRootId}"]`);
-            await expect(pasted).toBeVisible({ timeout: 15_000 });
+            await expect(pasted).toBeVisible();
             const inventory = await seed.readPageFileInventory(
               manifest.projectId,
               fixture.targetPageId,
@@ -358,14 +354,14 @@ test("structural gestures preserve Files and hand off source and target independ
             );
             await targetEditor.focus();
             await targetWindow.keyboard.press("Meta+Z");
-            await expect(pasted).toHaveCount(0, { timeout: 15_000 });
-            await expect(sourceRoot).toBeVisible({ timeout: 15_000 });
+            await expect(pasted).toHaveCount(0);
+            await expect(sourceRoot).toBeVisible();
             await targetWindow.close();
             await page.bringToFront();
           } else {
             await sourceSurface.focus();
             await page.keyboard.press("Meta+Z");
-            await expect(sourceRoot).toBeVisible({ timeout: 15_000 });
+            await expect(sourceRoot).toBeVisible();
           }
           if (process.env.ELECTRON_RENDERER_URL) {
             await writeFile(
@@ -397,11 +393,11 @@ test("structural gestures preserve Files and hand off source and target independ
           list.locator(
             `[data-list-row="true"][data-database-view-page-id="${fixture.paragraphRootId}"]`,
           ),
-        ).toBeVisible({ timeout: 15_000 });
-        await expect(list.locator("[data-pending-promotion]")).toHaveCount(0, { timeout: 15_000 });
+        ).toBeVisible();
+        await expect(list.locator("[data-pending-promotion]")).toHaveCount(0);
         await sourceSurface.focus();
         await page.keyboard.press("Meta+Z");
-        await expect(sourceRoot).toBeVisible({ timeout: 15_000 });
+        await expect(sourceRoot).toBeVisible();
         if (process.env.ELECTRON_RENDERER_URL) {
           const trace = await readDevelopmentPhases(page);
           await writeFile(

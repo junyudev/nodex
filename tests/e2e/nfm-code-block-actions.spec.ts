@@ -40,7 +40,7 @@ async function focusCodeBlockScene(
   const initialSurface = editor
     .locator('[data-nfm-code-block-surface][data-language="typescript"]')
     .first();
-  await expect(initialSurface).toBeVisible({ timeout: 15_000 });
+  await expect(initialSurface).toBeVisible();
   const blockId = await initialSurface.getAttribute("data-block-id");
   if (!blockId) throw new Error("Code Block surface has no stable block ID");
   const surface = editor.locator(`[data-nfm-code-block-surface][data-block-id="${blockId}"]`);

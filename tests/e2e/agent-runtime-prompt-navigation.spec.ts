@@ -129,7 +129,7 @@ test("a reopened Claude chat navigates every prompt, including history it has no
     if ((await summary.getAttribute("aria-pressed")) === "true") await summary.click();
 
     const rail = page.getByRole("navigation", { name: "User messages", exact: true });
-    await expect(rail).toBeVisible({ timeout: 15_000 });
+    await expect(rail).toBeVisible();
     const markers = rail.getByRole("button", { name: /^Jump to user message \d+$/u });
     await expect(markers).toHaveCount(PROMPT_COUNT);
 
