@@ -63,7 +63,6 @@ interface LocalConversationThreadBodyProps {
   readToolOutput?: import("../thread-stage-types").ConversationProviderPresentation["readToolOutput"];
   contentShiftX?: MotionValue<number>;
   footer?: ReactNode;
-  leadingContent?: ReactNode;
   initialUiState?: ThreadBodyUiStateOverrides;
   transcriptVisible?: boolean;
   turnDiffHoverPreviewDisabled?: boolean;
@@ -85,7 +84,6 @@ function LocalConversationThreadBodyLayout({
   planSidePanelState,
   contentShiftX,
   footer,
-  leadingContent,
   initialUiState,
   transcriptVisible = true,
   initialRestoreSnapshot,
@@ -131,7 +129,6 @@ function LocalConversationThreadBodyLayout({
       initialRestoreSnapshot={initialRestoreSnapshot}
       isMainThreadAnchorHost={presentation === "main"}
     >
-      {leadingContent}
       {transcriptVisible ? (
         <div data-local-conversation-transcript="true" className="contents">
           <McpAppFollowUpProvider onSend={handleMcpAppFollowUp}>
@@ -346,7 +343,6 @@ export const LocalConversationThreadBody = memo(
     left.planSidePanelState === right.planSidePanelState &&
     left.contentShiftX === right.contentShiftX &&
     left.footer === right.footer &&
-    left.leadingContent === right.leadingContent &&
     left.initialUiState === right.initialUiState &&
     left.transcriptVisible === right.transcriptVisible &&
     left.turnDiffHoverPreviewDisabled === right.turnDiffHoverPreviewDisabled &&

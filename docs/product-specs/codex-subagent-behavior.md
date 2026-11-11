@@ -148,7 +148,8 @@ Stable parent Turn identity or a canonical content-prefix match establishes
 inheritance; item IDs and transport timestamps do not change content identity.
 Read-only details have no composer, edit-message or Turn-fork action. Interactive
 details acquire the writer only at the ordinary execution boundary. A writer
-conflict replaces the composer with This is open in another app and Retry.
+conflict keeps the composer, holds sending and says This chat is open in another
+app with Retry in the notice attached to it.
 
 ## Parent composition and requests
 

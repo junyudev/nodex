@@ -16,6 +16,7 @@ import {
 } from "../conversation-image-input";
 import { supportsConversationProviderControl } from "../conversation-provider-controls";
 import { isLocalConversationWriterConflict } from "../conversation-attachment-state";
+import { CHAT_RECONNECTING_NOTICE_DELAY_MS, chatConnectionSendGate } from "../composer-send-gate";
 import { resolveWorkspaceSearchContext } from "@/lib/workspace-search-context";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../shared/codex-host";
 import {
@@ -25,7 +26,6 @@ import {
   useMemo,
   useId,
   useRef,
-  useState,
   type ReactNode,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -50,6 +50,7 @@ import {
 import type {
   ThreadBodyPresentation,
   ThreadBodySurfaceModel,
+  ComposerSendGate,
   ThreadBodyUiStateOverrides,
   ThreadFooterModel,
   ThreadStageActions,
@@ -97,10 +98,9 @@ import { InlineVisualizationSurfaceProvider } from "./inline-visualization-windo
 import { ThreadStageHeader } from "./local-conversation-stage-header";
 import { LocalConversationThreadBody } from "./local-conversation-thread-body";
 import { useRightPanelComposerPresentation } from "./right-panel-composer-presentation";
-import {
-  ManagedWorktreeRestoreBannerContainer,
-  useManagedWorktreeAvailability,
-} from "./managed-worktree-restore-banner";
+import { useElapsed } from "@/lib/use-elapsed";
+import { useManagedWorktreeSendGate } from "./managed-worktree-send-gate";
+import { useReconnectWhenShown } from "./use-reconnect-when-shown";
 import { NewThreadHomeHero } from "./new-thread-home-hero";
 import {
   ThreadFloatingSummaryPanel,
@@ -347,7 +347,6 @@ interface ConnectedThreadStageBodyProps {
   isWorktreeThread: boolean;
   contentShiftX?: MotionValue<number>;
   footer?: ReactNode;
-  leadingContent?: ReactNode;
   initialUiState?: ThreadBodyUiStateOverrides;
   transcriptVisible?: boolean;
   turnDiffHoverPreviewDisabled?: boolean;
@@ -367,7 +366,6 @@ function ConnectedThreadStageBody({
   isWorktreeThread,
   contentShiftX,
   footer,
-  leadingContent,
   initialUiState,
   transcriptVisible = true,
   turnDiffHoverPreviewDisabled = false,
@@ -568,7 +566,6 @@ function ConnectedThreadStageBody({
         onForkFromTurnIntoWorktree={onForkFromTurnIntoWorktree}
         contentShiftX={contentShiftX}
         footer={footer}
-        leadingContent={leadingContent}
         resolveHistoryImage={input.provider?.resolveHistoryImage}
         resolveRuntimeAttachment={input.provider?.resolveRuntimeAttachment}
         readToolOutput={input.provider?.readToolOutput}
@@ -586,7 +583,6 @@ type ConnectedFloatingThreadTranscriptProps = Omit<
   ConnectedThreadStageBodyProps,
   | "contentShiftX"
   | "footer"
-  | "leadingContent"
   | "initialUiState"
   | "transcriptVisible"
   | "turnDiffHoverPreviewDisabled"
@@ -647,7 +643,7 @@ export function ConnectedThreadStageFooter({
   rightPanelComposerOverlayPlacement,
   rightPanelComposerLeadingContent,
   floatingTranscript,
-  worktreeRuntimeAvailable = true,
+  worktreeSendGate = null,
 }: {
   activeThreadId: string | null;
   input: ConnectedThreadStageInput;
@@ -660,7 +656,8 @@ export function ConnectedThreadStageFooter({
   rightPanelComposerLeadingContent?: ReactNode;
   /** The chat an expanded floating composer shows, once it exists or is being started. */
   floatingTranscript?: ReactNode;
-  worktreeRuntimeAvailable?: boolean;
+  /** What the chat's worktree keeps it from sending; it comes before the chat's connection. */
+  worktreeSendGate?: ComposerSendGate | null;
 }) {
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
   const runtime = useConversationRuntime(activeThreadId, preferredHostId);
@@ -920,6 +917,34 @@ export function ConnectedThreadStageFooter({
       input.threadStartProgress,
     ],
   );
+  const reconnecting =
+    activeThreadId !== null &&
+    !input.isNewThreadTab &&
+    (attachmentState.status === "attaching" || (resumeState !== null && resumeState !== "resumed"));
+  const reconnectingLong = useElapsed(reconnecting, CHAT_RECONNECTING_NOTICE_DELAY_MS);
+  const failureShownInTranscript = body.emptyState.type === "threadAttachmentFailed";
+  const sendGate = useMemo<ComposerSendGate | null>(() => {
+    if (activeThreadId === null || input.isNewThreadTab) return null;
+    return (
+      worktreeSendGate ??
+      chatConnectionSendGate({
+        resumeState,
+        attachmentState,
+        reconnectingLong,
+        failureShownInTranscript,
+        retry: () => runtime.resume(activeThreadId),
+      })
+    );
+  }, [
+    activeThreadId,
+    attachmentState,
+    failureShownInTranscript,
+    input.isNewThreadTab,
+    reconnectingLong,
+    resumeState,
+    runtime,
+    worktreeSendGate,
+  ]);
   const model = useMemo<ThreadFooterModel>(
     () => ({
       connectionStatus: connection.status,
@@ -984,6 +1009,7 @@ export function ConnectedThreadStageFooter({
       newThreadProjectSelector: input.newThreadProjectSelector ?? null,
       newThreadStartInSelector: input.newThreadStartInSelector ?? null,
       newThreadStartBlockedReason: input.newThreadStartBlockedReason ?? null,
+      sendGate,
       composerShell,
       body,
       collaborationModes: input.collaborationModes,
@@ -1091,6 +1117,7 @@ export function ConnectedThreadStageFooter({
       selectedReasoningEffort,
       resumeState,
       attachmentState,
+      sendGate,
       statusActiveFlags,
       statusType,
       turns,
@@ -1115,7 +1142,6 @@ export function ConnectedThreadStageFooter({
         onMarkConversationRead={markConversationRead}
         normalizedPreview={bodyPresentation.preview}
         actions={actionsWithComposerCapabilityRefresh}
-        worktreeRuntimeAvailable={worktreeRuntimeAvailable}
         variant={variant}
         rightPanelComposerOverlay={{
           enabled: rightPanelComposerOverlayEnabled,
@@ -1218,6 +1244,14 @@ export function ConnectedThreadComposerDock({
   const lifecycleActive = routeActive || hasRuntimeWork;
 
   useRetainedConversation(activeThreadId, lifecycleActive, false, preferredHostId);
+  useReconnectWhenShown({
+    threadId: input.isNewThreadTab ? null : (input.activeThreadId ?? null),
+    shown: routeActive && visible,
+    canConnect: connection.status === "connected" && !archived && !firstSubmission,
+    connectionFailed:
+      attachmentState.status === "failed" && !isLocalConversationWriterConflict(attachmentState),
+    reconnect: (threadId) => runtime.resume(threadId),
+  });
 
   useEffect(() => {
     if (!input.activeThreadId || input.isNewThreadTab || archived) return;
@@ -1376,8 +1410,7 @@ function ConnectedThreadStageContent({
   const resumeState = useConversationResumeState(activeThreadId);
   const attachmentState = useConversationAttachmentState(activeThreadId);
   const streamRole = useConversationStreamRole(activeThreadId);
-  const [writerRetryPending, setWriterRetryPending] = useState(false);
-  const writerConflict = isLocalConversationWriterConflict(attachmentState) || writerRetryPending;
+  const writerConflict = isLocalConversationWriterConflict(attachmentState);
   const summaryFields = useConversationSummaryFields(activeThreadId);
   const requests = useConversationRequests(activeThreadId);
   const statusType = useConversationStatusType(activeThreadId);
@@ -1483,17 +1516,12 @@ function ConnectedThreadStageContent({
     ? (runtimeLocation?.managedWorktreePath ?? null)
     : (summaryFields.managedWorktreePath ?? input.activeThreadSummary?.managedWorktreePath ?? null);
   const activeThreadIsManagedWorktree = Boolean(activeManagedWorktreePath);
-  const managedWorktreeAvailability = useManagedWorktreeAvailability(
-    activeThreadId,
-    activeThreadIsManagedWorktree && routeActive,
-  );
-  // A native Thread resumes only into a checked worktree. Agent execution checks its own
-  // location before running, so only a known loss hides an Agent chat's Composer.
-  const worktreeRuntimeAvailable =
-    !activeThreadIsManagedWorktree ||
-    (runtimeSession
-      ? (managedWorktreeAvailability.data?.state ?? "available") === "available"
-      : managedWorktreeAvailability.data?.state === "available");
+  const worktreeSendGate = useManagedWorktreeSendGate(activeThreadId, {
+    managed: activeThreadIsManagedWorktree,
+    requiresCheck: !runtimeSession,
+  });
+  // Nothing resumes into a worktree that holds sending.
+  const worktreeRuntimeAvailable = worktreeSendGate === null;
   const activeThreadHasRuntimeWork = Boolean(
     (statusType ?? input.activeThreadSummary?.statusType) === "active" ||
     statusActiveFlags.length > 0 ||
@@ -1583,6 +1611,18 @@ function ConnectedThreadStageContent({
     preferredHostId,
   );
 
+  useReconnectWhenShown({
+    threadId: input.isNewThreadTab ? null : (input.activeThreadId ?? null),
+    shown: routeActive,
+    canConnect:
+      connection.status === "connected" &&
+      !hasFirstSubmission &&
+      !childControlsUnavailable &&
+      worktreeRuntimeAvailable,
+    connectionFailed: attachmentState.status === "failed" && !writerConflict,
+    reconnect: (threadId) => runtime.resume(threadId),
+  });
+
   useEffect(() => {
     if (!input.activeThreadId || input.isNewThreadTab) {
       return;
@@ -1669,7 +1709,7 @@ function ConnectedThreadStageContent({
               variant="newThreadHome"
               rightPanelComposerOverlayEnabled={false}
               rightPanelComposerOverlayTarget={null}
-              worktreeRuntimeAvailable={worktreeRuntimeAvailable}
+              worktreeSendGate={worktreeSendGate}
             />
           }
           floatingContent={
@@ -1730,37 +1770,9 @@ function ConnectedThreadStageContent({
             composerScopeIdentity={composerScopeIdentity}
             isWorktreeThread={activeThreadIsManagedWorktree}
             onForkFromTurnIntoWorktree={onForkFromTurnIntoWorktree}
-            leadingContent={
-              activeThreadId && activeThreadIsManagedWorktree ? (
-                <ManagedWorktreeRestoreBannerContainer threadId={activeThreadId} />
-              ) : null
-            }
             contentShiftX={summaryPanelContentShift}
             footer={
-              writerConflict ? (
-                <div role="alert" className="flex items-center justify-between gap-3 px-3 py-2">
-                  <div>
-                    <div>This is open in another app</div>
-                    <div className="text-token-description-foreground text-sm">
-                      Close it there to continue here.
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={writerRetryPending}
-                    onClick={() => {
-                      if (!activeThreadId) return;
-                      setWriterRetryPending(true);
-                      void runtime
-                        .resume(activeThreadId)
-                        .catch(() => {})
-                        .finally(() => setWriterRetryPending(false));
-                    }}
-                  >
-                    Retry
-                  </button>
-                </div>
-              ) : childControlsUnavailable ? null : (
+              childControlsUnavailable ? null : (
                 <ConnectedThreadStageFooter
                   activeThreadId={activeThreadId}
                   input={input}
@@ -1781,7 +1793,7 @@ function ConnectedThreadStageContent({
                       />
                     ) : null
                   }
-                  worktreeRuntimeAvailable={worktreeRuntimeAvailable}
+                  worktreeSendGate={worktreeSendGate}
                 />
               )
             }

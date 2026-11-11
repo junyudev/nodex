@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- A chat's composer no longer disappears. Opening a chat that finished in the background could show its messages with nothing below them while it reconnected, after its connection failed, or after its worktree was cleaned up. The composer now stays with your draft, and a line above it says what is holding the next message and offers the fix, such as Retry or Restore worktree. A chat that failed to connect also tries again on its own when you come back to it.
+
 ## [0.5.5] - 2026-11-11
 
 ### Added

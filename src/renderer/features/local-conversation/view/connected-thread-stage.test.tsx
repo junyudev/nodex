@@ -2223,18 +2223,19 @@ describe("ConnectedThreadStage archived resume behavior", () => {
     },
   );
 
-  test("keeps writer-conflicted history readable and retries from its dedicated footer", async () => {
+  test("keeps a writer-conflicted chat readable and retries from its composer", async () => {
     coordination.resumeError = new Error("Thread already has an active writer");
     const view = await renderStage(buildThreadSummary(false));
-    await view.findByText("This is open in another app");
+    await view.findByText("This chat is open in another app");
     await waitFor(() =>
       expect(
         coordination.getManager?.("local").readConversation("thread_active")?.turns.length,
       ).toBeGreaterThan(0),
     );
+    // The composer stays; the conflict is said beside it.
     expect(
       view.container.querySelectorAll('[data-local-conversation-composer-shell="true"]'),
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     coordination.resumeError = null;
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Retry" }));
@@ -2245,7 +2246,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
         coordination.getManager?.("local").readConversation("thread_active")?.resumeState,
       ).toBe("resumed"),
     );
-    expect(view.queryByText("This is open in another app")).toBeNull();
+    await waitFor(() => expect(view.queryByText("This chat is open in another app")).toBeNull());
   });
 
   test("settles a failed resume visibly without retrying in a render loop", async () => {

@@ -1119,34 +1119,45 @@ describe("LocalConversationFooter", () => {
     });
   });
 
-  test("resuming active threads keep overlay composer ownership disabled", async () => {
-    const target = document.createElement("div");
-    document.body.appendChild(target);
-
+  test("a reconnecting chat keeps its composer and holds sending", async () => {
     const { container } = render(
       <TooltipProvider>
         <EnsureLocalConversationThreadScrollController>
           <LocalConversationFooter
-            model={buildModel({ resumeState: "needs_resume" })}
+            model={buildModel({
+              resumeState: "needs_resume",
+              attachmentState: { status: "failed", message: "socket closed" },
+              sendGate: {
+                unsentReason: "Nodex couldn’t connect to this chat",
+                notice: {
+                  key: "chat:connection-failed",
+                  tone: "danger",
+                  title: "Couldn’t connect to this chat",
+                  actions: [{ label: "Retry", run: () => undefined }],
+                },
+              },
+            })}
             actions={buildActions()}
-            rightPanelComposerOverlay={{ enabled: true, target }}
           />
         </EnsureLocalConversationThreadScrollController>
       </TooltipProvider>,
     );
 
-    expect(
-      document.body.querySelector('[data-testid="right-panel-composer-overlay"]') === null,
-    ).toBe(true);
-    expect(
-      container.querySelector('[data-local-conversation-composer-shell="true"]') === null,
-    ).toBe(true);
-    expect(container.querySelector('[data-thread-find-composer="true"]') !== null).toBe(true);
-    expect(container.querySelector("#above-composer-portal") !== null).toBe(true);
-    expect(container.querySelector("#above-composer-queue-portal") !== null).toBe(true);
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-local-conversation-composer-shell="true"]'),
+      ).not.toBeNull(),
+    );
+    const notice = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('[data-composer-notice="danger"]');
+      if (!element) throw new Error("Expected the connection notice");
+      return element;
+    });
+    expect(within(notice).getByText("Couldn’t connect to this chat")).not.toBeNull();
+    expect(within(notice).getByRole("button", { name: "Retry" })).not.toBeNull();
   });
 
-  test("controlled Docks retain target chrome in the overlay while a Thread resumes", async () => {
+  test("a reconnecting chat keeps its composer in the overlay", async () => {
     const target = document.createElement("div");
     document.body.appendChild(target);
 
@@ -1174,15 +1185,19 @@ describe("LocalConversationFooter", () => {
     );
 
     const overlay = await waitFor(() => {
-      const element = document.body.querySelector('[data-testid="right-panel-composer-overlay"]');
-      if (!element) throw new Error("Expected controlled Dock overlay");
+      const element = document.body.querySelector<HTMLElement>(
+        '[data-testid="right-panel-composer-overlay"]',
+      );
+      if (!element) throw new Error("Expected the overlay composer");
       return element;
     });
+    await waitFor(() =>
+      expect(
+        overlay.querySelector('[data-local-conversation-composer-shell="true"]'),
+      ).not.toBeNull(),
+    );
     expect(
-      within(overlay as HTMLElement).getByRole("button", {
-        name: "Choose task",
-      }) !== null,
-    ).toBe(true);
-    expect(overlay.querySelector('[data-local-conversation-composer-shell="true"]')).toBe(null);
+      within(overlay).getByRole("button", { name: "Choose task", hidden: true }),
+    ).not.toBeNull();
   });
 });

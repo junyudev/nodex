@@ -1423,7 +1423,7 @@ describe("LocalConversationThreadBody", () => {
         presentation="floating"
         model={model}
         actions={actions}
-        leadingContent={<Probe name="floating" />}
+        footer={<Probe name="floating" />}
       />
     );
     const view = render(
@@ -1438,8 +1438,12 @@ describe("LocalConversationThreadBody", () => {
             model={model}
             actions={actions}
             transcriptVisible={false}
-            leadingContent={<Probe name="main" />}
-            footer={createPortal(floating, document.body)}
+            footer={
+              <>
+                <Probe name="main" />
+                {createPortal(floating, document.body)}
+              </>
+            }
           />
         </InlineVisualizationSurfaceProvider>
       </TooltipProvider>,
@@ -1562,7 +1566,7 @@ describe("LocalConversationThreadBody", () => {
               presentation={presentation}
               model={model}
               actions={actions}
-              leadingContent={<ScrollProbe />}
+              footer={<ScrollProbe />}
             />
           ) : null}
         </TooltipProvider>

@@ -162,16 +162,22 @@ of:
   applies; or
 - `unavailable`: Nodex could not complete a reliable inspection.
 
+The Chat keeps its transcript and its composer. Anything other than `available`
+holds sending and is said in the notice attached to the composer, where the next
+message would be written, as described in
+[Agent readiness and failures around the composer](agent-runtime-behavior.md#agent-readiness-and-failures-around-the-composer).
+
 A restorable Chat shows:
 
 - `Worktree cleaned up`
-- `This chat’s worktree was removed to save disk space`
+- `Removed to save disk space`
 - `Restore worktree`
 
-A gone Chat shows `Current working directory missing` and
+A gone Chat shows `Working directory missing` and
 `This chat’s working directory no longer exists` without a restore action. An
-inspection failure shows `Couldn’t check worktree status`,
-`Retry to verify this chat’s working directory`, and `Retry`.
+inspection failure shows `Couldn’t check worktree status` and `Retry`. A native
+Chat also holds sending, without a notice, while its first inspection is still
+running; an Agent chat does not wait for it.
 
 Restore recreates the worktree at its durable path with the snapshot ref. If an
 existing path already represents the same snapshot, restore succeeds

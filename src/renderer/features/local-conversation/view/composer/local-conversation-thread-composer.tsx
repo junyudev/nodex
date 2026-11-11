@@ -1540,6 +1540,9 @@ function HydratedThreadComposer({
         ? { kind: "session", sessionId: model.composerChatKey.sessionId }
         : null,
   );
+  // The chat's own condition, such as a cleaned-up worktree, comes before paused work.
+  const sendGate = model.sendGate ?? null;
+  const sendHeld = sendGate !== null || executionHold.held;
   const { floating: isFloatingComposer, visible: composerVisible } =
     useRightPanelComposerPresentation();
   const composerHandle = useScopeHandle(ComposerScope);
@@ -2413,6 +2416,10 @@ function HydratedThreadComposer({
     },
     pageReferences: readonly PageReference[],
   ): Promise<boolean> => {
+    if (sendGate) {
+      toastUnsentMessage(sendGate.unsentReason);
+      return false;
+    }
     if (executionHold.held) {
       toastUnsentMessage("Resume work to send");
       return false;
@@ -3103,7 +3110,7 @@ function HydratedThreadComposer({
       const nextPrompt = await insertDictationTranscript(transcript);
       if (nextPrompt === null) return;
       const actionState = resolveStageThreadsComposerActionState({
-        canSendPrompt: !executionHold.held && (model.conversation !== null || canStartNewThread),
+        canSendPrompt: !sendHeld && (model.conversation !== null || canStartNewThread),
         isThreadRunning: model.isThreadRunning,
         busyAction,
         hasDraftContent:
@@ -3674,7 +3681,7 @@ function HydratedThreadComposer({
     const hasMultilinePrompt = prompt.includes("\n");
     const isComposing = "nativeEvent" in event ? event.nativeEvent.isComposing : event.isComposing;
     const actionState = resolveStageThreadsComposerActionState({
-      canSendPrompt: !executionHold.held && (model.conversation !== null || canStartNewThread),
+      canSendPrompt: !sendHeld && (model.conversation !== null || canStartNewThread),
       isThreadRunning: model.isThreadRunning,
       busyAction,
       hasDraftContent: prompt.trim().length > 0 || hasAttachments || goalModeActive,
@@ -3735,6 +3742,7 @@ function HydratedThreadComposer({
   const modelCatalog = model.provider?.modelCatalog;
   const currentModelOff = modelCatalog?.currentModelOff;
   const composerNotice =
+    sendGate?.notice ??
     executionHold.notice ??
     model.provider?.notice ??
     (currentModelOff
@@ -3764,7 +3772,7 @@ function HydratedThreadComposer({
     typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
 
   const composerActionState = resolveStageThreadsComposerActionState({
-    canSendPrompt: !executionHold.held && (model.conversation !== null || canStartNewThread),
+    canSendPrompt: !sendHeld && (model.conversation !== null || canStartNewThread),
     isThreadRunning: model.isThreadRunning && approvals.pending.length === 0,
     busyAction,
     hasDraftContent: hasComposerContent,

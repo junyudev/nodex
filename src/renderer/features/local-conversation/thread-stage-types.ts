@@ -257,6 +257,18 @@ export interface ComposerNoticeAction {
   readonly run: () => void | Promise<void>;
 }
 
+/**
+ * Why an existing chat cannot take a message right now. The composer stays in place, keeps the
+ * draft and holds sending until the gate lifts, so a chat never loses its composer to a
+ * condition the person can wait out or fix.
+ */
+export interface ComposerSendGate {
+  /** The standing condition and its fix. Null while the chat is only reconnecting. */
+  readonly notice: ComposerNotice | null;
+  /** Said when a message is sent anyway. */
+  readonly unsentReason: string;
+}
+
 /** Work the Agent left running after the tool call that started it, such as a dev server. */
 export interface ConversationBackgroundTask {
   readonly id: string;
@@ -1380,6 +1392,8 @@ export interface ThreadFooterModel {
   newThreadProjectSelector?: ThreadStageRouteInput["newThreadProjectSelector"];
   newThreadStartInSelector?: ThreadStageRouteInput["newThreadStartInSelector"];
   newThreadStartBlockedReason?: string | null;
+  /** What holds sending in this chat, or null when it can take a message. */
+  readonly sendGate?: ComposerSendGate | null;
   composerShell: ThreadComposerShellModel;
   body: ThreadBodyModel;
   collaborationModes: CodexCollaborationModePreset[];

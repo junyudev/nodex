@@ -267,6 +267,10 @@ Active/selected items must be **unmistakable** without being garish:
   fixes as actions. It derives from state and leaves when the condition clears.
   Choose its tone from the condition (`warning` for a step to take, `danger` for
   something broken) and color only the icon; the text stays primary/secondary.
+- A blocked surface stays where it is. Never remove a primary control, such as a
+  composer, because of a condition the person can wait out or fix: keep it,
+  hold the action, and let the attached notice say why. A control that vanishes
+  takes its own explanation with it.
 - A one-off failure of something the person did is a danger toast through
   `toastFailure(title, cause)`: the title says what failed, the readable reason
   goes underneath. A stable `id` keeps a repeating failure to one toast.

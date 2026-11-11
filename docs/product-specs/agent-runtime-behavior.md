@@ -731,6 +731,23 @@ model and lists each turned-on Codex or Claude that cannot run yet with its next
 (`Sign in`, `Install` or `Unavailable`), and the account rail offers sign-in. A notice never
 blocks sending, since an Agent that missed its check can still answer.
 
+A started chat always shows its composer; only a request that needs an answer takes its
+place. What keeps the chat itself from taking a message holds sending instead: the draft
+stays editable, the send action is unavailable, and sending anyway says `Message not sent`
+with the reason. The same notice names the condition and its fix, before any other notice:
+
+- a cleaned-up worktree: `Worktree cleaned up` with `Restore worktree`;
+- a working directory that no longer exists: `Working directory missing`;
+- a worktree Nodex could not inspect: `Couldn’t check worktree status` with `Retry`;
+- a chat another app is writing to: `This chat is open in another app` with `Retry`;
+- a chat that could not connect: `Couldn’t connect to this chat` with the reason and `Retry`.
+
+Reconnecting holds sending without a notice, since it usually ends before a message is
+written; after three seconds the composer says `Reconnecting to this chat…`. A failed
+connection is tried again each time the chat is shown and when the app reconnects, never in
+a loop while the chat stays open. An empty transcript that already says the chat could not
+be restored carries the failure and its `Retry` itself.
+
 A one-off failure is a toast that says what failed with the reason underneath: a message
 that did not go out keeps its draft and says `Message not sent`, and attachment, draft,
 stop, resume, header, transcript, branch and Git actions name their own failure. A Run that

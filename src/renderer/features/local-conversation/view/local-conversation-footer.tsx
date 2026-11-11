@@ -9,7 +9,6 @@ import type { ConversationLatestTurnPreview } from "../use-conversation-body-pre
 import type { ThreadFooterModel, ThreadStageActions } from "../thread-stage-types";
 import { shouldShowThreadScrollToBottomControl } from "./local-conversation-turn-virtualization";
 import { LocalConversationComposerShell } from "./composer/local-conversation-composer-shell";
-import { ComposerContextRail, ComposerContextRailSlot } from "./composer-context-rail";
 import {
   LocalConversationAboveComposerPortalHost,
   LocalConversationAboveComposerQueuePortalHost,
@@ -36,7 +35,6 @@ interface LocalConversationFooterProps {
     /** The chat shown when the floating composer expands; without one it stays compact. */
     transcript?: ReactNode;
   };
-  worktreeRuntimeAvailable?: boolean;
   normalizedPreview?: ConversationLatestTurnPreview | null;
   /** Dismisses a floating composer's completed-response preview. */
   onMarkConversationRead?: () => void;
@@ -47,13 +45,11 @@ function LocalConversationFooterChrome({
   actions,
   catchUpControl,
   contextRailLeadingContent,
-  showComposer = true,
 }: {
   model: ThreadFooterModel;
   actions: ThreadStageActions;
   catchUpControl: ReactNode;
   contextRailLeadingContent?: ReactNode;
-  showComposer?: boolean;
 }) {
   return (
     <div className="flex flex-col" data-thread-find-composer="true">
@@ -61,20 +57,11 @@ function LocalConversationFooterChrome({
       <div className="relative flex flex-col" data-thread-footer-stack="true">
         <LocalConversationAboveComposerPortalHost conversationId={model.threadId} />
         <LocalConversationAboveComposerQueuePortalHost conversationId={model.threadId} />
-        {showComposer ? (
-          <LocalConversationComposerShell
-            model={model}
-            actions={actions}
-            contextRailLeadingContent={contextRailLeadingContent}
-          />
-        ) : contextRailLeadingContent ? (
-          <ComposerContextRailSlot visible>
-            <ComposerContextRail>
-              {contextRailLeadingContent}
-              <span aria-hidden="true" className="order-2 min-w-0 flex-1" />
-            </ComposerContextRail>
-          </ComposerContextRailSlot>
-        ) : null}
+        <LocalConversationComposerShell
+          model={model}
+          actions={actions}
+          contextRailLeadingContent={contextRailLeadingContent}
+        />
       </div>
     </div>
   );
@@ -87,38 +74,23 @@ function LocalConversationFooterComponent({
   // The owner whose floating composer shows its conversation; any other owner starts compact.
   // Held here so switching between floating and docked presentations keeps it.
   const [expandedOwnerKey, setExpandedOwnerKey] = useState<string | null>(null);
-  const { model } = props;
-  const isResumingActiveThread =
-    !model.isNewThreadTab &&
-    (model.attachmentState?.status === "attaching" ||
-      model.attachmentState?.status === "failed" ||
-      (model.resumeState !== null && model.resumeState !== "resumed"));
-  const controlledOverlay = rightPanelComposerOverlay?.placement?.control !== undefined;
-  if (
-    rightPanelComposerOverlay?.enabled === true &&
-    (!isResumingActiveThread || controlledOverlay)
-  ) {
+  if (rightPanelComposerOverlay?.enabled === true) {
     return (
       <FloatingLocalConversationFooter
         {...props}
         overlay={rightPanelComposerOverlay}
-        isResumingActiveThread={isResumingActiveThread}
         expandedOwnerKey={expandedOwnerKey}
         onExpandedOwnerKeyChange={setExpandedOwnerKey}
       />
     );
   }
-  return (
-    <DockedLocalConversationFooter {...props} isResumingActiveThread={isResumingActiveThread} />
-  );
+  return <DockedLocalConversationFooter {...props} />;
 }
 
 type LocalConversationFooterBranchProps = Omit<
   LocalConversationFooterProps,
   "rightPanelComposerOverlay"
-> & {
-  isResumingActiveThread: boolean;
-};
+>;
 
 /**
  * The composer floating over full-width content. It expands into its own view of the thread, so
@@ -128,11 +100,9 @@ type LocalConversationFooterBranchProps = Omit<
 function FloatingLocalConversationFooter({
   model,
   actions,
-  worktreeRuntimeAvailable = true,
   normalizedPreview = null,
   onMarkConversationRead,
   overlay,
-  isResumingActiveThread,
   expandedOwnerKey,
   onExpandedOwnerKeyChange,
 }: LocalConversationFooterBranchProps & {
@@ -191,14 +161,11 @@ function FloatingLocalConversationFooter({
     previewOutputDirectory,
     model.hostId,
   ]);
-  const showComposer = !isResumingActiveThread && worktreeRuntimeAvailable;
-
   return (
     <FloatingComposer
       target={overlay.target}
       {...overlay.placement}
       attention={model.isThreadRunning ? "activity" : "none"}
-      headerPinned={!showComposer}
       transcript={hasTranscript ? overlay.transcript : null}
       expanded={expanded}
       onExpandedChange={(next) => onExpandedOwnerKeyChange(next ? transcriptOwnerKey : null)}
@@ -218,19 +185,19 @@ function FloatingLocalConversationFooter({
         actions={actions}
         catchUpControl={null}
         contextRailLeadingContent={overlay.leadingContent}
-        showComposer={showComposer}
       />
     </FloatingComposer>
   );
 }
 
-/** The composer below the Conversation; each sent prompt lifts its turn to the top. */
+/**
+ * The composer below the Conversation; each sent prompt lifts its turn to the top. A started
+ * chat always shows it: what holds sending is the model's send gate, said beside the composer.
+ */
 function DockedLocalConversationFooter({
   model,
   actions,
   variant = "thread",
-  worktreeRuntimeAvailable = true,
-  isResumingActiveThread,
 }: LocalConversationFooterBranchProps) {
   const {
     addScrollListener,
@@ -334,25 +301,6 @@ function DockedLocalConversationFooter({
       </AnimatePresence>
     </div>
   );
-
-  if (isResumingActiveThread || !worktreeRuntimeAvailable) {
-    return (
-      <div
-        className={
-          variant === "newThreadHome"
-            ? "min-w-0 w-full"
-            : "mx-auto flex w-full max-w-(--thread-content-max-width) flex-col px-toolbar"
-        }
-      >
-        <LocalConversationFooterChrome
-          model={model}
-          actions={actionsWithSubmitPlacement}
-          catchUpControl={catchUpControl}
-          showComposer={false}
-        />
-      </div>
-    );
-  }
 
   return (
     <div
