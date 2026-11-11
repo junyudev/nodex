@@ -75,7 +75,7 @@ pub fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
         return print_machine_help(&arguments);
     }
     let cli = match agent_interface::command()
-        .try_get_matches_from(arguments)
+        .try_get_matches_from(&arguments)
         .and_then(|matches| Cli::from_arg_matches(&matches))
     {
         Ok(cli) => cli,
@@ -91,10 +91,12 @@ pub fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
                 stdin_is_tty,
                 stdout_is_tty,
             );
-            render_error(
-                &CliError::new(CliErrorCode::InvalidInput, error.to_string()),
-                format.json_diagnostics,
-            );
+            let help_error = (error.kind() == clap::error::ErrorKind::InvalidSubcommand)
+                .then(|| agent_interface::machine_help(&arguments).err())
+                .flatten();
+            let error = help_error
+                .unwrap_or_else(|| CliError::new(CliErrorCode::InvalidInput, error.to_string()));
+            render_error(&error, format.json_diagnostics);
             return EXIT_REJECTED;
         }
     };

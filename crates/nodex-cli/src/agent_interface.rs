@@ -1776,6 +1776,8 @@ pub struct MachineHelpSummary {
 pub enum MachineHelpDocument {
     Index(MachineHelpIndex),
     Command(Box<MachineHelp>),
+    PayloadNames(Vec<String>),
+    Payload(Value),
 }
 
 pub fn capabilities() -> Result<Value, CliError> {
@@ -1807,9 +1809,23 @@ pub fn machine_help(arguments: &[OsString]) -> Result<MachineHelpDocument, CliEr
         .filter(|metadata| starts_with_path(&tokens, metadata.path))
         .max_by_key(|metadata| metadata.path.len())
     {
-        return Ok(MachineHelpDocument::Command(Box::new(machine_help_for(
-            metadata, selection,
-        ))));
+        use crate::cli::HelpSchema;
+        return Ok(match selection {
+            Some(HelpSchema::Names) => MachineHelpDocument::PayloadNames(
+                schema::payloads(metadata.path).into_keys().collect(),
+            ),
+            Some(HelpSchema::NamedInput(name)) => {
+                let mut payloads = schema::payloads(metadata.path);
+                let payload = payloads.remove(name.as_str()).ok_or_else(|| {
+                    CliError::new(CliErrorCode::InvalidInput, format!(
+                        "Unknown payload schema {name:?}. List available names with `{} --help-schema names`.",
+                        command_name(metadata.path)
+                    ))
+                })?;
+                MachineHelpDocument::Payload(payload)
+            }
+            _ => MachineHelpDocument::Command(Box::new(machine_help_for(metadata, selection))),
+        });
     }
 
     let prefix = tokens.iter().map(String::as_str).collect::<Vec<_>>();
@@ -1820,13 +1836,56 @@ pub fn machine_help(arguments: &[OsString]) -> Result<MachineHelpDocument, CliEr
         return Ok(MachineHelpDocument::Index(machine_help_index(&prefix)));
     }
 
-    Err(CliError::new(
-        CliErrorCode::InvalidInput,
+    Err(unknown_help_command(&prefix))
+}
+
+fn unknown_help_command(path: &[&str]) -> CliError {
+    use clap::CommandFactory;
+    let root = crate::cli::Cli::command();
+    let mut parent = &root;
+    let mut depth = 0;
+    for part in path {
+        let Some(next) = parent.find_subcommand(part) else {
+            break;
+        };
+        parent = next;
+        depth += 1;
+    }
+    let parent_path = command_name(&path[..depth]);
+    let suggestion = if path == ["page", "archive"] {
+        "Use `nodex page delete` to move a Page to Trash. Use the Canceled Status to close work while keeping its Page active.".to_owned()
+    } else if depth < path.len()
+        && let Some(candidate) = parent
+            .get_subcommands()
+            .filter(|child| !child.is_hide_set())
+            .min_by_key(|child| edit_distance(path[depth], child.get_name()))
+    {
         format!(
-            "no machine-readable help exists for command path '{}'",
-            tokens.join(" ")
-        ),
-    ))
+            "Did you mean `{parent_path} {} --help`?",
+            candidate.get_name()
+        )
+    } else {
+        format!("See `{parent_path} --help`.")
+    };
+    CliError::new(
+        CliErrorCode::InvalidInput,
+        format!("Unknown command `{}`. {suggestion}", command_name(path)),
+    )
+}
+
+fn edit_distance(left: &str, right: &str) -> usize {
+    let mut distances: Vec<_> = (0..=right.chars().count()).collect();
+    for (row, a) in left.chars().enumerate() {
+        let mut diagonal = distances[0];
+        distances[0] = row + 1;
+        for (column, b) in right.chars().enumerate() {
+            let above = distances[column + 1];
+            distances[column + 1] =
+                (diagonal + usize::from(a != b)).min(1 + above.min(distances[column]));
+            diagonal = above;
+        }
+    }
+    distances[distances.len() - 1]
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
@@ -2057,7 +2116,7 @@ fn machine_help_for(
         purpose: command_purpose(metadata.path),
         default_scope: default_scope(metadata.path),
         schema_help: format!(
-            "{} --help-schema input|result|error|all",
+            "{} --help-schema input|result|error|all|names|input:NAME",
             command_name(metadata.path)
         ),
         result_schema: if matches!(selection, Some(HelpSchema::Result | HelpSchema::All)) {
@@ -2221,7 +2280,9 @@ fn command_tokens(arguments: &[OsString]) -> Vec<String> {
         }
         if matches!(
             argument,
-            "--expect-profile"
+            "--home"
+                | "--remote-connection"
+                | "--expect-profile"
                 | "--project"
                 | "--database"
                 | "--page"
@@ -2265,8 +2326,12 @@ fn schema_selection(arguments: &[OsString]) -> Result<Option<crate::cli::HelpSch
             "result" => HelpSchema::Result,
             "error" => HelpSchema::Error,
             "all" => HelpSchema::All,
-            _ => return Err(CliError::new(CliErrorCode::InvalidInput, "--help-schema expects input, result, error, or all")
-                .with_details(serde_json::json!({"argument":"--help-schema", "allowed_values":["input","result","error","all"]}))),
+            "names" => HelpSchema::Names,
+            name if name.starts_with("input:") && name.len() > 6 => {
+                HelpSchema::NamedInput(name[6..].to_owned())
+            }
+            _ => return Err(CliError::new(CliErrorCode::InvalidInput, "--help-schema expects input, result, error, all, names, or input:NAME")
+                .with_details(serde_json::json!({"argument":"--help-schema", "allowed_values":["input","result","error","all","names","input:NAME"]}))),
         });
     }
     Ok(selection)

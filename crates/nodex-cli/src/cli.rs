@@ -71,9 +71,14 @@ pub struct Cli {
     /// Disable terminal colors.
     #[arg(long, global = true, help_heading = "Global options")]
     pub no_color: bool,
-    /// Print an offline input, result, error, or complete schema guide as JSON.
-    #[arg(long, global = true, help_heading = "Global options", value_enum)]
-    pub help_schema: Option<HelpSchema>,
+    /// Print an offline schema guide, payload names, or one named input schema.
+    #[arg(
+        long,
+        global = true,
+        help_heading = "Global options",
+        value_name = "input|result|error|all|names|input:NAME"
+    )]
+    pub help_schema: Option<String>,
     #[command(subcommand)]
     pub command: Command,
 }
@@ -87,12 +92,14 @@ impl Cli {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HelpSchema {
     Input,
     Result,
     Error,
     All,
+    Names,
+    NamedInput(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]

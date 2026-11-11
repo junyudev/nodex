@@ -135,8 +135,9 @@ Command help explains scope, input/output, concurrency conditions and retry
 semantics where relevant. Complex writes include complete stdin examples;
 replace example resource IDs and revisions with actual observations. Ordinary
 help and machine help share command definitions, behavior and examples.
-`--help-schema input|result|error|all` retrieves only the requested schemas as
-JSON. `nodex docs markdown` reads the same format reference bundled with
+`--help-schema input|result|error|all` retrieves the requested schema guide as
+JSON. Use `--help-schema names` for the list of payload names and
+`--help-schema input:NAME` for one standalone JSON Schema. `nodex docs markdown` reads the same format reference bundled with
 the official Skill. Read only the help needed for the current task.
 
 Short Page content and patches accept stdin. Block JSON file flags accept `-`

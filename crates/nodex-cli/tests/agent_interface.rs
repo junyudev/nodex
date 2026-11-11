@@ -203,3 +203,41 @@ fn query_help_is_progressive_and_schema_selection_is_offline() {
     assert_eq!(error["error"]["details"]["argument"], "--help-schema");
     assert!(!nonexistent.exists());
 }
+
+#[test]
+fn page_help_points_to_trash_and_lists_named_payload_schemas() {
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let home = directory.path().join("no-core");
+    let invoke = |args: &[&str]| {
+        cli_command()
+            .arg("--home")
+            .arg(&home)
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    for format in ["--json", "--output-format=text"] {
+        let unknown = invoke(&[format, "page", "archive", "--help"]);
+        assert_eq!(unknown.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&unknown.stderr).contains("nodex page delete"));
+    }
+    let list = invoke(&["page", "properties", "apply", "--help-schema", "names"]);
+    assert!(list.status.success(), "{:?}", list.stderr);
+    let names: Vec<String> = serde_json::from_slice(&list.stdout).unwrap();
+    assert!(names.iter().any(|name| name == "DatabasePropertyValueEdit"));
+    let one = invoke(&[
+        "page",
+        "properties",
+        "apply",
+        "--help-schema",
+        "input:DatabasePropertyValueEdit",
+    ]);
+    assert!(one.status.success(), "{:?}", one.stderr);
+    let schema: Value = serde_json::from_slice(&one.stdout).unwrap();
+    assert!(schema["$schema"].is_string());
+    assert!(
+        one.stdout
+            .windows(b"replace_one_relation".len())
+            .any(|part| part == b"replace_one_relation")
+    );
+}

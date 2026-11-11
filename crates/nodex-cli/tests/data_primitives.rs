@@ -2511,3 +2511,39 @@ fn explicit_body_replacement_accepts_large_unrelated_markdown() {
             .contains("Keep this paragraph next to the heading.")
     );
 }
+
+#[test]
+fn property_apply_rejects_relation_payload_with_the_field_and_recovery_command() {
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let payload = serde_json::json!({"edits": [{
+        "address": {"page_id": PAGE_A, "data_source_id": "source", "property_id": "task_parent"},
+        "edit": {"kind": "replace", "expected_value_revision": 1, "value": {
+            "kind": "relation", "page_ids": [PAGE_B]
+        }}
+    }]});
+    let error = input(directory.path(), &["page", "properties", "apply"], &payload);
+    let message = error["error"]["message"].as_str().unwrap();
+    assert!(message.contains("edits[0].edit.value"), "{message}");
+    assert!(message.contains("replace_one_relation"), "{message}");
+    assert!(
+        message.contains("nodex page properties apply --help-schema input"),
+        "{message}"
+    );
+}
+
+#[test]
+fn property_apply_reports_the_inner_kind_and_its_own_variants() {
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let payload = serde_json::json!({"edits": [{
+        "address": {"page_id": PAGE_A, "data_source_id": "source", "property_id": "status"},
+        "edit": {"kind": "replace", "expected_value_revision": 1, "value": {
+            "kind": "typo"
+        }}
+    }]});
+    let response = input(directory.path(), &["page", "properties", "apply"], &payload);
+    let error = &response["error"];
+    assert_eq!(error["path"], "edits[0].edit.value.kind", "{error}");
+    let message = error["message"].as_str().unwrap();
+    assert!(message.contains("select"), "{message}");
+    assert!(!message.contains("patch_set"), "{message}");
+}
