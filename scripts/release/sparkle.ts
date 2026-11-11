@@ -404,7 +404,7 @@ export async function finalizeSparkleArchitectureUpdate(
         "--versions",
         identity.buildVersion,
         "--maximum-deltas",
-        "5",
+        String(Math.max(...Object.values(SPARKLE_DELTA_HISTORY_LIMIT))),
         "-o",
         "appcast.xml",
         workingRoot,
@@ -562,6 +562,15 @@ const assertDownloadedGitHubAsset = (release: GitHubReleaseSummary, filePath: st
   }
 };
 
+/**
+ * Prior builds that receive a delta. Each one costs minutes of serial generation and
+ * round-trip verification on the finalizer; older installs take the signed full archive.
+ */
+export const SPARKLE_DELTA_HISTORY_LIMIT: Readonly<Record<ReleaseChannel, number>> = {
+  stable: 3,
+  nightly: 2,
+};
+
 export function fetchSparkleHistory(options: {
   readonly architecture: MacArchitecture;
   readonly channel?: ReleaseChannel;
@@ -614,7 +623,7 @@ export function fetchSparkleHistory(options: {
 
   const accepted: string[] = [];
   for (const { release, version } of releases) {
-    if (accepted.length >= (options.limit ?? 5)) break;
+    if (accepted.length >= (options.limit ?? SPARKLE_DELTA_HISTORY_LIMIT[channel])) break;
     if (!release.assets.some(({ name }) => name === "release-bundle.json")) continue;
     const releaseRoot = path.join(output, version);
     mkdirSync(releaseRoot);

@@ -288,7 +288,11 @@ Update targets use the package-provenance module’s current format. History sel
 verifies the immutable Release Bundle and update-manifest digests before checking
 package-format compatibility. The finalizer skips older package formats before
 downloading the full archives and rejects malformed or invalid candidates. An empty
-compatible history publishes a full update without deltas.
+compatible history publishes a full update without deltas. Stable generates
+deltas from the three newest compatible Stable builds and Nightly from the two
+newest Nightly builds; older installs take the signed full archive. Delta
+generation and its round-trip check are the longest part of feed finalization,
+so raise these limits only with a measured finalizer time.
 Each feed contains one release item for its channel and architecture. Prior
 archives are inputs to delta generation, and their verified Release Identities
 map source build numbers to display versions and archive files for round-trip
