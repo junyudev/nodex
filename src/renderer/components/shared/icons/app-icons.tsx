@@ -3162,6 +3162,46 @@ export function PriorityIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
   );
 }
 
+const WORK_RELATION_ICON_PROPS = {
+  width: 16,
+  height: 16,
+  viewBox: "0 0 16 16",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.5,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  "aria-hidden": true,
+} as const;
+
+/**
+ * This Page, solid, indented beneath the Page it is part of. Both share one right edge and one
+ * height, so the glyph sits as squarely as its neighbors.
+ */
+export function PartOfIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...props} {...WORK_RELATION_ICON_PROPS} className={cn("shrink-0", className)}>
+      <rect x="1.75" y="1.75" width="12.5" height="4.5" rx="2.25" />
+      <path d="M4.25 6.25v3.5a2.25 2.25 0 0 0 2.25 2.25h.75" />
+      <rect x="7" y="9" width="8" height="6" rx="3" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/** A soft hourglass with its sand settled: the Pages this Page waits for. */
+export function WaitsForIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...props} {...WORK_RELATION_ICON_PROPS} className={cn("shrink-0", className)}>
+      <path d="M5.75 1.75h4.5a2 2 0 0 1 2 2c0 2.6-2.75 3-2.75 4.25s2.75 1.65 2.75 4.25a2 2 0 0 1-2 2h-4.5a2 2 0 0 1-2-2c0-2.6 2.75-3 2.75-4.25S3.75 6.35 3.75 3.75a2 2 0 0 1 2-2Z" />
+      <path
+        d="M5.75 14.25a2 2 0 0 1-2-2c0-1.9 1.5-2.6 2.4-3.25h3.7c.9.65 2.4 1.35 2.4 3.25a2 2 0 0 1-2 2Z"
+        fill="currentColor"
+        stroke="none"
+      />
+    </svg>
+  );
+}
+
 export function EstimateIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg

@@ -5,14 +5,17 @@ import {
   EstimateIcon,
   MultiSelectIcon,
   PageIcon,
+  PartOfIcon,
   PriorityIcon,
   StatusIcon,
   TagsIcon,
+  WaitsForIcon,
 } from "@/components/shared/icons";
 import { Hash, TextCursorInput } from "@/components/shared/icons/generic-icons";
 import type { DatabasePropertyValueType } from "../../../shared/database-kernel";
 import type { DataSourcePropertyRecordV2 } from "../../../shared/database-module-v2";
 import { resolveDataSourcePropertyPresentationRole } from "@/lib/data-source-property-presentation-role";
+import { matchBuiltInDataSourceProperty } from "../../../shared/data-source-built-ins";
 
 export const DATA_SOURCE_PROPERTY_TYPE_LABELS = {
   assignment: "Person or Agent",
@@ -67,6 +70,14 @@ export const dataSourcePropertyIcon = (
     case "assignee":
       return AssigneeIcon;
     case "typed":
-      return dataSourcePropertyTypeIcon(role.valueType);
+      // The two work Relations say what they mean, so a Page never lists three bare Page icons.
+      switch (matchBuiltInDataSourceProperty(property)) {
+        case "task_parent":
+          return PartOfIcon;
+        case "blocked_by":
+          return WaitsForIcon;
+        default:
+          return dataSourcePropertyTypeIcon(role.valueType);
+      }
   }
 };
