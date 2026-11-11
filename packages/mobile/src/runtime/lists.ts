@@ -6,9 +6,12 @@ import {
   type AgentCatalog,
   type ChatActivity,
   type ChatSummary,
+  type ChatList,
   type InboxEntry,
   type InboxScope,
+  type InboxWindow,
   type MobileEventData,
+  type MobileParams,
   type Project,
 } from "@nodex/mobile-protocol";
 import * as Context from "effect/Context";
@@ -31,7 +34,7 @@ export type InboxRow =
   | { type: "message"; message: InboxEntry }
   | { type: "pending"; capture: PendingCapture };
 
-type InboxFilter = "inbox" | "processed";
+export type InboxFilter = MobileParams<"inbox.window">["filter"];
 export type ChatListInput = { query?: string; projectId?: string | null; archived?: boolean };
 type Page<Item> = { items: Item[]; nextCursor: string | null };
 type ListState<Item> = { items: Item[]; loading: boolean; hasMore: boolean; error: string | null };
@@ -95,22 +98,28 @@ const makeReader = Effect.fnUntraced(function* (
   };
 });
 
-const makePagedList = Effect.fnUntraced(function* <Item>(options: {
+const makePagedList = Effect.fnUntraced(function* <
+  Item,
+  Window extends Page<Item>,
+  Summary,
+>(options: {
   connection: MobileConnection;
   hostId: string | null;
-  cached: Page<Item> | null;
-  read(after: string | null): Effect.Effect<Page<Item>, RpcFailure>;
-  save(page: Page<Item>): void;
+  cached: Window | null;
+  read(after: string | null): Effect.Effect<Window, RpcFailure>;
+  save(page: Window): void;
+  summarize(page: Window | null): Summary;
   id(item: Item): string;
   project(items: Item[]): Item[];
   observe(items: Item[]): Effect.Effect<void>;
 }) {
-  const { connection, hostId, cached, read, save, id, project, observe } = options;
+  const { connection, hostId, cached, read, save, summarize, id, project, observe } = options;
   let pages = cached ? [cached] : [];
   let source = cached?.items ?? [];
   let needsRefresh = true;
   let wantsMore = false;
-  const store = createProjection<ListState<Item>>({
+  const store = createProjection<ListState<Item> & { summary: Summary }>({
+    summary: summarize(cached),
     items: project(source),
     loading: !!hostId && !cached,
     hasMore: !!cached?.nextCursor,
@@ -118,7 +127,7 @@ const makePagedList = Effect.fnUntraced(function* <Item>(options: {
   });
   const reproject = Effect.sync(() => {
     const next = shareItems(store.getState().items, project(source), id);
-    store.setState({ items: next });
+    store.setState({ items: next, summary: summarize(pages[0] ?? null) });
   });
   const publish = Effect.gen(function* () {
     const items = new Map<string, Item>();
@@ -192,9 +201,11 @@ export const makeLists = Effect.gen(function* () {
   const platform = yield* Platform;
   const connection = yield* Connection;
   const outbox = yield* Outbox;
-  type Paged<Item> = Effect.Success<ReturnType<typeof makePagedList<Item>>>;
-  const inboxLists = new Map<string, Paged<InboxEntry>>();
-  const chatLists = new Map<string, Paged<ChatSummary>>();
+  type Paged<Item, Window extends Page<Item>, Summary> = Effect.Success<
+    ReturnType<typeof makePagedList<Item, Window, Summary>>
+  >;
+  const inboxLists = new Map<string, Paged<InboxEntry, InboxWindow, number>>();
+  const chatLists = new Map<string, Paged<ChatSummary, ChatList, null>>();
   const activity = new Map<string, ChatActivity>();
   const cacheKeys = new Map<string, Set<string>>();
   const projects = createProjection<{
@@ -369,13 +380,14 @@ export const makeLists = Effect.gen(function* () {
       const key = JSON.stringify(["inbox", hostId, inboxScopeKey(scope), filter]);
       const existing = inboxLists.get(key);
       if (existing) return existing;
-      const list = yield* makePagedList({
+      const list = yield* makePagedList<InboxEntry, InboxWindow, number>({
         connection,
         hostId,
         ...cache(hostId, key, InboxWindowSchema),
+        summarize: (page) => page?.laterCount ?? 0,
         read: (after) => connection.rpc.request("inbox.window", { scope, filter, after }),
         id: inboxEntryKey,
-        project: (items) => [...items].reverse(),
+        project: (items) => (filter === "later" ? items : [...items].reverse()),
         observe: (items) =>
           hostId
             ? outbox.observeWindow(
@@ -401,10 +413,11 @@ export const makeLists = Effect.gen(function* () {
       const existing = chatLists.get(key);
       if (existing) return existing;
       const includedActivity = new Map<string, ChatActivity>();
-      const list = yield* makePagedList({
+      const list = yield* makePagedList<ChatSummary, ChatList, null>({
         connection,
         hostId,
         ...cache(hostId, key, ChatListSchema),
+        summarize: () => null,
         read: Effect.fnUntraced(function* (after: string | null) {
           const before = new Map(activity);
           const page = yield* connection.rpc.request("chats.list", {

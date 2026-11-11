@@ -18,7 +18,7 @@ import {
   proposalSkills,
   suggestionView,
 } from "./inbox-presentation";
-import { useDecide } from "./use-decide";
+import { handlePassedReturnTime, useDecide } from "./use-decide";
 
 /**
  * The message as its Space has it now, showing the copy already in hand until that arrives, and
@@ -58,31 +58,69 @@ const QuietLine = ({ text }: { readonly text: string }) => (
 
 const OUTDATED = "This changed after it was suggested. Review it on your desktop.";
 
+/** Keep acceptance bound to the reviewed proposal. A new return time is a separate decision. */
+export function useAcceptProposal() {
+  const decide = useDecide();
+  const navigation = useRootNavigation();
+  return (
+    pageId: string,
+    proposal: InboxProposal,
+    droppedSkillNames?: readonly string[],
+    onExpired?: () => void,
+  ) => {
+    const { decision, done } = proposalAcceptance(proposal, droppedSkillNames);
+    return decide(
+      pageId,
+      decision,
+      done,
+      (cause) => {
+        if (proposal.action.type !== "later" || !navigation.isFocused()) return false;
+        return handlePassedReturnTime(cause, () => {
+          if (onExpired) onExpired();
+          else
+            navigation.navigate("InboxLaterPicker", {
+              pageId,
+              expired: true,
+              proposal: { proposalId: proposal.proposalId, revision: proposal.revision },
+            });
+        });
+      },
+      proposal.action.type === "later" ? { type: "clear_later" } : undefined,
+    );
+  };
+}
+
 const AcceptButton = ({
   message,
   proposal,
   compact,
   droppedSkillNames,
   onAccepted,
+  onExpired,
 }: {
   readonly message: InboxEntry;
   readonly proposal: InboxProposal;
   readonly compact?: boolean;
   readonly droppedSkillNames?: readonly string[];
   readonly onAccepted?: () => void;
+  readonly onExpired?: () => void;
 }) => {
-  const decide = useDecide();
+  const accept = useAcceptProposal();
+  const [accepting, setAccepting] = useState(false);
   const action = proposalAction(proposal.action);
-  const { decision, done } = proposalAcceptance(proposal, droppedSkillNames);
   return (
     <Button
       compact={compact}
       icon={action.icon}
       label={action.label}
       tone="primary"
-      onPress={() => {
-        void decide(message.id, decision, done);
-        onAccepted?.();
+      disabled={accepting}
+      onPress={async () => {
+        if (accepting) return;
+        setAccepting(true);
+        const accepted = await accept(message.id, proposal, droppedSkillNames, onExpired);
+        setAccepting(false);
+        if (accepted) onAccepted?.();
       }}
     />
   );
@@ -369,7 +407,19 @@ export const SuggestionScreen = ({ route, navigation }: ScreenProps<"Suggestion"
             message={message}
             proposal={view.proposal}
             droppedSkillNames={skills.dropped}
-            onAccepted={() => navigation.goBack()}
+            onAccepted={() => {
+              if (navigation.isFocused()) navigation.goBack();
+            }}
+            onExpired={() =>
+              navigation.replace("InboxLaterPicker", {
+                pageId: message.id,
+                expired: true,
+                proposal: {
+                  proposalId: view.proposal.proposalId,
+                  revision: view.proposal.revision,
+                },
+              })
+            }
           />
         </View>
       )}

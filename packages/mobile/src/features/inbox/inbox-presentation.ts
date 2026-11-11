@@ -6,14 +6,16 @@ import type {
 } from "@nodex/mobile-protocol";
 
 import type { IconName } from "../../ui/icons";
+import { formatLaterTime, formatSetAsideDate } from "./inbox-later-time";
 
 /** What puts a decision back when it clears a message without a Host undo of its own. */
 export const decisionReversal = (decision: InboxDecision): InboxDecision | null =>
-  decision.type === "done" || decision.type === "keep" ? { type: "reopen" } : null;
+  decision.type === "later" ? { type: "clear_later" } : null;
 
 /** The one decision a suggestion asks for: its verb and glyph, wherever it is offered. */
 export const proposalAction = (
   action: InboxProposalAction,
+  now = new Date(),
 ): { readonly label: string; readonly icon: IconName } => {
   switch (action.type) {
     case "new_chat":
@@ -26,8 +28,12 @@ export const proposalAction = (
       return { label: "Run", icon: "tool" };
     case "plan":
       return { label: "Start plan", icon: "tool" };
+    case "later":
+      return { label: `Later · ${formatLaterTime(action.remindAt, now)}`, icon: "clock" };
     case "keep":
-      return { label: "Keep", icon: "check" };
+      return { label: "Add to Todo", icon: "check" };
+    case "save_to_notes":
+      return { label: "Save to Notes", icon: "folder" };
   }
 };
 
@@ -44,13 +50,15 @@ export const proposalDestination = (action: InboxProposalAction): string | null 
       return action.name;
     case "plan":
       return null;
+    case "later":
+    case "save_to_notes":
     case "keep":
       return null;
   }
 };
 
 /** What accepting a suggestion will do, in one line. */
-export const proposalHeadline = (action: InboxProposalAction): string => {
+export const proposalHeadline = (action: InboxProposalAction, now = new Date()): string => {
   switch (action.type) {
     case "new_chat":
       return action.projectName ? `Start a chat in ${action.projectName}` : "Start a chat";
@@ -62,8 +70,12 @@ export const proposalHeadline = (action: InboxProposalAction): string => {
       return action.name ? `Run ${action.name}` : "Run this Automation";
     case "plan":
       return "Start a plan";
+    case "later":
+      return proposalAction(action, now).label;
     case "keep":
-      return "Keep as a Page";
+      return "Add to Todo";
+    case "save_to_notes":
+      return "Save to Notes";
   }
 };
 
@@ -98,7 +110,14 @@ export const proposalAcceptance = (
         }
       : {}),
   },
-  done: proposal.action.type === "keep" ? "Kept" : "Done",
+  done:
+    proposal.action.type === "later"
+      ? "Set aside"
+      : proposal.action.type === "keep"
+        ? "Added to Todo"
+        : proposal.action.type === "save_to_notes"
+          ? "Saved to Notes"
+          : "Done",
 });
 
 export type SuggestionView =
@@ -148,18 +167,27 @@ export const suggestionView = (message: InboxEntry): SuggestionView => {
   return { kind: "none" };
 };
 
-const OUTCOME_LABELS: Readonly<
-  Record<NonNullable<import("@nodex/mobile-protocol").IntakeEntry["outcome"]>, string>
-> = {
-  kept: "Kept",
-  done: "Done",
-  moved: "Moved",
-  chat: "Sent to chat",
-};
+/** The Page Status shown beside an intake message in Handled. */
+export function outcomeLabel(message: InboxEntry): string | null {
+  if (message.rowKind !== "intake" || message.waiting) return null;
+  const action = message.proposal?.action.type;
+  if (message.proposal?.state === "completed") {
+    if (action === "new_chat" || action === "send_to_chat") return "Sent to chat";
+    if (action === "move_to_project") return "Moved";
+    if (action === "keep") return "Added to Todo";
+    if (action === "save_to_notes") return "Saved to Notes";
+  }
+  return message.status === "done" ? "Done" : null;
+}
 
-/** The handled state a processed message shows. */
-export const outcomeLabel = (message: InboxEntry): string | null =>
-  message.rowKind === "intake" && message.outcome ? OUTCOME_LABELS[message.outcome] : null;
+/** Show when an Inbox row returns or when it was set aside. */
+export function laterLabel(message: InboxEntry, now: Date): string | null {
+  if ((message.rowKind !== "intake" && message.rowKind !== "turn") || !message.later) return null;
+  const { later } = message;
+  return Date.parse(later.until) > now.getTime()
+    ? formatLaterTime(later.until, now)
+    : `Back from Later · set aside ${formatSetAsideDate(new Date(later.setAt), now)}`;
+}
 
 /** Who a message came from, when it was not the person themself. */
 export const sourceLabel = (message: InboxEntry): string | null =>
@@ -179,6 +207,8 @@ type TurnReason = NonNullable<Extract<InboxEntry, { rowKind: "turn" }>["turn"]["
  * "Needs your answer", "Ready for your review". Keep these words the desktop's.
  */
 const TURN_SIGNATURES: Readonly<Record<TurnReason, EntrySignature>> = {
+  triage: { label: "Needs your decision", icon: "chat", tone: "warning" },
+  delivery_recovery: { label: "Delivery needs your attention", icon: "warning", tone: "danger" },
   question: { label: "Needs your answer", icon: "chat", tone: "warning" },
   approval: { label: "Needs your approval", icon: "warning", tone: "warning" },
   review: { label: "Ready for your review", icon: "check", tone: "accent" },

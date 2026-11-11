@@ -21,7 +21,7 @@ import * as Stream from "effect/Stream";
 import { makeChats } from "./chats";
 import { Connection, makeConnection } from "./connection";
 import { Files, makeFileCache } from "./files";
-import { Lists, makeLists, type ChatListInput } from "./lists";
+import { Lists, makeLists, type ChatListInput, type InboxFilter } from "./lists";
 import { mintId, retryOperation } from "./operations";
 import { makeNotifications, type DeliveredNotificationTarget } from "./notifications";
 import { Outbox, makeOutbox } from "./outbox";
@@ -291,7 +291,7 @@ export function createMobileRuntime(
       agents: lists.agents,
       projectReads: reads(lists.projectReads),
       agentReads: reads(lists.agentReads),
-      inbox: (hostId: string | null, scope: InboxScope, filter: "inbox" | "processed") =>
+      inbox: (hostId: string | null, scope: InboxScope, filter: InboxFilter) =>
         listView(sync(lists.inbox(hostId, scope, filter))),
       chats: (hostId: string | null, input: ChatListInput) =>
         listView(sync(lists.chats(hostId, input))),

@@ -2,9 +2,16 @@ import type { InboxDecision } from "@nodex/mobile-protocol";
 
 import { useRootNavigation } from "../../navigation/types";
 import { decideInbox, undoInbox } from "../../runtime";
+import { RpcFailure } from "../../runtime/rpc-client";
 import { lightTap } from "../../ui/primitives";
 import { showFailure, showSnack } from "../../ui/snackbar";
 import { decisionReversal } from "./inbox-presentation";
+
+export function handlePassedReturnTime(cause: unknown, recover: () => void): boolean {
+  if (!(cause instanceof RpcFailure) || cause.code !== "inbox_remind_at_passed") return false;
+  recover();
+  return true;
+}
 
 /**
  * Runs a decision, then offers what it allows next: the chat it started, or undo. A chat a message
@@ -12,7 +19,13 @@ import { decisionReversal } from "./inbox-presentation";
  */
 export const useDecide = () => {
   const navigation = useRootNavigation();
-  return async (entryId: string, decision: InboxDecision, done: string): Promise<boolean> => {
+  return async (
+    entryId: string,
+    decision: InboxDecision,
+    done: string,
+    onFailure?: (cause: unknown) => boolean,
+    reverseWith?: InboxDecision,
+  ): Promise<boolean> => {
     lightTap();
     try {
       const { undoToken, sessionId } = await decideInbox(entryId, decision);
@@ -29,7 +42,7 @@ export const useDecide = () => {
         });
         return true;
       }
-      const reversal = decisionReversal(decision);
+      const reversal = reverseWith ?? decisionReversal(decision);
       const undo = undoToken
         ? () => undoInbox(undoToken)
         : reversal
@@ -50,7 +63,7 @@ export const useDecide = () => {
       });
       return true;
     } catch (cause) {
-      showFailure("That didn't go through", cause);
+      if (!onFailure?.(cause)) showFailure("That didn't go through", cause);
       return false;
     }
   };

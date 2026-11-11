@@ -3,7 +3,7 @@ import { getRuntime } from "./instance";
 import type { MobileRuntime } from "./runtime";
 
 export type { ConnectionState, SavedHost } from "./connection";
-export type { InboxRow } from "./lists";
+export type { InboxFilter, InboxRow } from "./lists";
 export type { NotificationProblem } from "./notifications";
 export type { PendingCapture } from "./outbox";
 export type { LocalImage } from "./platform";

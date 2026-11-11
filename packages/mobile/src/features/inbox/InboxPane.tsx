@@ -1,3 +1,4 @@
+import { LegendList } from "@legendapp/list/react-native";
 import { inboxEntryKey, inboxScopeKey, type InboxEntry } from "@nodex/mobile-protocol";
 import { useMemo } from "react";
 import { View } from "react-native";
@@ -27,13 +28,15 @@ import {
   entryChatSession,
   entrySignature,
   type EntrySignature,
+  laterLabel,
   outcomeLabel,
   proposalAction,
+  proposalSkills,
   sourceLabel,
   suggestionView,
   turnActionView,
 } from "./inbox-presentation";
-import { SuggestionCard } from "./Suggestion";
+import { SuggestionCard, useAcceptProposal } from "./Suggestion";
 import { useDecide } from "./use-decide";
 import { useInboxScope } from "./use-inbox-choices";
 
@@ -72,15 +75,19 @@ export const SignatureLine = ({
 const MessageRow = ({ message, now }: { readonly message: InboxEntry; readonly now: number }) => {
   const navigation = useRootNavigation();
   const preview = useMemo(() => previewMarkdown(message.body), [message.body]);
-  const decide = useDecide();
+  const accept = useAcceptProposal();
   const setReplyTo = useHomeState((state) => state.setReplyTo);
   const { activeHostId } = useHosts();
   const time = formatStreamTime(Date.parse(message.submittedAt), now);
   const chatSessionId = entryChatSession(message);
   // The row reads as one button, so its decision is also offered as that button's action.
   const view = suggestionView(message);
-  const offer = view.kind === "offer" && !view.proposal.outdated ? view.proposal : null;
+  const offer =
+    view.kind === "offer" && !view.proposal.outdated && proposalSkills(view.proposal).length === 0
+      ? view.proposal
+      : null;
   const intake = message.rowKind === "intake";
+  const later = laterLabel(message, new Date(now));
   return (
     <Tap
       accessibilityActions={
@@ -88,13 +95,7 @@ const MessageRow = ({ message, now }: { readonly message: InboxEntry; readonly n
       }
       accessibilityHint={chatSessionId ? "Opens its chat" : "Opens the message"}
       onAccessibilityAction={() => {
-        if (offer) {
-          void decide(
-            message.id,
-            { type: "accept", proposalId: offer.proposalId, revision: offer.revision },
-            offer.action.type === "keep" ? "Kept" : "Done",
-          );
-        }
+        if (offer) void accept(message.id, offer);
       }}
       className="gap-2 px-4 py-3"
       pressedClassName="active:bg-surface-2"
@@ -117,6 +118,7 @@ const MessageRow = ({ message, now }: { readonly message: InboxEntry; readonly n
       ) : null}
       <EntryActions
         entry={message}
+        now={now}
         onReply={(target) => {
           lightTap();
           setReplyTo({ ...target, spaceKey: activeHostId });
@@ -127,7 +129,12 @@ const MessageRow = ({ message, now }: { readonly message: InboxEntry; readonly n
         {message.important ? <Icon name="starFilled" size={12} color="warning" /> : null}
         <Txt className="text-xs text-ink-3" numberOfLines={1}>
           {[
-            formatStreamTime(Date.parse(message.submittedAt), now),
+            later,
+            (message.rowKind === "intake" || message.rowKind === "turn") &&
+            message.later &&
+            Date.parse(message.later.until) > now
+              ? null
+              : time,
             sourceLabel(message),
             outcomeLabel(message),
             preview.cut || message.bodyTruncated ? "More" : null,
@@ -180,6 +187,13 @@ export const InboxPane = ({ insets }: { readonly insets: ContentInsets }) => {
   const now = useNow();
   const connection = useConnection();
   const { hosts, activeHostId } = useHosts();
+  const renderItem = ({ item }: { item: InboxRow }) =>
+    item.type === "message" ? (
+      <MessageRow message={item.message} now={now} />
+    ) : (
+      <PendingRow capture={item.capture} />
+    );
+
   if (inbox.rows.length === 0) {
     if (inbox.loading) return <View className="flex-1" />;
     if (spaceUnreachable(connection.status)) {
@@ -198,10 +212,29 @@ export const InboxPane = ({ insets }: { readonly insets: ContentInsets }) => {
       <View className="flex-1" style={insetPadding(insets)}>
         {filter === "inbox" ? (
           <EmptyState icon="inbox" title="Nothing waiting" detail="Drop a thought here." />
+        ) : filter === "later" ? (
+          <EmptyState icon="clock" title="Nothing set aside" />
         ) : (
           <EmptyState icon="history" title="Nothing handled yet" />
         )}
       </View>
+    );
+  }
+  if (filter === "later") {
+    return (
+      <LegendList
+        key={`${inboxScopeKey(scope)}:later`}
+        contentContainerStyle={{ paddingTop: insets.top + 4, paddingBottom: insets.bottom + 8 }}
+        contentInsetAdjustmentBehavior="never"
+        data={inbox.rows}
+        estimatedItemSize={120}
+        keyboardShouldPersistTaps="handled"
+        keyExtractor={rowKey}
+        onEndReached={inbox.hasMore ? inbox.loadMore : undefined}
+        onEndReachedThreshold={0.5}
+        scrollIndicatorInsets={{ top: insets.top, bottom: insets.bottom }}
+        renderItem={renderItem}
+      />
     );
   }
   return (
@@ -213,13 +246,7 @@ export const InboxPane = ({ insets }: { readonly insets: ContentInsets }) => {
       getItemType={(row) => row.type}
       keyExtractor={rowKey}
       onStartReached={inbox.hasMore ? inbox.loadMore : undefined}
-      renderItem={({ item }) =>
-        item.type === "message" ? (
-          <MessageRow message={item.message} now={now} />
-        ) : (
-          <PendingRow capture={item.capture} />
-        )
-      }
+      renderItem={renderItem}
     />
   );
 };
@@ -246,9 +273,11 @@ const PROBLEM_FIX_LABELS = {
  */
 export const EntryActions = ({
   entry,
+  now,
   onReply,
 }: {
   readonly entry: InboxEntry;
+  readonly now: number;
   readonly onReply?: (target: ReplyTarget) => void;
 }) => {
   const navigation = useRootNavigation();
@@ -282,7 +311,22 @@ export const EntryActions = ({
   const reply = view.reply
     ? () => (onReply ? onReply({ entryId: entry.id, episode, title: entry.title }) : openChat?.())
     : null;
+  const deferred = entry.later !== null && Date.parse(entry.later.until) > now;
   const actions = [
+    deferred ? (
+      <Chip
+        key="return"
+        icon="undo"
+        label="Return to Inbox"
+        onPress={() => void decide(entry.id, { type: "clear_later" }, "Back in the Inbox")}
+      />
+    ) : null,
+    <Chip
+      key="later"
+      icon="clock"
+      label={deferred ? "Change time" : "Later"}
+      onPress={() => navigation.navigate("InboxLaterPicker", { pageId: entry.pageId })}
+    />,
     view.accept ? (
       <Button
         key="accept"

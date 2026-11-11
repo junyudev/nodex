@@ -2,7 +2,7 @@ import { inboxScopeKey, type InboxScope } from "@nodex/mobile-protocol";
 import { useCallback, useEffect, useMemo } from "react";
 import { useAtomValue } from "@effect/atom-react/Hooks";
 import { getRuntime } from "./instance";
-import type { ChatListInput, InboxRow } from "./lists";
+import type { ChatListInput, InboxFilter, InboxRow } from "./lists";
 
 export function useConnection() {
   return useAtomValue(getRuntime().connection.state.atom);
@@ -51,12 +51,12 @@ function reuseRow<T extends InboxRow>(item: object, build: () => T) {
   return next;
 }
 
-export function useInbox(scope: InboxScope, filter: "inbox" | "processed") {
+export function useInbox(scope: InboxScope, filter: InboxFilter) {
   const { lists, outbox } = getRuntime();
   const hostId = useHostId();
   const list = lists.inbox(hostId, scope, filter);
   useEffect(() => list.attach(), [list]);
-  const { items, ...view } = useAtomValue(list.store.atom);
+  const { items, summary: laterCount, ...view } = useAtomValue(list.store.atom);
   const pageIds = useMemo(() => new Set(items.map((item) => item.pageId)), [items]);
   const captures = useAtomValue(outbox.store.atom);
   const pending = useMemo(
@@ -80,7 +80,7 @@ export function useInbox(scope: InboxScope, filter: "inbox" | "processed") {
     ],
     [items, pending],
   );
-  return { ...view, rows: inboxRows, loadMore: list.loadMore, refresh: list.refresh };
+  return { ...view, laterCount, rows: inboxRows, loadMore: list.loadMore, refresh: list.refresh };
 }
 
 export function useChats(input: ChatListInput) {

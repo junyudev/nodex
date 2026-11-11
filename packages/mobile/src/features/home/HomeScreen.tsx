@@ -110,6 +110,7 @@ const HomeTitle = () => {
   const search = useHomeState((state) => state.search);
   const setSearch = useHomeState((state) => state.setSearch);
   const { shown } = useInboxChoices();
+  const filter = useHomeState((state) => state.filter);
   const allChats = useChats({});
   if (search !== null) {
     return (
@@ -131,7 +132,12 @@ const HomeTitle = () => {
   return (
     <Glass radius={22}>
       <View accessibilityRole="tablist" className="flex-row p-1">
-        <Segment mode="inbox" label="Inbox" count={shown?.count ?? 0} countTone="muted" />
+        <Segment
+          mode="inbox"
+          label={filter === "later" ? "Later" : "Inbox"}
+          count={filter === "later" ? 0 : (shown?.count ?? 0)}
+          countTone="muted"
+        />
         <Segment
           mode="chats"
           label="Chats"
@@ -147,7 +153,7 @@ const HomeTitle = () => {
 const HomeTrailing = () => {
   const mode = useHomeState((state) => state.mode);
   const filter = useHomeState((state) => state.filter);
-  const toggleFilter = useHomeState((state) => state.toggleFilter);
+  const navigation = useRootNavigation();
   const searching = useHomeState((state) => state.search !== null);
   const setSearch = useHomeState((state) => state.setSearch);
   if (searching) {
@@ -157,11 +163,10 @@ const HomeTrailing = () => {
   }
   return mode === "inbox" ? (
     <IconButton
-      accessibilityState={{ selected: filter === "processed" }}
-      color={filter === "processed" ? "accent" : "ink"}
-      label={filter === "processed" ? "Show waiting messages" : "Show handled messages"}
-      name="history"
-      onPress={toggleFilter}
+      color={filter === "inbox" ? "ink" : "accent"}
+      label="Inbox views"
+      name={filter === "later" ? "clock" : "history"}
+      onPress={() => navigation.navigate("InboxViewPicker")}
     />
   ) : (
     <IconButton color="ink" label="Search chats" name="search" onPress={() => setSearch("")} />

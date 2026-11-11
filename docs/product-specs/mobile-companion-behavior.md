@@ -135,14 +135,17 @@ Inbox that Space has, the other linked Spaces, and Settings.
   on the desktop, the photo becomes a new one.
 - An intake row with routing advice offers one decision labeled by what it does, such as `Start chat`.
   Accepting authorizes the suggestion the phone is showing; a suggestion that changed since then is
-  refused rather than applied. A message edited after its suggestion was written is reviewed on the
-  desktop. See [Inbox Behavior](./inbox-behavior.md).
+  refused rather than applied. A suggestion to set a message aside shows its return time or
+  `Someday`. If that time has passed, the phone offers a new choice. A message edited after its
+  suggestion was written is reviewed on the desktop. See [Inbox Behavior](./inbox-behavior.md).
 - Tapping a suggestion opens all of it in a sheet, with the same decision: what accepting will do, the
   prompt a chat would receive, what the suggestion adds of its own, why it was made, who wrote it, and
   the Agent it chose. Plans include every Page, its Project and prerequisites.
   Opening the message lays out the same content in place.
-- Opening intake shows its whole message, with `Start chat`, `Mark done`, `Keep`, `Important`,
-  `Ask for a suggestion` and `Delete`. Decisions that can be undone offer `Undo` for a few seconds.
+- Opening intake shows its whole message, with `Start chat`, `Mark done`, `Keep`, `Later`,
+  `Important`, `Ask for a suggestion` and `Delete`. `Later` offers one hour, three hours, the next
+  9:00 AM at least three hours away, and Monday at 9:00 AM of the following week.
+  Duplicate times appear once. Decisions that can be undone offer `Undo` for a few seconds.
   On a team Space, its host starts the chat with your authority, even while your laptop is closed.
 - A chat started from a message opens once its host has started it. Until then the message shows
   it starting. If it cannot start, the message keeps its reason in the Inbox, on every Device:
@@ -150,10 +153,15 @@ Inbox that Space has, the other linked Spaces, and Settings.
   refused decision needs a new one, and a delivery that may have arrived is opened to check, never
   sent again from the phone. A chat opened before its host starts it says so and follows the Run
   once it starts.
-- The history control switches between waiting and handled messages.
+- The history control switches between the Inbox, `Later` and handled messages. It shows how many
+  of the Member's message and Turn rows are set aside in the chosen Inbox. Handled
+  shows intake Pages whose messages no longer wait for routing or recovery. `Later` shows each return time,
+  soonest first. Open a message there to return it, change the time, keep it, mark it done
+  or dispatch it. A message that returns shows when it was set aside. A Later suggestion
+  includes a time. When that time has passed, the Member can confirm with a new one.
 
 The stream contains four distinct row kinds: intake, Turn, answer and Problem.
-Only intake offers Keep, Done, Delete, Important, advice and reviewed routing.
+Only intake offers Keep, Later, Done, Delete, Important, advice and reviewed routing.
 Turns say whose move it is in the desktop's words, such as `Needs your answer` or
 `Ready for your review`. Questions
 have option buttons and Reply to the active chat; review offers Accept and
@@ -313,3 +321,7 @@ Member attention changes invalidate the same Core-projected stream.
   sleeps is unreachable; a team host can remain available independently.
 - Notifications currently require iOS. A Space host that is asleep or stopped cannot send them.
 - The app does not browse the Library or edit Pages.
+
+Intake offers Save to Notes and Add to Todo. A note leads with Save to Notes
+and other messages lead with Add to Todo. Saved notes appear in the Inbox’s
+Handled view. Return to Inbox restores the note to its original Database in Triage.

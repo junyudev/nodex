@@ -19,6 +19,12 @@ export type RootStack = {
     /** A chat this message is starting; the screen opens it once its host has started it. */
     readonly openChat?: string;
   };
+  InboxViewPicker: undefined;
+  InboxLaterPicker: {
+    readonly pageId: string;
+    readonly expired?: boolean;
+    readonly proposal?: { readonly proposalId: string; readonly revision: number };
+  };
   Suggestion: { readonly pageId: string; readonly initial?: InboxEntry };
   ChatItem: { readonly sessionId: string; readonly itemId: string };
   /** A message's or step's pictures, full screen, opened at one of them. */

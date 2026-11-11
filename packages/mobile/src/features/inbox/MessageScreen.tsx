@@ -16,7 +16,13 @@ import { showFailure } from "../../ui/snackbar";
 import { useNow } from "../../ui/use-now";
 import { agentChipLabel, effectiveAgentChoice } from "../pickers/agent-choice";
 import { EntryActions, SignatureLine } from "./InboxPane";
-import { entryChatSession, messageChat, outcomeLabel, sourceLabel } from "./inbox-presentation";
+import {
+  entryChatSession,
+  laterLabel,
+  messageChat,
+  outcomeLabel,
+  sourceLabel,
+} from "./inbox-presentation";
 import { SuggestionPanel, useInboxEntry } from "./Suggestion";
 import { useDecide } from "./use-decide";
 
@@ -68,7 +74,7 @@ export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => 
             actions={{ onOpenChat: (sessionId) => navigation.navigate("Chat", { sessionId }) }}
           />
         ) : null}
-        <EntryActions entry={message} />
+        <EntryActions entry={message} now={now} />
         {chatSessionId ? (
           <RowGroup>
             <Row
@@ -85,6 +91,10 @@ export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => 
     void decide(pageId, decision, done);
     navigation.goBack();
   };
+
+  const chooseLater = () => navigation.navigate("InboxLaterPicker", { pageId });
+  const canMarkDone = message.waiting;
+  const deferred = message.later != null && Date.parse(message.later.until) > now;
 
   const startChatFromMessage = () => {
     lightTap();
@@ -116,6 +126,7 @@ export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => 
           message.pageKey,
           formatStreamTime(Date.parse(message.submittedAt), now),
           sourceLabel(message),
+          laterLabel(message, new Date(now)),
           outcomeLabel(message),
         ]
           .filter(Boolean)
@@ -159,27 +170,43 @@ export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => 
             onPress={() => decideAndClose({ type: "request_suggestion" }, "Asked for a suggestion")}
           />
         ) : null}
-        {message.state === "open" ? (
-          <>
-            <Row
-              icon="check"
-              label="Mark done"
-              onPress={() => decideAndClose({ type: "done" }, "Marked done")}
-            />
-            <Row
-              icon="folder"
-              label="Keep"
-              detail="Stays as a Page and leaves the Inbox"
-              onPress={() => decideAndClose({ type: "keep" }, "Kept")}
-            />
-          </>
-        ) : (
+        {!message.waiting || deferred ? (
           <Row
             icon="undo"
-            label="Back to Inbox"
-            onPress={() => decideAndClose({ type: "reopen" }, "Back in the Inbox")}
+            label="Return to Inbox"
+            onPress={() =>
+              decideAndClose({ type: deferred ? "clear_later" : "return" }, "Back in the Inbox")
+            }
           />
-        )}
+        ) : null}
+        {canMarkDone && message.source.kind !== "automation" ? (
+          <Row icon="clock" label={deferred ? "Change time" : "Later"} onPress={chooseLater} />
+        ) : null}
+        {canMarkDone ? (
+          <Row
+            icon="check"
+            label="Mark done"
+            onPress={() => decideAndClose({ type: "done" }, "Marked done")}
+          />
+        ) : null}
+        {message.waiting && message.source.kind !== "automation"
+          ? (message.kind === "note"
+              ? (["save_to_notes", "keep"] as const)
+              : (["keep", "save_to_notes"] as const)
+            ).map((type) => {
+              const note = type === "save_to_notes";
+              return (
+                <Row
+                  key={type}
+                  icon={note ? "folder" : "check"}
+                  label={note ? "Save to Notes" : "Add to Todo"}
+                  onPress={() =>
+                    decideAndClose({ type }, note ? "Saved to Notes" : "Added to Todo")
+                  }
+                />
+              );
+            })
+          : null}
         <Row
           icon={message.important ? "starFilled" : "star"}
           iconColor={message.important ? "warning" : "ink-2"}

@@ -1,6 +1,6 @@
 import type { InboxScope } from "@nodex/mobile-protocol";
 
-import type { LocalImage } from "../../runtime";
+import type { InboxFilter, LocalImage } from "../../runtime";
 import { createLocalStore } from "../../ui/local-store";
 
 export type HomeMode = "inbox" | "chats";
@@ -24,7 +24,7 @@ interface HomeState {
   readonly mode: HomeMode;
   /** The Inbox each Space shows, by (Space, Member). One never chosen shows its Library's. */
   readonly scopes: Readonly<Record<string, InboxScope>>;
-  readonly filter: "inbox" | "processed";
+  readonly filter: InboxFilter;
   /** Keyed by (Space, Member, Composer): `inbox`, `new-chat`, or a chat's Session. */
   readonly drafts: Readonly<Record<string, ComposerDraft>>;
   /** How many captures this phone has sent, so the stream can return to its end for each. */
@@ -42,7 +42,7 @@ interface HomeState {
   readonly space: string | null;
   /** Another Space starts with its lists whole: what narrowed the last one's does not follow. */
   readonly enterSpace: (spaceKey: string | null) => void;
-  readonly toggleFilter: () => void;
+  readonly setFilter: (filter: InboxFilter) => void;
   readonly setSearch: (search: string | null) => void;
   readonly setChatsArchived: (archived: boolean) => void;
   readonly setDraft: (key: string, patch: Partial<ComposerDraft>) => void;
@@ -75,10 +75,7 @@ export const useHomeState = createLocalStore<HomeState>({
     useHomeState.setState((current) =>
       current.space === space ? {} : { space, filter: "inbox", search: null, chatsArchived: false },
     ),
-  toggleFilter: () =>
-    useHomeState.setState(({ filter }) => ({
-      filter: filter === "inbox" ? "processed" : "inbox",
-    })),
+  setFilter: (filter) => useHomeState.setState({ filter }),
   setSearch: (search) => useHomeState.setState({ search }),
   setChatsArchived: (chatsArchived) => useHomeState.setState({ chatsArchived }),
   setDraft: (key, patch) =>
