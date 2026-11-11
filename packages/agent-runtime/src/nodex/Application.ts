@@ -7,7 +7,7 @@ import * as RunAdmission from "../orchestration-v2/RunAdmission.ts";
 import * as Service from "./Service.ts";
 import * as Bridge from "./HostBridge.ts";
 import { reapDesktopReplProcesses } from "../desktopTools/ReplProcess.ts";
-import * as RuntimeHomeLease from "./RuntimeHomeLease.ts";
+import * as RuntimeHomeLease from "../platform/node/RuntimeHomeLease.ts";
 import * as Environment from "../environment/ServerEnvironment.ts";
 import * as ProviderEventIngestor from "../orchestration-v2/ProviderEventIngestor.ts";
 import * as AnalyticsService from "../telemetry/AnalyticsService.ts";

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as Effect from "effect/Effect";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
-import { acquire } from "../../nodex/RuntimeHomeLease.ts";
+import { acquire } from "../../platform/node/RuntimeHomeLease.ts";
 import { makeRepl } from "../Repl.ts";
 import { reapDesktopReplProcesses } from "../ReplProcess.ts";
 

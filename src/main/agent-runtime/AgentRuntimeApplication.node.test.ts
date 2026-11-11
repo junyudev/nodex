@@ -1545,6 +1545,24 @@ const openReads: ReadonlyArray<{
 ];
 
 const openReadTarget = { sessionId: launch.sessionId };
+it.effect("surfaces the Profile writer conflict when reading Agent providers", () =>
+  Effect.gen(function* () {
+    const message =
+      "Another Nodex is already running Agents for this Profile (pid 42, started 2026-10-15T09:00:00.000Z). Quit it and try again.";
+    const { owner } = setup({
+      connect: Effect.fail(
+        new AgentRuntimeSupervisorError({
+          operation: "start",
+          profileBusyMessage: message,
+        }),
+      ),
+    });
+    const runtime = yield* owner;
+    const error = yield* runtime.catalog({ refresh: true }).pipe(Effect.flip);
+    assert.equal(error.message, message);
+  }),
+);
+
 const setupOpenRead = () => {
   const attempts: number[] = [];
   let connection: AgentRuntimeApplicationConnection;

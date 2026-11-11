@@ -8,6 +8,7 @@ import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Application from "./Application.ts";
+import { RuntimeHomeLeaseError } from "../platform/node/RuntimeHomeLease.ts";
 import { AgentRuntime } from "./Service.ts";
 import { HostBridge } from "./HostBridge.ts";
 import { readAgentRuntimeBootstrap } from "./Bootstrap.ts";
@@ -255,6 +256,14 @@ export async function runAgentRuntimeProcess(): Promise<void> {
       }
     } catch (error) {
       process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
+      if (error instanceof RuntimeHomeLeaseError && error.retryable) {
+        const owner = error.conflict;
+        await write({
+          type: "runtime-home-busy",
+          pid: owner?.pid ?? null,
+          startedAt: owner?.startedAt ?? null,
+        }).catch(() => undefined);
+      }
       process.exitCode = 1;
     } finally {
       await dispose();

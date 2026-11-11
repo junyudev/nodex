@@ -1,3 +1,4 @@
+import { AgentRuntimeSupervisorError } from "./AgentRuntimeSupervisor";
 import { HostInvocation } from "../../host/HostInvocation";
 import { make as makeChatMessageDelivery } from "./ChatMessageDelivery";
 import { HostWorkspace } from "../../host/HostWorkspace";
@@ -484,16 +485,21 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   });
   const owned = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
     effect.pipe(
-      Effect.mapError((cause) =>
-        Schema.is(AgentRuntimeApplicationError)(cause)
-          ? cause
-          : Schema.is(AgentRuntimeProcessError)(cause) &&
-              cause.engineTag === "OrchestratorThreadAboveModeLimitError" &&
-              (cause.engineReason === "runtime_mode_escalation_denied" ||
-                cause.engineReason === "interaction_mode_escalation_denied")
-            ? failure(operation, cause.engineReason, cause)
-            : failure(operation, AGENT_OPERATION_FAILED, cause),
-      ),
+      Effect.mapError((cause) => {
+        if (Schema.is(AgentRuntimeApplicationError)(cause)) return cause;
+        if (cause instanceof AgentRuntimeSupervisorError && cause.profileBusyMessage) {
+          return failure(operation, cause.profileBusyMessage, cause);
+        }
+        if (
+          Schema.is(AgentRuntimeProcessError)(cause) &&
+          cause.engineTag === "OrchestratorThreadAboveModeLimitError" &&
+          (cause.engineReason === "runtime_mode_escalation_denied" ||
+            cause.engineReason === "interaction_mode_escalation_denied")
+        ) {
+          return failure(operation, cause.engineReason, cause);
+        }
+        return failure(operation, AGENT_OPERATION_FAILED, cause);
+      }),
     );
   const ownedOpenRead = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
     owned(

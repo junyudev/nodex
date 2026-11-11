@@ -26,6 +26,12 @@ const first = await lines.next();
 const bootstrap = first.done ? null : JSON.parse(first.value);
 // Provider configuration arrives only as the first stdin frame.
 if (bootstrap?.type !== "bootstrap") process.exit(3);
+if (process.env.NODEX_FIXTURE_PROFILE_BUSY === "1") {
+  await new Promise((resolve) =>
+    send({ type: "runtime-home-busy", pid: 42, startedAt: "2026-10-15T09:00:00.000Z" }, resolve),
+  );
+  process.exit(1);
+}
 // Simulates startup work, such as an imported execution store, finishing before readiness.
 const readyDelayMs = Number(process.env.NODEX_FIXTURE_READY_DELAY_MS ?? 0);
 if (readyDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, readyDelayMs));

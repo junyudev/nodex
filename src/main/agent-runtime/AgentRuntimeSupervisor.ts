@@ -15,9 +15,11 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { AgentRuntimeMethod, AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentRuntimeConnectionState } from "../../shared/agent-runtime-api";
-import type {
-  AgentRuntimeProcessConnection,
-  AgentRuntimeProcessOptions,
+import {
+  AgentRuntimeProcessError,
+  RUNTIME_HOME_BUSY,
+  type AgentRuntimeProcessConnection,
+  type AgentRuntimeProcessOptions,
 } from "../platform/node/AgentRuntimeProcess";
 
 type HostHandler = AgentRuntimeProcessOptions["host"];
@@ -57,7 +59,11 @@ export interface AgentRuntimeSupervisorOptions<Requirements> {
 
 export class AgentRuntimeSupervisorError extends Schema.TaggedError<AgentRuntimeSupervisorError>()(
   "AgentRuntimeSupervisorError",
-  { operation: Schema.String, cause: Schema.optionalKey(Schema.Defect()) },
+  {
+    operation: Schema.String,
+    profileBusyMessage: Schema.optionalKey(Schema.String),
+    cause: Schema.optionalKey(Schema.Defect()),
+  },
 ) {}
 
 const DEFAULT_RESTARTS = { limit: 3, window: Duration.minutes(5) } as const;
@@ -280,17 +286,28 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
         Effect.exit,
       );
     if (Exit.isFailure(acquired)) {
-      // The readable reason lives only here; callers see a generic start failure.
+      const error = Option.getOrNull(Cause.findErrorOption(acquired.cause));
+      const profileBusyMessage =
+        error instanceof AgentRuntimeProcessError && error.code === RUNTIME_HOME_BUSY
+          ? error.message
+          : undefined;
       yield* Effect.logError("Agent execution process could not start").pipe(
         Effect.annotateLogs({ recovering, cause: Cause.pretty(acquired.cause) }),
       );
       yield* Deferred.fail(hostReady, new Error("Agent Runtime Host is unavailable"));
       yield* Scope.close(generationScope, acquired);
-      yield* Ref.update(state, (latest) => ({ ...latest, unhealthy: true }));
+      yield* Ref.update(state, (latest) => ({
+        ...latest,
+        unhealthy: profileBusyMessage === undefined,
+        recoveries: profileBusyMessage === undefined ? latest.recoveries : recoveries,
+      }));
       // Automatic recovery reports exhaustion itself; a demand start fails visibly now.
-      if (!recovering) yield* publish({ status: "failed", message: START_FAILED_MESSAGE });
+      if (!recovering || profileBusyMessage) {
+        yield* publish({ status: "failed", message: profileBusyMessage ?? START_FAILED_MESSAGE });
+      }
       return yield* new AgentRuntimeSupervisorError({
         operation: "start",
+        ...(profileBusyMessage === undefined ? {} : { profileBusyMessage }),
         cause: acquired.cause,
       });
     }
@@ -336,7 +353,7 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
           ? Effect.sleep("250 millis").pipe(
               Effect.andThen(acquire(true)),
               Effect.retry({
-                while: (error) => error.operation === "start",
+                while: (error) => error.operation === "start" && !error.profileBusyMessage,
                 schedule: Schedule.spaced("1 second"),
               }),
               Effect.catchCause(() =>

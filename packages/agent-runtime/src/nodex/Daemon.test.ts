@@ -37,6 +37,7 @@ async function startProcess(
     { resolve: (response: AgentRuntimeResponse) => void; reject: (cause: Error) => void }
   >();
   let stderr = "";
+  let startupFailure: unknown;
   const invalidLines: string[] = [];
   child.stderr.on("data", (chunk: Buffer) => {
     stderr += chunk.toString();
@@ -55,6 +56,7 @@ async function startProcess(
         readyResolve();
         return;
       }
+      if ("type" in frame && frame.type === "runtime-home-busy") startupFailure = frame;
       if ("id" in frame) {
         waiting.get(frame.id)?.resolve(frame);
         waiting.delete(frame.id);
@@ -68,8 +70,8 @@ async function startProcess(
     }
   });
   child.once("error", readyReject);
-  child.once("exit", () => {
-    const error = new Error(`Execution process closed: ${stderr}`);
+  child.once("close", () => {
+    const error = new Error(`Execution process closed: ${stderr}`, { cause: startupFailure });
     readyReject(error);
     for (const pending of waiting.values()) pending.reject(error);
     waiting.clear();
@@ -272,7 +274,16 @@ it("admits one physical writer, removes ownership on EOF, and recovers a killed 
       token: string;
     };
     expect(firstOwner.pid).toBe(runtime.child.pid);
-    await expect(startProcess(home)).rejects.toThrow("Another execution writer");
+    await expect(startProcess(home)).rejects.toMatchObject({
+      message: expect.stringMatching(
+        new RegExp(`pid ${firstOwner.pid}, alive=true, started [0-9]{4}-`, "u"),
+      ),
+      cause: {
+        type: "runtime-home-busy",
+        pid: firstOwner.pid,
+        startedAt: expect.stringMatching(/^[0-9]{4}-/u),
+      },
+    });
     expect(JSON.parse(await fs.readFile(path.join(lock, "owner.json"), "utf8"))).toEqual(
       firstOwner,
     );

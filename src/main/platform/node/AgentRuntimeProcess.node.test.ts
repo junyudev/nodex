@@ -70,6 +70,23 @@ it.effect("waits for startup work without a transport readiness deadline", () =>
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
+it.live("keeps the Profile writer diagnostic when the child exits before readiness", () =>
+  Effect.gen(function* () {
+    const error = yield* acquireAgentRuntimeProcess({
+      executable: process.execPath,
+      entryPath,
+      configuration: { home: fixtureHome, cwd: fixtureHome, providers: {} },
+      environment: { ...process.env, NODEX_FIXTURE_PROFILE_BUSY: "1" },
+      host: () => Effect.void,
+    }).pipe(Effect.flip);
+    assert.equal(error.code, "runtime-home-busy");
+    assert.equal(
+      error.message,
+      "Another Nodex is already running Agents for this Profile (pid 42, started 2026-10-15T09:00:00.000Z). Quit it and try again.",
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
 it.live("withdraws an interrupted utility over the existing Runtime connection", () =>
   Effect.gen(function* () {
     const connection = yield* acquire();

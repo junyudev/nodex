@@ -1,5 +1,12 @@
 # Agent Runtime behavior
 
+## Profile startup
+
+One Agent Runtime at a time can run Agents for a Profile. Nodex briefly retries
+during restart so the previous Runtime can finish shutting down. If the Profile
+stays busy, Nodex identifies the writer by PID and, when available, start time.
+Quit the other Nodex before trying again.
+
 ## Session execution references
 
 A Session may have one external execution reference identifying its runtime and root

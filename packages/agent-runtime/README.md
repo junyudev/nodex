@@ -102,9 +102,11 @@ forks whose captured Run prefix contains the referencing message; an indexed ref
 proves this without reading message bodies.
 
 Before opening SQLite, every runtime holds `<home>/.writer.lock` with a private `owner.json`
-containing `{pid,token}`. Live or malformed ownership refuses admission; stale recovery requires a
-proven absent PID and the same owner token under an exclusive nested `.recovering` claim. Scope release verifies the exact
-token, and a PID reused by another process conservatively retains ownership.
+containing the PID, ownership token, and diagnostic metadata. Startup retries
+contention briefly to allow the previous writer to release the lease. Malformed
+ownership refuses admission. Stale recovery requires a proven absent PID and the
+same owner token under an exclusive nested `.recovering` claim. Scope release
+verifies the exact token, and a PID reused by another process retains ownership.
 
 All Agents can read and write the current Profile across Projects and Sessions. Native execution
 follows each Thread's runtime mode (`approval-required`, `auto` or `full-access`); provider

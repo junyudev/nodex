@@ -24,6 +24,7 @@ import * as Deferred from "effect/Deferred";
 import type { Done } from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
@@ -35,6 +36,13 @@ import { z } from "zod";
 import { createAgentRuntimeFrameDecoder } from "./agent-runtime-framing";
 import { appToolsHostCallTimeoutMs } from "@nodex/app-tools-mcp/manifest";
 import { agentProcessLaunch, type AgentRunner } from "../../../host/HostAgentPolicy";
+
+export const RUNTIME_HOME_BUSY = "runtime-home-busy";
+const runtimeHomeBusyFrame = z.object({
+  type: z.literal(RUNTIME_HOME_BUSY),
+  pid: z.number().int().positive().nullable(),
+  startedAt: z.iso.datetime().nullable(),
+});
 
 const MAXIMUM_FRAME_BYTES = 16 * 1024 * 1024;
 /**
@@ -341,6 +349,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
   };
   const responsiveness = yield* SubscriptionRef.make(true);
   let receivedFrame = false;
+  let receivedReady = false;
   let silentTicks = 0;
   let tick = 0;
   let pingOutstanding = false;
@@ -527,6 +536,21 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       );
       return;
     }
+    const busy = runtimeHomeBusyFrame.safeParse(value);
+    if (busy.success && !receivedReady) {
+      const { pid, startedAt } = busy.data;
+      const owner = [pid === null ? null : `pid ${pid}`, startedAt ? `started ${startedAt}` : null]
+        .filter(Boolean)
+        .join(", ");
+      const message =
+        pid === null
+          ? "Another Nodex is starting or stopping Agents for this Profile. Try again shortly."
+          : `Another Nodex is already running Agents for this Profile (${owner}). Quit it and try again.`;
+      yield* close(
+        new AgentRuntimeProcessError({ reason: "start", code: RUNTIME_HOME_BUSY, message }),
+      );
+      return;
+    }
     const decoded = notificationSchema.safeParse(value);
     if (!decoded.success)
       return yield* new AgentRuntimeProcessError({
@@ -535,6 +559,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       });
     const notification = decoded.data as AgentRuntimeNotification;
     if (notification.type === "ready") {
+      receivedReady = true;
       yield* Deferred.succeed(ready, notification.identity);
       return;
     }
@@ -634,7 +659,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     );
   });
   const frames = createAgentRuntimeFrameDecoder(MAXIMUM_FRAME_BYTES);
-  yield* process.stdout.pipe(
+  const output = yield* process.stdout.pipe(
     Stream.mapEffect((chunk) =>
       Effect.try({
         try: () => frames.push(chunk),
@@ -673,7 +698,12 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
   const reapServers = reapAgentRuntimeServers(options.configuration.home, Number(process.pid));
   yield* Effect.exit(process.exitCode).pipe(
     Effect.flatMap((exit) =>
-      reapServers.pipe(
+      // A child may exit before the final startup failure frame reaches the pipe reader.
+      (receivedReady
+        ? Effect.void
+        : Fiber.await(output).pipe(Effect.timeoutOption("500 millis"), Effect.asVoid)
+      ).pipe(
+        Effect.andThen(reapServers),
         Effect.andThen(
           close(
             new AgentRuntimeProcessError({
