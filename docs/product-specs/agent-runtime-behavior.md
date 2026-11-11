@@ -1288,16 +1288,18 @@ status label; a waiting task without attention still shows `Waiting`. Attention 
 not repeat in the preview. The panel observes task metadata and refreshes bounded overview
 pages rather than reading every child's control state.
 
-Each Agent reports its own background tasks. Claude Code reports background shells, Monitors
-and workflows as it starts and ends them. Codex background terminals appear as command tasks
-with their exact command text (up to 2,000 characters); the Runtime reconciles the native
-terminal list when commands start or a Turn finishes. Command completion and stop responses
-update the list immediately. Safety refreshes run only for live terminal rosters, backing off
-from 2 to 30 seconds while unchanged and resetting when command activity changes. A Turn that
-is stopped or fails ends its unfinished commands as stopped, and they leave the list before the
-Run ends, so the Session never reads as working in the background for a command its stopped
-reply ran. Stopping one task ends only that task; a conversation's Stop ends all of its
-background work. Output reads
+A conversation lists background tasks for as long as its live provider session reports them.
+The provider session updates the list as work starts and ends, including after the reply
+that started it has ended. The list clears when its provider session ends. Claude Code
+reports background shells, Monitors and workflows. Codex reports background terminals with
+their exact command text, up to 2,000 characters. Nodex checks the native terminal list
+when it resumes a Codex conversation and reconciles any reported background work when
+Stop finishes. Safety refreshes run only while terminals are live, backing off from 2 to
+30 seconds while the list stays unchanged.
+
+Stopping an individual background task ends that task. If it already ended, Stop removes
+the stale entry. A conversation's Stop ends its background work, including work in
+delegated tasks stopped with it. Output reads
 return at most the last 8 KiB of a task's output: Claude Code supplies it, and Codex keeps a
 bounded in-memory command output tail while the command runs, including after its Turn
 finishes, with the matching item's projected aggregate as a fallback. Streamed deltas never

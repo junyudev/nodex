@@ -951,7 +951,12 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         return sessionGates.withLock(sessionId, effect);
       };
     const emit = (event: ProviderAdapter.ProviderAdapterV2Event) =>
-      BoundedQueue.offer(events, event).pipe(Effect.asVoid);
+      BoundedQueue.offer(
+        events,
+        event.type === "provider_thread.updated" && input.reportBackgroundTasks !== undefined
+          ? { ...event, providerThread: { ...event.providerThread, pendingBackgroundTasks: undefined } }
+          : event,
+      ).pipe(Effect.asVoid);
     const ownerOf = (sessionId: string) => childOwners.get(sessionId) ?? threads.get(sessionId);
     /** Marks a run Nodex ended while OpenCode may still run it (see `unsettled`). */
     const markUnsettled = (state: ThreadState) => {
@@ -1435,11 +1440,12 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         pendingBackgroundTasks: roster,
         updatedAt: yield* DateTime.now,
       };
-      yield* emit({
-        type: "provider_thread.updated",
-        driver,
-        providerThread: state.providerThread,
-      });
+      yield* (input.reportBackgroundTasks?.(state.providerThread) ??
+        emit({
+          type: "provider_thread.updated",
+          driver,
+          providerThread: state.providerThread,
+        }));
     });
 
     const withReportedModel = (

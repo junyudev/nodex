@@ -1016,6 +1016,9 @@ The Agent Runtime owns each bound Session's execution root, Runs, provider sessi
 history, delegated descendants, machine-wide automatic-work admission and durable result delivery. Main
 supplies capacity configuration; the Runtime owns durable tree episodes and FIFO automatic starts
 ([admission contract](product-specs/agent-runtime-behavior.md#machine-admission-and-queue)).
+Live provider sessions own their threads' background-work observations across Runs. The
+Runtime persists each roster for its current provider binding and clears it when that
+session ends. See [Agent Runtime behavior](product-specs/agent-runtime-behavior.md).
 Its projections are that durable history; the event log is a bounded delivery tail that cannot
 rebuild them, as [ADR 0077](adr/0077-bounded-execution-history.md) records. It also owns admission receipts
 for remote Native messages; the Native execution owner performs producer writes and resolves

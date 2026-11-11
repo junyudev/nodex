@@ -1864,12 +1864,13 @@ export function applyToProjection(
         return base;
       return {
         ...base,
-        thread: providerThreadActivatesThread(event.payload, base.thread.id)
-          ? {
-              ...base.thread,
-              activeProviderThreadId: event.payload.id,
-            }
-          : base.thread,
+        thread:
+          !event.backgroundTasksOnly && providerThreadActivatesThread(event.payload, base.thread.id)
+            ? {
+                ...base.thread,
+                activeProviderThreadId: event.payload.id,
+              }
+            : base.thread,
         providerThreads: upsertById(base.providerThreads, event.payload),
       };
     case "provider-turn.updated":
@@ -3761,6 +3762,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 payload_json = excluded.payload_json
             `;
             if (
+              !event.backgroundTasksOnly &&
               event.payload.appThreadId !== null &&
               providerThreadActivatesThread(event.payload, event.payload.appThreadId)
             ) {

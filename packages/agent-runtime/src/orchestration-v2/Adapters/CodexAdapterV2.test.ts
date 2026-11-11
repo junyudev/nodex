@@ -7825,6 +7825,23 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       ),
   );
 
+  const stoppedTerminalList = (
+    id: number,
+    threadId: string,
+    data: ReadonlyArray<{ itemId: string; processId: string; command: string }> = [],
+  ): CodexReplay.CodexAppServerReplayTranscript["entries"] => [
+    {
+      type: "expect_outbound",
+      label: "reconcile-stopped-terminals",
+      frame: { id, method: "thread/backgroundTerminals/list", params: { threadId, limit: 100 } },
+    },
+    {
+      type: "emit_inbound",
+      label: "reconcile-stopped-terminals",
+      frame: { id, result: { data, nextCursor: null } },
+    },
+  ];
+
   it.effect(
     "replaces persisted Codex rosters on resume and stops terminals without retained turn contexts",
     () =>
@@ -7872,19 +7889,23 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                 },
               },
             },
-            {
-              type: "expect_outbound",
-              frame: {
-                id: 5,
-                method: "thread/backgroundTerminals/terminate",
-                params: { threadId: nativeThreadId, processId: "42" },
-              },
-            },
-            { type: "emit_inbound", frame: { id: 5, result: { terminated: true } } },
+            ...stoppedTerminalList(5, nativeThreadId, [
+              { itemId: "survivor", processId: "42", command: "sleep 60" },
+            ]),
             {
               type: "expect_outbound",
               frame: {
                 id: 6,
+                method: "thread/backgroundTerminals/terminate",
+                params: { threadId: nativeThreadId, processId: "42" },
+              },
+            },
+            { type: "emit_inbound", frame: { id: 6, result: { terminated: true } } },
+            ...stoppedTerminalList(7, nativeThreadId),
+            {
+              type: "expect_outbound",
+              frame: {
+                id: 8,
                 method: "thread/resume",
                 params: {
                   threadId: nativeThreadId,
@@ -7895,17 +7916,17 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             },
             {
               type: "emit_inbound",
-              frame: { id: 6, result: { thread: { id: nativeThreadId, updatedAt: 1782622441 } } },
+              frame: { id: 8, result: { thread: { id: nativeThreadId, updatedAt: 1782622441 } } },
             },
             {
               type: "expect_outbound",
               frame: {
-                id: 7,
+                id: 9,
                 method: "thread/backgroundTerminals/list",
                 params: { threadId: nativeThreadId, limit: 100 },
               },
             },
-            { type: "emit_inbound", frame: { id: 7, result: { data: [], nextCursor: null } } },
+            { type: "emit_inbound", frame: { id: 9, result: { data: [], nextCursor: null } } },
           ],
         });
         const harness = yield* makeCodexReplayHarness(transcript);
@@ -8364,11 +8385,14 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       scenario: `codex-bg-stop-${terminated}`,
       entries: [
         ...backgroundExecTranscript.entries.slice(0, -1),
+        ...stoppedTerminalList(4, BG_NATIVE_THREAD, [
+          { itemId: BG_COMMAND_ITEM, processId: "4242", command: BG_COMMAND },
+        ]),
         {
           type: "expect_outbound",
           label: "terminate-background-command",
           frame: {
-            id: 4,
+            id: 5,
             method: "thread/backgroundTerminals/terminate",
             params: { threadId: BG_NATIVE_THREAD, processId: "4242" },
           },
@@ -8379,17 +8403,17 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           frame:
             terminated === "thread_unloaded"
               ? {
-                  id: 4,
+                  id: 5,
                   error: { code: -32600, message: `thread not found: ${BG_NATIVE_THREAD}` },
                 }
-              : { id: 4, result: { terminated: terminated === true } },
+              : { id: 5, result: { terminated: terminated === true } },
         },
         ...(terminated === false || stillRunning
           ? [
               {
                 type: "expect_outbound" as const,
                 frame: {
-                  id: 5,
+                  id: 6,
                   method: "thread/backgroundTerminals/list",
                   params: { threadId: BG_NATIVE_THREAD },
                 },
@@ -8397,7 +8421,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               {
                 type: "emit_inbound" as const,
                 frame: {
-                  id: 5,
+                  id: 6,
                   result: {
                     data: stillRunning
                       ? [{ itemId: "background-command", processId: "4242", command: "sleep 60" }]
@@ -8413,19 +8437,19 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               {
                 type: "expect_outbound" as const,
                 frame: {
-                  id: 6,
+                  id: 7,
                   method: "thread/backgroundTerminals/terminate",
                   params: { threadId: BG_NATIVE_THREAD, processId: "4242" },
                 },
               },
               {
                 type: "emit_inbound" as const,
-                frame: { id: 6, result: { terminated: false } },
+                frame: { id: 7, result: { terminated: false } },
               },
               {
                 type: "expect_outbound" as const,
                 frame: {
-                  id: 7,
+                  id: 8,
                   method: "thread/backgroundTerminals/list",
                   params: { threadId: BG_NATIVE_THREAD },
                 },
@@ -8433,7 +8457,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               {
                 type: "emit_inbound" as const,
                 frame: {
-                  id: 7,
+                  id: 8,
                   result: {
                     data: [
                       { itemId: "background-command", processId: "4242", command: "sleep 60" },
@@ -8445,17 +8469,18 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               {
                 type: "expect_outbound" as const,
                 frame: {
-                  id: 8,
+                  id: 9,
                   method: "thread/backgroundTerminals/terminate",
                   params: { threadId: BG_NATIVE_THREAD, processId: "4242" },
                 },
               },
               {
                 type: "emit_inbound" as const,
-                frame: { id: 8, result: { terminated: true } },
+                frame: { id: 9, result: { terminated: true } },
               },
             ]
           : []),
+        ...stoppedTerminalList(stillRunning ? 10 : terminated === false ? 7 : 6, BG_NATIVE_THREAD),
         backgroundExecTranscript.entries.at(-1)!,
       ],
     });
@@ -8531,6 +8556,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             }),
           );
           yield* harness.firstTerminal;
+          yield* awaitUntil(() => backgroundRoster(harness.events).length === 1, "live roster");
           const terminal = harness.terminalEvents()[0]!;
           assert.equal(terminal.status, "completed");
           assert.isTrue(yield* harness.hasPendingBackgroundWork);
@@ -8614,16 +8640,23 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               entries: original.entries.flatMap((entry) => {
                 if (!("frame" in entry)) return [entry];
                 if (
+                  "label" in entry &&
+                  entry.label === "reconcile-stopped-terminals" &&
+                  Predicate.isObject(entry.frame) &&
+                  entry.frame.id === 6
+                )
+                  return [];
+                if (
                   entry.type === "expect_outbound" &&
                   Predicate.isObject(entry.frame) &&
                   entry.frame.method === "thread/backgroundTerminals/terminate" &&
-                  entry.frame.id === 4
+                  entry.frame.id === 5
                 )
                   return [
                     {
                       type: "expect_outbound" as const,
                       frame: {
-                        id: 4,
+                        id: 5,
                         method: "thread/backgroundTerminals/list",
                         params: { threadId: BG_NATIVE_THREAD },
                       },
@@ -8631,7 +8664,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                     {
                       type: "emit_inbound" as const,
                       frame: {
-                        id: 4,
+                        id: 5,
                         result: {
                           data: [
                             { itemId: BG_COMMAND_ITEM, processId: "4242", command: BG_COMMAND },
@@ -8640,12 +8673,12 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                         },
                       },
                     },
-                    withReplayRequestId(entry, 5),
+                    withReplayRequestId(entry, 6),
                   ];
                 return [
                   Predicate.isObject(entry.frame) &&
                   typeof entry.frame.id === "number" &&
-                  entry.frame.id >= 4
+                  entry.frame.id >= 5
                     ? withReplayRequestId(entry, entry.frame.id + 1)
                     : entry,
                 ];
@@ -8755,10 +8788,8 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     },
   );
 
-  // Stop kills the reply's command with its turn, and Codex reports the turn
-  // interrupted without completing the command. The Run stops reading the
-  // provider once its turn ends unfinished, so the command must leave the
-  // background roster no later than the turn does.
+  // Codex reports the interrupted turn before confirming that the native
+  // command ended. The session must reconcile the roster after that report.
   it.effect("a stopped reply's command no longer runs in the background", () => {
     const transcript = makeCodexReplayTranscript({
       scenario: "codex-stopped-reply-command",
@@ -8825,6 +8856,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           label: "terminate-stopped-command",
           frame: { id: 6, result: { terminated: true } },
         },
+        ...stoppedTerminalList(7, BG_NATIVE_THREAD),
       ],
     });
     return Effect.scoped(
@@ -8896,6 +8928,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           assert.isNull((yield* Ref.get(replayDriver.state)).failure);
 
           const projection = yield* orchestrator.getThreadProjection(threadId);
+          assert.equal(projection.providerSessions[0]?.status, "ready");
           const command = projection.turnItems.find((item) => item.type === "command_execution");
           assert.equal(command?.status, "interrupted");
           assert.deepEqual(

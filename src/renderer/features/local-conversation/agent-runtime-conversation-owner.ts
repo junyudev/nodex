@@ -2320,7 +2320,9 @@ export class AgentRuntimeConversationOwner {
         )
       )
         return;
-      const activates = providerThreadActivatesThread(event.payload, projection.thread.id);
+      const activates =
+        !event.backgroundTasksOnly &&
+        providerThreadActivatesThread(event.payload, projection.thread.id);
       const referenced =
         activates ||
         event.payload.id === projection.thread.activeProviderThreadId ||

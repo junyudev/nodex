@@ -907,6 +907,7 @@ export const layer: Layer.Layer<
         };
         const finalizedProviderThread: OrchestrationV2ProviderThread = {
           ...input.providerThread,
+          pendingBackgroundTasks: undefined,
           status: finalProviderThreadStatus(input.terminal.threadDisposition),
           updatedAt: completedAt,
         };
@@ -1664,9 +1665,8 @@ export const layer: Layer.Layer<
             if (yield* Ref.get(providerThreadOwnerLost)) {
               return true;
             }
-            // Claude background Bash has no turn-item projection. Keep the
-            // stream open while this root's provider thread still reports
-            // pending roster work so late empty updates can clear Waiting.
+            // Keep observing late item and subagent events from the native thread.
+            // The session writes the background roster independently.
             // Use only the thread-scoped probe: session-wide pending work
             // (siblings, wake buffers, session subagents) must not pin this
             // root subscription. Session idle release still uses
@@ -1752,9 +1752,8 @@ export const layer: Layer.Layer<
                   ) {
                     // Root provider_thread.updated always uses an ownership gate:
                     // pre-terminal writeIfRunCurrent (attempt still running), or
-                    // post-terminal writeIfProviderThreadOwner so late roster
-                    // clears still land while this attempt owns the run and this
-                    // run owns lastRunOrdinal.
+                    // post-terminal writeIfProviderThreadOwner while this attempt
+                    // owns the run and this run owns lastRunOrdinal.
                     const rootTerminalAlreadySeen = yield* Ref.get(rootTerminalSeen);
                     const isRootProviderThreadUpdate =
                       event.type === "provider_thread.updated" &&

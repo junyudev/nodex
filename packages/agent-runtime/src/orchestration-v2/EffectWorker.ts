@@ -240,7 +240,7 @@ export const layerExecutor: Layer.Layer<
                 ),
               );
           case "provider-task.stop": {
-            const taskId = effect.request.taskId;
+            const { taskId, providerSessionId } = effect.request;
             return providerTurnControl
               .stopBackgroundTask({
                 threadId: effect.threadId,
@@ -257,7 +257,8 @@ export const layerExecutor: Layer.Layer<
                     commandId: CommandId.make(`${effect.id}:settled`),
                     threadId: effect.threadId,
                     providerThreadId: effect.request.providerThreadId,
-                    taskId: effect.request.taskId,
+                    providerSessionId,
+                    taskId,
                     turnItemIds: effect.request.turnItemIds,
                   }),
                 ),

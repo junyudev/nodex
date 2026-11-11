@@ -626,12 +626,23 @@ export const layer: Layer.Layer<
               }),
             ];
           case "provider_thread.updated": {
-            const threadId = input.event.providerThread.appThreadId ?? input.threadId;
-            const updated = yield* makeDomainEvent(input, {
+            const { providerThread } = input.event;
+            const threadId = providerThread.appThreadId ?? input.threadId;
+            const decoded = yield* makeDomainEvent(input, {
               type: "provider-thread.updated",
               threadId,
-              payload: input.event.providerThread,
+              payload: providerThread,
             });
+            // The snapshot codec defaults an absent roster to empty. Metadata
+            // observations leave it omitted so the writer preserves the live level.
+            const updated =
+              providerThread.pendingBackgroundTasks === undefined &&
+              decoded.type === "provider-thread.updated"
+                ? {
+                    ...decoded,
+                    payload: { ...decoded.payload, pendingBackgroundTasks: undefined },
+                  }
+                : decoded;
             return input.event.retainedNativeTurnIds === undefined
               ? [updated]
               : [

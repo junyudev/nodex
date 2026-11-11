@@ -1,7 +1,9 @@
 import {
   CommandId,
+  EventId,
   ProviderRequestKind,
   type OrchestrationV2Run,
+  OrchestrationV2ProviderThreadJson,
   OrchestrationV2DomainEvent,
   OrchestrationV2StoredEvent,
   ProviderThreadId,
@@ -74,7 +76,15 @@ export type EventSinkV2Error = typeof EventSinkV2Error.Type;
 /**
  * SERVICE DEFINITION
  */
+type ProviderThreadUpdate = Extract<
+  OrchestrationV2DomainEvent,
+  { type: "provider-thread.updated" }
+>;
+
 export interface EventSinkV2Shape {
+  readonly writeProviderBackgroundTasks: (
+    event: ProviderThreadUpdate,
+  ) => Effect.Effect<boolean, EventSinkV2Error>;
   readonly write: (input: {
     /** Reject orphan cleanup if a native turn has been adopted by another attempt. */
     readonly expectedProviderTurn?: {
@@ -356,6 +366,44 @@ const layerBase: Layer.Layer<
         return guarded;
       });
 
+    const decodeProviderThread = Schema.decodeUnknownEffect(
+      Schema.fromJsonString(OrchestrationV2ProviderThreadJson),
+    );
+    // A run can publish metadata captured before a newer session observation.
+    // Resolve an omitted roster inside the same transaction as the event append.
+    const preserveBackgroundTasks = (
+      event: ProviderThreadUpdate,
+      prior: Map<ProviderThreadId, ProviderThreadUpdate["payload"]>,
+    ) =>
+      Effect.gen(function* () {
+        const offered = event.payload;
+        let current = prior.get(offered.id);
+        if (
+          current === undefined &&
+          offered.pendingBackgroundTasks === undefined &&
+          offered.providerSessionId !== null &&
+          offered.status !== "closed"
+        ) {
+          const rows = yield* sql<{ payload_json: string }>`
+            SELECT payload_json FROM orchestration_v2_projection_provider_threads
+            WHERE provider_thread_id = ${offered.id}
+              AND provider_session_id = ${offered.providerSessionId}
+              AND json_array_length(payload_json, '$.pendingBackgroundTasks') > 0
+          `;
+          if (rows[0] !== undefined) current = yield* decodeProviderThread(rows[0].payload_json);
+        }
+        const payload =
+          offered.pendingBackgroundTasks === undefined &&
+          offered.status !== "closed" &&
+          current?.pendingBackgroundTasks !== undefined &&
+          current.providerSessionId === offered.providerSessionId &&
+          current.nativeThreadRef?.nativeId === offered.nativeThreadRef?.nativeId
+            ? { ...offered, pendingBackgroundTasks: current.pendingBackgroundTasks }
+            : offered;
+        prior.set(offered.id, payload);
+        return { ...event, payload };
+      });
+
     const normalizeEvents = (events: ReadonlyArray<OrchestrationV2DomainEvent>) =>
       Effect.gen(function* () {
         for (const event of events) {
@@ -445,17 +493,21 @@ const layerBase: Layer.Layer<
               : [],
           ),
         );
+        const providerThreads = new Map<ProviderThreadId, ProviderThreadUpdate["payload"]>();
         return yield* Effect.forEach(
           events,
-          (event): Effect.Effect<OrchestrationV2DomainEvent, unknown> =>
-            event.type === "turn-item.updated"
+          (event): Effect.Effect<OrchestrationV2DomainEvent, unknown> => {
+            if (event.type === "provider-thread.updated")
+              return preserveBackgroundTasks(event, providerThreads);
+            return event.type === "turn-item.updated"
               ? turnItemPositions
                   .normalize(
                     boundStoredTurnItem(event.payload),
                     event.payload.runId === null ? undefined : runOrdinals.get(event.payload.runId),
                   )
                   .pipe(Effect.map((payload) => ({ ...event, payload })))
-              : Effect.succeed(event),
+              : Effect.succeed(event);
+          },
           { concurrency: 1 },
         );
       });
@@ -549,6 +601,88 @@ const layerBase: Layer.Layer<
       );
     });
 
+    const writeProviderBackgroundTasks = (event: ProviderThreadUpdate) =>
+      commitThenPublish(
+        Effect.gen(function* () {
+          const offered = event.payload;
+          const rows = yield* sql<{ payload_json: string }>`
+            SELECT thread.payload_json
+            FROM orchestration_v2_projection_provider_threads thread
+            JOIN orchestration_v2_projection_provider_sessions session
+              ON session.provider_session_id = thread.provider_session_id
+            WHERE thread.provider_thread_id = ${offered.id}
+              AND thread.provider_session_id = ${offered.providerSessionId}
+              AND thread.thread_id = ${event.threadId}
+              AND thread.status <> 'closed'
+              AND session.status IN ('starting', 'ready', 'running', 'waiting')
+          `;
+          if (rows[0] === undefined) return { bound: false, events: [] };
+          const current = yield* decodeProviderThread(rows[0].payload_json);
+          if (
+            current.nativeThreadRef?.nativeId !== offered.nativeThreadRef?.nativeId ||
+            current.providerInstanceId !== offered.providerInstanceId
+          )
+            return { bound: false, events: [] };
+          const pendingBackgroundTasks = offered.pendingBackgroundTasks ?? [];
+          if (
+            JSON.stringify(current.pendingBackgroundTasks ?? []) ===
+            JSON.stringify(pendingBackgroundTasks)
+          )
+            return { bound: true, events: [] };
+          const committed = yield* eventStore.append({
+            events: [
+              {
+                ...event,
+                backgroundTasksOnly: true,
+                payload: { ...current, pendingBackgroundTasks, updatedAt: event.occurredAt },
+              },
+            ],
+          });
+          yield* applyStoredEvents(committed);
+          return { bound: true, events: committed };
+        }),
+        ({ events }) => publishStoredEvents(events),
+      ).pipe(
+        Effect.map(({ bound }) => bound),
+        Effect.mapError((cause) => new EventSinkWriteError({ eventCount: 1, cause })),
+      );
+
+    const clearRetiredSessionRosters = (events: ReadonlyArray<OrchestrationV2DomainEvent>) =>
+      Effect.gen(function* () {
+        const cleared: ProviderThreadUpdate[] = [];
+        const seen = new Set<string>();
+        for (const event of events) {
+          if (
+            event.type !== "provider-session.updated" ||
+            (event.payload.status !== "stopped" && event.payload.status !== "error") ||
+            seen.has(event.payload.id)
+          )
+            continue;
+          seen.add(event.payload.id);
+          const rows = yield* sql<{ payload_json: string }>`
+            SELECT payload_json FROM orchestration_v2_projection_provider_threads
+            WHERE provider_session_id = ${event.payload.id}
+              AND thread_id IS NOT NULL AND status <> 'closed'
+              AND json_array_length(payload_json, '$.pendingBackgroundTasks') > 0
+          `;
+          for (const row of rows) {
+            const current = yield* decodeProviderThread(row.payload_json);
+            if (current.appThreadId === null) continue;
+            cleared.push({
+              id: EventId.make(`${event.id}:background:${current.id}`),
+              type: "provider-thread.updated",
+              backgroundTasksOnly: true,
+              threadId: current.appThreadId,
+              driver: current.driver,
+              providerInstanceId: current.providerInstanceId,
+              occurredAt: event.occurredAt,
+              payload: { ...current, pendingBackgroundTasks: [], updatedAt: event.occurredAt },
+            });
+          }
+        }
+        return cleared.length === 0 ? events : [...events, ...cleared];
+      });
+
     const writeEffect = Effect.fn("orchestrationV2.EventSink.write")(function* (
       input: Parameters<EventSinkV2Shape["writeWithEffects"]>[0],
     ) {
@@ -583,7 +717,7 @@ const layerBase: Layer.Layer<
           );
           const committed = yield* eventStore.append({
             ...(input.commandId === undefined ? {} : { commandId: input.commandId }),
-            events: normalized,
+            events: yield* clearRetiredSessionRosters(normalized),
           });
           yield* applyStoredEvents(committed);
           yield* effectOutbox.enqueue(input.effects);
@@ -998,6 +1132,7 @@ const layerBase: Layer.Layer<
     };
 
     return EventSinkV2.of({
+      writeProviderBackgroundTasks,
       write: (input) =>
         writeEffect({ ...input, effects: [] }).pipe(
           Effect.mapError(

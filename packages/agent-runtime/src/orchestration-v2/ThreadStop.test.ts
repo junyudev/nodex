@@ -859,16 +859,16 @@ it.effect(
         }),
         { stopping: [] },
       );
-      // A stop admitted for one Run never reaches work that Run did not start.
-      const foreign = yield* threads
-        .stopBackgroundWork({
+      // Some provider tasks, such as Monitors, have no corresponding turn item.
+      assert.deepEqual(
+        yield* threads.stopBackgroundWork({
           threadId,
-          commandId: CommandId.make("command:background-foreign-run"),
+          commandId: CommandId.make("command:background-without-run"),
           taskIds: ["monitor"],
           runId: before.runs[0]!.id,
-        })
-        .pipe(Effect.result);
-      assert.strictEqual(foreign._tag, "Failure");
+        }),
+        { stopping: ["monitor"] },
+      );
       const allCommandId = CommandId.make("command:background-all");
       const shown = (yield* readRootActivity({ rootThreadIds: [threadId] })).items[0]!
         .backgroundTasks;

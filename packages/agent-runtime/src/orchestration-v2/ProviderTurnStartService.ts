@@ -1218,6 +1218,9 @@ export const layer: Layer.Layer<
         loadedProviderThread;
       const runningProviderThread: OrchestrationV2ProviderThread = {
         ...attachedProviderThread,
+        ...(sameNativeThread && providerThread.providerSessionId === providerSessionId
+          ? { pendingBackgroundTasks: undefined }
+          : {}),
         contextUsage: handoffUsage,
         id: providerThread.id,
         driver: session.driver,

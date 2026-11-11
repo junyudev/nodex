@@ -2253,6 +2253,7 @@ export const OrchestrationV2DomainEvent = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2EventBase.fields,
     type: Schema.Literal("provider-thread.updated"),
+    backgroundTasksOnly: Schema.optional(Schema.Literal(true)),
     payload: OrchestrationV2ProviderThread,
   }),
   Schema.Struct({
@@ -3143,6 +3144,7 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2JsonEventBaseFields,
     type: Schema.Literal("provider-thread.updated"),
+    backgroundTasksOnly: Schema.optional(Schema.Literal(true)),
     payload: OrchestrationV2ProviderThreadJson,
   }),
   Schema.Struct({
@@ -3850,6 +3852,7 @@ const OrchestrationV2InternalCommand = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     providerThreadId: ProviderThreadId,
+    providerSessionId: Schema.optional(Schema.NullOr(ProviderSessionId)),
     taskId: TrimmedNonEmptyString,
     turnItemIds: Schema.Array(TurnItemId),
   }),

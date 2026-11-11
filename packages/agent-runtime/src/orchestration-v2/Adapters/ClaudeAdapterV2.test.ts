@@ -8033,7 +8033,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
-  it.effect("clears the roster when a turn fails", () =>
+  it.effect("keeps a failed turn’s background task until its query exits", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const harness = yield* makeWakeHarness;
@@ -8084,8 +8084,13 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* awaitUntil(() => harness.terminalEvents().length === 1, "failed terminal");
         assert.equal(harness.terminalEvents()[0]?.status, "failed");
 
-        const afterFailure = providerThreadRosterEvents(harness.events).at(-1);
-        assert.deepEqual(afterFailure?.providerThread.pendingBackgroundTasks ?? [], []);
+        const latestRoster = () =>
+          providerThreadRosterEvents(harness.events).at(-1)?.providerThread.pendingBackgroundTasks;
+        assert.lengthOf(latestRoster() ?? [], 1);
+        assert.isTrue(yield* harness.hasPendingBackgroundWork);
+
+        yield* Queue.shutdown(harness.sdkMessages);
+        yield* awaitUntil(() => latestRoster()?.length === 0, "roster clear on query exit");
         assert.isFalse(yield* harness.hasPendingBackgroundWork);
       }).pipe(
         Effect.provide(
@@ -8354,12 +8359,16 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             "thread B failed terminal",
           );
 
-          const rosterBAfterFail = providerThreadRosterEvents(events).findLast(
-            (event) => event.providerThread.id === providerThreadB.id,
-          )?.providerThread.pendingBackgroundTasks;
-          assert.deepEqual(rosterBAfterFail ?? [], []);
           assert.isFalse(yield* hasPendingBackgroundWorkForThread(providerThreadA));
-          assert.isFalse(yield* hasPendingBackgroundWorkForThread(providerThreadB));
+          assert.isTrue(yield* hasPendingBackgroundWorkForThread(providerThreadB));
+          yield* Queue.shutdown(processB.queue);
+          yield* awaitUntil(
+            () =>
+              providerThreadRosterEvents(events).findLast(
+                (event) => event.providerThread.id === providerThreadB.id,
+              )?.providerThread.pendingBackgroundTasks?.length === 0,
+            "thread B roster clear on query exit",
+          );
           assert.isFalse(yield* hasPendingBackgroundWork);
         }).pipe(
           Effect.provide(

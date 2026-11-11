@@ -211,7 +211,11 @@ export const layer: Layer.Layer<
           if (providerThread?.providerSessionId !== input.providerSessionId) return;
           if (providerThread.appThreadId !== input.threadId)
             return yield* Effect.fail(new Error("Background task belongs to a different thread."));
-          if (providerThread.nativeThreadRef?.nativeId == null) return;
+          if (
+            providerThread.nativeThreadRef?.nativeId == null ||
+            !providerThread.pendingBackgroundTasks?.some((task) => task.taskId === input.taskId)
+          )
+            return;
           const session = yield* sessions.get(input.providerSessionId);
           if (Option.isNone(session)) return;
           if (input.kind === "subagent" && session.value.stopSubagent !== undefined) {

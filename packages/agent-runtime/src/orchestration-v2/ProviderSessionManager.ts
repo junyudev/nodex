@@ -223,6 +223,7 @@ export class ProviderSessionManagerV2 extends Context.Service<
 >()("nodex/runtime/orchestration-v2/ProviderSessionManager/ProviderSessionManagerV2") {}
 
 interface LiveSessionEntry {
+  readonly openedForThreadId: ThreadId;
   readonly observedChildParents: Map<ThreadId, ThreadId>;
   readonly attachedThreadIds: ReadonlySet<ThreadId>;
   readonly loadedProviderThreadKeyByThread: ReadonlyMap<ThreadId, string>;
@@ -762,7 +763,10 @@ export const layerWithOptions = (
           };
           yield* writeProviderSessionEvents({
             runtime: input.entry.runtime,
-            threadIds: input.entry.attachedThreadIds,
+            threadIds:
+              input.entry.attachedThreadIds.size > 0
+                ? input.entry.attachedThreadIds
+                : [input.entry.openedForThreadId],
             type: "provider-session.updated",
             payload,
           });
@@ -2862,11 +2866,43 @@ export const layerWithOptions = (
               // The previous session's agent scope must not explain this
               // session's failures, even when this provider runs without one.
               yield* agentScope.clear(input.threadId);
+              const requestEventPermit = yield* Semaphore.make(1);
+              const reportBackgroundTasks: NonNullable<
+                ProviderAdapter.ProviderAdapterV2OpenSessionInput["reportBackgroundTasks"]
+              > = (providerThread) =>
+                Effect.gen(function* () {
+                  const current = (yield* Ref.get(sessions)).get(key);
+                  const threadId = providerThread.appThreadId;
+                  if (
+                    shutdownSignal.received ||
+                    current?.exposedRuntime.nativeGeneration !== nativeGeneration ||
+                    threadId === null ||
+                    providerThread.providerSessionId !== input.providerSessionId
+                  )
+                    return false;
+                  return yield* eventSink.writeProviderBackgroundTasks({
+                    id: yield* idAllocator.allocate.event({
+                      threadId,
+                      providerSessionId: input.providerSessionId,
+                    }),
+                    type: "provider-thread.updated",
+                    threadId,
+                    driver: providerThread.driver,
+                    providerInstanceId: providerThread.providerInstanceId,
+                    occurredAt: yield* DateTime.now,
+                    payload: providerThread,
+                  });
+                }).pipe(
+                  Effect.retry({ times: 2 }),
+                  Effect.orDie,
+                  requestEventPermit.withPermits(1),
+                );
               const runtime = yield* adapter
                 .openSession({
                   ...(input.ephemeral ? { ephemeral: true } : {}),
                   threadId: input.threadId,
                   providerSessionId: input.providerSessionId,
+                  reportBackgroundTasks,
                   modelSelection: input.modelSelection,
                   runtimePolicy: input.runtimePolicy,
                   ...(input.resumeFromSession === undefined
@@ -2959,7 +2995,8 @@ export const layerWithOptions = (
                 exposedRuntime,
                 eventSubscribers,
                 terminalPublicationWaiters,
-                requestEventPermit: yield* Semaphore.make(1),
+                openedForThreadId: input.threadId,
+                requestEventPermit,
                 scope: sessionScope,
                 nativeBindingScope,
                 idleGeneration: 0,

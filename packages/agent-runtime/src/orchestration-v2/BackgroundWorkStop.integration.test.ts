@@ -21,6 +21,9 @@ import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
+import * as Layer from "effect/Layer";
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import { readRootActivity } from "./ExecutionActivity.ts";
 import * as EffectWorker from "./EffectWorker.ts";
 import * as EventSink from "./EventSink.ts";
 import * as Orchestrator from "./Orchestrator.ts";
@@ -43,11 +46,13 @@ const stopEarlierBackgroundWork = ({
   olderStart = false,
   stalledRun,
   workflowMember = false,
+  rosterRegression,
 }: {
   readonly failedStart?: boolean;
   readonly stopWithQueue?: "thread.stop" | "run.interrupt";
   readonly olderStart?: boolean;
   readonly workflowMember?: boolean;
+  readonly rosterRegression?: "root" | "delegated" | "individual" | "wrong-run";
   readonly stalledRun?:
     | "missing-session"
     | "missing-session-terminal"
@@ -57,10 +62,15 @@ const stopEarlierBackgroundWork = ({
 }) =>
   Effect.scoped(
     Effect.gen(function* () {
+      const database = yield* Layer.build(SqlitePersistence.layerMemory);
       const cwd = yield* checkpointWorkspace("background-work-stop");
       const events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
       const started: ProviderAdapter.ProviderAdapterV2TurnInput[] = [];
       const interrupts: ProviderAdapter.ProviderAdapterV2InterruptInput[] = [];
+      let reportRoster: (
+        thread: ProviderAdapter.ProviderAdapterV2TurnInput["providerThread"],
+      ) => Effect.Effect<unknown> = (providerThread) =>
+        Queue.offer(events, { type: "provider_thread.updated", driver, providerThread });
       const adapter: ProviderAdapter.ProviderAdapterV2["Service"] = {
         instanceId,
         driver,
@@ -68,6 +78,8 @@ const stopEarlierBackgroundWork = ({
         planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" }),
         openSession: (input) =>
           Effect.gen(function* () {
+            if (input.reportBackgroundTasks !== undefined)
+              reportRoster = input.reportBackgroundTasks;
             const now = yield* DateTime.now;
             return {
               instanceId,
@@ -129,6 +141,7 @@ const stopEarlierBackgroundWork = ({
                   });
                 }),
               steerTurn: () => Effect.die("unused"),
+              stopTask: () => Effect.void,
               interruptTurn: (interrupt) =>
                 Effect.sync(() => {
                   interrupts.push(interrupt);
@@ -188,6 +201,133 @@ const stopEarlierBackgroundWork = ({
         });
         yield* worker.drain();
         yield* Fiber.join(running);
+        if (rosterRegression !== undefined) {
+          const parent = started[0]!;
+          let work = parent;
+          if (rosterRegression === "delegated") {
+            const childRunning = yield* watch(
+              (event) =>
+                event.type === "provider-turn.updated" &&
+                event.threadId !== threadId &&
+                event.payload.status === "running",
+            );
+            yield* orchestrator.dispatch({
+              type: "delegated_task.request",
+              commandId: CommandId.make("delegate-background"),
+              parentThreadId: threadId,
+              parentRunId: parent.runId,
+              parentNodeId: parent.rootNodeId,
+              task: "Run a background command",
+              modelSelection,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              completionWake: "always",
+              createdBy: "agent",
+              creationSource: "mcp",
+            });
+            yield* worker.drain();
+            yield* Fiber.join(childRunning);
+            work = started[1]!;
+          }
+          const target = yield* orchestrator.getThreadProjection(work.threadId);
+          const providerThread = target.providerThreads.find(
+            (entry) => entry.id === work.providerThread.id,
+          )!;
+          const itemId = TurnItemId.make("turn-item:finished-command");
+          const now = yield* DateTime.now;
+          const roster = [
+            { taskId: "finished-command", kind: "command", turnItemId: itemId },
+          ] as const;
+          const seededRoster =
+            rosterRegression === "individual"
+              ? [...roster, { taskId: "ownerless-task", kind: "command" as const }]
+              : roster;
+          yield* sink.write({
+            events: [
+              {
+                id: EventId.make("finished-command"),
+                type: "turn-item.updated",
+                threadId: work.threadId,
+                runId: work.runId,
+                occurredAt: now,
+                payload: {
+                  id: itemId,
+                  threadId: work.threadId,
+                  runId: work.runId,
+                  nodeId: null,
+                  providerThreadId: providerThread.id,
+                  providerTurnId: target.providerTurns[0]!.id,
+                  nativeItemRef: null,
+                  parentItemId: null,
+                  ordinal: 100,
+                  status: "completed",
+                  title: null,
+                  startedAt: now,
+                  completedAt: now,
+                  updatedAt: now,
+                  type: "command_execution",
+                  input: "head -32 output.txt",
+                },
+              },
+              {
+                id: EventId.make("stale-roster"),
+                type: "provider-thread.updated",
+                threadId: work.threadId,
+                occurredAt: now,
+                payload: { ...providerThread, pendingBackgroundTasks: seededRoster },
+              },
+            ],
+          });
+          if (rosterRegression === "individual" || rosterRegression === "wrong-run") {
+            const result = yield* orchestrator
+              .dispatch({
+                type: "background.stop",
+                commandId: CommandId.make("stop-finished-background"),
+                threadId: work.threadId,
+                runId: rosterRegression === "individual" ? work.runId : RunId.make("different-run"),
+                taskIds: seededRoster.map((task) => task.taskId),
+              })
+              .pipe(Effect.result);
+            if (rosterRegression === "wrong-run") {
+              assert.equal(result._tag, "Failure");
+              if (result._tag === "Failure")
+                assert.equal(
+                  result.failure.message,
+                  "Background work can be stopped only with the Run that started it.",
+                );
+              const after = yield* orchestrator.getThreadProjection(work.threadId);
+              assert.deepEqual(after.providerThreads[0]?.pendingBackgroundTasks, roster);
+              return;
+            }
+            assert.equal(result._tag, "Success");
+            yield* worker.drain();
+          } else {
+            yield* orchestrator.dispatch({
+              type: "run.interrupt",
+              commandId: CommandId.make("interrupt-background"),
+              threadId,
+              runId: parent.runId,
+              holdQueue: true,
+            });
+            yield* worker.drain();
+            const stopped = yield* orchestrator.getThreadProjection(work.threadId);
+            assert.equal(stopped.runs[0]?.status, "interrupted");
+            assert.equal(stopped.providerSessions[0]?.status, "ready");
+            const pumped = yield* watch((event) => event.type === "provider-session.updated");
+            yield* reportRoster({ ...providerThread, pendingBackgroundTasks: [] });
+            yield* Queue.offer(events, {
+              type: "provider_session.updated",
+              driver,
+              providerSession: stopped.providerSessions[0]!,
+            });
+            yield* Fiber.join(pumped);
+          }
+          const after = yield* orchestrator.getThreadProjection(work.threadId);
+          assert.deepEqual(after.providerThreads[0]?.pendingBackgroundTasks, []);
+          const activity = yield* readRootActivity({ rootThreadIds: [threadId] });
+          assert.isEmpty(activity.items.flatMap((row) => row.backgroundTasks));
+          return;
+        }
         const first = started[0]!;
         const codexTurn = (yield* orchestrator.getThreadProjection(threadId)).providerTurns[0]!;
         const devServerId = TurnItemId.make("turn-item:dev-server");
@@ -947,9 +1087,14 @@ const stopEarlierBackgroundWork = ({
           ProviderReplayHarness.layerWithRegistry(
             { name: "background-work-stop" },
             ProviderAdapterRegistry.layerSingle(adapter),
-            { runEffectWorker: false },
+            {
+              runEffectWorker: false,
+              useThreadManagement: rosterRegression === "delegated",
+              databaseLayer: Layer.succeedContext(database),
+            },
           ),
         ),
+        Effect.provideContext(database),
       );
     }),
   );
@@ -985,4 +1130,9 @@ it.effect.each([
   "superseded-attempt",
 ] as const)("Stop recovers a stalled run after %s without changing a newer attempt", (stalledRun) =>
   stopEarlierBackgroundWork({ stalledRun }),
+);
+
+it.effect.each(["root", "delegated", "individual", "wrong-run"] as const)(
+  "reconciles provider background work through %s Stop",
+  (rosterRegression) => stopEarlierBackgroundWork({ rosterRegression }),
 );

@@ -2489,6 +2489,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           goalRuns.get(providerTurnId)?.at(-1)?.providerTurnId ?? providerTurnId;
 
         const backgroundThreads = new Map<string, OrchestrationV2ProviderThread>();
+        const unpublishedBackgroundThreads = new Set<string>();
         const backgroundTerminals = new Map<string, ReadonlyArray<CodexBackgroundTerminal>>();
         const commandOutputTails = new Map<string, Map<string, CodexCommandOutputTail>>();
         yield* Effect.addFinalizer(() => Effect.sync(() => commandOutputTails.clear()));
@@ -2498,6 +2499,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           if (outputs?.size === 0) commandOutputTails.delete(nativeThreadId);
         };
         const backgroundPermit = yield* Semaphore.make(1);
+        const backgroundPublication = yield* Semaphore.make(1);
         const backgroundRevisions = new Map<string, number>();
         type BackgroundRefresh = { readonly wake: Queue.Queue<void>; refresh: boolean };
         const backgroundRefreshes = new Map<string, BackgroundRefresh>();
@@ -2515,15 +2517,43 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             if (event.type !== "provider_thread.updated") return;
             const nativeId = event.providerThread.nativeThreadRef?.nativeId;
             if (nativeId == null) return;
-            backgroundThreads.set(nativeId, event.providerThread);
-            if (rootProviderThreads.has(nativeId))
-              rootProviderThreads.set(nativeId, event.providerThread);
-          }).pipe(Effect.andThen(events.offer(event)), Effect.asVoid);
+            const current = backgroundThreads.get(nativeId);
+            const thread = {
+              ...event.providerThread,
+              pendingBackgroundTasks:
+                current?.pendingBackgroundTasks ?? event.providerThread.pendingBackgroundTasks,
+            };
+            backgroundThreads.set(nativeId, thread);
+            if (rootProviderThreads.has(nativeId)) rootProviderThreads.set(nativeId, thread);
+          }).pipe(
+            Effect.andThen(
+              events.offer(
+                event.type === "provider_thread.updated" &&
+                  input.reportBackgroundTasks !== undefined
+                  ? {
+                      ...event,
+                      providerThread: {
+                        ...event.providerThread,
+                        pendingBackgroundTasks: undefined,
+                      },
+                    }
+                  : event,
+              ),
+            ),
+            Effect.asVoid,
+          );
 
         const publishBackgroundTerminals = Effect.fnUntraced(function* (
           nativeThreadId: string,
           terminals: ReadonlyArray<CodexBackgroundTerminal>,
+          reconcile = false,
+          expectedRevision?: number,
         ) {
+          if (
+            expectedRevision !== undefined &&
+            expectedRevision !== (backgroundRevisions.get(nativeThreadId) ?? 0)
+          )
+            return;
           const thread = backgroundThreads.get(nativeThreadId);
           if (thread === undefined) return;
           const liveItemIds = new Set(terminals.map((terminal) => terminal.itemId));
@@ -2562,17 +2592,37 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             };
           });
           if (
+            !reconcile &&
+            !unpublishedBackgroundThreads.has(nativeThreadId) &&
             JSON.stringify(thread.pendingBackgroundTasks ?? []) ===
-            JSON.stringify(pendingBackgroundTasks)
-          )
+              JSON.stringify(pendingBackgroundTasks)
+          ) {
+            yield* requestBackgroundRefresh(nativeThreadId, false);
             return;
-          yield* emitProviderEvent({
-            type: "provider_thread.updated",
-            driver: CODEX_PROVIDER,
-            providerThread: { ...thread, pendingBackgroundTasks, updatedAt: now },
-          });
+          }
+          const updated = { ...thread, pendingBackgroundTasks, updatedAt: now };
+          if (input.reportBackgroundTasks === undefined) {
+            yield* publishProviderEvent({
+              type: "provider_thread.updated",
+              driver: CODEX_PROVIDER,
+              providerThread: updated,
+            });
+          } else {
+            const bound = yield* input.reportBackgroundTasks(updated);
+            // A native child may report work before its provider thread is committed.
+            if (bound || pendingBackgroundTasks.length === 0)
+              unpublishedBackgroundThreads.delete(nativeThreadId);
+            else unpublishedBackgroundThreads.add(nativeThreadId);
+          }
+          const current = {
+            ...(backgroundThreads.get(nativeThreadId) ?? updated),
+            pendingBackgroundTasks,
+          };
+          backgroundThreads.set(nativeThreadId, current);
+          if (rootProviderThreads.has(nativeThreadId))
+            rootProviderThreads.set(nativeThreadId, current);
           yield* requestBackgroundRefresh(nativeThreadId, false);
-        });
+        }, backgroundPublication.withPermit);
 
         const listBackgroundTerminals = Effect.fnUntraced(function* (
           nativeThreadId: string,
@@ -2635,13 +2685,26 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           }
         });
 
+        const reconcileBackgroundTerminals = Effect.fnUntraced(function* (
+          nativeThreadId: string,
+          discovery: boolean,
+          force = false,
+        ) {
+          while (true) {
+            const revision = backgroundRevisions.get(nativeThreadId) ?? 0;
+            const terminals = yield* listBackgroundTerminals(nativeThreadId, discovery);
+            yield* publishBackgroundTerminals(nativeThreadId, terminals, force, revision);
+            if ((backgroundRevisions.get(nativeThreadId) ?? 0) === revision) return terminals;
+          }
+        }, Effect.timeout("10 seconds"));
+
         const refreshBackgroundTerminals = (nativeThreadId: string) =>
           backgroundPermit.withPermit(
             Effect.gen(function* () {
               const revision = backgroundRevisions.get(nativeThreadId) ?? 0;
               const terminals = yield* listBackgroundTerminals(nativeThreadId, true);
+              yield* publishBackgroundTerminals(nativeThreadId, terminals, false, revision);
               if ((backgroundRevisions.get(nativeThreadId) ?? 0) !== revision) return;
-              yield* publishBackgroundTerminals(nativeThreadId, terminals);
               yield* settleMissingBackgroundCommands(nativeThreadId, terminals);
             }),
           );
@@ -2700,17 +2763,21 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           if (yield* Ref.get(nativeSessionRetired)) return;
           const existing = backgroundRefreshes.get(nativeThreadId);
           if (existing !== undefined) {
-            existing.refresh ||= refresh;
-            yield* Queue.offer(existing.wake, undefined);
+            if (refresh) {
+              existing.refresh = true;
+              yield* Queue.offer(existing.wake, undefined);
+            }
             return;
           }
           if (!refresh && (backgroundTerminals.get(nativeThreadId)?.length ?? 0) === 0) return;
           const wake = yield* Queue.sliding<void>(1);
           const concurrent = backgroundRefreshes.get(nativeThreadId);
           if (concurrent !== undefined) {
-            concurrent.refresh ||= refresh;
             yield* Queue.shutdown(wake);
-            yield* Queue.offer(concurrent.wake, undefined);
+            if (refresh) {
+              concurrent.refresh = true;
+              yield* Queue.offer(concurrent.wake, undefined);
+            }
             return;
           }
           const pending = { wake, refresh };
@@ -3126,10 +3193,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
          * items mid-flight (no item/completed). Emit terminal turn items before
          * turn.terminal so the projection never keeps a forever-running command card.
          * Does not retain settled context: late completions must not wake the run.
-         * A settled command also leaves the thread's background roster here: a Run
-         * stops reading provider events once its turn ends unfinished, so a roster
-         * that only a later refresh corrects would report the stopped command as
-         * background work forever.
+         * Native terminal state independently determines the background roster.
          */
         const terminalizeRunningCommandItems = (
           context: ActiveCodexTurnContext,
@@ -3144,10 +3208,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               return;
             }
             const nativeThreadId = context.providerThread.nativeThreadRef?.nativeId ?? "";
-            const settled = new Set<string>();
             for (const tracked of items.values()) {
               if (nativeItemId !== undefined && tracked.id !== nativeItemId) continue;
-              settled.add(tracked.id);
               dropCommandOutput(nativeThreadId, tracked.id);
               const nodeId = idAllocator.derive.nodeFromProviderItem({
                 driver: CODEX_PROVIDER,
@@ -3207,17 +3269,6 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 turnItem,
               });
             }
-            const terminals = backgroundTerminals.get(nativeThreadId) ?? [];
-            if (!terminals.some((terminal) => settled.has(terminal.itemId))) return;
-            // A roster listed before the command ended must not restore it.
-            backgroundRevisions.set(
-              nativeThreadId,
-              (backgroundRevisions.get(nativeThreadId) ?? 0) + 1,
-            );
-            yield* publishBackgroundTerminals(
-              nativeThreadId,
-              terminals.filter((terminal) => !settled.has(terminal.itemId)),
-            );
           });
 
         const terminateBackgroundTerminal = Effect.fn("CodexAdapterV2.terminateBackgroundTerminal")(
@@ -3243,46 +3294,23 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 }),
               );
             const result = yield* decodeCodexBackgroundTerminalTerminateResponse(response);
-            if (result.terminated) {
-              backgroundRevisions.set(
-                nativeThreadId,
-                (backgroundRevisions.get(nativeThreadId) ?? 0) + 1,
-              );
-              yield* publishBackgroundTerminals(
-                nativeThreadId,
-                (backgroundTerminals.get(nativeThreadId) ?? []).filter(
-                  (terminal) => terminal.processId !== processId,
-                ),
-              );
-              return;
-            }
-            let cursor: string | null = null;
-            while (true) {
-              const response: unknown = yield* client.raw.request(
-                "thread/backgroundTerminals/list",
-                {
-                  threadId: nativeThreadId,
-                  ...(cursor === null ? {} : { cursor }),
-                },
-              );
-              const page: CodexBackgroundTerminalsListPage =
-                yield* decodeCodexBackgroundTerminalsListResponse(response);
-              if (page.data.some((terminal) => terminal.processId === processId)) {
+            if (!result.terminated) {
+              const terminals = yield* listBackgroundTerminals(nativeThreadId);
+              if (terminals.some((terminal) => terminal.processId === processId))
                 return yield* toProtocolError(
                   `Codex background terminal ${processId} remained active after termination.`,
                 );
-              }
-              if (page.nextCursor === null) {
-                yield* publishBackgroundTerminals(
-                  nativeThreadId,
-                  (backgroundTerminals.get(nativeThreadId) ?? []).filter(
-                    (terminal) => terminal.processId !== processId,
-                  ),
-                );
-                return;
-              }
-              cursor = page.nextCursor;
             }
+            backgroundRevisions.set(
+              nativeThreadId,
+              (backgroundRevisions.get(nativeThreadId) ?? 0) + 1,
+            );
+            yield* publishBackgroundTerminals(
+              nativeThreadId,
+              (backgroundTerminals.get(nativeThreadId) ?? []).filter(
+                (terminal) => terminal.processId !== processId,
+              ),
+            );
           },
           Effect.timeout("10 seconds"),
         );
@@ -8010,14 +8038,14 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                     nativeThreadId,
                     backgroundThreads.get(nativeThreadId) ?? providerThread,
                   );
-                  const terminals = yield* listBackgroundTerminals(nativeThreadId);
+                  const terminals = yield* reconcileBackgroundTerminals(
+                    nativeThreadId,
+                    false,
+                    true,
+                  );
                   const terminal = terminals.find((entry) => entry.itemId === taskId);
                   if (terminal !== undefined)
                     yield* terminateBackgroundTerminal(nativeThreadId, terminal.processId);
-                  yield* publishBackgroundTerminals(
-                    nativeThreadId,
-                    terminals.filter((entry) => entry.itemId !== taskId),
-                  );
                   const contexts = [
                     ...(yield* Ref.get(activeTurns)).values(),
                     ...(yield* Ref.get(settledTurns)).values(),
@@ -8105,11 +8133,11 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           }),
           hasPendingBackgroundWorkForThread: (providerThread) =>
             Effect.gen(function* () {
-              // Keep ingestion alive until its own snapshot consumes the queued roster clear.
-              if ((providerThread.pendingBackgroundTasks?.length ?? 0) > 0) return true;
+              const nativeId = providerThread.nativeThreadRef?.nativeId;
               if (
-                (backgroundTerminals.get(providerThread.nativeThreadRef?.nativeId ?? "")?.length ??
-                  0) > 0
+                nativeId != null &&
+                backgroundThreads.get(nativeId)?.id === providerThread.id &&
+                (backgroundTerminals.get(nativeId)?.length ?? 0) > 0
               )
                 return true;
               if (
@@ -8250,7 +8278,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 providerSessionId: input.providerSessionId,
                 providerInstanceId: adapterOptions.instanceId,
                 status: "idle",
-                pendingBackgroundTasks: [],
+                pendingBackgroundTasks: threadInput.providerThread.pendingBackgroundTasks ?? [],
                 nativeThreadRef: {
                   driver: CODEX_PROVIDER,
                   nativeId: response.thread.id,
@@ -8576,27 +8604,51 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                       inLineage(candidate)),
                 ),
               ];
-              if (
+              const targetNativeId = yield* getNativeThreadId(turnInput.providerThread);
+              const wholeThreadStop =
                 (turnInput.requestRuntimeRestart === true || strict) &&
-                requestedInput.expectedRunAttemptId === undefined
-              ) {
-                const nativeId = yield* getNativeThreadId(turnInput.providerThread);
-                const trackedProcessIds = new Set(
-                  [...(yield* Ref.get(runningCommandItemsByTurn)).values()].flatMap((items) =>
-                    [...items.values()].flatMap((item) =>
-                      item.processId === undefined ? [] : [item.processId],
-                    ),
-                  ),
-                );
-                for (const terminal of backgroundTerminals.get(nativeId) ?? []) {
-                  if (trackedProcessIds.has(terminal.processId)) continue;
-                  yield* terminateBackgroundTerminal(nativeId, terminal.processId);
-                }
-              }
+                requestedInput.expectedRunAttemptId === undefined;
+              const threadsToReconcile = new Set<string>();
+              const rememberInterruptThread = (providerThread: OrchestrationV2ProviderThread) => {
+                const nativeId = providerThread.nativeThreadRef?.nativeId;
+                if (nativeId == null) return;
+                const remembered = backgroundThreads.get(nativeId);
+                if (remembered === undefined) backgroundThreads.set(nativeId, providerThread);
+                if (
+                  (providerThread.pendingBackgroundTasks?.length ?? 0) > 0 ||
+                  (remembered?.pendingBackgroundTasks?.length ?? 0) > 0 ||
+                  backgroundRefreshes.has(nativeId)
+                )
+                  threadsToReconcile.add(nativeId);
+              };
+              rememberInterruptThread(turnInput.providerThread);
+              for (const context of interruptTargetContexts)
+                rememberInterruptThread(context.providerThread);
+
+              const reconcileInterruptedThreads = backgroundPermit.withPermit(
+                Effect.gen(function* () {
+                  for (const nativeId of threadsToReconcile) {
+                    let terminals = yield* reconcileBackgroundTerminals(nativeId, true, true);
+                    if (wholeThreadStop && terminals.length > 0) {
+                      for (const terminal of terminals)
+                        yield* terminateBackgroundTerminal(nativeId, terminal.processId);
+                      terminals = yield* reconcileBackgroundTerminals(nativeId, true, true);
+                    }
+                    yield* settleMissingBackgroundCommands(nativeId, terminals);
+                    if (wholeThreadStop && terminals.length > 0)
+                      return yield* toProtocolError(
+                        "Codex still reports running background terminals after Stop.",
+                      );
+                  }
+                }),
+              );
               if (interruptTargetContexts.length === 0) {
                 // Stop on a settled turn this process retains nothing for
                 // (released, restarted, or every command already reported).
-                if (turnInput.requestRuntimeRestart === true) return;
+                if (turnInput.requestRuntimeRestart === true) {
+                  yield* reconcileInterruptedThreads;
+                  return;
+                }
                 return yield* toProtocolError(
                   `Provider turn ${turnInput.providerTurnId} is not active and cannot be interrupted.`,
                 );
@@ -8914,6 +8966,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 if (failedTermination !== undefined && !failedTermination.success) {
                   return yield* Effect.fail(failedTermination.error);
                 }
+                for (const target of interruptTargets)
+                  rememberInterruptThread(target.context.providerThread);
+                if ((backgroundTerminals.get(targetNativeId)?.length ?? 0) > 0)
+                  threadsToReconcile.add(targetNativeId);
                 // Stop the retained items without rewriting the completed root turn.
                 yield* turnTerminalizationPermit.withPermits(1)(
                   Effect.gen(function* () {
@@ -8945,6 +9001,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                     }
                   }),
                 );
+                yield* reconcileInterruptedThreads;
               }).pipe(
                 Effect.onError(() => (strict ? Effect.void : finalizeRemainingInterruptLineage)),
                 Effect.onExit((exit) => cleanupInterruptState(!strict || Exit.isSuccess(exit))),

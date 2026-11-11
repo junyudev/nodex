@@ -183,6 +183,8 @@ export interface OrchestratorV2ProviderReplayOptions {
     MigrationError | PlatformError.PlatformError | SqlError
   >;
   readonly runEffectWorker?: boolean;
+  /** Exercise the real child Stop cascade through the effect worker. */
+  readonly useThreadManagement?: boolean;
   // Start continuation runs for provider wake turns, as the live runtime does.
   // Off by default: most fixtures record no wake turn.
   readonly runContinuationWorker?: boolean;
@@ -439,18 +441,30 @@ export function layerWithRegistry<Error>(
       ),
     ),
   );
-  const layerThreadManagementProvided = Layer.unwrap(
-    Effect.gen(function* () {
-      const orchestrator = yield* Orchestrator.OrchestratorV2;
-      return Layer.mock(ThreadManagementService.ThreadManagementService)({
-        dispatch: orchestrator.dispatch,
-        getThreadRecords: orchestrator.getThreadRecords,
-        getThreadProjection: orchestrator.getThreadProjection,
-        recoverDelegatedTask: orchestrator.recoverDelegatedTask,
-        delegatedTaskResultPending: orchestrator.delegatedTaskResultPending,
-      });
-    }),
-  ).pipe(Layer.provide(layerOrchestratorProvided));
+  const layerThreadManagementProvided =
+    options.useThreadManagement === true
+      ? ThreadManagementService.layer.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              layerOrchestratorProvided,
+              layerProviderSessionManagerProvided,
+              layerServerSettings,
+              layerStores,
+            ),
+          ),
+        )
+      : Layer.unwrap(
+          Effect.gen(function* () {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            return Layer.mock(ThreadManagementService.ThreadManagementService)({
+              dispatch: orchestrator.dispatch,
+              getThreadRecords: orchestrator.getThreadRecords,
+              getThreadProjection: orchestrator.getThreadProjection,
+              recoverDelegatedTask: orchestrator.recoverDelegatedTask,
+              delegatedTaskResultPending: orchestrator.delegatedTaskResultPending,
+            });
+          }),
+        ).pipe(Layer.provide(layerOrchestratorProvided));
   const layerContinuationWorkerProvided =
     options.runContinuationWorker === true
       ? ProviderContinuationService.layer.pipe(

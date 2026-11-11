@@ -185,6 +185,8 @@ export class OrchestratorDispatchError extends Schema.TaggedError<OrchestratorDi
   },
 ) {
   override get message(): string {
+    // A string cause is the reason written for the person; anything else stays internal.
+    if (typeof this.cause === "string" && this.cause.trim() !== "") return this.cause;
     return `Failed to dispatch orchestration command ${this.commandType} (${this.commandId}).`;
   }
 }
@@ -10136,7 +10138,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         yield* emitEvent({
           ...base,
           type: "provider-thread.updated",
-          payload: { ...providerThread, status: "idle", updatedAt: input.now },
+          payload: {
+            ...providerThread,
+            pendingBackgroundTasks: undefined,
+            status: "idle",
+            updatedAt: input.now,
+          },
         });
       }
       for (const message of input.projection.messages) {
@@ -10545,13 +10552,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           commandType: command.type,
           cause: "Background task provider thread does not belong to this thread.",
         });
+      if (
+        command.providerSessionId !== undefined &&
+        providerThread.providerSessionId !== command.providerSessionId
+      )
+        return;
       const now = yield* DateTime.now;
       if (providerThread?.pendingBackgroundTasks?.some((task) => task.taskId === command.taskId)) {
         yield* emit(
           events,
           command,
-        )({
+        )<Extract<OrchestrationV2DomainEvent, { type: "provider-thread.updated" }>>({
           type: "provider-thread.updated",
+          backgroundTasksOnly: true,
           threadId: command.threadId,
           occurredAt: now,
           payload: {
@@ -10598,18 +10611,22 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
     effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
   ) {
-    const projection = yield* loadProjectionForCommand(command, ["providerThreads", "turnItems"], {
-      turnItemStatuses: ["pending", "running", "waiting"],
-      turnItemTypes: ["command_execution", "dynamic_tool", "subagent"],
-    });
+    const projection = yield* loadProjectionForCommand(command, ["providerThreads"]);
     const requested = new Set(command.taskIds);
     const tasks = liveBackgroundWork(projection).filter((task) => requested.has(task.taskId));
+    const { turnItems } = yield* loadProjectionForCommand(command, ["turnItems"], {
+      turnItemIds: tasks.flatMap((task) =>
+        task.turnItemId === undefined ? [] : [task.turnItemId],
+      ),
+    });
+    // The exact item also supplies the Run shown in Session activity, including after it ends.
+    const itemsById = new Map(turnItems.map((item) => [item.id, item]));
     const itemOf = (task: (typeof tasks)[number]) =>
-      projection.turnItems.find(
-        (item) => item.id === task.turnItemId || item.nativeItemRef?.nativeId === task.taskId,
-      );
-    // A stop admitted for one Run never reaches another Run's work.
-    if (command.runId !== undefined && tasks.some((task) => itemOf(task)?.runId !== command.runId))
+      task.turnItemId === undefined ? undefined : itemsById.get(task.turnItemId);
+    if (
+      command.runId !== undefined &&
+      turnItems.some((item) => item.runId !== null && item.runId !== command.runId)
+    )
       return yield* new OrchestratorDispatchError({
         commandId: command.commandId,
         commandType: command.type,
@@ -10626,13 +10643,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           thread.pendingBackgroundTasks?.some((entry) => entry.taskId === task.taskId),
       );
       if (owner === undefined) continue;
-      const turnItemIds = projection.turnItems
-        .filter(
-          (entry) =>
-            entry.providerThreadId === owner.id &&
-            (entry.id === task.turnItemId || entry.nativeItemRef?.nativeId === task.taskId),
-        )
-        .map((entry) => entry.id);
+      const turnItemIds = item?.providerThreadId === owner.id ? [item.id] : [];
       stopping.push(task.taskId);
       yield* Ref.update(effects, (current) => [
         ...current,
