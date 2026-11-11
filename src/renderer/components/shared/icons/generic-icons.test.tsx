@@ -9,7 +9,7 @@ describe("generic icon adapter", () => {
 
     expect(icon?.getAttribute("width")).toBe("16");
     expect(icon?.getAttribute("height")).toBe("16");
-    expect(icon?.getAttribute("stroke-width")).toBe("1.75");
+    expect(icon?.querySelector("svg")?.getAttribute("stroke-width")).toBe("1.75");
     expect(icon?.getAttribute("aria-hidden")).toBe("true");
     expect(icon?.getAttribute("focusable")).toBe("false");
   });
@@ -20,7 +20,7 @@ describe("generic icon adapter", () => {
 
     expect(icon?.getAttribute("width")).toBe("20");
     expect(icon?.getAttribute("height")).toBe("20");
-    expect(icon?.getAttribute("stroke-width")).toBe("2");
+    expect(icon?.querySelector("svg")?.getAttribute("stroke-width")).toBe("2");
     expect(icon?.getAttribute("aria-label")).toBe("Filter tasks");
     expect(icon?.hasAttribute("aria-hidden")).toBe(false);
   });
