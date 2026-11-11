@@ -29,6 +29,15 @@ export const CODEX_SCALE_TEST =
   "src/main/core-client/CodexSubagentParityPerformance.stress.test.ts";
 export const YJS_YRS_TEST = "src/shared/block-documents/yjs-yrs-conformance.test.ts";
 
+/** Native MessagePort RPC delivers objects with Node prototypes, which Cap'n Web checks by identity. */
+export const rendererNativePortTests = [
+  "src/renderer/features/local-conversation/conversation-coordination-connection.jsdom.test.ts",
+  "src/renderer/features/local-conversation/local-conversation-native-stream.jsdom.test.ts",
+  "src/renderer/features/local-conversation/local-conversation-store.test.tsx",
+  "src/renderer/features/local-conversation/transcript/local-transcript-connection.jsdom.test.ts",
+  "src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx",
+] as const;
+
 const blocknoteTests = [
   "third_party/blocknote/packages/core/src/api/getBlocksChangedByTransaction.test.ts",
   "third_party/blocknote/packages/core/src/schema/schema.test.ts",

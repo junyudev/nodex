@@ -874,13 +874,13 @@ computer together: tests time out for reasons unrelated to the change under test
 compilers side by side push it into swap. Heavy commands therefore claim cores and memory from
 one computer-wide budget before they start, and wait in line while either is full:
 
-| Command                                                                              | Cores                                                               | Memory                                                                                                      |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Semantic gate (`typecheck`, `lint`, `check:semantic`, `check`) when it actually runs | 4                                                                   | 11 GiB                                                                                                      |
-| A Vitest suite, through `vp run test*` or a direct `vp test run --config ...`        | one per worker it can start; stress runs at least half the computer | 0.5 GiB per Node worker, 1 GiB per jsdom worker, 2 GiB per Chromium worker, plus one more for Vitest itself |
-| `vp run test:e2e*`, including its builds                                             | 3                                                                   | 8 GiB                                                                                                       |
-| `vp run test:e2e:performance`                                                        | all                                                                 | all                                                                                                         |
-| `core:test:workspace`, `core:test:migration`                                         | 4                                                                   | 6 GiB                                                                                                       |
+| Command                                                                              | Cores                                                               | Memory                                                                                                                                          |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Semantic gate (`typecheck`, `lint`, `check:semantic`, `check`) when it actually runs | 4                                                                   | 11 GiB                                                                                                                                          |
+| A Vitest suite, through `vp run test*` or a direct `vp test run --config ...`        | one per worker it can start; stress runs at least half the computer | 0.5 GiB per Node worker, 1 GiB per jsdom fork, 1.5 GiB per worker in a jsdom VM run, 2 GiB per Chromium worker, plus one more for Vitest itself |
+| `vp run test:e2e*`, including its builds                                             | 3                                                                   | 8 GiB                                                                                                                                           |
+| `vp run test:e2e:performance`                                                        | all                                                                 | all                                                                                                                                             |
+| `core:test:workspace`, `core:test:migration`                                         | 4                                                                   | 6 GiB                                                                                                                                           |
 
 The budget defaults to the performance cores and half the installed memory; the rest stays with
 the desktop, editors, running apps and the Agents themselves. Memory figures are sampled peaks
@@ -1011,8 +1011,15 @@ The test commands follow production boundaries:
   in their test files.
 - `vp run test:main` runs Electron main-process adapter and host tests.
 - `vp run test:renderer` runs ordinary `.test.tsx` React behavior and explicit
-  `.jsdom.test.ts` DOM behavior in jsdom. A `.test.ts` file must not rely on
-  browser globals implicitly.
+  `.jsdom.test.ts` DOM behavior in jsdom. On hosts with at least 24 GiB of RAM,
+  ordinary files run in fresh realms on up to two reusable `vmForks` workers.
+  Workers retain the loaded jsdom package and compiled code, and recycle after
+  crossing a 384 MiB heap threshold. Tests that exercise native MessagePort RPC
+  stay in isolated forks because the
+  native ports deliver objects with Node's prototypes. Register these contracts
+  in `rendererNativePortTests` in `config/test-suites.ts`. Lower-memory hosts
+  and the renderer stress tier use isolated forks for every file. Use explicit
+  `.jsdom.test.ts` for non-TSX tests that need browser globals.
 - `vp run test:browser` runs browser-sensitive renderer contracts in Chromium.
   The shared runner reclaims detached Chromium realms between isolated files
   on every platform, so local and CI runs share the same browser lifecycle.

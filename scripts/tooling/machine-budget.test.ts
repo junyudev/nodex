@@ -189,6 +189,10 @@ test("is inactive on CI and when switched off, and accepts an explicit capacity"
 test("claims cores and memory for the workers a Vitest run can start", () => {
   const run = { files: 40, maxWorkers: 4, runtime: "dom", stress: false, cores: 10 } as const;
   expect(vitestRunClaim(run)).toEqual({ weight: 4, memoryGiB: 5 });
+  expect(vitestRunClaim({ ...run, maxWorkers: 2, runtime: "domVm" })).toEqual({
+    weight: 2,
+    memoryGiB: 4.5,
+  });
   expect(vitestRunClaim({ ...run, files: 1, runtime: "node" })).toEqual({
     weight: 1,
     memoryGiB: 1,

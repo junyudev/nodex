@@ -1,10 +1,18 @@
 import { cleanup, configure } from "@testing-library/react";
 import { MotionGlobalConfig } from "motion";
+import { ReadableStream, TransformStream, WritableStream } from "node:stream/web";
 import { afterEach } from "vite-plus/test";
 import { ASYNC_WAIT_TIMEOUT_MS } from "../../../config/test-timeouts";
 import { installMotionPreferenceForTest } from "./browser-globals";
 
 configure({ asyncUtilTimeout: ASYNC_WAIT_TIMEOUT_MS });
+
+// Vitest supplies Node's fetch in jsdom VMs but leaves out the Web Streams constructors.
+Object.assign(globalThis, {
+  ReadableStream: globalThis.ReadableStream ?? ReadableStream,
+  TransformStream: globalThis.TransformStream ?? TransformStream,
+  WritableStream: globalThis.WritableStream ?? WritableStream,
+});
 
 const nativeRequest = Request;
 const nativeResponse = Response;
@@ -139,6 +147,11 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 const browserWindow = window;
 const browserDocument = document;
+// jsdom uses non-configurable window and document properties in VM contexts.
+const canRestoreWindow =
+  Object.getOwnPropertyDescriptor(globalThis, "window")?.configurable !== false;
+const canRestoreDocument =
+  Object.getOwnPropertyDescriptor(globalThis, "document")?.configurable !== false;
 const browserCustomEvent = browserWindow.CustomEvent;
 const browserMatchMedia = browserWindow.matchMedia;
 const browserSkipAnimations = MotionGlobalConfig.skipAnimations;
@@ -249,11 +262,13 @@ function restoreBrowserGlobals() {
     writable: true,
     value: nativeCSS,
   });
-  Object.defineProperty(globalThis, "window", {
-    configurable: true,
-    writable: true,
-    value: browserWindow,
-  });
+  if (canRestoreWindow) {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      writable: true,
+      value: browserWindow,
+    });
+  }
   if (browserWindowApiDescriptor) {
     Object.defineProperty(browserWindow, "api", browserWindowApiDescriptor);
   } else {
@@ -263,11 +278,13 @@ function restoreBrowserGlobals() {
       value: createDefaultRendererApi(),
     });
   }
-  Object.defineProperty(globalThis, "document", {
-    configurable: true,
-    writable: true,
-    value: browserDocument,
-  });
+  if (canRestoreDocument) {
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      writable: true,
+      value: browserDocument,
+    });
+  }
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
     writable: true,

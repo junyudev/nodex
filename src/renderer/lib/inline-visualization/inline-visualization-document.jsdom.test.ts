@@ -38,6 +38,10 @@ function mountDocument(
     event.preventDefault();
   });
   Object.assign(window, {
+    // The guest owns its globals. Drive its clock with the test's fake timers.
+    Date: globalThis.Date,
+    setTimeout: globalThis.setTimeout,
+    clearTimeout: globalThis.clearTimeout,
     openai: {
       callTool,
       displayMode: options.displayMode ?? "inline",

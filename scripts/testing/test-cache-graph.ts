@@ -19,6 +19,7 @@ const pureBuiltins = new Set([
   "path/posix",
   "path/win32",
   "querystring",
+  "stream/web",
   "string_decoder",
   "timers",
   "timers/promises",

@@ -10,13 +10,13 @@ import {
 export interface VitestRunShape {
   readonly files: number;
   readonly maxWorkers: number;
-  readonly runtime: "node" | "dom" | "browser";
+  readonly runtime: "node" | "dom" | "domVm" | "browser";
   readonly stress: boolean;
   readonly cores: number;
 }
 
 /** Peak resident memory of one worker, from sampled runs of each suite. */
-const WORKER_MEMORY_GIB = { node: 0.5, dom: 1, browser: 2 } as const;
+const WORKER_MEMORY_GIB = { node: 0.5, dom: 1, domVm: 1.5, browser: 2 } as const;
 
 /** What a run keeps busy: one core per worker it can actually start, plus their memory. */
 export function vitestRunClaim(run: VitestRunShape): Pick<BudgetRequest, "weight" | "memoryGiB"> {
@@ -53,17 +53,21 @@ export default class MachineBudgetReporter implements Reporter {
     const config = this.vitest?.config;
     if (capacity === null || !config || specifications.length === 0) return;
     const files = specifications.length;
+    const runtime = config.browser.enabled
+      ? "browser"
+      : config.environment === "node"
+        ? "node"
+        : "dom";
+    const usesVmPool = specifications.some(
+      ({ pool }) => pool === "vmThreads" || pool === "vmForks",
+    );
     this.lease = await acquireMachineBudget(
       {
         label: `${this.options.suite} tests (${files} ${files === 1 ? "file" : "files"})`,
         ...vitestRunClaim({
           files,
           maxWorkers: config.maxWorkers,
-          runtime: config.browser.enabled
-            ? "browser"
-            : config.environment === "node"
-              ? "node"
-              : "dom",
+          runtime: runtime === "dom" && usesVmPool ? "domVm" : runtime,
           stress: resolveVitestTestTier() === "stress",
           cores: capacity.cores,
         }),

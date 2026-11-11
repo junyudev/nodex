@@ -10,10 +10,19 @@ import {
   rendererViteResolve,
   rendererViteWorker,
 } from "./renderer-vite-shared";
-import { filesForSuite } from "./test-suites";
+import { filesForSuite, rendererNativePortTests } from "./test-suites";
 import { rendererWorkerCount } from "./renderer-worker-count";
 
 const testFiles = filesForSuite("renderer", resolveVitestTestTier());
+const memoryBytes = totalmem();
+// A full VM run needs room for the transform server and retiring worker processes.
+const useVmPool = !testFiles.isStress && memoryBytes >= 24 * 1024 ** 3;
+const maxWorkers = rendererWorkerCount({
+  ci: process.env.CI === "true",
+  stress: testFiles.isStress,
+  parallelism: availableParallelism(),
+  memoryBytes,
+});
 
 export default defineConfig(async () => ({
   // Generated JavaScript still belongs to this renderer, even in nested worktrees.
@@ -30,14 +39,32 @@ export default defineConfig(async () => ({
       jsdom: { url: "http://renderer.test/" },
     },
     exclude: testFiles.exclude,
-    include: testFiles.include,
-    pool: "forks",
-    maxWorkers: rendererWorkerCount({
-      ci: process.env.CI === "true",
-      stress: testFiles.isStress,
-      parallelism: availableParallelism(),
-      memoryBytes: totalmem(),
-    }),
+    // Vitest resolves the recycle threshold from the root config even with projects.
+    vmMemoryLimit: "384MiB",
+    ...(useVmPool
+      ? {
+          projects: [
+            {
+              extends: true as const,
+              test: {
+                name: "renderer",
+                include: testFiles.include,
+                exclude: [...rendererNativePortTests],
+                pool: "vmForks" as const,
+              },
+            },
+            {
+              extends: true as const,
+              test: {
+                name: "renderer-native-ports",
+                include: [...rendererNativePortTests],
+                pool: "forks" as const,
+              },
+            },
+          ],
+        }
+      : { include: testFiles.include, pool: "forks" as const }),
+    maxWorkers: useVmPool ? Math.min(maxWorkers, 2) : maxWorkers,
     fileParallelism: !testFiles.isStress,
     passWithNoTests: testFiles.isStress,
     setupFiles: [
