@@ -1,10 +1,14 @@
+mod support;
+
+use support::cli_command;
+
 use std::process::{Command, Output, Stdio};
 
 use serde_json::Value;
 
 fn invoke(arguments: &[&str]) -> Output {
     let home = nodex_platform::test_support::tempdir().unwrap();
-    Command::new(env!("CARGO_BIN_EXE_nodex"))
+    cli_command()
         .args(arguments)
         .env("NODEX_HOME", home.path().join("unavailable"))
         .current_dir(home.path())
@@ -78,6 +82,7 @@ fn explicit_text_does_not_prompt_when_input_and_output_are_redirected() {
 fn real_terminal_defaults_to_text_and_json_can_override_it() {
     for explicit_json in [false, true] {
         let mut command = Command::new("/usr/bin/script");
+        nodex_platform::process::clear_agent_shell_environment(&mut command);
         command.args(["-q", "/dev/null", env!("CARGO_BIN_EXE_nodex")]);
         if explicit_json {
             command.arg("--json");

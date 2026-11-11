@@ -324,6 +324,8 @@ export class FakeCoreClient implements CoreClientPort {
     return `fake-attribution:${input.backend}:${input.session_id}`;
   }
 
+  async recordAgentRun(_input: import("../types").RecordAgentRunRequest): Promise<void> {}
+
   async resolveLocalMutation(
     input: CoreLocalMutationResolveRequest,
   ): Promise<CoreLocalMutationResolveResponse> {

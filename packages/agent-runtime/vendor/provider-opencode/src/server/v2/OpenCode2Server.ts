@@ -9,6 +9,7 @@ import type { OpenCodeClient } from "@opencode/client/effect";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Base64Url from "effect/encoding/Base64Url";
 import * as Layer from "effect/Layer";
 import * as P from "effect/Predicate";
@@ -26,6 +27,7 @@ export interface OpenCode2Connection extends OpenCode2Client.OpenCode2Api {
   readonly url: string;
   readonly version: string;
   readonly external: boolean;
+  readonly bindCliShell?: NativeExecutionPlugin.ShellRouter;
 }
 
 export class OpenCode2Server extends Context.Service<
@@ -150,11 +152,11 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
   readonly environment: NodeJS.ProcessEnv;
 }) {
   const opencode = yield* OpenCode2Client.OpenCode2Client;
-  const connectTo = (url: string, password: Redacted.Redacted, external: boolean) =>
+  const connectTo = (url: string, password: Redacted.Redacted, external: boolean, bindCliShell?: NativeExecutionPlugin.ShellRouter) =>
     Effect.gen(function* () {
       const api = yield* opencode.connect({ baseUrl: url, password });
       const version = yield* verifyServer(api.client);
-      return { ...api, url, version, external } satisfies OpenCode2Connection;
+      return { ...api, url, version, external, ...(bindCliShell === undefined ? {} : { bindCliShell }) } satisfies OpenCode2Connection;
     });
   let latest: OpenCode2Connection | undefined;
   const remember = (connection: OpenCode2Connection) =>
@@ -177,6 +179,7 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
   }
 
   const password = yield* generatePassword;
+  const fileSystem = yield* FileSystem.FileSystem;
   const environment = yield* NativeExecutionPlugin.environment(input.environment).pipe(
     Effect.mapError((cause) => new OpenCodeRuntime.OpenCodeRuntimeError({
       operation: "native-execution-plugin",
@@ -184,11 +187,13 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
       cause,
     })),
   );
+  const routing = environment.NODEX_OPENCODE_CLI_ROUTING;
+  const bindCliShell = routing ? NativeExecutionPlugin.shellRouter(fileSystem, routing) : undefined;
   const owner = yield* OpenCodeServerOwner.make({
     binaryPath: input.binaryPath,
     directory: input.directory,
     environment: serverEnvironment(environment, password),
-    verify: (url) => connectTo(url, password, false).pipe(Effect.flatMap(remember)),
+    verify: (url) => connectTo(url, password, false, bindCliShell).pipe(Effect.flatMap(remember)),
   });
   return OpenCode2Server.of({
     withConnection: (use) =>

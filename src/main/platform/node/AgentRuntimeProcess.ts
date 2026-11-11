@@ -1,3 +1,4 @@
+import { withoutAgentShell } from "./agent-shell-environment";
 import {
   AGENT_RUNTIME_SHUTDOWN_TIMEOUT_MS,
   AGENT_RUNTIME_FORCE_KILL_AFTER_MS,
@@ -269,6 +270,7 @@ export interface AgentRuntimeProcessOptions {
   readonly entryPath: string;
   readonly configuration: AgentRuntimeConfiguration;
   readonly environment?: Readonly<Record<string, string | undefined>>;
+  readonly profileHome?: string;
   /** Internal scheduler interval; production uses the default. */
   readonly livenessTickMs?: number;
   readonly host: (request: AgentHostRequest) => Effect.Effect<unknown, Error>;
@@ -445,7 +447,10 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
         killSignal: "SIGTERM",
         forceKillAfter: Duration.millis(AGENT_RUNTIME_FORCE_KILL_AFTER_MS),
         // Exactly the composed environment; provider credentials arrive over stdin instead.
-        env: { ...options.environment },
+        env: {
+          ...withoutAgentShell({ ...options.environment }),
+          NODEX_AGENT_PROFILE_HOME: options.profileHome,
+        },
         extendEnv: false,
         stdin: Stream.fromQueue(input),
         stdout: "pipe",

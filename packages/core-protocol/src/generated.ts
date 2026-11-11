@@ -308,6 +308,22 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/core/v1/agent-runs/record": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["record_agent_run"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/core/v1/blobs/prepare": {
         readonly parameters: {
             readonly query?: never;
@@ -966,8 +982,6 @@ export interface components {
         /** @description The desktop Host asks Core to vouch for one Agent execution of a product Session. */
         readonly AgentAttributionRequest: {
             readonly backend: components["schemas"]["AgentBackendKind"];
-            /** @description Runtime-verified input message; Core derives its Member from acceptance evidence. */
-            readonly message_id?: string | null;
             readonly run_id?: string | null;
             readonly session_id: string;
         };
@@ -3047,7 +3061,7 @@ export interface components {
             readonly retryable: boolean;
         };
         /** @enum {string} */
-        readonly CoreErrorCode: "invalid_input" | "unauthorized" | "not_found" | "ambiguous" | "conflict" | "stale_store_epoch" | "revision_conflict" | "generation_conflict" | "head_conflict" | "patch_not_found" | "patch_ambiguous" | "patch_overlap" | "idempotency_key_reused" | "idempotency_window_expired" | "legacy_idempotency_unavailable" | "protected_owner_deletion" | "document_update_missing_dependencies" | "invalid_document_schema" | "materialization_stale" | "maintenance_in_progress" | "schema_unsupported" | "store_corrupt" | "protocol_incompatible" | "event_replay_unavailable" | "deadline_exceeded" | "cancelled" | "overloaded" | "resource_exhausted" | "core_unavailable";
+        readonly CoreErrorCode: "invalid_input" | "unauthorized" | "agent_turn_ended" | "agent_session_unavailable" | "agent_generation_changed" | "agent_binding_malformed" | "not_found" | "ambiguous" | "conflict" | "stale_store_epoch" | "revision_conflict" | "generation_conflict" | "head_conflict" | "patch_not_found" | "patch_ambiguous" | "patch_overlap" | "idempotency_key_reused" | "idempotency_window_expired" | "legacy_idempotency_unavailable" | "protected_owner_deletion" | "document_update_missing_dependencies" | "invalid_document_schema" | "materialization_stale" | "maintenance_in_progress" | "schema_unsupported" | "store_corrupt" | "protocol_incompatible" | "event_replay_unavailable" | "deadline_exceeded" | "cancelled" | "overloaded" | "resource_exhausted" | "core_unavailable";
         readonly CoreErrorRecovery: {
             /** @enum {string} */
             readonly kind: "remote_access_withdrawn";
@@ -13311,6 +13325,14 @@ export interface components {
             readonly project_id: string;
             readonly readiness_epoch: string;
         };
+        /** @description A Runtime-verified Run and the accepted input that opened it. */
+        readonly RecordAgentRunRequest: {
+            readonly backend: components["schemas"]["AgentBackendKind"];
+            /** @description Core derives the requesting Member from the acceptance evidence. */
+            readonly message_id?: string | null;
+            readonly run_id: string;
+            readonly session_id: string;
+        };
         readonly RecoveryBundleContent: {
             /** @enum {string} */
             readonly kind: "yjs";
@@ -16310,6 +16332,39 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AgentAttributionResponse"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly record_agent_run: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RecordAgentRunRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Recorded Agent Run */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "text/plain": boolean;
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */

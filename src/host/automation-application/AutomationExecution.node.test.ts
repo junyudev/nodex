@@ -1292,7 +1292,7 @@ it.effect("a clock Run's first Turn gets Agent attribution before the Run binds 
   Effect.scoped(
     Effect.gen(function* () {
       const { core, workspace, automation } = yield* acquireRealOwners;
-      const attributions: string[] = [];
+      let recordedRuns = 0;
       const fixture = setup(acpBinding, {
         workspace,
         automation,
@@ -1313,14 +1313,13 @@ it.effect("a clock Run's first Turn gets Agent attribution before the Run binds 
                 initial_page_ids: [...(launch.initialPageIds ?? [])],
               },
             });
-            attributions.push(
-              yield* core.workspace.issueAgentAttribution({
-                session_id: launch.sessionId,
-                run_id: "engine-run",
-                message_id: launch.message.messageId,
-                backend: "acp",
-              }),
-            );
+            yield* core.workspace.recordAgentRun({
+              session_id: launch.sessionId,
+              run_id: "engine-run",
+              message_id: launch.message.messageId,
+              backend: "acp",
+            });
+            recordedRuns++;
           }),
       });
       yield* Effect.gen(function* () {
@@ -1353,7 +1352,7 @@ it.effect("a clock Run's first Turn gets Agent attribution before the Run binds 
           automationRevision: claim.automationRevision,
           deadlineMs: claim.expiresAt,
         });
-        assert.lengthOf(attributions, 1);
+        assert.equal(recordedRuns, 1);
         assert.equal(
           (yield* automation.inbox.read()).items.find((item) => item.automationId === created.id)
             ?.status,

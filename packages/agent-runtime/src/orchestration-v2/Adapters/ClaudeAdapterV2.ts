@@ -138,6 +138,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
@@ -3285,6 +3286,7 @@ interface ClaudeLiveQueryContext {
   readonly cwd: string | null;
   readonly query: ClaudeAgentSdkQuerySession;
   readonly queryPolicyKey: string;
+  readonly cliShellKey: string | null;
   // Choices the process was launched with; a change needs a new process.
   readonly launchKey: string;
   // Null after an unconfirmed native change; the next prompt must resynchronize every choice.
@@ -9479,6 +9481,76 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             }),
           );
 
+        const cliShellHooks = Effect.fnUntraced(function* (
+          userEnvironmentFile: string | undefined,
+        ) {
+          const file = yield* fileSystem
+            .makeTempFileScoped({ prefix: "nodex-claude-shell-" })
+            .pipe(Scope.provide(sessionScope));
+          const mutex = yield* Semaphore.make(1);
+          const pending = new Map<string, string>();
+          let installedPin: string | undefined;
+          const shellValue = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+          const startup =
+            userEnvironmentFile === undefined ? "" : `. ${shellValue(userEnvironmentFile)}\n`;
+          const deny = (reason: string) => ({
+            hookSpecificOutput: {
+              hookEventName: "PreToolUse" as const,
+              permissionDecision: "deny" as const,
+              permissionDecisionReason: reason,
+            },
+          });
+          const hook: HookCallback = (input, _toolUseId, options) =>
+            runPromise(
+              mutex.withPermit(
+                Effect.gen(function* () {
+                  if (
+                    input.hook_event_name === "PostToolUse" ||
+                    input.hook_event_name === "PostToolUseFailure" ||
+                    input.hook_event_name === "PermissionDenied"
+                  ) {
+                    pending.delete(input.tool_use_id);
+                    return {};
+                  }
+                  if (input.hook_event_name !== "PreToolUse" || input.tool_name !== "Bash")
+                    return {};
+                  const active = (yield* Ref.get(activeTurn))?.input.hostCliShell?.turnId;
+                  const owner =
+                    input.agent_id === undefined
+                      ? active
+                      : (yield* Ref.get(sessionSubagentsByTaskId)).get(input.agent_id)
+                          ?.hostExecutionIdentity?.runId;
+                  if (
+                    options.signal.aborted ||
+                    owner === undefined ||
+                    (active !== undefined && active !== owner)
+                  )
+                    return deny("This Bash call does not belong to the active Nodex Run.");
+                  // Claude reads its environment file when the shell starts, after permission
+                  // checks. Keep the pin while any earlier call could still be waiting to start.
+                  if (pending.size >= 256 || (pending.size > 0 && installedPin !== owner))
+                    return deny(
+                      "A Bash call from a previous Nodex Run is still settling. Retry after it finishes.",
+                    );
+                  if (installedPin !== owner) {
+                    const result = yield* Effect.result(
+                      fileSystem.writeFileString(
+                        file,
+                        `${startup}export NODEX_CLI_TURN_ID=${shellValue(owner)}\n`,
+                      ),
+                    );
+                    if (Result.isFailure(result))
+                      return deny("Nodex could not prepare the Bash environment.");
+                    installedPin = owner;
+                  }
+                  pending.set(input.tool_use_id, owner);
+                  return {};
+                }),
+              ),
+            );
+          return { file, hooks: [{ matcher: "Bash", hooks: [hook] }] };
+        });
+
         // The environment the workspace's setup prepared reaches every command the session
         // runs, and the host's Desktop Tools join it; a host that cannot say leaves neither.
         const prepareThread = (turnInput: ProviderAdapter.ProviderAdapterV2TurnInput) =>
@@ -9668,6 +9740,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
           nativeThreadId: string,
         ) {
+          const cliShell = turnInput.hostCliShell;
+          const cliShellKey =
+            cliShell === undefined
+              ? null
+              : JSON.stringify([cliShell.bin, cliShell.taskId, cliShell.profileHome]);
           const queryPolicy = yield* queryPolicyForTurn(turnInput.runtimePolicy);
           const mcpOverrides = claudeMcpQueryOverrides({
             mcpSession: yield* mcpSessions.read(turnInput.threadId),
@@ -9705,6 +9782,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             existing.nativeThreadId === nativeThreadId &&
             existing.cwd === turnInput.runtimePolicy.cwd &&
             existing.queryPolicyKey === queryPolicyKey &&
+            existing.cliShellKey === cliShellKey &&
             existing.launchKey === compiledSelection.launchIdentity &&
             (yield* applyLiveSelection(existing, compiledSelection.live))
           ) {
@@ -9769,6 +9847,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             nativeThreadId,
             preparedThread.desktopTools,
           );
+          const environment = ExecutionHost.withWorkspaceEnvironment(
+            adapterOptions.environment,
+            preparedThread.environment,
+            adapterOptions.settings.isolated,
+          );
+          const profileHome =
+            cliShell?.profileHome ?? adapterOptions.environment?.NODEX_AGENT_PROFILE_HOME;
+          const shell =
+            cliShell === undefined ? undefined : yield* cliShellHooks(environment?.CLAUDE_ENV_FILE);
+          const shellHooks = shell?.hooks ?? [];
           const queryOptions = {
             ...makeClaudeQueryOptions({
               modelCatalog: subagentModelCatalog,
@@ -9785,11 +9873,28 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               cwd: turnInput.runtimePolicy.cwd,
               attachmentsDir,
               settings: adapterOptions.settings,
-              environment: ExecutionHost.withWorkspaceEnvironment(
-                adapterOptions.environment,
-                preparedThread.environment,
-                adapterOptions.settings.isolated,
-              ),
+              environment:
+                cliShell === undefined
+                  ? {
+                      ...environment,
+                      NODEX_AGENT_SHELL: "1",
+                      ...(profileHome === undefined
+                        ? {}
+                        : { NODEX_AGENT_PROFILE_HOME: profileHome }),
+                    }
+                  : {
+                      ...environment,
+                      NODEX_AGENT_SHELL: "1",
+                      ...(profileHome === undefined
+                        ? {}
+                        : { NODEX_AGENT_PROFILE_HOME: profileHome }),
+                      NODEX_CLI_TASK_ID: cliShell.taskId,
+                      NODEX_CLI_TURN_ID: "no-active-turn",
+                      ...(shell === undefined ? {} : { CLAUDE_ENV_FILE: shell.file }),
+                      PATH: [cliShell.bin, environment?.PATH ?? process.env.PATH]
+                        .filter(Boolean)
+                        .join(process.platform === "win32" ? ";" : ":"),
+                    },
               tools: queryPolicy.tools ?? CLAUDE_CODE_PRESET_TOOLS,
               ...(mcpOverrides.allowedTools === undefined
                 ? {}
@@ -9815,13 +9920,17 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               hooks: {
                 PreToolUse: [
                   { matcher: CLAUDE_NODEX_APP_TOOL_MATCHER, hooks: [nativeMcpCallHook] },
+                  ...shellHooks,
                 ],
                 PostToolUse: [
                   { matcher: CLAUDE_NODEX_APP_TOOL_MATCHER, hooks: [nativeMcpCallHook] },
+                  ...shellHooks,
                 ],
                 PostToolUseFailure: [
                   { matcher: CLAUDE_NODEX_APP_TOOL_MATCHER, hooks: [nativeMcpCallHook] },
+                  ...shellHooks,
                 ],
+                PermissionDenied: shellHooks,
               },
               onElicitation,
               onUserDialog,
@@ -9879,6 +9988,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             cwd: turnInput.runtimePolicy.cwd,
             query: querySession,
             queryPolicyKey,
+            cliShellKey,
             launchKey: compiledSelection.launchIdentity,
             confirmedLiveSelection: compiledSelection.live,
             confirmedHostPermissions: null,

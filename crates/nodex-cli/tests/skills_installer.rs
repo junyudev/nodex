@@ -1,11 +1,14 @@
+mod support;
+
 use nodex_platform::private_fs::symlink;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Barrier};
 use std::thread;
 
 use clap::Parser;
-use nodex_cli::cli::{Cli, Command, SkillMutationArgs, SkillTargetArgs, SkillsArgs, SkillsCommand};
+use nodex_cli::cli::{Cli, SkillMutationArgs, SkillTargetArgs, SkillsArgs, SkillsCommand};
 use nodex_cli::error::CliErrorCode;
 use nodex_cli::runtime::CommandOutput;
 use nodex_cli::skills::bundle::{
@@ -614,20 +617,26 @@ fn mutation_cli_has_no_scope_mode_or_path_escape_hatch() {
         );
     }
 
-    let parsed = Cli::try_parse_from([
-        "nodex",
-        "--project",
-        "not-allowed",
-        "skills",
-        "install",
-        "--agent",
-        "codex",
-        "--yes",
-    ])
-    .expect("global parser");
-    let Command::Skills(_) = &parsed.command else {
-        panic!("Skills command")
-    };
-    let error = nodex_cli::runtime::execute(parsed).expect_err("scope rejected before bootstrap");
-    assert_eq!(error.code, CliErrorCode::InvalidInput);
+    let output = support::cli_command()
+        .args([
+            "--json",
+            "--project",
+            "not-allowed",
+            "skills",
+            "install",
+            "--agent",
+            "codex",
+            "--yes",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["code"], "INVALID_INPUT");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("global Agent Skill setup does not accept")
+    );
 }

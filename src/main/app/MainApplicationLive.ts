@@ -1,3 +1,4 @@
+import { desktopLayer as scopedAgentCore } from "../platform/node/ScopedAgentCoreServer";
 import * as ReadbackRuntime from "../host-runtime/ReadbackRuntime";
 import * as MobileApplication from "../../host/mobile/MobileApplication";
 import { MobileRpc } from "../../host/mobile/rpc";
@@ -497,7 +498,7 @@ export const live: Layer.Layer<
       ),
     );
   }),
-).pipe(Layer.provide(applicationGraph));
+).pipe(Layer.provide(applicationGraph.pipe(Layer.provide(scopedAgentCore))));
 
 const startupFailureLive = (
   error:

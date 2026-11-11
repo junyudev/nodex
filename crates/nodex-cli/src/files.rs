@@ -162,7 +162,7 @@ impl<'a> FileSession<'a> {
 
     fn prepare_bytes(&self, operation_id: &str, bytes: &[u8]) -> Result<String, CliError> {
         self.client
-            .prepare_blob(
+            .prepare_file_blob(
                 Some(&self.project_id),
                 operation_id,
                 &self.client.handshake.store_epoch,

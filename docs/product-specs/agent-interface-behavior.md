@@ -3,49 +3,28 @@
 ## CLI-first local interface
 
 The packaged native `nodex` CLI and official Agent Skill are the default content
-interface for local shell-capable Agents and scripts. Direct reads, stdin
-writes, typed queries, property edits, and atomic Page creation share Core
-semantics with the desktop. Windows supports task-bound PowerShell, cmd and Git Bash
-entrypoints; an explicit revoked child binding never inherits a parent binding. See [CLI Reference](../CLI.md) for command behavior.
+interface for managed local shells and scripts. Call `nodex` directly, including
+from wrapper scripts and after changing directories. The Host resolves the current
+Session and Turn when the command runs. `nodex context` shows the connected
+Profile, Project and current Actor. Explicit `--project` selects a Project in that
+Profile and `--expect-profile` asserts the Profile identity.
 
-Native CLI calls use the authenticated current Profile and optional Project
-routing. Native application tools additionally carry the host-captured execution
-identity. Both can access every resource in the current Profile Library.
-Neither exposes SQL or private storage as a content-editing interface.
+Codex uses its native task identity, with a root-task binding for a native child
+that has no explicit binding of its own. Claude carries the Session's routing
+in its SDK process environment across Turns and compaction. Its shell hook pins the shell to the Run that owns the call.
+Locally launched OpenCode registers routing per native Session and pins the Run
+when the shell starts. A native child inherits the proven parent Run when the
+provider reports its origin. Separately dispatched Nodex child Sessions get
+their own bindings.
+An external OpenCode server and a generic ACP provider do not have a managed
+shell bridge. Use the application tools on connections that support them.
 
-The host places a managed `nodex` command in the Agent shell PATH. Each eligible
-Turn, including a resumed task, refreshes its own binding to the current CLI
-build, Profile and Project. Agents use ordinary `nodex` commands without
-repeating paths or connection flags, even after changing directories. The
-directory comes from host configuration; the expected Profile identity comes
-exclusively from the connected Core authority. The entrypoint pins `NODEX_HOME`,
-`--expect-profile`, and `--project`; startup paths are never identities.
-
-Bindings are task-local and replaced atomically. The runtime-provided task ID
-selects the binding; subagents inherit the root session binding unless the host
-has supplied an explicit child binding. Native and Agent-execution Codex shells
-share one managed entrypoint and binding directory per Desktop. A provider whose
-shell names no task leaves plain `nodex` unbound and receives an explicit command
-with the same pinned build, Profile and Project in its Turn instructions. Explicit unavailable child context does
-not fall back to the parent. Runtime startup discards previous bindings, and the
-shell policy and Agent-local Bash/Zsh startup adapters preserve the entrypoint
-across login shells and snapshots, including when user startup files prepend
-another installed CLI to PATH. The adapters load the original startup files
-and then restore the managed command; they do not edit global shell files. The host
-supplies the bundled official Skill without requiring a workspace-local copy.
-The connection prompt is maintained in
-[`NodexCliBootstrapPrompt.ts`](../../src/main/platform/node/NodexCliBootstrapPrompt.ts)
-and filled with the selected Project and Skill path. It is imported as source text
-without runtime file reads or separate packaged resources.
-
-Automatic connection uses a local execution transport, the available CLI/Skill
-build and an exact product Session execution binding. Projectless tasks have the
-same current Profile content access; they supply no default Project presentation
-target. Plan changes planning behavior without disabling the connection. A
-remote transport without the local bridge or a missing executable build is
-unavailable. Core validates Profile, Store and the captured execution identity
-on every operation. Shell identity and PATH remain mutable; native shell access
-is not a security sandbox.
+A fresh invocation during a live Turn can reconnect after a Core restart. A
+refused call stops before submitting the operation as a local Member. Calls
+between Turns fail. Codex exposes task identity without shell-level
+Run identity. A detached Codex shell that starts a new CLI process while a
+later Turn of the same task is active can resolve that later Turn's grant. See
+[Agent CLI attribution](../SECURITY.md#agent-cli-attribution) for the authority model.
 
 ## Native application MCP
 

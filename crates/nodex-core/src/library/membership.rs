@@ -165,14 +165,14 @@ fn bind_run_requester(
     };
     // Exact Runtime input refines an observation's provisional latest-message capture, and names
     // the message, so Core can tell whether another Member has replied after it.
-    c.execute("INSERT INTO session_run_members(session_id,run_id,member_id,message_id) VALUES(?1,?2,?3,?4) ON CONFLICT(session_id,run_id) DO UPDATE SET member_id=excluded.member_id,message_id=excluded.message_id",params![session,run,member,message])?;
+    c.execute("INSERT INTO session_run_members(session_id,run_id,member_id,message_id) VALUES(?1,?2,?3,?4) ON CONFLICT(session_id,run_id) DO UPDATE SET member_id=excluded.member_id,message_id=excluded.message_id WHERE session_run_members.message_id IS NULL",params![session,run,member,message])?;
     Ok(())
 }
 
 impl LibraryMembership {
     /// The execution owner verifies the Run; Core freezes its requesting Member
-    /// before issuing a credential, even if the first observation has not arrived.
-    pub fn bind_agent_attribution(
+    /// during Turn preparation, even if the first observation has not arrived.
+    pub fn record_agent_run(
         &self,
         session: &str,
         run: Option<&str>,

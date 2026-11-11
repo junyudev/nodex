@@ -1,3 +1,4 @@
+import { withoutAgentShell } from "../src/main/platform/node/agent-shell-environment";
 import { SKILLS_PAGES_SCENARIO_ID } from "./scenarios/scenarios/skills-pages";
 import { nativeExecutableName } from "./desktop-build-target";
 import { vitePlusCommand } from "./vite-plus-command";
@@ -319,7 +320,7 @@ export const createDevLaunchPlan = (input: {
             ]),
         );
   const environment: NodeJS.ProcessEnv = {
-    ...input.environment,
+    ...withoutAgentShell(input.environment),
     ...developmentFeatureEnvironment(enabledFeatures),
     ...(input.arguments.build
       ? {

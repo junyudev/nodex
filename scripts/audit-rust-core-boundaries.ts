@@ -203,8 +203,9 @@ const expectedRoutes = new Set([
   "/session",
   // Remote compatibility discovery requires an authenticated Device session.
   "/core/v1/remote-info",
-  // Core issues Agent attribution credentials only to the verified Desktop Host.
+  // Only the verified Host can request Agent attribution or record Run ownership.
   "/core/v1/agent-attributions",
+  "/core/v1/agent-runs/record",
   "/core/v1/events",
   "/core/v1/handshake",
   "/core/v1/health",

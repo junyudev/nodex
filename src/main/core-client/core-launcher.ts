@@ -1,3 +1,4 @@
+import { withoutAgentShell } from "../platform/node/agent-shell-environment";
 import { spawn } from "node:child_process";
 import { accessSync, constants, lstatSync } from "node:fs";
 import path from "node:path";
@@ -467,12 +468,12 @@ export async function connectOrStartCore(
     {
       detached: true,
       windowsHide: true,
-      env: {
+      env: withoutAgentShell({
         ...process.env,
         ...input.environment,
         NODEX_INTERNAL_APP_PACKAGED: input.isPackaged ? "true" : "false",
         NODEX_INTERNAL_STARTUP_EVENTS_VERSION: "1",
-      },
+      }),
       stdio: ["ignore", "pipe", "pipe"],
     },
   );

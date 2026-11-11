@@ -607,6 +607,16 @@ fn raw_post(
     body: &str,
     headers: &[(String, String)],
 ) -> (u16, serde_json::Value) {
+    raw_request(home, "POST", path, body, headers)
+}
+
+fn raw_request(
+    home: &Path,
+    method: &str,
+    path: &str,
+    body: &str,
+    headers: &[(String, String)],
+) -> (u16, serde_json::Value) {
     use std::io::{Read, Write};
     let directory = home.join("run/core");
     let auth = fs::read_to_string(directory.join("core.auth")).unwrap();
@@ -623,7 +633,7 @@ fn raw_post(
         .collect::<String>();
     write!(
         stream,
-        "POST {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        "{method} {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
         auth.trim(),
         body.len(),
     )
@@ -639,76 +649,35 @@ fn raw_post(
 }
 
 #[test]
-fn agent_attribution_credentials_name_the_attaching_session() {
-    use nodex_core_contracts::library::{
-        LibraryPageFileAttachmentActor, LibraryPageFileCollisionPolicy, LibraryPageFileSelector,
-    };
+fn agent_attribution_credentials_name_the_session() {
     let directory = tempdir().expect("Core home");
     let home = directory.path().canonicalize().expect("absolute home");
     let executable = Path::new(env!("CARGO_BIN_EXE_nodex-core"));
-    let mut client = connect_or_launch(&home, "agent-attribution-test", Some(executable))
+    let client = connect_or_launch(&home, "agent-attribution-test", Some(executable))
         .expect("native client launch");
     let guard = ProcessGuard(client.handshake.generation.pid);
     let store_epoch = StoreEpoch(client.handshake.store_epoch.clone());
-    let project_id = "019b1000-1000-7000-8000-0000000000a1";
-    let page_id = "019b1000-1000-7000-8000-0000000000a2";
     let session_id = "019b1000-1000-7000-8000-0000000000a3";
-    let source = home.join("source");
-    nodex_platform::private_fs::create_dir(&source).unwrap();
-    let workspace = |operation: &str, intent| {
-        let response = client
-            .workspace_apply(
-                None,
-                ModuleApplyRequest {
-                    contract_version: <nodex_core_contracts::workspace::ProjectWorkspaceContract as VersionedModuleContract>::VERSION,
-                    operation_id: operation.to_owned(),
-                    store_epoch: store_epoch.clone(),
-                    intent,
-                },
-            )
-            .unwrap();
-        assert!(
-            matches!(response.0, ResponseEnvelope::Ok(_)),
-            "{response:?}"
-        );
-    };
-    workspace(
-        "attribution:create-project",
-        ProjectWorkspaceIntent::CreateProject {
-            project_id: project_id.to_owned(),
-            name: "Attribution".to_owned(),
-            description: String::new(),
-            appearance: None,
-            source_roots: vec![source.to_string_lossy().into_owned()],
-            page_key_prefix: None,
-        },
-    );
-    workspace(
-        "attribution:create-session",
-        ProjectWorkspaceIntent::CreateSession {
-            session_id: session_id.to_owned(),
-            project_id: Some(project_id.to_owned()),
-            title: "Dashboard cold start".to_owned(),
-            initial_page_ids: Vec::new(),
-        },
-    );
-    let created_page = client
-        .library_apply(
-            Some(project_id),
+    let response = client
+        .workspace_apply(
+            None,
             ModuleApplyRequest {
-                contract_version: nodex_core_contracts::library::LIBRARY_CONTRACT_VERSION,
-                operation_id: "attribution:create-page".to_owned(),
-                store_epoch: store_epoch.clone(),
-                intent: LibraryIntent::CreatePage {
-                    page_id: page_id.to_owned(),
-                    document_id: "019b1000-1000-7000-8000-0000000000a6".to_owned(),
+                contract_version: <nodex_core_contracts::workspace::ProjectWorkspaceContract as VersionedModuleContract>::VERSION,
+                operation_id: "attribution:create-session".to_owned(),
+                store_epoch,
+                intent: ProjectWorkspaceIntent::CreateSession {
+                    session_id: session_id.to_owned(),
+                    project_id: None,
                     title: "Dashboard cold start".to_owned(),
-                    parent: LibraryWriteParent::Library { before: None },
+                    initial_page_ids: Vec::new(),
                 },
             },
         )
         .unwrap();
-    assert!(matches!(created_page.0, ResponseEnvelope::Ok(_)));
+    assert!(
+        matches!(response.0, ResponseEnvelope::Ok(_)),
+        "{response:?}"
+    );
 
     let request = |session: &str| {
         serde_json::json!({ "session_id": session, "backend": "opencode" }).to_string()
@@ -726,16 +695,13 @@ fn agent_attribution_credentials_name_the_attaching_session() {
         403
     );
     let host = bind_electron_host(&client, &home);
-    assert_eq!(
-        raw_post(
-            &home,
-            "/core/v1/agent-attributions",
-            &request("019b1000-1000-7000-8000-0000000000ff"),
-            &host
-        )
-        .0,
-        404
+    let (_, unavailable) = raw_post(
+        &home,
+        "/core/v1/agent-attributions",
+        &request("019b1000-1000-7000-8000-0000000000ff"),
+        &host,
     );
+    assert_eq!(unavailable["payload"]["code"], "agent_session_unavailable");
     let (status, issued) = raw_post(
         &home,
         "/core/v1/agent-attributions",
@@ -745,88 +711,28 @@ fn agent_attribution_credentials_name_the_attaching_session() {
     assert_eq!(status, 200, "{issued}");
     let credential = issued["credential"].as_str().unwrap().to_owned();
 
-    let attach = |client: &CoreClient, index: u64, path: &str| {
-        let bytes = format!("attributed {path}");
-        let operation_id = format!("attribution:attach:{index}");
-        let prepared = client
-            .prepare_file_blob(
-                Some(project_id),
-                &operation_id,
-                &client.handshake.store_epoch,
-                Some(path),
-                &mut Cursor::new(bytes.as_bytes()),
-                bytes.len() as u64,
-            )
-            .unwrap();
-        let response = client
-            .library_apply(
-                Some(project_id),
-                ModuleApplyRequest {
-                    contract_version: nodex_core_contracts::library::LIBRARY_CONTRACT_VERSION,
-                    operation_id,
-                    store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
-                    intent: LibraryIntent::ApplyPageFileEntries {
-                        page_id: page_id.to_owned(),
-                        expected_manifest_revision: index as i64,
-                        changes: vec![LibraryPageFileEntryChange::Import {
-                            file_id: format!("attributed-file-{index}"),
-                            logical_path: path.to_owned(),
-                            mime_type: "text/plain".to_owned(),
-                            prepared_blob_receipt_id: prepared.receipt_id,
-                            collision_policy: LibraryPageFileCollisionPolicy::Reject,
-                        }],
-                        turn_id: None,
-                    },
-                },
-            )
-            .unwrap();
-        assert!(
-            matches!(response.0, ResponseEnvelope::Ok(_)),
-            "{response:?}"
-        );
-        let resolved = client
-            .library_read(
-                Some(project_id),
-                LibraryRead::ResolvePageFile {
-                    page_id: page_id.to_owned(),
-                    selector: LibraryPageFileSelector::Path {
-                        logical_path: path.to_owned(),
-                    },
-                },
-            )
-            .unwrap();
-        let ResponseEnvelope::Ok(snapshot) = resolved.0 else {
-            panic!("resolved Page File")
-        };
-        let LibraryReadValue::ResolvedPageFile { value } = snapshot.value else {
-            panic!("resolved Page File value")
-        };
-        value.attachment.unwrap().attached_by
-    };
-
-    let unverified = attach(&client, 0, "profile/unverified.txt");
-    let LibraryPageFileAttachmentActor::Member { member_id } = unverified else {
+    let actor = client.actor().unwrap();
+    let nodex_core_contracts::Actor::Member { member_id } = actor else {
         panic!("CLI Member")
     };
-    client.attribute_to_agent(credential.clone()).unwrap();
+    let attributed = |value: String| {
+        let mut headers = host.clone();
+        headers.push((nodex_core_protocol::AGENT_ATTRIBUTION_HEADER.into(), value));
+        raw_request(&home, "GET", "/core/v1/identity", "", &headers)
+    };
+    let (status, actor) = attributed(credential.clone());
+    assert_eq!(status, 200, "{actor}");
     assert_eq!(
-        attach(&client, 1, "profile/report.html"),
-        LibraryPageFileAttachmentActor::Agent {
-            session_id: session_id.to_owned(),
-            run_id: None,
-            on_behalf_of: member_id
-        }
+        actor,
+        serde_json::json!({
+            "type": "agent",
+            "session_id": session_id,
+            "run_id": null,
+            "on_behalf_of": member_id
+        })
     );
-    let (prefix, rest) = credential.split_once('.').unwrap();
-    client
-        .attribute_to_agent(format!("{prefix}.{}x", rest))
-        .unwrap();
-    let refused = client
-        .library_read(Some(project_id), LibraryRead::LocalMember)
-        .unwrap();
-    assert!(
-        matches!(refused.0,ResponseEnvelope::Error(error) if error.code==nodex_core_contracts::CoreErrorCode::Unauthorized)
-    );
+    let (_, refused) = attributed(format!("{credential}x"));
+    assert_eq!(refused["payload"]["code"], "agent_generation_changed");
 
     client.shutdown().expect("authenticated cleanup");
     drop(client);

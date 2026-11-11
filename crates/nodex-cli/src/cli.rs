@@ -14,6 +14,14 @@ use crate::skills::SkillAgent;
     arg_required_else_help = true
 )]
 pub struct Cli {
+    /// Explicit Profile home for this invocation.
+    #[arg(
+        long,
+        global = true,
+        help_heading = "Global options",
+        value_name = "PROFILE_HOME"
+    )]
+    pub home: Option<PathBuf>,
     /// Private JSON file selecting a pinned remote Space Device; never falls back locally.
     #[arg(long, global = true, help_heading = "Global options")]
     pub remote_connection: Option<std::path::PathBuf>,
@@ -180,14 +188,7 @@ pub enum ProfileCommand {
     /// Clone a published content backup and current execution history into a new Profile.
     Clone(ProfileCloneArgs),
     /// Report whether this build can open a Profile's Store, without opening it.
-    Check(ProfileCheckArgs),
-}
-
-#[derive(Clone, Debug, Args, PartialEq)]
-pub struct ProfileCheckArgs {
-    /// Profile home whose Store to check.
-    #[arg(long, value_name = "PROFILE_HOME")]
-    pub home: PathBuf,
+    Check,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]

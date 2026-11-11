@@ -1,3 +1,4 @@
+import { ScopedAgentCore } from "../../host/ScopedAgentCore";
 import { isReviewDiffCommentAttachment } from "../../shared/codex-canonical-item-projector";
 import type { ConversationFollowerTurnStart } from "../../shared/codex-thread-follower-request";
 import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
@@ -235,6 +236,7 @@ export const make: Effect.Effect<
   | MainConfig
   | SessionFolders
   | CoreAuthority
+  | ScopedAgentCore
   | CoreModules
   | CodexAgentConfigRuntime
   | CodexAttachments
@@ -250,6 +252,7 @@ export const make: Effect.Effect<
   const config = yield* MainConfig;
   const folders = yield* SessionFolders;
   const coreAuthority = yield* CoreAuthority;
+  const scopedCore = yield* ScopedAgentCore;
   const core = yield* CoreModules;
   const agentConfig = yield* CodexAgentConfigRuntime;
   const attachments = yield* CodexAttachments;
@@ -561,23 +564,54 @@ export const make: Effect.Effect<
         prepared,
         executionHostId === CODEX_APP_LOCAL_HOST_ID,
       );
-      const agentAttribution =
-        linkedSession && !linkedSession.archived
-          ? yield* core.workspace.issueAgentAttribution({
-              session_id: linkedSession.id,
-              backend: "codex",
+      // Native Codex Turns carry their submitted message identity in the
+      // canonical projection. A delayed request cannot acquire the next Turn.
+      const scopedConnection =
+        linkedSession && executionHostId === CODEX_APP_LOCAL_HOST_ID
+          ? yield* Effect.gen(function* () {
+              const connection = yield* gateway.connection(executionHostId);
+              if (connection.kind !== "ready")
+                return yield* Effect.fail(new Error("Codex is not connected to the Agent Host"));
+              return yield* scopedCore.issue({
+                owner: input.threadId,
+                identity: coreAuthority.identity,
+                projectId,
+                attribution: { session_id: linkedSession.id, backend: "codex" },
+                authorize: Effect.gen(function* () {
+                  const currentConnection = yield* gateway.connection(executionHostId);
+                  if (
+                    currentConnection.kind !== "ready" ||
+                    currentConnection.generation !== connection.generation
+                  )
+                    return "turn_ended" as const;
+                  const current = yield* projection.read(input.threadId);
+                  const running = residentConversationTurns(current.canonical).some(
+                    (turn) =>
+                      turn.status === "inProgress" &&
+                      turn.params.clientUserMessageId === clientUserMessageId,
+                  );
+                  if (!running) return "turn_ended" as const;
+                  const session = yield* readCodexLinkedRootSession(core, {
+                    hostId: executionHostId,
+                    threadId: input.threadId,
+                  });
+                  return session?.id === linkedSession.id && !session.archived
+                    ? ("allowed" as const)
+                    : ("session_unavailable" as const);
+                }).pipe(Effect.orElseSucceed(() => "turn_ended" as const)),
+              });
             })
-          : null;
-      const cliBootstrap = yield* buildNodexCliBootstrap(config, coreAuthority.identity, {
+          : undefined;
+      const cliBootstrap = yield* buildNodexCliBootstrap(config, {
         threadId: input.threadId,
         hostId: executionHostId,
-        projectId,
-        agentAttribution,
+        scopedConnection,
+        turnId: clientUserMessageId,
       });
       const additionalContext = {
         ...prepared.additionalContext,
         ...originalRequest?.additionalContext,
-        "nodex-cli": cliBootstrap,
+        "nodex-cli": { kind: cliBootstrap.kind, value: cliBootstrap.value },
       };
       const responsesapiClientMetadata = input.overrides?.responsesapiClientMetadata
         ? {

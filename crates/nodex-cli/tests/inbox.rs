@@ -1,7 +1,12 @@
 //! Run after `cargo build -p nodex-core-server`; the workspace test gate builds both binaries.
+
+mod support;
+
+use support::cli_command;
+
 use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use nodex_core_contracts::collection::CollectionWindowRequest;
 use nodex_core_contracts::inbox::{
@@ -26,7 +31,7 @@ impl Drop for CoreGuard {
 }
 
 fn nodex(home: &Path, cwd: &Path, args: &[&str], stdin: Option<&str>) -> Value {
-    let mut process = Command::new(env!("CARGO_BIN_EXE_nodex"))
+    let mut process = cli_command()
         .arg("--json")
         .args(args)
         .env("NODEX_HOME", home)

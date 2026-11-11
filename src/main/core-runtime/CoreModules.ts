@@ -14,7 +14,7 @@ import type {
   DocumentSyncResponse,
 } from "../../shared/block-documents/document-sync";
 import type {
-  AgentAttributionRequest,
+  RecordAgentRunRequest,
   AppToolOperationRequest,
   AppToolOperationIdentity,
   AutomationApplyInput,
@@ -92,7 +92,7 @@ export interface CoreModuleClients {
       input: AppToolOperationRequest,
     ) => CoreEffect<AppToolOperationIdentity>;
     /** A credential naming this Session's Agent, for the CLI that Agent runs. */
-    readonly issueAgentAttribution: (input: AgentAttributionRequest) => CoreEffect<string>;
+    readonly recordAgentRun: (input: RecordAgentRunRequest) => CoreEffect<void>;
     readonly read: (
       read: ProjectWorkspaceRead,
       options?: CoreRequestOptions,
@@ -220,9 +220,9 @@ export const live: Layer.Layer<CoreModules, never, CoreSessionAccess> = Layer.ef
             client.admitAppToolOperation(input, { signal }),
           ),
         ),
-        issueAgentAttribution: Effect.fn("CoreModules.workspace.issueAgentAttribution")((input) =>
-          access.use("workspace.issueAgentAttribution", (client, signal) =>
-            client.issueAgentAttribution(input, { signal }),
+        recordAgentRun: Effect.fn("CoreModules.workspace.recordAgentRun")((input) =>
+          access.use("workspace.recordAgentRun", (client, signal) =>
+            client.recordAgentRun(input, { signal }),
           ),
         ),
         read: Effect.fn("CoreModules.workspace.read")((read, options, projectId) =>

@@ -80,14 +80,34 @@ binary reports an unavailable bundle. Ordinary Agent tasks use familiar commands
 directly, consult command help when needed, and read `nodex context` when their
 current context is unknown; a capabilities report is not a prerequisite.
 
+## Agent shell connection
+
+Run `nodex context` to see the current Actor, Profile and Project. The Actor is
+the Agent Session and its Run when available, on behalf of a Member. An
+ordinary CLI invocation acts as the local Member. Context identifies the source of the Profile and
+Project. `--project` overrides the Host's Project default. `--expect-profile`
+asserts an identity and reports both IDs if it differs. From a managed shell,
+selecting another Profile with `--home` or `NODEX_HOME` uses that Profile’s
+local Member connection.
+
+If a connection fails, stop the current batch and use the recovery in the error.
+
+| Code | Recovery |
+| --- | --- |
+| `AGENT_TURN_ENDED` | Run the command from an active Turn. |
+| `AGENT_SESSION_UNAVAILABLE` | Reopen the Session or start a new one. |
+| `AGENT_GENERATION_CHANGED` | Run `nodex context` again in the active Turn. |
+| `AGENT_BINDING_MALFORMED` | Use plain `nodex` in the managed shell. |
+
 ## Direct input, output, and help
 
 Structured results default to text on a terminal and JSON when captured or piped.
 `--output-format auto|json|text` overrides this choice; `--json` is shorthand for
 explicit JSON and conflicts with `--output-format`. Raw Page text, line windows,
 diffs, and stdout File bytes keep their native representation.
-Errors go to stderr; captured errors are structured even for a raw success
-stream. Redirected input/output never enables prompts or pagers, including with
+Errors go to stderr and return a nonzero exit status. JSON diagnostics are
+structured even for a raw success stream. In JSON mode, connection and identity
+refusals also write the error envelope to stdout so a pipeline can read the cause. Redirected input/output never enables prompts or pagers, including with
 explicit text output. Skill installation still requires its explicit confirmation.
 
 `nodex --help` opens with task-specific default routes, then groups commands
@@ -141,7 +161,7 @@ chaining; Windows does not install these shell wrappers.
 
 ## Context and reads
 
-Profile selection follows nonblank `NODEX_HOME`, the nearest project config,
+Profile selection follows `--home`, nonblank `NODEX_HOME`, the nearest project config,
 the user config, then the default home. `--expect-profile ID` asserts that the
 connected Core has that identity; it does not select a directory or resolve
 a Profile name. A mismatch returns `PROFILE_MISMATCH` with the expected ID,
@@ -391,11 +411,6 @@ entries and `attachment: null` for body-only uses. The actor is `person`,
 no attachment time; other entries have a Core-authored RFC3339 time. Human output
 uses one compact row per File. JSON download receipts from `page file read` also
 include `attachment`.
-
-Agents that Nodex runs receive `NODEX_AGENT_ATTRIBUTION` with their CLI command
-or shell binding: a credential Core issued for that chat. The CLI presents it, and
-Core records the chat as the actor of the content it changes. A missing or
-unverifiable credential attributes nothing; those changes are `external`.
 
 Renaming paths, transferring entries, and copying or structurally restoring
 Pages preserve attachment evidence. Replacing an entry or removing and later

@@ -2224,6 +2224,9 @@ export const layerWithOptions = (
                                         .filter(Boolean)
                                         .join("\n\n"),
                                     }),
+                                ...(host.cliShell === undefined
+                                  ? {}
+                                  : { hostCliShell: host.cliShell }),
                                 ...(host.sourceRoots === undefined
                                   ? {}
                                   : { hostSourceRoots: host.sourceRoots }),

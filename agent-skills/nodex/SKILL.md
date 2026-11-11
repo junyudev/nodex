@@ -5,9 +5,10 @@ description: Read, search, edit, organize, or open Nodex Pages; query Pages, Dat
 
 # Nodex
 
-Use the native `nodex` CLI for Nodex content. Ordinary data operations connect
-to the local Core and do not require an open desktop window. Use the executable
-and Profile/Project context supplied by the host when present.
+Run `nodex` directly for Nodex content, including from scripts. Use
+`nodex context` to check who is acting and which Profile and Project are selected.
+If a connection or identity error stops a batch, follow its recovery before
+resuming. Keep the managed binding so Core records Agent authorship.
 
 ## Choose a route for the task
 

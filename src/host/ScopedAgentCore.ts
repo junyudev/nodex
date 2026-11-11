@@ -1,5 +1,9 @@
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
+import type { AgentAttributionRequest } from "../main/core-client/types";
+import type { CoreAuthorityIdentity } from "../main/core-runtime/CoreAuthority";
+
+export type ScopedAgentAdmission = "allowed" | "turn_ended" | "session_unavailable";
 
 export interface ScopedAgentCoreConnection {
   readonly endpoint: string;
@@ -13,8 +17,9 @@ export class ScopedAgentCore extends Context.Service<
     readonly issue: (input: {
       readonly owner: string;
       readonly projectId: string | null;
-      readonly attribution: string;
-      readonly authorize: Effect.Effect<boolean>;
+      readonly attribution: AgentAttributionRequest;
+      readonly identity: CoreAuthorityIdentity;
+      readonly authorize: Effect.Effect<ScopedAgentAdmission>;
     }) => Effect.Effect<ScopedAgentCoreConnection, Error>;
   }
 >()("nodex/host/ScopedAgentCore") {}

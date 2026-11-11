@@ -1,4 +1,9 @@
 //! Run after `cargo build -p nodex-core-server`; the workspace test gate builds both binaries.
+
+mod support;
+
+use support::cli_command;
+
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -329,7 +334,7 @@ impl Drop for CoreGuard {
 }
 
 fn run(home: &Path, args: &[&str]) -> Value {
-    let output = Command::new(env!("CARGO_BIN_EXE_nodex"))
+    let output = cli_command()
         .args(["--json", "--project", PROJECT])
         .args(args)
         .env("NODEX_HOME", home)
@@ -446,7 +451,7 @@ fn validate_result(args: &[&str], result: &Value) {
 
 #[allow(dead_code)]
 fn read(home: &Path, args: &[&str]) -> Vec<u8> {
-    let output = Command::new(env!("CARGO_BIN_EXE_nodex"))
+    let output = cli_command()
         .args(["--project", PROJECT])
         .args(args)
         .env("NODEX_HOME", home)
@@ -528,7 +533,7 @@ fn input(home: &Path, args: &[&str], payload: &Value) -> Value {
 fn input_text(home: &Path, args: &[&str], payload: &str) -> Value {
     use std::io::Write;
     use std::process::Stdio;
-    let mut process = Command::new(env!("CARGO_BIN_EXE_nodex"))
+    let mut process = cli_command()
         .args(["--project", PROJECT])
         .args(args)
         .env("NODEX_HOME", home)
@@ -936,7 +941,7 @@ fn malformed_structured_inputs_fail_before_resolving_or_launching_a_profile() {
             "-",
         ],
     ] {
-        let mut process = Command::new(env!("CARGO_BIN_EXE_nodex"))
+        let mut process = cli_command()
             .args(&args)
             .env("NODEX_HOME", &home)
             .current_dir(directory.path())
@@ -986,7 +991,7 @@ fn verify_direct_body_and_title_edits(home: &Path) {
             "rename-page",
         ],
     );
-    let retry = Command::new(env!("CARGO_BIN_EXE_nodex"))
+    let retry = cli_command()
         .args([
             "--output-format",
             "text",
@@ -1426,6 +1431,55 @@ fn exact_patch_receipt_retains_block_references_and_retries_without_recreating_c
 }
 
 #[test]
+fn explicit_alternate_profile_ignores_inherited_agent_markers() {
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
+    let client = connect_or_launch(&home, "marker-isolation", Some(&core_binary)).unwrap();
+    let _guard = CoreGuard(client.handshake.generation.pid);
+    for use_flag in [false, true] {
+        let mut cmd = cli_command();
+        cmd.args(["--json", "context"])
+            .env("NODEX_AGENT_SHELL", "1")
+            .env("NODEX_CLI_TURN_ID", "expired")
+            .env(
+                "NODEX_AGENT_PROFILE_HOME",
+                directory.path().join("outer-profile"),
+            )
+            .env("NODEX_AGENT_ENDPOINT", "unused")
+            .env("NODEX_AGENT_CREDENTIAL", "unused");
+        if use_flag {
+            cmd.args(["--home"]).arg(&home);
+        } else {
+            cmd.env("NODEX_HOME", &home);
+        }
+        let output = cmd.output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(json["result"]["actor"]["type"], "member");
+        assert_eq!(
+            json["result"]["profile"]["source"],
+            if use_flag { "flag" } else { "environment" }
+        );
+    }
+    let output = cli_command()
+        .args(["--json", "context", "--home"])
+        .arg(&home)
+        .env("NODEX_AGENT_PROFILE_HOME", &home)
+        .env("NODEX_AGENT_SHELL", "1")
+        .output()
+        .unwrap();
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["error"]["code"], "AGENT_BINDING_MALFORMED");
+}
+
+#[test]
 fn retry_key_requires_a_value_and_accepts_hyphens_with_equals() {
     use clap::Parser as _;
     use nodex_cli::cli::Cli;
@@ -1561,7 +1615,7 @@ fn opaque_retry_keys_bind_property_and_backup_arguments() {
         );
     }
 
-    let help = Command::new(env!("CARGO_BIN_EXE_nodex"))
+    let help = cli_command()
         .args(["backup", "create", "--help-schema", "error"])
         .env("NODEX_HOME", &home)
         .output()
@@ -2220,7 +2274,7 @@ fn profile_sql_and_schema_work_without_project_routing_from_an_unrelated_directo
         connect_or_launch(&home, "profile-sql-cli-integration", Some(&core_binary)).unwrap();
     let _guard = CoreGuard(client.handshake.generation.pid);
     let invoke = |args: &[&str]| {
-        let output = Command::new(env!("CARGO_BIN_EXE_nodex"))
+        let output = cli_command()
             .arg("--json")
             .args(args)
             .env("NODEX_HOME", &home)

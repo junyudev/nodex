@@ -3431,6 +3431,8 @@ fn router(state: Arc<ServerState>) -> Router {
         .route("/core/v1/events", get(events))
         .route("/core/v1/requests/cancel", post(cancel_request))
         .route("/core/v1/agent-attributions", post(issue_agent_attribution))
+        .route("/core/v1/agent-runs/record", post(record_agent_run))
+        .route("/core/v1/identity", get(read_identity))
         .route("/core/v1/projections/live", get(projection_live_events))
         .route(
             "/core/v1/local-mutations/resolve",
@@ -3508,6 +3510,18 @@ fn router(state: Arc<ServerState>) -> Router {
         .with_state(state)
 }
 
+async fn read_identity(
+    State(state): State<Arc<ServerState>>,
+    Extension(bound): Extension<BoundConnection>,
+    headers: HeaderMap,
+) -> Result<Json<nodex_core_contracts::actor::Actor>, ApiError> {
+    Ok(Json(
+        module_context(&state, &headers, &bound)
+            .map_err(api_core_error)?
+            .actor,
+    ))
+}
+
 fn module_context(
     state: &ServerState,
     headers: &HeaderMap,
@@ -3548,7 +3562,13 @@ fn module_context(
     let actor = state
         .membership
         .actor(&adapter, principal.as_ref(), attribution.as_ref())
-        .map_err(|error| unauthorized(&error.message))?;
+        .map_err(|error| {
+            if attribution.is_some() && principal.is_none() {
+                agent_session_unavailable()
+            } else {
+                unauthorized(&error.message)
+            }
+        })?;
     Ok(BoundModuleContext {
         actor,
         authorizing_member_id: None,
@@ -3561,6 +3581,15 @@ fn module_context(
         editor_history_owner: editor_history_owner(headers, bound)?,
         agent_attribution: attribution,
     })
+}
+
+fn agent_session_unavailable() -> CoreError {
+    CoreError {
+        code: CoreErrorCode::AgentSessionUnavailable,
+        message: "The Agent Session is archived, missing, or no longer has an eligible Member. Reopen the Session in Nodex or start a new one.".into(),
+        retryable: false,
+        recovery: CoreErrorRecovery::None,
+    }
 }
 
 /// An invalid presented credential refuses admission; identity never degrades.
@@ -3579,7 +3608,12 @@ fn agent_attribution(
     let attribution = state.agent_attribution.verify(&credential);
     attribution
         .map(Some)
-        .ok_or_else(|| unauthorized("Agent attribution credential is invalid or expired"))
+        .ok_or_else(|| CoreError {
+            code: CoreErrorCode::AgentGenerationChanged,
+            message: "Core could not verify this Agent connection. Run nodex context again from the active Turn.".into(),
+            retryable: false,
+            recovery: CoreErrorRecovery::None,
+        })
 }
 
 /// The desktop Host has verified an Agent execution of this Session and asks Core
@@ -3587,7 +3621,6 @@ fn agent_attribution(
 async fn issue_agent_attribution(
     State(state): State<Arc<ServerState>>,
     Extension(bound): Extension<BoundConnection>,
-    headers: HeaderMap,
     Json(request): Json<nodex_core_protocol::AgentAttributionRequest>,
 ) -> Result<Json<nodex_core_protocol::AgentAttributionResponse>, ApiError> {
     if bound.adapter != AdapterKind::ElectronHost {
@@ -3596,50 +3629,67 @@ async fn issue_agent_attribution(
             "Agent attribution requires the Electron Host Adapter",
         ));
     }
-    let context = module_context(&state, &headers, &bound).map_err(api_core_error)?;
-    let session_id = request.session_id.clone();
-    let request_state = Arc::clone(&state);
-    let session = state
-        .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            request_state.workspace.read(
-                &context,
-                nodex_core_contracts::ModuleReadRequest {
-                    contract_version:
-                        nodex_core_contracts::workspace::PROJECT_WORKSPACE_CONTRACT_VERSION,
-                    read: nodex_core_contracts::workspace::ProjectWorkspaceRead::Session {
-                        session_id,
-                    },
-                },
-            )
-        })
-        .await
-        .map_err(api_core_error)?;
-    let nodex_core_contracts::workspace::ProjectWorkspaceReadValue::Session { session } =
-        session.value
-    else {
-        return Err(ApiError::new(
-            StatusCode::NOT_FOUND,
-            "The Session to attribute is unavailable",
-        ));
+    let attribution = nodex_core_contracts::BoundAgentAttribution {
+        session_id: request.session_id,
+        run_id: request.run_id,
+        backend: request.backend,
     };
-    if session.archived {
+    state
+        .membership
+        .actor(&AdapterKind::NativeCli, None, Some(&attribution))
+        .map_err(agent_run_error)?;
+    Ok(Json(nodex_core_protocol::AgentAttributionResponse {
+        credential: state.agent_attribution.issue(
+            &attribution.session_id,
+            attribution.backend,
+            attribution.run_id,
+        ),
+    }))
+}
+
+fn agent_run_error(error: StoreError) -> ApiError {
+    api_core_error(
+        if error.code == StoreErrorCode::Unauthorized || error.code == StoreErrorCode::NotFound {
+            agent_session_unavailable()
+        } else {
+            apply_response_store_error(error)
+        },
+    )
+}
+
+async fn record_agent_run(
+    State(state): State<Arc<ServerState>>,
+    Extension(bound): Extension<BoundConnection>,
+    headers: HeaderMap,
+    Json(request): Json<nodex_core_protocol::RecordAgentRunRequest>,
+) -> Result<Json<bool>, ApiError> {
+    if bound.adapter != AdapterKind::ElectronHost {
         return Err(ApiError::new(
-            StatusCode::CONFLICT,
-            "An archived Session cannot be attributed",
+            StatusCode::FORBIDDEN,
+            "Recording an Agent Run requires the Electron Host Adapter",
         ));
     }
+    module_context(&state, &headers, &bound).map_err(api_core_error)?;
     // Runtime commits a user message before requesting turn preparation. Allow
     // the Host's acceptance write to arrive without falling back to another Member.
     let until = tokio::time::Instant::now() + Duration::from_secs(2);
     loop {
-        match state.membership.bind_agent_attribution(
-            &request.session_id,
-            request.run_id.as_deref(),
-            request.message_id.as_deref(),
-            request.backend,
-        ) {
-            Ok(()) => break,
+        let request_state = Arc::clone(&state);
+        let request = request.clone();
+        let recorded = state
+            .request_executor
+            .execute(&bound.id, &headers, RequestClass::Interactive, move || {
+                Ok(request_state.membership.record_agent_run(
+                    &request.session_id,
+                    Some(&request.run_id),
+                    request.message_id.as_deref(),
+                    request.backend,
+                ))
+            })
+            .await
+            .map_err(api_core_error)?;
+        match recorded {
+            Ok(()) => return Ok(Json(true)),
             Err(error)
                 if error.code == StoreErrorCode::MissingDependencies
                     && error.retryable
@@ -3647,16 +3697,9 @@ async fn issue_agent_attribution(
             {
                 tokio::time::sleep(Duration::from_millis(25)).await;
             }
-            Err(error) => return Err(api_core_error(unauthorized(&error.message))),
+            Err(error) => return Err(agent_run_error(error)),
         }
     }
-    Ok(Json(nodex_core_protocol::AgentAttributionResponse {
-        credential: state.agent_attribution.issue(
-            &request.session_id,
-            request.backend,
-            request.run_id.clone(),
-        ),
-    }))
 }
 
 fn editor_history_owner(
@@ -3789,6 +3832,10 @@ fn record_core_error(error: CoreError) -> CoreError {
     let code = match &error.code {
         CoreErrorCode::InvalidInput => "invalid_input",
         CoreErrorCode::Unauthorized => "unauthorized",
+        CoreErrorCode::AgentTurnEnded => "agent_turn_ended",
+        CoreErrorCode::AgentSessionUnavailable => "agent_session_unavailable",
+        CoreErrorCode::AgentGenerationChanged => "agent_generation_changed",
+        CoreErrorCode::AgentBindingMalformed => "agent_binding_malformed",
         CoreErrorCode::NotFound => "not_found",
         CoreErrorCode::Ambiguous => "ambiguous",
         CoreErrorCode::Conflict => "conflict",
@@ -3983,7 +4030,7 @@ fn valid_binding(value: &str) -> bool {
 fn api_core_error(error: CoreError) -> ApiError {
     let status = match error.code {
         CoreErrorCode::Unauthorized => StatusCode::FORBIDDEN,
-        CoreErrorCode::NotFound => StatusCode::NOT_FOUND,
+        CoreErrorCode::NotFound | CoreErrorCode::AgentSessionUnavailable => StatusCode::NOT_FOUND,
         CoreErrorCode::InvalidInput => StatusCode::BAD_REQUEST,
         CoreErrorCode::ResourceExhausted | CoreErrorCode::Overloaded => {
             StatusCode::TOO_MANY_REQUESTS

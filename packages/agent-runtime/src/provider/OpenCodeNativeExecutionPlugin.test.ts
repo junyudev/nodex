@@ -21,6 +21,13 @@ interface NativeToolEvent {
   input: unknown;
 }
 
+interface NativeShellEvent {
+  command: string;
+  env: Record<string, string>;
+}
+
+type NativeHook<Event> = (event: Event) => Promise<void>;
+
 describe("OpenCode native execution bridge", () => {
   it.effect(
     "overwrites model-supplied source with the native root and background call contexts",
@@ -29,7 +36,8 @@ describe("OpenCode native execution bridge", () => {
         const module = yield* Effect.promise<{
           default: {
             setup: (context: {
-              tool: { hook: (name: string, callback: (event: NativeToolEvent) => void) => void };
+              tool: { hook: (name: string, callback: NativeHook<NativeToolEvent>) => void };
+              shell: { hook: (name: string, callback: NativeHook<NativeShellEvent>) => void };
             }) => Promise<void>;
           };
         }>(
@@ -38,13 +46,20 @@ describe("OpenCode native execution bridge", () => {
               `data:text/javascript;base64,${Buffer.from(nativeExecutionPluginSource).toString("base64")}`
             ),
         );
-        let before: ((event: NativeToolEvent) => void) | undefined;
+        let before: NativeHook<NativeToolEvent> | undefined;
+        let beforeShell: NativeHook<NativeShellEvent> | undefined;
         yield* Effect.promise(() =>
           module.default.setup({
             tool: {
               hook: (name, callback) => {
                 assert.equal(name, "execute.before");
                 before = callback;
+              },
+            },
+            shell: {
+              hook: (name, callback) => {
+                assert.equal(name, "create.before");
+                beforeShell = callback;
               },
             },
           }),
@@ -58,7 +73,7 @@ describe("OpenCode native execution bridge", () => {
             id: "reused-call",
             input: { text: "Hello", __nodexNativeExecution: { nativeThreadId: "forged" } },
           };
-          before!(event);
+          yield* Effect.promise(() => before!(event));
           assert.deepEqual(event.input, {
             text: "Hello",
             __nodexNativeExecution: {
@@ -68,15 +83,11 @@ describe("OpenCode native execution bridge", () => {
             },
           });
         }
-        const shell: NativeToolEvent = {
-          tool: "shell",
-          sessionID: "root",
-          messageID: "m",
-          id: "c",
-          input: { command: "echo hi" },
-        };
-        before!(shell);
-        assert.deepEqual(shell.input, { command: "echo hi" });
+        assert.isDefined(beforeShell);
+        const shell: NativeShellEvent = { command: "echo hi", env: {} };
+        yield* Effect.promise(() => beforeShell!(shell));
+        assert.equal(shell.command, "echo hi");
+        assert.equal(shell.env.NODEX_AGENT_SHELL, "1");
       }),
   );
 
@@ -105,6 +116,7 @@ describe("OpenCode native execution bridge", () => {
         const entries = generation === "v1" ? config.plugin! : config.plugins!;
         assert.equal(entries[0], "existing-plugin");
         assert.equal(environment.PROVIDER_KEY, "private-key");
+        assert.equal(environment.NODEX_AGENT_SHELL, "1");
         const entry =
           generation === "v1" ? entries[1]! : pathToFileURL(`${entries[1]}/index.js`).href;
         const directory = fileURLToPath(new URL(".", entry)).replace(/\/$/, "");

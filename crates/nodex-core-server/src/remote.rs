@@ -441,6 +441,7 @@ pub(crate) async fn authenticate(
     if !admitted_route(path)
         || path == "/core/v1/health"
         || path == "/core/v1/agent-attributions"
+        || path == "/core/v1/agent-runs/record"
         || path == "/core/v1/modules/workspace/tool-operations/admit"
     {
         return ApiError::new(

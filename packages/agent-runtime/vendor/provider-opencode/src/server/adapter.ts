@@ -1,3 +1,4 @@
+import * as NativeExecutionPlugin from "./NativeExecutionPlugin.ts";
 import { subscribeEvents } from "./SseIntake.ts";
 import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 import type {
@@ -274,6 +275,7 @@ function accumulateOpenCodeStepUsage(
 
 interface ActiveOpenCodeTurn {
   readonly hostExecutionIdentity?: ExecutionHost.HostTurnIdentity;
+  readonly hostCliShell?: ExecutionHost.HostCliShell;
   /** The immutable original root Turn for a native child's questions. */
   readonly rootTurn: ActiveOpenCodeTurn | null;
   readonly usage: OpenCodeTurnTokenUsageAccumulator;
@@ -1403,6 +1405,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               nativeThreadId: childSessionId,
             });
             subagentsByChildSessionId.set(childSessionId, context);
+            yield* (connection.bindCliShell?.(childSessionId, turn.hostCliShell) ?? Effect.succeed(false)).pipe(Effect.ignore({ log: true }));
             relatedSessionOwners.set(childSessionId, state);
             const childModelSelection: ModelSelection = {
               instanceId: options.instanceId,
@@ -3353,6 +3356,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   ? {}
                   : {
                       hostExecutionIdentity: turnInput.hostExecutionIdentity,
+                      ...(turnInput.hostCliShell === undefined ? {} : { hostCliShell: turnInput.hostCliShell }),
                     }),
                 threadId: turnInput.threadId,
                 runId: turnInput.runId,
@@ -3428,7 +3432,9 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 );
                 return;
               }
+              const cliBound = yield* (connection.bindCliShell?.(sessionId, turnInput.hostCliShell) ?? Effect.succeed(false)).pipe(Effect.orElseSucceed(() => false));
               const systemPrompt = [
+                cliBound ? NativeExecutionPlugin.cliInstruction(turnInput.hostCliShell) : undefined,
                 hasAppTools ? turnInput.hostOrchestrationInstructions : undefined,
                 turnInput.hostInstructions,
                 buildRuntimeInstructions({

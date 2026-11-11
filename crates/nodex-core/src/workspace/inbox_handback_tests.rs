@@ -184,6 +184,27 @@ fn handback_preserves_original_page_images_without_granting_new_consent() {
         None,
     );
     let work = outbox(&w.module).remove(0);
+    let message_id = work.message_id.clone();
+    w.kernel
+        .writer()
+        .call(move |c| {
+            let member = crate::infrastructure::actors::local_member(c, "library-1")?;
+            c.execute(
+            "INSERT INTO session_requesting_members(session_id,message_id,member_id,accepted_at)
+             VALUES('worker',?1,?2,'2026-11-01T00:00:00Z')",
+            rusqlite::params![message_id, member],
+        )?;
+            Ok(())
+        })
+        .unwrap();
+    crate::library::LibraryMembership::new(&w.kernel, "library-1".into())
+        .record_agent_run(
+            "worker",
+            Some("run:test"),
+            Some(&work.message_id),
+            nodex_core_contracts::agent::AgentBackendKind::Codex,
+        )
+        .unwrap();
     bind_message(
         &w,
         "worker",
@@ -191,6 +212,14 @@ fn handback_preserves_original_page_images_without_granting_new_consent() {
         work.final_text.as_deref().unwrap(),
         1,
     );
+    let opening_message = w.kernel.readers().read_default(|c| {
+        Ok(c.query_row(
+            "SELECT message_id FROM session_run_members WHERE session_id='worker' AND run_id='run:test'",
+            [],
+            |row| row.get::<_, Option<String>>(0),
+        )?)
+    }).unwrap();
+    assert_eq!(opening_message.as_deref(), Some(work.message_id.as_str()));
     apply_host(
         &w.module,
         "return-image",

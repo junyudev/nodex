@@ -147,7 +147,7 @@ it.effect(
       let sidebarCount = 0;
       const workspace: CoreModuleClients["workspace"] = {
         admitToolOperation: () => Effect.die("Unexpected application tool admission"),
-        issueAgentAttribution: () => Effect.die("Unexpected Agent attribution"),
+        recordAgentRun: () => Effect.die("Unexpected Agent attribution"),
         read: (input) =>
           input.kind === "thread"
             ? Effect.fail(missingThread(input.thread_id) as never)
@@ -217,7 +217,7 @@ it.effect("serially commits archive and delete observations before scheduling si
     const events: unknown[] = [];
     const workspace: CoreModuleClients["workspace"] = {
       admitToolOperation: () => Effect.die("Unexpected application tool admission"),
-      issueAgentAttribution: () => Effect.die("Unexpected Agent attribution"),
+      recordAgentRun: () => Effect.die("Unexpected Agent attribution"),
       read: () =>
         Effect.suspend(() =>
           stored
@@ -363,7 +363,7 @@ it.effect("invalidates the durable root after deleting a nested Subagent", () =>
     const events: unknown[] = [];
     const workspace: CoreModuleClients["workspace"] = {
       admitToolOperation: () => Effect.die("Unexpected application tool admission"),
-      issueAgentAttribution: () => Effect.die("Unexpected Agent attribution"),
+      recordAgentRun: () => Effect.die("Unexpected Agent attribution"),
       read: (input) =>
         Effect.sync(() => {
           if (input.kind !== "thread") throw new Error(`Unexpected read ${input.kind}`);
@@ -442,7 +442,7 @@ it.effect("never treats thread/started as a history transport", () =>
     const addedTitleInputs: Array<Parameters<CodexAutoThreadTitle["Service"]["schedule"]>[0]> = [];
     const workspace: CoreModuleClients["workspace"] = {
       admitToolOperation: () => Effect.die("Unexpected application tool admission"),
-      issueAgentAttribution: () => Effect.die("Unexpected Agent attribution"),
+      recordAgentRun: () => Effect.die("Unexpected Agent attribution"),
       read: () => Effect.succeed({ value: { kind: "thread", thread: stored } } as never),
       apply: () => Effect.succeed({} as never),
     };

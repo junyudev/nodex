@@ -34,6 +34,7 @@ async function writeExecutable(file: string, source: string): Promise<void> {
 export async function prepareNodexCliShell(
   nodexHome: string,
   platform: string = process.platform,
+  executable?: string,
 ): Promise<void> {
   const paths = nodexCliShellPaths(nodexHome);
   await mkdir(paths.bin, { recursive: true, mode: 0o700 });
@@ -45,21 +46,51 @@ export async function prepareNodexCliShell(
       [
         "$ErrorActionPreference = 'Stop'",
         "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)",
-        "$id = $env:CODEX_THREAD_ID",
-        "if ($id -notmatch '^[a-zA-Z0-9_-]+$') { throw 'Nodex CLI unavailable: no valid task binding.' }",
+        "$cliArgs = $args",
+        "function Refuse($code, $message) {",
+        "  $format = if ([Console]::IsOutputRedirected) { 'json' } else { 'text' }",
+        "  for ($i = 0; $i -lt $cliArgs.Length; $i++) {",
+        "    if ($cliArgs[$i] -eq '--') { break }",
+        "    if ($cliArgs[$i] -eq '--json') { $format = 'json'; break }",
+        "    if ($cliArgs[$i] -match '^--output-format=(json|text)$') { $format = $Matches[1] }",
+        "    if ($cliArgs[$i] -eq '--output-format' -and $i + 1 -lt $cliArgs.Length) { $format = $cliArgs[++$i] }",
+        "  }",
+        "  if ($format -eq 'json') {",
+        "    $json = @{ version = 1; ok = $false; error = @{ code = $code; message = $message } } | ConvertTo-Json -Compress",
+        "    [Console]::Error.WriteLine($json)",
+        "    [Console]::WriteLine($json)",
+        '  } else { [Console]::Error.WriteLine("${code}: $message") }',
+        "  exit 2",
+        "}",
+        `$env:NODEX_AGENT_PROFILE_HOME = '${nodexHome.replaceAll("'", "''")}'`,
+        "$env:NODEX_AGENT_SHELL = '1'",
+        "function Unbound {",
+        ...(executable
+          ? [
+              "  $env:NODEX_AGENT_ENDPOINT = $null",
+              "  $env:NODEX_AGENT_CREDENTIAL = $null",
+              "  $env:NODEX_BOUND_TURN = $null",
+              `  & '${executable.replaceAll("'", "''")}' @cliArgs`,
+              "  exit $LASTEXITCODE",
+            ]
+          : [
+              "  Refuse AGENT_GENERATION_CHANGED 'The Agent CLI binding is unavailable. Resume the Session in Nodex.'",
+            ]),
+        "}",
+        "$id = $env:NODEX_CLI_TASK_ID; if ($null -eq $id) { $id = $env:CODEX_THREAD_ID }",
+        executable
+          ? "if ($id -notmatch '^[a-zA-Z0-9_-]+$') { Unbound }"
+          : "if ($id -notmatch '^[a-zA-Z0-9_-]+$') { Refuse AGENT_BINDING_MALFORMED 'No valid task binding. Use plain nodex from the active Turn.' }",
         "$bindings = Join-Path (Split-Path $PSScriptRoot -Parent) 'bindings'",
         "$file = Join-Path $bindings $id",
-        "if (!(Test-Path -LiteralPath $file) -and $env:CODEX_SESSION_ID -match '^[a-zA-Z0-9_-]+$') { $file = Join-Path $bindings $env:CODEX_SESSION_ID }",
-        "if (!(Test-Path -LiteralPath $file -PathType Leaf)) { throw 'Nodex CLI unavailable for this task. Refresh the task context in Nodex.' }",
-        "$binding = Get-Content -Raw -LiteralPath $file -Encoding UTF8 | ConvertFrom-Json",
-        "if (!$binding.executable) { throw 'Nodex CLI unavailable for this task. Refresh the task context in Nodex.' }",
-        "$env:NODEX_HOME = $binding.nodexHome",
-        "$env:NODEX_AGENT_ATTRIBUTION = $binding.agentAttribution",
+        "if (!(Test-Path -LiteralPath $file) -and !$env:NODEX_CLI_TASK_ID -and $env:CODEX_SESSION_ID -match '^[a-zA-Z0-9_-]+$') { $file = Join-Path $bindings $env:CODEX_SESSION_ID }",
+        "if (!(Test-Path -LiteralPath $file -PathType Leaf)) { Unbound }",
+        "try { $binding = Get-Content -Raw -LiteralPath $file -Encoding UTF8 | ConvertFrom-Json } catch { Refuse AGENT_BINDING_MALFORMED 'The Agent CLI binding is malformed. Use plain nodex from the active Turn.' }",
+        "if (!$binding.executable) { Unbound }",
         "$env:NODEX_AGENT_ENDPOINT = $binding.agentEndpoint",
         "$env:NODEX_AGENT_CREDENTIAL = $binding.agentCredential",
-        "$routing = @('--expect-profile', $binding.profileId)",
-        "if ($binding.projectId) { $routing += @('--project', $binding.projectId) }",
-        "& $binding.executable @routing @args",
+        "$env:NODEX_BOUND_TURN = $binding.turnId",
+        "& $binding.executable @args",
         "exit $LASTEXITCODE",
         "",
       ].join("\r\n"),
@@ -78,21 +109,58 @@ export async function prepareNodexCliShell(
     join(paths.bin, "nodex"),
     [
       "#!/bin/sh",
-      'case "${CODEX_THREAD_ID-}" in',
-      '  ""|*[!a-zA-Z0-9_-]*) printf "%s\\n" "Nodex CLI unavailable: no valid task binding." >&2; exit 1 ;;',
+      "refuse() {",
+      "  code=$1 message=$2; shift 2",
+      "  if [ -t 1 ]; then format=text; else format=json; fi",
+      "  next=false",
+      "  for arg do",
+      '    case "$arg" in',
+      "      --) break ;;",
+      "      --json) format=json; break ;;",
+      "      --output-format=json|--output-format=text) format=${arg#*=} ;;",
+      "      --output-format) next=true; continue ;;",
+      '      *) if "$next" && { [ "$arg" = json ] || [ "$arg" = text ]; }; then format=$arg; fi ;;',
+      "    esac",
+      "    next=false",
+      "  done",
+      '  if [ "$format" = json ]; then',
+      `    diagnostic=$(printf '{"version":1,"ok":false,"error":{"code":"%s","message":"%s"}}' "$code" "$message")`,
+      '    printf "%s\\n" "$diagnostic" >&2',
+      '    printf "%s\\n" "$diagnostic"',
+      "  else",
+      '    printf "%s: %s\\n" "$code" "$message" >&2',
+      "  fi",
+      "  exit 2",
+      "}",
+      `export NODEX_AGENT_PROFILE_HOME=${shellQuote(nodexHome)}`,
+      "export NODEX_AGENT_SHELL=1",
+      "unbound() {",
+      ...(executable
+        ? [
+            "  unset NODEX_AGENT_ENDPOINT NODEX_AGENT_CREDENTIAL NODEX_BOUND_TURN",
+            `  exec ${shellQuote(executable)} "$@"`,
+          ]
+        : [
+            '  refuse AGENT_GENERATION_CHANGED "The Agent CLI binding is unavailable. Resume the Session in Nodex." "$@"',
+          ]),
+      "}",
+      "id=${NODEX_CLI_TASK_ID-${CODEX_THREAD_ID-}}",
+      'case "$id" in',
+      executable
+        ? '  ""|*[!a-zA-Z0-9_-]*) unbound "$@" ;;'
+        : '  ""|*[!a-zA-Z0-9_-]*) refuse AGENT_BINDING_MALFORMED "No valid task binding. Use plain nodex from the active Turn." "$@" ;;',
       "esac",
-      `binding=${shellQuote(paths.bindings)}/"$CODEX_THREAD_ID"`,
+      `binding=${shellQuote(paths.bindings)}/"$id"`,
       // The pinned runtime sets CODEX_SESSION_ID to the root task ID for subagents,
       // including resumed children. An explicit child binding (also denial) wins.
-      'if [ ! -e "$binding" ]; then',
+      'if [ ! -e "$binding" ] && [ -z "${NODEX_CLI_TASK_ID+x}" ]; then',
       '  case "${CODEX_SESSION_ID-}" in',
       '    ""|*[!a-zA-Z0-9_-]*) ;;',
       `    *) binding=${shellQuote(paths.bindings)}/"$CODEX_SESSION_ID" ;;`,
       "  esac",
       "fi",
-      'if [ ! -x "$binding" ]; then',
-      '  printf "%s\\n" "Nodex CLI unavailable for this task. Refresh the task context in Nodex." >&2',
-      "  exit 1",
+      'if [ ! -x "$binding" ] || [ ! -s "$binding" ]; then',
+      '  unbound "$@"',
       "fi",
       'exec "$binding" "$@"',
       "",
@@ -147,7 +215,12 @@ export async function composeNodexCliShellEnvironment(
   const path = [paths.bin, ...input.searchPaths, merged.PATH ?? ""]
     .filter(Boolean)
     .join(windows ? ";" : ":");
-  if (windows) return { NODEX_HOME: input.nodexHome, PATH: path };
+  if (windows)
+    return {
+      NODEX_HOME: input.nodexHome,
+      NODEX_AGENT_PROFILE_HOME: input.nodexHome,
+      PATH: path,
+    };
   const zshHome = join(paths.root, "zsh");
   const bashEnv = join(paths.root, "bash-env");
   const userZdotdir = input.privateCoreHome
@@ -159,6 +232,7 @@ export async function composeNodexCliShellEnvironment(
     : userStartupPath(inherited, configured, "BASH_ENV", "NODEX_USER_BASH_ENV", "");
   const routing = {
     NODEX_HOME: input.nodexHome,
+    NODEX_AGENT_PROFILE_HOME: input.nodexHome,
     ZDOTDIR: zshHome,
     BASH_ENV: bashEnv,
     NODEX_USER_BASH_ENV: userBashEnv,
@@ -232,6 +306,7 @@ export async function nodexCliShellLaunchArgs(
       ? Object.fromEntries(Object.entries(set).filter((entry) => typeof entry[1] === "string"))
       : {};
   const environment = await composeNodexCliShellEnvironment({ ...input, configuredEnvironment });
+  environment.NODEX_AGENT_SHELL = "1";
   if (input.privateCoreHome) {
     const configured = Object.fromEntries(
       Object.entries(configuredEnvironment).filter(([name, value]) =>
@@ -251,20 +326,14 @@ export async function nodexCliShellLaunchArgs(
   ]);
 }
 
-/** The CLI presents this Core-issued credential so its changes name the Agent's chat. */
-export const NODEX_AGENT_ATTRIBUTION_ENV = "NODEX_AGENT_ATTRIBUTION";
-
 /** Atomically replace this task's routing without changing any other task's binding. */
 export async function bindNodexCliShell(input: {
   nodexHome: string;
   threadId: string;
   platform?: string;
   executable: string;
-  profileId: string;
-  projectId: string | null;
-  /** Names this task's chat on the content it changes; absent attributes nothing. */
-  agentAttribution: string | null;
-  scopedConnection?: ScopedAgentCoreConnection;
+  turnId?: string;
+  scopedConnection: ScopedAgentCoreConnection;
 }): Promise<void> {
   const file = bindingPath(input.nodexHome, input.threadId);
   await mkdir(nodexCliShellPaths(input.nodexHome).bindings, { recursive: true, mode: 0o700 });
@@ -272,13 +341,10 @@ export async function bindNodexCliShell(input: {
     await writeExecutable(
       file,
       JSON.stringify({
-        nodexHome: input.scopedConnection ? null : input.nodexHome,
         executable: input.executable,
-        profileId: input.profileId,
-        projectId: input.projectId,
-        agentAttribution: input.scopedConnection ? null : input.agentAttribution,
-        agentEndpoint: input.scopedConnection?.endpoint,
-        agentCredential: input.scopedConnection?.credential,
+        turnId: input.turnId,
+        agentEndpoint: input.scopedConnection.endpoint,
+        agentCredential: input.scopedConnection.credential,
       }),
     );
     return;
@@ -287,20 +353,13 @@ export async function bindNodexCliShell(input: {
     file,
     [
       "#!/bin/sh",
-      ...(input.scopedConnection
-        ? [
-            "unset NODEX_HOME NODEX_AGENT_ATTRIBUTION",
-            `export NODEX_AGENT_ENDPOINT=${shellQuote(input.scopedConnection.endpoint)}`,
-            `export NODEX_AGENT_CREDENTIAL=${shellQuote(input.scopedConnection.credential)}`,
-          ]
-        : [
-            `export NODEX_HOME=${shellQuote(input.nodexHome)}`,
-            "unset NODEX_AGENT_ENDPOINT NODEX_AGENT_CREDENTIAL",
-          ]),
-      !input.scopedConnection && input.agentAttribution
-        ? `export ${NODEX_AGENT_ATTRIBUTION_ENV}=${shellQuote(input.agentAttribution)}`
-        : `unset ${NODEX_AGENT_ATTRIBUTION_ENV}`,
-      `exec ${shellQuote(input.executable)} --expect-profile ${shellQuote(input.profileId)} ${input.projectId ? `--project ${shellQuote(input.projectId)} ` : ""}"$@"`,
+      `export NODEX_AGENT_PROFILE_HOME=${shellQuote(input.nodexHome)}`,
+      `export NODEX_AGENT_ENDPOINT=${shellQuote(input.scopedConnection.endpoint)}`,
+      `export NODEX_AGENT_CREDENTIAL=${shellQuote(input.scopedConnection.credential)}`,
+      input.turnId
+        ? `export NODEX_BOUND_TURN=${shellQuote(input.turnId)}`
+        : "unset NODEX_BOUND_TURN",
+      `exec ${shellQuote(input.executable)} "$@"`,
       "",
     ].join("\n"),
   );
@@ -317,13 +376,5 @@ export async function unbindNodexCliShell(
     await writeExecutable(file, "{}");
     return;
   }
-  await writeExecutable(
-    file,
-    [
-      "#!/bin/sh",
-      'printf "%s\\n" "Nodex CLI unavailable for this task. Refresh the task context in Nodex." >&2',
-      "exit 1",
-      "",
-    ].join("\n"),
-  );
+  await writeExecutable(file, "");
 }

@@ -14,12 +14,13 @@ import * as Logger from "effect/Logger";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
+import { ScopedAgentCore, type ScopedAgentAdmission } from "../../host/ScopedAgentCore";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { MainConfig } from "../app/MainConfig";
 import type {
   AgentAttributionRequest,
+  RecordAgentRunRequest,
   ProjectWorkspaceApplyInput,
   ProjectWorkspaceRead,
 } from "../core-client/types";
@@ -100,6 +101,7 @@ const fixture = Effect.gen(function* () {
   const calls: AgentRuntimeMethod[] = [];
   const coreReads: ProjectWorkspaceRead[] = [];
   const coreWrites: ProjectWorkspaceApplyInput[] = [];
+  const recordedRuns: RecordAgentRunRequest[] = [];
   const attributions: AgentAttributionRequest[] = [];
   const live = new Map<string, ReturnType<typeof proofOf>>();
   const bind = (identity: AgentHostTurnIdentity | AgentHostNativeSessionIdentity) =>
@@ -107,6 +109,8 @@ const fixture = Effect.gen(function* () {
   bind(actor());
   bind(turn());
   let attributionUnavailable = false;
+  let held = false;
+  let authorizeGrant: Effect.Effect<ScopedAgentAdmission> | undefined;
   let caller: AppToolCaller | undefined;
   let bound = true;
   let coordinatorId: string | null = null;
@@ -159,7 +163,7 @@ const fixture = Effect.gen(function* () {
     Effect.sync(() => {
       coreReads.push(input);
       if (input.kind === "effective_execution_hold")
-        return { value: { kind: input.kind, holds: [] } };
+        return { value: { kind: input.kind, holds: held ? [{ kind: "session" }] : [] } };
       if (input.kind === "read_coordinator")
         return { value: { kind: input.kind, session_id: coordinatorId } };
       if (input.kind === "read_managed_session")
@@ -204,6 +208,7 @@ const fixture = Effect.gen(function* () {
       acp: { driver: "acpRegistry", config: {} },
       claude: { driver: "claudeAgent", config: {} },
       codex: { driver: "codex", config: {} },
+      external: { driver: "opencode", config: { serverUrl: "https://opencode.example" } },
     },
     workspaceEnvironment: (cwd) =>
       Effect.succeed(
@@ -230,27 +235,26 @@ const fixture = Effect.gen(function* () {
     Effect.provideService(CoreModules, {
       workspace: {
         read,
+        recordAgentRun: (request: RecordAgentRunRequest) =>
+          Effect.sync(() => {
+            recordedRuns.push(request);
+          }),
         apply: (input: ProjectWorkspaceApplyInput) =>
           Effect.sync(() => {
             coreWrites.push(input);
             return {};
           }),
-        issueAgentAttribution: (input: AgentAttributionRequest) =>
-          Effect.suspend(() => {
-            if (attributionUnavailable)
-              return coreRuntimeError({
-                operation: "workspace.issueAgentAttribution",
-                reason: "operation",
-                retryable: false,
-                cause: new Error("Credential unavailable"),
-              });
-            return Effect.sync(() => {
-              attributions.push(input);
-              return `credential:${input.session_id}`;
-            });
-          }),
       },
     } as never),
+    Effect.provideService(ScopedAgentCore, {
+      issue: ({ attribution, authorize }) =>
+        Effect.suspend(() => {
+          if (attributionUnavailable) return Effect.fail(new Error("Gateway unavailable"));
+          attributions.push(attribution);
+          authorizeGrant = authorize;
+          return Effect.succeed({ endpoint: "http://127.0.0.1:10000", credential: "fixture" });
+        }),
+    }),
     Effect.provideService(CoreAuthority, {
       identity: { profileId: "profile", libraryId: "library", storeEpoch: "epoch" },
     } as never),
@@ -269,6 +273,11 @@ const fixture = Effect.gen(function* () {
     calls,
     coreReads,
     coreWrites,
+    recordedRuns,
+    authorizeGrant: () => authorizeGrant!,
+    hold: () => {
+      held = true;
+    },
     attributions,
     failAttribution: () => {
       attributionUnavailable = true;
@@ -342,10 +351,46 @@ it.effect("a projectless Turn contributes no Project directory scope", () =>
 it.effect("a Turn's CLI is vouched for as its own Session's Agent", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
-    yield* f.execute(prepareTurn());
-    assert.deepEqual(f.attributions, [
-      { session_id: "session", run_id: "run:one", message_id: "message", backend: "acp" },
+    const identity = codexTurn("run:one");
+    f.bind(identity);
+    yield* f.execute(prepareTurn(identity));
+    assert.deepEqual(f.recordedRuns, [
+      { session_id: "session", run_id: "run:one", message_id: "message", backend: "codex" },
     ]);
+    assert.deepEqual(f.attributions, [
+      { session_id: "session", run_id: "run:one", backend: "codex" },
+    ]);
+  }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "an externally hosted OpenCode Turn records its Run without acquiring a shell grant",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      const identity = { ...turn(), providerInstanceId: "external" };
+      f.bind(identity);
+      yield* f.execute(prepareTurn(identity));
+      assert.lengthOf(f.recordedRuns, 1);
+      assert.isEmpty(f.attributions);
+    }).pipe(Effect.scoped),
+);
+
+it.effect("a shell grant rechecks ended Runs, archived Sessions, and execution holds", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const identity = codexTurn("run:one");
+    f.bind(identity);
+    yield* f.execute(prepareTurn(identity));
+    const authorize = f.authorizeGrant();
+    assert.equal(yield* authorize, "allowed");
+    f.live.set(identity.runId!, { ...proofOf(identity), archived: true });
+    assert.equal(yield* authorize, "session_unavailable");
+    f.live.set(identity.runId!, { ...proofOf(identity), status: "completed" });
+    assert.equal(yield* authorize, "turn_ended");
+    f.bind(identity);
+    f.hold();
+    assert.equal(yield* authorize, "turn_ended");
   }).pipe(Effect.scoped),
 );
 
@@ -600,9 +645,12 @@ it.effect("credential failure refuses Agent preparation before exposing CLI acce
   Effect.gen(function* () {
     const f = yield* fixture;
     f.failAttribution();
-    const result = yield* Effect.result(f.execute(prepareTurn()));
+    const identity = codexTurn("run:one");
+    f.bind(identity);
+    const result = yield* Effect.result(f.execute(prepareTurn(identity)));
     assert.equal(result._tag, "Failure");
     assert.isEmpty(f.attributions);
+    assert.lengthOf(f.recordedRuns, 1);
   }),
 );
 

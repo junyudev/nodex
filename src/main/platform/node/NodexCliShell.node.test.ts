@@ -54,7 +54,7 @@ async function withShellFixture(
     const executable = join(root, "cli");
     await writeFile(
       executable,
-      `#!/bin/sh\nexec ${shellQuote(process.execPath)} -e 'console.log(JSON.stringify({home:process.env.NODEX_HOME,args:process.argv.slice(1),user:process.env.USER_SETTING}))' -- "$@"\n`,
+      `#!/bin/sh\nexec ${shellQuote(process.execPath)} -e 'console.log(JSON.stringify({endpoint:process.env.NODEX_AGENT_ENDPOINT,args:process.argv.slice(1),user:process.env.USER_SETTING}))' -- "$@"\n`,
       { mode: 0o700 },
     );
     const inherited = {
@@ -77,9 +77,7 @@ async function withShellFixture(
           nodexHome,
           threadId: "shell-task",
           executable,
-          profileId: name,
-          projectId: `${name}-project`,
-          agentAttribution: null,
+          scopedConnection: { endpoint: name, credential: "fixture" },
         });
         return {
           ...environment,
@@ -110,7 +108,7 @@ test("a scoped task binding removes inherited Profile authority before invoking 
     const executable = join(root, "cli");
     await writeFile(
       executable,
-      `#!/bin/sh\nexec ${shellQuote(process.execPath)} -e 'console.log(JSON.stringify({home:process.env.NODEX_HOME,attribution:process.env.NODEX_AGENT_ATTRIBUTION,endpoint:process.env.NODEX_AGENT_ENDPOINT,credential:process.env.NODEX_AGENT_CREDENTIAL,args:process.argv.slice(1)}))' -- "$@"\n`,
+      `#!/bin/sh\nexec ${shellQuote(process.execPath)} -e 'console.log(JSON.stringify({home:process.env.NODEX_HOME,endpoint:process.env.NODEX_AGENT_ENDPOINT,credential:process.env.NODEX_AGENT_CREDENTIAL,args:process.argv.slice(1)}))' -- "$@"\n`,
       { mode: 0o700 },
     );
     await prepareNodexCliShell(root);
@@ -118,21 +116,18 @@ test("a scoped task binding removes inherited Profile authority before invoking 
       nodexHome: root,
       threadId: "scoped-task",
       executable,
-      profileId: "space",
-      projectId: "project",
-      agentAttribution: "must-not-pass",
       scopedConnection: { endpoint: "http://127.0.0.1:8443", credential: "turn-only" },
     });
     const result = await shellContext("/bin/sh", {
       PATH: `${nodexCliShellPaths(root).bin}:/usr/bin:/bin`,
       CODEX_THREAD_ID: "scoped-task",
       NODEX_HOME: "/private/core",
-      NODEX_AGENT_ATTRIBUTION: "inherited-host-authority",
     });
     expect(result).toEqual({
+      home: "/private/core",
       endpoint: "http://127.0.0.1:8443",
       credential: "turn-only",
-      args: ["--expect-profile", "space", "--project", "project", "context"],
+      args: ["context"],
     });
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -140,11 +135,11 @@ test("a scoped task binding removes inherited Profile authority before invoking 
 });
 
 test("Bash without inherited BASH_ENV routes to its own Profile without sourcing user startup", async () => {
-  await withShellFixture(async ({ root, compose, inherited, startupLog }) => {
+  await withShellFixture(async ({ compose, inherited, startupLog }) => {
     const environment = await compose("inner", inherited);
     expect(await shellContext("/bin/bash", environment)).toEqual({
-      home: join(root, "inner"),
-      args: ["--expect-profile", "inner", "--project", "inner-project", "context"],
+      endpoint: "inner",
+      args: ["context"],
     });
     expect(environment.NODEX_USER_BASH_ENV).toBe("");
     expect(await readFile(startupLog, "utf8")).toBe("");
@@ -168,9 +163,9 @@ test.each(shells)(
         );
         expect(result.stderr).toBe("");
         expect(JSON.parse(result.stdout)).toMatchObject({
-          home: environment.NODEX_HOME,
+          endpoint: "inner",
           user: "preserved",
-          args: ["--expect-profile", "inner", "--project", "inner-project", "context"],
+          args: ["context"],
         });
       }
       expect((await readFile(startupLog, "utf8")).trim().split("\n")).toEqual([
@@ -199,7 +194,7 @@ test.each([true, false])(
         { env: outer, timeout: 5_000 },
       );
       const outerEnvironment: Record<string, string> = JSON.parse(captured.stdout);
-      expect((await shellContext("/bin/sh", outerEnvironment)).home).toBe(outer.NODEX_HOME);
+      expect((await shellContext("/bin/sh", outerEnvironment)).endpoint).toBe("outer");
       const inner = await compose("inner", outerEnvironment);
       expect(inner.NODEX_USER_BASH_ENV).toBe(hasUser ? userBashEnv : "");
       expect(inner.NODEX_USER_ZDOTDIR).toBe(userHome);
@@ -209,14 +204,8 @@ test.each([true, false])(
       await writeFile(startupLog, "");
       for (const shell of [...shells, "/bin/sh"]) {
         const actual = await shellContext(shell, inner);
-        expect(actual.home).toBe(inner.NODEX_HOME);
-        expect(actual.args).toEqual([
-          "--expect-profile",
-          "inner",
-          "--project",
-          "inner-project",
-          "context",
-        ]);
+        expect(actual.endpoint).toBe("inner");
+        expect(actual.args).toEqual(["context"]);
       }
       const expectedSources = (hasUser ? 1 : 0) + (shells.includes("/bin/zsh") ? 1 : 0);
       expect(await readFile(startupLog, "utf8")).toBe("user\n".repeat(expectedSources));
@@ -254,9 +243,9 @@ test("configured user startup overrides inherited wrappers through the runtime p
     );
     for (const shell of shells) {
       expect(await shellContext(shell, { ...outer, ...policy })).toMatchObject({
-        home: inner.NODEX_HOME,
+        endpoint: "inner",
         user: "preserved",
-        args: ["--expect-profile", "inner", "--project", "inner-project", "context"],
+        args: ["context"],
       });
     }
   });

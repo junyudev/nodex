@@ -2,12 +2,18 @@
 
 ## CLI or Core unavailable
 
-Use the host-supplied executable path when present; an empty PATH does not mean
-the bundled CLI is absent. Ordinary content operations start Core on demand and
-do not require a desktop window. If the binary or selected Profile is actually
-unavailable, explain that condition. A remote Agent cannot use a local Core
-unless its command really runs on that machine. Installation and configuration
-changes require the user's intent to make those changes.
+Run `nodex context` in the current shell to verify Actor, Profile and Project.
+Stop the batch on its first identity or connection error. In JSON mode a
+connection refusal is available on stdout and stderr and exits nonzero.
+
+- `AGENT_TURN_ENDED` means the captured execution ended. Invoke plain `nodex` from an active Turn.
+- `AGENT_SESSION_UNAVAILABLE` means the Session cannot be attributed. Reopen it in Nodex or start a new one.
+- `AGENT_GENERATION_CHANGED` means the captured connection retired. Run `nodex context` again from the active Turn.
+- `AGENT_BINDING_MALFORMED` means the managed connection could not be read. Use plain `nodex` in the Agent shell.
+- `PROFILE_MISMATCH` names the expected and connected Profiles. Inspect `nodex context` and verify the intended Profile before retrying.
+
+Keep the managed connection. An independent local invocation acts as the local
+Member and loses Agent authorship.
 
 ## Command unavailable
 
@@ -58,8 +64,3 @@ ownership commands for Page moves/deletion rather than editing owning shells.
 Explain whether the Skill is a managed link or an external copy. Use its owning
 installer for user-requested changes; do not overwrite a foreign installation
 as a side effect of an ordinary content task.
-
-`PROFILE_MISMATCH` means the connected home has a different identity from the
-host's `--expect-profile` assertion. Stop and refresh the host connection
-context; do not remove the assertion or switch Profiles to make the call pass.
-`NODEX_HOME` selects the directory; `--expect-profile` accepts only an identity.

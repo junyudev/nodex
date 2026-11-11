@@ -26,6 +26,7 @@ export type CoreEventReplayRequired = components["schemas"]["EventReplayRequired
 export type CoreStreamCheckpoint = components["schemas"]["StreamCheckpoint"];
 export type CoreModuleError = components["schemas"]["CoreError"];
 export type AppToolOperationRequest = components["schemas"]["AppToolOperationRequest"];
+export type RecordAgentRunRequest = components["schemas"]["RecordAgentRunRequest"];
 export type AgentAttributionRequest = components["schemas"]["AgentAttributionRequest"];
 export type AppToolOperationIdentity = components["schemas"]["AppToolOperationIdentity"];
 export type CoreLocalMutationResolveRequest = components["schemas"]["LocalMutationResolveRequest"];
@@ -324,6 +325,7 @@ export interface CoreClientPort {
     input: AgentAttributionRequest,
     options?: CoreRequestOptions,
   ): Promise<string>;
+  recordAgentRun(input: RecordAgentRunRequest, options?: CoreRequestOptions): Promise<void>;
   resolveLocalMutation(
     input: CoreLocalMutationResolveRequest,
   ): Promise<CoreLocalMutationResolveResponse>;

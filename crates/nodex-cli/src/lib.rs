@@ -178,7 +178,23 @@ pub fn render_error(error: &CliError, json: bool) {
     if json {
         let envelope = error::ErrorEnvelope::new(error);
         match serde_json::to_string(&envelope) {
-            Ok(encoded) => eprintln!("{encoded}"),
+            Ok(encoded) => {
+                eprintln!("{encoded}");
+                if matches!(
+                    error.code,
+                    CliErrorCode::AgentTurnEnded
+                        | CliErrorCode::AgentSessionUnavailable
+                        | CliErrorCode::AgentGenerationChanged
+                        | CliErrorCode::AgentBindingMalformed
+                        | CliErrorCode::IdentityUnauthorized
+                        | CliErrorCode::ProfileMismatch
+                        | CliErrorCode::CoreUnavailable
+                        | CliErrorCode::ProtocolIncompatible
+                ) {
+                    use std::io::Write;
+                    let _ = writeln!(std::io::stdout().lock(), "{encoded}");
+                }
+            }
             Err(_) => eprintln!("CLI_INTERNAL: failed to encode error"),
         }
         return;
