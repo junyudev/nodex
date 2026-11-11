@@ -11,7 +11,6 @@ const plan = (overrides: Partial<CiGatePlan>): CiGatePlan => ({
   landingOnly: false,
   protocolContracts: false,
   relatedPaths: [],
-  releaseTransition: false,
   rustFast: false,
   rustFull: false,
   rustMigration: false,

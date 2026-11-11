@@ -103,7 +103,7 @@ test("rejects a missing Windows architecture, disabled update channel, or mismat
   const path = join(inputs.windowsX64Directory, "architecture-build.json");
   const build = read(path);
   for (const mutation of [
-    { ...build, buildChannel: "disabled" },
+    { ...build, updates: "disabled" },
     { ...build, runtimeLocks: { ...build.runtimeLocks, agentSha256: "d".repeat(64) } },
     { ...build, sourceTree: "f".repeat(40) },
   ]) {
@@ -225,13 +225,13 @@ test("rejects Windows update projection and identity substitutions", () => {
     expect(() => parseWindowsArchitectureUpdateManifest(mutation)).toThrow();
 });
 
-test("distribution passes the same build identity and channel inputs on both platforms", () => {
+test("distribution passes channel-neutral build metadata to both platforms", () => {
   const identity = fixtureIdentity("nightly");
   expect(releaseBuildEnvironment(identity, "/identity.json")).toMatchObject({
-    NODEX_RELEASE_IDENTITY_PATH: "/identity.json",
-    NODEX_RELEASE_VERSION: identity.version,
+    NODEX_BUILD_IDENTITY_PATH: "/identity.json",
     NODEX_BUILD_VERSION: identity.buildVersion,
-    NODEX_SPARKLE_CHANNEL: "nightly",
+    NODEX_APP_UPDATES: "enabled",
+    SENTRY_RELEASE: `nodex@${identity.version}+${identity.buildVersion}`,
   });
 });
 

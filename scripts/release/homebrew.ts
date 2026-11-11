@@ -56,8 +56,13 @@ end
 }
 
 export function generateHomebrewCaskFromBundle(bundle: ReleaseBundleManifest): string {
+  if (bundle.releaseIdentity.channel !== "stable")
+    throw new Error("Homebrew requires a stable release.");
   const arm64 = bundle.assets.find(
-    (asset) => asset.role === "dmg" && asset.architecture === "arm64",
+    (asset) =>
+      asset.role === "dmg" &&
+      asset.architecture === "arm64" &&
+      asset.name === "Nodex-latest-arm64.dmg",
   );
   if (!arm64) throw new Error("Release bundle does not contain the Apple silicon DMG.");
   return generateHomebrewCask({

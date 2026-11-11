@@ -4,7 +4,7 @@ Nodex builds Windows 11 installers natively for x64 and arm64. The Windows
 workflow and official release pipeline share one native distribution implementation.
 Stable releases and Nightly prereleases include both CPUs in the same verified
 Release Bundle as macOS arm64. [Application releases](release.md) owns identity,
-certification, protected finalization, promotion, Rehearsal, and Recovery.
+certification, protected finalization, promotion and Rehearsal.
 
 ## Build an installer
 
@@ -303,7 +303,7 @@ builds use no signing credentials. A future Authenticode implementation belongs
 behind this policy and a protected distribution job; it must preserve locked vendor
 runtime identities. Windows SmartScreen may warn on first download.
 
-Official assets use the Release Identity's display version:
+Official assets use the source version:
 
 | Asset                  | Name                                                             |
 | ---------------------- | ---------------------------------------------------------------- |
@@ -319,7 +319,7 @@ internal local packager names in the build table above are renamed only after
 verification; they are not public asset names.
 
 The source certificate binds the exact Git commit/tree before an official build.
-The architecture manifest binds that Release Identity, clean prepared generation,
+The architecture manifest binds that Build Identity, clean prepared generation,
 packaged app version, official Skills identity, runtime lock digests, native runner
 versions, installer hash and package provenance. The Windows provenance includes
 all unpacked payload file hashes and the successful installed-app probe receipt.
@@ -344,15 +344,11 @@ The feeds are:
 Pages stores only feed snapshots; installer bytes remain GitHub Release assets.
 Projection preflights every architecture, rejects lower build versions and
 same-build byte drift, and verifies public feed bytes and enclosure availability
-after push. Stable and Nightly change only their own subtree. Recovery replays
-the verified Bundle's exact bytes without re-signing or rebuilding published assets.
+after push. Stable and Nightly update their own subtrees. Stable uses the exact installers from the published Nightly and its own signed appcasts.
 
-Official package builds pass the same identity/channel environment as macOS:
-`NODEX_RELEASE_IDENTITY_PATH`, `NODEX_RELEASE_VERSION`, `NODEX_BUILD_VERSION`, and
-`NODEX_SPARKLE_CHANNEL`. The prepared manifest and executable package metadata
-carry the Release Identity. Windows CI validation forces the channel to `disabled`;
-local packages also default to disabled. The Windows updater owns its packaged
-runtime manifest and installer handoff; it does not use the macOS Sparkle bridge.
+Official packages enable updates through `NODEX_APP_UPDATES=enabled`.
+The prepared manifest and executable metadata carry the Build Identity.
+Windows validation and local packages default to disabled updates.
 
 ### Packaged update configuration
 
@@ -364,7 +360,7 @@ hook, including prepared and direct release packaging paths. Its exact schema is
 {
   "schemaVersion": 1,
   "architecture": "x64",
-  "buildChannel": "stable",
+  "updates": "enabled",
   "buildVersion": "1.12.1",
   "feedUrls": {
     "stable": "https://nodex.jyu.app/updates/stable/windows-x64/appcast.xml",
@@ -374,20 +370,11 @@ hook, including prepared and direct release packaging paths. Its exact schema is
 }
 ```
 
-Official packaging supplies it through the shared macOS inputs above:
-
-- `NODEX_SPARKLE_CHANNEL=stable|nightly` selects the initial channel. The name is
-  shared with Sparkle intentionally; there is no separate Windows channel input.
-- `NODEX_RELEASE_IDENTITY_PATH=<absolute Release Identity JSON path>` supplies
-  the monotonic `buildVersion`. Its channel must match the selected channel.
-  The existing prepared-build verifier binds this identity to the source checkout.
-
-Omitting the channel defaults to `disabled`, including ordinary CI and local
-packages. A disabled manifest has `feedUrls: null`, and retains the identity's
-build version when provided, otherwise `0.0.0`. Enabling updates without a
-matching identity fails packaging. The Windows release adapter remains
-responsible for assigning the Release Identity display version to the installer
-and executable metadata. Source packages do not infer build order from semver.
+`NODEX_BUILD_IDENTITY_PATH` supplies the monotonic `buildVersion`.
+The prepared-build verifier binds the identity to the checkout. Enabled
+updates require this identity and both feed URLs. A disabled manifest
+has `feedUrls: null` and uses the supplied build version or `0.0.0`.
+The app chooses its update channel in Settings, with Stable as the default.
 
 Main strictly checks the schema, CPU, build tuple, exact feed URLs and the pinned
 Ed25519 key before acquiring networking. Neither environment variables nor the

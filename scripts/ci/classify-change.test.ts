@@ -13,7 +13,6 @@ describe("CI change classification", () => {
       landingOnly: false,
       protocolContracts: false,
       relatedPaths: [],
-      releaseTransition: false,
       rustFast: false,
       rustFull: false,
       rustMigration: false,
@@ -57,17 +56,6 @@ describe("CI change classification", () => {
     expect(classifyChangedPaths(["packages/landing/src/index.css"])).toMatchObject({
       landingOnly: true,
       staticGroups: ["landing"],
-    });
-  });
-
-  test("routes the exact release metadata set to the narrow transition guard", () => {
-    expect(
-      classifyChangedPaths(["Cargo.lock", "Cargo.toml", "CHANGELOG.md", "package.json"]),
-    ).toMatchObject({
-      releaseTransition: true,
-      rustFast: false,
-      staticGroups: [],
-      testMode: "none",
     });
   });
 

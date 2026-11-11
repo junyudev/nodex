@@ -25,9 +25,7 @@ export function createSentryPlugins() {
       create: upload,
       finalize: upload,
     },
-    sourcemaps: upload
-      ? { filesToDeleteAfterUpload: "out/**/*.map" }
-      : { disable: "disable-upload" },
+    sourcemaps: upload ? undefined : { disable: "disable-upload" },
     errorHandler: (error) => {
       throw error;
     },

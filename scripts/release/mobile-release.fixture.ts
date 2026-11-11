@@ -8,7 +8,7 @@ import {
   type MobileBuildManifest,
   type MobilePlatform,
 } from "./mobile";
-import { sha256File, type ReleaseIdentity } from "./model";
+import { buildIdentityOf, sha256File, type ReleaseIdentity } from "./model";
 
 /** One phone build directory as the mobile distribution jobs leave it. */
 export function makeMobileBuild(
@@ -22,11 +22,12 @@ export function makeMobileBuild(
   const name = mobileArtifactName(platform, identity.version);
   const artifactPath = join(directory, name);
   writeFileSync(artifactPath, `${platform}:${identity.version}`);
+  const buildIdentity = buildIdentityOf(identity);
   const manifest: MobileBuildManifest = {
     schemaVersion: 1,
     platform,
-    releaseIdentity: identity,
-    app: mobileAppFor(platform, identity),
+    buildIdentity,
+    app: mobileAppFor(platform, buildIdentity),
     artifact: { name, bytes: statSync(artifactPath).size, sha256: sha256File(artifactPath) },
     signer: expectedMobileSigner(platform),
     runner: { image: "test" },

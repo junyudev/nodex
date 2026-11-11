@@ -20,7 +20,7 @@ import {
   type MacArchitecture,
 } from "./bundle";
 import { readPublishedReleaseIndex, releaseAssetPaths } from "./github-release";
-import { sha256File } from "./model";
+import { buildIdentityOf, sha256File } from "./model";
 import { projectReleaseAppcasts } from "./pages";
 import {
   NODEX_MACOS_TEAM_IDENTIFIER,
@@ -79,22 +79,11 @@ const makeArchitecture = (architecture: MacArchitecture, sourceSha = SOURCE_SHA)
       browserSha256: "5".repeat(64),
       sparkleSha256: "b".repeat(64),
     },
-    schemaVersion: 2,
-    releaseIdentity: {
-      schemaVersion: 1,
-      channel: "stable",
-      sourceSha,
-      sourceTree: "6".repeat(40),
-      sourceVersion: VERSION,
-      version: VERSION,
-      buildVersion: BUILD_VERSION,
-      tag: `v${VERSION}`,
-      mainlineOrdinal: 1,
-      sourceDate: "1970-01-01",
-    },
+    schemaVersion: 3,
+    updates: "enabled",
+    buildIdentity: { ...buildIdentityOf(fixtureIdentity()), sourceSha },
     sourceSha,
     sourceTree: "6".repeat(40),
-    tag: `v${VERSION}`,
     version: VERSION,
   };
   writeFileSync(join(root, "architecture-build.json"), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -167,7 +156,7 @@ const makeUpdate = (
       sha256: sha256File(fullPath),
       url: fullUrl,
     },
-    schemaVersion: 2,
+    schemaVersion: 3,
     sourceSha,
     tag: `v${VERSION}`,
     target: {
@@ -205,17 +194,17 @@ test("assembles the complete macOS and Windows signed release closure", () => {
     arm64Directory: arm64,
     arm64UpdateDirectory: makeUpdate("arm64", arm64),
     outputDirectory: output,
-    sourceSha: SOURCE_SHA,
-    version: VERSION,
+    identity: fixtureIdentity(),
   });
 
-  expect(bundle.schemaVersion).toBe(5);
+  expect(bundle.schemaVersion).toBe(6);
   expect(bundle.assets.map(({ name }) => name).sort()).toEqual(
     [
       `Nodex-${VERSION}-appcast-arm64.xml`,
       `Nodex-${VERSION}-arm64.tar.xz`,
       `Nodex-${VERSION}-update-arm64.json`,
       `Nodex-${PREVIOUS_VERSION}-to-${VERSION}-arm64.delta`,
+      `Nodex-${VERSION}-arm64.dmg`,
       "Nodex-latest-arm64.dmg",
       `Nodex-${VERSION}-android.apk`,
       "Nodex-latest-android.apk",
@@ -277,8 +266,7 @@ test("derives remote release identities without local copies of the full assets"
     arm64Directory: arm64,
     arm64UpdateDirectory: makeUpdate("arm64", arm64),
     outputDirectory: output,
-    sourceSha: SOURCE_SHA,
-    version: VERSION,
+    identity: fixtureIdentity(),
   });
   for (const asset of bundle.assets) rmSync(join(output, asset.name));
 
@@ -304,8 +292,7 @@ test("reads a published ZIP index and rejects ZIP for new releases", () => {
     arm64Directory: arm64,
     arm64UpdateDirectory: makeUpdate("arm64", arm64),
     outputDirectory: output,
-    sourceSha: SOURCE_SHA,
-    version: VERSION,
+    identity: fixtureIdentity(),
   });
   const zipAsset = {
     ...bundle.assets.find(({ role }) => role === "sparkle-full")!,
@@ -350,8 +337,7 @@ test("rejects a Sparkle full update that does not match the architecture archive
       arm64Directory: arm64,
       arm64UpdateDirectory: armUpdate,
       outputDirectory: join(fixture, "output"),
-      sourceSha: SOURCE_SHA,
-      version: VERSION,
+      identity: fixtureIdentity(),
     }),
   ).toThrow("does not match its manifest");
 });
@@ -367,8 +353,7 @@ test("rejects a missing or tampered Sparkle delta from the dynamic asset closure
       arm64Directory: arm64,
       arm64UpdateDirectory: armUpdate,
       outputDirectory: join(fixture, "missing-output"),
-      sourceSha: SOURCE_SHA,
-      version: VERSION,
+      identity: fixtureIdentity(),
     }),
   ).toThrow();
 
@@ -383,8 +368,7 @@ test("rejects a missing or tampered Sparkle delta from the dynamic asset closure
       arm64Directory: arm64,
       arm64UpdateDirectory: replacementUpdate,
       outputDirectory: join(fixture, "tampered-output"),
-      sourceSha: SOURCE_SHA,
-      version: VERSION,
+      identity: fixtureIdentity(),
     }),
   ).toThrow("does not match");
 });
@@ -425,8 +409,7 @@ test("rejects appcast enclosure metadata that diverges from the update manifest"
       arm64Directory: arm64,
       arm64UpdateDirectory: armUpdate,
       outputDirectory: join(fixture, "mismatched-appcast-output"),
-      sourceSha: SOURCE_SHA,
-      version: VERSION,
+      identity: fixtureIdentity(),
     }),
   ).toThrow("full enclosure");
 });
@@ -468,8 +451,7 @@ test("rejects a Sparkle appcast below the product macOS baseline", () => {
       arm64Directory: arm64,
       arm64UpdateDirectory: armUpdate,
       outputDirectory: join(fixture, "old-macos-appcast-output"),
-      sourceSha: SOURCE_SHA,
-      version: VERSION,
+      identity: fixtureIdentity(),
     }),
   ).toThrow("require macOS 15.0");
 });
@@ -483,8 +465,7 @@ test("rejects architecture and update manifests from different source commits", 
       arm64Directory: arm64,
       arm64UpdateDirectory: makeUpdate("arm64", arm64, "f".repeat(40)),
       outputDirectory: join(fixture, "output"),
-      sourceSha: SOURCE_SHA,
-      version: VERSION,
+      identity: fixtureIdentity(),
     }),
   ).toThrow("one release identity");
 });
@@ -508,8 +489,7 @@ test("rejects top-level source identity fields that diverge from the embedded id
     arm64Directory: arm64,
     arm64UpdateDirectory: makeUpdate("arm64", arm64),
     outputDirectory: output,
-    sourceSha: SOURCE_SHA,
-    version: VERSION,
+    identity: fixtureIdentity(),
   });
   const bundlePath = join(output, "release-bundle.json");
   const bundle = JSON.parse(readFileSync(bundlePath, "utf8")) as ReturnType<
@@ -545,8 +525,7 @@ test("rejects unlisted architecture artifacts", () => {
       arm64Directory: arm64,
       arm64UpdateDirectory: makeUpdate("arm64", arm64),
       outputDirectory: join(fixture, "output"),
-      sourceSha: SOURCE_SHA,
-      version: VERSION,
+      identity: fixtureIdentity(),
     }),
   ).toThrow("architecture artifacts do not match");
 });
@@ -559,8 +538,7 @@ test("ships the exact certified APK under its versioned name and the stable alia
     arm64Directory: arm64,
     arm64UpdateDirectory: makeUpdate("arm64", arm64),
     outputDirectory: output,
-    sourceSha: SOURCE_SHA,
-    version: VERSION,
+    identity: fixtureIdentity(),
   });
   const apks = bundle.assets.filter(({ role }) => role === "android-apk");
   expect(new Set(apks.map(({ sha256 }) => sha256))).toEqual(
@@ -597,8 +575,7 @@ test("refuses a phone build signed by anyone but Nodex", () => {
       arm64Directory: arm64,
       arm64UpdateDirectory: makeUpdate("arm64", arm64),
       outputDirectory: join(fixture, "output"),
-      sourceSha: SOURCE_SHA,
-      version: VERSION,
+      identity: fixtureIdentity(),
     }),
   ).toThrow("signer");
 });
@@ -611,8 +588,7 @@ test("still reads published desktop-only bundles as history", () => {
     arm64Directory: arm64,
     arm64UpdateDirectory: makeUpdate("arm64", arm64),
     outputDirectory: output,
-    sourceSha: SOURCE_SHA,
-    version: VERSION,
+    identity: fixtureIdentity(),
   });
   const { mobile: _mobile, ...current } = JSON.parse(
     readFileSync(join(output, "release-bundle.json"), "utf8"),
@@ -620,7 +596,10 @@ test("still reads published desktop-only bundles as history", () => {
   const desktopOnly = {
     ...current,
     schemaVersion: 4,
-    assets: current.assets.filter(({ role }: { role: string }) => role !== "android-apk"),
+    assets: current.assets.filter(
+      ({ role, name }: { role: string; name: string }) =>
+        role !== "android-apk" && name !== `Nodex-${VERSION}-arm64.dmg`,
+    ),
   };
   expect(parseReleaseHistoryBundle(desktopOnly).mobile).toBeUndefined();
   expect(() => parseReleaseBundleManifest(desktopOnly)).toThrow("invalid");

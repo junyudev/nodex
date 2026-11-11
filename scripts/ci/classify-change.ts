@@ -269,7 +269,6 @@ const createPlan = (overrides: Partial<CiGatePlan>): CiGatePlan => {
     landingOnly: false,
     protocolContracts: false,
     relatedPaths: [],
-    releaseTransition: false,
     rustFast: false,
     rustFull: false,
     rustMigration: false,
@@ -387,10 +386,6 @@ const classifyNormalizedPaths = (
   options: { readonly full?: boolean; readonly forceFullTests?: boolean },
 ): CiGatePlan => {
   if (options.full || paths.length === 0) return allGatesPlan("source");
-
-  const releaseTransition =
-    paths.length === RELEASE_PATHS.size && [...RELEASE_PATHS].every((path) => paths.includes(path));
-  if (releaseTransition) return createPlan({ releaseTransition: true });
 
   if (paths.every(isDocumentationPath)) return createPlan({ docsOnly: true });
   const landingOnly =

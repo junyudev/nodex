@@ -1573,7 +1573,7 @@ Security-sensitive Adapters fail closed. Core validates Profile identity, resour
 
 ### Build and distribution
 
-The repository-owned Release Module under [`scripts/release`](../scripts/release) owns release identity, source transitions, bundle assembly, publication state, and downstream projections. GitHub workflows are Adapters over that Module rather than a second release decision engine.
+The repository-owned Release Module under [`scripts/release`](../scripts/release) owns channel-neutral Build Identity, Nightly candidate verification, stable promotion, bundle assembly, publication state and downstream projections. GitHub workflows are Adapters over that Module rather than a second release decision engine.
 
 The [`scripts/build-resources.ts`](../scripts/build-resources.ts) Build Resources Module owns the derived third-party notices and their canonical manifest. It derives a deterministic, exact-inventory tree under `.generated/build-resources/` from the repository dependency graph and exposes one resolver for development, tests, packaging, and release. Generated files are never source-review inputs or PR branch mutations. CI verifies two independent staging builds and keeps the existing read-only PR permission model.
 

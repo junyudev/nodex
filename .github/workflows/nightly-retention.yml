@@ -32,6 +32,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Stable publishes independent copies, so promoted Nightlies follow the same retention policy.
           vp run release:retain:nightlies -- --repo "${GITHUB_REPOSITORY}" --keep 20 --min-age-days 14 --destructive false --output "${RUNNER_TEMP}/retention.json"
           cat "${RUNNER_TEMP}/retention.json" >> "${GITHUB_STEP_SUMMARY}"
 
@@ -49,5 +50,6 @@ jobs:
       - name: Apply approved Nightly retention
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
+          # Stable publishes independent copies, so promoted Nightlies follow the same retention policy.
           vp run release:retain:nightlies -- --repo "${GITHUB_REPOSITORY}" --keep 20 --min-age-days 14 --destructive true --output "${RUNNER_TEMP}/retention.json"
           cat "${RUNNER_TEMP}/retention.json" >> "${GITHUB_STEP_SUMMARY}"

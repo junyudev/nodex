@@ -11,13 +11,8 @@ const TARGETS = ["arm64", "windows-arm64", "windows-x64"];
 const WINDOWS_WORKFLOW = "./.github/workflows/_windows-distribution.yml";
 const MOBILE_WORKFLOW = "./.github/workflows/_mobile-distribution.yml";
 /** Only a stable release opens a build to the public TestFlight beta. */
-const TESTFLIGHT_CALLERS = new Set(["release.yml", "release-recovery.yml"]);
-const RELEASE_CALLERS = [
-  "release.yml",
-  "nightly-release.yml",
-  "release-rehearsal.yml",
-  "release-recovery.yml",
-];
+const TESTFLIGHT_CALLERS = new Set(["release.yml"]);
+const RELEASE_CALLERS = ["release.yml", "nightly-release.yml", "release-rehearsal.yml"];
 const names = (value: unknown): readonly string[] =>
   typeof value === "string"
     ? [value]
@@ -89,24 +84,41 @@ export function verifyReleaseDistributionWorkflows(
   for (const filename of RELEASE_CALLERS) {
     const caller = requireRecord(workflows.get(filename), filename);
     const callerJobs = requireRecord(caller.jobs, `${filename} jobs`);
-    const distribution = requireRecord(
-      callerJobs["windows-distribution"],
-      `${filename} Windows distribution`,
-    );
-    if (
-      distribution.uses !== WINDOWS_WORKFLOW ||
-      distribution.steps ||
-      (isRecord(distribution.with) && distribution.with.release === false)
-    )
-      throw new Error(`${filename} must consume the official Windows distribution.`);
-    assertNeeds(distribution, ["certification"], filename);
-    const mobileDistribution = requireRecord(
-      callerJobs["mobile-distribution"],
-      `${filename} mobile distribution`,
-    );
-    if (mobileDistribution.uses !== MOBILE_WORKFLOW || mobileDistribution.steps)
-      throw new Error(`${filename} must consume the official mobile distribution.`);
-    assertNeeds(mobileDistribution, ["certification"], filename);
+    const stable = filename === "release.yml";
+    if (stable) {
+      const triggers = requireRecord(caller.on, "Stable triggers");
+      if (
+        Object.keys(triggers).join() !== "workflow_dispatch" ||
+        ["certification", "distribution", "windows-distribution", "mobile-distribution"].some(
+          (job) => Object.hasOwn(callerJobs, job),
+        )
+      ) {
+        throw new Error("Stable must be dispatch-only and reuse a verified Nightly build.");
+      }
+      const resolve = requireRecord(callerJobs.resolve, "Stable candidate verification");
+      if (resolve.environment !== "release-source" || resolve.secrets !== undefined) {
+        throw new Error("Stable candidate verification must precede signing secrets.");
+      }
+    } else {
+      const distribution = requireRecord(
+        callerJobs["windows-distribution"],
+        `${filename} Windows distribution`,
+      );
+      if (
+        distribution.uses !== WINDOWS_WORKFLOW ||
+        distribution.steps ||
+        (isRecord(distribution.with) && distribution.with.release === false)
+      )
+        throw new Error(`${filename} must consume the official Windows distribution.`);
+      assertNeeds(distribution, ["certification"], filename);
+      const mobileDistribution = requireRecord(
+        callerJobs["mobile-distribution"],
+        `${filename} mobile distribution`,
+      );
+      if (mobileDistribution.uses !== MOBILE_WORKFLOW || mobileDistribution.steps)
+        throw new Error(`${filename} must consume the official mobile distribution.`);
+      assertNeeds(mobileDistribution, ["certification"], filename);
+    }
     const testflight = callerJobs.testflight;
     if (TESTFLIGHT_CALLERS.has(filename)) {
       const job = requireRecord(testflight, `${filename} TestFlight`);
@@ -129,25 +141,18 @@ export function verifyReleaseDistributionWorkflows(
     );
     if (JSON.stringify([...names(finalizerMatrix.architecture)].sort()) !== JSON.stringify(TARGETS))
       throw new Error(`${filename} must finalize all three release architectures.`);
-    assertNeeds(finalizer, ["distribution", "windows-distribution"], filename);
     assertNeeds(
-      requireRecord(callerJobs.assemble, `${filename} assembly`),
-      ["distribution", "windows-distribution", "mobile-distribution", "finalize-sparkle"],
+      finalizer,
+      stable ? ["resolve"] : ["distribution", "windows-distribution"],
       filename,
     );
-    if (
-      filename === "release-recovery.yml" &&
-      (!String(finalizer.if).includes("needs.windows-distribution.result == 'success'") ||
-        !String(requireRecord(callerJobs.assemble, "Recovery assembly").if).includes(
-          "needs.windows-distribution.result == 'success'",
-        ) ||
-        !String(requireRecord(callerJobs.assemble, "Recovery assembly").if).includes(
-          "needs.mobile-distribution.result == 'success'",
-        ))
-    )
-      throw new Error(
-        "Recovery must reject a failed Windows or mobile distribution even with always().",
-      );
+    assertNeeds(
+      requireRecord(callerJobs.assemble, `${filename} assembly`),
+      stable
+        ? ["resolve", "finalize-sparkle"]
+        : ["distribution", "windows-distribution", "mobile-distribution", "finalize-sparkle"],
+      filename,
+    );
   }
 }
 

@@ -228,7 +228,6 @@ test.each([
   { CARGO_INCREMENTAL: "0" },
   { RUSTFLAGS: "-C opt-level=2" },
   { CC: "/tmp/compiler" },
-  { NODEX_RELEASE_VERSION: "1.0.0" },
   { NODEX_CORE_EXECUTABLE: "/tmp/custom-core" },
   { RUSTC_WRAPPER: "" },
   { CPATH: "/tmp/includes" },

@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Stable updates reach you sooner with the same build already tested on Nightly. Both channels show app versions as `x.y.z`, and you can choose your channel in Settings.
 - Opening `N more properties` on a Page now lists its empty properties by name instead of a column of rows that say Empty. Choose one and it joins the list with its editor already open, and it stays there while the Page is open. Hidden properties that hold a value still open as rows.
 - The built-in Parent property is now called **Part of**, so a Page under another reads "Part of" followed by that Page. A property you renamed keeps your name. Part of and Waits for also have their own icons.
 - Clicking an image in a Page's Files, or an image attachment in its body, now shows it over the Page instead of opening a tab. Step through the Page's images with the arrow keys, and choose **Open in tab** when you want to keep one open; Cmd/Ctrl-click still opens the tab directly.

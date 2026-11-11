@@ -39,7 +39,7 @@ const manifest = () => ({
     sha256: "c".repeat(64),
     url: `https://github.com/junyudev/nodex/releases/download/v${VERSION}/Nodex-${VERSION}-arm64.tar.xz`,
   },
-  schemaVersion: 2,
+  schemaVersion: 3,
   sourceSha: "d".repeat(40),
   tag: `v${VERSION}`,
   target: {
@@ -82,9 +82,8 @@ describe("Sparkle architecture update manifest", () => {
 test("accepts a nightly feed identity and rejects a stable feed path", () => {
   const nightly = manifest();
   nightly.channel = "nightly";
-  nightly.target.version = "0.2.2-nightly.20260813.842";
   nightly.target.buildVersion = "1.8.42";
-  nightly.tag = `v${nightly.target.version}`;
+  nightly.tag = "v0.2.2-nightly.20260813.842";
   nightly.appcast.name = `Nodex-${nightly.target.version}-appcast-arm64.xml`;
   nightly.appcast.feedPath = "updates/nightly/arm64/appcast.xml";
   nightly.full.name = `Nodex-${nightly.target.version}-arm64.tar.xz`;

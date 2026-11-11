@@ -1,16 +1,18 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vite-plus/test";
 import {
-  checkWorktreeReleaseTransition,
-  detectReleaseTransition,
+  advanceReleaseSource,
+  isVersionAdvance,
   inspectReleaseSource,
   inspectReleaseSourceAtRef,
-  prepareReleaseSource,
+  setSourceVersion,
 } from "./source";
+import { advanceMain } from "./promotion";
 
 const PACKAGE_NAMES = [
   "nodex-browser-profile-helper",
@@ -71,47 +73,13 @@ beforeEach(() => {
 
 afterEach(() => rmSync(fixture, { recursive: true, force: true }));
 
-test("prepareReleaseSource synchronizes package, Cargo, lock, and changelog without committing", () => {
-  const prepared = prepareReleaseSource({
-    cwd: fixture,
-    date: "2026-07-31",
-    validateCargoMetadata: false,
-    version: "0.2.0",
-  });
-  const snapshot = inspectReleaseSource(fixture);
-
-  expect(prepared).toMatchObject({ tag: "v0.2.0", version: "0.2.0" });
-  expect(snapshot.packageVersion).toBe("0.2.0");
-  expect(snapshot.cargoVersion).toBe("0.2.0");
-  const lock = parseToml(readFileSync(join(fixture, "Cargo.lock"), "utf8"));
-  expect(lock.package).toEqual(PACKAGE_NAMES.map((name) => ({ name, version: "0.2.0" })));
-  expect(snapshot.changelog).toContain("## [0.2.0] - 2026-07-31");
-  expect(git("log", "-1", "--format=%s")).toBe("chore: seed release source");
-  expect(git("diff", "--name-only").split("\n").sort()).toEqual([
-    "CHANGELOG.md",
-    "Cargo.lock",
-    "Cargo.toml",
-    "package.json",
-  ]);
+test("sets all version sources without editing notes or committing", () => {
+  const changelog = inspectReleaseSource(fixture).changelog;
+  setSourceVersion(fixture, "0.2.0");
+  expect(inspectReleaseSource(fixture).packageVersion).toBe("0.2.0");
+  expect(inspectReleaseSource(fixture).changelog).toBe(changelog);
+  expect(inspectReleaseSourceAtRef(fixture, "HEAD").packageVersion).toBe("0.1.10");
 });
-
-test.each(["missing", "stale", "duplicate", "registry"])(
-  "rejects a %s lock entry for a newly added workspace member",
-  (kind) => {
-    const path = join(fixture, "Cargo.lock");
-    const entry = '[[package]]\nname = "new-workspace-member"\nversion = "0.1.10"\n';
-    const replacement =
-      kind === "missing"
-        ? ""
-        : kind === "stale"
-          ? entry.replace("0.1.10", "0.1.9")
-          : kind === "duplicate"
-            ? `${entry}\n${entry}`
-            : `${entry}source = "registry+https://example.invalid/index"\n`;
-    writeFileSync(path, readFileSync(path, "utf8").replace(entry, replacement));
-    expect(() => inspectReleaseSource(fixture)).toThrow(/new-workspace-member/);
-  },
-);
 
 test("historical inspection uses member manifests from that commit, not the worktree", () => {
   writeFileSync(
@@ -150,12 +118,7 @@ test("preparation preserves unrelated path dependency versions", () => {
   );
   git("add", ".");
   git("commit", "-m", "test: add path dependency");
-  prepareReleaseSource({
-    cwd: fixture,
-    date: "2026-09-20",
-    validateCargoMetadata: false,
-    version: "0.2.0",
-  });
+  setSourceVersion(fixture, "0.2.0");
   const parsed = parseToml(readFileSync(lock, "utf8"));
   expect(parsed.package).toContainEqual({ name: "external-path-dependency", version: "8.0.0" });
 });
@@ -168,12 +131,7 @@ test("preparation preserves a different-version path dependency with the same na
   );
   git("add", ".");
   git("commit", "-m", "test: add same-name path dependency");
-  prepareReleaseSource({
-    cwd: fixture,
-    date: "2026-09-20",
-    validateCargoMetadata: false,
-    version: "0.2.0",
-  });
+  setSourceVersion(fixture, "0.2.0");
   const parsed = parseToml(readFileSync(lock, "utf8"));
   expect(parsed.package).toContainEqual({ name: "new-workspace-member", version: "8.0.0" });
   expect(parsed.package).toContainEqual({ name: "new-workspace-member", version: "0.2.0" });
@@ -192,12 +150,7 @@ test("same-name and same-version registry dependencies do not own the release ve
   );
   git("add", ".");
   git("commit", "-m", "test: add same-identity registry dependency");
-  prepareReleaseSource({
-    cwd: fixture,
-    date: "2026-09-20",
-    validateCargoMetadata: false,
-    version: "0.2.0",
-  });
+  setSourceVersion(fixture, "0.2.0");
   expect(parseToml(readFileSync(lock, "utf8")).package).toContainEqual(remote);
   expect(parseToml(readFileSync(lock, "utf8")).package).toContainEqual({
     name: remote.name,
@@ -295,53 +248,99 @@ test("worktree inspection accepts contained manifest links and rejects non-regul
   expect(() => inspectReleaseSource(fixture)).toThrow("regular file within the worktree");
 });
 
-test("checkWorktreeReleaseTransition accepts exactly the metadata-only release diff", () => {
-  prepareReleaseSource({
-    cwd: fixture,
-    date: "2026-07-31",
-    validateCargoMetadata: false,
-    version: "0.2.0",
-  });
-  expect(checkWorktreeReleaseTransition(fixture, "HEAD")).toMatchObject({
-    baseVersion: "0.1.10",
-    shouldRelease: true,
-    tag: "v0.2.0",
-    version: "0.2.0",
-  });
-});
-
-test("detectReleaseTransition ignores an identity repair without an app version change", () => {
-  writeFileSync(join(fixture, "README.md"), "documentation\n");
-  git("add", "README.md");
-  git("commit", "-m", "docs: add readme");
-  expect(detectReleaseTransition(fixture, "HEAD^", "HEAD")).toEqual({
-    shouldRelease: false,
-    version: "0.1.10",
-  });
-});
-
-test("release transition rejects source changes mixed into the metadata commit", () => {
-  prepareReleaseSource({
-    cwd: fixture,
-    date: "2026-07-31",
-    validateCargoMetadata: false,
-    version: "0.2.0",
-  });
-  writeFileSync(join(fixture, "README.md"), "mixed source change\n");
-  expect(() => checkWorktreeReleaseTransition(fixture, "HEAD")).toThrow("may change only");
-});
-
-test("release preparation rejects a dirty worktree before writing", () => {
+test("advances and recognizes the exact release metadata roll-forward", () => {
+  const changelog = join(fixture, "CHANGELOG.md");
   writeFileSync(
-    join(fixture, "CHANGELOG.md"),
-    `${readFileSync(join(fixture, "CHANGELOG.md"), "utf8")}dirty\n`,
+    changelog,
+    readFileSync(changelog, "utf8")
+      .replace("[0.1.10]", "[0.1.9]")
+      .replace(
+        "- Added a verified release flow.",
+        "- Added a verified release flow.\n- Added after the Nightly.",
+      ),
   );
-  expect(() =>
-    prepareReleaseSource({
-      cwd: fixture,
-      date: "2026-07-31",
-      validateCargoMetadata: false,
-      version: "0.2.0",
-    }),
-  ).toThrow("clean git worktree");
+  const released = git("rev-parse", "HEAD");
+  git("commit", "-am", "append unreleased notes");
+  const notes = "### Added\n- Added a verified release flow.\n";
+  expect(advanceReleaseSource(fixture, "0.1.10", notes, "2026-11-11")).toBe(true);
+  expect(advanceReleaseSource(fixture, "0.1.10", notes, "2026-11-11")).toBe(false);
+  const snapshot = inspectReleaseSource(fixture);
+  expect(snapshot.packageVersion).toBe("0.1.11");
+  expect(snapshot.changelog).toContain(
+    "## [Unreleased]\n\n### Added\n\n- Added after the Nightly.",
+  );
+  expect(snapshot.changelog).toContain("## [0.1.10] - 2026-11-11\n\n" + notes);
+  git("commit", "-am", "advance version", "-m", `Nodex-Release-Source: ${released}`);
+  expect(isVersionAdvance(fixture, "HEAD^", "HEAD")).toBe(true);
+  writeFileSync(join(fixture, "app.ts"), "export {};\n");
+  git("add", "app.ts");
+  git("commit", "--amend", "--no-edit");
+  expect(isVersionAdvance(fixture, "HEAD^", "HEAD")).toBe(false);
 });
+
+test.skipIf(process.platform === "win32")(
+  "a push race regenerates the advance and keeps the new main notes",
+  () => {
+    const remote = mkdtempSync(join(tmpdir(), "nodex-release-origin-"));
+    const concurrent = mkdtempSync(join(tmpdir(), "nodex-release-concurrent-"));
+    const gitAt = (cwd: string, ...args: string[]) =>
+      execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    try {
+      const changelog = join(fixture, "CHANGELOG.md");
+      writeFileSync(changelog, readFileSync(changelog, "utf8").replace("[0.1.10]", "[0.1.9]"));
+      git("commit", "-am", "set next release");
+      git("branch", "-M", "main");
+      const sourceSha = git("rev-parse", "HEAD");
+      gitAt(remote, "init", "--bare", "--initial-branch=main");
+      git("remote", "add", "origin", remote);
+      git("push", "origin", "main");
+
+      gitAt(dirname(concurrent), "clone", remote, concurrent);
+      gitAt(concurrent, "config", "user.email", "race@example.com");
+      gitAt(concurrent, "config", "user.name", "Concurrent author");
+      writeFileSync(
+        join(concurrent, "CHANGELOG.md"),
+        readFileSync(changelog, "utf8").replace(
+          "### Added\n- Added a verified release flow.",
+          "### Added\n- Added a verified release flow.\n- Added during the push.",
+        ),
+      );
+      gitAt(concurrent, "commit", "-am", "add concurrent notes");
+
+      writeFileSync(
+        join(fixture, ".git/hooks/pre-push"),
+        `#!/bin/sh
+set -eu
+if [ ! -f .git/push-raced ]; then
+  touch .git/push-raced
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+  git -C "${concurrent}" push origin main
+fi
+`,
+        { mode: 0o755 },
+      );
+      const options = {
+        cwd: fixture,
+        sourceSha,
+        version: "0.1.10",
+        date: "2026-11-11",
+        notes: "### Added\n- Added a verified release flow.\n",
+      };
+      advanceMain(options);
+      const head = git("rev-parse", "HEAD");
+      expect(git("rev-parse", "HEAD^")).toBe(
+        gitAt(concurrent, "rev-parse", "HEAD").toString().trim(),
+      );
+      expect(inspectReleaseSource(fixture).changelog).toContain(
+        "### Added\n\n- Added during the push.",
+      );
+      expect(isVersionAdvance(fixture, "HEAD^", "HEAD")).toBe(true);
+      advanceMain(options);
+      expect(git("rev-parse", "HEAD")).toBe(head);
+    } finally {
+      rmSync(remote, { recursive: true, force: true });
+      rmSync(concurrent, { recursive: true, force: true });
+    }
+  },
+  90_000,
+);

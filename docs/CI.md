@@ -24,7 +24,7 @@ workflows in Nightly CI, with the full suite available for local diagnostics.
   gates for an exact release SHA without signing secrets. Its `release-source`
   environment and shared protected-main guard dominate every reusable consumer
   before the SHA is checked out or executed. It issues a SHA-and-tree-bound
-  certificate. Stable, nightly, rehearsal, and recovery distributions refuse to
+  certificate. Nightly and Rehearsal distributions refuse to
   build unless that certificate matches the checked out Git tree.
 - `_macos-distribution.yml` owns signing, notarization, packaged CLI/Core
   probes, application startup, architecture bundles, and certificate
@@ -35,10 +35,9 @@ workflows in Nightly CI, with the full suite available for local diagnostics.
   same source certificate and identity as macOS. All three architectures must
   succeed before protected signing, Bundle assembly, and promotion.
 
-An exact four-file stable release transition (`CHANGELOG.md`, `Cargo.lock`,
-`Cargo.toml`, and `package.json`) remains a narrow PR/Main mode. Release
-certification, rather than Main CI, supplies the exhaustive exact-SHA proof
-before distribution.
+Nightly certification supplies exhaustive exact-SHA evidence. Stable promotion
+verifies the published Nightly and reuses its build outputs. Main CI checks that
+source version surfaces agree and the changelog contains Unreleased.
 
 Every aggregate gate fails closed: a selected job must succeed; skipped,
 cancelled, missing, and failed results are rejected. Manual PR/Main dispatch
@@ -56,7 +55,7 @@ aggregate while Windows support is being qualified.
 The daily Windows schedule and manual dispatch also build and stage each native
 runtime, package an unsigned per-user NSIS installer, silently install and probe
 it, then upload its verified architecture bundle. They call the same reusable
-Windows distribution as stable releases, Nightly, Rehearsal, and Recovery, with
+Windows distribution as Nightly and Rehearsal, with
 updates disabled for validation builds. Pushes to `codex/windows-**` run this
 full tier for platform development feedback. PR runs omit packaging. These jobs
 use no signing credentials and do not publish a Release or update feed.

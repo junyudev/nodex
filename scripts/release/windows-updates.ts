@@ -4,7 +4,12 @@ import { isDeepStrictEqual } from "node:util";
 import { DOMImplementation, XMLSerializer } from "@xmldom/xmldom";
 import type { WindowsArchitecture } from "../desktop-build-target";
 import { materializeSparkleRuntime } from "../materialize-sparkle-runtime";
-import { parseReleaseIdentity, sha256File, type ReleaseIdentity } from "./model";
+import {
+  publicationIdentity,
+  parseReleaseIdentity,
+  sha256File,
+  type ReleaseIdentity,
+} from "./model";
 import { readArchitectureDirectory, type ReleaseBundleManifest } from "./bundle";
 import { verifySparkleAppcastContract } from "./sparkle-appcast-contract";
 import { parseSparkleFileIdentity, type SparkleFileIdentity } from "./sparkle-manifest";
@@ -209,8 +214,7 @@ export async function finalizeWindowsArchitectureUpdate(options: {
   const build = readArchitectureDirectory(options.architectureDirectory);
   if (
     build.architecture !== `windows-${options.architecture}` ||
-    build.buildChannel !== options.channel ||
-    build.releaseIdentity.channel !== options.channel ||
+    build.updates !== "enabled" ||
     build.sourceSha !== options.sourceSha ||
     build.version !== options.version
   )
@@ -222,7 +226,7 @@ export async function finalizeWindowsArchitectureUpdate(options: {
   assertPrivateKeyMatchesPublicKey(signUpdate, options.privateKey, publicKey);
   return createWindowsArchitectureUpdate({
     ...options,
-    identity: build.releaseIdentity,
+    identity: publicationIdentity(build.buildIdentity, options.channel),
     publicKey,
     installerPath: join(
       resolve(options.architectureDirectory),

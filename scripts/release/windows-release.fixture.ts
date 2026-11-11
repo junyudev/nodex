@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION } from "../package-provenance.mjs";
 import type { ArchitectureBuildManifest } from "./bundle";
-import { sha256File, type ReleaseIdentity } from "./model";
+import { buildIdentityOf, sha256File, type ReleaseIdentity } from "./model";
 import { makeMobileReleaseFixture } from "./mobile-release.fixture";
 import { createWindowsArchitectureUpdate } from "./windows-updates";
 import { WINDOWS_ARCHITECTURES, windowsInstallerName } from "./targets";
@@ -13,10 +13,9 @@ export const fixtureIdentity = (channel: "stable" | "nightly" = "stable"): Relea
   channel,
   sourceSha: "1".repeat(40),
   sourceTree: "6".repeat(40),
-  sourceVersion: "0.2.2",
-  version: channel === "stable" ? "0.2.2" : "0.2.3-nightly.19700101.1",
+  version: "0.2.2",
   buildVersion: "1.0.1",
-  tag: channel === "stable" ? "v0.2.2" : "v0.2.3-nightly.19700101.1",
+  tag: channel === "stable" ? "v0.2.2" : "v0.2.2-nightly.19700101.1",
   mainlineOrdinal: 1,
   sourceDate: "1970-01-01",
 });
@@ -40,14 +39,13 @@ export function makeWindowsReleaseFixture(root: string, identity = fixtureIdenti
     const provenancePath = join(build, "windows-build-provenance.json");
     writeFileSync(provenancePath, "provenance");
     const manifest: ArchitectureBuildManifest = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       architecture,
-      buildChannel: identity.channel,
-      releaseIdentity: identity,
+      updates: "enabled",
+      buildIdentity: buildIdentityOf(identity),
       sourceSha: identity.sourceSha,
       sourceTree: identity.sourceTree,
       version: identity.version,
-      tag: identity.tag,
       artifacts: [
         {
           name,
@@ -84,8 +82,8 @@ export function makeWindowsReleaseFixture(root: string, identity = fixtureIdenti
       JSON.stringify({
         schemaVersion: 1,
         architecture,
-        buildChannel: identity.channel,
-        releaseIdentity: identity,
+        updates: "enabled",
+        buildIdentity: buildIdentityOf(identity),
         artifacts: manifest.artifacts,
         runtimeLocks: manifest.runtimeLocks,
         preparedManifestSha256: manifest.preparedBuild.manifestSha256,
@@ -165,7 +163,7 @@ export function makeReleaseFixture(root: string, channel: "stable" | "nightly" =
     JSON.stringify({
       architecture: "arm64",
       channel: identity.channel,
-      schemaVersion: 2,
+      schemaVersion: 3,
       sourceSha: identity.sourceSha,
       tag: identity.tag,
       full,
@@ -183,13 +181,11 @@ export function makeReleaseFixture(root: string, channel: "stable" | "nightly" =
       },
     }),
   );
-  const identityPath = join(root, "identity.json");
-  writeFileSync(identityPath, JSON.stringify(identity));
   return {
     ...windows,
     ...makeMobileReleaseFixture(root, identity),
     arm64Directory,
     arm64UpdateDirectory,
-    identityPath,
+    identity,
   };
 }

@@ -1,4 +1,9 @@
-import { version } from "../../../../package.json";
+import changelog from "../../../../CHANGELOG.md?raw";
+import { releasesToShow } from "../changelog";
+
+export const CHANGELOG_RELEASES = releasesToShow(changelog);
+const version = CHANGELOG_RELEASES.find((release) => release.date !== null)?.version;
+if (!version) throw new Error("The landing page requires a dated release in CHANGELOG.md.");
 
 export const VERSION_LABEL: `v${string}` = `v${version}`;
 export const GITHUB_URL = "https://github.com/junyudev/nodex";
@@ -32,7 +37,7 @@ const LAST_RELEASE_WITHOUT_WINDOWS = [0, 5, 0] as const;
 
 /** Whether the release a site build describes carries the Windows installers. */
 export function windowsDownloadsAvailable(releaseVersion: string): boolean {
-  const current = releaseVersion.split(/[.-]/u).slice(0, 3).map(Number);
+  const current = releaseVersion.split(".").slice(0, 3).map(Number);
   for (const [index, part] of LAST_RELEASE_WITHOUT_WINDOWS.entries()) {
     if (current[index] !== part) return current[index] > part;
   }

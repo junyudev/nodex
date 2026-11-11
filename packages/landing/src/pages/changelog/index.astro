@@ -1,10 +1,8 @@
 ---
-import { readFileSync } from "node:fs";
 import {
   CHANGE_TONE,
   formatReleaseDate,
   inlineHtml,
-  releasesToShow,
   splitEntry,
   type ChangelogCategory,
   type ChangelogRelease,
@@ -12,12 +10,10 @@ import {
 import SiteFooter from "../../components/SiteFooter.astro";
 import SiteNav from "../../components/SiteNav.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import { GITHUB_URL } from "../../lib/site";
+import { CHANGELOG_RELEASES, GITHUB_URL } from "../../lib/site";
 import { ChevronDownIcon, GitHubMark } from "../../replica/icons";
 
-const releases = releasesToShow(
-  readFileSync(new URL("../../../../../CHANGELOG.md", import.meta.url), "utf8"),
-);
+const releases = CHANGELOG_RELEASES;
 const latest = releases.find((release) => release.version !== null);
 
 const anchorOf = (release: ChangelogRelease) =>

@@ -27,7 +27,7 @@ import {
   type MobileBuildManifest,
   type MobilePlatform,
 } from "./mobile";
-import { parseReleaseIdentity, sha256File, type ReleaseIdentity } from "./model";
+import { parseBuildIdentity, sha256File, type BuildIdentity } from "./model";
 
 interface MobileBuildOptions {
   readonly cwd: string;
@@ -61,7 +61,7 @@ const runner = (tools: Readonly<Record<string, string>>): Record<string, string>
 
 const prepare = (options: MobileBuildOptions) => {
   const cwd = resolve(options.cwd);
-  const identity = parseReleaseIdentity(
+  const identity = parseBuildIdentity(
     JSON.parse(readFileSync(resolve(options.identityPath), "utf8")),
   );
   assertSourceIdentity(cwd, identity);
@@ -76,7 +76,7 @@ const prepare = (options: MobileBuildOptions) => {
 /** Records the verified artifact beside its manifest, the only shape assembly accepts. */
 const record = (
   platform: MobilePlatform,
-  identity: ReleaseIdentity,
+  identity: BuildIdentity,
   builtPath: string,
   outputDirectory: string,
   signer: string,
@@ -89,7 +89,7 @@ const record = (
   const manifest = parseMobileBuildManifest({
     schemaVersion: 1,
     platform,
-    releaseIdentity: identity,
+    buildIdentity: identity,
     app: mobileAppFor(platform, identity),
     artifact: { name, bytes: statSync(target).size, sha256: sha256File(target) },
     signer,
@@ -307,7 +307,7 @@ export function buildIosDistribution(options: MobileBuildOptions): MobileBuildMa
 }
 
 /** The app and its notification extension carry the release's identity and the Nodex team. */
-function verifyIpa(ipa: string, identity: ReleaseIdentity, work: string): void {
+function verifyIpa(ipa: string, identity: BuildIdentity, work: string): void {
   const payload = join(work, "payload");
   run("/usr/bin/ditto", ["-x", "-k", ipa, payload], work, process.env);
   const app = join(payload, "Payload/Nodex.app");

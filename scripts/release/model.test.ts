@@ -2,8 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   buildVersionForMainlineOrdinal,
   compareBuildVersions,
-  latestStableAppVersion,
-  nightlyVersionFor,
+  nightlyLabelFor,
   parseReleaseIdentity,
 } from "./model";
 
@@ -11,20 +10,8 @@ const sha = "a".repeat(40);
 const tree = "b".repeat(40);
 
 describe("release versions", () => {
-  test("latest stable app version ignores Browser runtime and malformed tags", () => {
-    expect(
-      latestStableAppVersion([
-        "browser-runtime-v26.727.40816",
-        "v0.1.10",
-        "v0.2.0-beta.1",
-        "not-a-release",
-        "v0.2.0",
-      ]),
-    ).toBe("0.2.0");
-  });
-
   test("nightly display version advances the source patch deterministically", () => {
-    expect(nightlyVersionFor("0.2.1", "2026-08-13", 842)).toBe("0.2.2-nightly.20260813.842");
+    expect(nightlyLabelFor("0.2.1", "2026-08-13", 842)).toBe("0.2.1-nightly.20260813.842");
   });
 
   test.each([
@@ -50,14 +37,13 @@ describe("Release Identity", () => {
         channel: "nightly",
         sourceSha: sha,
         sourceTree: tree,
-        sourceVersion: "0.2.1",
-        version: "0.2.2-nightly.20260813.842",
+        version: "0.2.1",
         buildVersion: "1.8.42",
-        tag: "v0.2.2-nightly.20260813.842",
+        tag: "v0.2.1-nightly.20260813.842",
         mainlineOrdinal: 842,
         sourceDate: "2026-08-13",
       }),
-    ).toMatchObject({ channel: "nightly", version: "0.2.2-nightly.20260813.842" });
+    ).toMatchObject({ channel: "nightly", version: "0.2.1" });
   });
 
   test("accepts a coherent stable identity", () => {
@@ -67,7 +53,6 @@ describe("Release Identity", () => {
         channel: "stable",
         sourceSha: sha,
         sourceTree: tree,
-        sourceVersion: "0.2.1",
         version: "0.2.1",
         buildVersion: "1.8.42",
         tag: "v0.2.1",
@@ -89,10 +74,9 @@ describe("Release Identity", () => {
         channel: "nightly",
         sourceSha: sha,
         sourceTree: tree,
-        sourceVersion: "0.2.1",
-        version: "0.2.2-nightly.20260813.842",
+        version: "0.2.1",
         buildVersion: "1.8.42",
-        tag: "v0.2.2-nightly.20260813.842",
+        tag: "v0.2.1-nightly.20260813.842",
         mainlineOrdinal: 842,
         sourceDate: "2026-08-13",
         [key]: value,
@@ -107,7 +91,6 @@ describe("Release Identity", () => {
         channel: "stable",
         sourceSha: sha,
         sourceTree: tree,
-        sourceVersion: "0.2.1",
         version: "0.2.1",
         buildVersion: "1.8.42",
         tag: "v0.2.1",
@@ -115,6 +98,6 @@ describe("Release Identity", () => {
         sourceDate: "2026-08-13",
         extra: true,
       }),
-    ).toThrow(/exactly/);
+    ).toThrow("unexpected or missing fields");
   });
 });

@@ -384,16 +384,12 @@ const parseSparkleRuntimeManifest = (value) => {
   if (value.architecture !== "arm64") {
     throw new Error("Packaged Sparkle runtime architecture is invalid");
   }
-  if (
-    value.buildChannel !== "disabled" &&
-    value.buildChannel !== "stable" &&
-    value.buildChannel !== "nightly"
-  ) {
+  if (value.updates !== "disabled" && value.updates !== "enabled") {
     throw new Error("Packaged Sparkle runtime channel is invalid");
   }
   if (
-    (value.buildChannel === "disabled" && value.feedUrls !== null) ||
-    (value.buildChannel !== "disabled" &&
+    (value.updates === "disabled" && value.feedUrls !== null) ||
+    (value.updates !== "disabled" &&
       (!isObject(value.feedUrls) ||
         value.feedUrls.stable !==
           `https://nodex.jyu.app/updates/stable/${value.architecture}/appcast.xml` ||
@@ -465,8 +461,7 @@ export const writePackagedBuildProvenance = (appPath, options = {}) => {
   if (
     agentSkills.manifestSha256 !== prepared.agentSkills.manifestSha256 ||
     agentSkills.treeSha256 !== prepared.agentSkills.treeSha256 ||
-    agentSkills.releaseVersion !==
-      (prepared.releaseIdentity?.sourceVersion ?? prepared.product.version)
+    agentSkills.releaseVersion !== (prepared.buildIdentity?.version ?? prepared.product.version)
   ) {
     throw new Error("Packaged Agent Skills do not match the prepared Electron source");
   }
@@ -530,7 +525,7 @@ export const writePackagedBuildProvenance = (appPath, options = {}) => {
       browserRuntimeManifest: optionalFileIdentity(resolvedAppPath, browserManifestRelativePath),
       sparkle: {
         artifacts: sparkleArtifacts,
-        buildChannel: sparkleManifest.buildChannel,
+        updates: sparkleManifest.updates,
         feedUrls: sparkleManifest.feedUrls,
         publicKey: sparkleManifest.publicKey,
         runtimeManifest: fileIdentity(resolvedAppPath, sparkleManifestRelativePath),
@@ -662,7 +657,7 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
   }
   assertExactKeys(
     value.payload.sparkle,
-    ["artifacts", "buildChannel", "feedUrls", "publicKey", "runtimeManifest", "sparkleVersion"],
+    ["artifacts", "updates", "feedUrls", "publicKey", "runtimeManifest", "sparkleVersion"],
     "Packaged Sparkle identity",
   );
   const sparkleRuntimeManifest = parseFileIdentity(
@@ -702,8 +697,7 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
     prepared.agentSkills.treeSha256 !== value.agentSkills.treeSha256 ||
     agentSkills.manifestSha256 !== value.agentSkills.manifestSha256 ||
     agentSkills.treeSha256 !== value.agentSkills.treeSha256 ||
-    agentSkills.releaseVersion !==
-      (prepared.releaseIdentity?.sourceVersion ?? value.product.version)
+    agentSkills.releaseVersion !== (prepared.buildIdentity?.version ?? value.product.version)
   ) {
     throw new Error("Packaged prepared Electron manifest does not match provenance");
   }
@@ -821,7 +815,7 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
     agentManifest.targetPlatform !== value.target.platform ||
     agentManifest.targetArch !== value.target.arch ||
     sparkleManifest.architecture !== value.target.arch ||
-    sparkleManifest.buildChannel !== value.payload.sparkle.buildChannel ||
+    sparkleManifest.updates !== value.payload.sparkle.updates ||
     JSON.stringify(sparkleManifest.feedUrls) !== JSON.stringify(value.payload.sparkle.feedUrls) ||
     sparkleManifest.publicKey !== value.payload.sparkle.publicKey ||
     sparkleManifest.sparkleVersion !== value.payload.sparkle.sparkleVersion ||

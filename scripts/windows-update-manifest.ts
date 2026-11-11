@@ -1,37 +1,33 @@
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseReleaseIdentity } from "./release/model";
+import { parseBuildIdentity } from "./release/model";
 import { APP_UPDATE_PUBLIC_KEY } from "../src/main/app-update-trust";
-import {
-  parseWindowsAppUpdateConfig,
-  windowsUpdateFeedUrls,
-} from "../src/main/windows-app-update-config";
+import { windowsUpdateFeedUrls } from "../src/main/windows-app-update-config";
 
 /** Uses the same release inputs as Sparkle and prepared Electron output. */
 export function windowsUpdateManifest(
   architecture: "x64" | "arm64",
   environment: NodeJS.ProcessEnv,
 ) {
-  const buildChannel = environment.NODEX_SPARKLE_CHANNEL ?? "disabled";
-  const identity = environment.NODEX_RELEASE_IDENTITY_PATH
-    ? parseReleaseIdentity(
-        JSON.parse(readFileSync(environment.NODEX_RELEASE_IDENTITY_PATH, "utf8")),
-      )
+  const updates = environment.NODEX_APP_UPDATES ?? "disabled";
+  const identity = environment.NODEX_BUILD_IDENTITY_PATH
+    ? parseBuildIdentity(JSON.parse(readFileSync(environment.NODEX_BUILD_IDENTITY_PATH, "utf8")))
     : null;
-  if (buildChannel !== "disabled" && (!identity || identity.channel !== buildChannel)) {
-    throw new Error(
-      "Enabled Windows updates require a matching Release Identity and NODEX_SPARKLE_CHANNEL.",
-    );
+  if (updates !== "disabled" && updates !== "enabled") {
+    throw new Error("NODEX_APP_UPDATES must be disabled or enabled.");
   }
-  return parseWindowsAppUpdateConfig({
+  if (updates === "enabled" && !identity) {
+    throw new Error("Enabled Windows updates require a Build Identity.");
+  }
+  return {
     schemaVersion: 1,
     architecture,
-    buildChannel,
+    updates,
     buildVersion: identity?.buildVersion ?? "0.0.0",
-    feedUrls: buildChannel === "disabled" ? null : windowsUpdateFeedUrls(architecture),
+    feedUrls: updates === "disabled" ? null : windowsUpdateFeedUrls(architecture),
     publicKey: APP_UPDATE_PUBLIC_KEY,
-  });
+  };
 }
 
 export function stageWindowsUpdateManifest(root: string, architecture: "x64" | "arm64"): void {

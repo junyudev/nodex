@@ -23,7 +23,7 @@ import { NODEX_ACCOUNT_BUILD_VARIABLES } from "../config/nodex-account-build";
 import { resolveAgentRuntimeNode, type AgentRuntimeNode } from "./agent-runtime-native";
 import { buildAgentRuntime } from "./build-agent-runtime";
 import { nodeBuildOptimizationArguments } from "../config/node-build-optimization";
-import { parseReleaseIdentity, type ReleaseIdentity } from "./release/model";
+import { parseBuildIdentity, type BuildIdentity } from "./release/model";
 import { prepareElectronRuntime } from "./prepare-electron-runtime";
 
 const MANIFEST_SCHEMA_VERSION = 4;
@@ -128,7 +128,7 @@ export interface PreparedElectronBuildManifest {
   readonly inputDigest: string;
   readonly outputs: readonly FileDigest[];
   readonly product: PreparedBuildProduct;
-  readonly releaseIdentity: ReleaseIdentity | null;
+  readonly buildIdentity: BuildIdentity | null;
   readonly schemaVersion: typeof MANIFEST_SCHEMA_VERSION;
   readonly source: PreparedBuildSource;
 }
@@ -220,10 +220,8 @@ const buildContext = (): Record<string, string> => {
     ["nodeEnv", process.env.NODE_ENV ?? ""],
     ["platform", process.platform],
     [
-      "releaseIdentity",
-      process.env.NODEX_RELEASE_IDENTITY_PATH
-        ? hashFile(process.env.NODEX_RELEASE_IDENTITY_PATH)
-        : "",
+      "buildIdentity",
+      process.env.NODEX_BUILD_IDENTITY_PATH ? hashFile(process.env.NODEX_BUILD_IDENTITY_PATH) : "",
     ],
     ...sensitiveBuildVariables.map((key) => [key, digest(process.env[key] ?? "")]),
     ...NODEX_ACCOUNT_BUILD_VARIABLES.map((key) => [
@@ -304,20 +302,20 @@ const readSource = (root: string, snapshotDigest: string): PreparedBuildSource =
   };
 };
 
-const readReleaseIdentity = (root: string): ReleaseIdentity | null => {
-  const identityPath = process.env.NODEX_RELEASE_IDENTITY_PATH;
+const readBuildIdentity = (root: string): BuildIdentity | null => {
+  const identityPath = process.env.NODEX_BUILD_IDENTITY_PATH;
   if (!identityPath) return null;
-  const identity = parseReleaseIdentity(JSON.parse(readFileSync(identityPath, "utf8")) as unknown);
+  const identity = parseBuildIdentity(JSON.parse(readFileSync(identityPath, "utf8")) as unknown);
   if (
     readGitValue(root, ["rev-parse", "HEAD"]) !== identity.sourceSha ||
     readGitValue(root, ["rev-parse", "HEAD^{tree}"]) !== identity.sourceTree
   ) {
-    throw new Error("Release Identity does not match the prepared source checkout.");
+    throw new Error("Build Identity does not match the prepared source checkout.");
   }
   return identity;
 };
 
-const readProduct = (root: string, identity: ReleaseIdentity | null): PreparedBuildProduct => {
+const readProduct = (root: string, identity: BuildIdentity | null): PreparedBuildProduct => {
   const value = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
     readonly name?: unknown;
     readonly version?: unknown;
@@ -325,8 +323,8 @@ const readProduct = (root: string, identity: ReleaseIdentity | null): PreparedBu
   if (typeof value.name !== "string" || typeof value.version !== "string") {
     throw new Error("Prepared Electron build package metadata is invalid.");
   }
-  if (identity && identity.sourceVersion !== value.version) {
-    throw new Error("Release Identity sourceVersion does not match package.json.");
+  if (identity && identity.version !== value.version) {
+    throw new Error("Build Identity version does not match package.json.");
   }
   return { name: value.name, version: identity?.version ?? value.version };
 };
@@ -439,14 +437,14 @@ export function recordPreparedElectronBuild(
   if (JSON.stringify(beforeAgentSkills) !== JSON.stringify(afterAgentSkills)) {
     throw new Error("Official Agent Skills changed while outputs were being recorded.");
   }
-  const releaseIdentity = readReleaseIdentity(root);
+  const buildIdentity = readBuildIdentity(root);
   const manifestWithoutGeneration = {
     agentSkills: afterAgentSkills,
     buildContext: buildContext(),
     inputDigest: afterOutputs,
     outputs,
-    product: readProduct(root, releaseIdentity),
-    releaseIdentity,
+    product: readProduct(root, buildIdentity),
+    buildIdentity,
     schemaVersion: MANIFEST_SCHEMA_VERSION,
     source: readSource(root, afterOutputs),
   } satisfies Omit<PreparedElectronBuildManifest, "generationId">;
@@ -475,13 +473,13 @@ const parseManifest = (value: unknown): PreparedElectronBuildManifest => {
     typeof candidate.product !== "object" ||
     candidate.product === null ||
     typeof candidate.source !== "object" ||
-    !(candidate.releaseIdentity === null || typeof candidate.releaseIdentity === "object") ||
+    !(candidate.buildIdentity === null || typeof candidate.buildIdentity === "object") ||
     candidate.source === null
   ) {
     throw new Error("Prepared Electron build manifest is invalid.");
   }
   const manifest = candidate as PreparedElectronBuildManifest;
-  if (manifest.releaseIdentity !== null) parseReleaseIdentity(manifest.releaseIdentity);
+  if (manifest.buildIdentity !== null) parseBuildIdentity(manifest.buildIdentity);
   const { generationId, ...manifestWithoutGeneration } = manifest;
   if (generationId !== generationIdFor(manifestWithoutGeneration)) {
     throw new Error("Prepared Electron build generation identity is invalid.");

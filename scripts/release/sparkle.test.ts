@@ -54,7 +54,7 @@ test.skipIf(process.platform === "win32")(
       writeFileSync(
         path.join(root, "architecture", "architecture-build.json"),
         JSON.stringify({
-          releaseIdentity: { buildVersion: "1.0.1" },
+          buildIdentity: { buildVersion: "1.0.1" },
         }),
       );
       const directories = [path.join(root, "first release"), path.join(root, "second:release")];
@@ -90,7 +90,7 @@ if (args.includes("release:fetch:sparkle-history")) {
         RUNNER_TEMP: root,
         GITHUB_REPOSITORY: "fixture/repository",
         RELEASE_ARCH: "arm64",
-        RELEASE_VERSION: "0.2.3-nightly.20260909.100",
+        RELEASE_VERSION: "0.2.3",
         RELEASE_SOURCE_SHA: "HEAD",
         SPARKLE_ED25519_PRIVATE_KEY: "fixture-key",
         SPARKLE_OUTPUT: path.join(root, "output"),
@@ -103,9 +103,19 @@ if (args.includes("release:fetch:sparkle-history")) {
       ]) {
         const script = action.runs.steps.find((step) => step.name === name)?.run;
         if (!script) throw new Error(`Missing Sparkle step: ${name}`);
-        execFileSync("bash", ["-e", "-c", script.replaceAll("${{ inputs.channel }}", "nightly")], {
-          env,
-        });
+        execFileSync(
+          "bash",
+          [
+            "-e",
+            "-c",
+            script
+              .replaceAll("${{ inputs.channel }}", "nightly")
+              .replaceAll("${{ inputs.rehearsal }}", ""),
+          ],
+          {
+            env,
+          },
+        );
       }
       expect(readSparkleHistoryManifest(env.OBSERVED_HISTORY)).toEqual(directories);
     } finally {
@@ -137,14 +147,14 @@ test("accepts only immutable published releases as delta history", () => {
   ).toBe(false);
 });
 
-test("normalizes a delta whose source build has no item in the published feed", () => {
+test("normalizes a delta between Nightlies with the same app version", () => {
   const root = mkdtempSync(path.join(tmpdir(), "sparkle-delta-source-"));
   try {
-    const version = "0.5.2-nightly.20261107.2397";
+    const version = "0.5.2";
     const buildVersion = "1.23.97";
-    const fromVersion = "0.5.2-nightly.20261105.2307";
+    const fromVersion = version;
     const fromBuildVersion = "1.23.7";
-    const tag = `v${version}`;
+    const tag = `v${version}-nightly.20261107.2397`;
     const fullPath = path.join(root, `Nodex-${version}-arm64.tar.xz`);
     const deltaName = `Nodex${buildVersion}-${fromBuildVersion}.delta`;
     const appcastPath = path.join(root, "appcast.xml");
@@ -187,7 +197,7 @@ test("normalizes a delta whose source build has no item in the published feed", 
       ],
     ]);
     const normalized = normalizeGeneratedAppcast({ ...options, history });
-    const renamed = `Nodex-${fromVersion}-to-${version}-arm64.delta`;
+    const renamed = `Nodex-${fromBuildVersion}-to-${version}-arm64.delta`;
     expect(normalized.deltas).toEqual([
       expect.objectContaining({ fromBuildVersion, fromVersion, toVersion: version, name: renamed }),
     ]);

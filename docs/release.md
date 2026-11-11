@@ -1,76 +1,31 @@
 # Application Release Runbook
 
-This document is the source of truth for Nodex application releases. A normal
-release is expressed by a reviewed metadata-only commit on protected `main`;
-there is no “Prepare Release” cloud form and no tag-push build path.
-
 ## Release model
 
-The release system has one deep repository-owned Release Module under
-`scripts/release/` and three thin GitHub Interfaces:
+A published Nightly is a release candidate. Stable promotion publishes the same
+macOS DMG and full-update archive, Windows installers, Android APK, and iOS
+TestFlight build. It signs fresh Stable appcasts and compatible deltas against
+Stable history. Stable enclosures and the Homebrew cask point to the Stable
+release's own copies.
 
-- `CI` proves source quality and exposes the stable required check
-  `CI / required`.
-- `Distribution Rehearsal` invokes the production Distribution Implementation
-  without publishing anything.
-- `Release` observes a successful protected-main CI run, recognizes an exact
-  version transition, builds one verified Release Bundle, then promotes it.
-- `Nightly Release` samples the exact green protected-main commit every three
-  hours, skips stable metadata transitions and already-published identities,
-  and publishes a prerelease plus only the Nightly feed subtree.
-- `Release Recovery` is the only manual production recovery Interface. It
-  accepts an exact source SHA and version and applies the same validation,
-  Distribution, and promotion logic idempotently.
+- **Nightly Release** samples protected `main` every three hours. It requires
+  green Main CI for that exact commit, then certifies, builds, probes, finalizes
+  and publishes a GitHub prerelease and the Nightly feeds. Missing or pending CI
+  defers the build. Failed CI links the blocking run. A validated version advance
+  and an already published build each produce an explicit skip.
+- **Release** runs on dispatch from `main`. It verifies the selected Nightly and
+  its retained artifacts before feed signing. It publishes GitHub Latest, the
+  Stable feeds, Agent Skills, Homebrew and TestFlight.
+- **Distribution Rehearsal** exercises the native builds and update finalizers
+  from an exact protected-main SHA, with no publication or Sentry upload.
 
-Nightly admission queries the latest `Main CI` push run for the checked-out
-protected-main SHA. Missing or unfinished CI defers publication; a completed
-unsuccessful run fails Nightly resolution and links the blocking run in its
-summary. A green scheduled run that defers publication is not a new build:
-actual publication requires the distribution, assembly, and promotion jobs to
-succeed and the matching immutable prerelease and Nightly feed to exist.
-
-The important seam is the Release Bundle, not a YAML artifact convention.
-Each native build emits an `architecture-build.json` that binds its
-source commit/tree, Release Identity, runtime locks, prepared-build generation,
-package provenance, official Agent Skills manifest/tree identity,
-runner/toolchain versions, and artifact hashes. The assembler verifies this
-manifest and its signed update against one release identity, then emits:
-
-- `Nodex-latest-arm64.dmg`
-- the versioned arm64 full-update `.tar.xz` archive
-- the signed arm64 appcast snapshot and closed update manifest
-- any architecture-qualified deltas the official Sparkle generator retained
-- `Nodex-<displayVersion>-windows-x64.exe` and `Nodex-<displayVersion>-windows-arm64.exe`
-- stable-only `Nodex-latest-windows-x64.exe` and `Nodex-latest-windows-arm64.exe` aliases with identical bytes
-- signed Windows appcast snapshots and closed update manifests for each CPU
-- `Nodex-<displayVersion>-android.apk` and the stable-only `Nodex-latest-android.apk` alias
-  with identical bytes
-- `release-identity.json`
-- `release-bundle.json`
-- `SHA256SUMS`
-- `release-notes.md` for the publisher (not a public asset)
-- `testflight/`, the certified iOS build that TestFlight receives (not a public asset)
-
-Every Release Bundle requires macOS arm64, Windows x64, Windows arm64, and both
-Nodex Mobile builds; see [Nodex Mobile](#nodex-mobile).
-A failed or missing native build, installed-app probe, or finalizer blocks assembly
-and publication. Stable includes the Windows aliases; Nightly carries only
-versioned installers, matching its versioned macOS DMG policy. Delta history must
-pass the bundle and packaged-provenance contracts; releases without compatible
-history publish a full archive update. Windows feeds carry one full installer and no
-deltas. Nightly retention leaves unverified bundles intact.
-
-`_windows-distribution.yml` is the single Windows packaging implementation for
-Release, Nightly, Rehearsal, Recovery, and the `Windows` validation workflow. It
-builds natively on `windows-latest` (x64) and `windows-11-arm` (arm64), verifies
-prepared and packaged identity, runs the installed-app startup/upgrade/uninstall
-probe, and only then uploads its architecture bundle. Provenance binds the
-Release Identity, clean source commit/tree, prepared output, Skills identity,
-runtime locks (including Node), payload inventory, probe receipt, runner versions,
-and final installer hash. See [Windows distribution](release-windows.md).
-
-The tag is created only after this bundle passes. A published release is never
-rebuilt in place, and an existing tag is never moved.
+Nightly retains the Build Identity, source certificate, architecture bundles,
+mobile builds and full Release Bundle for 14 days. Promote within that window.
+Published assets include versioned downloads, signed feeds, `release-identity.json`,
+`release-bundle.json` and `SHA256SUMS`. Stable also publishes the `latest` aliases.
+The private Bundle carries `release-notes.md` and the verified iOS payload in
+`testflight/`. Both Windows CPUs are built and probed on native runners.
+See [Windows distribution](release-windows.md).
 
 The macOS DMG uses LZMA (`ULMO`) because it is only the first-install download:
 every later update goes through Sparkle, whose full-update archive is independent. On
@@ -140,7 +95,7 @@ Module derives its store versions from the Release Identity
 `x.y.(z+1)` it leads up to, iOS builds use the Apple build version and Android
 version codes use the first-parent ordinal, so builds rise across both channels.
 `_mobile-distribution.yml` builds both platforms from the exact certified source
-for Release, Nightly, Rehearsal and Recovery:
+for Nightly and Rehearsal:
 
 - **Android** builds on `ubuntu-latest` for 64-bit Arm. The APK must carry the
   Release Identity's versions and exactly one signer, the Nodex release
@@ -159,7 +114,7 @@ After a stable release is published, the direct `testflight` job uploads exactly
 that certified IPA, waits for Apple to process it, names the desktop release in
 its tester notes, adds it to the external **Public beta** group behind the
 download page's TestFlight link, and submits it to Beta App Review. Every step is
-idempotent: a build App Store Connect already holds is reused, and Recovery can
+idempotent: a build App Store Connect already holds is reused, and a repeated promotion can
 finish an existing build's group and review steps after the private IPA has
 expired, but never uploads a rebuilt one. Nightly and Rehearsal build and verify
 both apps without publishing them; internal testers receive every uploaded build.
@@ -170,57 +125,22 @@ Beta App Review covers the first build of each version, usually within a day.
 Change the mobile protocol revision only when the phone app can be approved
 before the desktop release that requires it reaches people.
 
-## Release Identity
+## Build Identity and Release Identity
 
-`package.json` remains the canonical source version. The Release Module derives
-one exact-key Release Identity from the protected-main commit and passes that
-artifact through every native build, protected update finalizer, assembler, and
-publisher. Stable keeps the source `x.y.z` as its display version. Both channels
-encode the first-parent ordinal as a monotonic build version (`842`
-becomes `1.8.42`); Nightly derives its display version as
-`x.y.(z+1)-nightly.YYYYMMDD.<first-parent-ordinal>`.
-Workflow inputs and arbitrary environment variables cannot replace the
-verified identity artifact.
+The channel-free **Build Identity** records the source commit and tree, source
+date, source `version`, first-parent ordinal and `buildVersion`. The source
+certificate, prepared output, packaged provenance and native build manifests
+all bind to this identity.
 
-Stable source metadata requires the same `x.y.z` value in:
+`package.json`, the Cargo workspace and its entries in `Cargo.lock` carry the
+next version on `main`. Every binary displays that source `x.y.z`. The encoded
+first-parent ordinal is the monotonic update key across both channels (ordinal
+842 gives `1.8.42`). Distribution uses `nodex@<version>+<buildVersion>` for Sentry.
 
-- root `package.json`
-- `[workspace.package].version` in `Cargo.toml`
-- every local Nodex package entry in `Cargo.lock`
-- the released Changelog heading
-- prepared Electron metadata, app `Info.plist`, native runtime manifest, and
-  the packaged `nodex --version` result
-
-Release validation derives local package names from the explicit
-`workspace.members` directories and each member's `Cargo.toml`, using the same
-Git revision as the release metadata. Members inherit the workspace version;
-each must have exactly one source-free lock entry at that version. Same-name
-dependencies at other versions remain untouched. Worktree source files must
-resolve to regular files inside the canonical repository root. The release
-workspace is virtual and uses literal repository-relative member paths without
-exclusions or globs; unsupported workspace shapes fail closed. Unrelated path
-dependencies are not release-version owners.
-Declared path dependencies (including dev, build, target-specific and inherited
-workspace dependencies) must resolve to explicit members. Implicit Cargo
-workspace enrollment and external path declarations fail closed. Lock entries
-are owned by name, version and absent source; registry or Git entries with the
-same name and version are preserved when the local entry exists.
-
-The metadata-only path allowlist is:
-
-```text
-CHANGELOG.md
-Cargo.lock
-Cargo.toml
-package.json
-```
-
-Ordinary source commits never rewrite those files for Nightly. A stable
-metadata transition is owned only by `Release`; the Nightly resolver reports
-`source-is-stable-transition` and exits successfully.
-
-Any source, workflow, runtime lock, generated file, or second version change in
-that commit makes release detection fail closed.
+The **Release Identity** adds a channel and tag to the Build Identity. Stable
+uses `v<x.y.z>`. Nightly uses `v<x.y.z>-nightly.<YYYYMMDD>.<ordinal>` with the
+source commit's UTC date. Nodex starts on Stable and honors the update channel
+selected in Settings.
 
 ## One-time repository configuration
 
@@ -229,16 +149,17 @@ They separate deployment policy and audit. Reusable workflows receive only the
 explicit repository-secret contract declared by their caller; protected
 environment secrets are resolved only by direct jobs.
 
-| Environment                 | Authority                                                                      |
-| --------------------------- | ------------------------------------------------------------------------------ |
-| `macos-distribution`        | Apple signing/notarization; Sentry upload once from production arm64           |
-| `mobile-distribution`       | Sign the Android APK and the App Store iOS build                               |
-| `testflight`                | Upload the certified iOS build and submit it to the public TestFlight beta     |
-| `sparkle-feed-finalization` | Sign macOS and Windows appcasts and enclosures after every native build passes |
-| `release-publish`           | Job-scoped repository `contents: write` only                                   |
-| `official-skills-publish`   | Publish the verified artifact to `NodexApp/skills`                             |
-| `homebrew-tap`              | Update and smoke-install `junyudev/homebrew-tap`                               |
-| `landing-production`        | Deploy `NodexApp/NodexApp.github.io`                                           |
+| Environment                 | Authority                                                                        |
+| --------------------------- | -------------------------------------------------------------------------------- |
+| `release-source`            | Secret-free protected-main source and candidate verification                     |
+| `macos-distribution`        | Apple signing/notarization; Sentry upload from each official Nightly arm64 build |
+| `mobile-distribution`       | Sign the Android APK and the App Store iOS build                                 |
+| `testflight`                | Upload the certified iOS build and submit it to the public TestFlight beta       |
+| `sparkle-feed-finalization` | Sign macOS and Windows appcasts and enclosures after every native build passes   |
+| `release-publish`           | Job-scoped repository `contents: write` only                                     |
+| `official-skills-publish`   | Publish the verified artifact to `NodexApp/skills`                               |
+| `homebrew-tap`              | Update and smoke-install `junyudev/homebrew-tap`                                 |
+| `landing-production`        | Deploy `NodexApp/NodexApp.github.io`                                             |
 
 Configure these repository Action secrets:
 
@@ -254,8 +175,7 @@ Configure these repository Action secrets:
 
 Configure `SPARKLE_ED25519_PRIVATE_KEY` as an environment secret on
 `sparkle-feed-finalization`, not as a repository-wide secret and not as a
-caller-supplied `workflow_call` secret. `Release`, `Nightly Release`, `Distribution Rehearsal`, and
-`Release Recovery` each own direct finalizer jobs bound to that environment and
+caller-supplied `workflow_call` secret. `Release`, `Nightly Release`, `Distribution Rehearsal` each own direct finalizer jobs bound to that environment and
 pass the value only to the repository-local Sparkle finalization action. The
 reusable native-distribution and Bundle-assembly workflows never declare or
 receive the key. Repository guards reject reusable-workflow transport and any
@@ -317,35 +237,19 @@ operation, never its arguments. Electron Builder
 discovers the installed identity but does not own credential import or
 temporary-keychain creation.
 
-If a release must intentionally omit Sentry source maps, change the production
-workflow input to `false` in a reviewed foundation commit; do not silently
-proceed with a partial Sentry configuration.
+Enable immutable GitHub Releases and keep the Stable app release marked
+Latest. Limit protected release environments to `main`. The `main` ruleset
+requires linear history and blocks force pushes and deletion. Allow the
+workflow token to fast-forward `main` for the release advance. Keep default
+Actions permissions read-only. The advance job requests `contents: write`
+to push and `actions: write` to dispatch the landing deployment. Maintainers
+who dispatch promotion need Actions write permission. The `v*` ruleset must
+allow release tag creation and prevent tag moves.
 
-Repository Actions default permissions remain read-only. The `main` ruleset
-requires PRs, linear history, an up-to-date branch, and `CI / required`; it
-blocks force pushes and deletion. Repository merge settings enable rebase and
-squash merges; release foundation batches and the single-commit metadata PR in
-this runbook use rebase-and-merge so their reviewed commits remain a linear
-`main` history. A `v*` tag ruleset prevents update/deletion while allowing the
-release workflow to create a new tag. Immutable releases must be enabled after
-the current Latest release points to a stable app release.
-
-Every external Action is pinned to a full commit SHA. Dependabot proposes npm,
-Cargo, and GitHub Action updates; high-authority Action changes require release
-note and source review before merge. Dependency-only PRs update manifests and
-lockfiles only: CI derives third-party notices and their build-resource
-manifest in `.generated/build-resources/`, verifies two independent staging
-builds, and does not ask the bot branch to commit generated output.
-CI also classifies dependency-only changes as GitHub Actions, Rust, ordinary
-JavaScript, or editor dependencies and maps them to explicit fail-closed gate
-plans. Dependency changes select the complete deterministic source owners;
-workflow orchestration selects its CI contracts and only the reusable owner it
-changes. Main remains a targeted canary, while Nightly and release
-certification own exhaustive source coverage. The exact four-file stable release transition is
-the deliberate exception: its PR runs only the classifier and semantic release
-transition guard; protected-main Main CI and the production Release workflow
-still provide the post-merge canary, exact-source certificate, and
-signed-distribution gates.
+Set `NODEX_NIGHTLY_RELEASES_ENABLED=true` to admit scheduled and manually
+dispatched Nightlies. Configure the Sentry credentials for Nightly before
+enabling it. Keep artifact retention at 14 days or longer. Pin external
+Actions to full commit SHAs.
 
 ## Sparkle update signing and feeds
 
@@ -407,8 +311,7 @@ Release Bundle index exactly matches the remote asset digests. A feed fetch or
 Bundle verification failure fails closed. Scheduled runs are dry-run only.
 Destructive mode is available only through manual dispatch and the protected
 `nightly-retention` environment. Deleting an immutable Nightly release is
-irreversible for recovery purposes; its identity and tag are never reused or
-rebuilt in place.
+allowed after promotion because Stable owns its copies and its feeds and cask use the Stable tag.
 
 The key was created with the official tool under Keychain account `NodexApp`.
 These commands recover or inspect it without generating a second identity:
@@ -463,12 +366,10 @@ signature over the final XML bytes. Assembly independently verifies both
 signatures against `resources/sparkle/public-key.txt` before accepting the Bundle.
 This authenticates update bytes; Windows installers do not yet use Authenticode.
 
-Native distribution passes `NODEX_RELEASE_IDENTITY_PATH`, `NODEX_RELEASE_VERSION`,
-`NODEX_BUILD_VERSION`, and `NODEX_SPARKLE_CHANNEL` through build, runtime staging,
-and packaging on both platforms. Official builds use the identity's channel;
-Windows CI validation uses `disabled`. The prepared manifest embeds the identity,
-and the package's display/build metadata comes from that same artifact. Windows
-runtime-manifest generation belongs to its updater implementation.
+Native distribution passes `NODEX_BUILD_IDENTITY_PATH` and
+`NODEX_APP_UPDATES=enabled` through build and packaging. Windows CI validation
+uses `NODEX_APP_UPDATES=disabled`. Enabled manifests carry both feed URLs and
+disabled manifests use `feedUrls: null`.
 
 ## Local gates
 
@@ -573,148 +474,65 @@ Download `nodex-release-bundle-<sha>` and inspect `release-bundle.json` and
 `SHA256SUMS`. A rehearsal is required after release workflow, native packaging,
 Apple signing, updater, Agent runtime, Browser runtime, or provenance changes.
 
-When a candidate consists of a large foundation batch, first land that batch
-through an ordinary PR with rebase-and-merge while `package.json` still carries
-the current released version. Wait for the resulting protected-main CI run,
-then rehearse that exact final `main` SHA. Do not mix the next version transition
-into the batch: the four-file metadata commit below must remain a separate,
-reviewable release trigger.
+## Ship a stable release
 
-## Prepare v0.2.1 (or another stable release)
+1. Land the candidate on `main` with the intended next version and meaningful
+   entries under `Unreleased`. To choose a non-patch version, run
+   `vp run release:version -- <x.y.z>` and commit the three version sources
+   through the ordinary source workflow. `vp run release:check` validates the
+   version sources and changelog.
+2. Wait for **Nightly Release** to succeed and test the published Nightly.
+3. Dispatch **Release** on `main` with the Nightly tag. A blank input selects
+   the newest published Nightly. The local command prints the tag, source,
+   age, version and notes before dispatch and returns the run URL.
 
-Start from the latest protected `main`, use a dedicated branch, and provide the
-version explicitly:
+   ```bash
+   vp run release:promote -- v0.5.5-nightly.20261111.2531
+   ```
 
-```bash
-git switch main
-git pull --ff-only origin main
-git switch -c codex/release-v0.2.1
-vp run release:prepare -- 0.2.1
-```
+### Promotion path
 
-The command requires a clean worktree, advances all version sources, and rolls
-the meaningful `Unreleased` Changelog content into a dated `0.2.1` section. It
-does not commit, tag, push, or publish.
+The Release Module validates the immutable Nightly prerelease, protected-main
+source, successful producing run and retained artifacts. Both app and build
+versions must advance beyond the latest published Stable. An existing Stable
+tag must point to the exact source. Before feed signing, the retained Bundle
+and every public asset must match the published Nightly SHA-256 digests.
+Assembly checks the Stable native and mobile hashes against that same verified
+Nightly, including the private TestFlight payload.
 
-Curate `CHANGELOG.md` for user impact; do not turn the commit log or internal
-refactors into release notes. Then verify the transition:
+The protected finalizers sign the three Stable feeds, using previous Stable
+archives for compatible macOS deltas. The assembler uses the retained native
+and mobile builds. The publisher reuses or creates the annotated tag and
+publishes the immutable release as GitHub Latest. It verifies the public assets
+and projects the signed feeds, cask and Agent Skills. TestFlight receives the
+retained iOS build. For internal testers, run the mobile package's
+`ios:testflight` command with the retained Nightly Bundle's
+`release-bundle.json` path. Use the same App Store Connect team credentials.
 
-```bash
-vp run release:check -- --base origin/main --worktree
-git diff -- package.json Cargo.toml Cargo.lock CHANGELOG.md
-git diff --name-only
-vp run verify:source
-vp run verify:runtime:mac
-```
+The advance job rolls the exact released notes into a dated heading using the
+GitHub publication date. Entries added on `main` remain in `Unreleased`.
+The job advances the version sources by one patch, or keeps a higher version
+already chosen on `main`, and retries on a fresh parent if a push races.
+It dispatches **Deploy Landing Site** after the push. A pages-only deploy
+preserves both update subtrees. The download page displays the latest dated
+changelog release.
 
-The final path list must contain only the four Release Identity files. Commit
-and open a PR:
+### Resume a release
 
-```bash
-git add package.json Cargo.toml Cargo.lock CHANGELOG.md
-git commit -m "release: prepare v0.2.1" \
-  -m "Synchronize the app and Rust workspace versions and roll the curated Unreleased notes into the v0.2.1 release entry."
-git push -u origin codex/release-v0.2.1
-```
-
-Merge the single-commit PR with rebase-and-merge after `CI / required` succeeds.
-Do not create a tag or manually dispatch the normal `Release` workflow. The
-rebased commit must still be the exact four-file transition checked above; the
-successful protected-main CI run on that commit is the release trigger.
-
-## Automatic production path
-
-The successful `Main CI` workflow for a main push wakes `Release` through
-`workflow_run`. Before repository code or secrets are used, it validates the
-triggering repository, `push` event, `main` branch, successful conclusion, and
-source reachability. It checks the commit has one parent and asks the Release
-Module to classify that parent-to-head transition.
-
-Main CI runs may overlap so a newer source push does not add an entire CI run
-to an older commit's queue. Release executions remain serialized by the
-`release-main` concurrency group, and each execution validates and publishes
-only its triggering Main CI source SHA.
-
-An ordinary main commit returns `shouldRelease: false` and exits successfully.
-A valid version transition runs this sequence:
-
-1. Verify the remote stable app version and reject tag/source conflicts.
-2. Certify the exact source SHA and Git tree through the full deterministic
-   static, Rust, app, browser, stress, and macOS runtime gates without signing
-   secrets.
-3. Build, sign, notarize, launch, and inspect macOS arm64 on `macos-26`; build,
-   install, probe, upgrade, and uninstall Windows x64 on `windows-latest` and
-   Windows arm64 on `windows-11-arm`. Every build refuses a source tree that does
-   not match the certificate.
-4. On native macOS runners, fetch only compatible release history,
-   generate and round-trip deltas, normalize their architecture-qualified
-   names, and sign the final appcasts and enclosures with the protected key.
-   Windows finalizers sign each installer and its single-item appcast with the
-   same tool/key, without generating deltas.
-5. Assemble and hash the exact Release Bundle with its source certificate on a
-   clean Linux runner; obsolete blockmaps, `latest-mac.yml`, and
-   `app-update.yml` are rejected.
-6. Revalidate source, version, tag, remote state, and bundle identity.
-7. Create or reuse an annotated tag targeting the exact source SHA.
-8. Create/resume the GitHub draft, upload only the manifest allowlist, publish
-   it as Latest, and verify immutability, asset digests, and tag target.
-9. Regenerate the official Agent Skills from the exact source, require their
-   manifest/tree hashes to match the Release Bundle, and atomically publish the
-   same version to `NodexApp/skills` with an annotated tag.
-10. Generate the Homebrew cask from the same bundle, audit it, push it, and
-    smoke-install the published app. The generated DSL follows Homebrew's
-    canonical stanza grouping and order and expresses the macOS 15 Sequoia
-    minimum as `depends_on macos: :sequoia`.
-11. Deploy the landing site from the same source SHA after release verification,
-    preserving existing feeds on ordinary site deploys and atomically projecting
-    all three signed architecture snapshots on release deploys. Public feed bytes and every
-    enclosure are checked after push.
-12. Upload the certified iOS build to TestFlight and submit it to the public beta.
-
-macOS distribution builds use `SENTRY_RELEASE=nodex@<version>` to inject the same
-release and debug ID instrumentation into main, preload, and renderer. Nightly
-and Rehearsal exercise the instrumented renderer startup budget without upload
-credentials. Only the production arm64 build registers the release and uploads
-source maps to Sentry. Either operation fails the build on error.
-Require the Sentry plugin's upload-success receipt for each target; the separate
-GitHub source-map artifact upload retains diagnostics and does not prove Sentry delivery.
-
-## Recovery
-
-Use recovery only for a transient Distribution/publisher/downstream failure on
-an already-reviewed release commit:
+Dispatch **Release** again with the same explicit Nightly tag within the
+retention window. If the Stable tag exists, the workflow restores the retained
+Stable Bundle, checks its build bytes again and resumes publication and
+downstream jobs. If only the advance or landing deployment failed, the advance
+job summary prints these commands with the exact tag and repository:
 
 ```bash
-gh workflow run release-recovery.yml \
-  --repo junyudev/nodex \
-  -f source_sha=<full-release-main-sha> \
-  -f version=0.2.1
+vp run release:advance -- <stable-tag> --repo junyudev/nodex
+gh workflow run deploy-landing-site.yml --repo junyudev/nodex --ref main
 ```
 
-Recovery repeats the `release-source` environment and shared protected-main
-provenance guard, then requires that exact commit to be a valid metadata-only
-transition for the supplied version. Its behavior is idempotent:
-
-- absent tag/release: rebuild every architecture, verify, tag, publish;
-- matching tag: reuse only when it resolves to the exact source SHA;
-- matching draft: verify every existing asset digest, upload only missing
-  assets, then publish;
-- matching published release: verify it, then retry the independently
-  idempotent Agent Skills, Homebrew, landing/feed promotion and TestFlight jobs;
-- retained cross-run artifacts are restored with `gh run download`, which owns
-  GitHub's archive redirect and extraction behavior before bundle verification;
-- matching Agent Skills tag and tree: reuse it; a conflicting tree or version
-  rollback stops without moving the tag;
-- conflicting tag or asset digest: stop without mutation.
-
-Pages recovery always replays the signed snapshot already bound by the verified
-Release Bundle. It never regenerates a delta or requires the signing key. The
-projection refuses to move a newer feed backwards or replace the same version
-with different bytes.
-
-Never delete or replace a published immutable asset. A product or artifact
-defect requires the next patch version. Deleting a bad draft is an explicit
-manual destructive operation and must be investigated before recovery.
+An advance failure leaves the release available. For a failed Nightly, rerun the
+failed jobs in its original run so the certificate and retained artifacts stay
+associated with the producing run.
 
 ## Desktop Tool runtime releases and Latest
 
@@ -795,7 +613,7 @@ attestation is readable. An exact `gh release verify` missing-attestation respon
 is retried only after the same repository tag is readable at that exact digest
 and the raw release-attestation API confirms absence with a specific 404 response
 or a valid response without a GitHub-issued attestation. Stable and Nightly
-publish jobs, including recovery callers, receive only `attestations: read` for
+publish jobs receive only `attestations: read` for
 this check. Raw authorization, transport, malformed-response, and timeout errors
 stop immediately; an attestation that is already present cannot trigger a retry.
 Verification allows at most 12 attempts with ten seconds between attempts and a

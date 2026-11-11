@@ -2,7 +2,7 @@ import { lstatSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import { nextPatchVersion, parseReleaseIdentity, sha256File, type ReleaseIdentity } from "./model";
+import { parseBuildIdentity, sha256File, type BuildIdentity } from "./model";
 import { NODEX_MACOS_TEAM_IDENTIFIER } from "./sparkle-manifest";
 
 export type MobilePlatform = "android" | "ios";
@@ -44,19 +44,16 @@ export interface MobileApp {
  * numeric versions, so a Nightly takes the version it leads up to, and builds follow the same
  * first-parent ordinal as the desktop app, which keeps every channel's builds rising.
  */
-export function mobileAppFor(platform: MobilePlatform, identity: ReleaseIdentity): MobileApp {
+export function mobileAppFor(platform: MobilePlatform, identity: BuildIdentity): MobileApp {
   return {
     id: MOBILE_APP_ID,
-    version:
-      identity.channel === "stable" ? identity.version : nextPatchVersion(identity.sourceVersion),
+    version: identity.version,
     build: platform === "ios" ? identity.buildVersion : String(identity.mainlineOrdinal),
   };
 }
 
 /** What `packages/mobile/app.config.ts` reads to stamp a production build with its release. */
-export function mobileBuildEnvironment(
-  identity: ReleaseIdentity,
-): Readonly<Record<string, string>> {
+export function mobileBuildEnvironment(identity: BuildIdentity): Readonly<Record<string, string>> {
   const ios = mobileAppFor("ios", identity);
   return {
     APP_VARIANT: "production",
@@ -79,7 +76,7 @@ export interface MobileArtifact {
 export interface MobileBuildManifest {
   readonly schemaVersion: 1;
   readonly platform: MobilePlatform;
-  readonly releaseIdentity: ReleaseIdentity;
+  readonly buildIdentity: BuildIdentity;
   readonly app: MobileApp;
   readonly artifact: MobileArtifact;
   /** The Android signing certificate's SHA-256, or the Apple team that signed the iOS app. */
@@ -91,7 +88,7 @@ const MANIFEST_KEYS = [
   "app",
   "artifact",
   "platform",
-  "releaseIdentity",
+  "buildIdentity",
   "runner",
   "schemaVersion",
   "signer",
@@ -127,7 +124,7 @@ export function parseMobileBuildManifest(value: unknown): MobileBuildManifest {
   return {
     schemaVersion: 1,
     platform,
-    releaseIdentity: parseReleaseIdentity(value.releaseIdentity),
+    buildIdentity: parseBuildIdentity(value.buildIdentity),
     app: { id: String(app.id), version: String(app.version), build: String(app.build) },
     artifact: {
       name: artifact.name,
@@ -152,19 +149,19 @@ export interface MobileBuildDirectory {
 export function readMobileBuildDirectory(
   directory: string,
   platform: MobilePlatform,
-  identity: ReleaseIdentity,
+  identity: BuildIdentity,
 ): MobileBuildDirectory {
   const root = resolve(directory);
   const manifestPath = join(root, MOBILE_BUILD_MANIFEST);
   const manifest = parseMobileBuildManifest(JSON.parse(readFileSync(manifestPath, "utf8")));
   if (
     manifest.platform !== platform ||
-    !isDeepStrictEqual(manifest.releaseIdentity, identity) ||
+    !isDeepStrictEqual(manifest.buildIdentity, identity) ||
     !isDeepStrictEqual(manifest.app, mobileAppFor(platform, identity)) ||
     manifest.signer !== expectedMobileSigner(platform) ||
     manifest.artifact.name !== mobileArtifactName(platform, identity.version)
   )
-    throw new Error(`${platform} build does not match its Release Identity, versions or signer.`);
+    throw new Error(`${platform} build does not match its Build Identity, versions or signer.`);
   const artifactPath = join(root, manifest.artifact.name);
   const stats = lstatSync(artifactPath);
   if (

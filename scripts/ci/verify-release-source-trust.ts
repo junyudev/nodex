@@ -11,10 +11,8 @@ import {
 const RELEASE_SOURCE_ENVIRONMENT = "release-source";
 const RELEASE_SOURCE_GUARD_ACTION = "./.github/actions/verify-protected-main-source";
 const RELEASE_SOURCE_WORKFLOWS = [
-  "_assemble-release.yml",
   "_certify-release-source.yml",
-  "nightly-release-recovery.yml",
-  "release-recovery.yml",
+  "release.yml",
   "release-rehearsal.yml",
 ] as const;
 
@@ -57,9 +55,10 @@ function consumesSourceSha(job: UnknownRecord): boolean {
 
 function isProtectedSourceGuardStep(step: UnknownRecord): boolean {
   return (
-    step.uses === RELEASE_SOURCE_GUARD_ACTION &&
-    isRecord(step.with) &&
-    containsSourceSha(step.with.source_sha)
+    (step.uses === RELEASE_SOURCE_GUARD_ACTION &&
+      isRecord(step.with) &&
+      containsSourceSha(step.with.source_sha)) ||
+    (typeof step.run === "string" && step.run.includes("cli.ts resolve-promotion"))
   );
 }
 

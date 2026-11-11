@@ -220,7 +220,7 @@ const verify = (
     appPath,
     expectedBuildVersion: provenance.product.version,
     expectedVersion: provenance.product.version,
-    expectedUpdateChannel: "disabled",
+    expectedUpdates: "disabled",
     requireDeveloperId: false,
     targetArch,
     verifyNotarization: false,
