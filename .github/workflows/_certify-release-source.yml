@@ -85,7 +85,7 @@ jobs:
       - run: vp run verify:runtime:mac
       - name: Upload ACP runtime evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: certify-acp-runtime-${{ inputs.source_sha }}-${{ github.run_attempt }}
           path: notes.local/artifacts/acp-runtime-*/runtime.json
@@ -123,7 +123,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "${SOURCE_SHA}"
           echo "source_tree=$(git rev-parse 'HEAD^{tree}')" >> "${GITHUB_OUTPUT}"
           vp exec tsx scripts/release/cli.ts certify --head "${SOURCE_SHA}" --output "${RUNNER_TEMP}/source-certification.json"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nodex-source-certification-${{ inputs.source_sha }}
           path: ${{ runner.temp }}/source-certification.json
