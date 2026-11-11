@@ -62,7 +62,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-vite-plus
       - uses: ./.github/actions/setup-windows-rust
-      - name: Test native platform boundary
+      - name: Test native platform boundary and Desktop Tools
         run: cargo test --locked -p nodex-platform --all-features
       - name: Install native search test dependency
         run: cargo install --locked ripgrep
@@ -110,8 +110,20 @@ jobs:
         run: vp exec tsx scripts/ci/app-test-suite.ts --suite ${{ matrix.suite }}
       - uses: ./.github/actions/setup-windows-rust
         if: steps.suite.outputs.needs_rust == 'true'
+      - name: Test Desktop Tools through Electron Main
+        if: matrix.suite == 'integration'
+        run: >-
+          vp exec tsx scripts/ci/run-timed.ts
+          --name app-desktop-tools-native
+          -- vp run test:integration src/main/platform/node/WindowsDesktopTools.integration.ts
+      - name: Run remaining integration suite
+        if: matrix.suite == 'integration'
+        run: >-
+          vp exec tsx scripts/ci/run-timed.ts
+          --name app-integration
+          -- vp run test:integration --exclude src/main/platform/node/WindowsDesktopTools.integration.ts
       - name: Run application suite
-        if: matrix.suite != 'core-client'
+        if: matrix.suite != 'core-client' && matrix.suite != 'integration'
         run: >-
           vp exec tsx scripts/ci/run-timed.ts
           --name app-${{ matrix.suite }}
