@@ -1,3 +1,8 @@
+import type { Duplex } from "node:stream";
+import type {
+  WindowsDesktopToolsService,
+  WindowsProcessIdentity,
+} from "../platform/node/WindowsDesktopTools";
 import { randomUUID } from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -22,6 +27,9 @@ import type {
 } from "./browser-use-peer-authorizer";
 
 const BROWSER_USE_PIPE_PREFIX = "codex-browser-use";
+
+export const windowsBrowserUsePipePrefix = (profileNamespace: string): string =>
+  `${BROWSER_USE_PIPE_PREFIX}-${profileNamespace}`;
 
 export interface BrowserUseNativePipeRequestContext {
   connectionId: string;
@@ -61,12 +69,19 @@ interface BrowserUseNativePipeServerOptions {
   pipePath?: string;
   platform?: NodeJS.Platform;
   socketPeerAuthorizer: BrowserUseSocketPeerAuthorizer;
+  windows?: {
+    readonly native: Pick<WindowsDesktopToolsService, "listenPipe">;
+    readonly profileNamespace: string;
+    readonly authorize: (
+      peer: WindowsProcessIdentity,
+    ) => Effect.Effect<BrowserUsePeerAuthorizationResult>;
+  };
 }
 
 interface BrowserUseNativePipeConnection {
   decoder: BrowserUseNativePipeFrameDecoder;
   id: string;
-  socket: Socket;
+  socket: Duplex;
 }
 
 function boundedErrorMessage(error: unknown): string {
@@ -139,22 +154,24 @@ export class BrowserUseNativePipeServerError extends Schema.TaggedError<BrowserU
 const serverError = (operation: string, cause: unknown): BrowserUseNativePipeServerError =>
   new BrowserUseNativePipeServerError({ operation, cause });
 
-function makeServerState(options: BrowserUseNativePipeServerOptions): {
+function makeServerState(
+  options: BrowserUseNativePipeServerOptions,
+  windowsEndpoint?: string,
+): {
   readonly port: BrowserUseNativePipeServer;
   readonly release: () => Promise<void>;
   readonly start: () => Promise<void>;
+  readonly accept: (socket: Duplex, authorization: BrowserUsePeerAuthorizationResult) => void;
 } {
-  const connections = new Map<Socket, BrowserUseNativePipeConnection>();
+  const connections = new Map<Duplex, BrowserUseNativePipeConnection>();
   const events = options.events ?? {};
-  const platform = options.platform ?? process.platform;
   const pipePath =
+    windowsEndpoint ??
     options.pipePath ??
-    (platform === "win32"
-      ? `${options.nativePipeDirectory ?? resolveBrowserUseNativePipeDirectory(platform)}-${randomUUID()}`
-      : path.join(
-          options.nativePipeDirectory ?? resolveBrowserUseNativePipeDirectory(platform),
-          `${randomUUID()}.sock`,
-        ));
+    path.join(
+      options.nativePipeDirectory ?? resolveBrowserUseNativePipeDirectory(),
+      `${randomUUID()}.sock`,
+    );
   let accepting = true;
   let ownsPipePath = false;
   let server: ReturnType<typeof net.createServer> | null = null;
@@ -239,6 +256,15 @@ function makeServerState(options: BrowserUseNativePipeServerOptions): {
       socket.destroy();
       return;
     }
+    socket.setNoDelay(true);
+    accept(socket, authorization);
+  };
+
+  const accept = (socket: Duplex, authorization: BrowserUsePeerAuthorizationResult): void => {
+    if (!accepting || socket.destroyed) {
+      socket.destroy();
+      return;
+    }
     if (!authorization.authorized) {
       events.onRejectedSocket?.(authorization);
       socket.destroy();
@@ -251,7 +277,6 @@ function makeServerState(options: BrowserUseNativePipeServerOptions): {
       socket,
     };
     connections.set(socket, connection);
-    socket.setNoDelay(true);
     socket.on("data", (chunk) => {
       handleSocketData(connection, chunk);
     });
@@ -266,10 +291,8 @@ function makeServerState(options: BrowserUseNativePipeServerOptions): {
 
   const start = async (): Promise<void> => {
     if (server) return;
-    if (platform !== "win32") {
-      await ensureUnixPipeDirectory(path.dirname(pipePath));
-      await removeOwnedUnixPipe(pipePath);
-    }
+    await ensureUnixPipeDirectory(path.dirname(pipePath));
+    await removeOwnedUnixPipe(pipePath);
     const acquired = net.createServer(handleConnection);
     server = acquired;
     await new Promise<void>((resolve, reject) => {
@@ -285,8 +308,8 @@ function makeServerState(options: BrowserUseNativePipeServerOptions): {
       acquired.once("listening", onListening);
       acquired.listen(pipePath);
     });
-    ownsPipePath = platform !== "win32";
-    if (platform !== "win32") await fs.chmod(pipePath, 0o600);
+    ownsPipePath = true;
+    await fs.chmod(pipePath, 0o600);
     events.onListening?.(pipePath);
   };
 
@@ -303,7 +326,7 @@ function makeServerState(options: BrowserUseNativePipeServerOptions): {
     if (acquired?.listening) {
       await new Promise<void>((resolve) => acquired.close(() => resolve()));
     }
-    const shouldRemovePipe = ownsPipePath && platform !== "win32";
+    const shouldRemovePipe = ownsPipePath;
     ownsPipePath = false;
     if (shouldRemovePipe) await removeOwnedUnixPipe(pipePath);
   };
@@ -327,6 +350,7 @@ function makeServerState(options: BrowserUseNativePipeServerOptions): {
     },
     release,
     start,
+    accept,
   };
 }
 
@@ -335,7 +359,16 @@ export const makeBrowserUseNativePipeServer = (
   options: BrowserUseNativePipeServerOptions,
 ): Effect.Effect<BrowserUseNativePipeServer, BrowserUseNativePipeServerError, Scope.Scope> =>
   Effect.gen(function* () {
-    const state = makeServerState(options);
+    const windows = (options.platform ?? process.platform) === "win32";
+    if (windows && !options.windows)
+      return yield* serverError("start", new Error("Windows Browser pipe provider is unavailable"));
+    const binding = windows ? options.windows : undefined;
+    const listener = binding
+      ? yield* binding.native
+          .listenPipe(windowsBrowserUsePipePrefix(binding.profileNamespace))
+          .pipe(Effect.mapError((cause) => serverError("listen-windows-pipe", cause)))
+      : null;
+    const state = makeServerState(options, listener?.endpoint);
     yield* Effect.addFinalizer(() =>
       Effect.tryPromise({
         try: state.release,
@@ -348,6 +381,29 @@ export const makeBrowserUseNativePipeServer = (
         ),
       ),
     );
+    if (listener && binding) {
+      yield* listener.accept.pipe(
+        Effect.flatMap(({ peer, stream }) =>
+          binding.authorize(peer).pipe(
+            Effect.tap((result) => Effect.sync(() => state.accept(stream, result))),
+            Effect.onInterrupt(() =>
+              Effect.sync(() => {
+                stream.destroy();
+              }),
+            ),
+          ),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => options.events?.onAuthorizationError?.(error)).pipe(
+            Effect.andThen(Effect.sleep("100 millis")),
+          ),
+        ),
+        Effect.forever,
+        Effect.forkScoped({ startImmediately: true }),
+      );
+      options.events?.onListening?.(listener.endpoint);
+      return state.port;
+    }
     yield* Effect.tryPromise({
       try: state.start,
       catch: (cause) => serverError("start", cause),

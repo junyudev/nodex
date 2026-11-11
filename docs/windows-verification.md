@@ -24,6 +24,13 @@ fallback remains writable when that executable cannot load; normal private data
 still requires the native permission boundary. The typed suite owners prepare that Core
 executable before either host Node or Electron starts the tests.
 
+The Desktop Tools integration suite covers WinVerifyTrust and manifest
+publisher matching with an embedded system signature and a tampered copy. It
+also tests Windows pipe peer admission, the REPL launcher's closed environment
+and UTF-16 arguments, and job termination. The vendor REPL initialization test
+runs only when the matching sealed closure has been staged under
+`.generated/codex-runtime/agent-runtime/browser-runtime`.
+
 ## Deterministic suite contracts
 
 Windows runners are slower and coarser than macOS hosts, so a test that only passes on
@@ -150,6 +157,16 @@ Run the checklist with both the arm64 and the x64 installer.
     Toggle Nodex Off in Windows Startup Apps, reopen General to verify Off, upgrade
     and sign in again to verify it remains Off. Re-enable it, repeat sign-in and
     uninstall; confirm Startup Apps and the notification area no longer list Nodex.
+
+Before enabling Desktop Tools for a Windows release, check the in-app Browser
+on both native architectures in a standard-user interactive session. Open a
+local test page through Codex and through each local Agent provider, then
+interrupt a running call and verify that the Browser remains usable on the next
+Turn. Repeat with another Nodex Profile and a co-installed desktop host that
+uses the Browser pipe namespace. Confirm each Session discovers only its
+own backend, and repeat from a WSL workspace to confirm local desktop control
+is absent. Verify the signed REPL can start its sandboxed kernel using the
+installed CLI and sibling helpers on the clean machine.
 
 ## Acceptance before a public Windows release
 

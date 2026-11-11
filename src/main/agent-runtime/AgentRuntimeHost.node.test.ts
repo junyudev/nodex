@@ -676,13 +676,14 @@ it.effect("credential failure refuses Agent preparation before exposing CLI acce
 it.effect("composer skill roots follow local Desktop Tools readiness", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
-    const list = (provider: string) => {
-      const request = prepareThread(provider);
+    const list = (provider: string, cwd: string | null = null) => {
+      const request = prepareThread(provider, "lease", cwd);
       if (request.operation !== "thread.prepare") throw new Error("expected preparation");
       return f.execute({
         type: "host.request",
         id: "skills",
         operation: "desktop.skill-roots",
+        cwd: request.cwd,
         identity: request.identity,
       });
     };
@@ -690,6 +691,7 @@ it.effect("composer skill roots follow local Desktop Tools readiness", () =>
     assert.deepEqual(yield* list("acp"), desktopTools.pluginRoots);
     assert.deepEqual(yield* list("codex"), []);
     assert.deepEqual(yield* list("external"), []);
+    assert.deepEqual(yield* list("claude", "//wsl.localhost/Ubuntu/home/user/repo"), []);
     f.disableDesktopTools();
     assert.deepEqual(yield* list("claude"), []);
   }).pipe(Effect.scoped),

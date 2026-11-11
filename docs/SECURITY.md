@@ -865,7 +865,12 @@ provides attribution, and removing it drops Agent authorship.
   separate from feature availability: its native-pipe directory is owned by the
   current user with mode `0700`, each random per-session socket is mode `0600`,
   and native development code-signing verification is only enabled by the
-  explicit `CODEX_BROWSER_USE_PEER_AUTHORIZATION=1` opt-in. Unsupported
+  explicit `CODEX_BROWSER_USE_PEER_AUTHORIZATION=1` opt-in. Windows checks
+  the local logon SID and the OS-reported process image and creation time
+  before reading a frame. Packaged peers must trace through the verified
+  REPL and the native launcher to this Nodex process. Unpackaged Windows
+  uses the same admission policy by default, with a separate opt-in for
+  verified REPLs launched outside the job. Unsupported
   platforms fail closed. The same resolved host capability gates plugin
   installation, thread configuration, and pipe creation, so copied user
   configuration cannot leave a privileged Browser skill enabled without a
@@ -927,7 +932,7 @@ provides attribution, and removing it drops Agent authorship.
   signing team, regular executable, and materialization key before atomic swap,
   and rolls back a failed post-swap verification. Unsupported targets never
   install or configure its plugin.
-- Desktop Tool `node_repl` runs through a persistent vendor-signed Node process
+- On macOS, Desktop Tool `node_repl` runs through a persistent vendor-signed Node process
   and the signed Desktop Tool Codex CLI while Nodex runs its separately pinned
   native Codex app-server. The resulting `node_repl -> codex -> node` ancestry
   satisfies Browser's three-generation peer check, while Codex remains the
@@ -938,7 +943,11 @@ provides attribution, and removing it drops Agent authorship.
   non-zombie, and its native-resolved executable equals the canonical helper.
   Action confirmation remains an app-server elicitation decision; denial and
   native failures are delivered as typed tool errors rather than weakening the
-  host boundary.
+  host boundary. On Windows, the native launcher gives the REPL a complete
+  environment and a kill-on-close job. The sandbox CLI uses a Profile-owned
+  Codex home. The Windows closure requires an exact digest and a matching
+  embedded Authenticode signer for each executable image, with native
+  reparse-point, owner and DACL checks for the closure tree.
 - For every local provider other than Codex, Agent Runtime launches that same
   signed chain, one REPL per chat, and serves it from its loopback MCP listener
   under the chat's existing credential. No provider holds the REPL's trust

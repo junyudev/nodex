@@ -1,5 +1,10 @@
 import * as Context from "effect/Context";
+import * as Option from "effect/Option";
+import { windowsDesktopToolCodexHome } from "../codex/desktop-tool-environment";
+import { CodexPlatform } from "../../host/ProviderPlatform";
+import { makeWindowsBrowserPeerAuthorizer } from "../browser-use/browser-use-peer-authorizer";
 import * as Effect from "effect/Effect";
+import * as FiberSet from "effect/FiberSet";
 import * as Schema from "effect/Schema";
 import { CodexEndpointMap } from "../codex-runtime/CodexEndpointMap";
 import { cleanupNodeReplExecutions } from "../platform/node/CodexNodeReplCleanup";
@@ -37,6 +42,8 @@ export const make = Effect.gen(function* () {
   const endpoints = yield* CodexEndpointMap;
   const managers = yield* CodexMainConversationManagers;
   const entities = yield* ConversationEntityMap;
+  const platform = Option.getOrUndefined(yield* Effect.serviceOption(CodexPlatform));
+  const runNative = yield* FiberSet.makeRuntimePromise();
   const runCleanup = Effect.fn("CodexNodeReplRuntime.runCleanup")(
     function* (
       hostId: string,
@@ -74,13 +81,40 @@ export const make = Effect.gen(function* () {
         yield* check;
         if (session.hostId !== hostId || session.generation !== generation)
           return yield* invalidated();
+        const browser = platform?.runtime.browserRuntime;
+        const binding = platform?.windowsDesktopTools;
+        const host = binding?.hostIdentity();
+        const windows =
+          binding && host && browser?.status === "available"
+            ? {
+                native: binding.native,
+                runNative,
+                replPath: browser.bundle.paths.nodeRepl,
+                nodePath: browser.bundle.paths.node,
+                isOwnedRepl: (
+                  peer: Parameters<ReturnType<typeof makeWindowsBrowserPeerAuthorizer>>[0],
+                ) =>
+                  makeWindowsBrowserPeerAuthorizer({
+                    repl: browser.bundle.paths.nodeRepl,
+                    node: browser.bundle.paths.node,
+                    launcher: binding.coreExecutable,
+                    host,
+                    native: binding.native,
+                    mode: "packaged",
+                  })(peer).pipe(Effect.map((result) => result.authorized)),
+              }
+            : undefined;
         const execute = Effect.tryPromise({
           try: (signal) =>
             cleanupNodeReplExecutions({
-              codexHome: session.initialize.codexHome,
+              codexHome:
+                windows && platform
+                  ? windowsDesktopToolCodexHome(platform.runtimeStateHome)
+                  : session.initialize.codexHome,
               sessionId,
               turnId,
               signal,
+              dependencies: { windows },
             }),
           catch: (cause) => new NodeReplCleanupError({ cause }),
         });

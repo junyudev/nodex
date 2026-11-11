@@ -30,7 +30,8 @@ export type CodexRuntimeSource = "bundled" | "staged";
 export type ResolvedCodexRuntime = {
   additionalSearchPaths: string[];
   binaryPath: string;
-  browserRuntime: BrowserRuntimeAvailability;
+  readonly browserRuntime: BrowserRuntimeAvailability;
+  readonly prepareBrowserRuntime?: Effect.Effect<void, Cause.UnknownError>;
   nodeRuntime: NodeExecutionRuntime;
   appServerRuntimeVersion: string | null;
   metadataPath: string | null;
@@ -98,7 +99,12 @@ async function validateRuntimeSearchPaths(
   }
 }
 
+interface DeferredWindowsBrowserRuntime {
+  readonly verifyTransport: (signal: AbortSignal) => Promise<void>;
+}
+
 type ResolveCodexRuntimeOptions = {
+  deferWindowsBrowserRuntime?: DeferredWindowsBrowserRuntime;
   platform?: string;
   architecture?: string;
   browserRuntimePlatformArtifactVerifier?: BrowserRuntimePlatformArtifactVerifier;
@@ -110,6 +116,7 @@ type ResolveCodexRuntimeOptions = {
 };
 
 async function resolveRuntimeFromRoot(input: {
+  deferWindowsBrowserRuntime?: DeferredWindowsBrowserRuntime;
   platform?: string;
   architecture?: string;
   signal?: AbortSignal;
@@ -135,19 +142,46 @@ async function resolveRuntimeFromRoot(input: {
     throw new Error("Agent runtime target does not match this host.");
   await validateRuntimeArtifacts(input.runtimeRoot, metadata, input.signal);
   await validateRuntimeSearchPaths(input.runtimeRoot, metadata);
-  const browserRuntime = await resolveBrowserRuntimeBundle({
-    signal: input.signal,
-    windowsVerifier: input.windowsBrowserRuntimeVerifier,
-    appServerIdentity: projectBundledAppServerRuntimeIdentity(metadata),
-    platformArtifactVerifier:
-      input.browserRuntimePlatformArtifactVerifier ??
-      createBrowserRuntimePlatformArtifactVerifier({
-        platform: metadata.targetPlatform as NodeJS.Platform,
-      }),
-    runtimeRoot: input.runtimeRoot,
-    targetArch: metadata.targetArch as NodeJS.Architecture,
-    targetPlatform: metadata.targetPlatform as NodeJS.Platform,
-  });
+  const loadBrowserRuntime = (signal?: AbortSignal) =>
+    resolveBrowserRuntimeBundle({
+      signal,
+      windowsVerifier: input.windowsBrowserRuntimeVerifier,
+      appServerIdentity: projectBundledAppServerRuntimeIdentity(metadata),
+      platformArtifactVerifier:
+        input.browserRuntimePlatformArtifactVerifier ??
+        createBrowserRuntimePlatformArtifactVerifier({
+          platform: metadata.targetPlatform as NodeJS.Platform,
+        }),
+      runtimeRoot: input.runtimeRoot,
+      targetArch: metadata.targetArch as NodeJS.Architecture,
+      targetPlatform: metadata.targetPlatform as NodeJS.Platform,
+    });
+  const deferred =
+    metadata.targetPlatform === "win32" ? input.deferWindowsBrowserRuntime : undefined;
+  let browserRuntime: BrowserRuntimeAvailability = deferred
+    ? {
+        status: "unavailable",
+        reason: "platform-verification-failed",
+        message: "Windows Desktop Tool verification is pending",
+      }
+    : await loadBrowserRuntime(input.signal);
+  const prepareBrowserRuntime = deferred
+    ? async (signal: AbortSignal) => {
+        try {
+          const result = await loadBrowserRuntime(signal);
+          if (result.status === "available") await deferred.verifyTransport(signal);
+          signal.throwIfAborted();
+          browserRuntime = result;
+        } catch (error) {
+          signal.throwIfAborted();
+          browserRuntime = {
+            status: "unavailable",
+            reason: "platform-verification-failed",
+            message: `Windows Desktop Tools could not initialize: ${String(error)}`,
+          };
+        }
+      }
+    : undefined;
   input.signal?.throwIfAborted();
   const primaryBinaryPath = path.join(input.runtimeRoot, ...metadata.entrypoint.split("/"));
   const nodeRuntime = await resolveNodeExecutionRuntime({
@@ -164,7 +198,12 @@ async function resolveRuntimeFromRoot(input: {
   return {
     source: input.source,
     binaryPath: primaryBinaryPath,
-    browserRuntime,
+    get browserRuntime() {
+      return browserRuntime;
+    },
+    prepareBrowserRuntime: prepareBrowserRuntime
+      ? runRuntimeResolution(prepareBrowserRuntime)
+      : undefined,
     nodeRuntime,
     additionalSearchPaths: metadata.searchPaths.map((searchPath) =>
       path.join(input.runtimeRoot, ...searchPath.split("/")),
@@ -209,6 +248,7 @@ export async function resolveCodexRuntime(
       architecture: options.architecture,
       browserRuntimePlatformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
       windowsBrowserRuntimeVerifier: options.windowsBrowserRuntimeVerifier,
+      deferWindowsBrowserRuntime: options.deferWindowsBrowserRuntime,
       signal: options.signal,
       source: "staged",
       runtimeRoot: path.join(projectRootPath, ".generated", "codex-runtime", "agent-runtime"),
@@ -228,6 +268,7 @@ export async function resolveCodexRuntime(
     architecture: options.architecture,
     browserRuntimePlatformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
     windowsBrowserRuntimeVerifier: options.windowsBrowserRuntimeVerifier,
+    deferWindowsBrowserRuntime: options.deferWindowsBrowserRuntime,
     signal: options.signal,
     source: "bundled",
     runtimeRoot: resourcesPath,
@@ -236,14 +277,14 @@ export async function resolveCodexRuntime(
   });
 }
 
-/** Startup cancellation waits for all file handles and native inspectors to close. */
-export const resolveCodexRuntimeEffect = (
-  options: Omit<ResolveCodexRuntimeOptions, "signal">,
-): Effect.Effect<ResolvedCodexRuntime, Cause.UnknownError> =>
+/** Cancellation waits for opened files and native inspectors to close. */
+const runRuntimeResolution = <A>(
+  operation: (signal: AbortSignal) => Promise<A>,
+): Effect.Effect<A, Cause.UnknownError> =>
   Effect.callback((resume, signal) => {
-    const pending = resolveCodexRuntime({ ...options, signal });
+    const pending = operation(signal);
     pending.then(
-      (runtime) => resume(Effect.succeed(runtime)),
+      (result) => resume(Effect.succeed(result)),
       (cause) => resume(Effect.fail(new Cause.UnknownError(cause))),
     );
     return Effect.promise(() =>
@@ -253,3 +294,8 @@ export const resolveCodexRuntimeEffect = (
       ),
     );
   });
+
+export const resolveCodexRuntimeEffect = (
+  options: Omit<ResolveCodexRuntimeOptions, "signal">,
+): Effect.Effect<ResolvedCodexRuntime, Cause.UnknownError> =>
+  runRuntimeResolution((signal) => resolveCodexRuntime({ ...options, signal }));

@@ -1,6 +1,7 @@
 /* @effect-diagnostics asyncFunction:off -- Filesystem records and process ancestry are checked at the Node boundary; the application runtime owns timeout and cancellation. */
-import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
+import * as Effect from "effect/Effect";
+import type { WindowsDesktopToolsService, WindowsProcessIdentity } from "./WindowsDesktopTools";
+import { windowsImageEquals } from "../../browser-use/browser-use-peer-authorizer";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
@@ -29,6 +30,16 @@ export interface NodeReplCleanupDependencies {
   readonly listChildProcesses?: (pid: number) => Promise<readonly ChildProcessIdentity[]>;
   readonly kill?: (pid: number, signal: "SIGKILL") => void;
   readonly removeRecordFile?: typeof rm;
+  readonly windows?: {
+    readonly runNative: typeof Effect.runPromise;
+    readonly native: Pick<
+      WindowsDesktopToolsService,
+      "processIdentity" | "descendants" | "terminateSubtree"
+    >;
+    readonly replPath: string;
+    readonly nodePath: string;
+    readonly isOwnedRepl: (identity: WindowsProcessIdentity) => Effect.Effect<boolean>;
+  };
 }
 const empty = (): NodeReplCleanupCounts => ({
   failedCount: 0,
@@ -63,39 +74,6 @@ export function descendantProcessIdentities(
   return result;
 }
 
-export interface NodeReplNativeProcessProvider {
-  listProcesses?: (options: {
-    includeCommandLine: true;
-    rootPid: number;
-  }) =>
-    | Promise<readonly { pid: number; parentPid: number }[]>
-    | readonly { pid: number; parentPid: number }[];
-}
-
-/** The optional native process provider is loaded lazily and only cached after installation. */
-export function createNodeReplWindowsProcessProviderLoader(options: {
-  readonly resourcesPath?: string;
-  readonly exists?: (path: string) => boolean;
-  readonly load?: (path: string) => unknown;
-}): () => NodeReplNativeProcessProvider | null {
-  let installed: NodeReplNativeProcessProvider | null = null;
-  return () => {
-    if (installed) return installed;
-    if (!options.resourcesPath) return null;
-    const path = join(options.resourcesPath, "native", "windows-account.node");
-    if (!(options.exists ?? existsSync)(path)) return null;
-    const addon: unknown = (options.load ?? createRequire(import.meta.url))(path);
-    if (addon === null || typeof addon !== "object")
-      throw new Error("Invalid native process provider");
-    installed = addon as NodeReplNativeProcessProvider;
-    return installed;
-  };
-}
-
-const loadWindowsProvider = createNodeReplWindowsProcessProviderLoader({
-  resourcesPath: process.resourcesPath,
-});
-
 /** Recheck selected processes after enumeration so exited or reparented children are excluded. */
 export async function listNodeReplChildProcesses(
   root: number,
@@ -110,17 +88,10 @@ export async function listNodeReplChildProcesses(
   },
   options: {
     readonly platform?: NodeJS.Platform;
-    readonly loadWindowsProvider?: () => NodeReplNativeProcessProvider | null;
   } = {},
 ): Promise<readonly ChildProcessIdentity[]> {
-  if ((options.platform ?? process.platform) === "win32") {
-    const rows =
-      (await (options.loadWindowsProvider ?? loadWindowsProvider)()?.listProcesses?.({
-        includeCommandLine: true,
-        rootPid: root,
-      })) ?? [];
-    return descendantProcessIdentities(root, rows);
-  }
+  if ((options.platform ?? process.platform) === "win32")
+    throw new Error("Windows REPL cleanup requires the native process provider");
   const initial = await run(["-ax", "-o", "pid=,ppid="]);
   const rows = initial.split("\n").flatMap((line) => {
     const match = /^(\d+)\s+(\d+)$/.exec(line.trim());
@@ -193,11 +164,44 @@ async function remove(path: string, dependencies: NodeReplCleanupDependencies): 
     return false;
   }
 }
+async function killWindowsRecord(
+  record: ExecutionRecord,
+  binding: NonNullable<NodeReplCleanupDependencies["windows"]>,
+  signal?: AbortSignal,
+): Promise<"killed" | "stale" | "failed"> {
+  try {
+    return await binding.runNative(
+      Effect.gen(function* () {
+        const repl = yield* binding.native.processIdentity(record.nodeReplPid);
+        if (
+          !windowsImageEquals(repl.imagePath, binding.replPath) ||
+          !(yield* binding.isOwnedRepl(repl))
+        )
+          return "failed" as const;
+        const tree = yield* binding.native.descendants(repl);
+        const kernel = tree.find(
+          (identity) =>
+            identity.pid === record.kernelPid &&
+            windowsImageEquals(identity.imagePath, binding.nodePath),
+        );
+        if (!kernel) return "stale" as const;
+        const terminated = yield* binding.native.terminateSubtree(kernel);
+        return terminated.includes(kernel.pid) ? ("killed" as const) : ("failed" as const);
+      }),
+      { signal },
+    );
+  } catch {
+    signal?.throwIfAborted();
+    return "failed";
+  }
+}
+
 async function killRecord(
   record: ExecutionRecord,
   dependencies: NodeReplCleanupDependencies,
   signal?: AbortSignal,
 ): Promise<"killed" | "stale" | "failed"> {
+  if (dependencies.windows) return killWindowsRecord(record, dependencies.windows, signal);
   const list = dependencies.listChildProcesses ?? listNodeReplChildProcesses;
   let ownerChildren: readonly ChildProcessIdentity[];
   try {
@@ -228,6 +232,7 @@ async function killRecord(
 /** Native boundary: prove the recorded kernel still belongs to its REPL before killing it. */
 export async function cleanupNodeReplExecutions(input: {
   readonly codexHome: string;
+  readonly platform?: NodeJS.Platform;
   readonly sessionId: string;
   readonly turnId: string;
   readonly signal?: AbortSignal;
@@ -235,6 +240,8 @@ export async function cleanupNodeReplExecutions(input: {
 }): Promise<NodeReplCleanupCounts> {
   const { codexHome, sessionId, turnId, signal, dependencies = {} } = input;
   signal?.throwIfAborted();
+  if ((input.platform ?? process.platform) === "win32" && !dependencies.windows)
+    throw new Error("Windows REPL cleanup requires the native process provider");
   const directory = join(codexHome, "node_repl", "active_execs");
   let paths: string[];
   try {

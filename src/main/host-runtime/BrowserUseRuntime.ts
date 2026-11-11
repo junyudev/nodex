@@ -14,7 +14,12 @@ import { BrowserApplication } from "../browser-application/BrowserApplication";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import { makeBrowserUseIabApi } from "../browser-use/browser-use-iab-api";
 import { makeBrowserUseNativePipeServer } from "../browser-use/browser-use-native-pipe-server";
-import { createBrowserUsePeerAuthorizer } from "../browser-use/browser-use-peer-authorizer";
+import type { CodexPlatform } from "../../host/ProviderPlatform";
+import { nodexDesktopToolMarketplaceName } from "../codex/bundled-desktop-tool-marketplace";
+import {
+  createBrowserUsePeerAuthorizer,
+  makeWindowsBrowserPeerAuthorizer,
+} from "../browser-use/browser-use-peer-authorizer";
 import {
   makeBrowserUseSessionRuntime,
   type BrowserUseCursorArrivalInput,
@@ -219,6 +224,9 @@ const make = (
   });
 
 export interface BrowserUseRuntimeOptions {
+  readonly windows?: NonNullable<CodexPlatform["Service"]["windowsDesktopTools"]> & {
+    readonly runtimeStateHome: string;
+  };
   readonly appVersion: string;
   readonly browserRuntime: BrowserRuntimeAvailability;
   readonly environment: Readonly<Record<string, string | undefined>>;
@@ -240,12 +248,15 @@ export const live = (
       const chrome = yield* ChromeControlRuntime;
       const profile = yield* BrowserProfileRuntime;
       const callbacks = yield* ScopedCallbackRuntime;
-      const capability = resolveBrowserUseHostCapability({
-        browserRuntimeStatus: options.browserRuntime.status,
-        environment: options.environment,
-        isPackaged: options.isPackaged,
-        platform: options.platform,
-      });
+      const getCapability = () =>
+        resolveBrowserUseHostCapability({
+          windowsTransportReady: options.windows?.hostIdentity() !== undefined,
+          browserRuntimeStatus: options.browserRuntime.status,
+          environment: options.environment,
+          isPackaged: options.isPackaged,
+          platform: options.platform,
+        });
+      const capability = getCapability();
       const logger = getLogger({ component: "browser-use-runtime" });
       logger.info("Browser Use host capability resolved", {
         availableBackends: capability.availableBackends,
@@ -268,54 +279,83 @@ export const live = (
         releaseCredentialOwner: profile.credentials.releaseOwner,
         makeRegistry: (() => {
           const appSessionId = randomUUID();
-          const runtime = makeBrowserUseSessionRuntime(capability.status === "available", {
-            createApi: (route, asyncRuntime) =>
-              makeBrowserUseIabApi({
-                appSessionId,
-                appVersion: options.appVersion,
-                applyCommand: (command) => callbacks.runPromise(browser.applyCommand(command)),
-                asyncRuntime,
-                browser: browser.automation,
-                subscribeWebviewAttached: (listener) =>
-                  browser.events.subscribeWebviewAttached(listener),
-                buildFlavor:
+          const runtime = makeBrowserUseSessionRuntime(
+            () => getCapability().status === "available",
+            {
+              createApi: (route, asyncRuntime) =>
+                makeBrowserUseIabApi({
+                  appSessionId,
+                  appVersion: options.appVersion,
+                  applyCommand: (command) => callbacks.runPromise(browser.applyCommand(command)),
+                  asyncRuntime,
+                  browser: browser.automation,
+                  subscribeWebviewAttached: (listener) =>
+                    browser.events.subscribeWebviewAttached(listener),
+                  buildFlavor: options.windows
+                    ? nodexDesktopToolMarketplaceName(options.windows.runtimeStateHome, "win32")
+                    : options.browserRuntime.status === "available"
+                      ? options.browserRuntime.bundle.manifest.buildFlavor
+                      : "unavailable",
+                  grantDownload: profile.download.grantAgentDownload,
+                  policyStore: profile.policy,
+                  route,
+                }),
+              createServer: (handler) => {
+                const bundle =
                   options.browserRuntime.status === "available"
-                    ? options.browserRuntime.bundle.manifest.buildFlavor
-                    : "unavailable",
-                grantDownload: profile.download.grantAgentDownload,
-                policyStore: profile.policy,
-                route,
-              }),
-            createServer: (handler) =>
-              makeBrowserUseNativePipeServer({
-                events: {
-                  onAuthorizationError: (error) =>
-                    logger.warn("Browser Use native pipe peer authorization failed", {
-                      error: error instanceof Error ? error.message : String(error),
-                    }),
-                  onInvalidMessage: (error) =>
-                    logger.warn("Browser Use native pipe received an invalid message", {
-                      error: error instanceof Error ? error.message : String(error),
-                    }),
-                  onListening: () => logger.info("Browser Use native pipe listening"),
-                  onRejectedSocket: (result) =>
-                    logger.warn("Browser Use native pipe rejected a socket peer", {
-                      reason: result.reason ?? "unauthorized",
-                    }),
-                  onRequestCompleted: (event) =>
-                    logger.debug("Browser Use native pipe request completed", event),
-                  onRequestStarted: (event) =>
-                    logger.debug("Browser Use native pipe request started", event),
-                  onSocketError: (error) =>
-                    logger.warn("Browser Use native pipe socket failed", {
-                      error: error.message,
-                    }),
-                },
-                handler,
-                platform: options.platform,
-                socketPeerAuthorizer,
-              }),
-          });
+                    ? options.browserRuntime.bundle
+                    : null;
+                const host = options.windows?.hostIdentity();
+                const windows =
+                  options.windows && host && bundle
+                    ? {
+                        native: options.windows.native,
+                        profileNamespace: nodexDesktopToolMarketplaceName(
+                          options.windows.runtimeStateHome,
+                          "win32",
+                        ),
+                        authorize: makeWindowsBrowserPeerAuthorizer({
+                          native: options.windows.native,
+                          host,
+                          launcher: options.windows.coreExecutable,
+                          repl: bundle.paths.nodeRepl,
+                          node: bundle.paths.node,
+                          mode: getCapability().peerAuthorizationMode,
+                        }),
+                      }
+                    : undefined;
+                return makeBrowserUseNativePipeServer({
+                  events: {
+                    onAuthorizationError: (error) =>
+                      logger.warn("Browser Use native pipe peer authorization failed", {
+                        error: error instanceof Error ? error.message : String(error),
+                      }),
+                    onInvalidMessage: (error) =>
+                      logger.warn("Browser Use native pipe received an invalid message", {
+                        error: error instanceof Error ? error.message : String(error),
+                      }),
+                    onListening: () => logger.info("Browser Use native pipe listening"),
+                    onRejectedSocket: (result) =>
+                      logger.warn("Browser Use native pipe rejected a socket peer", {
+                        reason: result.reason ?? "unauthorized",
+                      }),
+                    onRequestCompleted: (event) =>
+                      logger.debug("Browser Use native pipe request completed", event),
+                    onRequestStarted: (event) =>
+                      logger.debug("Browser Use native pipe request started", event),
+                    onSocketError: (error) =>
+                      logger.warn("Browser Use native pipe socket failed", {
+                        error: error.message,
+                      }),
+                  },
+                  handler,
+                  platform: options.platform,
+                  socketPeerAuthorizer,
+                  windows,
+                });
+              },
+            },
+          );
           return runtime.pipe(
             Effect.map((sessionRuntime): BrowserUseRegistryPort =>
               adaptSessionRuntime(sessionRuntime),

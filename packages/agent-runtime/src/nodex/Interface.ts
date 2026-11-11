@@ -1006,6 +1006,7 @@ export type AgentHostRequest =
       readonly type: "host.request";
       readonly id: string;
       readonly operation: "desktop.skill-roots";
+      readonly cwd: string | null;
       readonly identity: {
         readonly runtimeId: string;
         readonly runtimeGeneration: string;

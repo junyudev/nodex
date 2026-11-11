@@ -12,6 +12,7 @@ test.each(["x64", "arm64"])("Windows %s exposes only supported native integratio
     browserControl: false,
     browserProfileImport: false,
     computerControl: false,
+    nativePip: false,
     appshot: false,
     deviceCheck: false,
     nativeClipboard: false,
@@ -32,4 +33,12 @@ it.effect("capabilities follow the supplied bootstrap snapshot", () =>
 
 test("unsupported Windows architectures cannot acquire app updates", () => {
   expect(hostCapabilities("win32", "ia32").autoUpdate).toBe(false);
+});
+
+test("Windows can expose Browser control independently of Computer Use and PiP", () => {
+  expect(hostCapabilities("win32", "arm64", { browserReady: true })).toMatchObject({
+    browserControl: true,
+    computerControl: false,
+    nativePip: false,
+  });
 });

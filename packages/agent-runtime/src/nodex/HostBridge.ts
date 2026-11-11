@@ -258,11 +258,16 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
     };
   });
 
-  const desktopSkillRoots = (providerInstanceId: string, nativeDriver: string) => {
+  const desktopSkillRoots = (
+    providerInstanceId: string,
+    nativeDriver: string,
+    cwd: string | null,
+  ) => {
     if (configuration.host === undefined) return Effect.succeed([]);
     return exchange({
       type: "host.request",
       operation: "desktop.skill-roots",
+      cwd,
       identity: { runtimeId, runtimeGeneration, providerInstanceId, nativeDriver },
     }).pipe(
       Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(Schema.String))),

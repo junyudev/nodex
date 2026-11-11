@@ -1,5 +1,7 @@
-import { windowsDesktopToolsLayer } from "../platform/node/WindowsDesktopTools";
-import { resolveCoreExecutable } from "../core-client/core-launcher";
+import {
+  WindowsDesktopTools,
+  unsupportedWindowsDesktopTools,
+} from "../platform/node/WindowsDesktopTools";
 import { SkillFileMutationLane } from "../host-runtime/SkillFileMutationLane";
 import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import { live as workspaceRuntimeLive } from "../../host/WorkspaceRuntimeLive";
@@ -173,23 +175,19 @@ const chromeControl = Layer.unwrap(
       localAppData: Object.entries(config.environment).find(
         ([key]) => key.toUpperCase() === "LOCALAPPDATA",
       )?.[1],
-      browserRuntime: codex.runtime.browserRuntime,
+      get browserRuntime() {
+        return codex.runtime.browserRuntime;
+      },
+      windowsBrowserReady: codex.windowsDesktopTools?.ready,
       registration: config.chromeHostRegistration ?? { kind: "disabled" },
       peerAuthorizationMode: codex.runtime.source === "bundled" ? "packaged" : "development",
       platform,
       runtimeStateHome: codex.runtimeStateHome,
     }).pipe(
       Layer.provide(
-        windowsDesktopToolsLayer(
-          platform,
-          platform === "win32"
-            ? resolveCoreExecutable({
-                environment: config.environment,
-                isPackaged: config.isPackaged,
-                appResourcesPath: config.resourcesPath,
-                repositoryRoot: config.projectRootPath,
-              })
-            : "",
+        Layer.succeed(
+          WindowsDesktopTools,
+          codex.windowsDesktopTools?.native ?? unsupportedWindowsDesktopTools,
         ),
       ),
     );
@@ -201,7 +199,15 @@ const browserUse = Layer.unwrap(
     const codex = yield* CodexPlatform;
     return browserUseRuntimeLive({
       appVersion: config.appVersion,
-      browserRuntime: codex.runtime.browserRuntime,
+      get browserRuntime() {
+        return codex.runtime.browserRuntime;
+      },
+      windows: codex.windowsDesktopTools
+        ? {
+            ...codex.windowsDesktopTools,
+            runtimeStateHome: codex.runtimeStateHome,
+          }
+        : undefined,
       environment: config.environment,
       isPackaged: config.isPackaged,
       platform: config.platform as NodeJS.Platform,
@@ -247,7 +253,17 @@ const desktopTools = Layer.unwrap(
     const config = yield* MainConfig;
     const codex = yield* CodexPlatform;
     return desktopToolRuntimeLive({
-      browserRuntime: codex.runtime.browserRuntime,
+      get browserRuntime() {
+        return codex.runtime.browserRuntime;
+      },
+      platform: config.platform,
+      windows: codex.windowsDesktopTools
+        ? {
+            jobLauncher: codex.windowsDesktopTools.coreExecutable,
+            ready: codex.windowsDesktopTools.ready,
+            environment: config.environment,
+          }
+        : undefined,
       nodeRuntime: codex.runtime.nodeRuntime,
       isPackaged: config.isPackaged,
       projectRootPath: config.projectRootPath,

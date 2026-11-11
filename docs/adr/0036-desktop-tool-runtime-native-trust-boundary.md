@@ -50,7 +50,35 @@ Packaging signs Nodex-owned artifacts, restores the entire vendor-signed Desktop
 Tool closure, refreshes the enclosing manifests, and reseals the outer app. It
 does not replace nested Desktop Tool signing identities with Nodex's team.
 
-### A three-process signed REPL ancestry is part of Desktop Tool capability
+Windows x64 and arm64 each have their own sealed closure. Main verifies every
+manifest digest, rejects reparse points and untrusted owners or write grants,
+and requires embedded Authenticode signatures with a trusted code-signing
+chain, revocation evidence, and the manifest's subject and issuer. Windows
+verification runs in a bounded background task. The Browser backend becomes
+eligible only after the native process and pipe provider can start.
+
+### Windows Browser transport and REPL lifetime
+
+On Windows, Codex and Agent Runtime use the same Nodex-owned native launch
+command. It starts the verified REPL executable in a kill-on-close job with a
+complete environment supplied as launch arguments. Codex's persisted MCP
+configuration may add environment variables to the launcher. The launcher
+constructs the REPL's environment from Nodex's declarations, checks names
+case-insensitively, and passes stdio directly. The sandbox CLI uses a
+Profile-owned Codex home so it cannot reintroduce shared shell policy. The
+job ends when the launcher, its parent, or the REPL exits. Agent Runtime closes the job after an
+unacknowledged cancellation and starts a fresh REPL for subsequent work.
+
+Main binds each Browser route to a native named pipe in the vendor discovery
+namespace, with a Profile identifier and a random suffix. Windows restricts the
+pipe to the current logon SID and rejects remote clients. Main checks the
+OS-reported process instance and the verified REPL or kernel path before
+reading requests, and requires ancestry through the owned launcher to this
+host. A separate development opt-in can admit a detached verified REPL.
+Discovery uses the active Session and Profile identity. Session and Turn
+authorization continue above the transport. Native PiP remains macOS-only.
+
+### macOS requires a three-process signed REPL ancestry
 
 The primary app-server is Nodex's separately locked native Codex app-server.
 The shared `node_repl` command is launched through a persistent vendor-signed
@@ -98,7 +126,7 @@ a PID from disk.
 Agent Runtime answers the REPL's elicitations and handles permission to run
 JavaScript. Cancellation goes upstream through MCP so the REPL can reset its
 kernel. The REPL survives provider session replacement. Thread archive, deletion,
-and Runtime shutdown close its process group.
+and Runtime shutdown close its process group on macOS or job on Windows.
 
 ### Presentation intent does not imply panel selection
 

@@ -21,7 +21,7 @@ const authenticode = z.discriminatedUnion("status", [
     chain: z.array(certificate).min(1),
     codeSigningEku: z.boolean(),
     timestampPresent: z.boolean(),
-    revocation: z.enum(["cacheChecked", "cacheUnavailable"]),
+    revocation: z.enum(["onlineChecked", "cacheChecked", "cacheUnavailable"]),
   }),
   z.object({
     status: z.literal("rejected"),
@@ -35,6 +35,18 @@ const pathSecurity = z.object({
   currentUserSid: z.string(),
   grantsForeignWrite: z.boolean(),
 });
+
+/**
+ * Windows makes the Administrators group the owner of what an administrator creates, and
+ * installers leave files owned by SYSTEM. Both can already do anything to this user's files,
+ * so they are as trustworthy an owner as the user.
+ */
+export function hasTrustedWindowsOwner(
+  security: Pick<PathSecurity, "ownerSid" | "currentUserSid">,
+): boolean {
+  return [security.currentUserSid, "S-1-5-18", "S-1-5-32-544"].includes(security.ownerSid);
+}
+
 const pid = z.number().int().positive().max(0xffffffff);
 const processIdentity = z.object({
   pid,
@@ -90,8 +102,15 @@ export class WindowsDesktopToolsError extends Data.TaggedError("WindowsDesktopTo
 
 type NativeEffect<T, R = never> = Effect.Effect<T, WindowsDesktopToolsError, R>;
 export interface WindowsDesktopToolsService {
-  readonly verifyAuthenticode: (path: string) => NativeEffect<Authenticode>;
+  readonly verifyAuthenticode: (
+    path: string,
+    requireRevocation?: boolean,
+  ) => NativeEffect<Authenticode>;
   readonly inspectPath: (path: string) => NativeEffect<PathSecurity>;
+  readonly inspectPaths: (paths: readonly string[]) => NativeEffect<readonly PathSecurity[]>;
+  readonly ancestors: (
+    peer: WindowsProcessIdentity,
+  ) => NativeEffect<readonly WindowsProcessIdentity[]>;
   readonly listenPipe: (prefix: string) => NativeEffect<WindowsPipeListener, Scope.Scope>;
   readonly connectPipe: (endpoint: string) => NativeEffect<WindowsPipeConnection, Scope.Scope>;
   readonly enumeratePipes: (
@@ -128,6 +147,8 @@ const unsupported = (operation: string) =>
 export const unsupportedWindowsDesktopTools: WindowsDesktopToolsService = {
   verifyAuthenticode: () => unsupported("verifyAuthenticode"),
   inspectPath: () => unsupported("inspectPath"),
+  inspectPaths: () => unsupported("inspectPaths"),
+  ancestors: () => unsupported("ancestors"),
   listenPipe: () => unsupported("listenPipe"),
   connectPipe: () => unsupported("connectPipe"),
   enumeratePipes: () => unsupported("enumeratePipes"),
@@ -289,7 +310,7 @@ const asError = (cause: unknown): Error =>
 const nativeError = (operation: string, cause: unknown) =>
   new WindowsDesktopToolsError({ kind: "native", operation, cause });
 
-function makeWindowsDesktopTools(coreExecutable: string): WindowsDesktopToolsService {
+export function makeWindowsDesktopTools(coreExecutable: string): WindowsDesktopToolsService {
   const session = (operation: string) =>
     Effect.acquireRelease(
       Effect.try({
@@ -318,8 +339,12 @@ function makeWindowsDesktopTools(coreExecutable: string): WindowsDesktopToolsSer
     Effect.scoped(open(body, schema).pipe(Effect.map(({ value }) => value)));
 
   return {
-    verifyAuthenticode: (path) => once({ op: "verifyAuthenticode", path }, authenticode),
+    verifyAuthenticode: (path, requireRevocation = false) =>
+      once({ op: "verifyAuthenticode", path, requireRevocation }, authenticode),
     inspectPath: (path) => once({ op: "inspectPath", path }, pathSecurity),
+    inspectPaths: (paths) =>
+      once({ op: "inspectPaths", paths }, z.array(pathSecurity).length(paths.length)),
+    ancestors: (peer) => once({ op: "ancestors", peer }, z.array(processIdentity)),
     listenPipe: (prefix) =>
       open({ op: "listenPipe", prefix }, z.string()).pipe(
         Effect.map(({ native, value: endpoint }) => ({

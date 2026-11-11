@@ -28,8 +28,16 @@ export type MaterializedDesktopToolMarketplace = {
 };
 
 /** Profile ownership remains distinct when multiple Nodex Profiles share one native home. */
-export const nodexDesktopToolMarketplaceName = (runtimeStateHome: string): string =>
-  `nodex-desktop-${createHash("sha256").update(path.resolve(runtimeStateHome)).digest("hex").slice(0, 12)}`;
+export const nodexDesktopToolMarketplaceName = (
+  runtimeStateHome: string,
+  platform: NodeJS.Platform = process.platform,
+): string => {
+  const canonical =
+    platform === "win32"
+      ? path.win32.resolve(runtimeStateHome).toLowerCase()
+      : path.resolve(runtimeStateHome);
+  return `nodex-desktop-${createHash("sha256").update(canonical).digest("hex").slice(0, 12)}`;
+};
 
 /** Known desktop peers from another host must not load beside this Profile's signed peers. */
 export const isForeignDesktopToolPlugin = (pluginId: string, runtimeStateHome: string): boolean => {
@@ -119,6 +127,7 @@ function materializationKey(
     desktopBuildNumber: bundle.manifest.desktopBuildNumber,
     schemaVersion: MATERIALIZATION_SCHEMA_VERSION,
     targetArch: bundle.manifest.targetArch,
+    targetPlatform: bundle.manifest.targetPlatform,
   });
 }
 
@@ -224,6 +233,18 @@ async function replaceDirectoryAtomically(stagingPath: string, targetPath: strin
   }
 }
 
+/** Node's Windows ESM loader expects file URLs for drive-letter paths. */
+export function windowsBrowserSkillBootstrap(source: string): string {
+  return source.replace(
+    'const { setupBrowserRuntime } = await import("<plugin root>/scripts/browser-client.mjs");',
+    [
+      "// Replace <plugin root> with the absolute plugin path using forward slashes.",
+      'const { pathToFileURL } = await import("node:url");',
+      'const { setupBrowserRuntime } = await import(pathToFileURL("<plugin root>/scripts/browser-client.mjs").href);',
+    ].join("\n"),
+  );
+}
+
 async function materializeFresh(
   options: MaterializeDesktopToolMarketplaceOptions,
   targetPath: string,
@@ -247,6 +268,12 @@ async function materializeFresh(
     await fs.cp(bundle.browserPluginRoot, browserPluginTarget, {
       recursive: true,
     });
+    if (bundle.manifest.targetPlatform === "win32") {
+      const relativeDocs = path.relative(bundle.browserPluginRoot, bundle.paths.browserPluginDocs);
+      const skillPath = path.join(browserPluginTarget, relativeDocs);
+      const source = await fs.readFile(skillPath, "utf8");
+      await fs.writeFile(skillPath, windowsBrowserSkillBootstrap(source), "utf8");
+    }
     if (chromePluginTarget) {
       if (!bundle.paths.chromePluginRoot) {
         throw new Error("Verified Chrome plugin path is unavailable");
