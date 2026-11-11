@@ -1,16 +1,10 @@
-import { execFileSync } from "node:child_process";
 import { lstatSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { materializeBrowserRuntime } from "../materialize-browser-runtime";
 import { readBrowserRuntimeReleaseLock } from "../browser-runtime-release-lock";
+import { gh } from "./github-release";
 import { stableVersionFromAppTag } from "./model";
-
-const run = (args: readonly string[]): string =>
-  execFileSync("gh", [...args], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  }).trim();
 
 interface BrowserRuntimeRemoteAsset {
   readonly digest?: string | null;
@@ -88,7 +82,7 @@ const readBrowserRuntimeRelease = (
   tag: string,
 ): BrowserRuntimeRemoteRelease | null => {
   const pages = JSON.parse(
-    run(["api", `repos/${repo}/releases`, "--paginate", "--slurp"]),
+    gh(["api", `repos/${repo}/releases`, "--paginate", "--slurp"]),
   ) as BrowserRuntimeRemoteRelease[][];
   return pages.flat().find((release) => release.tag_name === tag) ?? null;
 };
@@ -170,7 +164,7 @@ export async function publishBrowserRuntime(options: BrowserRuntimePublishOption
     ]),
   );
   const pathsByName = new Map([[basename(options.arm64Path), resolve(options.arm64Path)]]);
-  const latestBefore = JSON.parse(run(["api", `repos/${options.repo}/releases/latest`])) as {
+  const latestBefore = JSON.parse(gh(["api", `repos/${options.repo}/releases/latest`])) as {
     readonly tag_name?: unknown;
   };
   if (
@@ -186,7 +180,7 @@ export async function publishBrowserRuntime(options: BrowserRuntimePublishOption
     planBrowserRuntimePublication(readBrowserRuntimeRelease(options.repo, options.tag), expected);
   let plan = readPlan();
   if (plan.kind === "create") {
-    run(browserRuntimeReleaseArguments(options));
+    gh(browserRuntimeReleaseArguments(options));
     plan = await awaitBrowserRuntimePublicationPlan(readPlan, (next) => next.kind !== "create");
     if (plan.kind === "create") {
       throw new Error("The created Browser runtime draft is not visible yet; rerun to resume.");
@@ -199,7 +193,7 @@ export async function publishBrowserRuntime(options: BrowserRuntimePublishOption
       return archivePath;
     });
     if (missingPaths.length > 0) {
-      run(["release", "upload", options.tag, ...missingPaths, "--repo", options.repo]);
+      gh(["release", "upload", options.tag, ...missingPaths, "--repo", options.repo]);
     }
     const completedDraft = await awaitBrowserRuntimePublicationPlan(
       readPlan,
@@ -208,7 +202,7 @@ export async function publishBrowserRuntime(options: BrowserRuntimePublishOption
     if (completedDraft.kind !== "resume-draft" || completedDraft.missingAssetNames.length > 0) {
       throw new Error("Browser runtime draft does not contain the exact locked assets.");
     }
-    run([
+    gh([
       "release",
       "edit",
       options.tag,
@@ -230,7 +224,7 @@ export async function publishBrowserRuntime(options: BrowserRuntimePublishOption
   if (completed.kind !== "verify-published") {
     throw new Error("Browser runtime release was not published with its exact locked assets.");
   }
-  const latestAfter = JSON.parse(run(["api", `repos/${options.repo}/releases/latest`])) as {
+  const latestAfter = JSON.parse(gh(["api", `repos/${options.repo}/releases/latest`])) as {
     readonly tag_name?: unknown;
   };
   if (latestAfter.tag_name !== latestBefore.tag_name) {
