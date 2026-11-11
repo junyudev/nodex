@@ -1,12 +1,15 @@
+import { isDeepStrictEqual } from "node:util";
+import type { WindowsBrowserRuntimeReleaseAsset } from "./browser-runtime-release-lock";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  BROWSER_PLUGIN_NODE_MODULE_DIR,
   BROWSER_RUNTIME_BUNDLE_DIRECTORY,
   BROWSER_RUNTIME_MANIFEST_FILENAME,
   parseBrowserRuntimeManifest,
+  isSafeWindowsBrowserRuntimePath,
+  browserRuntimeTargetKey,
   type BrowserRuntimeManifest,
 } from "../src/shared/browser-runtime-metadata";
 import type {
@@ -20,7 +23,7 @@ import { cloneImmutableDirectory } from "./immutable-artifact-cache";
 
 const EXECUTABLE_RUNTIME_MODE = 0o755;
 const REGULAR_RUNTIME_MODE = 0o644;
-const LEGACY_BROWSER_PLUGIN_NODE_MODULE_DIR = "marketplace/plugins/browser/scripts/node_modules";
+import { inspectWindowsPe, WINDOWS_PE_MACHINE } from "../src/shared/windows-pe-header.mjs";
 
 type StageBrowserRuntimeOptions = {
   appServerIdentity: AppServerRuntimeIdentity;
@@ -28,8 +31,9 @@ type StageBrowserRuntimeOptions = {
   runtimeRoot: string;
   sourceRoot: string;
   targetArch: "arm64" | "x64";
-  targetPlatform: "darwin" | "linux" | "win32";
+  targetPlatform: "darwin" | "win32";
   testedPairs?: readonly TestedBrowserAppServerPair[];
+  windowsReleaseAsset?: WindowsBrowserRuntimeReleaseAsset;
 };
 
 export function readBrowserRuntimeFileSha256(filePath: string): string {
@@ -96,6 +100,12 @@ function assertBrowserRuntimeFileClosure(
     ...manifest.artifacts.map((artifact) => artifact.path),
   ].sort((left, right) => left.localeCompare(right));
   const actualFiles = listFiles(sourceRoot);
+  if (
+    manifest.targetPlatform === "win32" &&
+    actualFiles.some((file) => !isSafeWindowsBrowserRuntimePath(file))
+  ) {
+    throw new Error("Browser runtime source contains an unsafe Windows path");
+  }
   if (JSON.stringify(actualFiles) !== JSON.stringify(expectedFiles)) {
     throw new Error("Browser runtime source must contain exactly the manifest-declared artifacts");
   }
@@ -117,73 +127,22 @@ export function assertBrowserRuntimeSourceClosure(
         `Browser runtime source artifact does not match its manifest: ${artifact.path}`,
       );
     }
+    if (manifest.targetPlatform === "win32") {
+      const pe = inspectWindowsPe(artifactPath);
+      const expected = Object.hasOwn(manifest.trust.pe, artifact.path)
+        ? manifest.trust.pe[artifact.path]
+        : undefined;
+      if (expected ? pe?.machine !== WINDOWS_PE_MACHINE[expected.machine] || !pe.certificate : pe) {
+        throw new Error(
+          `Windows Desktop Tool image does not match its PE declaration: ${artifact.path}`,
+        );
+      }
+      continue;
+    }
     if (artifact.executable && (stats.mode & 0o111) === 0) {
       throw new Error(`Browser runtime source artifact is not executable: ${artifact.path}`);
     }
   }
-}
-
-function normalizeBrowserRuntimeManifest(
-  sourceRoot: string,
-  manifest: BrowserRuntimeManifest,
-): BrowserRuntimeManifest {
-  if (!manifest.browserPlugin.nodeModuleDirs.includes(LEGACY_BROWSER_PLUGIN_NODE_MODULE_DIR)) {
-    return manifest;
-  }
-
-  const canonicalDirectory = path.join(sourceRoot, ...BROWSER_PLUGIN_NODE_MODULE_DIR.split("/"));
-  let stats: fs.Stats;
-  try {
-    stats = fs.lstatSync(canonicalDirectory);
-  } catch {
-    throw new Error(`Legacy Browser runtime manifest requires ${BROWSER_PLUGIN_NODE_MODULE_DIR}`);
-  }
-  if (!stats.isDirectory() || stats.isSymbolicLink()) {
-    throw new Error(
-      `Legacy Browser runtime module directory is unavailable: ${BROWSER_PLUGIN_NODE_MODULE_DIR}`,
-    );
-  }
-
-  const nodeModuleDirs = [
-    ...new Set(
-      manifest.browserPlugin.nodeModuleDirs.map((directory) =>
-        directory === LEGACY_BROWSER_PLUGIN_NODE_MODULE_DIR
-          ? BROWSER_PLUGIN_NODE_MODULE_DIR
-          : directory,
-      ),
-    ),
-  ];
-  return {
-    ...manifest,
-    browserPlugin: {
-      ...manifest.browserPlugin,
-      nodeModuleDirs,
-    },
-  };
-}
-
-function serializedActiveManifest(sourceRoot: string, manifest: BrowserRuntimeManifest): Buffer {
-  const sourcePath = path.join(sourceRoot, BROWSER_RUNTIME_MANIFEST_FILENAME);
-  const sourceBytes = fs.readFileSync(sourcePath);
-  try {
-    const sourceValue = JSON.parse(sourceBytes.toString("utf8")) as {
-      browserPlugin?: { nodeModuleDirs?: unknown };
-      schemaVersion?: unknown;
-    };
-    const nodeModuleDirs = sourceValue.browserPlugin?.nodeModuleDirs;
-    if (
-      (sourceValue.schemaVersion === 5 || sourceValue.schemaVersion === 6) &&
-      Array.isArray(nodeModuleDirs) &&
-      !nodeModuleDirs.includes(LEGACY_BROWSER_PLUGIN_NODE_MODULE_DIR)
-    ) {
-      // Published archives retain their exact-pair identity while the
-      // compatibility decoder projects the current in-memory contract.
-      return sourceBytes;
-    }
-  } catch {
-    // readBrowserRuntimeSourceManifest already owns the validation error.
-  }
-  return Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 }
 
 export async function stageBrowserRuntime(
@@ -196,6 +155,12 @@ export async function stageBrowserRuntime(
     throw new Error(`Browser runtime source must be a real directory: ${sourceRoot}`);
   }
 
+  if (
+    options.appServerIdentity.targetPlatform !== options.targetPlatform ||
+    options.appServerIdentity.targetArch !== options.targetArch
+  ) {
+    throw new Error("Desktop Tool target does not match the active Agent runtime");
+  }
   const sourceManifest = readBrowserRuntimeSourceManifest(sourceRoot);
   if (
     sourceManifest.targetArch !== options.targetArch ||
@@ -204,8 +169,23 @@ export async function stageBrowserRuntime(
     throw new Error("Browser runtime source manifest does not match the active Agent runtime");
   }
   assertBrowserRuntimeSourceClosure(sourceRoot, sourceManifest);
-  const manifest = normalizeBrowserRuntimeManifest(sourceRoot, sourceManifest);
-  const activeManifestBytes = serializedActiveManifest(sourceRoot, manifest);
+  const manifest = sourceManifest;
+  const activeManifestBytes = fs.readFileSync(
+    path.join(sourceRoot, BROWSER_RUNTIME_MANIFEST_FILENAME),
+  );
+
+  if (manifest.targetPlatform === "win32" && options.windowsReleaseAsset) {
+    const asset = options.windowsReleaseAsset;
+    const sha256 = createHash("sha256").update(activeManifestBytes).digest("hex");
+    if (
+      sha256 !== asset.manifestSha256 ||
+      !isDeepStrictEqual(options.appServerIdentity, asset.appServer)
+    ) {
+      throw new Error(
+        "Windows Desktop Tool candidate does not match the release lock's exact app-server pair",
+      );
+    }
+  }
 
   fs.mkdirSync(runtimeRoot, { recursive: true });
   const runtimeRootStats = fs.lstatSync(runtimeRoot);
@@ -221,6 +201,10 @@ export async function stageBrowserRuntime(
       // Preserve exact closure checks here; the resolver owns artifact hashes,
       // executable modes, platform verification, and the tested runtime pair.
       assertBrowserRuntimeFileClosure(activeRoot, manifest);
+      if (manifest.targetPlatform === "win32") {
+        assertBrowserRuntimeSourceClosure(activeRoot, manifest);
+        return manifest;
+      }
       const verification = await resolveBrowserRuntimeBundle({
         appServerIdentity: options.appServerIdentity,
         platformArtifactVerifier: options.platformArtifactVerifier,
@@ -239,6 +223,12 @@ export async function stageBrowserRuntime(
   const stagedRoot = path.join(temporaryParent, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
   try {
     cloneImmutableDirectory(sourceRoot, stagedRoot);
+    if (manifest.targetPlatform === "win32") {
+      // Packaging stages locked bytes. Main still requires native verification before use.
+      assertBrowserRuntimeSourceClosure(stagedRoot, manifest);
+      replaceOwnedDirectory(stagedRoot, activeRoot);
+      return manifest;
+    }
     for (const artifact of manifest.artifacts) {
       const destinationPath = path.join(stagedRoot, ...artifact.path.split("/"));
       fs.chmodSync(
@@ -306,8 +296,8 @@ function parseCliOptions(argv: string[]): StageBrowserRuntimeOptions {
     !appServerRuntimeVersion ||
     !appServerSourceCommit ||
     (targetArch !== "arm64" && targetArch !== "x64") ||
-    (targetPlatform === "darwin" && targetArch !== "arm64") ||
-    (targetPlatform !== "darwin" && targetPlatform !== "linux" && targetPlatform !== "win32")
+    (targetPlatform !== "darwin" && targetPlatform !== "win32") ||
+    !browserRuntimeTargetKey(targetPlatform, targetArch)
   ) {
     throw new Error(
       "Usage: stage-browser-runtime.ts --source <dir> --runtime-root <dir> " +

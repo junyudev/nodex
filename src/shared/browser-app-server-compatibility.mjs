@@ -15,7 +15,7 @@ export const TESTED_BROWSER_APP_SERVER_PAIRS = Object.freeze([
     }),
     browser: Object.freeze({
       browserPluginVersion: "26.1027.51404",
-      manifestSha256: "297d5e729ae02d7a39205d521a9730da5cee21d7da35f99d826a45af539d95a8",
+      manifestSha256: "c69c126c75637ede3e2a5c2616a3dab8f63e2dde6f44366e248b24c2bcaa7ab8",
       peerCliVersion: "0.166.0-alpha.5.1",
       targetArch: "arm64",
       targetPlatform: "darwin",

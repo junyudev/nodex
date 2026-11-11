@@ -459,6 +459,12 @@ export const live = (options: ChromeControlRuntimeOptions): Layer.Layer<ChromeCo
         const verifier = createBrowserRuntimePlatformArtifactVerifier({
           platform: options.platform,
         });
+        if (
+          bundle.manifest.targetPlatform !== "darwin" ||
+          !bundle.manifest.trust.chromeSigningTeamId
+        ) {
+          throw new Error("Chrome native host requires its Windows adapter");
+        }
         return await installChromeNativeHost({
           authority,
           channel:
@@ -469,7 +475,7 @@ export const live = (options: ChromeControlRuntimeOptions): Layer.Layer<ChromeCo
                 : "dev",
           expectedNativeHost: {
             sha256: nativeHostArtifact.sha256,
-            signingTeamId: chromeCapability.nativeHost.signingTeamId,
+            signingTeamId: bundle.manifest.trust.chromeSigningTeamId,
             size: nativeHostArtifact.size,
           },
           homeDirectory: registration.homeDirectory,

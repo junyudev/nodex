@@ -1,3 +1,4 @@
+import { windowsBrowserRuntimeLockFixture } from "../testing/browser-runtime-lock-fixture";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -120,7 +121,10 @@ function makePublishFixture(): BrowserRuntimePublishOptions {
   const repo = "example/nodex";
   const arm64Source = join(directory, "arm64-source");
   const arm64Manifest = writeBrowserRuntimeFixture(arm64Source, { targetArch: "arm64" });
-  const arm64Path = join(directory, "nodex-browser-runtime-1.0.0-darwin-arm64.tar.gz");
+  const arm64Path = join(
+    directory,
+    `nodex-browser-runtime-${arm64Manifest.desktopBuild}-darwin-arm64.tar.gz`,
+  );
   const arm64Archive = archiveBrowserRuntime({ outputPath: arm64Path, sourceRoot: arm64Source });
   const lockPath = join(directory, "browser-runtime.lock.json");
   writeFileSync(
@@ -128,6 +132,7 @@ function makePublishFixture(): BrowserRuntimePublishOptions {
     `${JSON.stringify(
       {
         assets: {
+          ...windowsBrowserRuntimeLockFixture(arm64Manifest.desktopBuild),
           "darwin-arm64": {
             archiveSha256: arm64Archive.archiveSha256,
             archiveSize: arm64Archive.archiveSize,
@@ -141,7 +146,7 @@ function makePublishFixture(): BrowserRuntimePublishOptions {
         codexCompatibilityVersion: arm64Manifest.codexCompatibilityVersion,
         repository: repo,
         runtimeFamily: "browser",
-        schemaVersion: 1,
+        schemaVersion: 2,
         source: {
           buildNumber: arm64Manifest.desktopBuildNumber,
           desktopBuild: arm64Manifest.desktopBuild,

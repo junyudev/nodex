@@ -1,3 +1,4 @@
+import { windowsBrowserRuntimeLockFixture } from "./testing/browser-runtime-lock-fixture";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,7 +20,7 @@ function makeLock(): Record<string, unknown> {
   const asset = {
     archiveSha256: HASH,
     archiveSize: 123,
-    assetName: "browser-runtime.tar.gz",
+    assetName: "nodex-browser-runtime-26.727.40816-darwin-arm64.tar.gz",
     manifestSha256: HASH,
     runtimeVersions: {
       codexCli: "0.146.0",
@@ -27,17 +28,18 @@ function makeLock(): Record<string, unknown> {
       node: "24.14.0",
       peerAuthorization: `sha256:${HASH}`,
     },
-    url: "https://github.com/example/nodex/releases/download/browser-runtime-v26.727.40816/browser-runtime.tar.gz",
+    url: "https://github.com/example/nodex/releases/download/browser-runtime-v26.727.40816/nodex-browser-runtime-26.727.40816-darwin-arm64.tar.gz",
   };
   return {
     assets: {
       "darwin-arm64": asset,
+      ...windowsBrowserRuntimeLockFixture("26.727.40816"),
     },
     browserPluginVersion: "26.727.40816",
     codexCompatibilityVersion: "0.144.5",
     repository: "example/nodex",
     runtimeFamily: "browser",
-    schemaVersion: 1,
+    schemaVersion: 2,
     source: {
       buildNumber: "6067",
       desktopBuild: "26.727.40816",
@@ -65,12 +67,13 @@ describe("parseBrowserRuntimeReleaseLock", () => {
   test("rejects non-HTTPS release assets", () => {
     const lock = makeLock();
     const assets = lock.assets as Record<string, Record<string, unknown>>;
-    assets["darwin-arm64"]!.url = "file:///tmp/browser-runtime.tar.gz";
+    assets["darwin-arm64"]!.url =
+      "file:///tmp/nodex-browser-runtime-26.727.40816-darwin-arm64.tar.gz";
 
     expect(() => parseBrowserRuntimeReleaseLock(lock)).toThrow("assets.darwin-arm64.url");
   });
 
-  test("binds every committed Browser target to an exact app-server conformance pair", () => {
+  test("binds the macOS release to its conformance pair and Windows candidates to their expected primary runtimes", () => {
     const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     const browserLockPath = resolveBrowserRuntimeReleaseLockPath(projectRoot);
     expect(fs.existsSync(browserLockPath)).toBe(true);
@@ -97,6 +100,23 @@ describe("parseBrowserRuntimeReleaseLock", () => {
         targetPlatform: "darwin",
       };
       expect(isTestedBrowserAppServerPair(appServer, browser)).toBe(true);
+    }
+    for (const target of ["win32-arm64", "win32-x64"] as const) {
+      const asset = browserLock.assets[target];
+      expect(asset.appServer.entrypointSha256).toBe(agentLock.builds[target].entrypointSha256);
+      expect(asset.appServer.protocolSchemaFingerprint).toBe(agentLock.protocolSchema.sha256);
+      expect(asset.appServer.sourceCommit).toBe(agentLock.upstream.commit);
+      expect(asset.appServer.runtimeVersion).toBe(agentLock.appServerRuntimeVersion);
+      expect(asset.url).toBeNull();
+      expect(
+        isTestedBrowserAppServerPair(asset.appServer, {
+          browserPluginVersion: browserLock.browserPluginVersion,
+          manifestSha256: asset.manifestSha256,
+          peerCliVersion: asset.runtimeVersions.codexCli,
+          targetArch: asset.appServer.targetArch,
+          targetPlatform: asset.appServer.targetPlatform,
+        }),
+      ).toBe(false);
     }
   });
 });

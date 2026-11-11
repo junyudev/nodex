@@ -98,8 +98,22 @@ verification evidence when using this option.
 
 The Windows payload contains native Core and CLI executables, the locked official
 Codex app-server package, separately locked Node, the standalone Agent Runtime,
-official Agent Skills, and third-party notices. It omits macOS bridges/helpers,
-Sparkle, Browser/Computer Use, and the Python workspace runtime.
+official Agent Skills, and third-party notices. Published Desktop Tool assets
+add a per-architecture Browser Use and Computer Use closure outside ASAR.
+The Windows package omits macOS bridges and helpers, Sparkle, native PiP, and the
+Python workspace runtime.
+
+The Desktop Tool lock pins the x64 and arm64 archives independently. Before
+publication, pass the matching local archive to `materialize-browser-runtime.ts`
+with `--target-platform win32 --target-arch <arch>`, then supply that source
+to Agent runtime staging. Staging verifies the manifest and every file's bytes
+and preserves vendor signatures. Release provenance records the selected
+closure's manifest and archive digests when it is packaged.
+
+On each matching Windows worker, verify the embedded Authenticode signatures
+and publisher chains, check the closure's ownership and reparse-point policy,
+and probe CLI and Node versions, the Node-API addon loads, and the exact primary
+app-server pair. Main requires the native verifier before exposing the closure.
 
 Codex archive hashes, file inventories, entrypoint hashes and canonical runtime
 metadata digests are pinned separately for both Windows CPUs. Node's executable

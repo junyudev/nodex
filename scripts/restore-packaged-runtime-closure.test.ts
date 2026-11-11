@@ -1,3 +1,4 @@
+import { writeWindowsBrowserRuntimeFixture } from "../src/main/codex/browser-runtime-windows-test-fixture";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -104,3 +105,31 @@ describe("restorePackagedBrowserRuntimeClosure", () => {
     expect(() => restorePackagedBrowserRuntimeClosure(fixture)).toThrow("is not a real directory");
   });
 });
+
+test.each(["x64", "arm64"] as const)(
+  "seals the packaged Windows %s closure against staged bytes",
+  (windowsArch) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-windows-after-pack-"));
+    temporaryRoots.push(root);
+    const sourceBrowserRoot = path.join(root, "source");
+    const packagedBrowserRoot = path.join(root, "packaged");
+    const { entrypoints } = writeWindowsBrowserRuntimeFixture(sourceBrowserRoot, windowsArch);
+    fs.cpSync(sourceBrowserRoot, packagedBrowserRoot, { recursive: true });
+    const options = { packagedBrowserRoot, sourceBrowserRoot, windowsArch };
+    expect(restorePackagedBrowserRuntimeClosure(options)).toBe(0);
+    const extraPath = path.join(packagedBrowserRoot, "extra.dll");
+    fs.writeFileSync(extraPath, "extra");
+    expect(() => restorePackagedBrowserRuntimeClosure(options)).toThrow(
+      "Unexpected packaged Windows Desktop Tool entry",
+    );
+    fs.rmSync(extraPath);
+    const packagedNode = path.join(packagedBrowserRoot, entrypoints.node);
+    fs.appendFileSync(packagedNode, "modified");
+    expect(() => restorePackagedBrowserRuntimeClosure(options)).toThrow(
+      "does not match its manifest",
+    );
+    fs.rmSync(packagedNode);
+    expect(() => restorePackagedBrowserRuntimeClosure(options)).toThrow("ENOENT");
+    expect(fs.existsSync(packagedNode)).toBe(false);
+  },
+);

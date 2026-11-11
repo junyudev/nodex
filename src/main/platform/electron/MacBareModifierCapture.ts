@@ -13,6 +13,7 @@ export async function captureMacBareModifier(input: {
   signal?.throwIfAborted();
   if (browserRuntime.status !== "available" || nativeWindowHandle.length === 0) return null;
   const { bundle } = browserRuntime;
+  if (bundle.manifest.targetPlatform !== "darwin" || !bundle.paths.skyNativeAddon) return null;
   const exports = bundle.manifest.capabilities.nativePip.exports.expectedExports;
   if (!exports.includes("startModifierCapture")) return null;
   const addon = loadSkyNativeAddon(bundle.paths.skyNativeAddon, exports);

@@ -377,7 +377,7 @@ describe.skipIf(process.platform === "win32")("refreshSignedBrowserRuntimeManife
         entrypoints: {
           peerAuthorization: "peer/authorize.node",
         },
-        peerAuthorization: {
+        trust: {
           nodeApiVersion: "127",
           signingTeamId: "UPSTREAM",
         },
@@ -395,13 +395,13 @@ describe.skipIf(process.platform === "win32")("refreshSignedBrowserRuntimeManife
 
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
       artifacts: Array<{ sha256: string; size: number }>;
-      peerAuthorization: { signingTeamId: string };
+      trust: { signingTeamId: string };
     };
     expect(manifest.artifacts[0]).toMatchObject({
       sha256: createHash("sha256").update("developer-id-signed-node-repl").digest("hex"),
       size: Buffer.byteLength("developer-id-signed-node-repl"),
     });
-    expect(manifest.peerAuthorization.signingTeamId).toBe("TESTTEAM");
+    expect(manifest.trust.signingTeamId).toBe("TESTTEAM");
   });
 
   test("is a no-op while the optional Browser bundle is absent", () => {

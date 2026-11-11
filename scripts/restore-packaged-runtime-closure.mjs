@@ -1,6 +1,6 @@
 // Keep exported API changes paired with the adjacent .d.mts contract.
 import { createHash } from "node:crypto";
-import { constants, copyFileSync, lstatSync, readFileSync } from "node:fs";
+import { constants, copyFileSync, existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { stageWindowsVcRuntime } from "./windows-vc-runtime.mjs";
@@ -53,12 +53,12 @@ const requireRealDirectoryChain = (rootPath, segments) => {
   }
 };
 
-const requireExactArtifact = (artifactPath, entry, label) => {
+const requireExactArtifact = (artifactPath, entry, label, windows = false) => {
   const metadata = lstatSync(artifactPath);
   if (
     metadata.isSymbolicLink() ||
     !metadata.isFile() ||
-    (metadata.mode & 0o111) !== 0 ||
+    (!windows && (metadata.mode & 0o111) !== 0) ||
     metadata.size !== entry.size ||
     sha256File(artifactPath) !== entry.sha256
   ) {
@@ -69,9 +69,20 @@ const requireExactArtifact = (artifactPath, entry, label) => {
 export const restorePackagedBrowserRuntimeClosure = ({
   packagedBrowserRoot,
   sourceBrowserRoot,
+  windowsArch,
+  restore = true,
 }) => {
+  if (windowsArch && !existsSync(sourceBrowserRoot) && !existsSync(packagedBrowserRoot)) return 0;
+  requireRealDirectoryChain(sourceBrowserRoot, []);
+  requireRealDirectoryChain(packagedBrowserRoot, []);
   const sourceManifestPath = path.join(sourceBrowserRoot, manifestFilename);
   const packagedManifestPath = path.join(packagedBrowserRoot, manifestFilename);
+  if (
+    windowsArch &&
+    ![sourceManifestPath, packagedManifestPath].every((file) => lstatSync(file).isFile())
+  ) {
+    throw new Error("Windows Desktop Tool manifest must be a regular file");
+  }
   const sourceManifestBytes = readFileSync(sourceManifestPath);
   const packagedManifestBytes = readFileSync(packagedManifestPath);
   if (!sourceManifestBytes.equals(packagedManifestBytes)) {
@@ -81,18 +92,36 @@ export const restorePackagedBrowserRuntimeClosure = ({
   const manifest = JSON.parse(sourceManifestBytes.toString("utf8"));
   if (
     manifest.schemaVersion !== BROWSER_RUNTIME_SCHEMA_VERSION ||
-    !Array.isArray(manifest.artifacts)
+    !Array.isArray(manifest.artifacts) ||
+    (windowsArch && (manifest.targetPlatform !== "win32" || manifest.targetArch !== windowsArch))
   ) {
     throw new Error(`Unsupported Browser runtime manifest: ${sourceManifestPath}`);
   }
 
+  const remaining = new Set([
+    manifestFilename,
+    ...manifest.artifacts.map((artifact) => artifact.path),
+  ]);
+  const directories = new Set();
+  if (windowsArch) {
+    for (const file of remaining) {
+      let directory = path.posix.dirname(file);
+      while (directory !== ".") {
+        directories.add(directory);
+        directory = path.posix.dirname(directory);
+      }
+    }
+  }
   let restored = 0;
   for (const entry of manifest.artifacts) {
     const segments = requireSafeArtifactPath(entry.path, sourceManifestPath);
-    if (!electronBuilderSkippedBasenames.has(segments.at(-1))) continue;
+    const placeholder = electronBuilderSkippedBasenames.has(segments.at(-1));
+    if (!windowsArch && !placeholder) continue;
+    if (windowsArch && segments.some((segment) => /[<>:"|?*\x00-\x1f]/u.test(segment))) {
+      throw new Error(`Invalid Windows Desktop Tool artifact path: ${entry.path}`);
+    }
     if (
-      entry.kind !== "data" ||
-      entry.executable !== false ||
+      (placeholder && (entry.kind !== "data" || entry.executable !== false)) ||
       typeof entry.size !== "number" ||
       typeof entry.sha256 !== "string"
     ) {
@@ -101,19 +130,42 @@ export const restorePackagedBrowserRuntimeClosure = ({
 
     const sourcePath = path.join(sourceBrowserRoot, ...segments);
     const packagedPath = path.join(packagedBrowserRoot, ...segments);
-    requireExactArtifact(sourcePath, entry, "Staged");
+    if (placeholder) requireExactArtifact(sourcePath, entry, "Staged", Boolean(windowsArch));
     requireRealDirectoryChain(packagedBrowserRoot, segments.slice(0, -1));
 
     try {
-      requireExactArtifact(packagedPath, entry, "Packaged");
+      requireExactArtifact(packagedPath, entry, "Packaged", Boolean(windowsArch));
       continue;
     } catch (error) {
-      if (!error || typeof error !== "object" || error.code !== "ENOENT") throw error;
+      if (
+        !restore ||
+        !placeholder ||
+        !error ||
+        typeof error !== "object" ||
+        error.code !== "ENOENT"
+      )
+        throw error;
     }
 
     copyFileSync(sourcePath, packagedPath, constants.COPYFILE_EXCL);
-    requireExactArtifact(packagedPath, entry, "Restored");
+    requireExactArtifact(packagedPath, entry, "Restored", Boolean(windowsArch));
     restored += 1;
+  }
+  function checkFiles(directory, prefix) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory() && directories.has(relative)) {
+        checkFiles(path.join(directory, entry.name), relative);
+        continue;
+      }
+      if (!entry.isFile() || !remaining.delete(relative)) {
+        throw new Error(`Unexpected packaged Windows Desktop Tool entry: ${relative}`);
+      }
+    }
+  }
+  if (windowsArch) {
+    checkFiles(packagedBrowserRoot, "");
+    if (remaining.size > 0) throw new Error("Packaged Windows Desktop Tool closure is incomplete");
   }
   return restored;
 };
@@ -146,9 +198,16 @@ export default async function restorePackagedRuntimeClosure(context) {
     arch,
   });
   if (context.electronPlatformName === "win32") {
+    const desktopToolsRoot = path.join(resourcesPath, "browser-runtime");
+    restorePackagedBrowserRuntimeClosure({
+      sourceBrowserRoot: path.join(projectRoot, ...stagedBrowserRuntimePath),
+      packagedBrowserRoot: desktopToolsRoot,
+      windowsArch: arch,
+    });
     stageWindowsVcRuntime(appPath, arch);
     const files = verifyWindowsArchitectureClosure(appPath, arch, {
       nodeHost: path.join(appPath, "Nodex.exe"),
+      desktopToolsRoot,
     });
     console.log(`Verified ${files.length} Windows ${arch} native images.`);
     return;

@@ -31,7 +31,7 @@ import {
   isSafeBrowserRuntimeRelativePath,
   parseBrowserRuntimeManifest,
   type BrowserRuntimeArtifact,
-  type BrowserRuntimeManifest,
+  type MacBrowserRuntimeManifest,
 } from "../../src/shared/browser-runtime-metadata";
 
 const OPT_IN_ENV = "NODEX_CHROME_CONTROL_E2E";
@@ -72,7 +72,7 @@ export type VerifiedCrx3 = {
 type ChromeRuntimeSelection = {
   readonly authority: ChromeBrowserAuthority;
   readonly criticalArtifacts: readonly BrowserRuntimeArtifact[];
-  readonly manifest: BrowserRuntimeManifest;
+  readonly manifest: MacBrowserRuntimeManifest;
   readonly manifestSha256: string;
   readonly paths: {
     readonly browserClient: string;
@@ -389,7 +389,7 @@ async function verifyRuntimeArtifact(
 }
 
 function findArtifact(
-  manifest: BrowserRuntimeManifest,
+  manifest: MacBrowserRuntimeManifest,
   relativePath: string,
 ): BrowserRuntimeArtifact {
   const matches = manifest.artifacts.filter((artifact) => artifact.path === relativePath);
@@ -407,8 +407,9 @@ async function loadRuntimeSelection(runtimeRootInput: string): Promise<ChromeRun
   const manifest = parseBrowserRuntimeManifest(
     JSON.parse(manifestBytes.toString("utf8")) as unknown,
   );
-  if (!manifest) throw new Error("Browser runtime manifest is invalid");
-  if (manifest.targetPlatform !== "darwin" || manifest.targetArch !== process.arch) {
+  if (!manifest || manifest.targetPlatform !== "darwin")
+    throw new Error("Browser runtime manifest is invalid");
+  if (manifest.targetArch !== process.arch) {
     throw new Error("Runtime manifest does not match the active macOS architecture");
   }
   const chrome = manifest.capabilities.browserUse.backends.chrome;
@@ -887,12 +888,14 @@ async function runSignedGate(config: ChromeControlDisposableE2EConfig): Promise<
       selection.authority.extensionIds,
     );
     const nativeHostArtifact = findArtifact(selection.manifest, chromeCapability.nativeHost.path);
+    const { chromeSigningTeamId } = selection.manifest.trust;
+    if (!chromeSigningTeamId) throw new Error("Chrome signing Team ID is missing");
     const install = await installChromeNativeHost({
       authority: selection.authority,
       channel: "prod",
       expectedNativeHost: {
         sha256: nativeHostArtifact.sha256,
-        signingTeamId: chromeCapability.nativeHost.signingTeamId,
+        signingTeamId: chromeSigningTeamId,
         size: nativeHostArtifact.size,
       },
       homeDirectory: isolatedHome,
@@ -913,8 +916,8 @@ async function runSignedGate(config: ChromeControlDisposableE2EConfig): Promise<
     const runnerIdentity = readChromeNativeHostIdentity(selection.paths.node);
     const peerAddonIdentity = readChromeNativeHostIdentity(selection.paths.peerAuthorization);
     if (
-      runnerIdentity.teamId !== chromeCapability.nativeHost.signingTeamId ||
-      peerAddonIdentity.teamId !== selection.manifest.peerAuthorization.signingTeamId
+      runnerIdentity.teamId !== selection.manifest.trust.chromeSigningTeamId ||
+      peerAddonIdentity.teamId !== selection.manifest.trust.signingTeamId
     ) {
       throw new Error("Signed runner or peer verifier does not match its attested team");
     }

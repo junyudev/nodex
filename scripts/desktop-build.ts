@@ -1,3 +1,8 @@
+import { materializeBrowserRuntime } from "./materialize-browser-runtime";
+import {
+  readBrowserRuntimeReleaseLock,
+  resolveBrowserRuntimeReleaseLockPath,
+} from "./browser-runtime-release-lock";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -37,16 +42,27 @@ function buildRust(target: DesktopBuildTarget, release: boolean, explicitTarget:
 }
 
 async function stageCodex(target: DesktopBuildTarget, cached: boolean): Promise<void> {
-  const browserSource = `.generated/browser-runtime-source/${target.arch}`;
-  if (target.runtime === "macos") task(`materialize:browser-runtime:mac:${target.arch}`);
+  const browserSource = resolve(
+    root,
+    ".generated/browser-runtime-source",
+    target.platform === "darwin" ? target.arch : `win32-${target.arch}`,
+  );
+  const browserLock = readBrowserRuntimeReleaseLock(resolveBrowserRuntimeReleaseLockPath(root));
+  const stageDesktopTools =
+    target.platform === "darwin" || browserLock.assets[target.key].url !== null;
+  if (stageDesktopTools) {
+    await materializeBrowserRuntime({
+      outputPath: browserSource,
+      targetArch: target.arch,
+      targetPlatform: target.platform,
+    });
+  }
   await stageCodexRuntime({
     targetPlatform: target.platform,
     targetArch: target.arch,
     outputPath: resolve(root, ".generated/codex-runtime"),
     reuseExisting: cached,
-    ...(target.runtime === "macos"
-      ? { browserRuntimeSourceRoot: resolve(root, browserSource) }
-      : {}),
+    ...(stageDesktopTools ? { browserRuntimeSourceRoot: browserSource } : {}),
   });
   if (target.runtime === "windows") await stageStandaloneNodeRuntime(root, target.arch);
 }

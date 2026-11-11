@@ -9,7 +9,7 @@ import {
   BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
   BROWSER_RUNTIME_SCHEMA_VERSION,
   type BrowserRuntimeArtifact,
-  type BrowserRuntimeManifest,
+  type MacBrowserRuntimeManifest,
 } from "../../shared/browser-runtime-metadata";
 import type {
   AppServerRuntimeIdentity,
@@ -19,8 +19,7 @@ import type {
 type BrowserRuntimeFixtureOptions = {
   codexCliVersion?: string;
   codexCompatibilityVersion?: string;
-  targetArch?: "arm64" | "x64";
-  targetPlatform?: "darwin" | "linux" | "win32";
+  targetArch?: "arm64";
 };
 
 const FIXTURE_FILES = [
@@ -152,7 +151,7 @@ function sha256(content: string): string {
 
 export function makeTestedBrowserAppServerPair(input: {
   readonly bundleRoot: string;
-  readonly manifest: BrowserRuntimeManifest;
+  readonly manifest: MacBrowserRuntimeManifest;
 }): TestedBrowserAppServerPair {
   const appServer: AppServerRuntimeIdentity = {
     entrypointSha256: "a".repeat(64),
@@ -215,7 +214,7 @@ function fixtureContent(relativePath: string): string {
 export function writeBrowserRuntimeFixture(
   bundleRoot: string,
   options: BrowserRuntimeFixtureOptions = {},
-): BrowserRuntimeManifest {
+): MacBrowserRuntimeManifest {
   const targetArch = options.targetArch ?? "arm64";
   const definitions =
     targetArch === "arm64" ? [...FIXTURE_FILES, ...COMPUTER_USE_FIXTURE_FILES] : FIXTURE_FILES;
@@ -273,7 +272,6 @@ export function writeBrowserRuntimeFixture(
               hostName: "com.openai.codexextension",
               path: `marketplace/plugins/chrome/extension-host/macos/${targetArch}/ChatGPT for Chrome`,
               productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
-              signingTeamId: "TESTTEAM",
             },
             plugin: {
               id: "chrome@openai-bundled",
@@ -308,7 +306,6 @@ export function writeBrowserRuntimeFixture(
                 "runtime/lib/node_modules/@oai/sky/dist/project/cua/sky_js/src/service.js",
               serviceExecutable:
                 "runtime/lib/node_modules/@oai/sky/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
-              signingTeamId: "TESTTEAM",
               status: "available",
             }
           : { reason: "architecture-unsupported", status: "unavailable" },
@@ -337,7 +334,9 @@ export function writeBrowserRuntimeFixture(
       nodeRepl: "bin/node_repl",
       peerAuthorization: "peer/authorize.node",
     },
-    peerAuthorization: {
+    trust: {
+      chromeSigningTeamId: "TESTTEAM",
+      computerUseSigningTeamId: "TESTTEAM",
       nodeApiVersion: "127",
       signingTeamId: "TESTTEAM",
     },
@@ -350,8 +349,8 @@ export function writeBrowserRuntimeFixture(
     schemaVersion: BROWSER_RUNTIME_SCHEMA_VERSION,
     supportedBackends: ["iab", "chrome"],
     targetArch,
-    targetPlatform: options.targetPlatform ?? "darwin",
-  } satisfies BrowserRuntimeManifest;
+    targetPlatform: "darwin",
+  } satisfies MacBrowserRuntimeManifest;
   fs.writeFileSync(
     path.join(bundleRoot, BROWSER_RUNTIME_MANIFEST_FILENAME),
     `${JSON.stringify(manifest, null, 2)}\n`,

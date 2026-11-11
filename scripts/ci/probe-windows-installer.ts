@@ -22,6 +22,7 @@ import {
 } from "../../src/main/windows-desktop-policy";
 import { desktopBuildTarget } from "../desktop-build-target";
 import { terminateWindowsProcessTree } from "../../src/main/process-tree";
+import { restorePackagedBrowserRuntimeClosure } from "../restore-packaged-runtime-closure.mjs";
 import { verifyWindowsArchitectureClosure } from "../windows-pe.mjs";
 import { installedPayloadInventory } from "../installed-payload.mjs";
 import { runPackagedPtyProbe, type PackagedPtyReceipt } from "../packaged-pty-probe.mjs";
@@ -398,8 +399,16 @@ async function main(): Promise<void> {
       encoding: "utf8",
       timeout: 30_000,
     }).trim();
+    const desktopToolsRoot = join(installRoot, "resources/browser-runtime");
+    restorePackagedBrowserRuntimeClosure({
+      sourceBrowserRoot: resolve(".generated/codex-runtime/agent-runtime/browser-runtime"),
+      packagedBrowserRoot: desktopToolsRoot,
+      windowsArch: target.arch,
+      restore: false,
+    });
     const images = verifyWindowsArchitectureClosure(installRoot, target.arch, {
       installed: true,
+      desktopToolsRoot,
       nodeHost: join(installRoot, "Nodex.exe"),
     });
     const registration = queryProtocol();

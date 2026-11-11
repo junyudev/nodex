@@ -343,6 +343,16 @@ const make = (options: ComputerUseRuntimeLayerOptions) =>
           serviceExecutablePath: null,
         };
       }
+      if (runtime.bundle.manifest.targetPlatform !== "darwin") {
+        return {
+          addon: null,
+          result: unavailable(
+            "platform-unsupported",
+            "Computer Use requires its Windows host adapter",
+          ),
+          serviceExecutablePath: null,
+        };
+      }
       const capability = runtime.bundle.manifest.capabilities.computerUse;
       if (capability.status === "unavailable") {
         return {
@@ -391,7 +401,9 @@ const make = (options: ComputerUseRuntimeLayerOptions) =>
           serviceExecutablePath: null,
         };
       }
-      if (!runtime.bundle.paths.computerUseApp) {
+      const { computerUseSigningTeamId } = runtime.bundle.manifest.trust;
+      const { computerUseApp, peerAuthorization } = runtime.bundle.paths;
+      if (!computerUseApp || !peerAuthorization || !computerUseSigningTeamId) {
         return {
           addon: null,
           result: unavailable("helper-invalid", "Computer Use helper bundle is missing"),
@@ -404,8 +416,8 @@ const make = (options: ComputerUseRuntimeLayerOptions) =>
           bundleIdentifier: capability.appBundleIdentifier,
           desktopBuild: runtime.bundle.manifest.desktopBuild,
           runtimeStateHome: options.runtimeStateHome,
-          signingTeamId: capability.signingTeamId,
-          sourceAppPath: runtime.bundle.paths.computerUseApp,
+          signingTeamId: computerUseSigningTeamId,
+          sourceAppPath: computerUseApp,
         }),
       );
       if (Exit.isFailure(helperExit)) {
@@ -458,7 +470,7 @@ const make = (options: ComputerUseRuntimeLayerOptions) =>
                 ),
               ),
             options.peerAuthorizationMode,
-            runtime.bundle.paths.peerAuthorization,
+            peerAuthorization,
           )
           .pipe(Scope.provide(ownerScope)),
       );
@@ -604,8 +616,8 @@ export const live = (
                 : null,
             verifiedSkyNativeExports:
               options.browserRuntime.status === "available"
-                ? options.browserRuntime.bundle.manifest.capabilities.nativePip.exports
-                    .expectedExports
+                ? (options.browserRuntime.bundle.manifest.capabilities.nativePip?.exports
+                    .expectedExports ?? null)
                 : null,
           },
           callbacks,

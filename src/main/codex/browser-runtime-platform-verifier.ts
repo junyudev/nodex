@@ -3,6 +3,12 @@ import { open } from "node:fs/promises";
 import { readRuntimeInspectionCommand } from "../platform/node/RuntimeArtifactVerification";
 import { BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION } from "../../shared/browser-runtime-metadata";
 import { parseMachOMinimumMacosVersion } from "../../shared/mach-o-minimum-macos";
+import { inspectWindowsPe, WINDOWS_PE_MACHINE } from "../../shared/windows-pe-header.mjs";
+import {
+  WINDOWS_BROWSER_RUNTIME_VERIFICATION_UNAVAILABLE,
+  type WindowsBrowserRuntimeVerifierPort,
+} from "./browser-runtime-windows-verifier-port";
+import type { MacBrowserRuntimeManifest } from "../../shared/browser-runtime-metadata";
 import type { BrowserRuntimePlatformArtifactVerifier } from "./browser-runtime-bundle";
 
 type CommandReader = (command: string, args: string[], signal?: AbortSignal) => Promise<string>;
@@ -11,7 +17,7 @@ const PRODUCT_MINIMUM_MACOS = BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION;
 
 function declaredArtifactMinimumMacos(
   artifactPath: string,
-  manifest: Parameters<BrowserRuntimePlatformArtifactVerifier>[0]["manifest"],
+  manifest: MacBrowserRuntimeManifest,
 ): string | null {
   const nativePip = manifest.capabilities.nativePip;
   if (nativePip && artifactPath === nativePip.addon) {
@@ -83,6 +89,7 @@ export function createBrowserRuntimePlatformArtifactVerifier(
   options: {
     platform?: NodeJS.Platform;
     runCommand?: CommandReader;
+    windowsVerifier?: WindowsBrowserRuntimeVerifierPort;
   } = {},
 ): BrowserRuntimePlatformArtifactVerifier {
   const platform = options.platform ?? process.platform;
@@ -92,11 +99,22 @@ export function createBrowserRuntimePlatformArtifactVerifier(
     if (platform !== manifest.targetPlatform) {
       return `runtime target ${manifest.targetPlatform} cannot be verified on ${platform}`;
     }
-    if (platform !== "darwin") {
-      return `Browser runtime platform verification is unavailable on ${platform}`;
-    }
-    if (manifest.targetArch !== "arm64") {
-      return "Browser runtime requires macOS arm64";
+    if (manifest.targetPlatform === "win32") {
+      const verifier = options.windowsVerifier;
+      if (!verifier) return WINDOWS_BROWSER_RUNTIME_VERIFICATION_UNAVAILABLE;
+      const expected = Object.hasOwn(manifest.trust.pe, artifact.path)
+        ? manifest.trust.pe[artifact.path]
+        : undefined;
+      const pe = inspectWindowsPe(artifactPath);
+      if (!expected) return pe ? "undeclared PE image" : null;
+      if (pe?.machine !== WINDOWS_PE_MACHINE[expected.machine]) return "PE machine type mismatch";
+      if (!pe.certificate) return "PE image has no embedded Authenticode signature";
+      const result = await verifier.verifyAuthenticode(artifactPath, expected.publisher, signal);
+      if (!result.ok) return result.reason;
+      return result.value.subject === expected.publisher.subject &&
+        result.value.issuer === expected.publisher.issuer
+        ? null
+        : "Authenticode publisher does not match the manifest";
     }
     if (!(await isMachO(artifactPath))) {
       return artifact.architecture === "any"
@@ -151,11 +169,11 @@ export function createBrowserRuntimePlatformArtifactVerifier(
     const chrome = manifest.capabilities.browserUse?.backends.chrome;
     const expectedTeamIdentifier =
       chrome?.status === "available" && artifact.path === chrome.nativeHost.path
-        ? chrome.nativeHost.signingTeamId
+        ? manifest.trust.chromeSigningTeamId
         : computerUse.status === "available" &&
             artifact.path.startsWith(`${computerUse.appBundle}/`)
-          ? computerUse.signingTeamId
-          : manifest.peerAuthorization.signingTeamId;
+          ? manifest.trust.computerUseSigningTeamId
+          : manifest.trust.signingTeamId;
     if (teamIdentifier !== expectedTeamIdentifier) {
       return "desktop tool runtime signing Team ID does not match the manifest";
     }

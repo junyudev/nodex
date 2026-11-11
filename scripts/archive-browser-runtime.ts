@@ -19,7 +19,8 @@ export type BrowserRuntimeArchiveMetadata = {
   archiveSize: number;
   assetName: string;
   manifestSha256: string;
-  targetArch: "arm64";
+  targetArch: "arm64" | "x64";
+  targetPlatform: "darwin" | "win32";
 };
 
 export function archiveBrowserRuntime(
@@ -36,9 +37,6 @@ export function archiveBrowserRuntime(
   }
 
   const manifest = readBrowserRuntimeSourceManifest(sourceRoot);
-  if (manifest.targetPlatform !== "darwin" || manifest.targetArch !== "arm64") {
-    throw new Error("Browser runtime releases require macOS arm64");
-  }
   assertBrowserRuntimeSourceClosure(sourceRoot, manifest);
   mkdirSync(path.dirname(outputPath), { recursive: true });
   const temporaryPath = `${outputPath}.part-${process.pid}`;
@@ -58,6 +56,7 @@ export function archiveBrowserRuntime(
       path.join(sourceRoot, BROWSER_RUNTIME_MANIFEST_FILENAME),
     ),
     targetArch: manifest.targetArch,
+    targetPlatform: manifest.targetPlatform,
   };
 }
 

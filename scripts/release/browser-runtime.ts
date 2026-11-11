@@ -118,10 +118,20 @@ export function browserRuntimeReleaseArguments(options: {
 
 export type BrowserRuntimePublishOptions = {
   readonly arm64Path: string;
+  readonly windowsX64Path?: string;
+  readonly windowsArm64Path?: string;
   readonly lockPath: string;
   readonly repo: string;
   readonly tag: string;
 };
+
+function localBrowserRuntimeArchives(options: BrowserRuntimePublishOptions) {
+  return [
+    { target: "darwin-arm64", platform: "darwin", arch: "arm64", path: options.arm64Path },
+    { target: "win32-x64", platform: "win32", arch: "x64", path: options.windowsX64Path },
+    { target: "win32-arm64", platform: "win32", arch: "arm64", path: options.windowsArm64Path },
+  ] as const;
+}
 
 /** Proves the published bytes are the exact complete closure named by the release lock. */
 export async function verifyBrowserRuntimePublishInput(
@@ -133,22 +143,29 @@ export async function verifyBrowserRuntimePublishInput(
     throw new Error("Browser runtime publish target does not match its release lock.");
   }
 
-  const arm64Path = resolve(options.arm64Path);
-  if (basename(arm64Path) !== lock.assets["darwin-arm64"].assetName) {
-    throw new Error("Browser runtime archive names do not match their release lock.");
-  }
-
   const verificationRoot = mkdtempSync(join(tmpdir(), "nodex-browser-runtime-publish-"));
   try {
-    await materializeBrowserRuntime({
-      archivePath: arm64Path,
-      // Publication must inspect these archive bytes even when a shared extraction is cached.
-      cachePath: join(verificationRoot, "cache"),
-      lockPath,
-      outputPath: join(verificationRoot, "arm64"),
-      targetArch: "arm64",
-      targetPlatform: "darwin",
-    });
+    for (const archive of localBrowserRuntimeArchives(options)) {
+      const asset = lock.assets[archive.target];
+      if (!archive.path) {
+        if (asset.url !== null)
+          throw new Error(`Missing local Browser runtime asset ${asset.assetName}.`);
+        continue;
+      }
+      const archivePath = resolve(archive.path);
+      if (basename(archivePath) !== asset.assetName) {
+        throw new Error("Browser runtime archive names do not match their release lock.");
+      }
+      await materializeBrowserRuntime({
+        archivePath,
+        // Inspect these archive bytes even when a shared extraction is cached.
+        cachePath: join(verificationRoot, "cache"),
+        lockPath,
+        outputPath: join(verificationRoot, archive.target),
+        targetArch: archive.arch,
+        targetPlatform: archive.platform,
+      });
+    }
   } finally {
     rmSync(verificationRoot, { force: true, recursive: true });
   }
@@ -157,13 +174,16 @@ export async function verifyBrowserRuntimePublishInput(
 export async function publishBrowserRuntime(options: BrowserRuntimePublishOptions): Promise<void> {
   await verifyBrowserRuntimePublishInput(options);
   const lock = readBrowserRuntimeReleaseLock(resolve(options.lockPath));
-  const expected = new Map<string, BrowserRuntimeAssetIdentity>(
-    Object.values(lock.assets).map((asset) => [
-      asset.assetName,
-      { sha256: asset.archiveSha256, size: asset.archiveSize },
-    ]),
-  );
-  const pathsByName = new Map([[basename(options.arm64Path), resolve(options.arm64Path)]]);
+  const expected = new Map<string, BrowserRuntimeAssetIdentity>();
+  const pathsByName = new Map<string, string>();
+  for (const archive of localBrowserRuntimeArchives(options)) {
+    const asset = lock.assets[archive.target];
+    if (!archive.path) continue;
+    if (asset.url === null)
+      throw new Error(`Desktop Tool asset ${archive.target} is a local candidate.`);
+    expected.set(asset.assetName, { sha256: asset.archiveSha256, size: asset.archiveSize });
+    pathsByName.set(asset.assetName, resolve(archive.path));
+  }
   const latestBefore = JSON.parse(gh(["api", `repos/${options.repo}/releases/latest`])) as {
     readonly tag_name?: unknown;
   };
