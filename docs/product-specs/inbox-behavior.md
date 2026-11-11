@@ -371,17 +371,27 @@ a new episode enters at its own time. It has no dismissed or done state and
 leaves as soon as the Turn belongs elsewhere. Activity retains handled messages
 and answered conversations, never the complement of all Page Turns.
 
-The first line shows the Page key, title and whose move the Page waits for, in
+A Turn is one card, as a message is: what it says on top and, joined beneath,
+what to do about it. The card keeps to its own content's width, so its actions
+stay beside the words they answer.
+The first line shows the Page's title and whose move the Page waits for, in
 the words its Status row uses for the reader, such as `Needs your answer` or
 `Ready for your review`. Beneath it are one or two lines of the current episode's
 newest Turn note, led by Nodex's monochrome mark, named Note from Nodex, only
 when Nodex wrote that text. Without a note Core shows the exact pending question,
-report summary, failure reason, or which Prerequisites finished.
+report summary, failure reason, or which Prerequisites finished. Text longer than
+its two lines offers `Show more`, which opens the whole text in place, a report
+or note as the Markdown it was written in, and `Show less` closes it.
 
-Actions revalidate the episode. Questions show the exact option labels: four
-buttons then More… when needed, plus Reply. Approval offers Open chat. Review
-offers Accept, Open PR when linked, and Reply. Blocked, failed and stalled offer
-Open chat and Reply. Newly ready work offers Start. Accept moves reviewed work
+Actions revalidate the episode. What the row asks the person to decide is a
+named button, the last of them filled; ways to look closer are icons before
+them, named on hover. Questions show the exact option labels: four buttons then
+More… when needed, plus Reply. Review offers Accept, Reply, and an Open PR icon
+when linked. Blocked, failed and stalled offer Reply. Newly ready work offers
+Start. Every other Turn also offers Open chat, which opens the Page's active
+chat, or the Page when it has none: an icon beside a review or a question with
+options, otherwise the row's filled button.
+Accept moves reviewed work
 to Done through the work command a person, or an Agent acting for them, uses.
 An Agent may take any of these actions on a Turn of the Member it acts for, and never on
 another Member's Turn; its instructions limit it to what the person told it to answer or

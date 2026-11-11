@@ -1,13 +1,25 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useSpaceHostAvailable } from "@/lib/space-host-runtime";
 import { REMOTE_AGENT_REASON } from "../../../shared/space-connection";
 import type { InboxItem } from "../../../shared/inbox";
 import { PageTurnChip } from "@/components/workbench/page-turn-chip";
-import { NodexLogoMarkIcon } from "@/components/shared/icons";
+import {
+  ChatIcon,
+  ChevronDownIcon,
+  NodexLogoMarkIcon,
+  OpenExternalIcon,
+} from "@/components/shared/icons";
+import { Reply } from "@/components/shared/icons/generic-icons";
+import { InboxIconAction } from "./inbox-icon-action";
+import { FileReadBoundary } from "@/components/board/editor/file-runtime";
+import { NfmDocument } from "@/components/board/nfm-renderer";
+import { FileReferenceIntentProvider } from "@/lib/file-reference-intent";
+import { useLibraryFileReadAuthority } from "@/lib/use-library-navigation";
+import { cn } from "@/lib/utils";
 import { NodexButton } from "@/components/ui/button";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
-import { extractMarkdownText } from "../../../shared/nodex-markdown";
+import { extractMarkdownText, readMarkdown } from "../../../shared/nodex-markdown";
 import { readableIpcError } from "@/lib/ipc-error-message";
 
 /** An Inbox turn is always the reader's own. */
@@ -49,11 +61,6 @@ export function InboxTurnRow({
       cleanup: () => setPending(false),
     });
   };
-  const open = (
-    <NodexButton size="xs" variant="primary" onClick={onOpenChat}>
-      Open chat
-    </NodexButton>
-  );
   const replyable =
     reason === "question" ||
     reason === "review" ||
@@ -61,51 +68,64 @@ export function InboxTurnRow({
     reason === "failed" ||
     reason === "stalled";
   const unavailable = replyable && !data.active_chat;
+  // Work that has not started has no chat. Elsewhere the chat is what the row asks for only when
+  // it offers no decision of its own, and is a look closer beside the ones that do.
+  const chat =
+    reason === "ready_to_start"
+      ? null
+      : reason === "review" || (reason === "question" && data.options.length > 0)
+        ? "glance"
+        : "decision";
+  // A pending question is the Agent's exact words; everything else is written as Markdown.
+  const exactQuestion = reason === "question" && !data.note_id;
+  const problem =
+    error ?? data.delivery_error ?? (unavailable ? "No active chat can receive a reply." : null);
   return (
-    <article data-inbox-turn={reason} data-inbox-page-id={item.pageId} className="min-w-0 py-1">
-      <div className="flex min-w-0 items-center gap-3">
-        <button
-          type="button"
-          className="min-w-0 flex-1 truncate text-left text-sm font-medium"
-          onClick={onOpenPage}
-        >
-          {item.pageKey ? (
-            <span className="mr-2 text-tertiary tabular-nums">{item.pageKey}</span>
-          ) : null}{" "}
-          {item.title}
-        </button>
-        <PageTurnChip turn={data.turn} holder={READER} />
-      </div>
-      {error || data.delivery_error || unavailable ? (
-        <p role="status" className="mt-1 text-xs text-danger">
-          {error ?? data.delivery_error ?? "No active chat can receive a reply."}
-        </p>
-      ) : null}
-      <div className="mt-1 flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1.5">
-        <div className="flex min-w-0 flex-[1_1_18rem] items-start gap-1.5 pt-0.5 text-sm text-token-description-foreground">
+    // One object, as a message is: what the Turn says on top and, joined to it, what to do about
+    // it. It keeps to its own words' width, so the reply never drifts away from what it answers.
+    <article
+      data-inbox-turn={reason}
+      data-inbox-page-id={item.pageId}
+      className="flex w-fit max-w-[80%] min-w-[min(18rem,80%)] flex-col overflow-hidden rounded-2xl border border-token-border"
+    >
+      <div className="flex flex-col gap-1 border-b border-token-border px-3 py-2">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            className="min-w-0 flex-1 truncate text-left text-sm font-medium"
+            onClick={onOpenPage}
+          >
+            {item.title}
+          </button>
+          <PageTurnChip turn={data.turn} holder={READER} />
+        </div>
+        <div className="flex min-w-0 items-start gap-1.5 text-sm text-token-description-foreground">
           {data.note_id ? (
             <span role="img" aria-label="Note from Nodex" className="shrink-0">
               <NodexLogoMarkIcon monochrome className="mt-0.5 size-3.5 shrink-0" />
             </span>
           ) : null}
-          <p className="line-clamp-2 min-w-0 whitespace-pre-wrap">
-            {reason === "question" && !data.note_id ? item.body : extractMarkdownText(item.body)}
-          </p>
+          <TurnBody key={item.body} body={item.body} markdown={!exactQuestion} />
         </div>
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2">
+        {problem ? (
+          <p role="status" className="min-w-0 flex-[1_1_12rem] text-xs text-danger">
+            {problem}
+          </p>
+        ) : null}
         <div className="ml-auto flex min-h-6 flex-wrap items-center justify-end gap-1.5">
-          {replyable && data.active_chat ? (
-            <NodexButton size="xs" variant="ghost" onClick={onReply}>
-              Reply
-            </NodexButton>
-          ) : null}
-          {reason === "review" && (unavailable || data.delivery_error) ? (
-            <NodexButton size="xs" variant="ghost" onClick={onOpenChat}>
-              Open chat
-            </NodexButton>
+          {/* Ways to look closer are glyphs; only what the row asks the reader to decide is named. */}
+          {chat === "glance" ? (
+            <InboxIconAction label="Open chat" icon={ChatIcon} onClick={onOpenChat} />
           ) : null}
           {reason === "review" && data.pull_request_url ? (
-            <NodexButton size="xs" variant="ghost" onClick={onOpenPR}>
-              Open PR
+            <InboxIconAction label="Open PR" icon={OpenExternalIcon} onClick={onOpenPR} />
+          ) : null}
+          {replyable && data.active_chat ? (
+            <NodexButton size="xs" variant="outline" className="gap-1.5" onClick={onReply}>
+              <Reply className="icon-xs shrink-0" />
+              Reply
             </NodexButton>
           ) : null}
           {reason === "question" ? (
@@ -137,7 +157,6 @@ export function InboxTurnRow({
                   ))}
                 </NodexDropdownMenu>
               ) : null}
-              {data.options.length === 0 || unavailable || data.delivery_error ? open : null}
             </>
           ) : reason === "review" ? (
             <NodexButton
@@ -157,11 +176,88 @@ export function InboxTurnRow({
             >
               {hostAvailable ? "Start" : REMOTE_AGENT_REASON}
             </NodexButton>
-          ) : (
-            open
-          )}
+          ) : null}
+          {chat === "decision" ? (
+            <NodexButton size="xs" variant="primary" onClick={onOpenChat}>
+              Open chat
+            </NodexButton>
+          ) : null}
         </div>
       </div>
     </article>
+  );
+}
+
+/**
+ * What the Turn says: an excerpt of two lines that opens in place to the whole text, read as it
+ * was written. Only a clipped excerpt offers to open.
+ */
+function TurnBody({ body, markdown }: { readonly body: string; readonly markdown: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const [clipped, setClipped] = useState(false);
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-1">
+      {!expanded ? (
+        <TurnExcerpt text={markdown ? extractMarkdownText(body) : body} onClipped={setClipped} />
+      ) : markdown ? (
+        <TurnDocument body={body} />
+      ) : (
+        <p className="min-w-0 whitespace-pre-wrap text-token-foreground">{body}</p>
+      )}
+      {expanded || clipped ? (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          className="cursor-interaction inline-flex items-center gap-1 text-xs hover:text-token-foreground"
+          onClick={() => setExpanded((current) => !current)}
+        >
+          {expanded ? "Show less" : "Show more"}
+          <ChevronDownIcon
+            className={cn("icon-2xs transition-transform duration-150", expanded && "rotate-180")}
+          />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** The first two lines, telling its owner whether they leave any of the text out. */
+function TurnExcerpt({
+  text,
+  onClipped,
+}: {
+  readonly text: string;
+  readonly onClipped: (clipped: boolean) => void;
+}) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useLayoutEffect(() => {
+    const excerpt = ref.current;
+    if (!excerpt) return;
+    const measure = () => onClipped(excerpt.scrollHeight > excerpt.clientHeight + 1);
+    measure();
+    const resize = new ResizeObserver(measure);
+    resize.observe(excerpt);
+    return () => resize.disconnect();
+  }, [onClipped]);
+  return (
+    <p ref={ref} className="line-clamp-2 min-w-0 whitespace-pre-wrap">
+      {text}
+    </p>
+  );
+}
+
+/** The whole text as Markdown, with the Library's own access to the Files it links. */
+function TurnDocument({ body }: { readonly body: string }) {
+  const fileAuthority = useLibraryFileReadAuthority();
+  return (
+    <FileReferenceIntentProvider sidePanel={false} markdownContext>
+      <FileReadBoundary authority={fileAuthority}>
+        <NfmDocument
+          blocks={readMarkdown(body)}
+          density="message"
+          className="codex-markdown min-w-0"
+        />
+      </FileReadBoundary>
+    </FileReferenceIntentProvider>
   );
 }

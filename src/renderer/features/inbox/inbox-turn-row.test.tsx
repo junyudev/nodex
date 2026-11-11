@@ -1,68 +1,10 @@
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 import { render, openNodexMenu } from "@/test/dom";
-import type { InboxItem } from "../../../shared/inbox";
-import type { TurnReason } from "../../../shared/page-turn";
 import { InboxTurnRow } from "./inbox-turn-row";
+import { turnRow as row, turnRowHandlers as props } from "./inbox-turn-row.test-support";
 vi.mock("@/lib/space-host-runtime", () => ({ useSpaceHostAvailable: () => true }));
 afterEach(cleanup);
-const row = (reason: TurnReason, options: string[] = []): InboxItem => ({
-  rowKind: "turn",
-  pageId: "page",
-  pageKey: "NODEX-1",
-  pageStatus: null,
-  title: "Ship the change",
-  body: "The exact question or report",
-  bodyTruncated: false,
-  bodyEditable: false,
-  submittedAt: "2026-11-05T00:00:00Z",
-  source: { kind: "user" },
-  replyToPageId: null,
-  kind: null,
-  important: false,
-  state: "open",
-  suggestionState: "none",
-  suggestionError: null,
-  scope: { kind: "project", projectId: "project" },
-  location: { kind: "other" },
-  proposal: null,
-  automationDecision: null,
-  revision: 1,
-  basis: { pageId: "page", contentHash: "0".repeat(64) },
-  outcome: null,
-  turn: {
-    turn: {
-      page_id: "page",
-      actor: { kind: "member", member_id: "member" },
-      reason,
-      since: "2026-11-05T00:00:00Z",
-      episode: "episode",
-    },
-    note_id: null,
-    options,
-    active_chat: {
-      session_id: "chat",
-      display_title: "Work chat",
-      project_id: "project",
-      project_name: "Project",
-      thread_id: "thread",
-      status: null,
-      unread: false,
-      archived: false,
-    },
-    pull_request_url: "https://example.com/pr/1",
-    delivery_error: null,
-  },
-});
-const props = () => ({
-  onOpenPage: vi.fn(),
-  onOpenChat: vi.fn(),
-  onReply: vi.fn(),
-  onAnswer: vi.fn().mockResolvedValue(undefined),
-  onAccept: vi.fn().mockResolvedValue(undefined),
-  onStart: vi.fn().mockResolvedValue(undefined),
-  onOpenPR: vi.fn(),
-});
 test.each([
   ["approval", "Open chat"],
   ["review", "Accept"],
@@ -73,7 +15,7 @@ test.each([
 ] as const)("offers the typed action for %s", async (reason, action) => {
   const handlers = props();
   render(<InboxTurnRow item={row(reason)} {...handlers} />);
-  expect(screen.getByRole("button", { name: "NODEX-1 Ship the change" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Ship the change" })).toBeTruthy();
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: action }));
     await Promise.resolve();
@@ -126,6 +68,22 @@ test.each(["review", "failed"] as const)(
     expect(screen.getByRole("button", { name: "Open chat" })).toBeTruthy();
   },
 );
+test.each([
+  ["question", ["Yes", "No"]],
+  ["review", []],
+] as const)("a %s turn that decides in place still opens its chat", async (reason, options) => {
+  const handlers = props();
+  render(<InboxTurnRow item={row(reason, [...options])} {...handlers} />);
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Open chat" }));
+    await Promise.resolve();
+  });
+  expect(handlers.onOpenChat).toHaveBeenCalledOnce();
+});
+test("work that has not started has no chat to open", () => {
+  render(<InboxTurnRow item={row("ready_to_start")} {...props()} />);
+  expect(screen.queryByRole("button", { name: "Open chat" })).toBeNull();
+});
 test.each([
   ["question", "Needs your answer"],
   ["approval", "Needs your approval"],
