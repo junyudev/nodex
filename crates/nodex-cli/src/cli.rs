@@ -325,7 +325,7 @@ pub struct PatchArgs {
     /// Read a Nodex patch from a UTF-8 file; omitted or - reads redirected stdin.
     #[arg(long, value_name = "PATCH_FILE")]
     pub file: Option<PathBuf>,
-    /// Stable key for this write; reuse it with identical input after an uncertain result.
+    /// Optional key of 1 to 128 Unicode scalar values. Nodex remembers a key for 7 days. Reuse it with identical arguments after an uncertain result. Use --idempotency-key=VALUE for keys starting with a hyphen.
     #[arg(long)]
     pub idempotency_key: Option<String>,
     /// Include optional receipt fields; supported field: commit.
@@ -373,7 +373,7 @@ pub enum PageCommand {
 pub struct PageAcceptArgs {
     /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
-    /// Stable key for an identical retry after an uncertain result.
+    /// Optional key of 1 to 128 Unicode scalar values. Nodex remembers a key for 7 days. Reuse it with identical arguments after an uncertain result. Use --idempotency-key=VALUE for keys starting with a hyphen.
     #[arg(long)]
     pub idempotency_key: Option<String>,
 }
@@ -798,7 +798,7 @@ pub struct BodyInputArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct MutationArgs {
-    /// Stable key for this write; reuse it with identical input after an uncertain result.
+    /// Optional key of 1 to 128 Unicode scalar values. Nodex remembers a key for 7 days. Reuse it with identical arguments after an uncertain result. Use --idempotency-key=VALUE for keys starting with a hyphen.
     #[arg(long)]
     pub idempotency_key: Option<String>,
     /// Include optional receipt fields (commit for Page/Block writes; unsupported by File commands).
@@ -908,7 +908,7 @@ pub struct InboxSendArgs {
     /// Page title; omitted lets Nodex label the message and name it later.
     #[arg(long)]
     pub title: Option<String>,
-    /// Stable key for this write; reuse it with identical input after an uncertain result.
+    /// Optional key of 1 to 128 Unicode scalar values. Nodex remembers a key for 7 days. Reuse it with identical arguments after an uncertain result. Use --idempotency-key=VALUE for keys starting with a hyphen.
     #[arg(long)]
     pub idempotency_key: Option<String>,
 }

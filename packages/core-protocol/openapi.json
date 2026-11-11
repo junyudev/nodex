@@ -3976,14 +3976,38 @@
           },
           "operation_id": {
             "type": "string"
+          },
+          "replay": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AppToolOperationReplay"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
+        }
+      },
+      "AppToolOperationReplay": {
+        "type": "object",
+        "required": [
+          "result"
+        ],
+        "properties": {
+          "document_owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result": {}
         }
       },
       "AppToolOperationRequest": {
         "type": "object",
-        "description": "Host-only admission: the model chooses an opaque key, never a clock or operation envelope.",
+        "description": "Application tools supply Host-verified provenance; CLI admission uses the bound Actor.",
         "required": [
-          "provenance",
           "tool_name",
           "idempotency_key",
           "request_hash"
@@ -3993,7 +4017,25 @@
             "type": "string"
           },
           "provenance": {
-            "$ref": "#/components/schemas/AgentTurnProvenance"
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgentTurnProvenance"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "replay_module": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ModuleName",
+                "description": "CLI commands with state-dependent preflights can replay before resolving current state."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "request_hash": {
             "type": "string"
@@ -12109,6 +12151,34 @@
                 "type": "string",
                 "enum": [
                   "renew_remote_session"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "use_new_idempotency_key"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reconcile_expired_operation"
                 ]
               }
             }

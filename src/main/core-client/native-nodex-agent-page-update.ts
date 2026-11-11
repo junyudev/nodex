@@ -83,11 +83,19 @@ export const mapNativeNodexAgentCoreError = (error: unknown): ToolError => {
   }
   if (code === "idempotency_key_reused") {
     return {
-      code: "idempotency_collision",
-      message: error.coreError.message,
-      retryable: false,
-      recovery: "none",
-      details: { domainCode: code },
+      code,
+      message: "This key is bound to different arguments; use a new key for a new intent.",
+      retryable: error.coreError.retryable,
+      recovery: "use_new_idempotency_key",
+    };
+  }
+  if (code === "idempotency_window_expired" || code === "legacy_idempotency_unavailable") {
+    return {
+      code: "idempotency_window_expired",
+      message:
+        "The outcome is unknown to Core; re-read state before issuing a fresh call with a new key or no key.",
+      retryable: error.coreError.retryable,
+      recovery: "reconcile_expired_operation",
     };
   }
   if (code === "protected_owner_deletion") {

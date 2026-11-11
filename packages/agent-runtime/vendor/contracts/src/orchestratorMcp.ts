@@ -46,7 +46,7 @@ const OrchestratorMcpTitle = TrimmedNonEmptyString.check(Schema.isMaxLength(512)
   description: "Optional concise display title.",
 });
 export const OrchestratorMcpIdempotencyKey = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)).annotate({
-  description: "Optional: any string you choose, from 1 to 128 characters. Reuse it with identical arguments only to retry a call whose outcome you did not see. Never needed on a first attempt.",
+  description: "Optional: any string you choose, from 1 to 128 characters. Nodex remembers a key for 7 days. Use a descriptive prefix and a unique random or timestamp suffix for each new intent. Reuse the key and identical arguments only after an uncertain result.",
 });
 
 /**

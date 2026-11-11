@@ -6,6 +6,9 @@ import { NodexAgentApplication } from "../nodex-agent-application/NodexAgentAppl
 import { NodexAppToolAuthority } from "./NodexAppToolAuthority";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { make } from "./ContentAppTools";
+import { CoreAuthority } from "../core-runtime/CoreAuthority";
+import { CoreModules } from "../core-runtime/CoreModules";
+import { createAppToolAdmissionFixture } from "./app-tool-operation.test-fixtures";
 
 const authority: NodexAgentTurnContext = {
   threadId: "thread",
@@ -39,6 +42,8 @@ it.effect("uses captured native-call identity and validates the semantic result"
     let invalidOutput = false;
     let conflict = false;
     const execute = yield* make.pipe(
+      Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
+      Effect.provideService(CoreModules, createAppToolAdmissionFixture().core),
       Effect.provideService(CodexTurnAuthority, {
         capture: () => Effect.sync(() => (stale ? null : authority)),
       } as unknown as CodexTurnAuthority["Service"]),

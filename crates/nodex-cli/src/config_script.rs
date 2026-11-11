@@ -1,6 +1,6 @@
 use crate::cli::MutationArgs;
 use crate::error::{CliError, CliErrorCode};
-use crate::runtime::{CommandOutput, map_client_error, map_core_error, operation_id};
+use crate::runtime::{CommandOutput, map_client_error, map_core_error};
 use clap::Args;
 use nodex_core_contracts::database::DatabaseIntent;
 use nodex_core_contracts::database_configuration::DatabaseConfigurationScript;
@@ -53,7 +53,13 @@ pub(crate) fn execute(
             Some(project_id),
             ModuleApplyRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
-                operation_id: operation_id(args.mutation.idempotency_key.as_deref())?,
+                operation_id: crate::retry_key::admit(
+                    client,
+                    Some(project_id),
+                    "data-source configure",
+                    args.mutation.idempotency_key.as_deref(),
+                    (&data_source_id, &script),
+                )?,
                 store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
                 intent: vec![DatabaseIntent::Configure {
                     data_source_id,

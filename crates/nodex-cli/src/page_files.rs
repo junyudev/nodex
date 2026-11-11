@@ -12,9 +12,7 @@ use nodex_core_protocol::client::CoreClient;
 
 use crate::cli::{PageFileCommand, PageFileListArgs, PageFileWriteArgs};
 use crate::error::{CliError, CliErrorCode};
-use crate::files::{
-    FileSession, file_id_for_operation, infer_mime_type, input_mime, invalid, mutation_id,
-};
+use crate::files::{FileSession, file_id_for_operation, infer_mime_type, input_mime, invalid};
 use crate::runtime::{CommandOutput, resolve_page_selector};
 
 #[derive(Serialize, ToSchema)]
@@ -71,12 +69,23 @@ pub(crate) fn execute(
             .map_err(internal)
         }
         PageFileCommand::Put(args) => {
-            let operation = mutation_id(&args.mutation)?;
             let page_id = resolve_page(&args.page)?;
             let mime_type = args
                 .mime
                 .unwrap_or_else(|| infer_mime_type(&args.path).to_owned());
-            let prepared_blob_receipt_id = session.prepare(&operation, &args.source)?;
+            let (operation, prepared_blob_receipt_id) = session.prepare_input(
+                "page file put",
+                &args.mutation,
+                (
+                    &page_id,
+                    args.if_manifest,
+                    &args.path,
+                    &mime_type,
+                    args.replace_entry,
+                    &args.turn_id,
+                ),
+                &args.source,
+            )?;
             session.apply(
                 operation.clone(),
                 LibraryIntent::PutPageFileEntry {
@@ -98,26 +107,36 @@ pub(crate) fn execute(
                 source: LibraryFileReadSource::Direct,
                 collision_policy: LibraryPageFileCollisionPolicy::Reject,
             };
-            apply_entry(&session, args.write, change)
+            apply_entry(&session, "page file add", args.write, change)
         }
         PageFileCommand::RenamePath(args) => {
             let change = Change::Rename {
                 file_id: args.write.file_id.clone(),
                 logical_path: args.path,
             };
-            apply_entry(&session, args.write, change)
+            apply_entry(&session, "page file rename-path", args.write, change)
         }
         PageFileCommand::Remove(args) => {
             let change = Change::Remove {
                 file_id: args.file_id.clone(),
             };
-            apply_entry(&session, args, change)
+            apply_entry(&session, "page file remove", args, change)
         }
         PageFileCommand::ReplaceEntry(args) => {
-            let operation = mutation_id(&args.write.mutation)?;
             let page_id = resolve_page(&args.write.page)?;
             let mime_type = input_mime(&args.source, args.mime)?;
-            let prepared_blob_receipt_id = session.prepare(&operation, &args.source)?;
+            let (operation, prepared_blob_receipt_id) = session.prepare_input(
+                "page file replace-entry",
+                &args.write.mutation,
+                (
+                    &page_id,
+                    &args.write.file_id,
+                    args.write.if_manifest,
+                    &mime_type,
+                    &args.write.turn_id,
+                ),
+                &args.source,
+            )?;
             session.apply(
                 operation.clone(),
                 LibraryIntent::ApplyPageFileEntries {
@@ -202,20 +221,19 @@ fn internal(error: serde_json::Error) -> CliError {
 
 fn apply_entry(
     session: &FileSession<'_>,
+    command: &str,
     args: PageFileWriteArgs,
     change: Change,
 ) -> Result<CommandOutput, CliError> {
-    let operation = mutation_id(&args.mutation)?;
     let page_id = resolve_page_selector(session.client, &session.project_id, &args.page)?;
-    session.apply(
-        operation,
-        LibraryIntent::ApplyPageFileEntries {
-            page_id,
-            expected_manifest_revision: args.if_manifest,
-            changes: vec![change],
-            turn_id: args.turn_id,
-        },
-    )
+    let intent = LibraryIntent::ApplyPageFileEntries {
+        page_id,
+        expected_manifest_revision: args.if_manifest,
+        changes: vec![change],
+        turn_id: args.turn_id,
+    };
+    let operation = session.admit(command, &args.mutation, &intent)?;
+    session.apply(operation, intent)
 }
 
 fn transfer(
@@ -223,19 +241,22 @@ fn transfer(
     args: crate::cli::PageFileTransferArgs,
     copy: bool,
 ) -> Result<CommandOutput, CliError> {
-    let operation = mutation_id(&args.mutation)?;
     let source_page_id = resolve_page_selector(session.client, &session.project_id, &args.page)?;
     let target_page_id = resolve_page_selector(session.client, &session.project_id, &args.to)?;
-    session.apply(
-        operation,
-        LibraryIntent::TransferPageFileEntry {
-            file_id: args.file_id,
-            source_page_id,
-            target_page_id,
-            source_manifest_revision: args.if_source_manifest,
-            target_manifest_revision: args.if_target_manifest,
-            target_logical_path: args.path,
-            copy,
-        },
-    )
+    let intent = LibraryIntent::TransferPageFileEntry {
+        file_id: args.file_id,
+        source_page_id,
+        target_page_id,
+        source_manifest_revision: args.if_source_manifest,
+        target_manifest_revision: args.if_target_manifest,
+        target_logical_path: args.path,
+        copy,
+    };
+    let command = if copy {
+        "page file copy"
+    } else {
+        "page file move"
+    };
+    let operation = session.admit(command, &args.mutation, &intent)?;
+    session.apply(operation, intent)
 }

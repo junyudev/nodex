@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     error::{CliError, CliErrorCode},
-    runtime::{CommandOutput, map_client_error, map_core_error, operation_id},
+    runtime::{CommandOutput, map_client_error, map_core_error},
 };
 
 #[derive(Clone, Debug, PartialEq, Args)]
@@ -64,8 +64,8 @@ pub struct AutomationCreateArgs {
     /// AutomationInput JSON file, or - for redirected stdin; inspect --help-schema input.
     #[arg(long, default_value = "-", value_name = "JSON_FILE_OR_DASH")]
     pub file: PathBuf,
-    /// Replay this exact mutation after an uncertain result.
-    #[arg(long)]
+    /// Optional key of 1 to 128 Unicode scalar values. Reuse it with identical arguments after an uncertain result.
+    #[arg(long, allow_hyphen_values = true)]
     pub idempotency_key: Option<String>,
 }
 
@@ -76,8 +76,8 @@ pub struct AutomationWriteArgs {
     /// Observed automation_revision from show.
     #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
     pub if_revision: i64,
-    /// Replay this exact mutation after an uncertain result.
-    #[arg(long)]
+    /// Optional key of 1 to 128 Unicode scalar values. Reuse it with identical arguments after an uncertain result.
+    #[arg(long, allow_hyphen_values = true)]
     pub idempotency_key: Option<String>,
 }
 
@@ -103,8 +103,8 @@ pub enum AutomationWriteStatus {
 pub struct AutomationRunArgs {
     /// Stable Automation ID returned by list or show.
     pub id: String,
-    /// Replay the same manual dispatch after an uncertain result.
-    #[arg(long)]
+    /// Optional key of 1 to 128 Unicode scalar values. Reuse it with identical arguments after an uncertain result.
+    #[arg(long, allow_hyphen_values = true)]
     pub idempotency_key: Option<String>,
 }
 
@@ -168,23 +168,44 @@ pub(crate) fn execute(
     }
 }
 
+fn admit_intent(
+    client: &CoreClient,
+    command: &str,
+    key: Option<&str>,
+    intent: AutomationIntent,
+) -> Result<(String, AutomationIntent), CliError> {
+    let operation_id = crate::retry_key::admit(client, None, command, key, &intent)?;
+    Ok((operation_id, intent))
+}
+
 fn apply(client: &CoreClient, command: AutomationsCommand) -> Result<CommandOutput, CliError> {
     let pause = matches!(&command, AutomationsCommand::Pause(_));
-    let (key, intent) = match command {
+    let (operation_id, intent) = match command {
         AutomationsCommand::Create(args) => {
-            let key = operation_id(args.idempotency_key.as_deref())?;
-            let automation_id =
-                format!("automation:{}", hex::encode(Sha256::digest(key.as_bytes())));
+            let automation = crate::input::read_json(&args.file, "Automation definition")?;
+            let operation_id = crate::retry_key::admit(
+                client,
+                None,
+                "automations create",
+                args.idempotency_key.as_deref(),
+                &automation,
+            )?;
+            let automation_id = format!(
+                "automation:{}",
+                hex::encode(Sha256::digest(operation_id.as_bytes()))
+            );
             (
-                key,
+                operation_id,
                 AutomationIntent::CreateAutomation {
                     automation_id,
-                    automation: crate::input::read_json(&args.file, "Automation definition")?,
+                    automation,
                 },
             )
         }
-        AutomationsCommand::Update(args) => (
-            operation_id(args.write.idempotency_key.as_deref())?,
+        AutomationsCommand::Update(args) => admit_intent(
+            client,
+            "automations update",
+            args.write.idempotency_key.as_deref(),
             AutomationIntent::UpdateAutomation {
                 automation_id: args.write.id,
                 expected_revision: args.write.if_revision,
@@ -194,35 +215,41 @@ fn apply(client: &CoreClient, command: AutomationsCommand) -> Result<CommandOutp
                 },
                 automation: crate::input::read_json(&args.file, "Automation definition")?,
             },
-        ),
+        )?,
         AutomationsCommand::Pause(args) | AutomationsCommand::Resume(args) => {
-            let status = if pause {
-                AutomationStatus::Paused
+            let (command, status) = if pause {
+                ("automations pause", AutomationStatus::Paused)
             } else {
-                AutomationStatus::Active
+                ("automations resume", AutomationStatus::Active)
             };
-            (
-                operation_id(args.idempotency_key.as_deref())?,
+            admit_intent(
+                client,
+                command,
+                args.idempotency_key.as_deref(),
                 AutomationIntent::SetAutomationStatus {
                     automation_id: args.id,
                     expected_revision: args.if_revision,
                     status,
                 },
-            )
+            )?
         }
-        AutomationsCommand::Delete(args) => (
-            operation_id(args.idempotency_key.as_deref())?,
+        AutomationsCommand::Delete(args) => admit_intent(
+            client,
+            "automations delete",
+            args.idempotency_key.as_deref(),
             AutomationIntent::DeleteAutomation {
                 automation_id: args.id,
                 expected_revision: args.if_revision,
             },
-        ),
-        AutomationsCommand::Run(args) => (
-            operation_id(args.idempotency_key.as_deref())?,
+        )?,
+        AutomationsCommand::Run(args) => admit_intent(
+            client,
+            "automations run",
+            args.idempotency_key.as_deref(),
             AutomationIntent::DispatchNow {
                 automation_id: args.id,
             },
-        ),
+        )?,
         _ => return Err(invalid_response()),
     };
     let response = client
@@ -230,7 +257,7 @@ fn apply(client: &CoreClient, command: AutomationsCommand) -> Result<CommandOutp
             None,
             ModuleApplyRequest {
                 contract_version: AUTOMATION_CONTRACT_VERSION,
-                operation_id: key,
+                operation_id,
                 store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
                 intent,
             },

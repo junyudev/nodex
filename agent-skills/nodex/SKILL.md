@@ -122,9 +122,13 @@ reread the affected state and reassess the intended change; never silently
 refresh a validator just to overwrite newer content. Shared File writes and
 Page attachment changes have different effects and revision requirements.
 
-For response-loss recovery, save a non-secret idempotency key with the exact
-input before the first write and reuse both for that same operation. Omitting
-a key starts a new operation. Drafts manage their own apply identity. A success
+If you may need to retry a write after losing the response, save its exact input
+and an optional non-secret `--idempotency-key` of 1–128 Unicode scalar values
+(for example, `priority-update-8f6e29bc`). Use a descriptive prefix with a unique
+random or timestamp suffix for each new intent. Nodex remembers a key for 7 days.
+Reuse the key and input for a retry. A deliberate repeat with the same key within
+7 days replays the original result. After 7 days, reread state before retrying an
+uncertain result because the same key starts a new operation. Drafts manage their own retries. A success
 receipt confirms the commit; reread after structural or multi-part edits when
 needed to verify the intended result. Report partial completion across separate
 commands honestly. User-authorized edits do not require an extra confirmation

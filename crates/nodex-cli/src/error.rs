@@ -24,6 +24,7 @@ pub enum CliErrorCode {
     EtagConflict,
     ProtectedOwnerDeletion,
     IdempotencyKeyReused,
+    IdempotencyWindowExpired,
     DraftUnsafePath,
     MetaYamlSyntax,
     MetaYamlInvalid,
@@ -67,6 +68,7 @@ impl CliErrorCode {
             Self::EtagConflict => "ETAG_CONFLICT",
             Self::ProtectedOwnerDeletion => "PROTECTED_OWNER_DELETION",
             Self::IdempotencyKeyReused => "IDEMPOTENCY_KEY_REUSED",
+            Self::IdempotencyWindowExpired => "IDEMPOTENCY_WINDOW_EXPIRED",
             Self::DraftUnsafePath => "DRAFT_UNSAFE_PATH",
             Self::MetaYamlSyntax => "META_YAML_SYNTAX",
             Self::MetaYamlInvalid => "META_YAML_INVALID",
@@ -99,6 +101,7 @@ pub struct CliError {
     pub hunk: Option<usize>,
     pub path: Option<String>,
     pub details: Option<Box<serde_json::Value>>,
+    pub core_recovery: Option<Box<(bool, nodex_core_contracts::CoreErrorRecovery)>>,
 }
 
 impl CliError {
@@ -111,7 +114,17 @@ impl CliError {
             hunk: None,
             path: None,
             details: None,
+            core_recovery: None,
         }
+    }
+
+    pub fn with_recovery(
+        mut self,
+        retryable: bool,
+        recovery: nodex_core_contracts::CoreErrorRecovery,
+    ) -> Self {
+        self.core_recovery = Some(Box::new((retryable, recovery)));
+        self
     }
 
     pub fn with_details(mut self, details: serde_json::Value) -> Self {
@@ -149,6 +162,8 @@ pub struct ErrorEnvelope<'a> {
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ErrorBody<'a> {
+    /// IDEMPOTENCY_KEY_REUSED: use a new key for a new intent.
+    /// IDEMPOTENCY_WINDOW_EXPIRED: Core no longer knows the outcome; re-read state before issuing a fresh call with a new key or no key.
     pub code: &'static str,
     pub message: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -161,6 +176,10 @@ pub struct ErrorBody<'a> {
     pub path: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<&'a serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retryable: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<&'a nodex_core_contracts::CoreErrorRecovery>,
 }
 
 impl<'a> ErrorEnvelope<'a> {
@@ -176,6 +195,11 @@ impl<'a> ErrorEnvelope<'a> {
                 hunk: error.hunk,
                 path: error.path.as_deref(),
                 details: error.details.as_deref(),
+                retryable: error
+                    .core_recovery
+                    .as_deref()
+                    .map(|(retryable, _)| *retryable),
+                recovery: error.core_recovery.as_deref().map(|(_, recovery)| recovery),
             },
         }
     }

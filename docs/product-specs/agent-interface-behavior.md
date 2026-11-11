@@ -126,13 +126,15 @@ without a workspace. Project discovery supplies execution and presentation coord
 execution identity, Profile SQL reads, live Workbench observations and resource lifecycle
 and cloud capabilities.
 
-Mutation tools that expose a retry identity use optional `idempotencyKey`: any opaque
-string of 1–128 characters chosen by the Agent, including a UUID or slug. It is never
-needed on a first attempt. Reuse the same key with identical arguments only after a call's
-outcome was not observed. Within its seven-day window, the same calling Session or root
+Content mutation tools and other writes with retry support accept optional `idempotencyKey`,
+an opaque string of 1–128 Unicode scalar values chosen by the Agent. Supply one when
+you may need to retry a call whose outcome you did not see, and reuse it with identical arguments. Within its seven-day window, the same calling Session or root
 conversation and tool retain one host-issued operation identity, including across Turns,
 provider reconnections and application restarts. Concurrent duplicates share admission;
-changed arguments fail with `idempotency_key_reused` before execution. Omitting the key
+changed arguments fail with `idempotency_key_reused` and require a new key for a new
+intent. Nodex remembers a key for 7 days. After that, reuse starts a new operation.
+Choose a descriptive prefix with a unique random or timestamp suffix for each new intent
+so a deliberate repeat within the window runs again. Omitting the key
 retains the invocation's stable per-call identity. The host supplies admission time and
 expiry; tool arguments never supply either.
 
@@ -941,7 +943,7 @@ UUID-based read or mutation. Machine and human results report the canonical
 current key alongside Page ID when one exists.
 
 Machine output uses stable versioned JSON envelopes and stable error codes.
-Mutations accept idempotency identities and narrow ETags that prove only the
+Mutations accept optional opaque retry keys and narrow ETags that prove only the
 state needed by that command. A conflict requires a fresh read; a lost response
 may replay the original receipt without repeating the mutation.
 

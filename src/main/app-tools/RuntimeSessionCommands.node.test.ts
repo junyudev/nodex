@@ -685,7 +685,10 @@ it.effect("UUID retries in a later Turn reuse one message and reject changed arg
       arguments: { ...args, prompt: "Different" },
     });
     assert.deepStrictEqual(collision.structuredContent, {
-      error: { code: "idempotency_key_reused" },
+      error: {
+        code: "idempotency_key_reused",
+        details: { retryable: false, recovery: { kind: "use_new_idempotency_key" } },
+      },
     });
     assert.equal(f.calls.filter((call) => call.name === "sendMessage").length, 1);
   }),

@@ -1277,11 +1277,17 @@ export interface components {
             /** Format: int64 */
             readonly expires_at_ms: number;
             readonly operation_id: string;
+            readonly replay?: components["schemas"]["AppToolOperationReplay"] | null;
         };
-        /** @description Host-only admission: the model chooses an opaque key, never a clock or operation envelope. */
+        readonly AppToolOperationReplay: {
+            readonly document_owner?: string | null;
+            readonly result: unknown;
+        };
+        /** @description Application tools supply Host-verified provenance; CLI admission uses the bound Actor. */
         readonly AppToolOperationRequest: {
             readonly idempotency_key: string;
-            readonly provenance: components["schemas"]["AgentTurnProvenance"];
+            readonly provenance?: components["schemas"]["AgentTurnProvenance"] | null;
+            readonly replay_module?: components["schemas"]["ModuleName"] | null;
             readonly request_hash: string;
             readonly tool_name: string;
         };
@@ -3048,6 +3054,12 @@ export interface components {
         } | {
             /** @enum {string} */
             readonly kind: "renew_remote_session";
+        } | {
+            /** @enum {string} */
+            readonly kind: "use_new_idempotency_key";
+        } | {
+            /** @enum {string} */
+            readonly kind: "reconcile_expired_operation";
         } | {
             readonly budget: components["schemas"]["RemoteBudget"];
             /** @enum {string} */

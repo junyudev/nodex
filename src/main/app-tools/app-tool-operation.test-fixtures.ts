@@ -10,6 +10,7 @@ export const createAppToolAdmissionFixture = (acceptedAtMs = 1_000) => {
   const records = new Map<string, { identity: AppToolOperationIdentity; hash: string }>();
   const admitToolOperation = (request: AppToolOperationRequest) =>
     Effect.suspend(() => {
+      if (!request.provenance) throw new Error("Test expects Agent provenance");
       const caller =
         request.provenance.authority.runtime?.session_id ??
         request.provenance.authority.root_thread_id;
@@ -29,7 +30,7 @@ export const createAppToolAdmissionFixture = (acceptedAtMs = 1_000) => {
                 code: "idempotency_key_reused",
                 message: "Different arguments",
                 retryable: false,
-                recovery: { kind: "none" },
+                recovery: { kind: "use_new_idempotency_key" },
               },
             ),
           }),

@@ -314,16 +314,23 @@ valid carried value or use the destination default. `--unassigned` explicitly
 selects the empty group. Clearing Status that way or with an explicit null
 value returns `INVALID_INPUT` with the valid IDs and current names.
 
-Ordinary mutations accept an optional stable idempotency key; drafts manage their own apply identity. Narrow ETags bind the current
+Drafts manage their own retries. Narrow ETags bind the current
 resource and guard kind; they are not capabilities. An exact retry returns the
 first immutable result, including a body patch whose original text is no longer present. Core resolves the receipt before checking current patch matches. A stale or mismatched guard fails before mutation and
 requires a fresh read.
 
-Native application MCP tools use the parameter `idempotencyKey` for their optional retry
-key: an opaque string of 1–128 characters, omitted on first attempts and reused with identical
-arguments after an unseen outcome. Their host-issued `operationId` values are returned
-receipt or progress handles. CLI content mutations continue to expose their existing
-`--idempotency-key` flag and draft apply identities.
+CLI writes that expose `--idempotency-key` and MCP writes that expose `idempotencyKey`
+accept an optional opaque string of 1–128 Unicode scalar values, such as `priority-update-8f6e29bc`.
+Use a descriptive prefix with a unique random or timestamp suffix for each new intent.
+Nodex remembers a key for 7 days. Core scopes CLI keys to the authenticated Agent Session
+or local Member and command within the Profile. Reuse the exact arguments and input payload
+with the same key after an uncertain result. A deliberate repeat with the same key within
+7 days replays the original result. Omitting a key or using it after 7 days starts a new
+operation. Use `--idempotency-key=VALUE` for keys beginning with a hyphen.
+Core issues its own operation identities, which may appear as receipt or progress handles.
+
+- `IDEMPOTENCY_KEY_REUSED`: Use a new key for a new intent.
+- `IDEMPOTENCY_WINDOW_EXPIRED`: Core no longer knows the outcome. Re-read state before issuing a fresh call with a new key or no key.
 
 ## Automations
 

@@ -2,13 +2,17 @@ import { captureAppToolAuthority } from "./AppToolCaller";
 import * as Effect from "effect/Effect";
 import * as Cause from "effect/Cause";
 import { nodexAgentAuthorityFingerprint } from "../../shared/nodex-agent-authority";
-import { isContentTool } from "../../shared/nodex-app-tools/content-catalog";
-import { NODEX_AGENT_V6_TOOL_CONTRACTS } from "../../shared/nodex-agent-tools/v6-contracts";
+import {
+  appContentToolContracts,
+  isContentTool,
+} from "../../shared/nodex-app-tools/content-catalog";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { createStableOperationId } from "../core-runtime/operation-identity";
 import { executeNodexAgentV3Tool } from "../nodex-agent-application/NodexAgentDynamicExecution";
 import { NodexAgentApplication } from "../nodex-agent-application/NodexAgentApplication";
 import { NodexAgentDynamicToolFailure } from "../nodex-agent-application/NodexAgentDynamicExecutionContext";
+import { CoreAuthority } from "../core-runtime/CoreAuthority";
+import { make as makeAppToolOperation } from "./AppToolOperation";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { NodexAppToolAuthority } from "./NodexAppToolAuthority";
 import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
@@ -21,9 +25,11 @@ export const makeWithCapture = (
   Effect.gen(function* () {
     const authorities = yield* NodexAppToolAuthority;
     const application = yield* NodexAgentApplication;
+    const core = yield* CoreAuthority;
+    const admit = yield* makeAppToolOperation;
     return Effect.fn("ContentAppTools.execute")(function* (input: AppToolInvocation) {
       if (!isContentTool(input.name)) return toolFailure("unknown_tool");
-      const contract = NODEX_AGENT_V6_TOOL_CONTRACTS[input.name];
+      const contract = appContentToolContracts[input.name];
       const parsed = parseAppToolArguments(contract.inputSchema, input.arguments);
       if (!parsed.success) return parsed.result;
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
@@ -46,12 +52,22 @@ export const makeWithCapture = (
         isCurrent,
       });
       if (!bound.authority) return toolFailure("authority_unavailable");
-      const operationId = createStableOperationId(`app.${input.name}`, authority.admittedAtMs, [
+      const { idempotencyKey, ...args } = parsed.data as Record<string, unknown>;
+      let operationId = createStableOperationId(`app.${input.name}`, authority.admittedAtMs, [
         input.caller.threadId,
         input.caller.turnId,
         input.caller.callId,
       ]);
-      return yield* executeNodexAgentV3Tool(input.name, parsed.data, {
+      if (typeof idempotencyKey === "string") {
+        const operation = yield* admit(input, authority, core.identity.profileId, {
+          ...args,
+          idempotencyKey,
+        });
+        if (!operation.success) return operation.result;
+        if (!(yield* isCurrent)) return toolFailure("call_withdrawn");
+        operationId = operation.operationId;
+      }
+      return yield* executeNodexAgentV3Tool(input.name, args, {
         ...bound,
         threadId: input.caller.threadId,
         callId: input.caller.callId,

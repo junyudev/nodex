@@ -15,7 +15,7 @@ fn maximum_receipt_bytes(module_name: &str) -> usize {
         MAX_RECEIPT_JSON_BYTES
     }
 }
-pub(crate) const RECEIPT_RETENTION_MS: i64 = 7 * 24 * 60 * 60 * 1_000;
+pub(crate) use nodex_core_contracts::OPERATION_RECEIPT_WINDOW_MS as RECEIPT_RETENTION_MS;
 const MAX_OPERATION_CLOCK_SKEW_MS: i64 = 5 * 60 * 1_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -503,13 +503,37 @@ fn validate_missing_operation_identity(
                 <= (floor_ms, floor_module.as_str(), floor_operation.as_str())
         });
     if identity.expires_at_ms <= now_ms || at_or_below_floor {
-        return Err(StoreError::new(
-            StoreErrorCode::IdempotencyWindowExpired,
-            "This operation is outside Core's retained idempotency window; do not replay it implicitly",
-            false,
-        ));
+        return Err(idempotency_window_expired());
     }
     Ok(())
+}
+
+/// Only explicitly admitted retries use a caller-stable receipt fingerprint.
+pub(crate) fn is_admitted_retry(operation_id: &str) -> bool {
+    operation_id.starts_with("nodexop:v1:") && operation_id.split(':').nth(4) == Some("app.retry")
+}
+
+pub(crate) fn agent_retry_caller(
+    authorization: &nodex_core_contracts::agent::AgentExecutionAuthorization,
+) -> (Option<&str>, Option<&str>, &str) {
+    let authority = &authorization.provenance.authority;
+    (
+        authority.actor_project_id.as_deref(),
+        authority
+            .runtime
+            .as_ref()
+            .map(|runtime| runtime.session_id.as_str()),
+        &authority.root_thread_id,
+    )
+}
+
+pub(crate) fn idempotency_window_expired() -> StoreError {
+    StoreError::new(
+        StoreErrorCode::IdempotencyWindowExpired,
+        "The outcome is unknown to Core; re-read state before issuing a fresh call with a new key or no key.",
+        false,
+    )
+    .with_recovery(nodex_core_contracts::CoreErrorRecovery::ReconcileExpiredOperation)
 }
 
 fn operation_identity_cutover_ms(connection: &Connection) -> Result<i64, StoreError> {

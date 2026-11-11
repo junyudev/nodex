@@ -9,9 +9,7 @@ use nodex_core_protocol::client::CoreClient;
 use crate::cli::InboxSendArgs;
 use crate::error::{CliError, CliErrorCode};
 use crate::page_mutation::read_content_input;
-use crate::runtime::{
-    CommandOutput, map_client_error, map_core_error, operation_id, selected_project,
-};
+use crate::runtime::{CommandOutput, map_client_error, map_core_error, selected_project};
 
 const MAX_MESSAGE_BYTES: usize = 64 * 1024;
 
@@ -55,7 +53,13 @@ pub(crate) fn send(
         }
         Err(error) => return Err(error),
     };
-    let operation_id = operation_id(arguments.idempotency_key.as_deref())?;
+    let operation_id = crate::retry_key::admit(
+        client,
+        project.as_deref(),
+        "inbox send",
+        arguments.idempotency_key.as_deref(),
+        (&text, &arguments.title),
+    )?;
     let page_id = stable_uuid(&operation_id, "inbox-page");
     let response = client
         .workspace_apply(

@@ -213,7 +213,10 @@ atomic operation. A change between query and preparation remains a conflict.
 Conditions protect membership and **edited fields**, not arbitrary SQL predicates
 or JOIN dependencies. Selecting by Status and changing only Priority does not
 lock Status. SQL UPDATE and generic query-dependency locking are not supported.
-Save the exact prepared edits and idempotency key before retryable writes.
+If you may need to retry after losing the response, save the exact prepared edits and an optional
+`--idempotency-key` of 1–128 Unicode scalar values. Reuse both for the retry. A new intent requires
+a new key. If Core reports `IDEMPOTENCY_WINDOW_EXPIRED`, re-read state before issuing a fresh
+call with a new key or no key.
 
 Title/body writes reuse `pages.title_etag` and `page_documents.body_etag` directly.
 Move/delete preparation is explicit: `page prepare PAGE --operation move|delete

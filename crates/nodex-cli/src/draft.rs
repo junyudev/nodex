@@ -440,10 +440,22 @@ pub(crate) fn apply(
     let accepted_title =
         crate::page_mutation::validate_title(loaded.work_metadata.title_markdown.clone())
             .map_err(draft_markdown_error)?;
-    let operation_id = draft_operation_id(&loaded, &accepted_title)?;
+    let key = draft_retry_key(&loaded, &accepted_title)?;
+    let admit = || {
+        crate::retry_key::admit(
+            client,
+            Some(&loaded.layout.manifest.project_id),
+            "draft apply",
+            Some(&key),
+            &key,
+        )
+    };
 
     if let Some(state) = &loaded.layout.apply_state {
-        validate_apply_state(&loaded, state, &operation_id, &accepted_title)?;
+        // Existing markers freeze the exact commands and document fence across process restarts.
+        // Re-admit the same draft fingerprint before submitting that bounded identity.
+        validate_apply_state(&loaded, state, &state.operation_id, &accepted_title)?;
+        validate_apply_binding(state, &admit()?)?;
         let current = read_projection(
             client,
             &loaded.layout.manifest.project_id,
@@ -513,7 +525,7 @@ pub(crate) fn apply(
     let state = DraftApplyState {
         schema_version: DRAFT_SCHEMA_VERSION,
         status: DraftApplyStatus::Pending,
-        operation_id,
+        operation_id: admit()?,
         accepted_title_sha256: digest(accepted_title.as_bytes()),
         accepted_body_sha256: digest(loaded.work_body.as_bytes()),
         document_id: current.document_id.clone(),
@@ -624,7 +636,7 @@ fn submit_apply_state(
         }
     };
     let mut result = crate::page_mutation::semantic_mutation_result(
-        &loaded.layout.manifest.page_id,
+        Some(&loaded.layout.manifest.page_id),
         &committed,
         &[],
     )?;
@@ -1115,6 +1127,18 @@ fn validate_apply_state_shape(state: &DraftApplyState, root: &Path) -> Result<()
     Ok(())
 }
 
+fn validate_apply_binding(
+    state: &DraftApplyState,
+    admitted_operation_id: &str,
+) -> Result<(), CliError> {
+    if state.operation_id != admitted_operation_id {
+        return Err(draft_conflict(
+            "This draft apply attempt belongs to a different caller or its 7-day retry binding has expired. Re-read the Page before creating a new draft.",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_apply_state(
     loaded: &LoadedDraft,
     state: &DraftApplyState,
@@ -1210,7 +1234,7 @@ fn invalid_apply_commands(root: &Path) -> CliError {
     )
 }
 
-fn draft_operation_id(loaded: &LoadedDraft, accepted_title: &str) -> Result<String, CliError> {
+fn draft_retry_key(loaded: &LoadedDraft, accepted_title: &str) -> Result<String, CliError> {
     let fingerprint = serde_json::to_vec(&json!({
         "version": DRAFT_SCHEMA_VERSION,
         "base_identity_sha256": loaded.layout.manifest.base_identity_sha256,
@@ -1777,12 +1801,12 @@ mod tests {
     }
 
     #[test]
-    fn formatting_only_metadata_is_a_noop_and_keeps_the_deterministic_operation_id() {
+    fn formatting_only_metadata_is_a_noop_and_keeps_the_same_retry_key() {
         let directory = tempdir().expect("draft parent");
         let root = directory.path().join("draft");
         write_fixture(&root);
         let original = load_draft(&root).expect("original draft");
-        let original_id = draft_operation_id(&original, &original.work_metadata.title_markdown)
+        let original_id = draft_retry_key(&original, &original.work_metadata.title_markdown)
             .expect("original operation ID");
         nodex_platform::private_fs::write(
             root.join(WORK_DIRECTORY).join(META_FILE),
@@ -1791,7 +1815,7 @@ mod tests {
         .expect("formatted metadata");
         let formatted = load_draft(&root).expect("formatted draft");
         assert_eq!(
-            draft_operation_id(&formatted, &formatted.work_metadata.title_markdown).unwrap(),
+            draft_retry_key(&formatted, &formatted.work_metadata.title_markdown).unwrap(),
             original_id
         );
         let CommandOutput::Json(summary) = diff(&root).expect("local diff") else {
@@ -1866,7 +1890,7 @@ mod tests {
             .expect("work body");
         let loaded = load_draft(&root).expect("changed draft");
         let title = loaded.work_metadata.title_markdown.clone();
-        let operation_id = draft_operation_id(&loaded, &title).unwrap();
+        let operation_id = draft_retry_key(&loaded, &title).unwrap();
         let valid = DraftApplyState {
             schema_version: DRAFT_SCHEMA_VERSION,
             status: DraftApplyStatus::Pending,
@@ -1889,6 +1913,9 @@ mod tests {
             result: None,
         };
         validate_apply_state(&loaded, &valid, &operation_id, &title).expect("exact apply marker");
+        let other_caller = validate_apply_binding(&valid, "another-callers-operation").unwrap_err();
+        assert_eq!(other_caller.code, CliErrorCode::DraftConflict);
+        assert!(other_caller.message.contains("different caller"));
 
         let mut tampered = valid;
         tampered.commands[1] = DraftEdit::PatchBody {
@@ -1906,7 +1933,7 @@ mod tests {
         .unwrap();
         let changed = load_draft(&root).expect("changed accepted work");
         let changed_title = changed.work_metadata.title_markdown.clone();
-        let changed_operation_id = draft_operation_id(&changed, &changed_title).unwrap();
+        let changed_operation_id = draft_retry_key(&changed, &changed_title).unwrap();
         let error =
             validate_apply_state(&changed, &tampered, &changed_operation_id, &changed_title)
                 .expect_err("accepted work cannot change after apply starts");

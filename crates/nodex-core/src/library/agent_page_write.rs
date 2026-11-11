@@ -120,7 +120,21 @@ pub(super) fn prepare_page_copy(
             ));
         }
         let commit_head = super::navigation::commit_head(&transaction)?;
-        let request_hash = request_hash(&context, &store_epoch, &authorization, &request)?;
+        if crate::infrastructure::module_receipts::is_admitted_retry(&operation_id) {
+            super::agent_execution::validate_execution(
+                &transaction,
+                &context,
+                &library_id,
+                &authorization,
+            )?;
+        }
+        let request_hash = request_hash(
+            &operation_id,
+            &context,
+            &store_epoch,
+            &authorization,
+            &request,
+        )?;
         if let Some(stored) = read_module_receipt(&transaction, MODULE_NAME, &operation_id)? {
             if stored.request_hash != request_hash {
                 return Err(StoreError::new(
@@ -287,6 +301,7 @@ pub(super) fn execute_page_copy(
                 ));
             }
             let request_hash = request_hash(
+                &operation_id,
                 &context,
                 &store_epoch,
                 &authorization.authorization,
@@ -1027,11 +1042,24 @@ pub(super) fn destination_before_id(destination: &LibraryPageCopyDestination) ->
 }
 
 fn request_hash(
+    operation_id: &str,
     context: &BoundModuleContext,
     store_epoch: &str,
     authorization: &nodex_core_contracts::agent::AgentExecutionAuthorization,
     request: &LibraryAgentPageCopyRequest,
 ) -> Result<String, StoreError> {
+    if crate::infrastructure::module_receipts::is_admitted_retry(operation_id) {
+        return hash_serializable(&(
+            "nodex.agent.page-copy.retry.v1",
+            &context.profile_id,
+            &context.library_id,
+            &context.project_id,
+            store_epoch,
+            crate::infrastructure::module_receipts::agent_retry_caller(authorization),
+            request,
+        ));
+    }
+
     let fingerprint = serde_json::to_vec(&(
         "nodex.agent.page-copy.v1",
         &context.profile_id,

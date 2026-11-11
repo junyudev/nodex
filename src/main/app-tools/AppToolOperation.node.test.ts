@@ -58,7 +58,10 @@ it.effect("binds opaque UUID keys to canonical arguments across Turns and report
     assert.isFalse(changed.success);
     if (changed.success) return;
     assert.deepStrictEqual(changed.result.structuredContent, {
-      error: { code: "idempotency_key_reused" },
+      error: {
+        code: "idempotency_key_reused",
+        details: { retryable: false, recovery: { kind: "use_new_idempotency_key" } },
+      },
     });
   }),
 );
