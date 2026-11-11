@@ -88,6 +88,7 @@ import * as Projects from "../project/ProjectService.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import { readExecution, waitExecution, readExecutionItemIds } from "./ExecutionRead.ts";
 import { EffectOutboxV2 } from "../orchestration-v2/EffectOutbox.ts";
+import { readDesktopToolSkills } from "../desktopTools/Skills.ts";
 import { HostBridge } from "./HostBridge.ts";
 import * as Authority from "./Authority.ts";
 import * as NativeInteraction from "./NativeInteraction.ts";
@@ -419,7 +420,11 @@ const AgentRequest = Schema.Union([
   ),
   request(
     "providers.skills.read",
-    Schema.Struct({ instanceId: ProviderInstanceId, cwd: Schema.String }),
+    Schema.Struct({
+      instanceId: ProviderInstanceId,
+      cwd: Schema.NullOr(Schema.String),
+      composer: Schema.optional(Schema.Boolean),
+    }),
   ),
   request("providers.logout", Schema.Struct({ instanceIds: Schema.Array(ProviderInstanceId) })),
   request(
@@ -850,6 +855,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const identity = yield* readIdentity;
   const effectOutbox = yield* EffectOutboxV2;
   const providers = yield* Providers.ProviderRegistry;
+  const host = yield* HostBridge;
   const codexClients = yield* CodexAppServerClientFactory;
   const instances = yield* ProviderInstanceRegistry;
   const modelPolicy = yield* RuntimeModelPolicy;
@@ -1429,13 +1435,45 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return yield* sandbox.read(input.input.instanceId, input.input.refresh);
       }
       case "providers.skills.read": {
-        const { instanceId, cwd } = input.input;
+        const { instanceId, cwd, composer } = input.input;
         const instance = yield* instances.getInstance(instanceId);
-        if (!instance?.enabled || !["codex", "claude", "opencode"].includes(instance.driverKind))
-          return [];
-        if (instance.skillsForCwd) return (yield* instance.skillsForCwd(cwd)) ?? [];
-        const snapshot = yield* instance.snapshotForCwd?.(cwd) ?? Effect.succeed(null);
-        return snapshot?.skills ?? [];
+        if (!instance?.enabled) return [];
+        const { driverKind } = instance;
+        const native = Effect.gen(function* () {
+          if (cwd !== null) {
+            if (instance.skillsForCwd) return (yield* instance.skillsForCwd(cwd)) ?? [];
+            const workspace = yield* instance.snapshotForCwd?.(cwd) ?? Effect.succeed(null);
+            if (workspace) return workspace.skills;
+          }
+          return composer ? (yield* instance.snapshot.getSnapshot).skills : [];
+        });
+        if (!composer)
+          return ["codex", "claude", "opencode"].includes(driverKind) ? yield* native : [];
+        if (driverKind === "codex") return [];
+        const { skills, roots } = yield* Effect.all(
+          {
+            skills: native.pipe(
+              Effect.catch(() =>
+                Effect.map(instance.snapshot.getSnapshot, (snapshot) => snapshot.skills),
+              ),
+            ),
+            roots: host.desktopSkillRoots(instanceId, driverKind),
+          },
+          { concurrency: "unbounded" },
+        );
+        const desktop = yield* Effect.promise(() => readDesktopToolSkills(roots));
+        const paths = new Set(desktop.map((skill) => skill.path));
+        return [
+          ...skills.filter((skill) => !paths.has(skill.path)),
+          ...desktop.map(({ iconPath, brandColor, ...skill }) => ({
+            ...skill,
+            enabled: true,
+            desktopTool: {
+              ...(iconPath ? { iconPath } : {}),
+              ...(brandColor ? { brandColor } : {}),
+            },
+          })),
+        ];
       }
       case "providers.read": {
         const policy = yield* providerPolicy.admission;

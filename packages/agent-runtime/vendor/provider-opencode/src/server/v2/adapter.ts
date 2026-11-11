@@ -3495,10 +3495,13 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       };
     });
 
-    const promptText = (turnInput: ProviderAdapter.ProviderAdapterV2TurnInput) =>
+    const promptText = (
+      { message }: Pick<ProviderAdapter.ProviderAdapterV2TurnInput, "message">,
+      skills?: string,
+    ) =>
       providerMessageTextWithAttachmentPaths({
-        text: turnInput.message.text,
-        attachments: turnInput.message.attachments,
+        text: [message.text, skills].filter(Boolean).join("\n\n"),
+        attachments: message.attachments,
         resolveAttachmentPath: host.resolveAttachmentPath,
       }).trim();
 
@@ -3876,6 +3879,57 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       yield* stopStrays(state, strict);
     });
 
+    const resolvePromptSkills = Effect.fnUntraced(function* (
+      input: Pick<ProviderAdapter.ProviderAdapterV2TurnInput, "threadId" | "message" | "reportUnavailableSkills"> &
+        Partial<Pick<ProviderAdapter.ProviderAdapterV2TurnInput, "appThread" | "hostSourceRoots">>,
+      state: ThreadState,
+      location: { readonly directory: string },
+      text: string,
+    ) {
+      const requested = input.message.skillInvocations ?? [];
+      if (!requested.length && !SKILL_MENTION.test(text)) return {};
+      const available = yield* client.skill.list({ location }).pipe(
+        Effect.timeout(INVENTORY_TIMEOUT),
+        Effect.map((list) => list.data),
+        Effect.orElseSucceed(() => []),
+      );
+      const desktopServer = desktopMcpServerName(yield* mcpServerNameFor(input.threadId));
+      const desktop = requested.length && state.mcp.get(desktopServer)?.ready
+        ? (yield* mcpSessions.read(input.threadId))?.desktopTools
+        : undefined;
+      const resolved = requested.map((invocation) => {
+        const hostSkill = DesktopTools.selectedDesktopSkill(desktop, invocation, instanceId);
+        const native = available.find((skill) =>
+          hostSkill
+            ? skill.path === hostSkill.path
+            : ProviderAdapter.matchesSkillInvocation(
+                invocation,
+                { name: skill.id, path: skill.path },
+                instanceId,
+                location.directory,
+                input,
+              ),
+        );
+        return { id: native?.id, fallback: native ? undefined : hostSkill };
+      });
+      const omitted = requested
+        .filter((_, index) => !resolved[index]?.id && !resolved[index]?.fallback)
+        .map(({ name }) => name);
+      if (omitted.length) yield* input.reportUnavailableSkills?.(omitted) ?? Effect.void;
+      const skills = new Set([
+        ...skillsNamed(text, new Set(available.map(({ id }) => id))),
+        ...resolved.flatMap(({ id }) => id ? [id] : []),
+      ]);
+      const instructions = DesktopTools.invokeDesktopSkillInstructions(
+        resolved.flatMap(({ fallback }) => fallback ? [fallback] : []),
+        `\`${desktopServer}_js\``,
+      );
+      return {
+        instructions,
+        native: skills.size ? { skills: Array.from(skills, (id) => ({ id: Skill.ID.make(id) })) } : {},
+      };
+    });
+
     /**
      * What a turn sends: `/compact` compacts, `/name args` naming a workspace
      * command runs it, and anything else is a prompt with the `$skill`s it
@@ -3921,30 +3975,14 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           return yield* client.session.command({ sessionID, ...command });
         }
       }
-      const requested = turnInput.message.skillInvocations ?? [];
-      const available = requested.length || SKILL_MENTION.test(text)
-        ? yield* client.skill.list({ location }).pipe(
-            Effect.timeout(INVENTORY_TIMEOUT),
-            Effect.map((list) => list.data),
-            Effect.orElseSucceed(() => []),
-          )
-        : [];
-      const optional = requested.flatMap((invocation) =>
-        available.some((skill) => ProviderAdapter.matchesSkillInvocation(invocation, { name: skill.id, path: skill.path }, instanceId, location.directory, turnInput))
-          ? [invocation.name] : [],
-      );
-      const omitted = requested.filter(({ name }) => !optional.includes(name)).map(({ name }) => name);
-      if (omitted.length) yield* turnInput.reportUnavailableSkills?.(omitted) ?? Effect.void;
-      const skills = [...new Set([...skillsNamed(text, new Set(available.map(({ id }) => id))), ...optional])];
+      const promptSkills = yield* resolvePromptSkills(turnInput, state, location, text);
       if (!sending()) return;
       return yield* client.session
         .prompt({
           sessionID,
           id,
-          text: promptText(turnInput),
-          ...(skills.length === 0
-            ? {}
-            : { skills: skills.map((id) => ({ id: Skill.ID.make(id) })) }),
+          text: promptText(turnInput, promptSkills.instructions),
+          ...promptSkills.native,
         })
         .pipe(Effect.asVoid);
     });
@@ -4285,17 +4323,21 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           const inboxID = steerPromptId(sessionId, steerInput.message.messageId);
           // A retried steer that already reached the model is not sent again.
           if (turn.settledInbox.has(inboxID)) return;
+          const promptSkills = yield* resolvePromptSkills(
+            { ...steerInput, appThread: turn.input.appThread },
+            state,
+            { directory: turn.input.runtimePolicy.cwd ?? host.paths.cwd },
+            "",
+          );
+          if (state.active !== turn || turn.interrupted || turn.settledInbox.has(inboxID)) return;
           turn.steers.add(inboxID);
           state.strandedSteers.delete(inboxID);
           yield* client.session
             .prompt({
               sessionID: Session.ID.make(sessionId),
               id: inboxID,
-              text: providerMessageTextWithAttachmentPaths({
-                text: steerInput.message.text,
-                attachments: steerInput.message.attachments,
-                resolveAttachmentPath: host.resolveAttachmentPath,
-              }).trim(),
+              text: promptText(steerInput, promptSkills.instructions),
+              ...promptSkills.native,
               delivery: "steer",
             })
             .pipe(

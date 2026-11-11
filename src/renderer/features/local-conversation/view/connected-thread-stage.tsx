@@ -1044,7 +1044,9 @@ export function ConnectedThreadStageFooter({
         : supportsConversationProviderControl(input.provider, "skills")
           ? [...(input.provider?.skills ?? [])]
           : [],
-      composerSkillsLoading: desktopCatalogs && composerSkillsQuery.isPending,
+      composerSkillsLoading: desktopCatalogs
+        ? composerSkillsQuery.isPending
+        : input.provider?.skillsLoading,
       composerApps: runtime.kind === "codex" ? (composerAppsQuery.data ?? []) : [],
       composerAppsLoading: desktopCatalogs && composerAppsQuery.isPending,
       composerSites: runtime.kind === "codex" ? (composerSitesQuery.data?.sites ?? []) : [],

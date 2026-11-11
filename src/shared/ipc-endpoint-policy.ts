@@ -121,6 +121,7 @@ type QueryEndpointPolicy =
   | "agent-runtime:session:queued-preview"
   | "agent-runtime:session:item"
   | "agent-runtime:providers:read"
+  | "agent-runtime:providers:composer-skills"
   | "agent-runtime:windows-sandbox:read"
   | "agent-runtime:providers:known"
   | "agent-runtime:claude-usage:read"

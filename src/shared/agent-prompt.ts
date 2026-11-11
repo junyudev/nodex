@@ -150,6 +150,7 @@ export async function prepareAgentMessage(
   capabilities?: {
     readonly images?: boolean;
     readonly nativeSkills?: boolean;
+    readonly desktopSkills?: readonly { readonly name: string; readonly path: string }[];
     readonly agentConfigs?: boolean;
     readonly untrustedAppMessage?: CodexUntrustedAppMessage;
   },
@@ -210,13 +211,20 @@ async function prepareAgentText(
     throw new Error("Use the model and mode menus to configure this Agent.");
   }
   const reference = ({ name, path }: { name: string; path: string }) => `[${name}](${path})`;
+  const isDesktopSkill = (value: { name: string; path: string }) =>
+    capabilities?.desktopSkills?.some(
+      ({ name, path }) => name === value.name && path === value.path,
+    );
   const nativeSkills = capabilities?.nativeSkills
-    ? (input.documentItems?.filter((item) => item.type === "skill") ?? input.skills ?? [])
+    ? (input.documentItems?.filter((item) => item.type === "skill") ?? input.skills ?? []).filter(
+        (skill) => !isDesktopSkill(skill),
+      )
     : [];
   const invocation = nativeSkills.at(-1);
   if (invocation && !/^[a-zA-Z0-9][a-zA-Z0-9:_-]*$/u.test(invocation.name))
     throw new Error("The selected skill has an invalid command name");
   const skill = (value: { name: string; path: string }) => {
+    if (isDesktopSkill(value)) return `$${value.name}`;
     if (!capabilities?.nativeSkills) return reference(value);
     return value === invocation ? "" : `/${value.name}`;
   };

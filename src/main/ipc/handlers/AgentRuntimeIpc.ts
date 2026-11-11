@@ -235,6 +235,11 @@ export const live = Layer.effectDiscard(
     yield* ipc.handleQuery("agent-runtime:providers:read", (event, value) =>
       handle(event, Inputs.AgentRuntimeCatalogSchema, value ?? {}, application.catalog),
     );
+    yield* ipc.handleQuery("agent-runtime:providers:composer-skills", (event, value) =>
+      handle(event, Inputs.AgentRuntimeComposerSkillsSchema, value, (input) =>
+        application.skillsForWorkspace({ ...input, composer: true }),
+      ),
+    );
     yield* ipc.handleQuery("agent-runtime:windows-sandbox:read", (event, value) =>
       handle(event, Inputs.AgentWindowsSandboxReadSchema, value, application.readWindowsSandbox),
     );

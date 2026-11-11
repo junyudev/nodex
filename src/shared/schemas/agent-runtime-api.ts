@@ -80,6 +80,17 @@ export const AgentRuntimeMessageSchema = z
     modelSelection: AgentRuntimeModelSelectionSchema.optional(),
     interactionMode: AgentRuntimeInteractionModeSchema.optional(),
     agentConfigs: AgentConfigsSchema.optional(),
+    skillInvocations: z
+      .array(
+        z.strictObject({
+          name: z.string().min(1).max(200),
+          path: z.string().min(1),
+          instanceId: id,
+          cwd: z.string().min(1),
+        }),
+      )
+      .max(3)
+      .optional(),
   })
   .strict() as z.ZodType<AgentRuntimeMessage>;
 export const AgentRuntimeLaunchSchema = z
@@ -372,6 +383,10 @@ export const AgentRuntimeObserveSchema = AgentRuntimeTargetSchema.extend({
 });
 export const AgentRuntimeUnobserveSchema = z.object({ subscriptionId: id }).strict();
 export const AgentRuntimeRestartSchema = z.object({ generation: id }).strict();
+export const AgentRuntimeComposerSkillsSchema = z
+  .object({ instanceId: z.string().min(1), cwd: z.string().min(1).nullable() })
+  .strict();
+
 export const AgentRuntimeCatalogSchema = z
   .object({
     refresh: z.boolean().optional(),

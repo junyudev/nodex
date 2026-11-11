@@ -543,6 +543,12 @@ export interface AgentRuntimeIpcApi {
     args: [input?: AgentRuntimeOperations["providers.read"]["input"]];
     result: AgentRuntimeOperations["providers.read"]["output"];
   };
+  "agent-runtime:providers:composer-skills": {
+    args: [
+      input: Pick<AgentRuntimeOperations["providers.skills.read"]["input"], "instanceId" | "cwd">,
+    ];
+    result: AgentRuntimeOperations["providers.skills.read"]["output"];
+  };
   "agent-runtime:windows-sandbox:read": {
     args: [input: AgentRuntimeOperations["providers.windows-sandbox.read"]["input"]];
     result: AgentRuntimeOperations["providers.windows-sandbox.read"]["output"];

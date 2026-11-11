@@ -1070,6 +1070,19 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
         yield* syncDesktopTools(mcpSession);
 
         const hasDesktopTools = () => desktopRegistration?.connected === true;
+        const resolveDesktopPicks = Effect.fnUntraced(function* (
+          input: Pick<ProviderAdapter.ProviderAdapterV2TurnInput, "threadId" | "message">,
+        ) {
+          const requested = input.message.skillInvocations ?? [];
+          if (!requested.length || !hasDesktopTools()) return [];
+          const desktop = (yield* mcpSessions.read(input.threadId))?.desktopTools;
+          return requested.flatMap((invocation) => {
+            const skill = DesktopTools.selectedDesktopSkill(desktop, invocation, options.instanceId);
+            return skill ? [skill] : [];
+          });
+        });
+        const desktopPickInstructions = (picks: Parameters<typeof DesktopTools.invokeDesktopSkillInstructions>[0]) =>
+          DesktopTools.invokeDesktopSkillInstructions(picks, `\`${DesktopTools.DESKTOP_MCP_SERVER}_js\``);
         const permissionRules = (policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy) =>
           openCodePermissionRules(policy, hasDesktopTools());
 
@@ -3080,10 +3093,17 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               invocation, { name: skill.name, path: skill.location },
               options.instanceId, turnInput.runtimePolicy.cwd, turnInput,
             )));
-          const omitted = requested.filter((skill) => !kept.includes(skill)).map(({ name }) => name);
+          const desktopPicks = yield* resolveDesktopPicks(turnInput);
+          const omitted = requested.filter((skill) => !kept.includes(skill) &&
+            !desktopPicks.some(({ name, path }) => skill.name === name && skill.path === path)
+          ).map(({ name }) => name);
           if (omitted.length) yield* turnInput.reportUnavailableSkills?.(omitted) ?? Effect.void;
           const text = providerMessageTextWithAttachmentPaths({
-            text: [turnInput.message.text, ...kept.map(({ name }) => `Use the /${name} skill.`)].join("\n\n"),
+            text: [
+              turnInput.message.text,
+              ...kept.map(({ name }) => `Use the /${name} skill.`),
+              desktopPickInstructions(desktopPicks),
+            ].filter(Boolean).join("\n\n"),
             attachments: turnInput.message.attachments,
             resolveAttachmentPath: host.resolveAttachmentPath,
           }).trim();
@@ -3611,8 +3631,10 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   `OpenCode model '${turn.modelSelection.model}' must use provider/model format`,
                 );
               }
+              const explicitSkills = desktopPickInstructions(yield* resolveDesktopPicks(steerInput));
+              if (state.activeTurn !== turn || turn.interrupted) return;
               const text = providerMessageTextWithAttachmentPaths({
-                text: steerInput.message.text,
+                text: [steerInput.message.text, explicitSkills].filter(Boolean).join("\n\n"),
                 attachments: steerInput.message.attachments,
                 resolveAttachmentPath: host.resolveAttachmentPath,
               }).trim();

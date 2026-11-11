@@ -544,6 +544,7 @@ export const layerWithOptions = (
       type DesktopPreparation = {
         readonly driver: ProviderDriverKind;
         readonly cwd: string | null;
+        readonly refresh?: boolean;
       };
       const desktopPreparationCwds = new WeakMap<McpProviderSessionConfig, string | null>();
       const withDesktopTools = Effect.fn("ProviderSessionManagerV2.prepareDesktopTools")(function* (
@@ -555,7 +556,7 @@ export const layerWithOptions = (
           !preparation ||
           preparation.driver === "codex" ||
           !executionHost.prepareThread ||
-          desktopPreparationCwds.get(config) === preparation.cwd
+          (!preparation.refresh && desktopPreparationCwds.get(config) === preparation.cwd)
         )
           return config;
         const prepared = yield* executionHost
@@ -2244,6 +2245,7 @@ export const layerWithOptions = (
                     desktopPreparation: {
                       driver: runtime.driver,
                       cwd: input.runtimePolicy.cwd ?? null,
+                      refresh: !ProviderAdapter.attachesToAgentWake(input),
                     },
                   }),
                 ).pipe(

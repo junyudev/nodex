@@ -3559,6 +3559,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           type: "queued-run.edit",
           runId: input.runId,
           text: message.text,
+          ...(message.skillInvocations ? { skillInvocations: message.skillInvocations } : {}),
           ...(message.attachments ? { attachments: message.attachments } : {}),
           ...(message.context ? { context: message.context } : {}),
           ...(message.modelSelection ? { modelSelection: message.modelSelection } : {}),

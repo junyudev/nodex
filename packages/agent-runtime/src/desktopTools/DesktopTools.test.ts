@@ -468,12 +468,30 @@ describe("Desktop Tools", () => {
       const plugin = join(context.home, "plugin");
       await mkdir(join(plugin, ".claude-plugin"), { recursive: true });
       await mkdir(join(plugin, "skills/browser"), { recursive: true });
+      await mkdir(join(plugin, ".codex-plugin"));
       await writeFile(join(plugin, ".claude-plugin/plugin.json"), '{"name":"desktop"}');
+      await writeFile(
+        join(plugin, ".codex-plugin/plugin.json"),
+        JSON.stringify({
+          interface: {
+            displayName: "Browser",
+            composerIcon: "./assets/browser.png",
+            brandColor: "#123456",
+          },
+        }),
+      );
       const path = join(plugin, "skills/browser/SKILL.md");
       await writeFile(path, "---\nname: browser\ndescription: >-\n  Browse\n  the web.\n---\n");
       const info = await provision(context, threadA, [plugin]);
       expect(info.descriptor.skills).toEqual([
-        { name: "desktop:browser", description: "Browse the web.", path },
+        {
+          name: "desktop:browser",
+          description: "Browse the web.",
+          path,
+          displayName: "Browser",
+          iconPath: join(plugin, "assets/browser.png"),
+          brandColor: "#123456",
+        },
       ]);
       const { client, js } = await connect(info);
       await js("same");

@@ -378,6 +378,7 @@ export interface ConversationProviderPresentation {
     >,
   ) => { readonly supported: boolean; readonly unavailableReason: string | null };
   readonly skills?: readonly CodexComposerSkill[];
+  readonly skillsLoading?: boolean;
   readonly refreshSkills?: () => Promise<void>;
   readonly stopTask?: (taskId: string) => Promise<void>;
   readonly kind: "codex" | "claude" | "acp" | "opencode";

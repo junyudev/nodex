@@ -114,6 +114,7 @@ beforeEach(() => {
   policyState.updateSettings.mockImplementation(async (value) => {
     policyState.settings = value;
   });
+  vi.spyOn(agentRuntimeRuntime, "composerSkills").mockResolvedValue([]);
   vi.spyOn(agentRuntimeRuntime, "readWindowsSandbox").mockResolvedValue({
     generation: "sandbox:ready",
     status: "ready",

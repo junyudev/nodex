@@ -409,6 +409,9 @@ export const layer: Layer.Layer<
                   text: message.providerText ?? message.text,
                   context: message.context,
                 }),
+                ...(message.skillInvocations === undefined
+                  ? {}
+                  : { skillInvocations: message.skillInvocations }),
                 attachments: message.attachments,
                 createdBy: message.createdBy,
                 creationSource: message.creationSource,

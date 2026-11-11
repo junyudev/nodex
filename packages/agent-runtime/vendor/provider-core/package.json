@@ -9,6 +9,7 @@
     "./server/attachmentPrompt": "./src/server/attachmentPrompt.ts",
     "./server/auth": "./src/server/auth.ts",
     "./server/collectStreamText": "./src/server/collectStreamText.ts",
+    "./server/desktopToolInstructions": "./src/server/desktopToolInstructions.ts",
     "./server/driver": "./src/server/driver.ts",
     "./server/errors": "./src/server/errors.ts",
     "./server/failure": "./src/server/failure.ts",

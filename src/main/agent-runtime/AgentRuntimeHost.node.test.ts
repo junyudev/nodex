@@ -658,6 +658,28 @@ it.effect("credential failure refuses Agent preparation before exposing CLI acce
   }),
 );
 
+it.effect("composer skill roots follow local Desktop Tools readiness", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const list = (provider: string) => {
+      const request = prepareThread(provider);
+      if (request.operation !== "thread.prepare") throw new Error("expected preparation");
+      return f.execute({
+        type: "host.request",
+        id: "skills",
+        operation: "desktop.skill-roots",
+        identity: request.identity,
+      });
+    };
+    assert.deepEqual(yield* list("claude"), desktopTools.pluginRoots);
+    assert.deepEqual(yield* list("acp"), desktopTools.pluginRoots);
+    assert.deepEqual(yield* list("codex"), []);
+    assert.deepEqual(yield* list("external"), []);
+    f.disableDesktopTools();
+    assert.deepEqual(yield* list("claude"), []);
+  }).pipe(Effect.scoped),
+);
+
 it.effect("Claude desktop preparation requires both driver identities and the current lease", () =>
   Effect.gen(function* () {
     const f = yield* fixture;

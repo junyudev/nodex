@@ -9509,6 +9509,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         payload: {
           ...queuedMessage,
           text: command.text,
+          ...(command.skillInvocations ? { skillInvocations: command.skillInvocations } : {}),
           ...editedAttachments,
           ...(command.context ? { context: command.context } : {}),
           updatedAt: now,

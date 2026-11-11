@@ -259,6 +259,65 @@ test("measures native Claude Plan mode with an allowed HTTP MCP tool", async () 
   }
 });
 
+test("Claude loads the Browser skill picked in the composer", async () => {
+  const marker = "CLAUDE_COMPOSER_BROWSER_SKILL";
+  const model = await startScriptedAnthropicServer(
+    (request) =>
+      backgroundTitleResponse(request) ?? { type: "text", text: "Browser skill received." },
+  );
+  const harness = await ElectronScenarioHarness.create({
+    label: "claude-composer-browser-skill",
+    prepareAgentRuntime: false,
+    environment: model.environment,
+  });
+  const lease = monitorRuntimeLease();
+  try {
+    const page = await harness.launch(lease.launchOptions);
+    await configureClaude(page, harness, model.environment);
+    const draft = await createAgentSmokeDraft(
+      page,
+      harness.profile.projectsDirectory,
+      "Claude Browser skill",
+    );
+    await refreshComposerModels(page);
+    await chooseComposerModel(page, "Claude Sonnet 5.5", "Claude Sonnet 5.5");
+    await page.keyboard.press("Escape");
+    const threadId = await sendAgentPrompt(page, draft.projectSessionId, marker, async () => {
+      const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
+      await composer.press("End");
+      await page.keyboard.insertText(" $");
+      const picker = page.getByLabel("Skills and apps");
+      const browser = picker.getByRole("button", { name: /^Browser\b/u });
+      await expect(browser).toBeVisible();
+      await screenshot(page, "claude-desktop-skill-picker.png");
+      await browser.click();
+      await expect(picker).toBeHidden();
+      await screenshot(page, "claude-desktop-skill-selected.png");
+    });
+    await waitForRuntimeCompletedAgentTurn(
+      page,
+      { sessionId: draft.projectSessionId, threadId },
+      30_000,
+    );
+    const turn = model.requests.find(
+      (request) =>
+        !backgroundTitleResponse(request) &&
+        request.messages.some(
+          (message) => message.role === "user" && JSON.stringify(message.content).includes(marker),
+        ),
+    );
+    expect(turn).toBeDefined();
+    expect(JSON.stringify(turn?.messages)).toContain(
+      "choose the right surface before any browser action",
+    );
+    expect(model.errors).toEqual([]);
+    lease.verify(1);
+  } finally {
+    await harness.close();
+    await model.close();
+  }
+});
+
 for (const mode of ["full-access", "approval-required"] as const) {
   test(`Claude drives the real in-app Browser with ${mode}`, async () => {
     test.setTimeout(240_000);

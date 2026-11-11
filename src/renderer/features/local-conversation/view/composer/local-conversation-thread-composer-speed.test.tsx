@@ -3944,6 +3944,78 @@ describe("ThreadComposer speed menu", () => {
     });
   });
 
+  test.each(["claude", "opencode", "acp"] as const)(
+    "sends a picked Desktop Skill from the %s composer",
+    async (kind) => {
+      resetStorage();
+      const { prepareAgentRuntimeMessage } = await import("../../../../lib/agent-runtime-prompt");
+      const skill = {
+        name: "browser:control-in-app-browser",
+        displayName: "Browser",
+        description: "Control the in-app browser",
+        path: "/desktop/browser/skills/control-in-app-browser/SKILL.md",
+        iconUrl: null,
+        brandColor: null,
+        scope: "system" as const,
+      };
+      const modelSelection = { instanceId: `${kind}:fixture`, model: "fixture" };
+      const send = vi.fn(
+        async (prompt: string, options?: Parameters<ThreadStageActions["onSendPrompt"]>[1]) =>
+          prepareAgentRuntimeMessage(
+            {
+              model: undefined,
+              kind,
+              modelSelection,
+              text: prompt,
+              promptInput: options?.promptInput,
+              desktopSkills: [skill],
+              cwd: "/workspace",
+            },
+            async () => "",
+          ),
+      );
+      const view = await renderComposer(
+        {
+          composerIntent: { prompt: "Inspect this $browser", focusNonce: 1 },
+          provider: {
+            kind,
+            label: kind,
+            selection: modelSelection.instanceId,
+            commands: [],
+            controls: { context: true, skills: true },
+          },
+          composerSkills: [skill],
+        },
+        {
+          onSendPrompt: async (prompt, options) => {
+            await send(prompt, options);
+          },
+        },
+      );
+      const picker = await view.findByLabelText("Skills and apps");
+      const browser = within(picker).getByText("Browser", { exact: true });
+      await act(async () => {
+        fireEvent.click(browser);
+      });
+      await act(async () => {
+        fireEvent.click(view.getByLabelText("Send prompt"));
+      });
+      await waitFor(() => expect(send).toHaveBeenCalledOnce());
+      const message = await send.mock.results[0]?.value;
+      expect(message?.text.trim()).toBe(`Inspect this $${skill.name}`);
+      expect(message).toMatchObject({
+        skillInvocations: [
+          {
+            name: skill.name,
+            path: skill.path,
+            cwd: "/workspace",
+            instanceId: modelSelection.instanceId,
+          },
+        ],
+      });
+    },
+  );
+
   test("typed dollar suggestions combine skills and apps without section headers", async () => {
     resetStorage();
     const sentPromptInputs: string[] = [];

@@ -3630,6 +3630,7 @@ export const OrchestrationV2Command = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("queued-run.edit"),
+    skillInvocations: SkillInvocations,
     modelSelection: Schema.optional(ModelSelection),
     interactionMode: Schema.optional(ProviderInteractionMode),
     context: Schema.optional(OrchestrationMessageContext),

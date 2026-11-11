@@ -279,6 +279,9 @@ export interface AgentRuntimeRendererTransport {
   readonly moveSession: (
     input: AgentRuntimeSessionMoveInput,
   ) => Promise<{ readonly sessionId: string; readonly projectId: string | null }>;
+  readonly composerSkills: (
+    input: AgentRuntimeIpcApi["agent-runtime:providers:composer-skills"]["args"][0],
+  ) => Promise<AgentRuntimeIpcApi["agent-runtime:providers:composer-skills"]["result"]>;
   readonly catalog: (
     input?: AgentRuntimeOperations["providers.read"]["input"],
   ) => Promise<AgentRuntimeOperations["providers.read"]["output"]>;
@@ -349,6 +352,7 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   cancelTask: (input) => invokePlainCommand(cancelTask, input),
   retryPreparation: (input) => invokePlainCommand(retryPreparation, input),
   moveSession: (input) => invokePlainCommand(moveSession, input),
+  composerSkills: (input) => invokeRendererQuery("agent-runtime:providers:composer-skills", input),
   catalog: (input) => invokeRendererQuery("agent-runtime:providers:read", input),
   readWindowsSandbox: (input) => invokeRendererQuery("agent-runtime:windows-sandbox:read", input),
   setupWindowsSandbox: (input) =>

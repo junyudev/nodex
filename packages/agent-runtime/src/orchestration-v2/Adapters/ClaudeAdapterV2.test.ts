@@ -2892,23 +2892,41 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         browserToolsAvailable: true,
         registeredToolNames: ["read_page"],
       };
+      const skill = {
+        name: "browser:control-in-app-browser",
+        path: "/plugins/browser/skills/control-in-app-browser/SKILL.md",
+        description: "Use the in-app browser",
+      };
       const desktopTools = {
         endpoint: "http://127.0.0.1:43123/mcp/node_repl",
         pluginRoots: ["/plugins/browser"],
-        skills: [],
+        skills: [skill],
       };
-      const start = (ordinal: number) =>
-        harness.runtime.startTurn(
-          makeClaudeTestTurnInput({
-            threadId: harness.threadId,
-            providerThread: harness.providerThread,
-            now: DateTime.makeUnsafe("2026-11-06T00:00:00Z"),
-            attemptId: RunAttemptId.make(`desktop-${ordinal}`),
-            providerTurnOrdinal: ordinal,
-            text: "Continue.",
-            attachments: [],
-          }),
-        );
+      const unavailable: string[] = [];
+      const start = (ordinal: number) => {
+        const input = makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: DateTime.makeUnsafe("2026-11-06T00:00:00Z"),
+          attemptId: RunAttemptId.make(`desktop-${ordinal}`),
+          providerTurnOrdinal: ordinal,
+          text: `$${skill.name} Inspect this page.`,
+          attachments: [],
+        });
+        return harness.runtime.startTurn({
+          ...input,
+          message: {
+            ...input.message,
+            skillInvocations: [
+              { ...skill, cwd: "/workspace", instanceId: session.providerInstanceId },
+            ],
+          },
+          reportUnavailableSkills: (names) =>
+            Effect.sync(() => {
+              unavailable.push(...names);
+            }),
+        });
+      };
       const finish = (ordinal: number) =>
         Queue.offer(
           harness.processQueues.at(-1)!,
@@ -2930,6 +2948,10 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       yield* sessions.set({ ...session, desktopTools });
       yield* start(2);
       const options = harness.getOpenedOptions();
+      assert.include(
+        JSON.stringify(harness.offeredMessages.at(-1)?.message.content),
+        "/browser:control-in-app-browser Inspect this page.",
+      );
       assert.equal(harness.processQueues.length, 2);
       assert.deepEqual(options?.mcpServers, {
         nodex_app: {
@@ -2962,6 +2984,11 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       yield* start(4);
       assert.equal(harness.processQueues.length, 3);
       assertAppOnly();
+      assert.notInclude(
+        JSON.stringify(harness.offeredMessages.at(-1)?.message.content),
+        "/browser:control-in-app-browser",
+      );
+      assert.deepEqual(unavailable, [skill.name, skill.name]);
       assert.equal((yield* finish(4)).status, "completed");
     }).pipe(
       Effect.provide(

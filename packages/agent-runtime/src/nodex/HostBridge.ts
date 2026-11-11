@@ -258,6 +258,19 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
     };
   });
 
+  const desktopSkillRoots = (providerInstanceId: string, nativeDriver: string) => {
+    if (configuration.host === undefined) return Effect.succeed([]);
+    return exchange({
+      type: "host.request",
+      operation: "desktop.skill-roots",
+      identity: { runtimeId, runtimeGeneration, providerInstanceId, nativeDriver },
+    }).pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(Schema.String))),
+      Effect.timeout("1 minute"),
+      Effect.orElseSucceed(() => []),
+    );
+  };
+
   const prepareThread = Effect.fn("AgentRuntime.prepareHostThread")(function* (input: {
     readonly threadId: string;
     readonly providerInstanceId: string;
@@ -493,6 +506,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
     prepareTurn,
     registerNativeSession,
     prepareThread,
+    desktopSkillRoots,
     observeNativeTurn,
     onNativeSessionClose: (
       identity: {

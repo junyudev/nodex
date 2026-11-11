@@ -21,7 +21,7 @@ import {
   HOSTED_CHAT_ACTION_REASON,
   REMOTE_AGENT_REASON,
 } from "../../../shared/space-connection";
-import { useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DEFAULT_AGENT_RUNTIME_SETTINGS } from "../../../shared/agent-runtime-settings";
 import { resolveAgentRuntimeMode } from "@/lib/agent-runtime-mode";
 import { agentRuntimeSettingsQueryOptions } from "@/lib/agent-runtime-settings";
@@ -130,6 +130,8 @@ import {
   setLocalConversationThreadPresented,
   useDefaultCodexAppServerManager,
 } from "./local-conversation-store";
+import { resolveComposerInventoryIconUrl } from "../../../shared/codex-composer-inventory-icon";
+import { spaceQueryKey } from "@/lib/renderer-space";
 import { subscribeComposerSkillInvalidation } from "@/lib/skill-inventory-adapter";
 import { subscribeAgentCatalogRefresh } from "@/lib/agent-catalog-refresh";
 import { useFirstRunEntry, useNotificationOffer } from "@/features/first-run/first-run-state";
@@ -446,7 +448,7 @@ export function createAgentRuntimeStageActions(input: {
     promptInput?: CodexPromptInput,
     appMessage?: import("../../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage,
     modelSelection?: NonNullable<AgentRuntimeMessage["modelSelection"]>,
-  ) => Promise<Pick<AgentRuntimeMessage, "text" | "context" | "uploads">>;
+  ) => Promise<Pick<AgentRuntimeMessage, "text" | "context" | "uploads" | "skillInvocations">>;
   readonly capturePresentation?: (
     target: CodexTurnPresentationTarget,
     submitted?: WorkbenchSubmitPresentation,
@@ -703,6 +705,7 @@ export function createAgentRuntimeStageActions(input: {
         ...(await input.prepare(prompt, promptInput, undefined, selection).then((compiled) => ({
           ...compiled,
           ...retainAgentAppContext(compiled, original, false),
+          skillInvocations: compiled.skillInvocations ?? [],
         }))),
         images: agentRuntimePromptImages(promptInput),
         ...(promptInput?.agentConfigs !== undefined
@@ -975,6 +978,7 @@ export function useAgentRuntimeConversationAdapter(input: {
   readonly commitDraft?: import("./thread-stage-types").SessionThreadCommands["onCommitMaterializedProjectDraft"];
 }) {
   const workbenchOwner = useWorkbenchWindowOwner();
+  const queryClient = useQueryClient();
   const nodexAccount = useNodexAccount(true);
   const modelPolicyState = useModelPolicy();
   const [catalogState, setCatalogState] = useState<{
@@ -1020,8 +1024,11 @@ export function useAgentRuntimeConversationAdapter(input: {
     () =>
       subscribeComposerSkillInvalidation(() => {
         setCatalogRequest(({ revision }) => ({ revision: revision + 1, refresh: true }));
+        void queryClient.invalidateQueries({
+          queryKey: spaceQueryKey(["agent-runtime", "composer-skills"]),
+        });
       }),
-    [],
+    [queryClient],
   );
   const { connectAgent } = useFirstRunEntry();
   // Signing in to Codex from the composer finishes in the browser; the new account checks the
@@ -1407,6 +1414,28 @@ export function useAgentRuntimeConversationAdapter(input: {
   // A hosted chat's history belongs to its Space host, which forks it for any Member who reads it
   // and rewinds it only to a message its reader sent, until Core has said which those are.
   const hosted = isHostedChat();
+  const skillInstance = agentRuntimeProviderId(selection.binding);
+  const skillCwd = observed?.executionLocation?.cwd ?? input.workspaceRoot ?? null;
+  const localSkills = !hosted && selection.binding.kind !== "codex" && skillInstance !== null;
+  const composerSkills = useQuery({
+    queryKey: spaceQueryKey([
+      "agent-runtime",
+      "composer-skills",
+      localSkills ? skillInstance : null,
+      skillCwd,
+    ]),
+    queryFn: localSkills
+      ? () => agentRuntimeRuntime.composerSkills({ instanceId: skillInstance, cwd: skillCwd })
+      : skipToken,
+    // A capability can appear or disappear while this composer stays open.
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: "always",
+  });
+  const skillInventory =
+    (localSkills && !composerSkills.isError ? composerSkills.data : undefined) ??
+    provider?.skills ??
+    [];
+  const desktopSkills = skillInventory.filter((skill) => skill.desktopTool);
   useEffect(() => {
     owner?.setCapabilities({
       supportsUserTurnEdits: canRollback && (!hosted || memberEdits !== undefined),
@@ -1525,6 +1554,11 @@ export function useAgentRuntimeConversationAdapter(input: {
           provider,
           modelSelection: modelOf(candidate) ?? undefined,
           kind: candidate.binding.kind,
+          desktopSkills:
+            !hosted && agentRuntimeProviderId(candidate.binding) === skillInstance
+              ? desktopSkills
+              : undefined,
+          cwd: skillCwd ?? undefined,
           text,
           promptInput: portable,
           untrustedAppMessage,
@@ -2202,20 +2236,21 @@ export function useAgentRuntimeConversationAdapter(input: {
           .find((entry) => entry.instanceId === modelSelection.instanceId)
           ?.models.find((entry) => entry.slug === modelSelection.model),
       ),
-    skills:
-      provider?.skills
-        .filter((skill) => skill.enabled)
-        .map((skill) => ({
-          name: skill.name,
-          displayName: skill.displayName ?? skill.name,
-          description: skill.description ?? "",
-          iconUrl: null,
-          brandColor: null,
-          path: skill.path,
-          scope: "user" as const,
-        })) ?? [],
+    skillsLoading: composerSkills.isLoading,
+    skills: skillInventory
+      .filter((skill) => skill.enabled)
+      .map((skill) => ({
+        name: skill.name,
+        displayName: skill.displayName ?? skill.name,
+        description: skill.shortDescription ?? skill.description ?? "",
+        iconUrl: resolveComposerInventoryIconUrl(skill.desktopTool?.iconPath),
+        brandColor: skill.desktopTool?.brandColor ?? null,
+        path: skill.path,
+        scope: skill.desktopTool ? "system" : "user",
+      })),
     refreshSkills: async () => {
-      refreshCatalog();
+      if (localSkills) await composerSkills.refetch();
+      else refreshCatalog();
     },
     notice: composerNotice,
     backgroundTasks,

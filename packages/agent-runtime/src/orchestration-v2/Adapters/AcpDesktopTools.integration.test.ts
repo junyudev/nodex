@@ -18,6 +18,11 @@ import * as Application from "../../nodex/Application.ts";
 import type { AgentRuntimeMethod, AgentRuntimeOperations } from "../../nodex/Interface.ts";
 import { AgentRuntime } from "../../nodex/Service.ts";
 
+const browserSkill = {
+  name: "browser:control-in-app-browser",
+  description: "Control the in-app Browser",
+  path: "/fixture/desktop/browser/SKILL.md",
+};
 const fixtureConfig = vi.hoisted(() => ({
   endpoint: "",
   authorization: undefined as string | undefined,
@@ -39,7 +44,11 @@ vi.mock("@nodex/provider-core/server/McpProviderSessions", async (importOriginal
               fixtureConfig.authorization = config.authorizationHeader;
               return sessions.set({
                 ...config,
-                desktopTools: { endpoint: fixtureConfig.endpoint, pluginRoots: [], skills: [] },
+                desktopTools: {
+                  endpoint: fixtureConfig.endpoint,
+                  pluginRoots: [],
+                  skills: [browserSkill],
+                },
               });
             },
           }),
@@ -125,6 +134,7 @@ it.live.each(["complete", "cancel"] as const)(
             threadId,
             messageId,
             text: "Use the Desktop tool",
+            skillInvocations: [{ ...browserSkill, instanceId, cwd: home }],
             attachments: [],
             createdBy: "user",
             creationSource: "web",
@@ -165,6 +175,16 @@ it.live.each(["complete", "cancel"] as const)(
         );
         expect(result?.status).toBe(expectedStatus);
         const observations: unknown = JSON.parse(yield* fs.readFileString(observationPath));
+        expect(observations).toContainEqual(
+          expect.objectContaining({
+            method: "session/prompt",
+            promptText: expect.arrayContaining([
+              expect.stringContaining(
+                `Use the \`${browserSkill.name}\` skill for this message. Read the whole file at \`${browserSkill.path}\` first`,
+              ),
+            ]),
+          }),
+        );
         expect(observations).toContainEqual({ method: "node_repl/tools/list", tools: ["js"] });
         if (outcome === "cancel") {
           expect(observations).toContainEqual(
@@ -209,6 +229,7 @@ it.live.each(["complete", "cancel"] as const)(
                       name: "NODEX_SCRIPTED_ACP_SCENARIO",
                       value: JSON.stringify({
                         desktopToolCall,
+                        recordPromptText: true,
                         sessionConfig: {
                           id: "model",
                           category: "model",

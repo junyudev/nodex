@@ -343,9 +343,29 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     };
   });
 
+  const prepareDesktop = (identity: { providerInstanceId: string; nativeDriver: string }) => {
+    if (
+      !options.desktop ||
+      identity.nativeDriver === "codex" ||
+      driverOf(identity.providerInstanceId) !== identity.nativeDriver ||
+      (identity.nativeDriver === "opencode" &&
+        hasExternalProviderServer(options.providers[identity.providerInstanceId]?.config))
+    )
+      return Effect.succeed(null);
+    return options.desktop.desktopTools.pipe(
+      Effect.catch(() =>
+        Effect.logWarning("Desktop tools are unavailable for the Thread").pipe(Effect.as(null)),
+      ),
+    );
+  };
+
   const execute = Effect.fn("AgentRuntimeHost.execute")(
     function* (request: AgentHostRequest) {
       if (request.operation === "turn.prepare") return yield* prepare(request.identity);
+      if (request.operation === "desktop.skill-roots") {
+        if (!isCurrentLease(request.identity)) return yield* unavailable(request.operation);
+        return (yield* prepareDesktop(request.identity))?.pluginRoots ?? [];
+      }
       if (request.operation === "thread.prepare") {
         const { identity } = request;
         if (!isCurrentLease(identity)) return yield* unavailable("thread.prepare");
@@ -359,20 +379,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
             ? yield* options.workspaceEnvironment(request.cwd)
             : null;
         const prepared = environment ? { environment } : {};
-        if (
-          identity.nativeDriver === "codex" ||
-          driverOf(identity.providerInstanceId) !== identity.nativeDriver ||
-          (identity.nativeDriver === "opencode" &&
-            hasExternalProviderServer(options.providers[identity.providerInstanceId]?.config)) ||
-          !options.desktop
-        )
-          return prepared;
-        const desktopTools = yield* options.desktop.desktopTools.pipe(
-          Effect.catch(() =>
-            // Preparation errors can contain launch environment values. Log no error payload.
-            Effect.logWarning("Desktop tools are unavailable for the Thread").pipe(Effect.as(null)),
-          ),
-        );
+        const desktopTools = yield* prepareDesktop(identity);
         return desktopTools ? { ...prepared, desktopTools } : prepared;
       }
       if (request.operation === "turn.native") {

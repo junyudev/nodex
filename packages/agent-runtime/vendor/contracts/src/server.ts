@@ -138,6 +138,12 @@ export const ServerProviderSkill = Schema.Struct({
    * only the agent can start it. Composers must not offer it under `/`.
    */
   userInvocable: Schema.optional(Schema.Boolean),
+  desktopTool: Schema.optionalKey(
+    Schema.Struct({
+      iconPath: Schema.optionalKey(TrimmedNonEmptyString),
+      brandColor: Schema.optionalKey(TrimmedNonEmptyString),
+    }),
+  ),
 });
 export type ServerProviderSkill = typeof ServerProviderSkill.Type;
 

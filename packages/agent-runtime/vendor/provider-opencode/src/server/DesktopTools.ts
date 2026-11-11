@@ -1,7 +1,9 @@
-import { desktopToolInstructions } from "../../../provider-core/src/server/desktopToolInstructions.ts";
+import { desktopToolInstructions } from "@nodex/provider-core/server/desktopToolInstructions";
 import type { McpProviderDesktopTools } from "@nodex/provider-core/server/mcpSession";
 import { readToolOutputImage } from "@nodex/runtime-shared/toolOutput";
 import { skillPaths } from "./NativeExecutionPlugin.ts";
+
+export { invokeDesktopSkillInstructions, selectedDesktopSkill } from "@nodex/provider-core/server/desktopToolInstructions";
 
 export const DESKTOP_MCP_SERVER = "node_repl";
 export const DESKTOP_TOOL_TIMEOUT_MS = 65 * 60_000;

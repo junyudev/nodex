@@ -3701,7 +3701,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         const endpoint = "http://127.0.0.1:3773/mcp";
         const plugin = "/profile/desktop-plugin";
         const skill = {
-          name: "browser",
+          name: "browser:control-in-app-browser",
           description: "Use the in-app browser",
           path: `${plugin}/skills/browser/SKILL.md`,
         };
@@ -3749,6 +3749,12 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
           out("session.prompt", { sessionID: SESSION, text: "<any>" }),
           promptAccepted,
         ];
+        const list = (
+          data: readonly { id: string; name: string; path: string; content: string }[],
+        ) => [
+          out("skill.list", { "location[directory]": WORK }),
+          reply("skill.list", { location: { directory: WORK }, data }),
+        ];
         const terminal = event("session.execution.succeeded", { sessionID: SESSION });
         const call = {
           sessionID: SESSION,
@@ -3767,11 +3773,24 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
               "Host guidance",
               "## Desktop skills",
               "This app can control its in-app Browser and other desktop surfaces for you. Each skill below is a file of instructions. When a request needs one, read the whole file first and follow it; do not guess its API.",
-              `- \`browser\` (${skill.path}): ${skill.description}`,
+              `- \`${skill.name}\` (${skill.path}): ${skill.description}`,
               `Desktop skills call the JavaScript tool \`mcp__node_repl__js\`. Here that is \`${desktop}_js\`; its state persists between calls.`,
             ].join("\n\n"),
           ),
-          ...prompt,
+          ...list([
+            {
+              id: "control-in-app-browser",
+              name: "Browser",
+              path: skill.path,
+              content: "Use Browser.",
+            },
+          ]),
+          out("session.prompt", {
+            sessionID: SESSION,
+            text: "hi",
+            skills: [{ id: "control-in-app-browser" }],
+          }),
+          promptAccepted,
           event("session.execution.started", { sessionID: SESSION }),
           event("session.tool.input.started", call),
           event("session.tool.called", { ...call, input, executed: true }),
@@ -3794,14 +3813,21 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
           ...remove(desktop),
           ...add(app, "rotated"),
           ...add(desktop, "rotated"),
-          ...prompt,
+          ...list([]),
+          out("session.prompt", {
+            sessionID: SESSION,
+            text: `hi\n\nUse the \`${skill.name}\` skill for this message. Read the whole file at \`${skill.path}\` first and follow its instructions.\n\nDesktop skills call the JavaScript tool \`mcp__node_repl__js\`. Here that is \`${desktop}_js\`; its state persists between calls.`,
+          }),
+          promptAccepted,
           terminal,
           ...remove(desktop),
           ...instructionEntry(`${runtimeInstructions}\n\nHost guidance`),
+          ...list([]),
           ...prompt,
           terminal,
           ...remove(app),
         ]);
+        const unavailable: string[] = [];
         const send = (ordinal: number) =>
           Effect.gen(function* () {
             const collected = yield* runtime.events.pipe(
@@ -3811,6 +3837,14 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
             );
             yield* runtime.startTurn({
               ...turnInput(thread),
+              message: {
+                ...turnInput(thread).message,
+                skillInvocations: [{ ...skill, instanceId, cwd: WORK }],
+              },
+              reportUnavailableSkills: (names) =>
+                Effect.sync(() => {
+                  unavailable.push(...names);
+                }),
               runId: RunId.make(`run:desktop:${ordinal}`),
               attemptId: RunAttemptId.make(`attempt:desktop:${ordinal}`),
               providerTurnOrdinal: ordinal,
@@ -3836,6 +3870,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         const { desktopTools: _removed, ...appOnly } = config;
         yield* sessions.set({ ...appOnly, authorizationHeader: "Bearer rotated" });
         assert.deepInclude((yield* send(3)).at(-1), { type: "turn.terminal", status: "completed" });
+        assert.deepEqual(unavailable, [skill.name]);
         yield* runtime.unloadThread!({ providerThread: thread });
       }).pipe(Effect.scoped, TestClock.withLive),
   );

@@ -4,6 +4,10 @@ import type { EnvironmentId, ProviderInstanceId, ThreadId } from "@nodex/runtime
 export interface McpProviderDesktopToolSkill {
   readonly name: string;
   readonly description: string;
+  readonly displayName?: string;
+  readonly shortDescription?: string;
+  readonly iconPath?: string;
+  readonly brandColor?: string;
   /** Absolute path of its `SKILL.md`. */
   readonly path: string;
 }

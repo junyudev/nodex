@@ -550,7 +550,11 @@ export interface AgentRuntimeOperations
     readonly output: ReadonlyArray<AgentWire<ServerProvider>>;
   };
   readonly "providers.skills.read": {
-    readonly input: { readonly instanceId: string; readonly cwd: string };
+    readonly input: {
+      readonly instanceId: string;
+      readonly cwd: string | null;
+      readonly composer?: boolean;
+    };
     readonly output: NonNullable<AgentWire<ServerProvider>["skills"]>;
   };
   readonly "providers.logout": {
@@ -996,6 +1000,17 @@ export type AgentHostRequest =
         readonly nativeDriver: string;
       };
       readonly cwd: string | null;
+    }
+  | {
+      readonly type: "host.request";
+      readonly id: string;
+      readonly operation: "desktop.skill-roots";
+      readonly identity: {
+        readonly runtimeId: string;
+        readonly runtimeGeneration: string;
+        readonly providerInstanceId: string;
+        readonly nativeDriver: string;
+      };
     }
   | {
       readonly type: "host.request";

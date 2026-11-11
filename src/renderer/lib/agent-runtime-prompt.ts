@@ -23,18 +23,21 @@ export async function prepareAgentRuntimeMessage(
     readonly provider?: RuntimeProvider;
     readonly modelSelection?: AgentRuntimeMessage["modelSelection"];
     readonly kind: AgentBackendBinding["kind"];
+    readonly desktopSkills?: readonly { readonly name: string; readonly path: string }[];
+    readonly cwd?: string;
     readonly text: string;
     readonly promptInput?: CodexPromptInput;
     readonly untrustedAppMessage?: CodexUntrustedAppMessage;
   },
   readPastedText: Parameters<typeof prepareAgentMessage>[2],
-): ReturnType<typeof prepareAgentMessage> {
+): Promise<Pick<AgentRuntimeMessage, "text" | "context" | "skillInvocations">> {
   // Compile the same text Main will receive, including document items and pasted text. This
   // only prepares data: visual input must still pass admission below before preparation returns.
   const prepared = await prepareAgentMessage(input.text, input.promptInput, readPastedText, {
     images: true,
     agentConfigs: true,
     nativeSkills: input.kind === "claude",
+    desktopSkills: input.desktopSkills,
     untrustedAppMessage: input.untrustedAppMessage,
   });
   // Resolve before any caller can rewind or otherwise mutate the chat. Main repeats this
@@ -64,7 +67,21 @@ export async function prepareAgentRuntimeMessage(
   const reason = agentRuntimeImageInputUnavailableReason(model);
   if (reason && agentRuntimePromptImages(input.promptInput, input.untrustedAppMessage).length > 0)
     throw new Error(reason);
-  return prepared;
+  const picks =
+    input.promptInput?.documentItems?.filter((item) => item.type === "skill") ??
+    input.promptInput?.skills ??
+    [];
+  const selection = input.modelSelection;
+  if (!selection) return prepared;
+  const skillInvocations = input.desktopSkills
+    ?.filter(({ name, path }) => picks.some((pick) => pick.name === name && pick.path === path))
+    .map(({ name, path }) => ({
+      name,
+      path,
+      instanceId: selection.instanceId,
+      cwd: input.cwd ?? ".",
+    }));
+  return skillInvocations?.length ? { ...prepared, skillInvocations } : prepared;
 }
 
 /** Preserve the shared editor's explicit visual attachments across every Agent runtime. */

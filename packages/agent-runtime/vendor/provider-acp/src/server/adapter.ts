@@ -68,7 +68,7 @@ import * as ProviderHost from "@nodex/provider-core/server/ProviderHost";
 import { makeAcpMcpOverAcpBridge, type AcpMcpOverAcpBridge } from "./mcpOverAcpBridge.ts";
 import { mcpToolPresentation } from "@nodex/provider-core/server/mcpToolPresentation";
 import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
-import { desktopToolInstructions } from "../../../provider-core/src/server/desktopToolInstructions.ts";
+import { desktopToolInstructions, invokeDesktopSkillInstructions, selectedDesktopSkill } from "@nodex/provider-core/server/desktopToolInstructions";
 import * as McpProviderSession from "@nodex/provider-core/server/mcpSession";
 import {
   applyAcpAgentTerminalUpdate,
@@ -7682,8 +7682,18 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             desktopInstructions,
           } satisfies AcpPromptInstructionState;
           const previousInstructionState = (yield* Ref.get(promptInstructionStates)).get(sessionId);
+          const requested = turnInput.message.skillInvocations ?? [];
+          const selected = requested.map((invocation) =>
+            selectedDesktopSkill(desktopTools, invocation, options.instanceId),
+          );
+          const omitted = requested.filter((_, index) => !selected[index]).map(({ name }) => name);
+          if (omitted.length) yield* turnInput.reportUnavailableSkills?.(omitted) ?? Effect.void;
+          const explicitSkills = invokeDesktopSkillInstructions(
+            selected.filter((skill) => skill !== undefined),
+            "the `js` tool of the `node_repl` MCP server",
+          );
           const messageText = providerMessageTextWithAttachmentPaths({
-            text: turnInput.message.text,
+            text: [turnInput.message.text, explicitSkills].filter(Boolean).join("\n\n"),
             attachments: turnInput.message.attachments,
             resolveAttachmentPath: host.resolveAttachmentPath,
           });
@@ -7812,9 +7822,13 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               turnInput.threadId,
               requestedSessionId,
             );
+            const mcpContext = yield* readMcpContext(turnInput.threadId);
+            const desktopRouteChanged =
+              desktopToolsSessions.has(requestedSessionId) !== (mcpContext.desktopTools !== undefined);
             const needsSessionActivation =
               (yield* Ref.get(activeSessionId)) !== requestedSessionId ||
-              restartAfterInterrupt !== undefined;
+              restartAfterInterrupt !== undefined ||
+              (desktopRouteChanged && (canLoadSession || canResumeSession));
             if (needsSessionActivation) {
               clientPolicyGrants = makeAcpClientPolicyGrants();
               const activated =
@@ -7826,6 +7840,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               yield* Ref.set(activeSelection, turnInput.modelSelection);
               yield* Ref.set(activeInteractionMode, turnInput.runtimePolicy.interactionMode);
             } else {
+              // Session activation updates native servers when supported. Keep the client
+              // terminal fallback current even for an Agent that cannot reload a session.
+              if (desktopRouteChanged) rememberMcpContext(requestedSessionId, mcpContext);
               const configuredSelection = yield* Ref.get(activeSelection);
               const configuredInteractionMode = yield* Ref.get(activeInteractionMode);
               if (

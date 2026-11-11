@@ -135,6 +135,7 @@ import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { keepViewedImage } from "../viewedImageCopy.ts";
 import { resolveClaudeSdkExecutablePath } from "../../provider/Drivers/ClaudeExecutable.ts";
 import { planClaudeSkillDispatch } from "../../provider/Drivers/ClaudeSkillDispatch.ts";
+import { selectedDesktopSkill } from "@nodex/provider-core/server/desktopToolInstructions";
 import { discoverClaudeSkills } from "../../provider/Drivers/ClaudeSkills.ts";
 import { compileClaudeModelSelection, type ClaudeLiveSelection } from "../../claudeModelOptions.ts";
 import * as ServerConfig from "../../config.ts";
@@ -3977,7 +3978,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
   ) {
     const cwd = turn.runtimePolicy.cwd;
     const skills = yield* userInvocableSkills(cwd);
+    const desktop = (yield* mcpSessions.read(turn.threadId))?.desktopTools;
     const optionalSkills = (requested ?? []).flatMap((invocation) =>
+      selectedDesktopSkill(desktop, invocation, adapterOptions.instanceId) ||
       skills.some((skill) =>
         ProviderAdapter.matchesSkillInvocation(
           invocation,
@@ -3994,7 +3997,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
       ?.filter(({ name }) => !optionalSkills.includes(name))
       .map(({ name }) => name);
     if (omitted?.length) yield* turn.reportUnavailableSkills?.(omitted) ?? Effect.void;
-    return { skillNames: new Set(skills.map(({ name }) => name)), optionalSkills };
+    return {
+      skillNames: new Set([...skills, ...(desktop?.skills ?? [])].map(({ name }) => name)),
+      optionalSkills,
+    };
   });
 
   return ProviderAdapter.ProviderAdapterV2.of({
