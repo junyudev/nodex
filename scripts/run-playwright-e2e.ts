@@ -1,6 +1,10 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { acquireMachineBudget, machineBudgetCapacity } from "./tooling/machine-budget.ts";
+
+/** One Playwright worker drives Electron's main, renderer and GPU processes plus Core. */
+const ELECTRON_WORKER_WEIGHT = 3;
 
 const PERFORMANCE_GREP =
   "keeps representative large-content surfaces bounded|keeps Page ready and idle CPU bounded with 14k LocalCommit history|measures high-pressure nested Block transfer into a populated Board|keeps production-scale Database context menus inside the interaction budget";
@@ -34,18 +38,22 @@ const modes = {
     config: "playwright.e2e.config.ts",
     fixedArguments: [],
     environment: {},
+    exclusive: false,
   },
   nightly: {
     scriptName: "test:e2e:nightly",
     config: "playwright.e2e.config.ts",
     fixedArguments: [...NIGHTLY_E2E_SPECS, "--workers=1"],
     environment: { NODEX_E2E_INCLUDE_PERFORMANCE: "0" },
+    exclusive: false,
   },
   performance: {
     scriptName: "test:e2e:performance",
     config: "playwright.e2e.config.ts",
     fixedArguments: ["--grep", PERFORMANCE_GREP],
     environment: { NODEX_E2E_INCLUDE_PERFORMANCE: "1" },
+    // Latency budgets are only meaningful when nothing else competes for the computer.
+    exclusive: true,
   },
 } as const;
 
@@ -57,6 +65,7 @@ export interface PlaywrightE2eInvocation {
   readonly fixedArguments: readonly string[];
   readonly additionalArguments: readonly string[];
   readonly environment: Readonly<Record<string, string>>;
+  readonly exclusive: boolean;
 }
 
 const isPlaywrightE2eMode = (value: string): value is PlaywrightE2eMode =>
@@ -98,11 +107,22 @@ const runCommand = (
   process.exit(result.status ?? 1);
 };
 
-const runPlaywrightE2e = (arguments_: readonly string[]): void => {
+const runPlaywrightE2e = async (arguments_: readonly string[]): Promise<void> => {
   const invocation = resolvePlaywrightE2eInvocation(arguments_);
-  runCommand("vp", ["run", "core:binaries:build:dev"]);
-  if (process.platform === "darwin") runCommand("vp", ["run", "dictation-helper:build:dev"]);
-  runCommand("vp", ["run", "build"]);
+  // The claim also covers the builds, which keep every core busy before the first test starts.
+  const capacity = machineBudgetCapacity(process.env);
+  const lease = await acquireMachineBudget(
+    {
+      label: invocation.scriptName,
+      weight: invocation.exclusive ? (capacity ?? 0) : ELECTRON_WORKER_WEIGHT,
+    },
+    { env: process.env, cwd: process.cwd(), capacity: capacity ?? undefined },
+  );
+  runCommand("vp", ["run", "core:binaries:build:dev"], lease.env);
+  if (process.platform === "darwin") {
+    runCommand("vp", ["run", "dictation-helper:build:dev"], lease.env);
+  }
+  runCommand("vp", ["run", "build"], lease.env);
   runCommand(
     "pnpm",
     [
@@ -114,11 +134,15 @@ const runPlaywrightE2e = (arguments_: readonly string[]): void => {
       ...invocation.fixedArguments,
       ...invocation.additionalArguments,
     ],
-    invocation.environment,
+    { ...invocation.environment, ...lease.env },
   );
+  lease.release();
 };
 
 const entryPath = process.argv[1];
 if (entryPath && import.meta.url === pathToFileURL(path.resolve(entryPath)).href) {
-  runPlaywrightE2e(process.argv.slice(2));
+  void runPlaywrightE2e(process.argv.slice(2)).catch((error: unknown) => {
+    process.stderr.write(String(error) + "\n");
+    process.exit(1);
+  });
 }

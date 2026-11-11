@@ -26,6 +26,7 @@ describe("Playwright E2E runner arguments", () => {
       config: "playwright.e2e.config.ts",
       environment: { NODEX_E2E_INCLUDE_PERFORMANCE: "1" },
       fixedArguments: ["--grep", expect.stringContaining("large-content surfaces")],
+      exclusive: true,
     });
   });
 
@@ -36,6 +37,7 @@ describe("Playwright E2E runner arguments", () => {
       fixedArguments: [...NIGHTLY_E2E_SPECS, "--workers=1"],
       additionalArguments: [],
       environment: { NODEX_E2E_INCLUDE_PERFORMANCE: "0" },
+      exclusive: false,
     });
   });
 

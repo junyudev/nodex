@@ -869,6 +869,34 @@ the local composition of the same integrated check and repository contracts.
 The complete severity rationale, scoped overrides, remediation paths, and
 upgrade review process live in [Lint governance](LINTING.md).
 
+### Sharing the computer between checkouts
+
+Several Agents usually run checks in different worktrees at once. Left alone they overload the
+computer together, and tests then time out for reasons unrelated to the change under test. Heavy
+commands therefore claim a share of one computer-wide CPU budget before they start and wait in
+line while it is full:
+
+- Every Vitest suite claims one core per worker it can start, just before its first worker
+  starts. This holds for `vp run test*` and for a direct `vp test run --config ...`. Stress
+  runs claim at least half the computer.
+- `vp run test:e2e*` claims three cores for its builds and Playwright run;
+  `test:e2e:performance` claims the whole computer, because latency budgets only mean something
+  when nothing else competes.
+- `core:test:workspace` and `core:test:migration` claim four cores.
+
+The budget defaults to the number of performance cores. Claims are served strictly in arrival
+order, so a small run never overtakes a waiting exclusive one, and a claim ends when its process
+exits, however it exits. A waiting command prints who holds the computer, for example
+`[machine-budget] renderer tests (693 files) is waiting 40s for 4 cores: 10/10 cores in use by
+...`. Waiting happens before any test starts and never counts against a test timeout; let it
+wait, in the background if the command is long, instead of cancelling and retrying.
+
+The state lives in the primary checkout's `cache.local/machine-budget/`. CI does not use it.
+`NODEX_MACHINE_BUDGET=off` opts one command out, and `NODEX_MACHINE_BUDGET=<cores>` changes the
+capacity that command assumes. To put another heavy command under the budget, start it through
+`tsx scripts/tooling/with-machine-budget.ts <cores> <label> -- <command>`. The semantic gate
+(`vp run typecheck`) and builds outside E2E do not claim a share yet.
+
 ### Working on Effect Main modules
 
 The repository-installed Effect version is the API authority. Before changing
