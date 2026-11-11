@@ -8,6 +8,7 @@
   "scripts": {
     "generate:code-languages": "node scripts/generate-code-language-artifacts.mjs",
     "test": "tsx scripts/testing/run-tests.ts standard",
+    "test:cached": "tsx scripts/testing/run-cached-tests.ts",
     "test:unit": "tsx scripts/testing/run-tests.ts unit",
     "test:effect-codex": "tsx scripts/testing/run-tests.ts effect-codex",
     "test:unit:related": "tsx scripts/testing/run-tests.ts unit --related",
@@ -177,6 +178,7 @@
     "package:mac:arm64": "tsx scripts/desktop-build.ts package darwin arm64",
     "install:local:mac": "tsx scripts/install-local-macos.ts",
     "fmt": "vp fmt",
+    "check:changed": "tsx scripts/testing/check-changed.ts",
     "verify:static": "tsx scripts/ci/verify-static.ts",
     "verify:source": "vp run verify:static && vp run core:fmt && vp run core:clippy && vp run core:test && vp run test && vp run test:stress && vp run test:browser",
     "verify:runtime:mac": "vp test run --config config/vitest.node.config.ts scripts/build-native-bridge.macos.test.ts && vp run codex:schemas:verify && vp run test:agent-runtime-conformance && vp run test:browser-runtime-conformance && vp run test:acp-runtime-conformance",
