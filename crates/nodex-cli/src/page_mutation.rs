@@ -25,8 +25,8 @@ use crate::cli::{
 use crate::error::{CliError, CliErrorCode};
 use crate::patch::PatchDocument;
 use crate::runtime::{
-    CommandOutput, map_client_error, map_core_error, operation_id, resolve_page_selector,
-    selected_project, unwrap_library,
+    CommandOutput, map_client_error, map_core_error, resolve_page_selector, selected_project,
+    unwrap_library,
 };
 
 pub(crate) const MAX_BODY_INPUT_BYTES: usize = nodex_core_protocol::MAX_DOCUMENT_JSON_STRING_BYTES;
@@ -455,13 +455,37 @@ fn apply_selected_semantic_write(
     return_fields: &[String],
 ) -> Result<CommandOutput, CliError> {
     let project = selected_project(client, explicit_project, cwd)?;
+    let command = match &write {
+        SemanticWrite::Patch(_) => "patch",
+        SemanticWrite::Replace { .. } => "page replace",
+        SemanticWrite::Insert { .. } => "page insert",
+        SemanticWrite::Title { .. } => "page rename",
+        SemanticWrite::BlockInsert { .. } => "block insert",
+        SemanticWrite::BlockUpdate { .. } => "block update",
+        SemanticWrite::BlockMove { .. } => "block move",
+        SemanticWrite::BlockDelete { .. } => "block delete",
+    };
+    let admitted = crate::retry_key::admit_with_replay(
+        client,
+        Some(&project.id),
+        command,
+        idempotency_key,
+        (page_selector, write.commands()),
+        Some(nodex_core_contracts::ModuleName::OwnedDocument),
+    )?;
+    if let Some(replay) = admitted.replay {
+        return mutation_output(
+            replay.document_owner.as_deref(),
+            serde_json::from_value(replay.result).map_err(internal)?,
+            return_fields,
+        );
+    }
     let page_id = resolve_page_selector(client, &project.id, page_selector)?;
-    let operation_id = operation_id(idempotency_key)?;
     apply_semantic_write(
         client,
         &project.id,
         page_id,
-        operation_id,
+        admitted.operation_id,
         write,
         return_fields,
     )
@@ -511,7 +535,7 @@ fn apply_semantic_write(
             .map_err(map_client_error)?;
         match response.0 {
             ResponseEnvelope::Ok(committed) => {
-                return mutation_output(&page_id, committed, return_fields);
+                return mutation_output(Some(&page_id), committed, return_fields);
             }
             ResponseEnvelope::Error(error)
                 if error.code == CoreErrorCode::HeadConflict
@@ -551,7 +575,7 @@ fn read_page_file(
 }
 
 fn mutation_output(
-    page_id: &str,
+    page_id: Option<&str>,
     committed: nodex_core_contracts::ApplyResponse<
         nodex_core_contracts::document::OwnedDocumentCommitValue,
         nodex_core_contracts::document::OwnedDocumentReceipt,
@@ -569,7 +593,7 @@ fn mutation_output(
 pub(crate) struct SemanticMutationResult<'a> {
     pub operation_id: String,
     pub duplicate: bool,
-    pub page_id: String,
+    pub page_id: Option<String>,
     pub document_id: String,
     pub generation: i64,
     pub head_seq: i64,
@@ -602,7 +626,7 @@ pub(crate) struct SemanticEtags {
 }
 
 pub(crate) fn semantic_mutation_result(
-    page_id: &str,
+    page_id: Option<&str>,
     committed: &nodex_core_contracts::ApplyResponse<
         nodex_core_contracts::document::OwnedDocumentCommitValue,
         nodex_core_contracts::document::OwnedDocumentReceipt,
@@ -619,7 +643,7 @@ pub(crate) fn semantic_mutation_result(
     serde_json::to_value(SemanticMutationResult {
         operation_id: receipt.mutation.operation_id.clone(),
         duplicate: receipt.mutation.duplicate,
-        page_id: page_id.to_owned(),
+        page_id: page_id.map(str::to_owned),
         document_id: outcome.document_id.clone(),
         generation: outcome.generation,
         head_seq: outcome.head_seq,

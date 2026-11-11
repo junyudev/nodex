@@ -127,7 +127,21 @@ pub(super) fn prepare_create_pages(
             return Err(stale_epoch());
         }
         let commit_head = super::navigation::commit_head(&transaction)?;
-        let request_hash = request_hash(&context, &store_epoch, &authorization, &request)?;
+        if crate::infrastructure::module_receipts::is_admitted_retry(&operation_id) {
+            super::agent_execution::validate_execution(
+                &transaction,
+                &context,
+                &library_id,
+                &authorization,
+            )?;
+        }
+        let request_hash = request_hash(
+            &operation_id,
+            &context,
+            &store_epoch,
+            &authorization,
+            &request,
+        )?;
         if let Some(stored) = read_module_receipt(&transaction, MODULE_NAME, &operation_id)? {
             if stored.request_hash != request_hash {
                 return Err(reused());
@@ -290,6 +304,7 @@ pub(super) fn execute_create_pages(
             return Err(stale_epoch());
         }
         let request_hash = request_hash(
+            &operation_id,
             &context,
             &store_epoch,
             &authorization.authorization,
@@ -333,6 +348,7 @@ pub(super) fn execute_create_pages(
                 return Err(stale_epoch());
             }
             let request_hash = request_hash(
+                &operation_id,
                 &context,
                 &store_epoch,
                 &authorization.authorization,
@@ -1480,11 +1496,24 @@ fn context_project_id(context: &BoundModuleContext) -> Result<Option<String>, St
 }
 
 fn request_hash(
+    operation_id: &str,
     context: &BoundModuleContext,
     store_epoch: &str,
     authorization: &nodex_core_contracts::agent::AgentExecutionAuthorization,
     request: &LibraryAgentCreatePagesRequest,
 ) -> Result<String, StoreError> {
+    if crate::infrastructure::module_receipts::is_admitted_retry(operation_id) {
+        return hash_serializable(&(
+            "nodex.agent.create-pages.retry.v1",
+            &context.profile_id,
+            &context.library_id,
+            &context.project_id,
+            store_epoch,
+            crate::infrastructure::module_receipts::agent_retry_caller(authorization),
+            request,
+        ));
+    }
+
     let fingerprint = serde_json::to_vec(&(
         "nodex.agent.create-pages.v1",
         &context.profile_id,

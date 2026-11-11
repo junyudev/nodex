@@ -1404,6 +1404,295 @@ fn exact_patch_receipt_retains_block_references_and_retries_without_recreating_c
     assert_eq!(retry["result"]["head_seq"], committed["result"]["head_seq"]);
     let hit = success(&home, &["search", "Release date: Monday"]);
     assert_eq!(hit["items"][0]["matches"][0]["block_id"], date_id);
+
+    let prepared = success(&home, &["page", "prepare", PAGE_A, "--operation", "delete"]);
+    success(
+        &home,
+        &[
+            "page",
+            "delete",
+            PAGE_A,
+            "--if-match",
+            prepared["validators"]["page_etag"].as_str().unwrap(),
+        ],
+    );
+    let retry = input_text(&home, &args, &patch);
+    assert_eq!(retry["ok"], true, "{retry}");
+    assert_eq!(retry["result"]["duplicate"], true);
+    assert_eq!(
+        retry["result"]["operation_id"],
+        committed["result"]["operation_id"]
+    );
+}
+
+#[test]
+fn retry_key_requires_a_value_and_accepts_hyphens_with_equals() {
+    use clap::Parser as _;
+    use nodex_cli::cli::Cli;
+    assert!(
+        Cli::try_parse_from([
+            "nodex",
+            "inbox",
+            "send",
+            "hello",
+            "--idempotency-key",
+            "--json"
+        ])
+        .is_err()
+    );
+    let parsed = Cli::try_parse_from([
+        "nodex",
+        "inbox",
+        "send",
+        "hello",
+        "--idempotency-key=--json",
+    ])
+    .unwrap();
+    assert!(!parsed.json);
+}
+
+#[test]
+fn opaque_retry_keys_bind_property_and_backup_arguments() {
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
+    let client = connect_or_launch(&home, "opaque-retry-keys", Some(&core_binary)).unwrap();
+    let _guard = CoreGuard(client.handshake.generation.pid);
+    seed(&client, &home);
+
+    let page = property_state(&home, PAGE_A);
+    let source = page["data_source_id"].as_str().unwrap();
+    let schema = source_description(&home, source);
+    let configured = input(
+        &home,
+        &["data-source", "configure", source],
+        &serde_json::json!({
+            "if_schema_revision": schema["schema_revision"],
+            "operations": [{"kind":"add_property","name":"Score","schema":{"kind":"number"}}]
+        }),
+    );
+    assert_eq!(configured["ok"], true, "{configured}");
+
+    for (index, key) in [
+        "triage1111-done-first",
+        "550e8400-e29b-41d4-a716-446655440000",
+        "ppk-triage-2026-11-11-backup",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let selection = run(
+            &home,
+            &[
+                "sql",
+                "query",
+                "SELECT page_id, data_source_id, membership_revision, value_revisions FROM tasks",
+                "--bind",
+                &format!("tasks={source}"),
+            ],
+        );
+        let prepared = input(
+            &home,
+            &[
+                "page",
+                "properties",
+                "prepare-batch",
+                "--selection",
+                "-",
+                "--set",
+                &format!(r#"Score={{"kind":"number","value":{index}}}"#),
+            ],
+            &selection,
+        );
+        assert_eq!(prepared["ok"], true, "{prepared}");
+        let args = [
+            "page",
+            "properties",
+            "apply",
+            "--input",
+            "-",
+            "--idempotency-key",
+            key,
+        ];
+        let applied = input(&home, &args, &prepared);
+        assert_eq!(applied["ok"], true, "{applied}");
+        let replay = input(&home, &args, &prepared);
+        assert_eq!(replay["ok"], true, "{replay}");
+        assert_eq!(replay["result"]["receipt"]["duplicate"], true);
+        assert_eq!(applied["result"]["outcome"], replay["result"]["outcome"]);
+        let mut changed_input = prepared.clone();
+        changed_input["result"]["edits"][0]["edit"]["value"]["value"] = serde_json::json!(99);
+        let changed = input(&home, &args, &changed_input);
+        assert_eq!(
+            changed["error"]["code"], "IDEMPOTENCY_KEY_REUSED",
+            "{changed}"
+        );
+
+        let backup = [
+            "backup",
+            "create",
+            "--label",
+            "fixture",
+            "--idempotency-key",
+            key,
+        ];
+        let created = success(&home, &backup);
+        let retried = success(&home, &backup);
+        assert_eq!(created["outcome"], retried["outcome"]);
+        assert_eq!(retried["receipt"]["duplicate"], true);
+        let changed = run(
+            &home,
+            &[
+                "backup",
+                "create",
+                "--label",
+                "other",
+                "--idempotency-key",
+                key,
+            ],
+        );
+        assert_eq!(changed["error"]["code"], "IDEMPOTENCY_KEY_REUSED");
+        assert_eq!(changed["error"]["retryable"], false);
+        assert_eq!(
+            changed["error"]["recovery"]["kind"],
+            "use_new_idempotency_key"
+        );
+    }
+
+    let help = Command::new(env!("CARGO_BIN_EXE_nodex"))
+        .args(["backup", "create", "--help-schema", "error"])
+        .env("NODEX_HOME", &home)
+        .output()
+        .unwrap();
+    assert!(help.status.success());
+    let help: Value = serde_json::from_slice(&help.stdout).unwrap();
+    assert!(
+        help["errors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|code| code == "IDEMPOTENCY_WINDOW_EXPIRED")
+    );
+    assert!(
+        help["errorSchema"]
+            .to_string()
+            .contains("IDEMPOTENCY_WINDOW_EXPIRED")
+    );
+}
+
+#[test]
+fn retry_replays_before_resolving_changed_page_state() {
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
+    let client = connect_or_launch(&home, "retry-page-state", Some(&core_binary)).unwrap();
+    let _guard = CoreGuard(client.handshake.generation.pid);
+    seed(&client, &home);
+    let property = [
+        "page",
+        "properties",
+        "set",
+        PAGE_A,
+        "--assignee",
+        "me",
+        "--idempotency-key",
+        "assign",
+    ];
+    let first = success(&home, &property);
+    let replay = success(&home, &property);
+    assert_eq!(replay["receipt"]["duplicate"], true);
+    assert_eq!(first["outcome"], replay["outcome"]);
+
+    let read = success(&home, &["read", PAGE_A]);
+    let title_etag = read["validators"]["title_etag"].as_str().unwrap();
+    let rename = [
+        "page",
+        "rename",
+        "Page A",
+        "Renamed",
+        "--if-match",
+        title_etag,
+        "--idempotency-key",
+        "rename-by-title",
+    ];
+    let first = success(&home, &rename);
+    let old_pid = client.handshake.generation.pid;
+    client.shutdown().unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while home.join("run/core/core.json").exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "Core runtime descriptor was not removed"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let reopened =
+        connect_or_launch(&home, "retry-page-state-reopened", Some(&core_binary)).unwrap();
+    let _reopened_guard = CoreGuard(reopened.handshake.generation.pid);
+    assert_ne!(reopened.handshake.generation.pid, old_pid);
+    let replay = success(&home, &rename);
+    assert_eq!(replay["duplicate"], true);
+    assert_eq!(first["page_id"], replay["page_id"]);
+    assert_eq!(first["head_seq"], replay["head_seq"]);
+}
+
+#[test]
+fn machine_help_examples_use_admissible_retry_keys() {
+    use nodex_cli::agent_interface::{MachineHelpDocument, machine_help};
+    use nodex_core_contracts::workspace::AppToolOperationRequest;
+
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
+    let client = connect_or_launch(&home, "help-retry-keys", Some(&core_binary)).unwrap();
+    let _guard = CoreGuard(client.handshake.generation.pid);
+    let mut commands = vec!["nodex".to_owned()];
+    let mut tested = 0;
+    while let Some(command) = commands.pop() {
+        let args = command
+            .split_whitespace()
+            .chain(["--help"])
+            .map(std::ffi::OsString::from)
+            .collect::<Vec<_>>();
+        match machine_help(&args).unwrap() {
+            MachineHelpDocument::Index(index) => {
+                commands.extend(index.commands.into_iter().map(|item| item.command));
+            }
+            MachineHelpDocument::Command(help) => {
+                for example in help.examples {
+                    let words = example.split_whitespace().collect::<Vec<_>>();
+                    for pair in words
+                        .windows(2)
+                        .filter(|pair| pair[0] == "--idempotency-key")
+                    {
+                        let identity = client
+                            .admit_app_tool_operation(
+                                None,
+                                AppToolOperationRequest {
+                                    provenance: None,
+                                    replay_module: None,
+                                    tool_name: command.trim_start_matches("nodex ").into(),
+                                    idempotency_key: pair[1].into(),
+                                    request_hash: "a".repeat(64),
+                                },
+                            )
+                            .unwrap_or_else(|error| {
+                                panic!("{command} example key {:?}: {error}", pair[1])
+                            });
+                        assert!(identity.operation_id.starts_with("nodexop:v1:"));
+                        tested += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert!(tested > 0);
 }
 
 #[cfg(unix)]

@@ -18,13 +18,26 @@ use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
 pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 83;
 
-/// Host-only admission: the model chooses an opaque key, never a clock or operation envelope.
+/// Retry-key admission shared by the application tools and native CLI.
+pub const RETRY_KEY_MAX_SCALARS: usize = 128;
+
+/// Application tools supply Host-verified provenance; CLI admission uses the bound Actor.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct AppToolOperationRequest {
-    pub provenance: crate::agent::AgentTurnProvenance,
+    pub provenance: Option<crate::agent::AgentTurnProvenance>,
     pub tool_name: String,
     pub idempotency_key: String,
     pub request_hash: String,
+    /// CLI commands with state-dependent preflights can replay before resolving current state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replay_module: Option<ModuleName>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct AppToolOperationReplay {
+    pub result: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document_owner: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -32,6 +45,8 @@ pub struct AppToolOperationIdentity {
     pub operation_id: String,
     pub accepted_at_ms: i64,
     pub expires_at_ms: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replay: Option<AppToolOperationReplay>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

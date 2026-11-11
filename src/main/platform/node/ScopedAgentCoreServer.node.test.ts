@@ -71,6 +71,23 @@ test("a scoped Agent CLI reads content without Core paths and cannot use Host ad
       expect(context.result.profile.id).toBe(host.handshake.generation.profile_id);
       const read = JSON.parse((await cli(["read", scenario.manifest.pageIdsByKey.other!])).stdout);
       expect(read.result.content).toBe("This document remains independent.\n");
+      const rename = [
+        "page",
+        "rename",
+        scenario.manifest.pageIdsByKey.other!,
+        "Retried Page",
+        "--if-match",
+        read.result.validators.title_etag,
+        "--idempotency-key",
+        "scoped/rename:1",
+      ];
+      const firstRename = JSON.parse((await cli(rename)).stdout).result;
+      const retryRename = JSON.parse((await cli(rename)).stdout).result;
+      expect(retryRename).toMatchObject({
+        duplicate: true,
+        page_id: firstRename.page_id,
+        head_seq: firstRename.head_seq,
+      });
       const authorization = { authorization: `Bearer ${connection.credential}` };
       const bootstrap = await fetch(`${connection.endpoint}/agent/context`, {
         headers: authorization,

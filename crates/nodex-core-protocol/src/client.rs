@@ -74,7 +74,7 @@ pub enum ClientError {
     Http {
         status: u16,
         message: String,
-        failure: Option<Box<nodex_core_contracts::document::RecoveryPackageFailure>>,
+        core_error: Option<Box<nodex_core_contracts::CoreError>>,
     },
     #[error("Core request exceeds {maximum} bytes ({actual} bytes)")]
     RequestTooLarge { maximum: usize, actual: usize },
@@ -844,6 +844,18 @@ impl CoreClient {
         }
     }
 
+    pub fn admit_app_tool_operation(
+        &self,
+        project_id: Option<&str>,
+        request: nodex_core_contracts::workspace::AppToolOperationRequest,
+    ) -> Result<nodex_core_contracts::workspace::AppToolOperationIdentity, ClientError> {
+        self.connected_request(
+            "/core/v1/modules/workspace/tool-operations/admit",
+            &request,
+            ContextHeaders::project(project_id),
+        )
+    }
+
     pub fn workspace_read(
         &self,
         project_id: Option<&str>,
@@ -1569,14 +1581,11 @@ fn read_raw_response(
             .as_ref()
             .map(|error| error.message.clone())
             .unwrap_or_else(|| format!("Core HTTP request failed ({status})"));
-        let failure = error.and_then(|error| match error.recovery {
-            nodex_core_contracts::CoreErrorRecovery::RecoveryPackage { failure } => Some(failure),
-            _ => None,
-        });
+
         return Err(ClientError::Http {
             status,
             message,
-            failure,
+            core_error: error.map(Box::new),
         });
     }
     Ok(RawHttpResponse { head, bytes })
@@ -1735,14 +1744,18 @@ mod tests {
         let Err(ClientError::Http {
             status,
             message,
-            failure,
+            core_error,
         }) = read_raw_response(&mut io::Cursor::new(response), 4096)
         else {
             panic!("HTTP rejection")
         };
         assert_eq!(status, 413);
         assert_eq!(message, "request body exceeds its bound");
-        let failure = failure.expect("recovery evidence");
+        let nodex_core_contracts::CoreErrorRecovery::RecoveryPackage { failure } =
+            core_error.expect("Core error").recovery
+        else {
+            panic!("expected recovery evidence");
+        };
         assert_eq!(failure.actual, Some(65));
         assert_eq!(failure.limit, Some(64));
     }

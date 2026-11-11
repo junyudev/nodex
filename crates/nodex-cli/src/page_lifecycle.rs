@@ -21,8 +21,8 @@ use crate::page_mutation::{
     MAX_BODY_INPUT_BYTES, read_content_input, validate_return_fields, validate_title,
 };
 use crate::runtime::{
-    CommandOutput, map_client_error, map_core_error, operation_id, resolve_page_selector,
-    selected_project, unwrap_database, unwrap_library,
+    CommandOutput, map_client_error, map_core_error, resolve_page_selector, selected_project,
+    unwrap_database, unwrap_library,
 };
 
 #[derive(serde::Serialize, utoipa::ToSchema)]
@@ -146,7 +146,13 @@ pub(crate) fn create_page(
         None,
         &arguments.data_source,
     )?;
-    let operation_id = operation_id(arguments.mutation.idempotency_key.as_deref())?;
+    let operation_id = crate::retry_key::admit(
+        client,
+        Some(&project.id),
+        "page create",
+        arguments.mutation.idempotency_key.as_deref(),
+        (&title_markdown, &markdown, &destination),
+    )?;
     let response = client
         .library_apply(
             Some(&project.id),
@@ -269,43 +275,55 @@ fn transfer_page(
     } = request;
     validate_return_fields(&mutation.r#return)?;
     let project = selected_project(client, explicit_project, cwd)?;
-    let page_id = resolve_page_selector(client, &project.id, &page)?;
     let anchor = placement_anchor(&destination_arguments)?;
-    let destination = resolve_page_destination(
-        client,
-        &project,
-        &destination_arguments.to,
-        anchor,
-        &destination_arguments.data_source,
-    )?;
-    let operation_id = operation_id(mutation.idempotency_key.as_deref())?;
-    let intent = if duplicate {
-        LibraryIntent::DuplicatePage {
-            source_page_id: page_id.clone(),
-            destination,
-        }
+    let command = if duplicate {
+        "page duplicate"
     } else {
-        LibraryIntent::MovePage {
-            page_id: page_id.clone(),
-            destination,
-            expected_etag: expected_etag
-                .ok_or_else(|| internal("Page move command omitted its required move ETag"))?,
-        }
+        "page move"
     };
-    let response = client
-        .library_apply(
-            Some(&project.id),
-            ModuleApplyRequest {
-                contract_version: LIBRARY_CONTRACT_VERSION,
-                operation_id,
-                store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
-                intent,
-            },
-        )
-        .map_err(map_client_error)?;
-    let committed = match response.0 {
-        ResponseEnvelope::Ok(committed) => committed,
-        ResponseEnvelope::Error(error) => return Err(map_core_error(error)),
+    let admitted = crate::retry_key::admit_with_replay(
+        client,
+        Some(&project.id),
+        command,
+        mutation.idempotency_key.as_deref(),
+        (
+            &page,
+            &destination_arguments.to,
+            &anchor,
+            &destination_arguments.data_source.view,
+            &destination_arguments.data_source.group,
+            destination_arguments.data_source.unassigned,
+            &expected_etag,
+        ),
+        Some(nodex_core_contracts::ModuleName::Library),
+    )?;
+    let committed = match admitted.replay {
+        Some(replay) => serde_json::from_value(replay.result).map_err(internal)?,
+        None => {
+            let page_id = resolve_page_selector(client, &project.id, &page)?;
+            let destination = resolve_page_destination(
+                client,
+                &project,
+                &destination_arguments.to,
+                anchor,
+                &destination_arguments.data_source,
+            )?;
+            let intent = if duplicate {
+                LibraryIntent::DuplicatePage {
+                    source_page_id: page_id,
+                    destination,
+                }
+            } else {
+                LibraryIntent::MovePage {
+                    page_id,
+                    destination,
+                    expected_etag: expected_etag.ok_or_else(|| {
+                        internal("Page move command omitted its required move ETag")
+                    })?,
+                }
+            };
+            apply_library_intent(client, &project.id, admitted.operation_id, intent)?
+        }
     };
     let mut result = if duplicate {
         let copied = committed.outcome().page_copy.as_ref().ok_or_else(|| {
@@ -344,19 +362,23 @@ fn transfer_page(
                 "Core semantic Page movement omitted its exact result",
             )
         })?;
-        let page_etag = moved.page_etags.get(&page_id).ok_or_else(|| {
+        let page_id = moved
+            .result_root_block_ids
+            .first()
+            .ok_or_else(|| internal("Core semantic Page movement omitted its Page identity"))?;
+        let page_etag = moved.page_etags.get(page_id).ok_or_else(|| {
             CliError::new(
                 CliErrorCode::Internal,
                 "Core semantic Page movement omitted its Page shell ETag",
             )
         })?;
-        let move_etag = moved.move_etags.get(&page_id).ok_or_else(|| {
+        let move_etag = moved.move_etags.get(page_id).ok_or_else(|| {
             CliError::new(
                 CliErrorCode::Internal,
                 "Core semantic Page movement omitted its fresh move ETag",
             )
         })?;
-        let page_key = moved.page_keys.get(&page_id).ok_or_else(|| {
+        let page_key = moved.page_keys.get(page_id).ok_or_else(|| {
             CliError::new(
                 CliErrorCode::Internal,
                 "Core semantic Page movement omitted its current Page key",
@@ -365,7 +387,7 @@ fn transfer_page(
         serde_json::to_value(PageMoveResult {
             operation_id: &committed.receipt().mutation.operation_id,
             duplicate: committed.receipt().mutation.duplicate,
-            page_id: &page_id,
+            page_id,
             page_key,
             status: moved.page_statuses.get(&page_id),
             commit_seq: committed.commit_cursor(),
@@ -377,8 +399,8 @@ fn transfer_page(
                     .iter()
                     .map(|commit| &commit.document_id)
                     .collect(),
-                location: moved.final_locations.get(&page_id),
-                view_placement: moved.page_view_placements.get(&page_id),
+                location: moved.final_locations.get(page_id),
+                view_placement: moved.page_view_placements.get(page_id),
             },
             etags: PageMoveEtags {
                 page: page_etag,
@@ -400,25 +422,28 @@ pub(crate) fn delete_page(
 ) -> Result<CommandOutput, CliError> {
     validate_return_fields(&arguments.mutation.r#return)?;
     let project = selected_project(client, explicit_project, cwd)?;
-    let page_id = resolve_page_selector(client, &project.id, &arguments.page)?;
-    let operation_id = operation_id(arguments.mutation.idempotency_key.as_deref())?;
-    let response = client
-        .library_apply(
-            Some(&project.id),
-            ModuleApplyRequest {
-                contract_version: LIBRARY_CONTRACT_VERSION,
-                operation_id,
-                store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
-                intent: LibraryIntent::DeletePage {
-                    page_id: page_id.clone(),
+    let admitted = crate::retry_key::admit_with_replay(
+        client,
+        Some(&project.id),
+        "page delete",
+        arguments.mutation.idempotency_key.as_deref(),
+        (&arguments.page, &arguments.if_match),
+        Some(nodex_core_contracts::ModuleName::Library),
+    )?;
+    let committed = match admitted.replay {
+        Some(replay) => serde_json::from_value(replay.result).map_err(internal)?,
+        None => {
+            let page_id = resolve_page_selector(client, &project.id, &arguments.page)?;
+            apply_library_intent(
+                client,
+                &project.id,
+                admitted.operation_id,
+                LibraryIntent::DeletePage {
+                    page_id,
                     expected_etag: arguments.if_match,
                 },
-            },
-        )
-        .map_err(map_client_error)?;
-    let committed = match response.0 {
-        ResponseEnvelope::Ok(committed) => committed,
-        ResponseEnvelope::Error(error) => return Err(map_core_error(error)),
+            )?
+        }
     };
     let lifecycle = committed.outcome().page_lifecycle.as_ref().ok_or_else(|| {
         CliError::new(
@@ -429,7 +454,7 @@ pub(crate) fn delete_page(
     let mut result = serde_json::to_value(PageDeletionResult {
         operation_id: &committed.receipt().mutation.operation_id,
         duplicate: committed.receipt().mutation.duplicate,
-        page_id: &page_id,
+        page_id: &lifecycle.page_id,
         lifecycle: &lifecycle.lifecycle,
         metadata_revision: lifecycle.metadata_revision,
         parent_revision: lifecycle.parent_revision,
@@ -471,6 +496,35 @@ fn placement_anchor(
                 .map(|block_id| LibraryAgentSiblingAnchor::After { block_id })
         })
         .transpose()
+}
+
+fn apply_library_intent(
+    client: &CoreClient,
+    project_id: &str,
+    operation_id: String,
+    intent: LibraryIntent,
+) -> Result<
+    nodex_core_contracts::ApplyResponse<
+        nodex_core_contracts::library::LibraryCommitValue,
+        nodex_core_contracts::library::LibraryReceipt,
+    >,
+    CliError,
+> {
+    let response = client
+        .library_apply(
+            Some(project_id),
+            ModuleApplyRequest {
+                contract_version: LIBRARY_CONTRACT_VERSION,
+                operation_id,
+                store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
+                intent,
+            },
+        )
+        .map_err(map_client_error)?;
+    match response.0 {
+        ResponseEnvelope::Ok(committed) => Ok(committed),
+        ResponseEnvelope::Error(error) => Err(map_core_error(error)),
+    }
 }
 
 fn resolve_page_destination(
@@ -763,7 +817,13 @@ pub(crate) fn accept_page(
             ModuleApplyRequest {
                 contract_version:
                     nodex_core_contracts::workspace::PROJECT_WORKSPACE_CONTRACT_VERSION,
-                operation_id: operation_id(arguments.idempotency_key.as_deref())?,
+                operation_id: crate::retry_key::admit(
+                    client,
+                    Some(&project.id),
+                    "page accept",
+                    arguments.idempotency_key.as_deref(),
+                    &page_id,
+                )?,
                 store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
                 intent: nodex_core_contracts::workspace::ProjectWorkspaceIntent::AcceptPageWork {
                     expected_turn_episode: None,

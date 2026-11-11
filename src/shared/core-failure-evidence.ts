@@ -38,6 +38,8 @@ const coreCodes = {
 const recoveryKinds = {
   remote_access_withdrawn: true,
   renew_remote_session: true,
+  use_new_idempotency_key: true,
+  reconcile_expired_operation: true,
   retry_after: true,
   none: true,
   recovery_package: true,
@@ -117,6 +119,8 @@ const parseRecovery = (value: unknown): CoreRecovery => {
       break;
     case "remote_access_withdrawn":
     case "renew_remote_session":
+    case "use_new_idempotency_key":
+    case "reconcile_expired_operation":
     case "none":
     case "reconnect_document_subscription":
     case "inbox_remind_at_passed":

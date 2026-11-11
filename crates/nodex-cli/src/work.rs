@@ -1,8 +1,7 @@
 use crate::{
     error::{CliError, CliErrorCode},
     runtime::{
-        CommandOutput, map_client_error, map_core_error, operation_id, resolve_page_selector,
-        selected_project,
+        CommandOutput, map_client_error, map_core_error, resolve_page_selector, selected_project,
     },
 };
 use clap::{Args, Subcommand};
@@ -40,8 +39,8 @@ pub struct WorkScopeArgs {
     /// Pause or resume every Agent in this Space, including Nodex.
     #[arg(long, group = "scope")]
     pub space: bool,
-    /// Replay this exact operation safely after an uncertain response.
-    #[arg(long, global = false)]
+    /// Optional key of 1 to 128 Unicode scalar values. Reuse it with identical arguments after an uncertain result.
+    #[arg(long, global = false, allow_hyphen_values = true)]
     pub idempotency_key: Option<String>,
 }
 #[derive(serde::Serialize, utoipa::ToSchema)]
@@ -113,7 +112,13 @@ pub(crate) fn execute(
             None,
             ModuleApplyRequest {
                 contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
-                operation_id: operation_id(arguments.idempotency_key.as_deref())?,
+                operation_id: crate::retry_key::admit(
+                    client,
+                    None,
+                    if pause { "work pause" } else { "work resume" },
+                    arguments.idempotency_key.as_deref(),
+                    &scope,
+                )?,
                 store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
                 intent: if pause {
                     ProjectWorkspaceIntent::PauseWork {

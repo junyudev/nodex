@@ -455,8 +455,7 @@ pub(crate) fn execute_with_presentation(
         Command::Backup(backup) => match backup.command {
             BackupCommand::List => backup_list(&client),
             BackupCommand::Create { label, mutation } => {
-                let operation_id = operation_id(mutation.idempotency_key.as_deref())?;
-                backup_create(&client, operation_id, label)
+                backup_create(&client, mutation.idempotency_key.as_deref(), label)
             }
         },
         Command::Doctor(arguments) => doctor(
@@ -1796,18 +1795,20 @@ fn backup_list(client: &CoreClient) -> Result<CommandOutput, CliError> {
 
 fn backup_create(
     client: &CoreClient,
-    operation_id: String,
+    key: Option<&str>,
     label: Option<String>,
 ) -> Result<CommandOutput, CliError> {
+    let intent = StoreAdministrationIntent::CreateBackup {
+        label,
+        include_assets: true,
+        trigger: BackupTrigger::Manual,
+    };
+    let operation_id = crate::retry_key::admit(client, None, "backup create", key, &intent)?;
     let committed = unwrap_administration_apply(client.administration_apply(ModuleApplyRequest {
         contract_version: StoreAdministrationContract::VERSION,
         operation_id,
         store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
-        intent: StoreAdministrationIntent::CreateBackup {
-            label,
-            include_assets: true,
-            trigger: BackupTrigger::Manual,
-        },
+        intent,
     }))?;
     Ok(CommandOutput::Json(
         serde_json::to_value(committed).map_err(internal)?,
@@ -1819,8 +1820,14 @@ fn doctor(
     full: bool,
     idempotency_key: Option<&str>,
 ) -> Result<CommandOutput, CliError> {
+    if !full && idempotency_key.is_some() {
+        return Err(CliError::new(
+            CliErrorCode::InvalidInput,
+            "--idempotency-key requires doctor --full",
+        ));
+    }
     let maintenance = if full {
-        let operation_id = operation_id(idempotency_key)?;
+        let operation_id = crate::retry_key::admit(client, None, "doctor", idempotency_key, ())?;
         Some(unwrap_administration_apply(client.administration_apply(
             ModuleApplyRequest {
                 contract_version: StoreAdministrationContract::VERSION,
@@ -2031,16 +2038,7 @@ fn resolve_home(cwd: &Path) -> Result<PathBuf, CliError> {
     )
 }
 
-pub(crate) fn operation_id(explicit: Option<&str>) -> Result<String, CliError> {
-    if let Some(explicit) = explicit {
-        if explicit.is_empty() || explicit.len() > 512 {
-            return Err(CliError::new(
-                CliErrorCode::InvalidInput,
-                "idempotency key must contain 1 to 512 bytes",
-            ));
-        }
-        return Ok(explicit.to_owned());
-    }
+pub(crate) fn fresh_operation_id() -> Result<String, CliError> {
     let mut random = [0_u8; 16];
     getrandom::fill(&mut random).map_err(|error| {
         CliError::new(
@@ -2052,8 +2050,11 @@ pub(crate) fn operation_id(explicit: Option<&str>) -> Result<String, CliError> {
         .duration_since(UNIX_EPOCH)
         .map_err(internal)?
         .as_millis();
-    let key = format!("cli-{timestamp}-{}", hex::encode(random));
-    Ok(key)
+    let expires = timestamp + nodex_core_contracts::OPERATION_RECEIPT_WINDOW_MS as u128;
+    Ok(format!(
+        "nodexop:v1:{timestamp}:{expires}:cli:{}",
+        hex::encode(random)
+    ))
 }
 
 pub(crate) fn unwrap_workspace(
@@ -2112,6 +2113,18 @@ pub(crate) fn map_client_error(error: ClientError) -> CliError {
         ClientError::ProtocolIncompatible(message) => {
             CliError::new(CliErrorCode::ProtocolIncompatible, message)
         }
+        ClientError::Http {
+            core_error: Some(error),
+            ..
+        } if matches!(
+            error.code,
+            CoreErrorCode::IdempotencyKeyReused
+                | CoreErrorCode::IdempotencyWindowExpired
+                | CoreErrorCode::LegacyIdempotencyUnavailable
+        ) =>
+        {
+            map_core_error(*error)
+        }
         error => CliError::new(CliErrorCode::CoreUnavailable, error.to_string()),
     }
 }
@@ -2126,6 +2139,9 @@ pub(crate) fn map_core_error(error: CoreError) -> CliError {
         CoreErrorCode::PatchAmbiguous => CliErrorCode::PatchAmbiguous,
         CoreErrorCode::PatchOverlap => CliErrorCode::PatchOverlap,
         CoreErrorCode::IdempotencyKeyReused => CliErrorCode::IdempotencyKeyReused,
+        CoreErrorCode::IdempotencyWindowExpired | CoreErrorCode::LegacyIdempotencyUnavailable => {
+            CliErrorCode::IdempotencyWindowExpired
+        }
         CoreErrorCode::ProtectedOwnerDeletion => CliErrorCode::ProtectedOwnerDeletion,
         CoreErrorCode::MaterializationStale => CliErrorCode::MaterializationStale,
         CoreErrorCode::ProtocolIncompatible => CliErrorCode::ProtocolIncompatible,
@@ -2136,7 +2152,19 @@ pub(crate) fn map_core_error(error: CoreError) -> CliError {
         | CoreErrorCode::StaleStoreEpoch => CliErrorCode::EtagConflict,
         _ => CliErrorCode::InvalidInput,
     };
-    CliError::new(code, error.message)
+    if code == CliErrorCode::IdempotencyWindowExpired {
+        return CliError::new(code,
+            "The outcome is unknown to Core; re-read state before issuing a fresh call with a new key or no key.")
+            .with_recovery(error.retryable, error.recovery);
+    }
+    if code == CliErrorCode::IdempotencyKeyReused {
+        return CliError::new(
+            code,
+            "This key is bound to different arguments; use a new key for a new intent.",
+        )
+        .with_recovery(error.retryable, error.recovery);
+    }
+    CliError::new(code, error.message).with_recovery(error.retryable, error.recovery)
 }
 
 fn core_unavailable(error: impl std::fmt::Display) -> CliError {

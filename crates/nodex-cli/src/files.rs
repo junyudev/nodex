@@ -16,7 +16,7 @@ use utoipa::ToSchema;
 use crate::cli::{FileCommand, MutationArgs};
 use crate::error::{CliError, CliErrorCode};
 use crate::runtime::{
-    CommandOutput, map_client_error, map_core_error, operation_id, selected_project, unwrap_library,
+    CommandOutput, map_client_error, map_core_error, selected_project, unwrap_library,
 };
 
 #[derive(Serialize, ToSchema)]
@@ -102,42 +102,73 @@ impl<'a> FileSession<'a> {
         )
     }
 
-    pub fn prepare(&self, operation_id: &str, source: &Path) -> Result<String, CliError> {
+    fn admit_change(
+        &self,
+        command: &str,
+        args: &MutationArgs,
+        change: Change,
+        turn_id: Option<String>,
+    ) -> Result<CommandOutput, CliError> {
+        let operation = self.admit(command, args, (&change, &turn_id))?;
+        self.change(operation, change, turn_id)
+    }
+
+    pub fn admit(
+        &self,
+        command: &str,
+        args: &MutationArgs,
+        intent: impl Serialize,
+    ) -> Result<String, CliError> {
+        if !args.r#return.is_empty() {
+            return Err(invalid("File commands do not accept --return fields"));
+        }
+        crate::retry_key::admit(
+            self.client,
+            Some(&self.project_id),
+            command,
+            args.idempotency_key.as_deref(),
+            intent,
+        )
+    }
+
+    pub fn prepare_input(
+        &self,
+        command: &str,
+        args: &MutationArgs,
+        intent: impl Serialize,
+        source: &Path,
+    ) -> Result<(String, String), CliError> {
+        let mut bytes = Vec::new();
+        let limit = (MAX_FILE_BYTES + 1) as u64;
         if source == Path::new("-") {
-            let mut bytes = Vec::new();
             io::stdin()
                 .lock()
-                .take((MAX_FILE_BYTES + 1) as u64)
+                .take(limit)
                 .read_to_end(&mut bytes)
                 .map_err(io_error)?;
-            return self.prepare_bytes(operation_id, &bytes);
+        } else {
+            open_regular(source, false)?
+                .take(limit)
+                .read_to_end(&mut bytes)
+                .map_err(io_error)?;
         }
-        let mut file = open_regular(source, false)?;
-        let length = file.metadata().map_err(io_error)?.len();
-        self.prepare_reader(operation_id, &mut file, length)
+        if bytes.len() > MAX_FILE_BYTES {
+            return Err(invalid("File input exceeds the 64 MiB limit"));
+        }
+        let operation = self.admit(command, args, (intent, hex::encode(Sha256::digest(&bytes))))?;
+        let receipt = self.prepare_bytes(&operation, &bytes)?;
+        Ok((operation, receipt))
     }
 
     fn prepare_bytes(&self, operation_id: &str, bytes: &[u8]) -> Result<String, CliError> {
-        self.prepare_reader(operation_id, &mut Cursor::new(bytes), bytes.len() as u64)
-    }
-
-    fn prepare_reader(
-        &self,
-        operation_id: &str,
-        source: &mut impl Read,
-        length: u64,
-    ) -> Result<String, CliError> {
-        if length > MAX_FILE_BYTES as u64 {
-            return Err(invalid("File input exceeds the 64 MiB limit"));
-        }
         self.client
             .prepare_blob(
                 Some(&self.project_id),
                 operation_id,
                 &self.client.handshake.store_epoch,
                 Some("file"),
-                source,
-                length,
+                &mut Cursor::new(bytes),
+                bytes.len() as u64,
             )
             .map(|receipt| receipt.receipt_id)
             .map_err(map_client_error)
@@ -197,12 +228,16 @@ pub(crate) fn execute(
             json_output,
         ),
         FileCommand::Import(args) => {
-            let operation = mutation_id(&args.mutation)?;
             let name = input_name(&args.source, args.name)?;
             let mime_type = args
                 .mime
                 .unwrap_or_else(|| infer_mime_type(&name).to_owned());
-            let prepared_blob_receipt_id = session.prepare(&operation, &args.source)?;
+            let (operation, prepared_blob_receipt_id) = session.prepare_input(
+                "file import",
+                &args.mutation,
+                (&name, &mime_type, &args.turn_id),
+                &args.source,
+            )?;
             session.change(
                 operation.clone(),
                 Change::Create {
@@ -214,22 +249,30 @@ pub(crate) fn execute(
                 args.turn_id,
             )
         }
-        FileCommand::Rename(args) => {
-            let operation = mutation_id(&args.write.mutation)?;
-            session.change(
-                operation,
-                Change::Rename {
-                    file_id: args.write.file_id,
-                    expected_revision: args.write.if_revision,
-                    default_name: args.name,
-                },
-                args.write.turn_id,
-            )
-        }
+        FileCommand::Rename(args) => session.admit_change(
+            "file rename",
+            &args.write.mutation,
+            Change::Rename {
+                file_id: args.write.file_id,
+                expected_revision: args.write.if_revision,
+                default_name: args.name,
+            },
+            args.write.turn_id,
+        ),
         FileCommand::Replace(args) => {
-            let operation = mutation_id(&args.write.mutation)?;
             let mime_type = input_mime(&args.source, args.mime)?;
-            let prepared_blob_receipt_id = session.prepare(&operation, &args.source)?;
+            let (operation, prepared_blob_receipt_id) = session.prepare_input(
+                "file replace",
+                &args.write.mutation,
+                (
+                    &args.write.file_id,
+                    args.write.if_revision,
+                    args.if_head,
+                    &mime_type,
+                    &args.write.turn_id,
+                ),
+                &args.source,
+            )?;
             session.change(
                 operation,
                 Change::ReplaceContent {
@@ -243,7 +286,11 @@ pub(crate) fn execute(
             )
         }
         FileCommand::Fork(args) => {
-            let operation = mutation_id(&args.mutation)?;
+            let operation = session.admit(
+                "file fork",
+                &args.mutation,
+                (&args.file_id, args.version, &args.name, &args.turn_id),
+            )?;
             session.change(
                 operation.clone(),
                 Change::Fork {
@@ -257,7 +304,17 @@ pub(crate) fn execute(
             )
         }
         FileCommand::Restore(args) => {
-            let operation = mutation_id(&args.write.mutation)?;
+            let operation = session.admit(
+                "file restore",
+                &args.write.mutation,
+                (
+                    &args.write.file_id,
+                    args.version,
+                    args.write.if_revision,
+                    args.if_head,
+                    &args.write.turn_id,
+                ),
+            )?;
             let blob = client
                 .read_file_blob(
                     Some(&session.project_id),
@@ -279,47 +336,34 @@ pub(crate) fn execute(
                 args.write.turn_id,
             )
         }
-        FileCommand::Trash(args) => {
-            let operation = mutation_id(&args.mutation)?;
-            session.change(
-                operation,
-                Change::Trash {
-                    file_id: args.file_id,
-                    expected_revision: args.if_revision,
-                },
-                args.turn_id,
-            )
-        }
-        FileCommand::Untrash(args) => {
-            let operation = mutation_id(&args.mutation)?;
-            session.change(
-                operation,
-                Change::Restore {
-                    file_id: args.file_id,
-                    expected_revision: args.if_revision,
-                },
-                args.turn_id,
-            )
-        }
-        FileCommand::Purge(args) => {
-            let operation = mutation_id(&args.mutation)?;
-            session.change(
-                operation,
-                Change::Purge {
-                    file_id: args.file_id,
-                    expected_revision: args.if_revision,
-                },
-                args.turn_id,
-            )
-        }
+        FileCommand::Trash(args) => session.admit_change(
+            "file trash",
+            &args.mutation,
+            Change::Trash {
+                file_id: args.file_id,
+                expected_revision: args.if_revision,
+            },
+            args.turn_id,
+        ),
+        FileCommand::Untrash(args) => session.admit_change(
+            "file untrash",
+            &args.mutation,
+            Change::Restore {
+                file_id: args.file_id,
+                expected_revision: args.if_revision,
+            },
+            args.turn_id,
+        ),
+        FileCommand::Purge(args) => session.admit_change(
+            "file purge",
+            &args.mutation,
+            Change::Purge {
+                file_id: args.file_id,
+                expected_revision: args.if_revision,
+            },
+            args.turn_id,
+        ),
     }
-}
-
-pub(crate) fn mutation_id(args: &MutationArgs) -> Result<String, CliError> {
-    if !args.r#return.is_empty() {
-        return Err(invalid("File commands do not accept --return fields"));
-    }
-    operation_id(args.idempotency_key.as_deref())
 }
 
 pub(crate) fn file_id_for_operation(operation: &str) -> String {

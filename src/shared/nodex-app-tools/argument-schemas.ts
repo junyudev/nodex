@@ -3,7 +3,7 @@ import { followThreadSchema } from "./work-schema";
 import { sessionControlSchemas } from "./session-control-schemas";
 import { sessionQuestionSchema } from "./session-question-schema";
 import { z } from "zod";
-import { NODEX_AGENT_V6_TOOL_CONTRACTS } from "../nodex-agent-tools/v6-contracts";
+import { appContentToolContracts } from "./content-catalog";
 import { accountSchemas } from "./account-schemas";
 import { automationSchema } from "./automation-schema";
 import { sendToInboxSchema } from "./inbox-schema";
@@ -35,10 +35,7 @@ import { emptyAppToolArguments } from "./empty-arguments";
 /** The complete hosted catalog's executable argument contracts, including semantic content tools. */
 export const appToolArgumentSchemas: Readonly<Record<string, z.ZodType>> = {
   ...Object.fromEntries(
-    Object.entries(NODEX_AGENT_V6_TOOL_CONTRACTS).map(([name, contract]) => [
-      name,
-      contract.inputSchema,
-    ]),
+    Object.entries(appContentToolContracts).map(([name, contract]) => [name, contract.inputSchema]),
   ),
   ...accountSchemas,
   ...sessionControlSchemas,

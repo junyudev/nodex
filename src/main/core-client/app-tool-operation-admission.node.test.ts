@@ -24,7 +24,7 @@ test("application retry admission is atomic and restart-stable over the authenti
         launch_request_id: "launch:retry-caller",
       },
     });
-    const request: AppToolOperationRequest = {
+    const request = {
       tool_name: "send_message_to_session",
       idempotency_key: "06d6709c-45e7-4b37-8c26-74e9d64c5aa1",
       request_hash: "a".repeat(64),
@@ -44,7 +44,7 @@ test("application retry admission is atomic and restart-stable over the authenti
           },
         },
       },
-    };
+    } satisfies AppToolOperationRequest;
     const [first, duplicate] = await Promise.all([
       client.admitAppToolOperation(request),
       client.admitAppToolOperation(request),
@@ -58,6 +58,33 @@ test("application retry admission is atomic and restart-stable over the authenti
     ).rejects.toMatchObject({
       coreError: { code: "idempotency_key_reused" },
     });
+    const pageRetry = { ...request, tool_name: "create_pages" };
+    const pageOperation = await client.admitAppToolOperation(pageRetry);
+    const pageRequest = {
+      destination: { kind: "library" as const },
+      pages: [{ title_markdown: "Retry receipt", markdown: "", values: [] }],
+      include_block_ids: false,
+      include_etags: false,
+    };
+    const authorization = { provenance: request.provenance, call_id: "call:one" };
+    const preparePage = (core: typeof client, execution: typeof authorization) =>
+      core.libraryRead({
+        kind: "prepare_agent_create_pages",
+        operation_id: pageOperation.operation_id,
+        store_epoch: core.handshake.store_epoch,
+        authorization: execution,
+        request: pageRequest,
+      });
+    const prepared = (await preparePage(client, authorization)).value;
+    if (prepared.kind !== "agent_create_pages_preparation") throw new Error("Expected preparation");
+    const committed = await client.libraryApply({
+      operationId: pageOperation.operation_id,
+      intent: {
+        kind: "execute_prepared_agent_create_pages",
+        authorization: { authorization, token: prepared.value.preparation.token },
+        request: pageRequest,
+      },
+    });
     await scenario.withStoppedCore(async () => {});
     const reopened = scenario.runtime.clientForProject(scenario.manifest.projectId);
     const retry = await reopened.admitAppToolOperation({
@@ -68,5 +95,18 @@ test("application retry admission is atomic and restart-stable over the authenti
       },
     });
     expect(retry).toEqual(first);
+    const later = {
+      ...request.provenance,
+      authority: { ...request.provenance.authority, turn_id: "run:later" },
+    };
+    expect(await reopened.admitAppToolOperation({ ...pageRetry, provenance: later })).toEqual(
+      pageOperation,
+    );
+    const replay = (await preparePage(reopened, { provenance: later, call_id: "call:two" })).value;
+    if (replay.kind !== "agent_create_pages_preparation") throw new Error("Expected replay");
+    expect(replay.value.preparation.state).toBe("committed_replay");
+    expect(replay.value.committed?.outcome.agent_create_pages).toEqual(
+      committed.outcome.agent_create_pages,
+    );
   });
 });

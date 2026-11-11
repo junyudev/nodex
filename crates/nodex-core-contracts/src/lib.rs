@@ -14,6 +14,7 @@ where
 }
 
 pub const CORE_EVENT_VERSION: u32 = 12;
+pub const OPERATION_RECEIPT_WINDOW_MS: i64 = 7 * 24 * 60 * 60 * 1_000;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(transparent)]
@@ -145,6 +146,8 @@ pub enum CoreErrorRecovery {
     /// Only device-credential renewal may return authenticated withdrawal evidence.
     RemoteAccessWithdrawn,
     RenewRemoteSession,
+    UseNewIdempotencyKey,
+    ReconcileExpiredOperation,
     RetryAfter {
         budget: team::RemoteBudget,
         milliseconds: u64,

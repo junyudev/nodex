@@ -181,6 +181,8 @@ export const BlockLocationSchema = z.discriminatedUnion("kind", [
 
 export const RecoveryActionSchema = z.enum([
   "retry_same",
+  "use_new_idempotency_key",
+  "reconcile_expired_operation",
   "get_block_again",
   "fetch_again",
   "query_database_again",
@@ -206,6 +208,8 @@ export const ToolErrorCodeSchema = z.enum([
   "protected_owner_deletion",
   "mixed_transfer_sources",
   "idempotency_collision",
+  "idempotency_key_reused",
+  "idempotency_window_expired",
   "result_too_large",
   "timeout",
   "internal_error",

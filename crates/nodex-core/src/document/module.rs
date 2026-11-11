@@ -1210,6 +1210,13 @@ impl OwnedDocumentModule {
                     MODULE_NAME,
                     &operation_id,
                 )?;
+                if crate::infrastructure::module_receipts::is_admitted_retry(&operation_id) {
+                    crate::workspace::validate_persisted_turn_authority(
+                        &transaction,
+                        &context.library_id.0,
+                        &authorization.provenance,
+                    )?;
+                }
                 if let Some(stored) = read_module_receipt(&transaction, MODULE_NAME, &operation_id)?
                 {
                     if stored.request_hash != request_hash {
@@ -1311,7 +1318,12 @@ impl OwnedDocumentModule {
                 let binding = PreparedAgentOperationBinding {
                     connection_id: context.connection_id.clone(),
                     operation_id: operation_id.clone(),
-                    request_hash: request_hash.clone(),
+                    request_hash: agent_semantic_preparation_hash(
+                        &operation_id,
+                        &expected_store_epoch,
+                        &authorization,
+                        &mutation,
+                    )?,
                     authority_revisions_hash,
                     footprint_hash: hash_serializable(
                         &footprint,
@@ -3611,6 +3623,13 @@ impl OwnedDocumentModule {
                         true,
                     ));
                 }
+                if let Some(prepared) = job.prepared_agent.as_ref()
+                    && crate::infrastructure::module_receipts::is_admitted_retry(&job.operation_id)
+                {
+                    crate::workspace::validate_persisted_turn_authority(
+                        &transaction, &job.context.library_id.0, &prepared.authorization.authorization.provenance,
+                    )?;
+                }
                 if let Some(stored) =
                     read_module_receipt(&transaction, MODULE_NAME, &job.operation_id)?
                 {
@@ -3717,7 +3736,10 @@ impl OwnedDocumentModule {
                     let binding = PreparedAgentOperationBinding {
                         connection_id: job.context.connection_id.clone(),
                         operation_id: job.operation_id.clone(),
-                        request_hash: job.request_hash.clone(),
+                        request_hash: agent_semantic_preparation_hash(
+                            &job.operation_id, &job.expected_store_epoch,
+                            &prepared_agent.authorization.authorization, &prepared_agent.mutation,
+                        )?,
                         authority_revisions_hash,
                         footprint_hash: hash_serializable(
                             &footprint,
@@ -5021,6 +5043,47 @@ fn agent_semantic_request_fingerprint(
     if operation_id.is_empty() || operation_id.len() > 512 || operation_id.trim() != operation_id {
         return Err(invalid("Prepared Agent operation_id is invalid"));
     }
+    if crate::infrastructure::module_receipts::is_admitted_retry(operation_id) {
+        return serde_json::to_vec(&(
+            "nodex.agent.document.semantic.retry.v1",
+            operation_id,
+            store_epoch,
+            &authorization.provenance.profile_id,
+            &authorization.provenance.authority.library_id,
+            crate::infrastructure::module_receipts::agent_retry_caller(authorization),
+            &mutation.document_id,
+            mutation.generation,
+            &mutation.commands,
+        ))
+        .map_err(|_| invalid("Prepared Agent semantic request cannot be fingerprinted"));
+    }
+    agent_semantic_preparation_bytes(operation_id, store_epoch, authorization, mutation)
+        .map_err(|_| invalid("Prepared Agent semantic request cannot be fingerprinted"))
+}
+
+fn agent_semantic_preparation_hash(
+    operation_id: &str,
+    store_epoch: &StoreEpoch,
+    authorization: &AgentExecutionAuthorization,
+    mutation: &AgentDocumentSemanticMutation,
+) -> Result<String, StoreError> {
+    agent_semantic_preparation_bytes(operation_id, store_epoch, authorization, mutation)
+        .map(|bytes| sha256(&bytes))
+        .map_err(|_| {
+            StoreError::new(
+                StoreErrorCode::InvalidInput,
+                "Prepared Agent semantic request cannot be fingerprinted",
+                false,
+            )
+        })
+}
+
+fn agent_semantic_preparation_bytes(
+    operation_id: &str,
+    store_epoch: &StoreEpoch,
+    authorization: &AgentExecutionAuthorization,
+    mutation: &AgentDocumentSemanticMutation,
+) -> serde_json::Result<Vec<u8>> {
     serde_json::to_vec(&(
         "nodex.agent.document.semantic.v2",
         operation_id,
@@ -5028,7 +5091,6 @@ fn agent_semantic_request_fingerprint(
         authorization,
         mutation,
     ))
-    .map_err(|_| invalid("Prepared Agent semantic request cannot be fingerprinted"))
 }
 
 struct AgentBlockCoordinate<'a> {

@@ -3,8 +3,8 @@ use crate::data_source::stable_id;
 use crate::error::{CliError, CliErrorCode};
 use crate::input::read_json;
 use crate::runtime::{
-    CommandOutput, map_client_error, map_core_error, operation_id, resolve_page_selector,
-    selected_project, unwrap_library,
+    CommandOutput, map_client_error, map_core_error, resolve_page_selector, selected_project,
+    unwrap_library,
 };
 use clap::{Args, Subcommand};
 use nodex_core_contracts::database::{
@@ -104,6 +104,10 @@ pub(crate) fn execute(
     args: PagePropertiesArgs,
 ) -> Result<CommandOutput, CliError> {
     let project = selected_project(client, explicit_project, cwd)?;
+    let command_name = match &args.command {
+        PagePropertiesCommand::Apply { .. } => "page properties apply",
+        _ => "page properties set",
+    };
     let (edits, mutation) = match args.command {
         PagePropertiesCommand::PrepareBatch(args) => {
             return crate::selection_batch::execute(client, &project.id, args);
@@ -119,10 +123,10 @@ pub(crate) fn execute(
             mutation,
         ),
         PagePropertiesCommand::Set(args) => {
-            let page_id = resolve_page_selector(client, &project.id, &args.page)?;
             if args.assignee.is_some() || args.owner.is_some() || args.auto_start.is_some() {
-                return set_work(client, &project.id, &page_id, args);
+                return set_work(client, &project.id, args);
             }
+            let page_id = resolve_page_selector(client, &project.id, &args.page)?;
             let property = args
                 .property
                 .as_deref()
@@ -178,7 +182,13 @@ pub(crate) fn execute(
             Some(&project.id),
             ModuleApplyRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
-                operation_id: operation_id(mutation.idempotency_key.as_deref())?,
+                operation_id: crate::retry_key::admit(
+                    client,
+                    Some(&project.id),
+                    command_name,
+                    mutation.idempotency_key.as_deref(),
+                    &edits,
+                )?,
                 store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
                 intent: vec![DatabaseIntent::EditPropertyValues { edits }],
             },
@@ -298,7 +308,6 @@ fn edit_work(
 fn set_work(
     client: &CoreClient,
     project: &str,
-    page: &str,
     args: PropertySetArgs,
 ) -> Result<CommandOutput, CliError> {
     use nodex_core_contracts::library::*;
@@ -313,6 +322,25 @@ fn set_work(
         ));
     }
     crate::page_mutation::validate_return_fields(&args.mutation.r#return)?;
+    let admitted = crate::retry_key::admit_with_replay(
+        client,
+        Some(project),
+        "page properties set",
+        args.mutation.idempotency_key.as_deref(),
+        (
+            &args.page,
+            args.if_revision,
+            &args.owner,
+            &args.assignee,
+            args.auto_start,
+            "work",
+        ),
+        Some(nodex_core_contracts::ModuleName::Library),
+    )?;
+    if let Some(replay) = admitted.replay {
+        return work_output(serde_json::from_value(replay.result).map_err(internal)?);
+    }
+    let page = resolve_page_selector(client, project, &args.page)?;
     let LibraryReadValue::LocalMember { value: me } =
         unwrap_library(client.library_read(None, LibraryRead::LocalMember))?.value
     else {
@@ -343,7 +371,7 @@ fn set_work(
             Some(project),
             ModuleApplyRequest {
                 contract_version: nodex_core_contracts::LIBRARY_CONTRACT_VERSION,
-                operation_id: operation_id(args.mutation.idempotency_key.as_deref())?,
+                operation_id: admitted.operation_id,
                 store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
                 intent: LibraryIntent::ApplyBlockPropertyMutation {
                     mutation: Box::new(LibraryBlockPropertyMutation {
@@ -361,25 +389,32 @@ fn set_work(
         )
         .map_err(map_client_error)?;
     match response.0 {
-        ResponseEnvelope::Ok(committed) => {
-            if let Some(LibraryBlockPropertyMutationReceipt {
-                outcome: LibraryBlockPropertyMutationOutcome::Rejected { error },
-            }) = &committed.outcome().block_property_mutation
-            {
-                let code = if error.code == LibraryBlockPropertyMutationErrorCode::PropertyConflict
-                {
-                    CliErrorCode::EtagConflict
-                } else {
-                    CliErrorCode::InvalidInput
-                };
-                return Err(CliError::new(code, &error.message));
-            }
-            serde_json::to_value(committed)
-                .map(CommandOutput::Json)
-                .map_err(internal)
-        }
+        ResponseEnvelope::Ok(committed) => work_output(committed),
         ResponseEnvelope::Error(error) => Err(map_core_error(error)),
     }
+}
+
+fn work_output(
+    committed: nodex_core_contracts::ApplyResponse<
+        nodex_core_contracts::library::LibraryCommitValue,
+        nodex_core_contracts::library::LibraryReceipt,
+    >,
+) -> Result<CommandOutput, CliError> {
+    use nodex_core_contracts::library::*;
+    if let Some(LibraryBlockPropertyMutationReceipt {
+        outcome: LibraryBlockPropertyMutationOutcome::Rejected { error },
+    }) = &committed.outcome().block_property_mutation
+    {
+        let code = if error.code == LibraryBlockPropertyMutationErrorCode::PropertyConflict {
+            CliErrorCode::EtagConflict
+        } else {
+            CliErrorCode::InvalidInput
+        };
+        return Err(CliError::new(code, &error.message));
+    }
+    serde_json::to_value(committed)
+        .map(CommandOutput::Json)
+        .map_err(internal)
 }
 
 #[cfg(test)]

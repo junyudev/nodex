@@ -1596,17 +1596,91 @@ async fn admit_app_tool_operation(
     Json(request): Json<nodex_core_contracts::workspace::AppToolOperationRequest>,
 ) -> Result<Json<nodex_core_contracts::workspace::AppToolOperationIdentity>, ApiError> {
     let context = module_context(&state, &headers, &bound).map_err(api_core_error)?;
+    let replay_module = request.replay_module;
+    if replay_module.is_some()
+        && (context.adapter != AdapterKind::NativeCli || request.provenance.is_some())
+    {
+        return Err(api_core_error(unauthorized(
+            "CLI receipt replay requires its native caller",
+        )));
+    }
     let request_state = Arc::clone(&state);
     let identity = state
         .request_executor
         .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            request_state
+            let mut identity = request_state
                 .workspace
-                .admit_app_tool_operation(&context, request)
+                .admit_app_tool_operation(&context, request)?;
+            if let Some(module) = replay_module {
+                identity.replay =
+                    cli_admitted_replay(&request_state, &context, module, &identity.operation_id)?;
+            }
+            Ok(identity)
         })
         .await
         .map_err(api_core_error)?;
     Ok(Json(identity))
+}
+
+// The admission transaction has already authenticated the caller and bound the
+// canonical arguments. The normal apply path still arbitrates a concurrent write
+// if this read occurs before its receipt is committed.
+fn cli_admitted_replay(
+    state: &ServerState,
+    context: &BoundModuleContext,
+    module: ModuleName,
+    operation_id: &str,
+) -> Result<Option<nodex_core_contracts::workspace::AppToolOperationReplay>, CoreError> {
+    let stored = state
+        .store
+        .readers()
+        .read_default(|connection| {
+            let Some(stored) =
+                read_module_receipt(connection, module_storage_name(module), operation_id)?
+            else {
+                return Ok(None);
+            };
+            let document_owner = if module == ModuleName::OwnedDocument {
+                let document_id = stored.result["receipt"]["document_id"].as_str();
+                let mut statement = connection.prepare_cached(
+                    "SELECT block_id FROM block_documents WHERE document_id=?1 AND library_id=?2",
+                )?;
+                let mut rows = statement.query((document_id, &context.library_id.0))?;
+                rows.next()?
+                    .map(|row| row.get::<_, String>(0))
+                    .transpose()?
+            } else {
+                None
+            };
+            Ok(Some((stored, document_owner)))
+        })
+        .map_err(apply_response_store_error)?;
+    let Some((stored, document_owner)) = stored else {
+        return Ok(None);
+    };
+    if stored.profile_id != context.profile_id.0
+        || stored.project_id.as_deref() != context.project_id.as_ref().map(|id| id.0.as_str())
+    {
+        return Err(unauthorized("Retry receipt belongs to another scope"));
+    }
+    let mut committed: ModuleWriterResult<serde_json::Value, serde_json::Value> =
+        serde_json::from_value(stored.result)
+            .map_err(|_| apply_response_corrupt("Stored CLI command result is invalid"))?;
+    let receipt = committed
+        .receipt
+        .as_object_mut()
+        .ok_or_else(|| apply_response_corrupt("Stored CLI command receipt is invalid"))?;
+    receipt.insert("duplicate".into(), serde_json::Value::Bool(true));
+    let response =
+        build_authorized_apply_response(state, module, operation_id, context, true, committed)?;
+    let result = serde_json::to_value(response)
+        .map_err(|_| apply_response_corrupt("Stored CLI command result could not be encoded"))?;
+    Ok(Some(
+        nodex_core_contracts::workspace::AppToolOperationReplay {
+            result,
+            document_owner,
+        },
+    ))
 }
 
 async fn workspace_read(

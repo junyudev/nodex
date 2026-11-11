@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import {
   flattenToolInputSchema,
   toolInputSchemaProblem,
@@ -179,4 +179,20 @@ describe("hosted tool schema honesty", () => {
     ).toHaveLength(1);
     expect(hiddenConstraints(z.object({ key: z.string().min(1).max(128) }))).toEqual([]);
   });
+});
+
+test("hosted content retry keys count Unicode scalar values", () => {
+  const schema = appToolArgumentSchemas.create_pages!;
+  const published = appToolCatalog.find((tool) => tool.name === "create_pages")!;
+  const keyProperty = published.inputSchema.properties?.idempotencyKey as { pattern: string };
+  const pattern = new RegExp(keyProperty.pattern);
+  const args = { destination: { kind: "library" }, pages: [{ title: "Retry test" }] };
+  for (const key of [" ", " /:", "nodexop:v1:broken", "cli-1-reorg", "😀".repeat(128)]) {
+    expect(schema.safeParse({ ...args, idempotencyKey: key }).success).toBe(true);
+    expect(pattern.test(key)).toBe(true);
+  }
+  for (const key of ["", "😀".repeat(129), "\ud800"]) {
+    expect(schema.safeParse({ ...args, idempotencyKey: key }).success).toBe(false);
+    expect(pattern.test(key)).toBe(false);
+  }
 });

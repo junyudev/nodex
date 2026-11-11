@@ -810,7 +810,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "CORE_UNAVAILABLE",
             "PROTOCOL_INCOMPATIBLE",
         ],
-        example: "nodex --json inbox send 'Benchmark search on the large fixture' --title 'Search benchmark' --idempotency-key inbox-1",
+        example: "nodex --json inbox send 'Benchmark search on the large fixture' --title 'Search benchmark' --idempotency-key inbox-caadbcff",
         example_argv: &[
             "--json",
             "inbox",
@@ -819,7 +819,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--title",
             "Search benchmark",
             "--idempotency-key",
-            "inbox-1",
+            "inbox-caadbcff",
         ],
     },
     CommandMetadata {
@@ -839,13 +839,13 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: IDEMPOTENCY_VALIDATOR,
         result: "page_acceptance_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex page accept NODEX-12 --idempotency-key accept-1",
+        example: "nodex page accept NODEX-12 --idempotency-key accept-c125d039",
         example_argv: &[
             "page",
             "accept",
             "NODEX-12",
             "--idempotency-key",
-            "accept-1",
+            "accept-c125d039",
         ],
     },
     CommandMetadata {
@@ -936,7 +936,7 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: IDEMPOTENCY_VALIDATOR,
         result: "page_copy_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json page duplicate page-id --to library --at end --idempotency-key copy-1",
+        example: "nodex --json page duplicate page-id --to library --at end --idempotency-key copy-6f5a6034",
         example_argv: &[
             "--json",
             "page",
@@ -947,7 +947,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--at",
             "end",
             "--idempotency-key",
-            "copy-1",
+            "copy-6f5a6034",
         ],
     },
     CommandMetadata {
@@ -957,7 +957,7 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: ETAG_AND_IDEMPOTENCY_VALIDATORS,
         result: "page_deletion_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json page delete page-id --if-match page-etag --idempotency-key delete-1",
+        example: "nodex --json page delete page-id --if-match page-etag --idempotency-key delete-61975955",
         example_argv: &[
             "--json",
             "page",
@@ -966,7 +966,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--if-match",
             "page-etag",
             "--idempotency-key",
-            "delete-1",
+            "delete-61975955",
         ],
     },
     CommandMetadata {
@@ -976,7 +976,7 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &["bounded_bytes", "idempotency_key"],
         result: "file_mutation_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json file import --from ./api.md --name api.md --idempotency-key file-import-1",
+        example: "nodex --json file import --from ./api.md --name api.md --idempotency-key file-import-2dc0cab4",
         example_argv: &[
             "--json",
             "file",
@@ -986,7 +986,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--name",
             "api.md",
             "--idempotency-key",
-            "file-import-1",
+            "file-import-2dc0cab4",
         ],
     },
     CommandMetadata {
@@ -1015,7 +1015,7 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &["file_revision", "idempotency_key"],
         result: "file_mutation_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json file rename file-id --if-revision 1 --name reference.md --idempotency-key file-rename-1",
+        example: "nodex --json file rename file-id --if-revision 1 --name reference.md --idempotency-key file-rename-8d30e50f",
         example_argv: &[
             "--json",
             "file",
@@ -1026,7 +1026,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--name",
             "reference.md",
             "--idempotency-key",
-            "file-rename-1",
+            "file-rename-8d30e50f",
         ],
     },
     CommandMetadata {
@@ -1042,7 +1042,7 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "file_mutation_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json file replace file-id --if-revision 1 --if-head 1 --from ./api.md --idempotency-key file-replace-1",
+        example: "nodex --json file replace file-id --if-revision 1 --if-head 1 --from ./api.md --idempotency-key file-replace-360cac5a",
         example_argv: &[
             "--json",
             "file",
@@ -1055,7 +1055,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--from",
             "./api.md",
             "--idempotency-key",
-            "file-replace-1",
+            "file-replace-360cac5a",
         ],
     },
     CommandMetadata {
@@ -1065,7 +1065,7 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &["exact_version", "idempotency_key"],
         result: "file_mutation_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json file fork file-id --version 1 --name copy.md --idempotency-key file-fork-1",
+        example: "nodex --json file fork file-id --version 1 --name copy.md --idempotency-key file-fork-fbec176a",
         example_argv: &[
             "--json",
             "file",
@@ -1076,7 +1076,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--name",
             "copy.md",
             "--idempotency-key",
-            "file-fork-1",
+            "file-fork-fbec176a",
         ],
     },
     CommandMetadata {
@@ -1092,7 +1092,7 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "file_mutation_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json file restore file-id --version 1 --if-revision 2 --if-head 2 --idempotency-key file-restore-1",
+        example: "nodex --json file restore file-id --version 1 --if-revision 2 --if-head 2 --idempotency-key file-restore-9338eb23",
         example_argv: &[
             "--json",
             "file",
@@ -1105,7 +1105,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--if-head",
             "2",
             "--idempotency-key",
-            "file-restore-1",
+            "file-restore-9338eb23",
         ],
     },
     CommandMetadata {
@@ -1120,7 +1120,7 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "file_mutation_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json file trash file-id --if-revision 1 --idempotency-key file-trash-1",
+        example: "nodex --json file trash file-id --if-revision 1 --idempotency-key file-trash-02a3abf4",
         example_argv: &[
             "--json",
             "file",
@@ -1129,7 +1129,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--if-revision",
             "1",
             "--idempotency-key",
-            "file-trash-1",
+            "file-trash-02a3abf4",
         ],
     },
     CommandMetadata {
@@ -1139,7 +1139,7 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &["file_revision", "idempotency_key"],
         result: "file_mutation_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json file untrash file-id --if-revision 2 --idempotency-key file-untrash-1",
+        example: "nodex --json file untrash file-id --if-revision 2 --idempotency-key file-untrash-470a230c",
         example_argv: &[
             "--json",
             "file",
@@ -1148,7 +1148,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--if-revision",
             "2",
             "--idempotency-key",
-            "file-untrash-1",
+            "file-untrash-470a230c",
         ],
     },
     CommandMetadata {
@@ -1163,7 +1163,7 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "file_mutation_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json file purge file-id --if-revision 3 --idempotency-key file-purge-1",
+        example: "nodex --json file purge file-id --if-revision 3 --idempotency-key file-purge-142f0301",
         example_argv: &[
             "--json",
             "file",
@@ -1172,7 +1172,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--if-revision",
             "3",
             "--idempotency-key",
-            "file-purge-1",
+            "file-purge-142f0301",
         ],
     },
     CommandMetadata {
@@ -1222,7 +1222,7 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "page_file_entry_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json page file put page-id --path references/api.md --from ./api.md --if-manifest 0 --idempotency-key page-file-put-1",
+        example: "nodex --json page file put page-id --path references/api.md --from ./api.md --if-manifest 0 --idempotency-key page-file-put-7e8b20a3",
         example_argv: &[
             "--json",
             "page",
@@ -1236,7 +1236,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--if-manifest",
             "0",
             "--idempotency-key",
-            "page-file-put-1",
+            "page-file-put-7e8b20a3",
         ],
     },
     CommandMetadata {
@@ -1252,7 +1252,7 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "page_file_entry_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json page file add page-id --file-id file-id --path api.md --if-manifest 0 --idempotency-key page-file-add-1",
+        example: "nodex --json page file add page-id --file-id file-id --path api.md --if-manifest 0 --idempotency-key page-file-add-1f6bd5ce",
         example_argv: &[
             "--json",
             "page",
@@ -1266,7 +1266,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--if-manifest",
             "0",
             "--idempotency-key",
-            "page-file-add-1",
+            "page-file-add-1f6bd5ce",
         ],
     },
     CommandMetadata {
@@ -1281,7 +1281,7 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "page_file_entry_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json page file rename-path page-id --file-id file-id --path references/api.md --if-manifest 1 --idempotency-key page-file-rename-path-1",
+        example: "nodex --json page file rename-path page-id --file-id file-id --path references/api.md --if-manifest 1 --idempotency-key page-file-rename-path-b1325446",
         example_argv: &[
             "--json",
             "page",
@@ -1295,7 +1295,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--if-manifest",
             "1",
             "--idempotency-key",
-            "page-file-rename-path-1",
+            "page-file-rename-path-b1325446",
         ],
     },
     CommandMetadata {
@@ -1305,7 +1305,7 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &["profile_identity", "manifest_revision", "idempotency_key"],
         result: "page_file_entry_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json page file remove page-id --file-id file-id --if-manifest 1 --idempotency-key page-file-remove-1",
+        example: "nodex --json page file remove page-id --file-id file-id --if-manifest 1 --idempotency-key page-file-remove-080115bc",
         example_argv: &[
             "--json",
             "page",
@@ -1317,7 +1317,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--if-manifest",
             "1",
             "--idempotency-key",
-            "page-file-remove-1",
+            "page-file-remove-080115bc",
         ],
     },
     CommandMetadata {
@@ -1332,7 +1332,7 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "page_file_entry_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json page file replace-entry page-id --file-id file-id --from ./api.md --if-manifest 1 --idempotency-key page-file-replace-entry-1",
+        example: "nodex --json page file replace-entry page-id --file-id file-id --from ./api.md --if-manifest 1 --idempotency-key page-file-replace-entry-95ac2a82",
         example_argv: &[
             "--json",
             "page",
@@ -1346,7 +1346,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--if-manifest",
             "1",
             "--idempotency-key",
-            "page-file-replace-entry-1",
+            "page-file-replace-entry-95ac2a82",
         ],
     },
     CommandMetadata {
@@ -1362,7 +1362,7 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "page_file_entry_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json page file move page-id --file-id file-id --to target-page --path api.md --if-source-manifest 1 --if-target-manifest 0 --idempotency-key page-file-move-1",
+        example: "nodex --json page file move page-id --file-id file-id --to target-page --path api.md --if-source-manifest 1 --if-target-manifest 0 --idempotency-key page-file-move-d4e99b5e",
         example_argv: &[
             "--json",
             "page",
@@ -1380,7 +1380,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--if-target-manifest",
             "0",
             "--idempotency-key",
-            "page-file-move-1",
+            "page-file-move-d4e99b5e",
         ],
     },
     CommandMetadata {
@@ -1396,7 +1396,7 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "page_file_entry_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json page file copy page-id --file-id file-id --to target-page --path api.md --if-source-manifest 1 --if-target-manifest 0 --idempotency-key page-file-copy-1",
+        example: "nodex --json page file copy page-id --file-id file-id --to target-page --path api.md --if-source-manifest 1 --if-target-manifest 0 --idempotency-key page-file-copy-6c519461",
         example_argv: &[
             "--json",
             "page",
@@ -1414,7 +1414,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--if-target-manifest",
             "0",
             "--idempotency-key",
-            "page-file-copy-1",
+            "page-file-copy-6c519461",
         ],
     },
     CommandMetadata {
@@ -1462,7 +1462,7 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: IDEMPOTENCY_VALIDATOR,
         result: "block_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json block move page-id --block block-id --at end --idempotency-key block-move-1",
+        example: "nodex --json block move page-id --block block-id --at end --idempotency-key block-move-e74d0f3d",
         example_argv: &[
             "--json",
             "block",
@@ -1473,7 +1473,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--at",
             "end",
             "--idempotency-key",
-            "block-move-1",
+            "block-move-e74d0f3d",
         ],
     },
     CommandMetadata {
@@ -1483,7 +1483,7 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: ETAG_AND_IDEMPOTENCY_VALIDATORS,
         result: "block_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json block delete page-id --block block-id --if-match block-etag --idempotency-key block-delete-1",
+        example: "nodex --json block delete page-id --block block-id --if-match block-etag --idempotency-key block-delete-430d044b",
         example_argv: &[
             "--json",
             "block",
@@ -1494,7 +1494,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--if-match",
             "block-etag",
             "--idempotency-key",
-            "block-delete-1",
+            "block-delete-430d044b",
         ],
     },
     CommandMetadata {
@@ -1514,7 +1514,7 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: IDEMPOTENCY_VALIDATOR,
         result: "backup_creation_receipt",
         errors: &["CORE_UNAVAILABLE", "PROTOCOL_INCOMPATIBLE"],
-        example: "nodex --json backup create --label manual --idempotency-key backup-1",
+        example: "nodex --json backup create --label manual --idempotency-key backup-54d00d86",
         example_argv: &[
             "--json",
             "backup",
@@ -1522,7 +1522,7 @@ const COMMANDS: &[CommandMetadata] = &[
             "--label",
             "manual",
             "--idempotency-key",
-            "backup-1",
+            "backup-54d00d86",
         ],
     },
     CommandMetadata {
@@ -1575,8 +1575,14 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: IDEMPOTENCY_VALIDATOR,
         result: "maintenance_report",
         errors: &["CORE_UNAVAILABLE", "PROTOCOL_INCOMPATIBLE"],
-        example: "nodex --json doctor --idempotency-key doctor-1",
-        example_argv: &["--json", "doctor", "--idempotency-key", "doctor-1"],
+        example: "nodex --json doctor --full --idempotency-key doctor-72f4be89",
+        example_argv: &[
+            "--json",
+            "doctor",
+            "--full",
+            "--idempotency-key",
+            "doctor-72f4be89",
+        ],
     },
     CommandMetadata {
         path: &["draft", "create"],
@@ -1975,13 +1981,12 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
         ],
         _ => Vec::new(),
     };
-    if path != ["data-source", "configure"]
-        && path != ["draft", "apply"]
+    if path != ["draft", "apply"]
         && COMMANDS.iter().any(|metadata| {
             metadata.path == path && metadata.validators.contains(&"idempotency_key")
         })
     {
-        semantics.push("Each call without an idempotency key is a new operation. Reuse an explicit key and identical input when retrying an uncertain result.");
+        semantics.push("The optional --idempotency-key accepts any string of 1 to 128 Unicode scalar values. Nodex remembers a key for 7 days. Use a descriptive prefix with a unique random or timestamp suffix for each new intent. Reuse the key with identical arguments and payloads after an uncertain result. Omission starts a new operation.");
     }
     semantics
 }
@@ -2010,6 +2015,14 @@ fn machine_help_for(
 ) -> MachineHelp {
     use crate::cli::HelpSchema;
     let (arguments, argument_groups, usage) = arguments::describe(metadata.path);
+    let mut errors = metadata.errors.to_vec();
+    if metadata.validators.contains(&"idempotency_key") {
+        for code in ["IDEMPOTENCY_KEY_REUSED", "IDEMPOTENCY_WINDOW_EXPIRED"] {
+            if !errors.contains(&code) {
+                errors.push(code);
+            }
+        }
+    }
     MachineHelp {
         schema_version: MACHINE_HELP_SCHEMA_VERSION,
         command: command_name(metadata.path),
@@ -2018,7 +2031,7 @@ fn machine_help_for(
         validators: metadata.validators.to_vec(),
         result_schema_revision: result_revision(metadata.path),
         result: metadata.result,
-        errors: metadata.errors.to_vec(),
+        errors,
         examples: command_examples(metadata),
         arguments: arguments
             .into_iter()
@@ -2293,7 +2306,7 @@ fn command_examples(metadata: &CommandMetadata) -> Vec<&'static str> {
         ["read"] => Some("nodex read page-id"),
         ["search"] => Some("nodex search 'release plan' --limit 5"),
         ["data-source", "configure"] => Some(
-            r#"nodex data-source configure source-id --idempotency-key risk-note-1 <<'JSON'
+            r#"nodex data-source configure source-id --idempotency-key risk-note-6d691371 <<'JSON'
 {"if_schema_revision":1,"operations":[{"kind":"add_property","name":"Risk note","schema":{"kind":"text"}}]}
 JSON"#,
         ),
@@ -2316,10 +2329,10 @@ JSON"#,
             "nodex page insert page-id --at end --idempotency-key next-steps-1 <<'BODY'\n## Next steps\n\nFinish the release checks.\nBODY",
         ),
         ["patch"] => Some(
-            "nodex patch --idempotency-key release-date-1 <<'PATCH'\n*** Begin Patch\n*** Update Page: page-id\n@@\n-Release date: Friday.\n+Release date: Monday.\n*** End Patch\nPATCH",
+            "nodex patch --idempotency-key release-date-d62c6f1d <<'PATCH'\n*** Begin Patch\n*** Update Page: page-id\n@@\n-Release date: Friday.\n+Release date: Monday.\n*** End Patch\nPATCH",
         ),
         ["block", "insert"] => Some(
-            r#"nodex block insert page-id --at end --block-json - --idempotency-key note-block-1 <<'JSON'
+            r#"nodex block insert page-id --at end --block-json - --idempotency-key note-block-d19659bc <<'JSON'
 {"local_id":"note","block_type":"paragraph","props":{},"content":{"kind":"value","value":[{"type":"text","text":"Review pending.","styles":{}}]},"children":[]}
 JSON"#,
         ),
@@ -2334,10 +2347,10 @@ JSON"#,
         .chain(second)
         .collect::<Vec<_>>();
     if metadata.path == ["data-source", "configure"] {
-        examples.push(r#"nodex data-source configure source-id --idempotency-key task-list-1 <<'JSON'
+        examples.push(r#"nodex data-source configure source-id --idempotency-key task-list-e6bdf421 <<'JSON'
 {"if_schema_revision":1,"operations":[{"kind":"create_view","name":"Task list","layout":"list","sorts":[{"property":"title","direction":"asc"}]}]}
 JSON"#);
-        examples.push(r#"nodex data-source configure source-id --idempotency-key review-queue-1 <<'JSON'
+        examples.push(r#"nodex data-source configure source-id --idempotency-key review-queue-59ba480c <<'JSON'
 {"if_schema_revision":1,"operations":[{"kind":"create_view","name":"Review queue","layout":"list","filter":{"kind":"clause","propertyId":"Status","operator":"select_is","value":"In Review"}}]}
 JSON"#);
     }

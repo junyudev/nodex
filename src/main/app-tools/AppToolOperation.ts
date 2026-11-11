@@ -48,16 +48,19 @@ export const make = Effect.gen(function* () {
           expiresAtMs: identity.expires_at_ms,
         })),
         Effect.catch((error) => {
-          const code =
-            error.cause instanceof CoreHttpError ? error.cause.coreError?.code : undefined;
+          const coreError =
+            error.cause instanceof CoreHttpError ? error.cause.coreError : undefined;
           return Effect.succeed({
             success: false as const,
-            result: toolFailure(
-              code ?? "operation_admission_failed",
-              code === "idempotency_key_reused"
-                ? "idempotencyKey is already bound to different arguments. Reuse it only for an identical retry."
-                : "The host could not admit this call. Retry with the same idempotencyKey and identical arguments.",
-            ),
+            result: coreError
+              ? toolFailure(coreError.code, coreError.message, {
+                  retryable: coreError.retryable,
+                  recovery: coreError.recovery,
+                })
+              : toolFailure(
+                  "operation_admission_failed",
+                  "The host could not admit this call. Retry with the same idempotencyKey and identical arguments.",
+                ),
           });
         }),
       );

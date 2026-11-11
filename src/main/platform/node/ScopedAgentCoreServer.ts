@@ -26,6 +26,7 @@ const admittedRoute = (method: string | undefined, path: string): boolean => {
       path,
     ) ||
     path === "/core/v1/modules/query/read" ||
+    path === "/core/v1/modules/workspace/tool-operations/admit" ||
     path === "/core/v1/files/blobs/prepare"
   );
 };

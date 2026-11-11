@@ -43,6 +43,12 @@ and then fail explicitly. The composite floor includes time, Module, and
 operation identity so concurrent identities issued in the same millisecond are
 ordered without false expiry.
 
+Explicit opaque retry keys enter through shared Core admission. Core binds each
+key to the caller, command and argument fingerprint before issuing a bounded
+operation identity. Nodex remembers a key for 7 days. Core prunes expired bindings
+in bounded batches. Reusing a key after its window admits a fresh operation identity.
+The receipt layer continues to enforce the original expiry of each operation identity.
+
 Operations nested beneath a durable episode must remain stable across process
 restart as well as in-memory retry. Agent tool calls therefore derive their
 bounded identity from the Core-frozen Turn timestamp plus the exact

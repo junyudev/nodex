@@ -399,7 +399,7 @@ fn initialize(
                 None,
                 ModuleApplyRequest {
                     contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
-                    operation_id: crate::runtime::operation_id(None)?,
+                    operation_id: crate::runtime::fresh_operation_id()?,
                     store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
                     intent: ProjectWorkspaceIntent::CreateProject {
                         project_id: project_id.clone(),

@@ -1,9 +1,7 @@
 use crate::cli::MutationArgs;
 use crate::error::{CliError, CliErrorCode};
 use crate::input::read_json;
-use crate::runtime::{
-    CommandOutput, map_client_error, map_core_error, operation_id, selected_project,
-};
+use crate::runtime::{CommandOutput, map_client_error, map_core_error, selected_project};
 use clap::Args;
 use nodex_core_contracts::library::{
     LibraryAgentCreatePageDraft, LibraryAgentCreatePagesRequest, LibraryAgentPageDestination,
@@ -94,7 +92,13 @@ pub(crate) fn execute(
             Some(&project.id),
             ModuleApplyRequest {
                 contract_version: LIBRARY_CONTRACT_VERSION,
-                operation_id: operation_id(args.mutation.idempotency_key.as_deref())?,
+                operation_id: crate::retry_key::admit(
+                    client,
+                    Some(&project.id),
+                    "page create-batch",
+                    args.mutation.idempotency_key.as_deref(),
+                    &request,
+                )?,
                 store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
                 intent: LibraryIntent::CreatePagesFromText { request },
             },

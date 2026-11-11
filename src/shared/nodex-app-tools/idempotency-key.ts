@@ -1,10 +1,12 @@
 import { z } from "zod";
 
-/** Opaque model input; only the host constructs bounded operation identities. */
+// Accepts a scalar in both Unicode-aware and UTF-16 regular expression engines.
+const retryKeyPattern = /^(?:[^\uD800-\uDFFF]|[\uD800-\uDBFF][\uDC00-\uDFFF]){1,128}(?![\s\S])/u;
+
 export const idempotencyKeySchema = z
   .string()
-  .min(1)
-  .max(128)
+  .regex(retryKeyPattern, "Idempotency key must contain 1 to 128 Unicode scalar values")
+  .meta({ minLength: 1, maxLength: 128 })
   .describe(
-    "Optional: any string you choose, from 1 to 128 characters. Reuse it with identical arguments only to retry a call whose outcome you did not see. Never needed on a first attempt.",
+    "Optional: any string of 1 to 128 Unicode scalar values. Nodex remembers a key for 7 days. Use a descriptive prefix and a unique random or timestamp suffix for each new intent. Reuse the key and identical arguments only after an uncertain result.",
   );
