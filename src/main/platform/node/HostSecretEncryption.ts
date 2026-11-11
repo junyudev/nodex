@@ -4,7 +4,7 @@ import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
 import type { SecretEncryptionAdapter } from "../SecretEncryption";
-import { verifyPrivatePaths } from "./private-filesystem";
+import { makePrivatePaths, verifyPrivatePaths } from "./private-filesystem";
 
 /** The key stays beside Core's administration material, outside the execution home. */
 export async function hostSecretEncryption(
@@ -19,6 +19,9 @@ export async function hostSecretEncryption(
   });
   if (created) {
     try {
+      // The Windows token's default owner and inherited ACL need not be private.
+      if (process.platform === "win32")
+        await makePrivatePaths([{ path, directory: false }], coreExecutable);
       await created.writeFile(randomBytes(32));
       await created.sync();
     } finally {

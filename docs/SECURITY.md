@@ -219,7 +219,8 @@ entries. Explicit provider credentials remain provider capabilities.
 
 The headless host encrypts sensitive settings with authenticated AES-256-GCM.
 Its private `settings.key` remains in the Core home and is checked with the other
-administration material. It never travels into the execution home or Agent
+administration material. Nodex sets the native owner-only permissions before writing
+a new key. It never travels into the execution home or Agent
 environment. This protects persisted settings from accidental disclosure; an
 account that can read both key and ciphertext can decrypt them. Desktop settings
 continue to use the operating system's credential encryption.
