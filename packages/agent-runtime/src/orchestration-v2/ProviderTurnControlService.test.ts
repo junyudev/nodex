@@ -366,7 +366,7 @@ it.effect(
     }),
 );
 
-it.effect.each(["live", "gone", "rebound", "unsupported", "no-native-thread"] as const)(
+it.effect.each(["live", "ended", "gone", "rebound", "unsupported", "no-native-thread"] as const)(
   "stops a background task through its recorded runtime: %s",
   (state) =>
     Effect.gen(function* () {
@@ -386,6 +386,7 @@ it.effect.each(["live", "gone", "rebound", "unsupported", "no-native-thread"] as
             ? null
             : { driver, nativeId: "native-background", strength: "strong" },
         nativeConversationHeadRef: null,
+        pendingBackgroundTasks: state === "ended" ? [] : [{ taskId: "shell", kind: "command" }],
         status: "idle",
         firstRunOrdinal: null,
         lastRunOrdinal: null,
