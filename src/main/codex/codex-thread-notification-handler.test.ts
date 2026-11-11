@@ -228,7 +228,11 @@ describe("Codex thread notification handler", () => {
     runtime.source.eventListener?.(turn("turn-3"));
     expect(runtime.shown).toHaveLength(2);
 
-    const quieter = setup({ turnMode: "background", questionsEnabled: true, readbackEnabled: true });
+    const quieter = setup({
+      turnMode: "background",
+      questionsEnabled: true,
+      readbackEnabled: true,
+    });
     quieter.setForegrounded(true);
     quieter.source.eventListener?.(turn("turn-5"));
     expect(quieter.shown).toHaveLength(0);

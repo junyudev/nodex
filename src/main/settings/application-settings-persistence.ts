@@ -117,10 +117,7 @@ import type {
   WindowRestorePolicy,
   WindowRestoreSettings,
 } from "../../shared/types";
-import {
-  THREAD_NOTIFICATION_TURN_MODES,
-  isThreadNotificationTurnMode,
-} from "../../shared/types";
+import { THREAD_NOTIFICATION_TURN_MODES, isThreadNotificationTurnMode } from "../../shared/types";
 import { normalizeCodexSshExecutionHostConfig } from "../codex/codex-ssh-execution-host";
 import {
   DEFAULT_INBOX_SETTINGS,
