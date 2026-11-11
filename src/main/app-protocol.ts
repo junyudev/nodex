@@ -1,9 +1,8 @@
 import { createReadStream } from "node:fs";
-import { realpath, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import * as path from "node:path";
 import { Readable } from "node:stream";
-import { pathToFileURL } from "node:url";
-import { net, protocol as electronProtocol, type Protocol, type Session } from "electron";
+import { protocol as electronProtocol, type Protocol, type Session } from "electron";
 import { lookup as lookupMimeType } from "mime-types";
 import {
   APP_FILESYSTEM_HOST,
@@ -43,8 +42,6 @@ export interface AppProtocolHandlerOptions
     assetId: string;
     signal: AbortSignal;
   }) => Promise<{ readonly bytes: Uint8Array; readonly mimeType: string } | null>;
-  readonly platform?: NodeJS.Platform;
-  readonly netFetch?: (url: string) => Promise<Response>;
   readonly getDevelopmentRendererUrl?: () => string | null;
 }
 
@@ -284,8 +281,6 @@ export function createAppProtocolHandler(
   options: AppProtocolHandlerOptions,
 ): (request: Request) => Promise<Response> {
   const mimeLookup = options.lookupMimeType ?? lookupMimeType;
-  const platform = options.platform ?? process.platform;
-  const netFetch = options.netFetch ?? ((url) => net.fetch(url));
   const fileDependencies: FileResponseDependencies = {
     createStream: options.createStream,
     lookupMimeType: mimeLookup,
@@ -320,18 +315,6 @@ export function createAppProtocolHandler(
     if (!filePath) return notFoundResponse();
     if (isAudioOrVideoPath(filePath, mimeLookup)) {
       return await createRangeFileResponse(request, filePath, fileDependencies);
-    }
-    if (platform === "win32") {
-      // Chromium's Windows file loader does not follow a symlink like Node's stream reader.
-      const response = await netFetch(pathToFileURL(await realpath(filePath)).toString());
-      const headers = new Headers(response.headers);
-      const mimeType = mimeLookup(filePath);
-      if (typeof mimeType === "string") headers.set("Content-Type", mimeType);
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers,
-      });
     }
     return await createOrdinaryFileResponse(filePath, fileDependencies);
   };

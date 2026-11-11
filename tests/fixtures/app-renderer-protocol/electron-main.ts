@@ -1,10 +1,10 @@
 import path from "node:path";
 import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   app,
-  net,
   BrowserWindow,
   protocol,
   session,
@@ -76,23 +76,21 @@ void app.whenReady().then(async () => {
     rendererRoot: path.join(__dirname, "renderer"),
     getDevelopmentRendererUrl: () => developmentRendererUrl,
     protocol,
-    netFetch: async (url) => {
-      if (holdImages && new URL(url).pathname.endsWith(".png")) {
-        imageRequested.resolve();
-        await imageReleased.promise;
-      }
-      return await net.fetch(url);
-    },
-    // Keep the long audio fixture partially buffered so seeking must request another range.
-    ...(process.env.NODEX_TEST_SLOW_MEDIA === "1" || holdImages ? {
-      createStream: (filePath, options) => Readable.from((async function* () {
-        if (holdImages && filePath.endsWith(".png")) {
+    ...(holdImages ? {
+      stat: async (filePath) => {
+        if (filePath.endsWith(".png")) {
           imageRequested.resolve();
           await imageReleased.promise;
         }
+        return await stat(filePath);
+      },
+    } : {}),
+    // Keep the long audio fixture partially buffered so seeking must request another range.
+    ...(process.env.NODEX_TEST_SLOW_MEDIA === "1" ? {
+      createStream: (filePath, options) => Readable.from((async function* () {
         const stream = createReadStream(filePath, { ...options, highWaterMark: 16_384 });
         for await (const bytes of stream) {
-          if (process.env.NODEX_TEST_SLOW_MEDIA === "1" && filePath.endsWith(".wav")) await delay(10);
+          if (filePath.endsWith(".wav")) await delay(10);
           yield bytes;
         }
       })()),

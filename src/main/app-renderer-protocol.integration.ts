@@ -189,7 +189,7 @@ describe("production app renderer origin", () => {
   }, 30_000);
 
   test.runIf(process.platform === "win32")(
-    "serves static and filesystem images through the native Windows response path",
+    "serves static and filesystem images from native Windows paths",
     async () => {
       const outputDirectory = mkdtempSync(
         path.join(tmpdir(), "nodex-app-windows-origin-integration-"),

@@ -2,7 +2,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Readable } from "node:stream";
-import { pathToFileURL } from "node:url";
 import type { Protocol, Session } from "electron";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { buildAppFilesystemUrl, buildAppHostAssetUrl } from "../shared/app-protocol";
@@ -250,48 +249,13 @@ describe("app file responses", () => {
 });
 
 describe("app protocol dispatch and origin gate", () => {
-  test("uses net.fetch(file URL) only for Windows ordinary responses", async () => {
-    const { rendererRoot } = createFixture();
-    const imagePath = createTemporaryFile("image.png", "image");
-    const calls: string[] = [];
-    const handler = createAppProtocolHandler({
-      rendererRoot,
-      platform: "win32",
-      netFetch: async (url) => {
-        calls.push(url);
-        return new Response("windows");
-      },
-    });
-
-    const response = await handler(new Request(buildAppFilesystemUrl(imagePath)));
-    const staticResponse = await handler(new Request("app://-/assets/main.js"));
-    expect(calls).toEqual([
-      pathToFileURL(fs.realpathSync.native(imagePath)).toString(),
-      pathToFileURL(
-        fs.realpathSync.native(path.join(rendererRoot, "assets", "main.js")),
-      ).toString(),
-    ]);
-    await expect(response.text()).resolves.toBe("windows");
-    await expect(staticResponse.text()).resolves.toBe("windows");
-  });
-
-  test("keeps audio/video on the range branch on Windows", async () => {
+  test("serves audio/video ranges through the application protocol", async () => {
     const { rendererRoot } = createFixture();
     const audioPath = createTemporaryFile("sound.mp3", "0123456789");
-    let netFetchCalled = false;
-    const handler = createAppProtocolHandler({
-      rendererRoot,
-      platform: "win32",
-      netFetch: async () => {
-        netFetchCalled = true;
-        return new Response();
-      },
-    });
-
+    const handler = createAppProtocolHandler({ rendererRoot });
     const response = await handler(
       new Request(buildAppFilesystemUrl(audioPath), { headers: { Range: "bytes=1-2" } }),
     );
-    expect(netFetchCalled).toBe(false);
     expect(response.status).toBe(206);
     await expect(response.text()).resolves.toBe("12");
   });
@@ -299,7 +263,7 @@ describe("app protocol dispatch and origin gate", () => {
   test("does not reject POST before the ordinary stream responder", async () => {
     const { rendererRoot } = createFixture();
     const imagePath = createTemporaryFile("image.png", "image");
-    const handler = createAppProtocolHandler({ rendererRoot, platform: "darwin" });
+    const handler = createAppProtocolHandler({ rendererRoot });
 
     const response = await handler(
       new Request(buildAppFilesystemUrl(imagePath), { method: "POST" }),
@@ -310,19 +274,18 @@ describe("app protocol dispatch and origin gate", () => {
 
   test("returns 404 before dispatching when the URL cannot resolve", async () => {
     const { rendererRoot } = createFixture();
-    let netFetchCalled = false;
+    let statCalled = false;
     const handler = createAppProtocolHandler({
       rendererRoot,
-      platform: "win32",
-      netFetch: async () => {
-        netFetchCalled = true;
-        return new Response();
+      stat: async (filePath) => {
+        statCalled = true;
+        return fs.promises.stat(filePath);
       },
     });
 
     const response = await handler(new Request("app://fs/@fsrelative.png"));
     expect(response.status).toBe(404);
-    expect(netFetchCalled).toBe(false);
+    expect(statCalled).toBe(false);
   });
 
   test("allows only the packaged app origin or exact HTTP(S) development origin", () => {
@@ -455,24 +418,13 @@ test("host assets require an opaque Main-issued capability", async () => {
   expect(calls).toEqual(["authorized-image", "forged", "authorized-text"]);
 });
 
-test("Windows file responses resolve a static symlink before native fetch and retain its addressed MIME", async () => {
+test("follows static symlinks and serves the addressed MIME type", async () => {
   const { rendererRoot } = createFixture();
   const target = createTemporaryFile("bytes.bin", "image bytes");
   const alias = path.join(rendererRoot, "alias.png");
   fs.symlinkSync(target, alias);
-  const calls: string[] = [];
-  const handler = createAppProtocolHandler({
-    rendererRoot,
-    platform: "win32",
-    netFetch: async (url) => {
-      calls.push(url);
-      return new Response("image bytes", {
-        headers: { "Content-Type": "application/octet-stream" },
-      });
-    },
-  });
+  const handler = createAppProtocolHandler({ rendererRoot });
   const response = await handler(new Request("app://-/alias.png"));
-  expect(calls).toEqual([pathToFileURL(fs.realpathSync.native(target)).href]);
   expect(response.headers.get("Content-Type")).toBe("image/png");
   expect(await response.text()).toBe("image bytes");
 });
