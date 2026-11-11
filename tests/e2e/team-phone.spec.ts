@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -5,7 +6,7 @@ import path from "node:path";
 import { createServer } from "node:net";
 import electron from "electron";
 import { expect, test } from "@playwright/test";
-import { encodeDeviceLink } from "@nodex/mobile-protocol";
+import { createUuidV7 as phoneUuidV7, encodeDeviceLink } from "@nodex/mobile-protocol";
 import type { components } from "@nodex/core-protocol";
 import { CoreClient } from "../../src/main/core-client/core-client";
 import { enrollRemoteCore } from "../../src/main/core-client/remote-http";
@@ -249,13 +250,14 @@ test("Bob's phone retains only Bob's Turns while the team host runs with Alice's
     expect(
       (await inbox()).items.some((item) => item.rowKind === "turn" && item.pageId === bobPage),
     ).toBe(true);
-    const operationId = createUuidV7();
+    const issuedAt = Date.now();
+    const operationId = phoneUuidV7((length) => new Uint8Array(randomBytes(length)), issuedAt);
     expect(
       await phone.request("inbox.capture", {
         operationId,
         pageId: createUuidV7(),
         documentId: createUuidV7(),
-        issuedAt: Date.now(),
+        issuedAt,
         scope: { kind: "library" },
         text: "Bob with the laptop closed",
         fileRefs: [],
