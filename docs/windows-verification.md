@@ -32,8 +32,11 @@ timing luck fails there first. Suites follow these rules on every platform:
 - **Production deadlines are not debug-build benchmarks.** Bulk fixture setup runs under
   an explicit test budget (Core's `with_test_request_budget`) or in its own serial CI
   step; production defaults and the dedicated deadline and cancellation tests stay
-  unchanged. Scalability is asserted by counted work such as SQLite VM steps, with
-  latency recorded only as evidence.
+  unchanged. The Windows Core-client phase runs at most two files concurrently so
+  independent debug Core processes, fixture setup, and Agent Runtime subprocesses
+  can share the runner without exhausting interactive request deadlines. Scalability
+  is asserted by counted work such as SQLite VM steps, with latency recorded only
+  as evidence.
 - **Order is set explicitly.** Rapid commands can share a Windows clock tick, so
   timestamp-ordering tests seed distinct and tied values; keyset pagination must return
   every row exactly once when timestamps tie.

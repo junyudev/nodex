@@ -121,7 +121,7 @@ jobs:
         run: >-
           vp exec tsx scripts/ci/run-timed.ts
           --name app-core-client
-          -- vp run test:core-client --exclude src/main/core-client/canvas-recovery-bytes.node.test.ts
+          -- vp run test:core-client --maxWorkers=2 --exclude src/main/core-client/canvas-recovery-bytes.node.test.ts
       - name: Test large Canvas binary recovery
         if: matrix.suite == 'core-client'
         run: >-
