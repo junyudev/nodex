@@ -8,11 +8,14 @@ export function PageStageDataSourcePropertyControl({
   item,
   controls,
   showLabel = false,
+  openOnMount = false,
   className,
 }: {
   readonly item: PageStageDataSourceProperty;
   readonly controls: PageStagePropertyControls;
   readonly showLabel?: boolean;
+  /** Opens the value editor as this control mounts, for a property the person just chose. */
+  readonly openOnMount?: boolean;
   readonly className?: string;
 }) {
   const propertyId = item.property.propertyId;
@@ -30,6 +33,7 @@ export function PageStageDataSourcePropertyControl({
         disabled={disabled}
         pending={pending}
         showLabel={showLabel}
+        openOnMount={openOnMount}
         presentation="page"
         relationSourcePageId={controls.pageId ?? undefined}
         options={controls.options[propertyId] ?? []}

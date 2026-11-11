@@ -2,7 +2,7 @@ import { fireEvent, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { NodexDialog, NodexDialogContent, NodexDialogTitle } from "@/components/ui/dialog";
-import { render } from "@/test/dom";
+import { render, settleAsyncRender } from "@/test/dom";
 import { PropertyOptionPicker } from "./property-option-picker";
 
 const options = [
@@ -11,6 +11,82 @@ const options = [
 ] as const;
 
 describe("PropertyOptionPicker", () => {
+  test("mount opening requests the registry once, selects the active option, and restores focus", async () => {
+    const onOpen = vi.fn();
+    const onOpenChange = vi.fn();
+    const props = {
+      label: "Tags",
+      mode: "multiple",
+      options,
+      selectedIds: ["two"],
+      onOpen,
+      onOpenChange,
+      onSelectedIdsChange: vi.fn(),
+    } as const;
+    const view = render(<PropertyOptionPicker {...props} openOnMount />, {
+      reactStrictMode: true,
+    });
+    const search = await view.findByRole("combobox", { name: "Search Tags options" });
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpenChange.mock.calls).toEqual([[true]]);
+    expect(search.getAttribute("aria-activedescendant")).toBe(
+      view.getByRole("option", { name: "Ready" }).id,
+    );
+
+    await act(async () => {
+      fireEvent.keyDown(search, { key: "Escape" });
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(view.getByRole("button", { name: "Edit Tags" })),
+    );
+    view.rerender(<PropertyOptionPicker {...props} openOnMount />);
+    await settleAsyncRender();
+    expect(view.queryByRole("combobox")).toBeNull();
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  test("embedded mount does not send a popover open notification", async () => {
+    const onOpen = vi.fn();
+    const onOpenChange = vi.fn();
+    const view = render(
+      <PropertyOptionPicker
+        host="embedded"
+        openOnMount
+        label="Tags"
+        mode="multiple"
+        options={options}
+        selectedIds={[]}
+        onOpen={onOpen}
+        onOpenChange={onOpenChange}
+        onSelectedIdsChange={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(document.activeElement).toBe(view.getByRole("combobox")));
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  test("mount opening while the option registry is loading requests it once", async () => {
+    const onOpen = vi.fn();
+    const view = render(
+      <PropertyOptionPicker
+        openOnMount
+        loading
+        label="Tags"
+        mode="multiple"
+        options={[]}
+        selectedIds={[]}
+        onOpen={onOpen}
+        onSelectedIdsChange={vi.fn()}
+      />,
+      { reactStrictMode: true },
+    );
+    await view.findByRole("listbox");
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
   test("renders Board multi-select values as sibling chips on one picker trigger", async () => {
     const view = render(
       <PropertyOptionPicker

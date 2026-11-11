@@ -1,4 +1,4 @@
-import { forwardRef, type ComponentPropsWithoutRef, type ReactElement } from "react";
+import { forwardRef, useState, type ComponentPropsWithoutRef, type ReactElement } from "react";
 import {
   DEFAULT_INBOX_SETTINGS,
   type InboxAgentChoice,
@@ -14,6 +14,7 @@ import { NodexSettingsDropdownTrigger } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import { useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
 import { readableIpcError } from "@/lib/ipc-error-message";
+import { useMountAction } from "@/lib/use-mount-action";
 import {
   useAgentRuntimeProviders,
   useRefreshAgentRuntimeProviders,
@@ -141,6 +142,7 @@ export function InboxAgentPicker({
   trigger,
   toggles,
   disabled = false,
+  openOnMount = false,
 }: {
   readonly agents: InboxAgents;
   readonly purpose: InboxAgentPurpose;
@@ -161,8 +163,16 @@ export function InboxAgentPicker({
   /** Settings of the chosen Agent itself, such as a Page's Start automatically. */
   readonly toggles?: AgentModelCatalogPresentation["toggles"];
   readonly disabled?: boolean;
+  readonly openOnMount?: boolean;
 }) {
   const openAgentSettings = useAgentSettingsNavigation();
+  const [open, setOpen] = useState(false);
+  const changeOpen = (next: boolean) => {
+    if (next && disabled) return;
+    if (next && !open) agents.reload();
+    setOpen(next);
+  };
+  useMountAction(openOnMount && !disabled, () => changeOpen(true));
   const model = inboxAgentPickerModel(agents, value, purpose);
   const presentation = describeInboxAgent(agents, value, purpose);
   const differs =
@@ -188,6 +198,8 @@ export function InboxAgentPicker({
   return (
     <AgentModelPicker
       disabled={disabled}
+      open={open}
+      onOpenChange={changeOpen}
       triggerStyle={trigger === "field" ? "settings" : "composer"}
       triggerButton={triggerButton}
       additionalOptions={
@@ -234,7 +246,6 @@ export function InboxAgentPicker({
         error: agents.state === "error" ? "Couldn’t load Agents" : null,
         choose: (selection) => onChange(chooseInboxModel(agents, value, selection)),
         refresh: agents.refresh,
-        reload: agents.reload,
         manage: () => openAgentSettings?.(model.kind),
         configOptions: model.configOptions,
         toggles,

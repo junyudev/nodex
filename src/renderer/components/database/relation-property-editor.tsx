@@ -18,6 +18,7 @@ import {
 } from "@/lib/data-source-relation-value";
 import { foldDataSourceRelationSearchText } from "@/lib/data-source-relation-runtime";
 import { cn } from "@/lib/utils";
+import { useMountAction } from "@/lib/use-mount-action";
 import {
   DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
   PropertyEmptyValue,
@@ -94,6 +95,7 @@ export function RelationPropertyEditor({
   presentation = "compact",
   triggerIcon,
   host = "popover",
+  openOnMount = false,
   onRequestClose,
 }: {
   readonly label: string;
@@ -123,6 +125,7 @@ export function RelationPropertyEditor({
   readonly presentation?: DatabasePropertyValuePresentation;
   readonly triggerIcon?: ReactNode;
   readonly host?: RelationPropertyEditorHost;
+  readonly openOnMount?: boolean;
   readonly onRequestClose?: () => void;
 }) {
   const parsedPreview = readRelationValuePreview(value);
@@ -457,24 +460,22 @@ export function RelationPropertyEditor({
       });
   };
 
+  const changeOpen = (next: boolean) => {
+    if (host === "embedded" || (next && actionDisabled)) return;
+    setOpen(next);
+    if (next) return;
+    searchGeneration.current += 1;
+    targetGeneration.current += 1;
+    descriptorGeneration.current += 1;
+    setSearching(false);
+    setLoadingTargets(false);
+    setQuery("");
+    setConfirmingClear(false);
+  };
+  useMountAction(openOnMount && host === "popover" && !actionDisabled, () => changeOpen(true));
+
   const editor = (
-    <NodexPopover
-      open={editorOpen}
-      onOpenChange={(next) => {
-        if (host === "embedded") return;
-        if (next && actionDisabled) return;
-        setOpen(next);
-        if (!next) {
-          searchGeneration.current += 1;
-          targetGeneration.current += 1;
-          descriptorGeneration.current += 1;
-          setSearching(false);
-          setLoadingTargets(false);
-          setQuery("");
-          setConfirmingClear(false);
-        }
-      }}
-    >
+    <NodexPopover open={editorOpen} onOpenChange={changeOpen}>
       {host === "popover" ? (
         <NodexPopoverTrigger disabled={actionDisabled}>
           <button

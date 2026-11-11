@@ -5,6 +5,9 @@ import type { DatabasePropertyValueType } from "../../shared/database-kernel";
 import type { PageStageDataSourceProperty } from "./page-stage-properties";
 import {
   advancePageStagePropertyDisclosure,
+  revealPageStageProperty,
+  type PageStagePropertyDisclosureEntry,
+  type PageStagePropertyDisclosureState,
   isPageStagePropertyHiddenByLayout,
   isPageStagePropertyValueEmpty,
   pageStagePropertyRows,
@@ -73,68 +76,82 @@ describe("Page property rows", () => {
       ],
       null,
     );
-    expect(rows.map((row) => [row.key, row.shownByLayout])).toEqual([
-      ["status", true],
-      ["priority", false],
-      ["p_noteNote", true],
-      ["p_secret00", false],
+    expect(rows.map((row) => [row.key, row.shownByLayout, row.empty])).toEqual([
+      ["status", true, false],
+      ["priority", false, true],
+      ["p_noteNote", true, true],
+      ["p_secret00", false, false],
     ]);
   });
 });
 
 describe("Page property disclosure", () => {
-  const rows = (shown: Readonly<Record<string, boolean>>) =>
-    Object.entries(shown).map(([key, shownByLayout]) => ({ key, shownByLayout }));
+  const entries = (
+    shown: Readonly<Record<string, boolean | "tucked-value">>,
+  ): readonly PageStagePropertyDisclosureEntry[] =>
+    Object.entries(shown).map(([key, state]) => ({
+      key,
+      shownByLayout: state === true,
+      empty: state !== "tucked-value" && state !== true,
+    }));
+  const advance = (
+    current: PageStagePropertyDisclosureState | null,
+    shown: Parameters<typeof entries>[0],
+    expanded = false,
+    pageId = "page-1",
+  ) => advancePageStagePropertyDisclosure(current, { pageId, entries: entries(shown), expanded });
 
   test("starts from what the layout shows for each Page", () => {
-    const first = advancePageStagePropertyDisclosure(null, {
-      pageId: "page-1",
-      rows: rows({ status: true, priority: false }),
-      expanded: false,
-    });
+    const first = advance(null, { status: true, priority: false });
     expect([...first.shownKeys]).toEqual(["status"]);
 
-    const next = advancePageStagePropertyDisclosure(first, {
-      pageId: "page-2",
-      rows: rows({ status: false, priority: true }),
-      expanded: false,
-    });
+    const next = advance(first, { status: false, priority: true }, false, "page-2");
     expect([...next.shownKeys]).toEqual(["priority"]);
   });
 
   test("keeps a shown row after its value is cleared", () => {
-    const shown = advancePageStagePropertyDisclosure(null, {
-      pageId: "page-1",
-      rows: rows({ priority: true }),
-      expanded: false,
-    });
-    const cleared = advancePageStagePropertyDisclosure(shown, {
-      pageId: "page-1",
-      rows: rows({ priority: false }),
-      expanded: false,
-    });
+    const shown = advance(null, { priority: true });
+    const cleared = advance(shown, { priority: false });
     expect(cleared).toBe(shown);
     expect(cleared.shownKeys.has("priority")).toBe(true);
   });
 
-  test("holds rows in place while open and promotes filled rows on close", () => {
-    const initial = advancePageStagePropertyDisclosure(null, {
-      pageId: "page-1",
-      rows: rows({ status: true, tags: false }),
-      expanded: false,
-    });
-    const filledWhileOpen = advancePageStagePropertyDisclosure(initial, {
-      pageId: "page-1",
-      rows: rows({ status: true, tags: true }),
-      expanded: true,
-    });
-    expect(filledWhileOpen).toBe(initial);
+  test("opens tucked-away values as rows and leaves empty entries to be chosen", () => {
+    const closed = advance(null, { status: true, secret: "tucked-value", tags: false });
+    expect([...closed.tuckedRowKeys]).toEqual([]);
 
-    const closed = advancePageStagePropertyDisclosure(filledWhileOpen, {
-      pageId: "page-1",
-      rows: rows({ status: true, tags: true }),
-      expanded: false,
-    });
-    expect([...closed.shownKeys]).toEqual(["status", "tags"]);
+    const open = advance(closed, { status: true, secret: "tucked-value", tags: false }, true);
+    expect([...open.shownKeys]).toEqual(["status"]);
+    expect([...open.tuckedRowKeys]).toEqual(["secret"]);
+  });
+
+  test("a chosen entry joins the list and stays after the disclosure closes", () => {
+    const open = advance(null, { status: true, tags: false }, true);
+    const chosen = revealPageStageProperty(open, "tags");
+    expect([...chosen.shownKeys]).toEqual(["status", "tags"]);
+    expect(revealPageStageProperty(chosen, "tags")).toBe(chosen);
+
+    const closed = advance(chosen, { status: true, tags: false });
+    expect(closed.shownKeys.has("tags")).toBe(true);
+  });
+
+  test("holds a tucked row in place while open, whatever happens to its value", () => {
+    const open = advance(null, { status: true, files: "tucked-value" }, true);
+
+    const cleared = advance(open, { status: true, files: false }, true);
+    expect(cleared).toBe(open);
+
+    const shownByLayout = advance(open, { status: true, files: true }, true);
+    expect(shownByLayout).toBe(open);
+
+    const closed = advance(shownByLayout, { status: true, files: true });
+    expect([...closed.shownKeys]).toEqual(["status", "files"]);
+    expect([...closed.tuckedRowKeys]).toEqual([]);
+  });
+
+  test("promotes an entry filled from elsewhere even while open", () => {
+    const open = advance(null, { status: true, tags: false }, true);
+    const filled = advance(open, { status: true, tags: true }, true);
+    expect([...filled.shownKeys]).toEqual(["status", "tags"]);
   });
 });

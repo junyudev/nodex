@@ -9,6 +9,7 @@ import {
   todayAsIsoDate,
 } from "@/lib/data-source-property-date";
 import { cn } from "@/lib/utils";
+import { useMountAction } from "@/lib/use-mount-action";
 import { formatDatabaseDate } from "@/lib/database-property-display-format";
 import type {
   DatabaseDateFormatV2,
@@ -75,6 +76,7 @@ export function DatePropertyEditor({
   timeFormat = "twelve_hour",
   triggerIcon,
   host = "popover",
+  openOnMount = false,
   onRequestClose,
   onChange,
 }: {
@@ -88,6 +90,7 @@ export function DatePropertyEditor({
   readonly timeFormat?: DatabaseTimeFormatV2;
   readonly triggerIcon?: ReactNode;
   readonly host?: DatePropertyEditorHost;
+  readonly openOnMount?: boolean;
   readonly onRequestClose?: () => void;
   readonly onChange: (value: string | null) => void;
 }) {
@@ -189,23 +192,22 @@ export function DatePropertyEditor({
     }
   };
 
+  const changeOpen = (next: boolean) => {
+    if (host === "embedded" || (next && disabled)) return;
+    setOpen(next);
+    if (next) {
+      skipBlurCommitRef.current = false;
+      lastCommittedDraftRef.current = null;
+      return;
+    }
+    setDateInput(committed.date);
+    setTimeInput(committed.time);
+    setError(null);
+  };
+  useMountAction(openOnMount && host === "popover" && !disabled, () => changeOpen(true));
+
   return (
-    <NodexPopover
-      open={editorOpen}
-      onOpenChange={(next) => {
-        if (host === "embedded") return;
-        if (next && disabled) return;
-        setOpen(next);
-        if (next) {
-          skipBlurCommitRef.current = false;
-          lastCommittedDraftRef.current = null;
-          return;
-        }
-        setDateInput(committed.date);
-        setTimeInput(committed.time);
-        setError(null);
-      }}
-    >
+    <NodexPopover open={editorOpen} onOpenChange={changeOpen}>
       {host === "popover" ? (
         <NodexPopoverTrigger disabled={disabled}>
           <button

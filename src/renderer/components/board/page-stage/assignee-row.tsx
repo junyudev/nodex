@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { withPageAssignee, type PageWork } from "../../../../shared/work-graph";
 import { AssigneeIcon } from "@/components/shared/icons";
 import { NodexDropdownButtonTrigger, NodexOptionPicker } from "@/components/ui/dropdown";
@@ -8,14 +9,20 @@ import { PageAssigneeLabel } from "@/components/database/page-assignee-label";
 
 export function PageAssigneeRow({
   pageWork,
+  openOnMount = false,
   onChange,
 }: {
   readonly pageWork: PageWork | null;
+  readonly openOnMount?: boolean;
   readonly onChange: (work: PageWork) => void;
 }) {
   const agents = useInboxAgents();
   const members = useMembers();
-  if (!pageWork) return null;
+  const [openAssigneeOnMount, setOpenAssigneeOnMount] = useState(openOnMount && pageWork !== null);
+  if (!pageWork) {
+    if (openAssigneeOnMount) setOpenAssigneeOnMount(false);
+    return null;
+  }
   const assignment = pageWork.assignee;
   const agent = assignment?.kind === "agent" ? assignment : null;
   return (
@@ -26,6 +33,7 @@ export function PageAssigneeRow({
     >
       <div className="flex min-h-7 min-w-0 flex-1 items-center gap-1.5">
         <InboxAgentPicker
+          openOnMount={openAssigneeOnMount}
           agents={agents}
           purpose="chat"
           scope="page"

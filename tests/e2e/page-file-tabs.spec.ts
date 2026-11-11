@@ -107,6 +107,19 @@ for (const theme of ["light", "dark"] as const) {
         }
         await shot(application, "page-files-tree", theme);
 
+        // Empty properties wait by name; choosing one adds its row with the editor open.
+        await stage.getByRole("button", { name: /\d+ more properties/u }).click();
+        const emptyProperties = stage.getByRole("group", { name: "Empty properties" });
+        await expect(emptyProperties.getByRole("button", { name: "Part of" })).toBeVisible();
+        await shot(application, "page-properties-more", theme);
+        await emptyProperties.getByRole("button", { name: "Priority", exact: true }).click();
+        await expect(page.getByPlaceholder("Search options…")).toBeVisible();
+        await shot(application, "page-property-chosen", theme);
+        await page.keyboard.press("Escape");
+        await expect(stage.locator('[data-page-stage-property-id="priority"]')).toBeVisible();
+        await stage.getByRole("button", { name: /^Hide \d+ properties$/u }).click();
+        await expect(stage.locator('[data-page-stage-property-id="priority"]')).toBeVisible();
+
         // The report opens beside its Page and renders, with its sibling image and data.
         await tree.getByRole("treeitem", { name: "profile/report.html" }).click();
         const reportTab = page.getByRole("tab", { name: /report\.html/u });

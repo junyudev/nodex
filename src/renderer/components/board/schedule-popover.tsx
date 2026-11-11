@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { BellIcon, GlobeIcon, RepeatIcon, SmallChevronDownIcon } from "@/components/shared/icons";
 import { NodexDropdownButtonTrigger, NodexOptionPicker } from "@/components/ui/dropdown";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
@@ -8,6 +8,7 @@ import {
   PropertyEmptyValue,
 } from "@/components/database/property-empty-value";
 import { cn } from "@/lib/utils";
+import { useMountAction } from "@/lib/use-mount-action";
 import type { RecurrenceFrequency } from "@/lib/types";
 import type { PageScheduleSource, ScheduleState } from "@/lib/use-schedule-state";
 import {
@@ -24,13 +25,19 @@ import {
 interface SchedulePopoverProps {
   schedule: ScheduleState;
   page: Pick<PageScheduleSource, "scheduledStart" | "recurrence">;
+  openOnMount?: boolean;
 }
 
-export function SchedulePopover({ schedule, page }: SchedulePopoverProps) {
+export function SchedulePopover({ schedule, page, openOnMount = false }: SchedulePopoverProps) {
   const [open, setOpen] = useState(false);
   const [repeatOpen, setRepeatOpen] = useState(false);
   const [remindersOpen, setRemindersOpen] = useState(false);
   const [timezoneOpen, setTimezoneOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  useMountAction(openOnMount, () => {
+    triggerRef.current?.focus();
+    setOpen(true);
+  });
 
   const hasSchedule = Boolean(schedule.scheduleSummary);
   const recurrenceSummary = formatRecurrenceSummary(
@@ -44,6 +51,7 @@ export function SchedulePopover({ schedule, page }: SchedulePopoverProps) {
     <NodexPopover open={open} onOpenChange={setOpen}>
       <NodexPopoverTrigger>
         <button
+          ref={triggerRef}
           type="button"
           className={cn(
             "flex flex-wrap items-center gap-1",

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import { act, fireEvent } from "@testing-library/react";
+import { act, fireEvent, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 
 import type { PageStageCorePage } from "@/lib/page-stage-page";
@@ -212,7 +212,7 @@ const statusControls: PageStagePropertyControls = {
   ...emptyPropertyControls,
   pageId: "nested-page",
   properties: [statusItem],
-  rows: [{ kind: "property", key: "status", item: statusItem, shownByLayout: false }],
+  rows: [{ kind: "property", key: "status", item: statusItem, shownByLayout: false, empty: true }],
 };
 
 describe("PageStagePropertiesSection", () => {
@@ -257,23 +257,74 @@ describe("PageStagePropertiesSection", () => {
     expect(view.getByRole("link", { name: "Waiting for NODEX-2" })).toBeTruthy();
   });
 
-  test("keeps empty Files available behind the shared disclosure", async () => {
-    const view = renderProperties(<PageStagePropertiesSection controller={buildController()} />);
+  test("offers empty properties by name and never as rows that say Empty", async () => {
+    const view = renderProperties(
+      <PageStagePropertiesSection
+        controller={buildController({ propertyControls: statusControls })}
+      />,
+    );
 
     expect(view.getByRole("region", { name: "Properties" })).toBeTruthy();
-    expect(view.queryByRole("button", { name: "Add Page Files" })).toBeNull();
-    const more = await view.findByRole("button", { name: "2 more properties" });
+    const more = await view.findByRole("button", { name: "3 more properties" });
     expect(more.getAttribute("aria-expanded")).toBe("false");
+    expect(view.queryByRole("group", { name: "Empty properties" })).toBeNull();
     await act(async () => {
       fireEvent.click(more);
       await Promise.resolve();
     });
     expect(more.getAttribute("aria-expanded")).toBe("true");
-    // A Project Page that names no Agent offers one behind the same disclosure.
-    expect(view.getByRole("button", { name: "Choose Assignee" })).toBeTruthy();
-    const files = view.getByRole("button", { name: "Add Page Files" });
+
+    const choices = within(view.getByRole("group", { name: "Empty properties" }));
+    // A Project Page that names no Agent offers one beside its empty Properties.
+    expect(choices.getAllByRole("button").map((choice) => choice.textContent)).toEqual([
+      "Status",
+      "Assignee",
+      "Files",
+    ]);
+    // Files stays mounted while tucked away, but nothing on screen says Empty.
+    expect(
+      view.queryAllByText("Empty", { exact: true }).filter((node) => !node.closest("[hidden]")),
+    ).toEqual([]);
+    expect(view.container.querySelector('[data-page-stage-property-id="status"]')).toBeNull();
+  });
+
+  test("a chosen property joins the list and stays when the disclosure closes", async () => {
+    const view = renderProperties(
+      <PageStagePropertiesSection
+        controller={buildController({ propertyControls: statusControls })}
+      />,
+    );
+    const found1 = await view.findByRole("button", { name: "3 more properties" });
     await act(async () => {
-      fireEvent.click(files);
+      fireEvent.click(found1);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Status" }));
+      await Promise.resolve();
+    });
+
+    expect(view.container.querySelector('[data-page-stage-property-id="status"]')).toBeTruthy();
+    const hide = view.getByRole("button", { name: "Hide 2 properties" });
+    await act(async () => {
+      fireEvent.click(hide);
+      await Promise.resolve();
+    });
+    expect(view.container.querySelector('[data-page-stage-property-id="status"]')).toBeTruthy();
+    expect(view.getByRole("button", { name: "2 more properties" })).toBeTruthy();
+  });
+
+  test("choosing Files opens the Page's File manager", async () => {
+    const view = renderProperties(<PageStagePropertiesSection controller={buildController()} />);
+
+    expect(view.queryByRole("button", { name: "Add Page Files" })).toBeNull();
+    const found2 = await view.findByRole("button", { name: "2 more properties" });
+    await act(async () => {
+      fireEvent.click(found2);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Files" }));
       await Promise.resolve();
     });
     expect(modal.openModal).toHaveBeenCalledOnce();
@@ -281,9 +332,27 @@ describe("PageStagePropertiesSection", () => {
       routingContext: { kind: "project", projectId: "project-1" },
       pageId: "nested-page",
     });
+    expect(view.getByRole("button", { name: "Add Page Files" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Hide 1 property" })).toBeTruthy();
   });
 
-  test("keeps empty Files and linked Chats in the same disclosure", async () => {
+  test("choosing Assignee adds its row", async () => {
+    const view = renderProperties(<PageStagePropertiesSection controller={buildController()} />);
+
+    expect(view.queryByRole("button", { name: "Choose Assignee" })).toBeNull();
+    const found3 = await view.findByRole("button", { name: "2 more properties" });
+    await act(async () => {
+      fireEvent.click(found3);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Assignee" }));
+      await Promise.resolve();
+    });
+    expect(view.getByRole("button", { name: "Choose Assignee" })).toBeTruthy();
+  });
+
+  test("choosing Linked chats adds its row with the chat menu open", async () => {
     const onCreateRelatedChat = vi.fn(async () => undefined);
     const view = renderProperties(
       <PageStagePropertiesSection
@@ -304,23 +373,15 @@ describe("PageStagePropertiesSection", () => {
       await Promise.resolve();
     });
 
-    expect(view.getByText("Linked chats")).toBeTruthy();
-    expect(view.getByRole("button", { name: "Add chat" }).textContent).toBe("Empty");
-    expect(view.queryByText("Local project")).toBeNull();
-    expect(view.queryByText("Project cwd")).toBeNull();
-
     await act(async () => {
-      const trigger = view.getByRole("button", { name: "Add chat" });
-      fireEvent.pointerDown(trigger, {
-        button: 0,
-        ctrlKey: false,
-      });
-      fireEvent.mouseDown(trigger, { button: 0, ctrlKey: false });
-      fireEvent.click(trigger);
+      fireEvent.click(view.getByRole("button", { name: "Linked chats" }));
       await Promise.resolve();
     });
+    expect(view.getByRole("button", { name: "Add chat" })).toBeTruthy();
+
+    const found4 = await view.findByRole("menuitem", { name: "New chat" });
     await act(async () => {
-      fireEvent.click(view.getByRole("menuitem", { name: "New chat" }));
+      fireEvent.click(found4);
       await Promise.resolve();
     });
     expect(onCreateRelatedChat).toHaveBeenCalledTimes(1);
@@ -515,7 +576,11 @@ describe("PageStagePropertiesSection", () => {
       "true",
     );
     expect(view.getByRole("treeitem", { name: "image.png" })).toBeTruthy();
-    expect(view.getByRole("button", { name: "Choose Assignee" })).toBeTruthy();
+    expect(
+      within(view.getByRole("group", { name: "Empty properties" }))
+        .getAllByRole("button")
+        .map((choice) => choice.textContent),
+    ).toEqual(["Assignee"]);
     expect(view.queryByText("Empty", { exact: true })).toBeNull();
   });
 });

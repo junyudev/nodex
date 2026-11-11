@@ -1,9 +1,10 @@
 import { PageAssigneeLabel } from "./page-assignee-label";
 import { parsePageAssignee } from "../../../shared/work-graph";
-import { useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { NodexCheckbox } from "@/components/ui/settings";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useMountAction } from "@/lib/use-mount-action";
 import { PropertyEditorIcon } from "./property-editor-icons";
 import { DueDateValueIcon } from "./due-date-value-icon";
 import {
@@ -51,6 +52,7 @@ interface ScalarPropertyEditorProps {
   readonly value: string;
   readonly revision: number;
   readonly disabled: boolean;
+  readonly openOnMount: boolean;
   readonly presentation: DatabasePropertyValuePresentation;
   readonly kind: "text" | "number";
   readonly triggerIcon?: ReactNode;
@@ -63,6 +65,7 @@ function ScalarPropertyEditor({
   value,
   revision,
   disabled,
+  openOnMount,
   presentation,
   kind,
   triggerIcon,
@@ -72,7 +75,9 @@ function ScalarPropertyEditor({
   const [draft, setDraft] = useState(value);
   const [error, setError] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const skipBlurCommitRef = useRef(false);
+  useMountAction(openOnMount && !disabled, () => inputRef.current?.focus());
   const [committed, setCommitted] = useState({ revision, value });
   if (committed.revision !== revision || committed.value !== value) {
     setCommitted({ revision, value });
@@ -108,6 +113,7 @@ function ScalarPropertyEditor({
   const presentedDraft = focused || !formatDisplayValue ? draft : formatDisplayValue(draft);
   const input = (
     <input
+      ref={inputRef}
       type="text"
       inputMode={kind === "number" ? "decimal" : "text"}
       aria-label={`${label} value`}
@@ -169,6 +175,7 @@ function ScalarPropertyEditor({
 }
 
 export interface DataSourcePropertyValueEditorProps extends DataSourcePropertyEditorBinding {
+  readonly openOnMount?: boolean;
   readonly showLabel?: boolean;
   readonly presentation?: DatabasePropertyValuePresentation;
   readonly triggerIcon?: ReactNode;
@@ -193,6 +200,7 @@ export function DataSourcePropertyValueEditor({
   revision,
   disabled,
   pending = false,
+  openOnMount = false,
   showLabel = true,
   presentation = "compact",
   triggerIcon,
@@ -220,6 +228,12 @@ export function DataSourcePropertyValueEditor({
   onOpenRelationPage,
   onRelationValueStale,
 }: DataSourcePropertyValueEditorProps) {
+  const checkboxId = useId();
+  const focusInlineOnMount = openOnMount && overlayHost !== "embedded";
+  useMountAction(
+    focusInlineOnMount && property.valueType === "checkbox" && !disabled && !pending,
+    () => document.getElementById(checkboxId)?.focus(),
+  );
   const role = resolveDataSourcePropertyPresentationRole(property);
   const boardIcon =
     presentation !== "board" ? undefined : role.kind === "due_date" ? (
@@ -283,6 +297,7 @@ export function DataSourcePropertyValueEditor({
         presentation={presentation}
         triggerIcon={valueTriggerIcon}
         host={overlayHost}
+        openOnMount={openOnMount}
         onRequestClose={onOverlayRequestClose}
       />
     );
@@ -293,6 +308,7 @@ export function DataSourcePropertyValueEditor({
       return (
         <NodexTooltip tooltipContent={`${property.name}: ${checked ? "Yes" : "No"}`}>
           <button
+            id={checkboxId}
             type="button"
             role="checkbox"
             aria-checked={checked}
@@ -311,6 +327,7 @@ export function DataSourcePropertyValueEditor({
       <span className="inline-flex min-w-0 items-center gap-1">
         {label}
         <NodexCheckbox
+          id={checkboxId}
           ariaLabel={`${property.name} value`}
           checked={value === true}
           disabled={disabled || pending}
@@ -329,6 +346,7 @@ export function DataSourcePropertyValueEditor({
     const editor = semanticKind ? (
       <SemanticSelectPropertyEditor
         host={optionPickerHost}
+        openOnMount={openOnMount}
         kind={semanticKind}
         label={property.name}
         options={options}
@@ -351,6 +369,7 @@ export function DataSourcePropertyValueEditor({
     ) : (
       <PropertyOptionPicker
         host={optionPickerHost}
+        openOnMount={openOnMount}
         label={property.name}
         mode="single"
         options={options}
@@ -403,6 +422,7 @@ export function DataSourcePropertyValueEditor({
     const editor = (
       <PropertyOptionPicker
         host={optionPickerHost}
+        openOnMount={openOnMount}
         label={property.name}
         mode="multiple"
         options={options}
@@ -457,6 +477,7 @@ export function DataSourcePropertyValueEditor({
           presentation === "list" || presentation === "board" ? valueTriggerIcon : undefined
         }
         host={overlayHost}
+        openOnMount={openOnMount}
         onRequestClose={onOverlayRequestClose}
         onChange={onChange}
       />
@@ -475,6 +496,7 @@ export function DataSourcePropertyValueEditor({
       <span className="inline-flex min-w-0 items-center gap-1">
         {label}
         <ScalarPropertyEditor
+          openOnMount={focusInlineOnMount}
           label={property.name}
           value={
             property.valueType === "number"

@@ -1,4 +1,5 @@
 import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { useMountAction } from "@/lib/use-mount-action";
 import {
   useEffect,
   useEffectEvent,
@@ -54,6 +55,7 @@ export interface PropertyOptionPickerProps {
   readonly selectedIds: readonly string[];
   readonly disabled?: boolean;
   readonly pending?: boolean;
+  readonly openOnMount?: boolean;
   readonly loading?: boolean;
   readonly loadingMore?: boolean;
   readonly registryError?: boolean;
@@ -264,6 +266,7 @@ export function PropertyOptionPicker({
   selectedIds,
   disabled = false,
   pending = false,
+  openOnMount = false,
   loading = false,
   loadingMore = false,
   registryError = false,
@@ -318,6 +321,8 @@ export function PropertyOptionPicker({
     if (next) {
       const selectedIndex = options.findIndex((option) => selectedSet.has(option.id));
       setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    } else {
+      optionLoadRequestedRef.current = false;
     }
     setClosedByDisable(false);
     setOpen(next);
@@ -353,14 +358,13 @@ export function PropertyOptionPicker({
   }, [host, open]);
 
   useEffect(() => {
-    if (closedByDisable) notifyDisabledClose();
+    if (!closedByDisable) return;
+    optionLoadRequestedRef.current = false;
+    notifyDisabledClose();
   }, [closedByDisable]);
 
   useEffect(() => {
-    if (!open) {
-      optionLoadRequestedRef.current = false;
-      return;
-    }
+    if (!open) return;
     if (!loading) {
       optionLoadRequestedRef.current = false;
       return;
@@ -369,6 +373,8 @@ export function PropertyOptionPicker({
     optionLoadRequestedRef.current = true;
     requestOptions();
   }, [loading, open, registryError]);
+
+  useMountAction(openOnMount && host === "popover" && !triggerDisabled, () => changeHostOpen(true));
 
   const boundedActiveIndex = Math.min(activeIndex, Math.max(0, filtered.length - 1));
   if (activeIndex !== boundedActiveIndex) setActiveIndex(boundedActiveIndex);

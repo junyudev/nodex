@@ -12,9 +12,11 @@ import {
 import { DATABASE_PAGE_PROPERTY_OUTLINED_TOKEN_CLASS_NAME } from "@/components/database/property-value-chip";
 import {
   ActivitySpinnerIcon,
+  AssigneeIcon,
   ChevronDownIcon,
   ClockIcon,
   CloseIcon,
+  FileIcon,
   PageMenuOpenNewChatIcon,
   PlusIcon,
   StatusIcon,
@@ -32,6 +34,8 @@ import {
 } from "@/lib/page-stage-quiet-properties";
 import {
   advancePageStagePropertyDisclosure,
+  revealPageStageProperty,
+  type PageStagePropertyDisclosureEntry,
   type PageStagePropertyDisclosureState,
   type PageStagePropertyRow as PageStagePropertyRowModel,
 } from "@/lib/page-stage-property-layout";
@@ -39,12 +43,13 @@ import { CURRENT_CHAT_LABEL } from "@/lib/page-chat-actions";
 import { selectLinkableChatCandidates } from "@/lib/page-stage-related-chat-candidates";
 import { usePageFiles } from "@/lib/use-page-files";
 import { usePageTurn } from "@/lib/page-turn-runtime";
+import { useMountAction } from "@/lib/use-mount-action";
 import { resolveDataSourcePropertyPresentationRole } from "@/lib/data-source-property-presentation-role";
 import { cn } from "@/lib/utils";
 import { PageStageDataSourcePropertyControl } from "./data-source-property-control";
 import type { PageStageController } from "./use-page-stage-controller";
 import type { PageStageRelatedChat } from "./types";
-import { PageFilesRow } from "./page-files-row";
+import { PageFilesRow, usePageFilesDialog } from "./page-files-row";
 import { PageAutomationsRow } from "./automations-row";
 import { PageStatusTurn } from "./status-turn";
 import { PageWorkspaceRow } from "./page-workspace-row";
@@ -118,7 +123,11 @@ export function RelatedChatPropertyChip({
 function RelatedChatAddControl({
   controller,
   empty,
-}: PageStagePropertiesSectionProps & { readonly empty: boolean }) {
+  openOnMount = false,
+}: PageStagePropertiesSectionProps & {
+  readonly empty: boolean;
+  readonly openOnMount?: boolean;
+}) {
   const {
     relatedChats,
     relatedChatCandidates,
@@ -128,6 +137,7 @@ function RelatedChatAddControl({
     saving,
   } = controller;
   const [open, setOpen] = useState(false);
+  useMountAction(openOnMount, () => setOpen(true));
   const [query, setQuery] = useState("");
   const [linkingSessionId, setLinkingSessionId] = useState<string | null>(null);
   const linkedSessionIds = useMemo(
@@ -250,7 +260,10 @@ function RelatedChatAddControl({
   );
 }
 
-function RelatedChatsPropertyRow({ controller }: PageStagePropertiesSectionProps) {
+function RelatedChatsPropertyRow({
+  controller,
+  openOnMount,
+}: PageStagePropertiesSectionProps & { readonly openOnMount: boolean }) {
   const {
     relatedChats,
     relatedChatsLoading,
@@ -323,7 +336,9 @@ function RelatedChatsPropertyRow({ controller }: PageStagePropertiesSectionProps
             <RelatedChatAddControl controller={controller} empty={false} />
           </div>
         ) : null}
-        {showEmptyControl ? <RelatedChatAddControl controller={controller} empty={true} /> : null}
+        {showEmptyControl ? (
+          <RelatedChatAddControl controller={controller} empty={true} openOnMount={openOnMount} />
+        ) : null}
       </div>
     </PageStagePropertyRow>
   );
@@ -333,11 +348,13 @@ function DataSourcePropertyRow({
   item,
   controls,
   trailing,
+  openOnMount,
 }: {
   readonly item: PageStageController["propertyControls"]["properties"][number];
   readonly controls: PageStageController["propertyControls"];
   /** Content after a content-sized value, such as the Status row's turn. */
   readonly trailing?: ReactNode;
+  readonly openOnMount: boolean;
 }) {
   return (
     <PageStagePropertyRow
@@ -349,12 +366,21 @@ function DataSourcePropertyRow({
         // A narrow Page moves the trailing content to a line of its own instead of truncating it.
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 *:min-h-7.5">
           <div className="flex shrink-0 items-center">
-            <PageStageDataSourcePropertyControl item={item} controls={controls} />
+            <PageStageDataSourcePropertyControl
+              item={item}
+              controls={controls}
+              openOnMount={openOnMount}
+            />
           </div>
           {trailing}
         </div>
       ) : (
-        <PageStageDataSourcePropertyControl item={item} controls={controls} className="flex-1" />
+        <PageStageDataSourcePropertyControl
+          item={item}
+          controls={controls}
+          openOnMount={openOnMount}
+          className="flex-1"
+        />
       )}
     </PageStagePropertyRow>
   );
@@ -383,12 +409,17 @@ function PageStatusTurnSlot({ controller }: PageStagePropertiesSectionProps) {
 function PropertyListRow({
   row,
   controller,
-}: PageStagePropertiesSectionProps & { readonly row: PageStagePropertyRowModel }) {
+  openOnMount,
+}: PageStagePropertiesSectionProps & {
+  readonly row: PageStagePropertyRowModel;
+  readonly openOnMount: boolean;
+}) {
   if (row.kind === "property") {
     return (
       <DataSourcePropertyRow
         item={row.item}
         controls={controller.propertyControls}
+        openOnMount={openOnMount}
         trailing={isStatusRow(row) ? <PageStatusTurnSlot controller={controller} /> : undefined}
       />
     );
@@ -396,18 +427,66 @@ function PropertyListRow({
   if (!controller.schedulePage) return null;
   return (
     <PageStagePropertyRow icon={<ClockIcon />} label="Schedule">
-      <SchedulePopover schedule={controller.schedule} page={controller.schedulePage} />
+      <SchedulePopover
+        schedule={controller.schedule}
+        page={controller.schedulePage}
+        openOnMount={openOnMount}
+      />
     </PageStagePropertyRow>
   );
 }
 
+/** Page capabilities that share the Properties disclosure with Source Properties. */
+const ASSIGNEE_KEY = "page:assignee";
+const LINKED_CHATS_KEY = "page:linked-chats";
+const FILES_KEY = "page:files";
+
+interface TuckedPropertyChoice {
+  readonly key: string;
+  readonly icon: ReactNode;
+  readonly label: string;
+}
+
 /**
- * One quiet list: rows with something to say stay visible, everything empty waits behind
- * a single disclosure. Visibility is stable for the mounted Page, so editing never moves a row.
+ * Empty properties, by name only. Choosing one adds its row to the list with its editor open,
+ * so a Page never spends a line saying that something is empty.
+ */
+function TuckedPropertyChoices({
+  choices,
+  onChoose,
+}: {
+  readonly choices: readonly TuckedPropertyChoice[];
+  readonly onChoose: (key: string) => void;
+}) {
+  return (
+    <div role="group" aria-label="Empty properties" className="flex flex-wrap gap-x-0.5 py-0.75">
+      {choices.map((choice) => (
+        <button
+          key={choice.key}
+          type="button"
+          data-page-stage-property-choice={choice.key}
+          onClick={() => onChoose(choice.key)}
+          className="flex h-6 max-w-56 min-w-0 cursor-interaction items-center gap-1.5 rounded-sm pr-2 pl-1 text-sm/5 text-(--foreground-tertiary) hover:bg-token-foreground/5 hover:text-(--foreground-secondary) focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-token-focus-border"
+        >
+          <span className="flex w-5 shrink-0 items-center justify-center [&_svg]:size-4">
+            {choice.icon}
+          </span>
+          <span className="min-w-0 truncate">{choice.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * One quiet list: rows with something to say stay visible, everything else waits behind a
+ * single disclosure. Opened, it shows tucked-away values as rows and empty properties as a
+ * line of names to choose from. Rows never move while the Page stays mounted.
  */
 export function PageStagePropertiesSection({ controller }: PageStagePropertiesSectionProps) {
   const pageId = controller.page?.id ?? "";
   const baseFiles = usePageFiles(controller.contentRoutingContext, pageId);
+  const openFilesDialog = usePageFilesDialog(controller, baseFiles);
   const filesSignal = resolvePageFilesPropertySignal({
     hasManifest: baseFiles.inventory !== null,
     unplacedTotal: baseFiles.inventory?.unplaced_total ?? 0,
@@ -418,88 +497,122 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
     loading: controller.relatedChatsLoading,
     hasError: controller.relatedChatsError !== null,
   });
-  const filesManifestRevision = baseFiles.inventory?.revision ?? null;
   const quietPropertiesInput: PageStageQuietPropertiesInput = {
     pageId,
     files: {
       signal: filesSignal,
-      manifestRevision: filesManifestRevision,
+      manifestRevision: baseFiles.inventory?.revision ?? null,
     },
     linkedChats: { signal: linkedChatsSignal },
   };
   const [quietPropertiesState, setQuietPropertiesState] = useState(() =>
     createPageStageQuietPropertiesState(quietPropertiesInput),
   );
-  const currentQuietPropertiesState =
-    quietPropertiesState.pageId === pageId
-      ? quietPropertiesState
-      : createPageStageQuietPropertiesState(quietPropertiesInput);
+  const quietProperties = advancePageStageQuietPropertiesState(
+    quietPropertiesState,
+    quietPropertiesInput,
+  );
+  if (quietProperties !== quietPropertiesState) setQuietPropertiesState(quietProperties);
+
   const [expandedState, setExpandedState] = useState({ pageId, expanded: false });
   const propertiesExpanded = expandedState.pageId === pageId ? expandedState.expanded : false;
   const turn = usePageTurn(pageId).data?.turn;
   const hasTurn = Boolean(turn?.reason && turn.actor.kind !== "none");
+  const page = controller.page;
   // A Page with work always shows its Status row, which carries whose move it is.
   const rows = controller.propertyControls.rows
-    .filter(
-      (row) =>
-        row.kind !== "property" || !["owner", "assignee"].includes(row.item.property.propertyId),
+    .filter((row) =>
+      row.kind === "property"
+        ? !["owner", "assignee"].includes(row.item.property.propertyId)
+        : controller.schedulePage !== null,
     )
     .map((row) => (hasTurn && isStatusRow(row) ? { ...row, shownByLayout: true } : row));
-  const [disclosure, setDisclosure] = useState<PageStagePropertyDisclosureState | null>(null);
-  const nextDisclosure = advancePageStagePropertyDisclosure(disclosure, {
+  const entries: readonly PageStagePropertyDisclosureEntry[] = [
+    ...rows,
+    ...(page?.pageWork
+      ? [{ key: ASSIGNEE_KEY, shownByLayout: Boolean(page.pageWork.assignee), empty: true }]
+      : []),
+    ...(controller.hasRelatedChatsRow
+      ? [
+          {
+            key: LINKED_CHATS_KEY,
+            shownByLayout: quietProperties.linkedChats.visible,
+            empty: true,
+          },
+        ]
+      : []),
+    {
+      key: FILES_KEY,
+      shownByLayout: quietProperties.files.visible,
+      empty: (baseFiles.inventory?.total ?? 0) === 0,
+    },
+  ];
+  const [disclosureState, setDisclosureState] = useState<PageStagePropertyDisclosureState | null>(
+    null,
+  );
+  const disclosure = advancePageStagePropertyDisclosure(disclosureState, {
     pageId,
-    rows,
+    entries,
     expanded: propertiesExpanded,
   });
-  if (nextDisclosure !== disclosure) setDisclosure(nextDisclosure);
-
-  const nextQuietPropertiesState = advancePageStageQuietPropertiesState(
-    quietPropertiesState,
-    quietPropertiesInput,
+  if (disclosure !== disclosureState) setDisclosureState(disclosure);
+  /** The entry the person just chose, whose editor opens as its row mounts. */
+  const [chosen, setChosen] = useState<{ readonly pageId: string; readonly key: string } | null>(
+    null,
   );
-  if (nextQuietPropertiesState !== quietPropertiesState)
-    setQuietPropertiesState(nextQuietPropertiesState);
 
-  if (!controller.page) return null;
-  const shownRows = rows.filter((row) => nextDisclosure.shownKeys.has(row.key));
-  const hiddenRows = rows.filter((row) => !nextDisclosure.shownKeys.has(row.key));
-  const filesCollapsed = !currentQuietPropertiesState.files.visible;
-  const relatedChatsCollapsed =
-    controller.hasRelatedChatsRow &&
-    linkedChatsSignal !== "attention" &&
-    !currentQuietPropertiesState.linkedChats.visible;
-  const pageWorkCollapsed = Boolean(controller.page.pageWork && !controller.page.pageWork.assignee);
-  const collapsedPropertyCount =
-    hiddenRows.length +
-    [filesCollapsed, relatedChatsCollapsed, pageWorkCollapsed].filter(Boolean).length;
-  const collapsedPropertyLabel = formatPageStageQuietPropertyCountLabel(
-    collapsedPropertyCount,
-    propertiesExpanded,
-  );
-  const page = controller.page;
-  const pageWorkRow = (
-    <PageAssigneeRow
-      pageWork={page.pageWork}
-      onChange={(pageWork) => controller.savePage({ pageWork })}
+  if (!page) return null;
+  const isShown = (key: string): boolean => disclosure.shownKeys.has(key);
+  const isTuckedRow = (key: string): boolean => disclosure.tuckedRowKeys.has(key);
+  const isChoice = (key: string): boolean => !isShown(key) && !isTuckedRow(key);
+  const opensOnMount = (key: string): boolean => chosen?.pageId === pageId && chosen.key === key;
+  const tuckedCount = entries.filter((entry) => !isShown(entry.key)).length;
+
+  const choose = (key: string): void => {
+    setDisclosureState(revealPageStageProperty(disclosure, key));
+    setChosen({ pageId, key });
+    // Files are managed in their own dialog, which is their editor.
+    if (key === FILES_KEY) openFilesDialog();
+  };
+  const choices: readonly TuckedPropertyChoice[] = propertiesExpanded
+    ? [
+        ...rows
+          .filter((row) => isChoice(row.key))
+          .map((row) =>
+            row.kind === "property"
+              ? {
+                  key: row.key,
+                  icon: createElement(dataSourcePropertyIcon(row.item.property)),
+                  label: row.item.property.name,
+                }
+              : { key: row.key, icon: <ClockIcon />, label: "Schedule" },
+          ),
+        ...(page.pageWork && isChoice(ASSIGNEE_KEY)
+          ? [{ key: ASSIGNEE_KEY, icon: <AssigneeIcon />, label: "Assignee" }]
+          : []),
+        ...(controller.hasRelatedChatsRow && isChoice(LINKED_CHATS_KEY)
+          ? [{ key: LINKED_CHATS_KEY, icon: <ThreadsIcon />, label: "Linked chats" }]
+          : []),
+        ...(isChoice(FILES_KEY) ? [{ key: FILES_KEY, icon: <FileIcon />, label: "Files" }] : []),
+      ]
+    : [];
+
+  const propertyRow = (row: PageStagePropertyRowModel) => (
+    <PropertyListRow
+      key={row.key}
+      row={row}
+      controller={controller}
+      openOnMount={opensOnMount(row.key)}
     />
   );
-  const linkedChatsRow = controller.hasRelatedChatsRow ? (
-    <RelatedChatsPropertyRow controller={controller} />
-  ) : null;
+  // Mounted even while tucked away, so a File arriving meanwhile is still known to be new.
   const filesRow = (
     <PageFilesRow
       baseFiles={baseFiles}
       controller={controller}
-      hidden={filesCollapsed && !propertiesExpanded}
+      hidden={!isShown(FILES_KEY) && !isTuckedRow(FILES_KEY)}
     />
   );
-
-  const togglePropertiesExpanded = (): void => {
-    setExpandedState((current) => ({
-      pageId,
-      expanded: !(current.pageId === pageId ? current.expanded : false),
-    }));
-  };
 
   return (
     <section
@@ -511,9 +624,7 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
           <PageStatusTurnSlot controller={controller} />
         </PageStagePropertyRow>
       ) : null}
-      {shownRows.map((row) => (
-        <PropertyListRow key={row.key} row={row} controller={controller} />
-      ))}
+      {rows.filter((row) => isShown(row.key)).map(propertyRow)}
       <PageWorkspaceRow pageId={pageId} />
       <PageAutomationsRow pageId={pageId} />
 
@@ -521,24 +632,30 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
         pageWork={page.pageWork}
         onChange={(pageWork) => controller.savePage({ pageWork })}
       />
-      {pageWorkCollapsed ? null : pageWorkRow}
-      {relatedChatsCollapsed ? null : linkedChatsRow}
-      {filesCollapsed ? null : filesRow}
+      {isShown(ASSIGNEE_KEY) ? (
+        <PageAssigneeRow
+          pageWork={page.pageWork}
+          openOnMount={opensOnMount(ASSIGNEE_KEY)}
+          onChange={(pageWork) => controller.savePage({ pageWork })}
+        />
+      ) : null}
+      {controller.hasRelatedChatsRow && isShown(LINKED_CHATS_KEY) ? (
+        <RelatedChatsPropertyRow
+          controller={controller}
+          openOnMount={opensOnMount(LINKED_CHATS_KEY)}
+        />
+      ) : null}
+      {isShown(FILES_KEY) ? filesRow : null}
 
-      {propertiesExpanded
-        ? hiddenRows.map((row) => (
-            <PropertyListRow key={row.key} row={row} controller={controller} />
-          ))
-        : null}
-      {pageWorkCollapsed && propertiesExpanded ? pageWorkRow : null}
-      {relatedChatsCollapsed && propertiesExpanded ? linkedChatsRow : null}
-      {filesCollapsed ? filesRow : null}
+      {rows.filter((row) => isTuckedRow(row.key)).map(propertyRow)}
+      {isShown(FILES_KEY) ? null : filesRow}
+      {choices.length > 0 ? <TuckedPropertyChoices choices={choices} onChoose={choose} /> : null}
 
-      {collapsedPropertyCount > 0 ? (
+      {tuckedCount > 0 ? (
         <button
           type="button"
           aria-expanded={propertiesExpanded}
-          onClick={togglePropertiesExpanded}
+          onClick={() => setExpandedState({ pageId, expanded: !propertiesExpanded })}
           className="flex h-7.5 w-fit items-center gap-1.5 rounded-sm pr-2 pl-1 text-sm/5 text-(--foreground-tertiary) hover:bg-token-foreground/5 hover:text-(--foreground-secondary)"
         >
           <span className="flex w-5 shrink-0 items-center justify-center">
@@ -549,7 +666,7 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
               )}
             />
           </span>
-          {collapsedPropertyLabel}
+          {formatPageStageQuietPropertyCountLabel(tuckedCount, propertiesExpanded)}
         </button>
       ) : null}
     </section>

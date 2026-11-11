@@ -146,6 +146,7 @@ export function SemanticSelectPropertyEditor({
   selectedId,
   disabled,
   pending = false,
+  openOnMount,
   registryState = "ready",
   presentation,
   searchPlaceholder,
@@ -171,6 +172,7 @@ export function SemanticSelectPropertyEditor({
   readonly selectedId: string | null;
   readonly disabled: boolean;
   readonly pending?: boolean;
+  readonly openOnMount?: boolean;
   readonly registryState?: DataSourcePropertyOptionRegistryState;
   readonly presentation: DatabasePropertyValuePresentation | "chip";
   readonly searchPlaceholder?: string;
@@ -226,6 +228,7 @@ export function SemanticSelectPropertyEditor({
       selectedIds={canonicalSelectedId ? [canonicalSelectedId] : []}
       disabled={disabled}
       pending={pending}
+      openOnMount={openOnMount}
       loading={registryState === "idle" || registryState === "loading"}
       registryError={registryState === "error"}
       onOpen={onRequestOptions}

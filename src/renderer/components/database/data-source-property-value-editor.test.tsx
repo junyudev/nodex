@@ -1,10 +1,11 @@
-import { fireEvent } from "@testing-library/react";
+import { fireEvent, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
-import { render } from "@/test/dom";
+import { render, settleAsyncRender, settleLazyRender } from "@/test/dom";
 import { parseDataSourceId, parseDataSourcePropertyId } from "../../../shared/database-identities";
 import { testPropertySemantics } from "../../../shared/testing/database-property-record";
 import type { DataSourcePropertyRecordV2 } from "../../../shared/database-module-v2";
+import type { DatabasePropertyValueType } from "../../../shared/database-kernel";
 import { DataSourcePropertyValueEditor } from "./data-source-property-value-editor";
 
 const statusProperty: DataSourcePropertyRecordV2 = {
@@ -22,7 +23,130 @@ const statusProperty: DataSourcePropertyRecordV2 = {
   updatedAt: "2026-08-04T00:00:00.000Z",
 };
 
+function emptyEditorProps(valueType: DatabasePropertyValueType, id = "p_property") {
+  return {
+    property: {
+      ...statusProperty,
+      ...testPropertySemantics(valueType),
+      propertyId: parseDataSourcePropertyId(id),
+      valueType,
+    },
+    value: null,
+    revision: 1,
+    disabled: false,
+    onChange: vi.fn(),
+  };
+}
+
 describe("DataSourcePropertyValueEditor", () => {
+  const popoverCases = [
+    { id: "status", valueType: "select", role: "combobox", name: "Search Workflow options" },
+    { id: "p_select__", valueType: "select", role: "combobox", name: "Search Workflow options" },
+    {
+      id: "p_multi___",
+      valueType: "multi_select",
+      role: "combobox",
+      name: "Search Workflow options",
+    },
+    {
+      id: "p_relation",
+      valueType: "relation",
+      role: "combobox",
+      name: "Search Workflow target pages",
+    },
+    { id: "p_date____", valueType: "date", role: "textbox", name: "Workflow date" },
+    { id: "p_datetime", valueType: "datetime", role: "textbox", name: "Workflow date" },
+  ] as const;
+
+  test.each(popoverCases)(
+    "$id opens with focus once and closes normally",
+    async ({ id, valueType, role, name }) => {
+      const props = emptyEditorProps(valueType, id);
+      const view = render(<DataSourcePropertyValueEditor {...props} openOnMount />);
+      const trigger = view.getByRole("button", { name: /^Edit Workflow/ });
+      await settleLazyRender();
+      const input = await view.findByRole(role, { name });
+      await waitFor(() => expect(document.activeElement).toBe(input));
+      await act(async () => {
+        fireEvent.keyDown(input, { key: "Escape" });
+      });
+      await waitFor(() => expect(document.activeElement).toBe(trigger));
+      view.rerender(<DataSourcePropertyValueEditor {...props} revision={2} openOnMount />);
+      await settleAsyncRender();
+      expect(view.queryByRole(role, { name })).toBeNull();
+    },
+  );
+
+  test.each(popoverCases)(
+    "$id stays closed when mount opening is absent or unavailable",
+    async ({ id, valueType, role, name }) => {
+      const props = emptyEditorProps(valueType, id);
+      const view = render(
+        <>
+          <DataSourcePropertyValueEditor {...props} />
+          <DataSourcePropertyValueEditor {...props} openOnMount disabled />
+          <DataSourcePropertyValueEditor {...props} openOnMount pending />
+        </>,
+      );
+      await settleAsyncRender();
+      expect(view.queryByRole(role, { name })).toBeNull();
+      view.rerender(
+        <>
+          <DataSourcePropertyValueEditor {...props} openOnMount />
+          <DataSourcePropertyValueEditor {...props} openOnMount />
+          <DataSourcePropertyValueEditor {...props} openOnMount />
+        </>,
+      );
+      await settleAsyncRender();
+      expect(view.queryByRole(role, { name })).toBeNull();
+    },
+  );
+
+  test.each([
+    { valueType: "text", role: "textbox", presentation: "page" },
+    { valueType: "number", role: "textbox", presentation: "page" },
+    { valueType: "checkbox", role: "checkbox", presentation: "page" },
+    { valueType: "checkbox", role: "checkbox", presentation: "board" },
+  ] as const)(
+    "$presentation $valueType focuses only on an eligible mount",
+    async ({ valueType, role, presentation }) => {
+      const props = { ...emptyEditorProps(valueType), presentation };
+      const view = render(
+        <>
+          <DataSourcePropertyValueEditor key="requested" {...props} openOnMount />
+          <DataSourcePropertyValueEditor key="default" {...props} />
+          <DataSourcePropertyValueEditor key="disabled" {...props} openOnMount disabled />
+          <DataSourcePropertyValueEditor key="pending" {...props} openOnMount pending />
+          <DataSourcePropertyValueEditor
+            key="embedded"
+            {...props}
+            openOnMount
+            overlayHost="embedded"
+          />
+          <button type="button">Elsewhere</button>
+        </>,
+      );
+      const [input] = view.getAllByRole(role, { name: /^Workflow value/ });
+      expect(document.activeElement).toBe(input);
+      const elsewhere = view.getByRole("button", { name: "Elsewhere" });
+      await act(async () => {
+        elsewhere.focus();
+      });
+      view.rerender(
+        <>
+          <DataSourcePropertyValueEditor key="requested" {...props} openOnMount />
+          <DataSourcePropertyValueEditor key="default" {...props} openOnMount />
+          <DataSourcePropertyValueEditor key="disabled" {...props} openOnMount />
+          <DataSourcePropertyValueEditor key="pending" {...props} openOnMount />
+          <DataSourcePropertyValueEditor key="embedded" {...props} openOnMount />
+          <button type="button">Elsewhere</button>
+        </>,
+      );
+      expect(document.activeElement).toBe(elsewhere);
+      expect(props.onChange).not.toHaveBeenCalled();
+    },
+  );
+
   test("renders Board Priority as an icon-only, value-named trigger", async () => {
     const view = render(
       <DataSourcePropertyValueEditor

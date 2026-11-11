@@ -474,21 +474,21 @@ session restores a logical row anchor, continues bounded windows near the
 viewport end, keeps field widths monotonic, and hides trailing low-value fields
 before compressing the title column.
 
-A Data Source task hierarchy is the projection of its fixed `task_parent`
-Property, not a second graph. `task_parent` is a required cardinality-one
-self-Relation: every active row, including a root, retains one positive,
-monotonic Relation value revision; a child has one Relation edge whose target is
-its parent and whose edge metadata carries sibling rank. Generic Relation edits,
+A Data Source task hierarchy is the projection of its required Task Parent
+Property (`task_parent`), named **Part of** by default. It is a cardinality-one
+self-Relation. Every active row, including a root, retains one positive,
+monotonic Relation value revision. A child has one Relation edge whose target
+is its parent and whose metadata carries sibling rank. Generic Relation edits,
 List nesting, and batch drag commands all compare and update that same value
-revision. Parent and sibling rank form one semantic coordinate on the moved
+revision. Task Parent and sibling rank form one semantic coordinate on the moved
 Page. Ordered insertion uses fractional ranks: only Pages whose parent or
-logical sibling position changes advance their Parent value and Page metadata
-revisions. A rare order-preserving rank rebalance may rewrite untouched sibling
-rank encodings but must not advance those siblings' semantic revisions. Repeating
-the same ordered Parent command is a no-op. Each parent must be an active row in
-the same Data Source, cycles are
-forbidden, and maximum depth is ten. Removing a parent from the Data Source
-clears its own Parent value, removes its incoming child edges, advances every
+logical sibling position changes advance their Task Parent value and Page
+metadata revisions. A rare order-preserving rank rebalance may rewrite
+untouched sibling rank encodings but must not advance those siblings' semantic
+revisions. Repeating the same ordered Task Parent command is a no-op. Each
+parent must be an active row in the same Data Source. Cycles are forbidden, and
+maximum depth is ten. Removing a parent from the Data Source
+clears its own Task Parent value, removes its incoming child edges, advances every
 affected value revision, and promotes its direct children to task roots without
 moving or rewriting Page Documents. Archiving retains the Relation so restore
 recovers the hierarchy, but the active List projection temporarily treats a
@@ -531,11 +531,11 @@ Dragging an occurrence moves its concrete subtree as one semantic action.
 Transient rows are skipped as values but do not stop traversal; selecting an
 ancestor and descendant normalizes to one source root; duplicate occurrences
 are resolved by path and written once per Page. Cross-group adoption updates
-every concrete Page in the closure, while Parent and rank changes apply only to
-the normalized roots, preserving all internal Parent edges and child ranks.
-Core resolves the full occurrence graph and commits Property, Parent, and order
-writes atomically from one semantic operation; a bounded renderer window never
-authors descendant IDs or primitive inverse operations.
+every concrete Page in the closure, while Task Parent and rank changes apply
+only to the normalized roots, preserving all internal Task Parent edges and
+child ranks. Core resolves the full occurrence graph and commits Property,
+Task Parent, and order writes atomically from one semantic operation. The
+renderer window never authors descendant IDs or primitive inverse operations.
 
 The active source row alone becomes translucent, while descendants stay in
 place. A body-portaled compact preview represents the initiator, mirrors its
@@ -836,9 +836,14 @@ mount.
 Properties form one label/value list under the title, in Page-layout order, with
 a valid schedule pair presented as one Schedule row; Linked chats and Files
 follow. Rows the layout shows stay visible; everything else waits behind one
-`N more properties` disclosure. Visibility is stable while the Page stays
-mounted: clearing a value leaves its row in place, and a row filled while the
-disclosure is open keeps its position until the disclosure closes.
+`N more properties` disclosure. A Page never spends a row saying that something
+is empty: opened, the disclosure shows a tucked-away entry that holds a value as
+a row, and every empty one by name only, on one wrapping line. Choosing a name
+adds that entry's row to the list with its editor open; Files opens the Page's
+File manager. Visibility is stable while the Page stays mounted: a row the
+layout shows or the person chose stays in the list after its value is cleared
+and after the disclosure closes, and a tucked-away row keeps its position until
+the disclosure closes.
 
 Mounted surfaces own independent caret, selection, and presence. Their local Page
 body/title and Database edits share window-local content interaction history
