@@ -1,12 +1,17 @@
 // The harness asserts raw JSON-RPC wire strings, mirroring the bridge's
 // schema-free passthrough.
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { fileURLToPath } from "node:url";
+import { vi } from "vitest";
 import * as NodeStream from "node:stream";
 
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 
+import { desktopFixtureResult, startDesktopMcpFixture } from "./AcpMcpStdioBridge.testkit.ts";
 import { AcpMcpBridgeError, callAcpMcpTool, runAcpMcpStdioBridge } from "./AcpMcpStdioBridge.ts";
 
 function makeHarness(responder: (request: Request) => Promise<Response> | Response) {
@@ -113,6 +118,7 @@ describe("AcpMcpStdioBridge", () => {
 
       input.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize" })}\n`);
       input.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" })}\n`);
+      yield* Effect.promise(() => vi.waitFor(() => expect(written).toHaveLength(2)));
       input.end();
       yield* Fiber.join(fiber);
 
@@ -138,6 +144,7 @@ describe("AcpMcpStdioBridge", () => {
 
       input.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n`);
       input.write(`${JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/list" })}\n`);
+      yield* Effect.promise(() => vi.waitFor(() => expect(written).toHaveLength(1)));
       input.end();
       yield* Fiber.join(fiber);
 
@@ -221,6 +228,7 @@ describe("AcpMcpStdioBridge", () => {
         new TextEncoder().encode('data: {"jsonrpc":"2.0","id":7,"result":{}}\n\n'),
       );
       responseController.close();
+      yield* Effect.promise(() => vi.waitFor(() => expect(written).toHaveLength(2)));
       input.end();
       yield* Fiber.join(fiber);
       expect(written).toHaveLength(2);
@@ -283,6 +291,7 @@ describe("AcpMcpStdioBridge", () => {
       input.write(
         `${JSON.stringify({ jsonrpc: "2.0", id: "server-request-1", result: { action: "accept" } })}\n`,
       );
+      yield* Effect.promise(() => vi.waitFor(() => expect(written).toHaveLength(2)));
       input.end();
       yield* Fiber.join(fiber);
 
@@ -337,6 +346,7 @@ describe("AcpMcpStdioBridge", () => {
       input.write(
         `${JSON.stringify({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 7 } })}\n`,
       );
+      yield* Effect.promise(() => vi.waitFor(() => expect(written).toHaveLength(1)));
       input.end();
       yield* Fiber.join(fiber);
 
@@ -345,3 +355,100 @@ describe("AcpMcpStdioBridge", () => {
     }),
   );
 });
+
+const cliEntry = fileURLToPath(new URL("../nodex/entry.ts", import.meta.url));
+const fixtureAuthorization = "Bearer desktop-fixture";
+const desktopCall = { code: "console.log(42)", title: "Fixture", timeout_ms: 1_000 };
+
+it.live.each(["stdin EOF", "SIGKILL"])("closes the Desktop HTTP socket on %s", (exit) =>
+  Effect.gen(function* () {
+    const fixture = yield* Effect.acquireRelease(
+      Effect.promise(() =>
+        startDesktopMcpFixture({
+          authorization: () => fixtureAuthorization,
+          block: true,
+        }),
+      ),
+      (fixture) => Effect.promise(fixture.close),
+    );
+    const child = yield* Effect.acquireRelease(
+      Effect.sync(() =>
+        spawn(process.execPath, [cliEntry, "acp-mcp-bridge"], {
+          env: {
+            NODEX_ACP_MCP_ENDPOINT: fixture.endpoint,
+            NODEX_ACP_MCP_AUTHORIZATION: fixtureAuthorization,
+          },
+        }),
+      ),
+      (child) =>
+        Effect.sync(() => {
+          child.kill("SIGKILL");
+        }),
+    );
+    const exited = once(child, "exit");
+    const progress = once(child.stdout, "data");
+    child.stdin.write(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 7,
+        method: "tools/call",
+        params: { name: "js", arguments: desktopCall, _meta: { progressToken: "socket-test" } },
+      }) + "\n",
+    );
+    expect(yield* Effect.promise(() => fixture.callStarted)).toEqual(desktopCall);
+    const [notification] = yield* Effect.promise(() => progress);
+    expect(JSON.parse(String(notification))).toMatchObject({
+      method: "notifications/progress",
+      params: { progressToken: "socket-test", progress: 1 },
+    });
+    if (exit === "stdin EOF") child.stdin.end();
+    else child.kill("SIGKILL");
+    yield* Effect.promise(() => fixture.callClosed);
+    expect(yield* Effect.promise(() => exited)).toEqual(
+      exit === "stdin EOF" ? [0, null] : [null, "SIGKILL"],
+    );
+  }).pipe(Effect.scoped, Effect.timeout("20 seconds")),
+);
+
+it.live.each(["default", "nodex_app", "node_repl"] as const)(
+  "calls the intended terminal endpoint with selector %s",
+  (server) =>
+    Effect.gen(function* () {
+      const fixture = yield* Effect.acquireRelease(
+        Effect.promise(() => startDesktopMcpFixture({ authorization: () => fixtureAuthorization })),
+        (fixture) => Effect.promise(fixture.close),
+      );
+      const selector = server === "default" ? [] : ["--server", server];
+      const unusedEndpoint = "http://127.0.0.1:1/mcp";
+      const child = yield* Effect.acquireRelease(
+        Effect.sync(() =>
+          spawn(
+            process.execPath,
+            [cliEntry, "acp-mcp-call", ...selector, "js", JSON.stringify(desktopCall)],
+            {
+              env: {
+                NODEX_ACP_MCP_ENDPOINT: server === "node_repl" ? unusedEndpoint : fixture.endpoint,
+                NODEX_ACP_DESKTOP_MCP_ENDPOINT:
+                  server === "node_repl" ? fixture.endpoint : unusedEndpoint,
+                NODEX_ACP_MCP_AUTHORIZATION: fixtureAuthorization,
+              },
+            },
+          ),
+        ),
+        (child) =>
+          Effect.sync(() => {
+            child.kill("SIGKILL");
+          }),
+      );
+      let stdout = "";
+      child.stdout.on("data", (chunk: Buffer) => {
+        stdout += chunk.toString();
+      });
+      expect(yield* Effect.promise(() => once(child, "close"))).toEqual([0, null]);
+      expect(JSON.parse(stdout)).toEqual({
+        content: [{ type: "text", text: desktopFixtureResult }],
+      });
+      expect(yield* Effect.promise(() => fixture.callStarted)).toEqual(desktopCall);
+      expect(fixture.methods).toEqual(["initialize", "notifications/initialized", "tools/call"]);
+    }).pipe(Effect.scoped, Effect.timeout("20 seconds")),
+);

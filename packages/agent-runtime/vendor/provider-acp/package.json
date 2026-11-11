@@ -6,6 +6,7 @@
     "./server/AcpSessionRuntime": "./src/server/AcpSessionRuntime.ts",
     "./server/adapter": "./src/server/adapter.ts",
     "./server/clientTerminals": "./src/server/clientTerminals.ts",
+    "./server/mcpHttp": "./src/server/mcpHttp.ts",
     "./server/mcpOverAcpBridge": "./src/server/mcpOverAcpBridge.ts",
     "./server/nativeLogging": "./src/server/nativeLogging.ts",
     "./server/runtimeModel": "./src/server/runtimeModel.ts",

@@ -3,7 +3,7 @@
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off
 import * as NodeReadline from "node:readline";
 
-import * as Cause from "effect/Cause";
+import { requestAcpMcp } from "@nodex/provider-acp/server/mcpHttp";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
@@ -20,9 +20,8 @@ import { discardResponseBody, responsePayloads } from "@nodex/runtime-shared/mcp
  * produce no output, and the `mcp-session-id` / negotiated protocol version
  * are replayed on subsequent requests.
  *
- * This entry sits on the ACP first-message critical path (bin.ts fast-paths
- * it before the CLI graph), so it imports only effect core modules; keep the
- * import list lean when changing it.
+ * The Runtime entry fast-paths this command before loading the full CLI
+ * graph. Keep its dependencies limited to the relay.
  */
 
 export class AcpMcpBridgeError extends Error {
@@ -82,7 +81,7 @@ export interface AcpMcpToolCallOptions {
 export function callAcpMcpTool(
   options: AcpMcpToolCallOptions,
 ): Effect.Effect<unknown, AcpMcpBridgeError> {
-  const fetchImplementation = options.fetchImplementation ?? fetch;
+  const fetchImplementation = options.fetchImplementation ?? requestAcpMcp;
   return Effect.gen(function* () {
     // The bridge is single-fibered at creation time; concurrent sends only
     // read these after the sequential handshake, so plain locals suffice.
@@ -91,10 +90,12 @@ export function callAcpMcpTool(
 
     const send = (message: unknown): Effect.Effect<ReadonlyArray<unknown>, AcpMcpBridgeError> =>
       Effect.gen(function* () {
+        const signal = yield* Effect.abortSignal;
         const response = yield* Effect.tryPromise({
           try: () =>
             fetchImplementation(options.endpoint, {
               method: "POST",
+              signal,
               headers: {
                 "content-type": "application/json",
                 accept: "application/json, text/event-stream",
@@ -118,7 +119,7 @@ export function callAcpMcpTool(
           protocolVersion = protocolVersionOf(payload) ?? protocolVersion;
         }
         return payloads;
-      });
+      }).pipe(Effect.scoped);
 
     const initializeId = "nodex-acp-cli-initialize";
     const initialized = yield* send({
@@ -160,14 +161,13 @@ export function callAcpMcpTool(
 }
 
 export function runAcpMcpStdioBridge(options: AcpMcpStdioBridgeOptions): Effect.Effect<void> {
-  const fetchImplementation = options.fetchImplementation ?? fetch;
+  const fetchImplementation = options.fetchImplementation ?? requestAcpMcp;
   return Effect.gen(function* () {
     // Dispatch happens synchronously on the single stream fiber, so plain
     // locals carry the shared session state; forwards mutate them in
     // completion order exactly like the wire does.
     let sessionId: string | null = null;
     let protocolVersion: string | null = null;
-    const running = new Set<Fiber.Fiber<void>>();
 
     const writeMessage = (message: unknown): Effect.Effect<void> =>
       Effect.sync(() => {
@@ -195,10 +195,12 @@ export function runAcpMcpStdioBridge(options: AcpMcpStdioBridgeOptions): Effect.
 
     const forward = (line: string, envelope: JsonRpcEnvelope): Effect.Effect<void> =>
       Effect.gen(function* () {
+        const signal = yield* Effect.abortSignal;
         const response = yield* Effect.tryPromise({
           try: () =>
             fetchImplementation(options.endpoint, {
               method: "POST",
+              signal,
               headers: {
                 "content-type": "application/json",
                 accept: "application/json, text/event-stream",
@@ -222,14 +224,12 @@ export function runAcpMcpStdioBridge(options: AcpMcpStdioBridgeOptions): Effect.
         }
         yield* Stream.runForEach(responsePayloads(response, bridgeError), handleServerPayload);
       }).pipe(
-        Effect.catchCause((cause) => {
-          if (envelope.id === undefined) return Effect.void;
-          const error = Cause.squash(cause);
-          return respondWithError(
-            envelope.id,
-            `Nodex MCP bridge request failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }),
+        Effect.scoped,
+        Effect.catch((error) =>
+          envelope.id === undefined
+            ? Effect.void
+            : respondWithError(envelope.id, `Nodex MCP bridge request failed: ${error.message}`),
+        ),
       );
 
     // Only session establishment is ordered; client responses to
@@ -237,22 +237,6 @@ export function runAcpMcpStdioBridge(options: AcpMcpStdioBridgeOptions): Effect.
     // deadlock the still-open HTTP exchange, and normal MCP calls stay
     // concurrent after initialization.
     let sessionBarrier: Effect.Effect<void> = Effect.void;
-    let sessionBarrierPending = false;
-
-    const launch = (task: Effect.Effect<void>): Effect.Effect<void> =>
-      Effect.gen(function* () {
-        const fiber = yield* Effect.forkChild(task);
-        running.add(fiber);
-        yield* Effect.forkChild(
-          Fiber.await(fiber).pipe(
-            Effect.andThen(
-              Effect.sync(() => {
-                running.delete(fiber);
-              }),
-            ),
-          ),
-        );
-      });
 
     const dispatch = (line: string): Effect.Effect<void> =>
       Effect.gen(function* () {
@@ -269,58 +253,45 @@ export function runAcpMcpStdioBridge(options: AcpMcpStdioBridgeOptions): Effect.
           envelope.id !== undefined && ("result" in envelope || "error" in envelope);
         const isSessionHandshake =
           envelope.method === "initialize" || envelope.method === "notifications/initialized";
-        if (isResponse) {
-          return yield* launch(forward(line, envelope));
-        }
-        if (isSessionHandshake) {
-          const prior = sessionBarrier;
-          const fiber = yield* Effect.forkChild(
-            prior.pipe(Effect.andThen(forward(line, envelope))),
-          );
-          running.add(fiber);
-          const barrier = Fiber.await(fiber).pipe(Effect.asVoid);
-          sessionBarrier = barrier;
-          sessionBarrierPending = true;
-          yield* Effect.forkChild(
-            Fiber.await(fiber).pipe(
-              Effect.andThen(
-                Effect.sync(() => {
-                  running.delete(fiber);
-                  if (sessionBarrier === barrier) sessionBarrierPending = false;
-                }),
-              ),
-            ),
-          );
-          return;
-        }
-        const task = sessionBarrierPending
-          ? sessionBarrier.pipe(Effect.andThen(forward(line, envelope)))
-          : forward(line, envelope);
-        return yield* launch(task);
+        const task = isResponse
+          ? forward(line, envelope)
+          : sessionBarrier.pipe(Effect.andThen(forward(line, envelope)));
+        const fiber = yield* Effect.forkChild(task, { startImmediately: true });
+        if (isSessionHandshake) sessionBarrier = Fiber.await(fiber).pipe(Effect.asVoid);
       });
 
     const reader = NodeReadline.createInterface({ input: options.input });
     yield* Stream.runForEach(Stream.fromAsyncIterable(reader, bridgeError), dispatch).pipe(
       Effect.catchCause(() => Effect.void),
+      Effect.ensuring(Effect.sync(() => reader.close())),
     );
-    yield* Fiber.awaitAll(running);
+    // EOF retires the bridge. Child forwards are interrupted with this fiber.
   });
 }
 
 /**
  * Argv runner for `acp-mcp-bridge` and `acp-mcp-call`, shared by the
- * fast-path dispatch in bin.ts and the full CLI's command handlers. Kept free
+ * Runtime entry and the full CLI's command handlers. Kept free
  * of heavy imports: these commands run on the ACP first-message critical path.
  */
 export async function runAcpMcpCliFastPath(
   command: "acp-mcp-bridge" | "acp-mcp-call",
   args: ReadonlyArray<string>,
 ): Promise<void> {
-  const endpoint = process.env.NODEX_ACP_MCP_ENDPOINT;
+  const selectsServer = command === "acp-mcp-call" && args[0] === "--server";
+  const server = selectsServer ? args[1] : "nodex_app";
+  if (server !== "nodex_app" && server !== "node_repl") {
+    process.stderr.write("acp-mcp-call --server requires nodex_app or node_repl.\n");
+    process.exitCode = 2;
+    return;
+  }
+  const endpointVariable =
+    server === "node_repl" ? "NODEX_ACP_DESKTOP_MCP_ENDPOINT" : "NODEX_ACP_MCP_ENDPOINT";
+  const endpoint = process.env[endpointVariable];
   const authorization = process.env.NODEX_ACP_MCP_AUTHORIZATION;
   if (endpoint === undefined || authorization === undefined) {
     process.stderr.write(
-      `${command} requires NODEX_ACP_MCP_ENDPOINT and NODEX_ACP_MCP_AUTHORIZATION.\n`,
+      `${command} requires ${endpointVariable} and NODEX_ACP_MCP_AUTHORIZATION.\n`,
     );
     process.exitCode = 2;
     return;
@@ -336,9 +307,9 @@ export async function runAcpMcpCliFastPath(
     );
     return;
   }
-  const [tool, argumentsJson] = args;
+  const [tool, argumentsJson] = selectsServer ? args.slice(2) : args;
   if (tool === undefined || argumentsJson === undefined) {
-    process.stderr.write("acp-mcp-call requires <tool> and <arguments-json>.\n");
+    process.stderr.write("Usage: acp-mcp-call [--server <server>] <tool> <arguments-json>.\n");
     process.exitCode = 2;
     return;
   }
