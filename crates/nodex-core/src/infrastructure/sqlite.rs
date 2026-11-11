@@ -173,13 +173,44 @@ pub fn open_writer(path: &std::path::Path) -> Result<Connection, StoreError> {
             )
         })?,
     );
+    #[cfg(windows)]
+    prepare_windows_store_sidecars(path)?;
     let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
         | OpenFlags::SQLITE_OPEN_CREATE
         | OpenFlags::SQLITE_OPEN_NO_MUTEX;
     let connection = Connection::open_with_flags(path, flags)?;
     configure_empty_store_storage(&connection)?;
     configure_writer(&connection)?;
+    #[cfg(windows)]
+    {
+        // Enter the WAL read path before returning the writer. SQLite creates its
+        // sidecars with the token's default owner, so protect them before writes.
+        connection.query_row("PRAGMA schema_version", [], |row| row.get::<_, i64>(0))?;
+        prepare_windows_store_sidecars(path)?;
+    }
     Ok(connection)
+}
+
+#[cfg(windows)]
+fn prepare_windows_store_sidecars(database_path: &Path) -> Result<(), StoreError> {
+    use nodex_platform::private_fs::{EntryKind, prepare_private_path};
+
+    for suffix in ["-wal", "-shm"] {
+        let mut path = database_path.as_os_str().to_owned();
+        path.push(suffix);
+        match prepare_private_path(Path::new(&path), EntryKind::File) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(StoreError::new(
+                    StoreErrorCode::InvalidProfile,
+                    format!("Could not protect the private Store {suffix} file: {error}"),
+                    false,
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn configure_empty_store_storage(connection: &Connection) -> Result<(), StoreError> {
@@ -578,16 +609,21 @@ pub(crate) fn core_error(error: StoreError) -> CoreError {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn writer_creation_keeps_the_database_owned_by_the_current_user() {
+    fn writer_creation_keeps_the_database_and_sidecars_private() {
         let directory = nodex_platform::test_support::tempdir().unwrap();
         let path = directory.path().join("nodex.db");
-        drop(super::open_writer(&path).unwrap());
-        nodex_platform::private_fs::checked_metadata(
-            &path,
-            nodex_platform::private_fs::EntryKind::File,
-            Some(0o600),
-        )
-        .unwrap();
+        let writer = super::open_writer(&path).unwrap();
+        writer
+            .execute_batch("CREATE TABLE content(id INTEGER PRIMARY KEY);")
+            .unwrap();
+        for name in ["nodex.db", "nodex.db-wal", "nodex.db-shm"] {
+            nodex_platform::private_fs::checked_metadata(
+                &directory.path().join(name),
+                nodex_platform::private_fs::EntryKind::File,
+                Some(0o600),
+            )
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        }
     }
 
     use std::sync::Arc;

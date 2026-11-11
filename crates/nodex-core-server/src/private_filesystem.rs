@@ -49,15 +49,20 @@ pub fn run(input: impl Read) -> io::Result<()> {
     }
     for entry in request.entries {
         let kind = kind(&entry);
-        if request.verify {
+        let result = if request.verify {
             private_fs::checked_metadata(
                 &entry.path,
                 kind,
                 Some(if entry.directory { 0o700 } else { 0o600 }),
-            )?;
+            )
+            .map(|_| ())
         } else {
-            private_fs::prepare_private_path(&entry.path, kind)?;
-        }
+            private_fs::prepare_private_path(&entry.path, kind)
+        };
+        result.map_err(|error| {
+            let name = entry.path.file_name().unwrap_or_default().to_string_lossy();
+            io::Error::new(error.kind(), format!("{name}: {error}"))
+        })?;
     }
     Ok(())
 }

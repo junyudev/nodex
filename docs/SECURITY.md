@@ -210,7 +210,8 @@ whether they may manage the chat and stop its work, so clients never derive the 
 
 Host administration secrets are owner-only: the Core bearer, server private key,
 and Store containing credential hashes must retain private native ownership and
-permissions. Host admission verifies those files and refuses broader permissions
+permissions. Core protects SQLite’s write-ahead log and shared-memory file when
+it opens the Store. Host admission verifies those files and refuses broader permissions
 or aliases without silently repairing them. Agent processes receive a scrubbed
 environment; host capability variables, shell injection variables and Core home
 paths are excluded. The headless CLI shell bootstrap skips host-account startup
@@ -219,9 +220,8 @@ entries. Explicit provider credentials remain provider capabilities.
 
 The headless host encrypts sensitive settings with authenticated AES-256-GCM.
 Its private `settings.key` remains in the Core home and is checked with the other
-administration material. Nodex sets the native owner-only permissions before writing
-a new key. It never travels into the execution home or Agent
-environment. This protects persisted settings from accidental disclosure; an
+administration material. Nodex sets native owner-only permissions before writing
+a new key. It never travels into the execution home or Agent environment. This protects persisted settings from accidental disclosure; an
 account that can read both key and ciphertext can decrypt them. Desktop settings
 continue to use the operating system's credential encryption.
 
