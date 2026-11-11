@@ -1,5 +1,6 @@
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import type { ReactNode } from "react";
 
 import type { LibraryPageFileItem } from "../../../../shared/library-files";
 import type { PageFilesReadModel } from "@/lib/use-page-files";
@@ -24,6 +25,12 @@ vi.mock("@/lib/use-library-navigation", () => ({
 vi.mock("@/lib/members-runtime", () => ({
   useMembers: () => ({ data: [{ id: "member-local", display_name: "You" }] }),
   useLocalMember: () => ({ data: { id: "member-local" } }),
+}));
+vi.mock("@/components/board/editor/file-runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/components/board/editor/file-runtime")>()),
+  FileReadBoundary: ({ children }: { readonly children: ReactNode }) => children,
+  useFilePlacementRuntime: () => ({ save: vi.fn(async () => undefined) }),
+  useFileReadSnapshot: (_runtime: unknown, source: string) => ({ objectUrl: `blob:${source}` }),
 }));
 
 import { PageFilesRow } from "./page-files-row";
@@ -108,6 +115,12 @@ const renderRow = (files: readonly LibraryPageFileItem[], stage = controller()) 
 
 const report = item("report", "profile/report.html", agent);
 const flamegraph = item("flamegraph", "profile/flamegraph.png", agent);
+const image = (fileId: string, logicalPath: string): LibraryPageFileItem => {
+  const base = item(fileId, logicalPath, agent);
+  return { ...base, file: { ...base.file, mime_type: "image/png" } };
+};
+const before = image("before", "shots/before.png");
+const after = image("after", "shots/after.png");
 
 describe("PageFilesRow", () => {
   beforeEach(() => modal.openModal.mockReset());
@@ -134,6 +147,51 @@ describe("PageFilesRow", () => {
       expect.objectContaining({ fileId: "flamegraph", openMode: "durable" }),
     );
     expect(modal.openModal).not.toHaveBeenCalled();
+  });
+
+  test("shows an image over the Page and opens its tab only when asked", async () => {
+    const stage = renderRow([report, before, after]);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("treeitem", { name: "shots/after.png" }));
+      await Promise.resolve();
+    });
+    const preview = within(await screen.findByRole("dialog", { name: "Image preview" }));
+    expect(preview.getByText("after.png")).toBeTruthy();
+    expect(stage.openPageFile).not.toHaveBeenCalled();
+
+    // The preview steps through the Page's images in tree order, skipping other Files.
+    expect(preview.queryByRole("button", { name: "Previous image" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(preview.getByRole("button", { name: "Next image" }));
+      await Promise.resolve();
+    });
+    expect(preview.getByText("before.png")).toBeTruthy();
+    expect(preview.queryByRole("button", { name: "Next image" })).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(preview.getByRole("button", { name: "Open in tab" }));
+      await Promise.resolve();
+    });
+    expect(stage.openPageFile).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ fileId: "before", title: "before.png", openMode: "durable" }),
+    );
+    expect(screen.queryByRole("dialog", { name: "Image preview" })).toBeNull();
+  });
+
+  test("a Cmd-click opens an image straight in its tab", async () => {
+    const stage = renderRow([before]);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("treeitem", { name: "shots/before.png" }), {
+        metaKey: true,
+      });
+      await Promise.resolve();
+    });
+    expect(stage.openPageFile).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ fileId: "before", openMode: "durable" }),
+    );
+    expect(screen.queryByRole("dialog", { name: "Image preview" })).toBeNull();
   });
 
   test("names one shared origin once, beneath the tree, and opens its chat", async () => {

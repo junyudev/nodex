@@ -16,10 +16,13 @@ const PNG_DATA_URL =
 const primaryShortcut = (key: string): string =>
   `${process.platform === "darwin" ? "Meta" : "Control"}+${key}`;
 
-const revealQuietPageProperties = async (stage: Locator): Promise<void> => {
-  const moreProperties = stage.getByRole("button", { name: /\d+ more propert(?:y|ies)/u });
-  await expect(moreProperties).toBeVisible();
-  await moreProperties.click();
+/** Opens the quiet Properties and chooses one empty entry, which adds its row with its editor open. */
+const chooseEmptyPageProperty = async (stage: Locator, name: string): Promise<void> => {
+  const choices = stage.getByRole("group", { name: "Empty properties", exact: true });
+  if (!(await choices.isVisible())) {
+    await stage.getByRole("button", { name: /\d+ more propert(?:y|ies)/u }).click();
+  }
+  await choices.getByRole("button", { name, exact: true }).click();
 };
 
 test("previews a pasted image above editor chrome and refreshes Files only for placement changes", async () => {
@@ -38,7 +41,14 @@ test("previews a pasted image above editor chrome and refreshes Files only for p
 
       const stage = page.locator('[data-page-stage-surface="true"]:visible');
       await expect(stage.getByRole("button", { name: "Add Page Files" })).toHaveCount(0);
-      await revealQuietPageProperties(stage);
+      await chooseEmptyPageProperty(stage, "Tags");
+      await expect(page.getByPlaceholder("Search options…")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await chooseEmptyPageProperty(stage, "Files");
+      const manager = page.getByRole("dialog", { name: "Page files", exact: true });
+      await expect(manager).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(manager).not.toBeVisible();
       const files = stage.getByRole("button", { name: "Add Page Files" });
       await expect(files).toHaveAttribute("aria-busy", "false");
 
@@ -237,8 +247,7 @@ test("imports native files and folders with canonical identities", async () => {
       }, fixturePaths);
 
       const stage = page.locator('[data-page-stage-surface="true"]:visible');
-      await revealQuietPageProperties(stage);
-      await stage.getByRole("button", { name: "Add Page Files" }).click();
+      await chooseEmptyPageProperty(stage, "Files");
       const dialog = page.getByRole("dialog", { name: "Page files" });
       await expect(dialog).toBeVisible();
       await expect(dialog.getByRole("button", { name: "New text" })).toHaveCount(0);

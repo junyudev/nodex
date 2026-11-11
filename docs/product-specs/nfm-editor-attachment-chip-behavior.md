@@ -312,7 +312,8 @@ the selected chip shows `Open file ↵` (`Open folder ↵` for a linked folder).
 - A Library File in a Page's body opens as a Page File tab beside that Page,
   exactly as its row in the Page's Files property does (see
   [Page Files](page-files-behavior.md#opening-files)). Markdown renders, HTML
-  shows its isolated preview, images and media play, and text shows as source.
+  shows its isolated preview, media plays, and text shows as source. An image
+  shows over the Page in the image preview first, which offers its tab.
   Opening a File that already has a tab activates it.
 - A Library File shown where no Page tab can open, such as a Page history
   revision, a recovery draft, or another read-only preview, opens in a viewer

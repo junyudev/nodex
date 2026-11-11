@@ -108,6 +108,10 @@ export function resolvePageFileViewKind(file: {
   return "unsupported";
 }
 
+/** Kinds a person looks at over the Page, in an image preview, before asking for a tab. */
+export const pageFilePreviewsInPlace = (kind: PageFileViewKind): boolean =>
+  kind === "image" || kind === "svg";
+
 /** Kinds that render as something richer and can also show their source text. */
 export const pageFileHasSourceView = (kind: PageFileViewKind): boolean =>
   kind === "html" || kind === "markdown" || kind === "svg";

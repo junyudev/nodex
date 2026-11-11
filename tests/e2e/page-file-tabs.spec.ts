@@ -142,7 +142,8 @@ for (const theme of ["light", "dark"] as const) {
         await page.waitForTimeout(800);
         await shot(application, "report-html-tab", theme);
 
-        // The breadcrumb returns to the Page; the flame graph opens in its image viewer.
+        // The breadcrumb returns to the Page. The flame graph shows over the Page first, and
+        // opens in its image viewer only when asked.
         await page
           .locator('[data-page-file-viewer="html"]:visible')
           .getByRole("button", { name: "Dashboard cold start", exact: true })
@@ -151,7 +152,13 @@ for (const theme of ["light", "dark"] as const) {
           "aria-selected",
           "true",
         );
-        await tree.getByRole("treeitem", { name: "profile/flamegraph.png" }).dblclick();
+        await tree.getByRole("treeitem", { name: "profile/flamegraph.png" }).click();
+        const preview = page.getByRole("dialog", { name: "Image preview" });
+        await expect(preview.getByRole("img", { name: "flamegraph.png" })).toBeVisible();
+        await expect(page.getByRole("tab", { name: /flamegraph\.png/u })).toHaveCount(0);
+        await shot(application, "image-preview", theme);
+        await preview.getByRole("button", { name: "Open in tab" }).click();
+        await expect(preview).not.toBeVisible();
         const image = page.locator('[data-page-file-viewer="image"]:visible img');
         await expect(image).toBeVisible();
         await expect

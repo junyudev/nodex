@@ -5,6 +5,7 @@ import {
   DownloadIcon,
   EditIcon,
   LoadingIcon,
+  OpenInIcon,
   PlusIcon,
 } from "@/components/shared/icons";
 import {
@@ -14,6 +15,7 @@ import {
   NodexDialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
+import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
   trackImageView,
@@ -37,11 +39,21 @@ export interface ImagePreviewDialogProps {
   src: string;
   downloadSrc?: string;
   downloadFileName?: string;
+  /** Saves the image the way its owner does, instead of downloading what is displayed. */
+  onDownload?: () => void | Promise<void>;
   alt?: string;
+  /** Names the image above it, for a preview that moves between several. */
+  title?: string;
+  /** The owner is still reading the image; `src` is not shown yet. */
+  loading?: boolean;
+  /** The owner could not read the image. */
+  unavailable?: boolean;
   referrerPolicy?: React.ImgHTMLAttributes<HTMLImageElement>["referrerPolicy"];
   onPreviousImage?: () => void;
   onNextImage?: () => void;
   onEditImage?: () => void;
+  /** Leaves the preview for a lasting view of the same image, such as its File tab. */
+  openIn?: { readonly label: string; readonly open: () => void };
   allowLocalPath?: boolean;
   showZoomControls?: boolean;
   closeOnSpace?: boolean;
@@ -98,11 +110,16 @@ export function ImagePreviewDialog({
   src,
   downloadSrc = src,
   downloadFileName,
+  onDownload,
   alt = "User attachment",
+  title,
+  loading = false,
+  unavailable = false,
   referrerPolicy = "no-referrer",
   onPreviousImage,
   onNextImage,
   onEditImage,
+  openIn,
   allowLocalPath = false,
   showZoomControls = true,
   closeOnSpace = false,
@@ -249,6 +266,7 @@ export function ImagePreviewDialog({
 
   const handleDownload = () => {
     if (isDownloading || isCurrent?.() === false) return;
+    if (onDownload) return onDownload();
     return downloadPreviewImage(
       downloadAsset.materialize,
       downloadSrc,
@@ -292,6 +310,8 @@ export function ImagePreviewDialog({
   };
 
   const handleDismiss = (event: MouseEvent<HTMLDivElement>) => {
+    // The second click of the double click that opened the preview lands here; it is not a dismissal.
+    if (event.detail > 1) return;
     if (event.target === event.currentTarget) onOpenChange(false);
   };
 
@@ -324,7 +344,27 @@ export function ImagePreviewDialog({
           )}
           onClick={handleDismiss}
         >
+          {title ? (
+            <div className="pointer-events-none absolute top-(--window-content-actions-top,12px) left-1/2 z-10 flex h-10 max-w-[45%] -translate-x-1/2 items-center text-sm text-white/80">
+              <span className="truncate">{title}</span>
+            </div>
+          ) : null}
           <div className="absolute top-(--window-content-actions-top,12px) right-[60px] z-10 flex items-center gap-2">
+            {openIn ? (
+              <NodexTooltip tooltipContent={openIn.label}>
+                <button
+                  type="button"
+                  className={controlClassName}
+                  aria-label={openIn.label}
+                  onClick={() => {
+                    openIn.open();
+                    onOpenChange(false);
+                  }}
+                >
+                  <OpenInIcon className="icon-xs" />
+                </button>
+              </NodexTooltip>
+            ) : null}
             {onEditImage ? (
               <button
                 type="button"
@@ -381,27 +421,29 @@ export function ImagePreviewDialog({
             className="flex min-h-0 w-full flex-1 items-start justify-start overflow-auto"
             onClick={handleDismiss}
           >
-            {previewAsset.isLoading ? (
+            {loading || (previewAsset.isLoading && !unavailable) ? (
               <div className="m-auto flex items-center gap-2 text-sm text-white/70" role="status">
                 <LoadingIcon className="icon-xs animate-spin" aria-hidden="true" />
                 Loading image…
               </div>
-            ) : previewAsset.isError || loadFailed ? (
+            ) : unavailable || previewAsset.isError || loadFailed ? (
               <div
                 className="m-auto flex flex-col items-center gap-3 text-sm text-white/70"
                 role="alert"
               >
                 <span>Image unavailable</span>
-                <button
-                  type="button"
-                  className="rounded-full bg-white/10 px-3 py-1.5 text-white hover:bg-white/15 focus-visible:ring-1 focus-visible:ring-white focus-visible:outline-none"
-                  onClick={() => {
-                    setLoadFailed(false);
-                    void previewAsset.refetch();
-                  }}
-                >
-                  Try again
-                </button>
+                {unavailable ? null : (
+                  <button
+                    type="button"
+                    className="rounded-full bg-white/10 px-3 py-1.5 text-white hover:bg-white/15 focus-visible:ring-1 focus-visible:ring-white focus-visible:outline-none"
+                    onClick={() => {
+                      setLoadFailed(false);
+                      void previewAsset.refetch();
+                    }}
+                  >
+                    Try again
+                  </button>
+                )}
               </div>
             ) : (
               <img

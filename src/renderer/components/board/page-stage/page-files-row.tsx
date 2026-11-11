@@ -33,6 +33,8 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
 import { FileReadBoundary } from "@/components/board/editor/file-runtime";
+import { PageFileImagePreview } from "@/features/page-files/page-file-image-preview";
+import { pageFilePreviewsInPlace, resolvePageFileViewKind } from "@/lib/page-file-view-kind";
 import { LibraryFilesDialog, ManagedFilePreview } from "@/components/library/library-files-dialog";
 import type { ContentRoutingContext } from "../../../../shared/content-routing-context";
 import type {
@@ -724,8 +726,36 @@ function useFreshPageFileIds(pageId: string, fileIds: readonly string[] | null) 
   return { fresh, markOpened };
 }
 
-export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFilesRowProps) {
+/** Opens the Page's File manager, optionally on one File. */
+export function usePageFilesDialog(
+  controller: PageStageController,
+  baseFiles: PageFilesReadModel,
+): (initialFileId?: string) => void {
   const appHandle = useScopeHandle(appScope);
+  const pageId = controller.page?.id ?? "";
+  const routingContext = controller.contentRoutingContext;
+  return (initialFileId) => {
+    openModal(appHandle, PageFilesDialog, {
+      routingContext,
+      pageId,
+      ...(initialFileId ? { initialFileId } : {}),
+      onChanged: async () => {
+        await baseFiles.refresh();
+      },
+    });
+  };
+}
+
+/** An image is looked at where it is; a tab is for a File the person means to keep open. */
+const isImageFile = (item: LibraryPageFileItem): boolean =>
+  pageFilePreviewsInPlace(
+    resolvePageFileViewKind({ name: rowLabel(item), mimeType: item.file.mime_type }),
+  );
+
+const fileTitle = (item: LibraryPageFileItem): string =>
+  item.logical_path?.split("/").at(-1) ?? item.file.default_name;
+
+export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFilesRowProps) {
   const metadata = useLibraryMetadata();
   const pageId = controller.page?.id ?? "";
   const routingContext = controller.contentRoutingContext;
@@ -742,6 +772,12 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
     baseFiles.inventory ? inventory.files.map((item) => item.file.file_id) : null,
   );
 
+  const openFiles = usePageFilesDialog(controller, baseFiles);
+  const [imagePreview, setImagePreview] = useState<{
+    readonly pageId: string;
+    readonly fileId: string;
+  } | null>(null);
+
   if (!controller.page) return null;
 
   const authority = metadata.data
@@ -752,19 +788,24 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
       }
     : null;
 
-  const openFiles = (initialFileId?: string): void => {
-    openModal(appHandle, PageFilesDialog, {
-      routingContext,
-      pageId,
-      ...(initialFileId ? { initialFileId } : {}),
-      onChanged: async () => {
-        await baseFiles.refresh();
-      },
-    });
+  const saveFile = (item: LibraryPageFileItem): void => {
+    if (!authority) return;
+    void saveAuthorizedFile(
+      { ...authority, readSource: { kind: "page", page_id: pageId } },
+      fileSource(item.file.file_id),
+      fileTitle(item),
+    ).catch((error: unknown) =>
+      toast.danger(error instanceof Error ? error.message : "Couldn’t save File"),
+    );
   };
 
   const openFile = (item: LibraryPageFileItem, openMode: "preview" | "durable"): void => {
     markOpened(item.file.file_id);
+    if (openMode === "preview" && authority && isImageFile(item)) {
+      setImagePreview({ pageId, fileId: item.file.file_id });
+      return;
+    }
+    setImagePreview(null);
     if (!controller.openPageFile) {
       openFiles(item.file.file_id);
       return;
@@ -774,7 +815,7 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
       pageId,
       fileId: item.file.file_id,
       logicalPath: item.logical_path ?? null,
-      title: item.logical_path?.split("/").at(-1) ?? item.file.default_name,
+      title: fileTitle(item),
       openMode,
     });
   };
@@ -793,6 +834,25 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
         className={className}
       />
     ) : null;
+  };
+
+  // The preview steps through the Page's images in the order the tree lists them.
+  const images = tree.rows.flatMap((row) =>
+    row.kind === "file" && isImageFile(row.file.value) ? [row.file.value] : [],
+  );
+  const previewedIndex =
+    imagePreview?.pageId === pageId
+      ? images.findIndex((item) => item.file.file_id === imagePreview.fileId)
+      : -1;
+  const previewed = images[previewedIndex];
+  const previewNeighbor = (step: 1 | -1): (() => void) | undefined => {
+    const neighbor = images[previewedIndex + step];
+    return neighbor
+      ? () => {
+          markOpened(neighbor.file.file_id);
+          setImagePreview({ pageId, fileId: neighbor.file.file_id });
+        }
+      : undefined;
   };
 
   const visibleRows = disclosure.showAll ? tree.rows : tree.rows.slice(0, PAGE_FILE_TREE_ROW_LIMIT);
@@ -895,16 +955,8 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
             }))
           }
           onOpen={openFile}
-          onSave={(item) => {
-            if (!authority) return;
-            void saveAuthorizedFile(
-              { ...authority, readSource: { kind: "page", page_id: pageId } },
-              fileSource(item.file.file_id),
-              rowLabel(item).split("/").at(-1) ?? item.file.default_name,
-            ).catch((error: unknown) =>
-              toast.danger(error instanceof Error ? error.message : "Couldn’t save File"),
-            );
-          }}
+          opensInPlace={(item) => authority !== null && isImageFile(item)}
+          onSave={saveFile}
           onCopyPath={(item) => void writeTextToClipboard(rowLabel(item))}
           onManage={(item) => openFiles(item.file.file_id)}
           onRemovePath={
@@ -950,6 +1002,20 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
             ) : null
           }
         />
+      ) : null}
+      {previewed && authority ? (
+        <FileReadBoundary
+          authority={{ ...authority, readSource: { kind: "page", page_id: pageId } }}
+        >
+          <PageFileImagePreview
+            fileId={previewed.file.file_id}
+            name={fileTitle(previewed)}
+            onClose={() => setImagePreview(null)}
+            onPrevious={previewNeighbor(-1)}
+            onNext={previewNeighbor(1)}
+            onOpenInTab={controller.openPageFile ? () => openFile(previewed, "durable") : undefined}
+          />
+        </FileReadBoundary>
       ) : null}
     </div>
   );

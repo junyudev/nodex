@@ -131,6 +131,14 @@ the tab, and when the entry's File is replaced, as an Agent does when it attache
 a new report at the same path, the tab moves to the new File. A tab whose File
 left the Page says so and offers to open the Page.
 
+An image is looked at where it is. A click on an image or SVG, from the Files
+property or from an inline attachment, shows it over the Page in the image
+preview with its name, zoom, Save and, from the Files property, Previous and
+Next through the Page's images in tree order. No tab opens until the person asks
+for one: **Open in tab** in the preview, Cmd/Ctrl-click or Open in new tab open
+the image's Page File tab and keep it. The row's menu names the plain action
+Preview for an image and Open for every other File.
+
 The tab's header is the path back to the Page, `<Page> / folder / file`, and its
 Page segment opens the Page. Its controls are View source or View preview for
 HTML, Markdown and SVG, Reload for an HTML preview, Save…, and a menu with Copy

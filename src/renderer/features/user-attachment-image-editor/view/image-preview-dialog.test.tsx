@@ -92,6 +92,68 @@ describe("ImagePreviewDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  test("names the image and leaves for its lasting view when asked", async () => {
+    const open = vi.fn();
+    const onOpenChange = vi.fn();
+    const view = renderPreview({
+      title: "flamegraph.png",
+      openIn: { label: "Open in tab", open },
+      onOpenChange,
+    });
+
+    expect(view.getByText("flamegraph.png")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Open in tab" }));
+    });
+
+    expect(open).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  test("saves through its owner instead of downloading what is displayed", async () => {
+    const download = vi
+      .spyOn(resolvedImageAsset, "downloadImageDataUrl")
+      .mockResolvedValue(undefined);
+    const onDownload = vi.fn();
+    const view = renderPreview({ onDownload });
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Download image" }));
+      await Promise.resolve();
+    });
+
+    expect(onDownload).toHaveBeenCalledOnce();
+    expect(download).not.toHaveBeenCalled();
+  });
+
+  test("shows the owner's read state in place of the image", async () => {
+    const loading = renderPreview({ src: "", loading: true });
+    expect(loading.getByRole("status").textContent).toContain("Loading image");
+    expect(loading.queryByRole("img")).toBeNull();
+    loading.unmount();
+
+    const unavailable = renderPreview({ src: "", unavailable: true });
+    expect(unavailable.getByRole("alert").textContent).toContain("Image unavailable");
+    // Only the owner can read the image again, so the preview offers no retry of its own.
+    expect(unavailable.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
+  test("keeps the preview when the double click that opened it lands on the backdrop", async () => {
+    const onOpenChange = vi.fn();
+    const view = renderPreview({ onOpenChange });
+    const backdrop = view.getByTestId("image-preview-dismiss-area");
+
+    await act(async () => {
+      fireEvent.click(backdrop, { detail: 2 });
+    });
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(backdrop, { detail: 1 });
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
   test("supports adjacent-image keyboard navigation", async () => {
     const onPreviousImage = vi.fn();
     const onNextImage = vi.fn();

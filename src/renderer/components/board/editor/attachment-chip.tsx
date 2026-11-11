@@ -16,6 +16,8 @@ import {
 import { toast } from "@/components/ui/toast";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { LibraryFileViewerDialog } from "@/features/page-files/library-file-viewer-dialog";
+import { PageFileImagePreview } from "@/features/page-files/page-file-image-preview";
+import { pageFilePreviewsInPlace, resolvePageFileViewKind } from "@/lib/page-file-view-kind";
 import { resolveManagedAssetPath } from "@/lib/assets";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import { openFileReferenceContextMenu } from "@/lib/file-reference-context-menu";
@@ -231,7 +233,18 @@ export function AttachmentInlineContent({
     canOpenPageFile: Boolean(host?.openPageFile),
   });
   const canOpen = destination.kind !== "none";
+  // An image of the Page is looked at over it, exactly as from the Page's Files.
+  const previewsInPlace =
+    destination.kind === "page-file" &&
+    pageFilePreviewsInPlace(
+      resolvePageFileViewKind({ name: summary.title, mimeType: resolvedProps.mimeType ?? "" }),
+    );
+  const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const open = (mode: OpenMode): void => {
+    if (mode === "preview" && previewsInPlace) {
+      setImagePreviewOpen(true);
+      return;
+    }
     void openAttachment(destination, summary.title, mode, { host, router, appHandle }).catch(() =>
       toast.danger(`Couldn’t open ${summary.title}`),
     );
@@ -267,6 +280,7 @@ export function AttachmentInlineContent({
       onDoubleClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
+        if (previewsInPlace) return;
         if (destination.kind === "page-file" || destination.kind === "local-path") open("durable");
       }}
       onContextMenu={
@@ -314,6 +328,14 @@ export function AttachmentInlineContent({
       >
         <span className="inline align-baseline">{reference}</span>
       </NodexTooltip>
+      {imagePreviewOpen && destination.kind === "page-file" ? (
+        <PageFileImagePreview
+          fileId={destination.fileId}
+          name={summary.title}
+          onClose={() => setImagePreviewOpen(false)}
+          onOpenInTab={() => open("durable")}
+        />
+      ) : null}
     </span>
   );
 

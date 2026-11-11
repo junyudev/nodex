@@ -24,6 +24,8 @@ type OpenMode = "preview" | "durable";
 
 export interface PageFileTreeFileActions {
   readonly onOpen: (item: LibraryPageFileItem, mode: OpenMode) => void;
+  /** Whether a plain open shows the File over the Page, as an image does, instead of in a tab. */
+  readonly opensInPlace?: (item: LibraryPageFileItem) => boolean;
   readonly onSave: (item: LibraryPageFileItem) => void;
   readonly onCopyPath: (item: LibraryPageFileItem) => void;
   readonly onManage: (item: LibraryPageFileItem) => void;
@@ -60,7 +62,8 @@ const parentIndex = (rows: readonly Row[], index: number): number => {
 
 /**
  * The Page's Files as a tree spanning the Page width. Folders fold; Files open beside the
- * Page. Arrow keys move through rows, Right and Left unfold and fold, Enter opens.
+ * Page, and images over it. Arrow keys move through rows, Right and Left unfold and fold,
+ * Enter opens.
  */
 export function PageFileTreeView({
   id,
@@ -265,6 +268,7 @@ function FileTreeRow({
 }) {
   const item = row.file.value;
   const path = item.logical_path ?? null;
+  const inPlace = actions.opensInPlace?.(item) ?? false;
   return (
     <NodexContextMenuRoot>
       <NodexContextMenuTrigger>
@@ -278,7 +282,8 @@ function FileTreeRow({
           onClick={(event) =>
             actions.onOpen(item, event.metaKey || event.ctrlKey ? "durable" : "preview")
           }
-          onDoubleClick={() => actions.onOpen(item, "durable")}
+          // A double click keeps a tab; an image has no tab until the person asks for one.
+          onDoubleClick={inPlace ? undefined : () => actions.onOpen(item, "durable")}
         >
           <ColorfulFileResourceIcon
             path={path ?? item.file.default_name}
@@ -298,7 +303,7 @@ function FileTreeRow({
       <NodexContextMenuPortal>
         <NodexContextMenuContent>
           <NodexContextMenuItem onSelect={() => actions.onOpen(item, "preview")}>
-            Open
+            {inPlace ? "Preview" : "Open"}
           </NodexContextMenuItem>
           <NodexContextMenuItem onSelect={() => actions.onOpen(item, "durable")}>
             Open in new tab
