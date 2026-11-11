@@ -298,8 +298,9 @@ test.each(["arm64", "x64"] as const)(
     });
     expect(definition).toMatchObject(plugin!.server);
     expect(plugin?.server.command).toBe(windows.jobLauncher);
-    const [mode, image, environment] = plugin!.server.args;
-    expect(mode).toBe("--desktop-tools-repl");
+    const [mode, stdio, image, , environment] = plugin!.server.args;
+    expect(mode).toBe("--desktop-tools-job");
+    expect(stdio).toBe("inherit");
     expect(image).toBe(browserRuntime.bundle.paths.nodeRepl);
     const env = JSON.parse(environment!);
     expect(env).toMatchObject({

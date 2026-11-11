@@ -57,14 +57,16 @@ chain, revocation evidence, and the manifest's subject and issuer. Windows
 verification runs in a bounded background task. The Browser backend becomes
 eligible only after the native process and pipe provider can start.
 
-### Windows Browser transport and REPL lifetime
+### Windows Desktop Tool launch and Browser transport
 
 On Windows, Codex and Agent Runtime use the same Nodex-owned native launch
 command. It starts the verified REPL executable in a kill-on-close job with a
 complete environment supplied as launch arguments. Codex's persisted MCP
 configuration may add environment variables to the launcher. The launcher
 constructs the REPL's environment from Nodex's declarations, checks names
-case-insensitively, and passes stdio directly. The sandbox CLI uses a
+case-insensitively, and passes stdio directly. The launcher checks the suspended
+child’s image before resuming it. The same job launcher can relay helper stdio
+after acknowledging the child’s identity. The sandbox CLI uses a
 Profile-owned Codex home so it cannot reintroduce shared shell policy. The
 job ends when the launcher, its parent, or the REPL exits. Agent Runtime closes the job after an
 unacknowledged cancellation and starts a fresh REPL for subsequent work.
