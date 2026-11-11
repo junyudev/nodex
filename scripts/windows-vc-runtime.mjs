@@ -60,7 +60,10 @@ export function resolveWindowsVcRuntimeDirectory(arch) {
 export function stageWindowsVcRuntime(root, arch, options = {}) {
   let sourceDirectory;
   const copied = [];
-  const pending = listWindowsPeImages(root).map((file) => path.join(root, file));
+  const sealedRoot = options.desktopToolsRoot && path.resolve(options.desktopToolsRoot);
+  const pending = listWindowsPeImages(root)
+    .map((file) => path.resolve(root, file))
+    .filter((file) => !sealedRoot || !file.startsWith(sealedRoot + path.sep));
   const seen = new Set();
   while (pending.length) {
     const file = pending.shift();

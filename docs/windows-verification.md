@@ -24,13 +24,41 @@ fallback remains writable when that executable cannot load; normal private data
 still requires the native permission boundary. The typed suite owners prepare that Core
 executable before either host Node or Electron starts the tests.
 
-The Desktop Tools integration suite covers WinVerifyTrust and manifest
-publisher matching with an embedded system signature and a tampered copy. It
-also tests Windows pipe peer admission, the REPL launcher's closed environment
-and UTF-16 arguments, shared job termination, and the Computer Use helper’s
-framed stdio and peer admission. The vendor REPL initialization test
-runs only when the matching sealed closure has been staged under
-`.generated/codex-runtime/agent-runtime/browser-runtime`.
+For Desktop Tools, both native CI architectures exercise the Windows pipe peer
+checks, registry transactions, WinVerifyTrust, the REPL launcher's closed
+environment and job shutdown, and supervised helper stdio. With published
+assets, the staged Electron test and the installed-app probe verify the sealed
+closure with the production verifier and load the matching Sharp addon with
+the vendor Node. Each starts the actual vendor REPL
+through the Nodex launcher, negotiates MCP, lists tools, calls `js`, and checks
+that the launcher and observed job processes exit. The installed receipt records
+the number of verified vendor signatures and closed processes. A candidate
+without a download URL reports `skipped: candidate assets` in the job summary.
+
+Before publication, run the same staged vendor check on each matching Windows
+worker with the approved local candidate archive. In a disposable checkout,
+substitute the native CPU and archive path below.
+
+```powershell
+$arch = 'x64' # Use 'arm64' on the native arm64 worker.
+$archive = 'C:\path\to\the\locked\archive.tar.gz'
+vp exec tsx scripts/desktop-build.ts stage-codex win32 $arch
+vp exec tsx scripts/materialize-browser-runtime.ts --target-platform win32 --target-arch $arch --archive $archive --out .generated/desktop-tool-candidate
+vp exec tsx scripts/stage-codex-runtime.ts --target-platform win32 --target-arch $arch --out .generated/codex-runtime --reuse-existing --browser-runtime-source .generated/desktop-tool-candidate
+$env:NODEX_REQUIRE_STAGED_DESKTOP_TOOLS = '1'
+vp run test:integration src/main/platform/node/WindowsDesktopTools.integration.ts -t 'initializes the staged vendor Windows REPL'
+Remove-Item Env:NODEX_REQUIRE_STAGED_DESKTOP_TOOLS
+```
+
+The staged probe can verify the exact candidate pair in the release lock before
+it is recorded. After the native probes pass on both architectures, add both
+pairs to `src/shared/browser-app-server-compatibility.mjs`. The installed probe
+requires the same conformance record as the application.
+
+The interactive layer covers the published extensions, Browser routing and
+Computer Use under a standard user on Windows 11. Use a native arm64 VM and a
+native x64 Windows session. The physical x64 gate additionally covers mixed
+DPI, multiple monitors, GPU capture, Defender, and sleep or session transitions.
 
 ## Deterministic suite contracts
 
@@ -215,13 +243,23 @@ setup.
 
 ## Existing-browser control
 
-Run in an interactive standard-user Windows 11 session on x64 and arm64 with a disposable Nodex Profile and disposable browser profiles. Record the architecture, Nodex build, browser and extension versions, Settings states, and the before/after HKCU default values. For the production extension host, query both of these keys with `/ve /reg:32` and `/ve /reg:64`.
+Run in an interactive standard-user Windows 11 session on x64 and arm64 with the installed app's default Nodex Profile in a disposable Windows account and disposable browser profiles. Record the architecture, Nodex build, browser and extension versions, Settings states, and the before/after HKCU default values. For the production extension host, query both of these keys with `/ve /reg:32` and `/ve /reg:64`.
 
 - `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.openai.codexextension`
 - `HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.openai.codexextension`
 
 - **Clean install.** Start with the other desktop app absent. Install the published ChatGPT extension in Chrome and Edge. Test Edge with the Edge Add-ons ID and Chrome with the Chrome Web Store ID. Confirm **Waiting for extension** before connection and **Ready** after connection. From a local Agent, read a test page and select its exact tab. Repeat with two browser profiles and confirm commands reach the selected extension instance. On arm64, verify routing when optional browser-profile names are absent.
 - **Repair.** Close both browsers, remove the Profile's native-messaging manifest and reopen Nodex. If it reports **Needs repair**, choose **Repair**. Verify the manifest is regenerated with the exact extension origins and the verified host path. Restart both browsers and repeat the handshake. Test the 32-bit and 64-bit registry queries and confirm they see the same HKCU default.
-- **Co-install and take over.** Install and connect the other desktop app first. Record its Chrome registration and any Edge-specific registration. Open Nodex and confirm **In use by another app**, the original manifest path and unchanged values. Choose **Use with Nodex**, reconnect both browsers, and repeat the handshake. Launch a second Nodex Profile and confirm **In use by another Nodex Profile** and unchanged ownership.
+- **Co-install and take over.** Install and connect the other desktop app first. Record its Chrome registration and any Edge-specific registration. Open Nodex and confirm **In use by another app**, the original manifest path and unchanged values. Choose **Use with Nodex**, reconnect both browsers, and repeat the handshake. Confirm an alternate installed Profile and a development launch without opt-in leave HKCU unchanged. Run `vp run dev --register-browser-host` from a separate development Profile and confirm it reports **In use by another Nodex Profile** while the installed Profile owns the values.
+- **Temporary development registration.** With the installed Profile’s registration off, opt in from a development Profile. Verify that quitting returns any previous values, including after an approved takeover. Replace one default while the development instance is running and verify quitting preserves that replacement.
 - **Give back and turn off.** Choose **Give back** in the owning Profile. Verify the original default values return and keys previously absent lose Nodex's default. Restart Nodex and confirm control stays **Off**. Reconnect both browsers to the original app. Repeat **Turn off** from a clean install, and repeat **Give back** after independently changing one default value to verify the stale receipt leaves that value in place.
-- **Upgrade and uninstall.** Take over again, upgrade Nodex and verify the stable manifest now points to the new verified executable, both browsers reconnect, and the original receipt still gives back the same value. Then uninstall while Nodex owns the keys and verify the previous defaults are restored before the host files are removed. Repeat with no previous owner and with an independently replaced default. Confirm unrelated values and machine-wide registrations are unchanged.
+- **Upgrade and uninstall.** Take over again and upgrade while Nodex owns the
+  keys. Verify that installer maintenance gives back the old defaults before
+  removing files, including when the incoming build omits Desktop Tools or
+  changes the closure location. If another app owns the restored defaults,
+  confirm that the new Nodex build asks for takeover again. Reconnect and
+  uninstall. Repeat with no previous owner and with a default independently
+  replaced after Nodex registered. Confirm unrelated
+  values and machine-wide registrations are unchanged. Start a REPL and
+  Computer Use request before each operation and check that all installed REPL
+  and helper processes exit before files are replaced or removed.

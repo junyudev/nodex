@@ -87,6 +87,21 @@ jobs:
           vp exec tsx scripts/release/cli.ts build-windows
           --arch ${{ matrix.arch }} --identity "$env:BUILD_IDENTITY_PATH"
           --release ${{ inputs.release }} --output "$env:RELEASE_OUTPUT"
+      - name: Report installed Desktop Tool conformance
+        if: inputs.installer_run_id == ''
+        env:
+          DESKTOP_TOOLS_ARCH: ${{ matrix.arch }}
+        run: |
+          $probe = Get-Content -Raw "$env:RELEASE_OUTPUT/installed-app-probe.json" | ConvertFrom-Json
+          switch ($probe.desktopTools.status) {
+            'passed' {
+              "Desktop Tools ($env:DESKTOP_TOOLS_ARCH): installed REPL passed, $($probe.desktopTools.signedImages) vendor signatures verified, $($probe.desktopTools.processesClosed) processes closed" >> $env:GITHUB_STEP_SUMMARY
+            }
+            'skipped: candidate assets' {
+              "Desktop Tools ($env:DESKTOP_TOOLS_ARCH): skipped: candidate assets" >> $env:GITHUB_STEP_SUMMARY
+            }
+            default { throw 'Missing installed Desktop Tool conformance result' }
+          }
       - name: Carry source certification
         if: inputs.release
         run: Copy-Item "$env:RUNNER_TEMP/certification/source-certification.json" "$env:RELEASE_OUTPUT/source-certification.json"

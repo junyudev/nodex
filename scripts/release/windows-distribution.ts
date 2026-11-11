@@ -49,9 +49,11 @@ export function verifyWindowsPreparedIdentity(
 export function assertWindowsInstalledProbe(
   value: unknown,
   architecture: WindowsArchitecture,
+  expectsDesktopTools: boolean,
 ): void {
   const probe = value as {
     failures?: unknown[];
+    desktopTools?: { status?: unknown; signedImages?: number; processesClosed?: number };
     evidence?: unknown;
     upgrade?: unknown;
     uninstall?: unknown;
@@ -68,6 +70,17 @@ export function assertWindowsInstalledProbe(
     !probe.normalQuit
   )
     throw new Error("Windows installed-app probe did not complete all maintenance checks.");
+  const desktop = probe.desktopTools;
+  if (
+    expectsDesktopTools
+      ? desktop?.status !== "passed" ||
+        !Number.isSafeInteger(desktop.signedImages) ||
+        !(desktop.signedImages! > 0) ||
+        !Number.isSafeInteger(desktop.processesClosed) ||
+        !(desktop.processesClosed! >= 2)
+      : desktop?.status !== "skipped: candidate assets"
+  )
+    throw new Error("Windows installed-app probe did not certify the selected Desktop Tool state.");
   const pty = assertPackagedPtyReceipt(probe.packagedPty);
   const addon = pty.addonPath.replaceAll("\\", "/");
   const node = pty.nodeExecutable.replaceAll("\\", "/");
@@ -193,7 +206,11 @@ export function buildWindowsDistribution(options: {
     ".generated/windows-probe",
   );
   const probePath = join(cwd, ".generated/windows-probe/artifacts/result.json");
-  assertWindowsInstalledProbe(JSON.parse(readFileSync(probePath, "utf8")), options.architecture);
+  assertWindowsInstalledProbe(
+    JSON.parse(readFileSync(probePath, "utf8")),
+    options.architecture,
+    desktopTools !== null,
+  );
   mkdirSync(output, { recursive: true });
   const name = windowsInstallerName(identity.version, options.architecture);
   const installerPath = join(output, name);

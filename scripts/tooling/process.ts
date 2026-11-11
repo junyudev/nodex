@@ -28,6 +28,16 @@ export interface CommandResult {
   };
 }
 
+export function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ESRCH") return false;
+    throw error;
+  }
+}
+
 const processTableArguments = ["-axo", "pid=,ppid=,pgid=,rss="];
 
 function parseProcessTable(output: string): readonly (readonly number[])[] {

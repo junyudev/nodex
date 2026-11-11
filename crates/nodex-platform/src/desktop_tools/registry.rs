@@ -1,14 +1,17 @@
-use super::files::invalid;
+use super::files::{inspect_open_path, invalid, open_ntfs};
 use crate::windows::{handle, process_sid, wide};
 use serde::{Deserialize, Serialize};
 use std::ffi::c_void;
-use std::io;
+use std::io::{self, Read};
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::os::windows::io::AsRawHandle;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::ptr::{null, null_mut};
 use windows_sys::Win32::Foundation::{
-    ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, HANDLE, NTSTATUS, RtlNtStatusToDosError,
+    ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, GENERIC_READ, HANDLE, NTSTATUS,
+    RtlNtStatusToDosError,
 };
+use windows_sys::Win32::Globalization::{CSTR_EQUAL, CompareStringOrdinal};
 use windows_sys::Win32::Storage::FileSystem::{CommitTransaction, CreateTransaction, DELETE};
 use windows_sys::Win32::System::Registry::*;
 
@@ -354,4 +357,187 @@ fn empty(key: &Key) -> io::Result<bool> {
         )
     })?;
     Ok(subkeys == 0 && values == 0)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProfileJournal {
+    installation_directory: PathBuf,
+    receipts: Vec<Registration>,
+}
+
+fn profile_journal(value: &RegistryValue, host: &str) -> Option<PathBuf> {
+    if value.kind != REG_SZ || value.data_hex.len() > 4096 {
+        return None;
+    }
+    let bytes = hex::decode(&value.data_hex).ok()?;
+    if bytes.len() % 2 != 0 {
+        return None;
+    }
+    let mut text: Vec<_> = bytes
+        .chunks_exact(2)
+        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+        .collect();
+    if text.pop() != Some(0) || text.contains(&0) {
+        return None;
+    }
+    let manifest = PathBuf::from(std::ffi::OsString::from_wide(&text));
+    let suffix = Path::new(r"runtime\agent\chrome-control\windows\native-messaging")
+        .join(format!("{host}.json"));
+    if !manifest.is_absolute() || !manifest.ends_with(suffix) {
+        return None;
+    }
+    Some(manifest.parent()?.parent()?.join("registration-v1.json"))
+}
+
+fn read_profile_journal(path: &Path) -> io::Result<ProfileJournal> {
+    const MAX_JOURNAL_BYTES: u64 = 600_000;
+    let (mut chain, reparse) = open_ntfs(path, GENERIC_READ)?;
+    let file = chain.pop().expect("checked journal path");
+    let security = inspect_open_path(&file, reparse)?;
+    if security.reparse_point
+        || security.grants_foreign_write
+        || ![
+            security.current_user_sid.as_str(),
+            "S-1-5-18",
+            "S-1-5-32-544",
+        ]
+        .contains(&security.owner_sid.as_str())
+        || !file.metadata()?.is_file()
+    {
+        return Err(invalid("untrusted browser registration journal"));
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_JOURNAL_BYTES + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_JOURNAL_BYTES {
+        return Err(invalid("oversized browser registration journal"));
+    }
+    serde_json::from_slice(&bytes).map_err(io::Error::other)
+}
+
+fn same_windows_path(left: &Path, right: &Path) -> bool {
+    let left: Vec<_> = left.as_os_str().encode_wide().collect();
+    let right: Vec<_> = right.as_os_str().encode_wide().collect();
+    unsafe {
+        CompareStringOrdinal(
+            left.as_ptr(),
+            left.len() as i32,
+            right.as_ptr(),
+            right.len() as i32,
+            1,
+        ) == CSTR_EQUAL
+    }
+}
+
+/// HKCU provides the active Profile pointers, even for custom Profile homes.
+/// Only an installation-bound receipt for the current value authorizes a restore.
+pub fn restore_installation_registrations(installation: &Path) -> io::Result<usize> {
+    let installation = installation.canonicalize()?;
+    let mut restored = 0;
+    for browser in [Browser::Chrome, Browser::Edge] {
+        let key = HostKey {
+            browser,
+            view: RegistryView::X86,
+            host: "com.openai.codexextension".into(),
+        };
+        restored += usize::from(restore_installation_registration(&installation, &key)?);
+    }
+    Ok(restored)
+}
+
+fn restore_installation_registration(installation: &Path, key: &HostKey) -> io::Result<bool> {
+    let Some(current) = read_registration(key)? else {
+        return Ok(false);
+    };
+    let Some(journal_path) = profile_journal(&current, &key.host) else {
+        return Ok(false);
+    };
+    let Ok(journal) = read_profile_journal(&journal_path) else {
+        // A foreign, legacy, missing or untrusted journal cannot authorize writes.
+        return Ok(false);
+    };
+    if !journal.installation_directory.is_absolute()
+        || !journal
+            .installation_directory
+            .canonicalize()
+            .is_ok_and(|owner| same_windows_path(&owner, installation))
+        || journal.receipts.len() > 2
+    {
+        return Ok(false);
+    }
+    let mut matches = journal
+        .receipts
+        .iter()
+        .filter(|receipt| &receipt.key == key && receipt.installed == current);
+    match matches.next() {
+        Some(receipt) if matches.next().is_none() => restore_registration(key, receipt),
+        _ => Ok(false),
+    }
+}
+
+#[cfg(test)]
+mod installer_tests {
+    use super::*;
+
+    #[test]
+    fn maintenance_follows_a_custom_profile_and_restores_only_its_installation() {
+        let temp = tempfile::tempdir().unwrap();
+        let install = temp.path().join("installed");
+        let other_install = temp.path().join("other");
+        let state = temp
+            .path()
+            .join("custom profile/runtime/agent/chrome-control/windows");
+        let manifests = state.join("native-messaging");
+        for dir in [&install, &other_install, &manifests] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        let key = HostKey {
+            browser: Browser::Edge,
+            view: RegistryView::X86,
+            host: format!(
+                "com.nodex.test_{}",
+                hex::encode(getrandom::u64().unwrap().to_le_bytes())
+            ),
+        };
+        let previous = write_registration(&key, None, &temp.path().join("previous.json")).unwrap();
+        let manifest = manifests.join(format!("{}.json", key.host));
+        let installed =
+            write_registration(&key, Some(previous.installed.clone()), &manifest).unwrap();
+        let exercise = || {
+            assert!(
+                !restore_installation_registration(&install.canonicalize().unwrap(), &key).unwrap()
+            );
+            std::fs::write(
+                state.join("registration-v1.json"),
+                serde_json::to_vec(&serde_json::json!({
+                    "installationDirectory": install,
+                    "receipts": [installed],
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+            assert!(
+                !restore_installation_registration(&other_install.canonicalize().unwrap(), &key)
+                    .unwrap()
+            );
+            assert_eq!(
+                read_registration(&key).unwrap(),
+                Some(installed.installed.clone())
+            );
+            assert!(
+                restore_installation_registration(&install.canonicalize().unwrap(), &key).unwrap()
+            );
+            assert_eq!(
+                read_registration(&key).unwrap(),
+                Some(previous.installed.clone())
+            );
+            assert!(
+                !restore_installation_registration(&install.canonicalize().unwrap(), &key).unwrap()
+            );
+        };
+        let result = std::panic::catch_unwind(exercise);
+        restore_registration(&key, &installed).unwrap();
+        restore_registration(&key, &previous).unwrap();
+        result.unwrap();
+    }
 }

@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   WindowsDesktopTools,
   unsupportedWindowsDesktopTools,
@@ -180,6 +181,8 @@ const chromeControl = Layer.unwrap(
       },
       windowsBrowserReady: codex.windowsDesktopTools?.ready,
       registration: config.chromeHostRegistration ?? { kind: "disabled" },
+      windowsInstallationDirectory:
+        config.isPackaged && platform === "win32" ? path.dirname(config.resourcesPath) : undefined,
       peerAuthorizationMode: codex.runtime.source === "bundled" ? "packaged" : "development",
       platform,
       runtimeStateHome: codex.runtimeStateHome,

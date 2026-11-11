@@ -70,9 +70,16 @@ export const restorePackagedBrowserRuntimeClosure = ({
   packagedBrowserRoot,
   sourceBrowserRoot,
   windowsArch,
+  expectedManifestSha256,
   restore = true,
 }) => {
-  if (windowsArch && !existsSync(sourceBrowserRoot) && !existsSync(packagedBrowserRoot)) return 0;
+  if (
+    windowsArch &&
+    !expectedManifestSha256 &&
+    !existsSync(sourceBrowserRoot) &&
+    !existsSync(packagedBrowserRoot)
+  )
+    return 0;
   requireRealDirectoryChain(sourceBrowserRoot, []);
   requireRealDirectoryChain(packagedBrowserRoot, []);
   const sourceManifestPath = path.join(sourceBrowserRoot, manifestFilename);
@@ -83,6 +90,8 @@ export const restorePackagedBrowserRuntimeClosure = ({
   ) {
     throw new Error("Windows Desktop Tool manifest must be a regular file");
   }
+  if (expectedManifestSha256 && sha256File(packagedManifestPath) !== expectedManifestSha256)
+    throw new Error("Packaged Desktop Tool manifest does not match the release lock");
   const sourceManifestBytes = readFileSync(sourceManifestPath);
   const packagedManifestBytes = readFileSync(packagedManifestPath);
   if (!sourceManifestBytes.equals(packagedManifestBytes)) {
@@ -204,7 +213,7 @@ export default async function restorePackagedRuntimeClosure(context) {
       packagedBrowserRoot: desktopToolsRoot,
       windowsArch: arch,
     });
-    stageWindowsVcRuntime(appPath, arch);
+    stageWindowsVcRuntime(appPath, arch, { desktopToolsRoot });
     const files = verifyWindowsArchitectureClosure(appPath, arch, {
       nodeHost: path.join(appPath, "Nodex.exe"),
       desktopToolsRoot,

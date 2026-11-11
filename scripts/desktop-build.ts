@@ -4,7 +4,7 @@ import {
   resolveBrowserRuntimeReleaseLockPath,
 } from "./browser-runtime-release-lock";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseBuildIdentity } from "./release/model";
@@ -15,6 +15,9 @@ import { stageCodexRuntime } from "./stage-codex-runtime";
 import { windowsSigningConfiguration } from "./windows-signing";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+const runtimeRoot = resolve(root, ".generated/codex-runtime");
+const stagedDesktopTools = resolve(runtimeRoot, "agent-runtime/browser-runtime");
+const browserLock = () => readBrowserRuntimeReleaseLock(resolveBrowserRuntimeReleaseLockPath(root));
 const task = (name: string, ...args: string[]) =>
   runVitePlus(["run", name, ...args], { cwd: root });
 const tsx = (script: string, ...args: string[]) =>
@@ -47,9 +50,8 @@ async function stageCodex(target: DesktopBuildTarget, cached: boolean): Promise<
     ".generated/browser-runtime-source",
     target.platform === "darwin" ? target.arch : `win32-${target.arch}`,
   );
-  const browserLock = readBrowserRuntimeReleaseLock(resolveBrowserRuntimeReleaseLockPath(root));
   const stageDesktopTools =
-    target.platform === "darwin" || browserLock.assets[target.key].url !== null;
+    target.platform === "darwin" || browserLock().assets[target.key].url !== null;
   if (stageDesktopTools) {
     await materializeBrowserRuntime({
       outputPath: browserSource,
@@ -57,10 +59,15 @@ async function stageCodex(target: DesktopBuildTarget, cached: boolean): Promise<
       targetPlatform: target.platform,
     });
   }
+  if (!stageDesktopTools) {
+    // Cached Agent runtime staging does not own the optional Desktop Tool subtree.
+    rmSync(stagedDesktopTools, { recursive: true, force: true });
+    process.stdout.write(`Desktop Tools (${target.key}): skipped: candidate assets\n`);
+  }
   await stageCodexRuntime({
     targetPlatform: target.platform,
     targetArch: target.arch,
-    outputPath: resolve(root, ".generated/codex-runtime"),
+    outputPath: runtimeRoot,
     reuseExisting: cached,
     ...(stageDesktopTools ? { browserRuntimeSourceRoot: browserSource } : {}),
   });
@@ -132,6 +139,13 @@ async function main(): Promise<void> {
       task("build");
       await stageNative(target);
     }
+    if (
+      target.platform === "win32" &&
+      existsSync(stagedDesktopTools) !== (browserLock().assets[target.key].url !== null)
+    )
+      throw new Error(
+        "Staged Desktop Tool presence does not match the release lock. Restage the native runtime.",
+      );
     tsx("prepared-electron-build", "verify");
     const identityPath = process.env.NODEX_BUILD_IDENTITY_PATH;
     const identity = identityPath

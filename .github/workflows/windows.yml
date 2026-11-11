@@ -116,6 +116,22 @@ jobs:
           vp exec tsx scripts/ci/run-timed.ts
           --name app-desktop-tools-native
           -- vp run test:integration src/main/platform/node/WindowsDesktopTools.integration.ts
+      - name: Verify staged Desktop Tool conformance
+        if: matrix.suite == 'integration'
+        env:
+          NODEX_REQUIRE_STAGED_DESKTOP_TOOLS: "1"
+          DESKTOP_TOOLS_ARCH: ${{ matrix.arch }}
+        run: |
+          $lock = Get-Content -Raw resources/browser-runtime/browser-runtime.lock.json | ConvertFrom-Json -AsHashtable
+          if ($null -eq $lock.assets["win32-$env:DESKTOP_TOOLS_ARCH"].url) {
+            "Desktop Tools ($env:DESKTOP_TOOLS_ARCH): skipped: candidate assets" >> $env:GITHUB_STEP_SUMMARY
+            exit 0
+          }
+          vp exec tsx scripts/desktop-build.ts stage-codex win32 "$env:DESKTOP_TOOLS_ARCH"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          vp run test:integration src/main/platform/node/WindowsDesktopTools.integration.ts -t 'initializes the staged vendor Windows REPL'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "Desktop Tools ($env:DESKTOP_TOOLS_ARCH): staged REPL and Authenticode passed" >> $env:GITHUB_STEP_SUMMARY
       - name: Run remaining integration suite
         if: matrix.suite == 'integration'
         run: >-
