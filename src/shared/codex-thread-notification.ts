@@ -5,6 +5,7 @@ import {
   type CodexHeartbeatDecision,
 } from "./codex-turn-notification";
 import { DEFAULT_CODEX_HOST_ID } from "./codex-host";
+import type { ThreadNotificationTurnMode } from "./types";
 import { extractCodexThreadSpawnMetadata } from "./codex-subagent-metadata";
 
 export type CodexNotificationTurnStatus = "completed" | "failed" | "interrupted";
@@ -118,7 +119,7 @@ export type CodexNotificationDecision =
   | { type: "suppress"; reason: CodexNotificationSuppressionReason };
 
 export interface CodexTurnNotificationPolicyFacts extends CodexTurnOccurrenceFacts {
-  turnMode: "off" | "unfocused" | "always";
+  turnMode: ThreadNotificationTurnMode;
   isAppForegrounded: boolean;
   /** The conversation is in front of the person, in a focused window or on a phone. */
   isConversationSeen: boolean;
@@ -194,10 +195,10 @@ export function decideCodexTurnNotification(
   if (policy.turnMode === "off") {
     return { type: "suppress", reason: "setting-disabled" };
   }
-  if (policy.turnMode === "unfocused" && policy.isAppForegrounded) {
+  if (policy.turnMode === "background" && policy.isAppForegrounded) {
     return { type: "suppress", reason: "app-focused" };
   }
-  if (policy.turnMode === "unfocused" && policy.isConversationSeen) {
+  if (policy.turnMode !== "always" && policy.isConversationSeen) {
     return { type: "suppress", reason: "conversation-presented" };
   }
   return { type: "show" };

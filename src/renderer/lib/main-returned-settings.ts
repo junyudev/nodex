@@ -10,6 +10,7 @@ import {
   invokePlainCommandWithTrace,
   invokeRendererQuery,
 } from "./renderer-command";
+import { isThreadNotificationTurnMode } from "../../shared/types";
 import type { ThreadNotificationSettings, WindowRestoreSettings } from "./types";
 
 const updateWindowRestoreSettingsCommand = defineRendererCommand({
@@ -31,7 +32,7 @@ const updateThreadNotificationSettingsCommand = defineRendererCommand({
 export const DEFAULT_WINDOW_RESTORE_SETTINGS: WindowRestoreSettings = { policy: "all" };
 
 export const DEFAULT_THREAD_NOTIFICATION_SETTINGS: ThreadNotificationSettings = {
-  turnMode: "unfocused",
+  turnMode: "unseen",
   questionsEnabled: true,
   readbackEnabled: true,
 };
@@ -47,11 +48,7 @@ export function normalizeWindowRestoreSettings(value: unknown): WindowRestoreSet
 export function normalizeThreadNotificationSettings(value: unknown): ThreadNotificationSettings {
   if (!value || typeof value !== "object") return DEFAULT_THREAD_NOTIFICATION_SETTINGS;
   const candidate = value as Partial<ThreadNotificationSettings>;
-  if (
-    candidate.turnMode !== "off" &&
-    candidate.turnMode !== "unfocused" &&
-    candidate.turnMode !== "always"
-  ) {
+  if (!isThreadNotificationTurnMode(candidate.turnMode)) {
     return DEFAULT_THREAD_NOTIFICATION_SETTINGS;
   }
   if (typeof candidate.questionsEnabled !== "boolean") {

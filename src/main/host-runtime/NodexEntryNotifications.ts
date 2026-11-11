@@ -25,12 +25,19 @@ export const turnNotification = (
   },
   mode: ThreadNotificationTurnMode,
   requestEnabled: boolean,
-  foreground: boolean,
+  presence: {
+    /** A Nodex window is focused. */
+    foreground: boolean;
+    /** The Turn's chat is in front of the person in a focused window. */
+    seen: boolean;
+  },
 ): DesktopNotificationPayload | null => {
   if (
     input.blocking
-      ? !requestEnabled || foreground
-      : mode === "off" || (mode === "unfocused" && foreground)
+      ? !requestEnabled || presence.seen
+      : mode === "off" ||
+        (mode === "background" && presence.foreground) ||
+        (mode === "unseen" && presence.seen)
   )
     return null;
   return {
@@ -88,7 +95,8 @@ export const presentation = Layer.effect(
             },
             preferences.turnMode,
             preferences.questionsEnabled,
-            presentation.hasForegroundClient(),
+            // A Page returning to the Inbox has no chat that could already be in view.
+            { foreground: presentation.hasForegroundClient(), seen: false },
           );
           if (payload) yield* Effect.sync(() => show(payload, intent.page_id));
         }),
@@ -116,9 +124,10 @@ export const presentation = Layer.effect(
             },
             preferences.turnMode,
             preferences.questionsEnabled,
-            row.turn?.turn.reason === "question" || row.turn?.turn.reason === "approval"
-              ? presentation.isPresentedInForeground(row.turn.active_chat?.thread_id ?? "")
-              : presentation.hasForegroundClient(),
+            {
+              foreground: presentation.hasForegroundClient(),
+              seen: presentation.isPresentedInForeground(row.turn?.active_chat?.thread_id ?? ""),
+            },
           );
           if (payload) yield* Effect.sync(() => show(payload, intent.page_id, intent.episode));
         }),

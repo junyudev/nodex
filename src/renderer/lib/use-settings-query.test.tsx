@@ -6,7 +6,7 @@ import { TestQueryProvider } from "@/test/query";
 import { useThreadNotificationSettings } from "./use-thread-notification-settings";
 import { useWindowRestoreSettings } from "./use-window-restore-settings";
 
-let threadMode = "unfocused";
+let threadMode = "unseen";
 
 function WindowRestoreHarness() {
   const { settings, isLoading, updateSettings } = useWindowRestoreSettings();
@@ -40,7 +40,7 @@ function ThreadNotificationsHarness() {
 
 describe("settings query hooks", () => {
   beforeEach(() => {
-    threadMode = "unfocused";
+    threadMode = "unseen";
     installWindowApi({
       invoke: async (channel: string, ...args: unknown[]) => {
         if (channel === "settings:window-restore:get") {
@@ -88,7 +88,7 @@ describe("settings query hooks", () => {
     );
 
     await waitFor(() => {
-      expect(view.getByTestId("thread-notifications").textContent).toBe("unfocused");
+      expect(view.getByTestId("thread-notifications").textContent).toBe("unseen");
     });
 
     threadMode = "always";
@@ -106,7 +106,7 @@ test("notification settings retain Readback when another preference changes", as
   installWindowApi({
     invoke: async (channel: string, ...args: unknown[]) => {
       if (channel === "settings:thread-notifications:get")
-        return { turnMode: "unfocused", questionsEnabled: true, readbackEnabled: false };
+        return { turnMode: "unseen", questionsEnabled: true, readbackEnabled: false };
       if (channel === "settings:thread-notifications:update") {
         updates.push(args[0]);
         return args[0];

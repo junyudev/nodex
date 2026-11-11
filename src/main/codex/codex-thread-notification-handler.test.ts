@@ -49,7 +49,7 @@ class FakeSource {
 
 function setup(
   settings: ThreadNotificationSettings = {
-    turnMode: "unfocused",
+    turnMode: "unseen",
     questionsEnabled: true,
     readbackEnabled: true,
   },
@@ -165,7 +165,6 @@ describe("Codex thread notification handler", () => {
     visible.source.eventListener?.(event);
     expect(visible.shown).toEqual([]);
     const background = setup();
-    background.setForegrounded(true);
     background.source.eventListener?.(event);
     expect(background.shown[0]?.body).toBe("Approve the requested action to proceed.");
   });
@@ -221,16 +220,23 @@ describe("Codex thread notification handler", () => {
       },
     ]);
 
-    runtime.setForegrounded(true);
-    runtime.source.eventListener?.(turn("turn-2"));
-    // No window is focused, but the chat is open on a phone in the person's hand.
-    runtime.setForegrounded(false);
+    // Only the chat in front of the person stays quiet; another chat's completion still tells them.
     runtime.setPresented(true);
-    runtime.source.eventListener?.(turn("turn-3"));
+    runtime.source.eventListener?.(turn("turn-2"));
     expect(runtime.shown).toHaveLength(1);
+    runtime.setPresented(false);
+    runtime.source.eventListener?.(turn("turn-3"));
+    expect(runtime.shown).toHaveLength(2);
+
+    const quieter = setup({ turnMode: "background", questionsEnabled: true, readbackEnabled: true });
+    quieter.setForegrounded(true);
+    quieter.source.eventListener?.(turn("turn-5"));
+    expect(quieter.shown).toHaveLength(0);
+    quieter.setForegrounded(false);
+    quieter.source.eventListener?.(turn("turn-6"));
+    expect(quieter.shown).toHaveLength(1);
 
     const always = setup({ turnMode: "always", questionsEnabled: true, readbackEnabled: true });
-    always.setForegrounded(true);
     always.setPresented(true);
     always.source.eventListener?.(turn("turn-4"));
     expect(always.shown).toHaveLength(1);

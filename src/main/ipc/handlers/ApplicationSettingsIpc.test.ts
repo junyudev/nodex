@@ -198,7 +198,7 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       senderFrame: frame,
     } as unknown as IpcMainInvokeEvent;
     assert.deepEqual(yield* handlers.get("settings:thread-notifications:get")!(event), {
-      turnMode: "unfocused",
+      turnMode: "unseen",
       questionsEnabled: true,
       readbackEnabled: true,
     });

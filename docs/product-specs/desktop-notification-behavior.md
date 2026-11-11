@@ -39,7 +39,8 @@ claims them while their episodes are current, then applies preferences, focus
 and OS permission through the shared native notification owner. A restart or
 repeated note never creates a second interruption. Migrated waiting episodes
 start quietly. Question and approval use the question preference and suppress
-while their chat is presented; note-requested notifications use the turn preference.
+while their chat is presented; note-requested notifications use the turn
+preference, with the Turn's chat presented in a focused window counting as seen.
 A desktop's claim is its own. The host's phone notifications read every Member's
 current notifying Turns, claimed or not, tell each episode once to the phones of the
 Member whose move it is while that Member is away, and withdraw one still waiting once
@@ -129,10 +130,11 @@ by provenance.
 
 The two app preferences are independent:
 
-- `turnMode: "off" | "unfocused" | "always"`
+- `turnMode: "off" | "background" | "unseen" | "always"`, shown as `Never`,
+  `When Nodex is in the background`, `When the chat isn't in view` and `Always`
 - `questionsEnabled: boolean`
 
-Defaults are `unfocused` and `true`. They persist under:
+Defaults are `unseen` and `true`. They persist under:
 
 - `thread_notifications_turn_mode`
 - `thread_notifications_questions_enabled`
@@ -144,7 +146,7 @@ notifications does not change OS permission.
 ## Turn Policy
 
 Turn policy is evaluated in this order. Steps 1–6 decide whether the occurrence
-is worth telling anyone and are shared by every channel; steps 7–9 belong to the
+is worth telling anyone and are shared by every channel; steps 7–10 belong to the
 desktop.
 
 A managed chat first suppresses its own terminal-turn notification with reason `managed`,
@@ -162,9 +164,16 @@ observation occurrences remain intact. See [Coordinator behavior](coordinator-be
 5. `threadSource === "realtime_voice"` suppresses;
 6. a terminal-specific pending continuation suppresses;
 7. `turnMode === "off"` suppresses;
-8. `turnMode === "unfocused"` suppresses while any Workbench window is
-   foregrounded, or while the conversation is seen;
-9. otherwise show.
+8. `turnMode === "background"` suppresses while any Workbench window is
+   foregrounded;
+9. every mode but `always` suppresses while the conversation is seen;
+10. otherwise show.
+
+By default window focus alone does not suppress. A person reading one chat is
+told when another finishes, whether they or an Automation started it: the chat in
+front of them is the only one they are known to have read. `background` is the
+quieter choice for people who rely on the chat list while Nodex is in front, and
+`always` also notifies for the chat in view.
 
 Pending continuation is exact to the terminal state:
 

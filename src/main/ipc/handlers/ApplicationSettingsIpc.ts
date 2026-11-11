@@ -46,6 +46,7 @@ import type {
   UpdateThreadNotificationSettingsInput,
   UpdateWindowRestoreSettingsInput,
 } from "../../../shared/types";
+import { THREAD_NOTIFICATION_TURN_MODES } from "../../../shared/types";
 import { CoreModules } from "../../core-runtime/CoreModules";
 import {
   readRoutingConsent,
@@ -132,7 +133,7 @@ const TelemetryUpdate = z
   .strict() satisfies z.ZodType<UpdateTelemetrySettingsInput>;
 const ThreadNotificationUpdate = z
   .object({
-    turnMode: z.enum(["off", "unfocused", "always"]),
+    turnMode: z.enum(THREAD_NOTIFICATION_TURN_MODES),
     questionsEnabled: z.boolean(),
     readbackEnabled: z.boolean().optional(),
   })

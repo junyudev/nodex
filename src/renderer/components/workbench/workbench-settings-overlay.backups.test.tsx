@@ -139,7 +139,7 @@ async function renderOverlay(path = buildSettingsPath("backups")) {
       }
       if (channel === "settings:thread-notifications:get") {
         return {
-          turnMode: "unfocused",
+          turnMode: "unseen",
           questionsEnabled: true,
         };
       }
@@ -180,7 +180,7 @@ describe("SettingsRouteShell backups", () => {
       switch (channel) {
         case "settings:thread-notifications:get":
           return {
-            turnMode: "unfocused",
+            turnMode: "unseen",
             questionsEnabled: true,
           };
         case "settings:app-updates:get":
@@ -292,7 +292,7 @@ describe("SettingsRouteShell backups", () => {
       switch (channel) {
         case "settings:thread-notifications:get":
           return {
-            turnMode: "unfocused",
+            turnMode: "unseen",
             questionsEnabled: true,
           };
         case "settings:app-updates:get":
@@ -355,7 +355,7 @@ describe("SettingsRouteShell backups", () => {
       switch (channel) {
         case "settings:thread-notifications:get":
           return {
-            turnMode: "unfocused",
+            turnMode: "unseen",
             questionsEnabled: true,
           };
         case "settings:app-updates:get":
@@ -426,7 +426,7 @@ describe("SettingsRouteShell backups", () => {
       switch (channel) {
         case "settings:thread-notifications:get":
           return {
-            turnMode: "unfocused",
+            turnMode: "unseen",
             questionsEnabled: true,
           };
         case "settings:app-updates:get":

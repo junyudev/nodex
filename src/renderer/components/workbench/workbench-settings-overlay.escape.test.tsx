@@ -68,7 +68,7 @@ function installSettingsWindowApi() {
           };
         case "settings:thread-notifications:get":
           return {
-            turnMode: "unfocused",
+            turnMode: "unseen",
             questionsEnabled: true,
           };
         case "settings:app-updates:get":

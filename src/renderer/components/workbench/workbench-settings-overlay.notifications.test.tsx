@@ -18,7 +18,7 @@ afterEach(() => {
 describe("ThreadNotificationSettingControl", () => {
   test("renders turn, question and Readback preferences and persists each choice", async () => {
     let settings: ThreadNotificationSettings = {
-      turnMode: "unfocused",
+      turnMode: "unseen",
       questionsEnabled: true,
       readbackEnabled: true,
     };
@@ -62,7 +62,7 @@ describe("ThreadNotificationSettingControl", () => {
     });
     expect(questionSwitch.getAttribute("aria-checked")).toBe("true");
 
-    const trigger = view.getByRole("button", { name: "Only when unfocused" });
+    const trigger = view.getByRole("button", { name: "When the chat isn't in view" });
     await waitFor(() => {
       expect(trigger.hasAttribute("disabled")).toBe(false);
     });
@@ -79,6 +79,7 @@ describe("ThreadNotificationSettingControl", () => {
       expect(trigger.getAttribute("aria-expanded")).toBe("true");
     });
     const alwaysOption = await view.findByRole("menuitem", { name: "Always" });
+    view.getByRole("menuitem", { name: "When Nodex is in the background" });
     await act(async () => {
       fireEvent.click(alwaysOption);
       await Promise.resolve();
@@ -131,7 +132,7 @@ test("requests native permission and updates its status without changing notific
         return permission;
       }
       if (channel === "settings:thread-notifications:get")
-        return { turnMode: "unfocused", questionsEnabled: true, readbackEnabled: true };
+        return { turnMode: "unseen", questionsEnabled: true, readbackEnabled: true };
       return originalApi?.invoke(channel, ...args);
     },
   } as typeof window.api;

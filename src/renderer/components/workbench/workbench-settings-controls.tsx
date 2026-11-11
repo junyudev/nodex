@@ -204,7 +204,8 @@ const THREAD_NOTIFICATION_TURN_MODE_OPTIONS: Array<{
   label: string;
 }> = [
   { value: "off", label: "Never" },
-  { value: "unfocused", label: "Only when unfocused" },
+  { value: "background", label: "When Nodex is in the background" },
+  { value: "unseen", label: "When the chat isn't in view" },
   { value: "always", label: "Always" },
 ];
 
@@ -218,8 +219,7 @@ function ThreadNotificationTurnModeControl({
   disabled: boolean;
 }) {
   const selectedLabel =
-    THREAD_NOTIFICATION_TURN_MODE_OPTIONS.find((option) => option.value === value)?.label ??
-    "Only when unfocused";
+    THREAD_NOTIFICATION_TURN_MODE_OPTIONS.find((option) => option.value === value)?.label ?? "";
 
   return (
     <NodexDropdownMenu

@@ -168,7 +168,7 @@ export const makeCodexThreadNotificationHandler =
     if (event.type === "session-reminder") {
       if (
         settings.turnMode === "off" ||
-        (settings.turnMode === "unfocused" && options.isAppForegrounded()) ||
+        (settings.turnMode === "background" && options.isAppForegrounded()) ||
         options.isConversationSeen(event.hostId, event.conversation)
       )
         return;

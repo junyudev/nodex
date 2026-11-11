@@ -101,7 +101,7 @@ describe("codex thread notification policy", () => {
       managed: false,
       isAppForegrounded: false,
       isConversationSeen: false,
-      turnMode: "unfocused" as const,
+      turnMode: "unseen" as const,
     };
     expect(
       decideCodexTurnNotification(
@@ -188,18 +188,34 @@ describe("codex thread notification policy", () => {
         turnMode: "off",
       }),
     ).toEqual({ type: "suppress", reason: "setting-disabled" });
+    // Seen covers a focused window presenting the chat and a phone showing it.
     expect(
       decideCodexTurnNotification(turn(), {
         ...always,
-        turnMode: "unfocused",
+        turnMode: "unseen",
+      }),
+    ).toEqual({ type: "suppress", reason: "conversation-presented" });
+    // Reading another chat in a focused window does not make this one seen.
+    expect(
+      decideCodexTurnNotification(turn(), {
+        ...always,
+        isConversationSeen: false,
+        turnMode: "unseen",
+      }),
+    ).toEqual({ type: "show" });
+    // The quieter choice yields to any focused window, and still to a phone showing the chat.
+    expect(
+      decideCodexTurnNotification(turn(), {
+        ...always,
+        isConversationSeen: false,
+        turnMode: "background",
       }),
     ).toEqual({ type: "suppress", reason: "app-focused" });
-    // A chat open on a phone is in front of the person even while no window is focused.
     expect(
       decideCodexTurnNotification(turn(), {
         ...always,
         isAppForegrounded: false,
-        turnMode: "unfocused",
+        turnMode: "background",
       }),
     ).toEqual({ type: "suppress", reason: "conversation-presented" });
   });

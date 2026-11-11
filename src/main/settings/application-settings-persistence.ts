@@ -117,6 +117,10 @@ import type {
   WindowRestorePolicy,
   WindowRestoreSettings,
 } from "../../shared/types";
+import {
+  THREAD_NOTIFICATION_TURN_MODES,
+  isThreadNotificationTurnMode,
+} from "../../shared/types";
 import { normalizeCodexSshExecutionHostConfig } from "../codex/codex-ssh-execution-host";
 import {
   DEFAULT_INBOX_SETTINGS,
@@ -224,7 +228,7 @@ const BACKUP_INTERVAL_DEFAULT = 6;
 const BACKUP_RETENTION_DEFAULT = 28;
 const BACKUP_RETENTION_GIB_DEFAULT = 32;
 const BACKUP_RETENTION_GIB_MAX = 8_192;
-const THREAD_NOTIFICATIONS_TURN_MODE_DEFAULT: ThreadNotificationTurnMode = "unfocused";
+const THREAD_NOTIFICATIONS_TURN_MODE_DEFAULT: ThreadNotificationTurnMode = "unseen";
 const THREAD_NOTIFICATIONS_QUESTIONS_ENABLED_DEFAULT = true;
 const APP_UPDATES_AUTO_CHECK_DEFAULT = true;
 const WINDOW_RESTORE_POLICY_DEFAULT: WindowRestorePolicy = "all";
@@ -453,12 +457,9 @@ function threadNotificationSettingsFromConfig(
   config: ServerTomlConfig,
 ): ThreadNotificationSettings {
   return {
-    turnMode:
-      config.thread_notifications_turn_mode === "off" ||
-      config.thread_notifications_turn_mode === "unfocused" ||
-      config.thread_notifications_turn_mode === "always"
-        ? config.thread_notifications_turn_mode
-        : THREAD_NOTIFICATIONS_TURN_MODE_DEFAULT,
+    turnMode: isThreadNotificationTurnMode(config.thread_notifications_turn_mode)
+      ? config.thread_notifications_turn_mode
+      : THREAD_NOTIFICATIONS_TURN_MODE_DEFAULT,
     readbackEnabled:
       typeof config.thread_readback_enabled === "boolean" ? config.thread_readback_enabled : true,
     questionsEnabled:
@@ -1176,8 +1177,8 @@ export function updateThreadNotificationSettings(
   input: UpdateThreadNotificationSettingsInput,
   source: ApplicationSettingsDocumentSource,
 ): ThreadNotificationSettings {
-  if (input.turnMode !== "off" && input.turnMode !== "unfocused" && input.turnMode !== "always") {
-    throw new Error("turnMode must be one of off, unfocused, or always");
+  if (!isThreadNotificationTurnMode(input.turnMode)) {
+    throw new Error(`turnMode must be one of ${THREAD_NOTIFICATION_TURN_MODES.join(", ")}`);
   }
   if (typeof input.questionsEnabled !== "boolean") {
     throw new Error("questionsEnabled must be a boolean");

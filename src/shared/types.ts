@@ -1892,7 +1892,14 @@ export interface UpdateTelemetrySettingsInput {
   enabled: boolean;
 }
 
-export type ThreadNotificationTurnMode = "off" | "unfocused" | "always";
+/**
+ * `background` stays quiet while any Nodex window is focused; `unseen` only while the chat
+ * itself is in front of the person.
+ */
+export const THREAD_NOTIFICATION_TURN_MODES = ["off", "background", "unseen", "always"] as const;
+export type ThreadNotificationTurnMode = (typeof THREAD_NOTIFICATION_TURN_MODES)[number];
+export const isThreadNotificationTurnMode = (value: unknown): value is ThreadNotificationTurnMode =>
+  THREAD_NOTIFICATION_TURN_MODES.includes(value as ThreadNotificationTurnMode);
 
 export interface ThreadNotificationSettings {
   turnMode: ThreadNotificationTurnMode;

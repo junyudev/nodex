@@ -19,14 +19,21 @@ const occurrence = {
   blocking: false,
 };
 it("applies preferences to episode notifications", () => {
-  expect(turnNotification(occurrence, "off", true, false)).toBeNull();
-  expect(turnNotification(occurrence, "unfocused", true, true)).toBeNull();
-  expect(turnNotification({ ...occurrence, blocking: true }, "always", false, false)).toBeNull();
-  expect(turnNotification(occurrence, "always", true, false)?.id).toBe(
+  const away = { foreground: false, seen: false };
+  const elsewhere = { foreground: true, seen: false };
+  const reading = { foreground: true, seen: true };
+  expect(turnNotification(occurrence, "off", true, away)).toBeNull();
+  expect(turnNotification(occurrence, "unseen", true, reading)).toBeNull();
+  // A focused window showing something else still leaves the Turn untold.
+  expect(turnNotification(occurrence, "unseen", true, elsewhere)).not.toBeNull();
+  expect(turnNotification(occurrence, "background", true, elsewhere)).toBeNull();
+  expect(turnNotification(occurrence, "background", true, away)).not.toBeNull();
+  expect(turnNotification({ ...occurrence, blocking: true }, "always", false, away)).toBeNull();
+  expect(turnNotification(occurrence, "always", true, away)?.id).toBe(
     JSON.stringify(["turn", "personal", "member", "page", "episode"]),
   );
-  expect(turnNotification({ ...occurrence, spaceId: "team" }, "always", true, false)?.id).not.toBe(
-    turnNotification(occurrence, "always", true, false)?.id,
+  expect(turnNotification({ ...occurrence, spaceId: "team" }, "always", true, away)?.id).not.toBe(
+    turnNotification(occurrence, "always", true, away)?.id,
   );
 });
 it.effect("claims Turn and Later intents once and opens each Inbox message on click", () =>
@@ -85,6 +92,7 @@ it.effect("claims Turn and Later intents once and opens each Inbox message on cl
       } as never),
       Effect.provideService(CodexRendererPresentationRegistry, {
         hasForegroundClient: () => false,
+        isPresentedInForeground: () => false,
       } as never),
       Effect.provideService(WindowRuntime, {
         getLastFocused: () => ({

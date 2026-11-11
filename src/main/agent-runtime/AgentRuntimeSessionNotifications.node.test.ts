@@ -191,7 +191,7 @@ it.effect("an automatic wake Run after delegated results notifies once it finish
 
 it.effect("a seen Session stays read and its completion carries the reply for other channels", () =>
   Effect.gen(function* () {
-    const h = harness({ presented: true, settings: { turnMode: "unfocused" } });
+    const h = harness({ presented: true, settings: { turnMode: "unseen" } });
     yield* h.deliver([
       transition(activity("running"), null, { runId: "run:1", status: "completed" }),
     ]);

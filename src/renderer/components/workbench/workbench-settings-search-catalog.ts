@@ -270,7 +270,8 @@ export const SETTINGS_SEARCH_PANELS = {
             "Show alerts when notification permissions are required",
             "Show alerts when input is needed to continue",
             "Never",
-            "Only when unfocused",
+            "When Nodex is in the background",
+            "When the chat isn't in view",
             "Always",
           ]),
           entry(
