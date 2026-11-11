@@ -1,3 +1,7 @@
+import {
+  readBrowserRuntimeReleaseLock,
+  resolveBrowserRuntimeReleaseLockPath,
+} from "./browser-runtime-release-lock";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
@@ -129,7 +133,9 @@ function verifyPlatformRuntime(
   verifier: AgentRuntimeMacosPlatformContractVerifier,
 ): void {
   if (target.targetPlatform === "win32") {
-    verifyWindowsArchitectureClosure(runtimeRoot, target.targetArch);
+    verifyWindowsArchitectureClosure(runtimeRoot, target.targetArch, {
+      desktopToolsRoot: join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY),
+    });
     return;
   }
   verifier({
@@ -634,8 +640,12 @@ async function stageCodexRuntimeClosure(
   );
   const target = resolveCodexRuntimeTarget(options.targetPlatform, options.targetArch);
   const lock = targetReleaseLock(readCodexAppServerReleaseLock(lockPath), target);
-  if (target.targetPlatform === "win32" && options.browserRuntimeSourceRoot)
-    throw new Error("Browser runtime is unavailable on Windows");
+  const windowsReleaseAsset =
+    target.targetPlatform === "win32" && options.browserRuntimeSourceRoot
+      ? readBrowserRuntimeReleaseLock(resolveBrowserRuntimeReleaseLockPath(repositoryRoot)).assets[
+          `win32-${target.targetArch}`
+        ]
+      : undefined;
   const platformContractVerifier =
     options.agentRuntimePlatformContractVerifier ?? verifyAgentRuntimeMacosPlatformContract;
   const build = lock.builds[target.targetKey];
@@ -665,14 +675,15 @@ async function stageCodexRuntimeClosure(
         lock.requiredArtifacts,
         platformContractVerifier,
       );
-      if (options.browserRuntimeSourceRoot && target.targetPlatform === "darwin") {
+      if (options.browserRuntimeSourceRoot) {
         await stageBrowserRuntime({
           appServerIdentity: projectBundledAppServerRuntimeIdentity(reusable),
           platformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
           runtimeRoot: join(outputPath, "agent-runtime"),
           sourceRoot: options.browserRuntimeSourceRoot,
-          targetArch: "arm64",
-          targetPlatform: "darwin",
+          windowsReleaseAsset,
+          targetArch: target.targetArch,
+          targetPlatform: target.targetPlatform,
         });
       }
       process.stderr.write("Reused verified staged agent runtime.\n");
@@ -802,14 +813,15 @@ async function stageCodexRuntimeClosure(
     const metadataPath = join(tempRuntimeRoot, AGENT_RUNTIME_METADATA_FILENAME);
     writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
     chmodSync(metadataPath, REGULAR_RUNTIME_MODE);
-    if (options.browserRuntimeSourceRoot && target.targetPlatform === "darwin") {
+    if (options.browserRuntimeSourceRoot) {
       await stageBrowserRuntime({
         appServerIdentity: projectBundledAppServerRuntimeIdentity(metadata),
         platformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
         runtimeRoot: tempRuntimeRoot,
         sourceRoot: options.browserRuntimeSourceRoot,
-        targetArch: "arm64",
-        targetPlatform: "darwin",
+        windowsReleaseAsset,
+        targetArch: target.targetArch,
+        targetPlatform: target.targetPlatform,
       });
     }
     replaceOwnedDirectory(tempRuntimeRoot, join(outputPath, "agent-runtime"));

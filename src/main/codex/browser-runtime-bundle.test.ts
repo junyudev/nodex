@@ -207,7 +207,9 @@ describe("resolveBrowserRuntimeBundle", () => {
     const result = await resolveBrowserRuntimeBundle({
       appServerIdentity: APP_SERVER_IDENTITY,
       platformArtifactVerifier: async ({ artifact, manifest }) =>
-        artifact.kind === "native-addon" && manifest.peerAuthorization.signingTeamId !== "REALTEAM"
+        artifact.kind === "native-addon" &&
+        manifest.targetPlatform === "darwin" &&
+        manifest.trust.signingTeamId !== "REALTEAM"
           ? "unexpected signing team"
           : null,
       runtimeRoot,

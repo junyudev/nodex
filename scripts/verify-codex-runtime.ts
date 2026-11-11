@@ -182,7 +182,9 @@ export async function verifyCodexRuntime(input: {
     verifyAgentVendorSignatures(runtimeRoot, metadata.artifacts, lock.upstream.signingTeamId);
     if (runtime.browserRuntime.status === "available") {
       const { bundle } = runtime.browserRuntime;
-      const browserRuntimeTeamIdentifier = bundle.manifest.peerAuthorization.signingTeamId;
+      if (bundle.manifest.targetPlatform !== "darwin")
+        throw new Error("Expected macOS Desktop Tools");
+      const browserRuntimeTeamIdentifier = bundle.manifest.trust.signingTeamId;
       const computerUseCapability = bundle.manifest.capabilities.computerUse;
       for (const artifact of bundle.manifest.artifacts) {
         if (artifact.kind === "data" || artifact.architecture === "any") continue;
@@ -202,7 +204,7 @@ export async function verifyCodexRuntime(input: {
         const expectedTeamIdentifier =
           computerUseCapability.status === "available" &&
           artifact.path.startsWith(`${computerUseCapability.appBundle}/`)
-            ? computerUseCapability.signingTeamId
+            ? bundle.manifest.trust.computerUseSigningTeamId
             : browserRuntimeTeamIdentifier;
         if (artifactTeamIdentifier !== expectedTeamIdentifier) {
           throw new Error(

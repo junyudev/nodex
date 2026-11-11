@@ -544,20 +544,30 @@ associated with the producing run.
 
 ## Desktop Tool runtime releases and Latest
 
-The separately sealed Desktop Tool runtime currently retains the
-`browser-runtime` tag and command names for release compatibility, but it
-contains Browser, native PiP, and Computer Use artifacts for Apple silicon.
-It must never become the app Latest release. Publish it only through:
+The Desktop Tool release lock selects a separate closure for each target.
+Apple silicon includes Browser Use, Computer Use and native PiP. Windows x64
+and arm64 include Browser Use and Computer Use. Each lock entry pins the archive,
+manifest and runtime versions. A local candidate has a null URL and can be
+materialized from a supplied archive or the digest-addressed cache. Automated
+packaging selects published assets.
+
+The Desktop Tool release must never become the app Latest release. Publish
+published-target archives through:
 
 ```bash
 vp run browser-runtime:publish -- \
   --repo junyudev/nodex \
   --tag browser-runtime-v<build> \
   --lock <reviewed-candidate-lock.json> \
-  --arm64 <arm64-archive>
+  --arm64 <macos-arm64-archive>
 ```
 
-That Interface requires the reviewed release lock, proves the archive's name,
+For a new release with both Windows assets, also pass
+`--win32-x64 <archive>` and `--win32-arm64 <archive>` after the matching
+Windows workers verify their closures and exact app-server pairs.
+Use a new release tag for a changed asset set.
+
+The publication command requires the reviewed release lock, proves the archive's name,
 size, hash, manifest, target architecture, and complete artifact closure,
 then creates or resumes an exact draft, uploads only missing assets, publishes
 only after creating against `--verify-tag`, forces `--latest=false`, and asserts

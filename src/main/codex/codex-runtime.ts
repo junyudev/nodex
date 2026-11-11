@@ -1,3 +1,4 @@
+import type { WindowsBrowserRuntimeVerifierPort } from "./browser-runtime-windows-verifier-port";
 import type { Stats } from "node:fs";
 import fs from "node:fs/promises";
 import {
@@ -101,6 +102,7 @@ type ResolveCodexRuntimeOptions = {
   platform?: string;
   architecture?: string;
   browserRuntimePlatformArtifactVerifier?: BrowserRuntimePlatformArtifactVerifier;
+  windowsBrowserRuntimeVerifier?: WindowsBrowserRuntimeVerifierPort;
   signal?: AbortSignal;
   isPackaged: boolean;
   projectRootPath?: string;
@@ -112,6 +114,7 @@ async function resolveRuntimeFromRoot(input: {
   architecture?: string;
   signal?: AbortSignal;
   browserRuntimePlatformArtifactVerifier?: BrowserRuntimePlatformArtifactVerifier;
+  windowsBrowserRuntimeVerifier?: WindowsBrowserRuntimeVerifierPort;
   missingBinaryMessage: string;
   runtimeRoot: string;
   nodeRuntimeRoot: string;
@@ -134,6 +137,7 @@ async function resolveRuntimeFromRoot(input: {
   await validateRuntimeSearchPaths(input.runtimeRoot, metadata);
   const browserRuntime = await resolveBrowserRuntimeBundle({
     signal: input.signal,
+    windowsVerifier: input.windowsBrowserRuntimeVerifier,
     appServerIdentity: projectBundledAppServerRuntimeIdentity(metadata),
     platformArtifactVerifier:
       input.browserRuntimePlatformArtifactVerifier ??
@@ -204,6 +208,7 @@ export async function resolveCodexRuntime(
       platform: options.platform,
       architecture: options.architecture,
       browserRuntimePlatformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
+      windowsBrowserRuntimeVerifier: options.windowsBrowserRuntimeVerifier,
       signal: options.signal,
       source: "staged",
       runtimeRoot: path.join(projectRootPath, ".generated", "codex-runtime", "agent-runtime"),
@@ -222,6 +227,7 @@ export async function resolveCodexRuntime(
     platform: options.platform,
     architecture: options.architecture,
     browserRuntimePlatformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
+    windowsBrowserRuntimeVerifier: options.windowsBrowserRuntimeVerifier,
     signal: options.signal,
     source: "bundled",
     runtimeRoot: resourcesPath,

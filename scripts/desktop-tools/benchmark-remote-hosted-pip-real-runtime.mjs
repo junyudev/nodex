@@ -205,13 +205,13 @@ function inspectRuntime(runtimeRoot) {
   const chrome = manifest.capabilities.browserUse.backends.chrome;
   if (chrome.status !== "available") throw new Error("Runtime has no Chrome capability");
 
-  const expectedTeamId = manifest.peerAuthorization.signingTeamId;
+  const expectedTeamId = manifest.trust.signingTeamId;
   const sky = verifyKeyArtifact(verifiedRoot, manifest, nativePip.addon, expectedTeamId);
   const chromeHost = verifyKeyArtifact(
     verifiedRoot,
     manifest,
     chrome.nativeHost.path,
-    chrome.nativeHost.signingTeamId,
+    manifest.trust.chromeSigningTeamId,
   );
   const computerUse = manifest.capabilities.computerUse;
   const service =
@@ -220,7 +220,7 @@ function inspectRuntime(runtimeRoot) {
           verifiedRoot,
           manifest,
           computerUse.serviceExecutable,
-          computerUse.signingTeamId,
+          manifest.trust.computerUseSigningTeamId,
         )
       : null;
 

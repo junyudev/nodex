@@ -353,11 +353,7 @@ export const refreshSignedBrowserRuntimeManifest = (appPath, options = {}) => {
     manifestPath,
   );
   const peerAuthorization = artifacts.find((artifact) => artifact.path === peerAuthorizationPath);
-  if (
-    !peerAuthorization ||
-    peerAuthorization.kind !== "native-addon" ||
-    !manifest.peerAuthorization
-  ) {
+  if (!peerAuthorization || peerAuthorization.kind !== "native-addon" || !manifest.trust) {
     throw new Error(`Browser runtime peer authorization is invalid: ${manifestPath}`);
   }
   const bundledPeerAuthorizationPath = path.join(
@@ -371,7 +367,8 @@ export const refreshSignedBrowserRuntimeManifest = (appPath, options = {}) => {
     bundledPeerAuthorizationPath,
   );
 
-  let capabilities = manifest.capabilities;
+  const capabilities = manifest.capabilities;
+  const trust = { ...manifest.trust, signingTeamId };
   if (capabilities?.computerUse?.status === "available") {
     const serviceExecutablePath = requireSafeAgentArtifactPath(
       capabilities.computerUse.serviceExecutable,
@@ -384,27 +381,17 @@ export const refreshSignedBrowserRuntimeManifest = (appPath, options = {}) => {
       "browser-runtime",
       ...serviceExecutablePath.split("/"),
     );
-    capabilities = {
-      ...capabilities,
-      computerUse: {
-        ...capabilities.computerUse,
-        signingTeamId: (
-          options.readComputerUseSigningTeamIdentifier ??
-          options.readSigningTeamIdentifier ??
-          readMacosTeamIdentifier
-        )(bundledServiceExecutablePath),
-      },
-    };
+    trust.computerUseSigningTeamId = (
+      options.readComputerUseSigningTeamIdentifier ??
+      options.readSigningTeamIdentifier ??
+      readMacosTeamIdentifier
+    )(bundledServiceExecutablePath);
   }
 
   writeManifestAtomically(manifestPath, {
     ...manifest,
     artifacts,
-    capabilities,
-    peerAuthorization: {
-      ...manifest.peerAuthorization,
-      signingTeamId,
-    },
+    trust,
   });
   return true;
 };

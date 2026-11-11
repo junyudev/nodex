@@ -609,18 +609,6 @@ const VERSION_SURFACES: readonly Surface[] = [
     "enforce the minimum supported macOS release",
   ],
   [
-    "src/shared/browser-runtime-metadata.ts:LEGACY_BROWSER_RUNTIME_SCHEMA_VERSION",
-    "durableFormat",
-    "Browser runtime manifest decoder",
-    "normalize the supported prior manifest format",
-  ],
-  [
-    "src/shared/browser-runtime-metadata.ts:RPC_BROWSER_RUNTIME_SCHEMA_VERSION",
-    "durableFormat",
-    "Browser runtime manifest decoder",
-    "normalize immutable trusted-RPC runtime manifests",
-  ],
-  [
     "src/shared/codex-peer-protocol.ts:CODEX_PEER_METHOD_VERSIONS",
     "runtimeCompatibility",
     "Codex peer method contracts",

@@ -267,6 +267,8 @@ describe("materializeBundledDesktopToolMarketplace", () => {
 
   test("omits Computer Use when the runtime capability is unavailable", async () => {
     const fixture = await makeRuntime();
+    if (fixture.bundle.manifest.targetPlatform !== "darwin")
+      throw new Error("Expected macOS fixture");
     const bundle = {
       ...fixture.bundle,
       manifest: {

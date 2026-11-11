@@ -11,7 +11,10 @@ const runtime = (exports = ["startModifierCapture"]): BrowserRuntimeAvailability
     status: "available",
     bundle: {
       paths: { skyNativeAddon: "/verified/browser-runtime/native/sky.node" },
-      manifest: { capabilities: { nativePip: { exports: { expectedExports: exports } } } },
+      manifest: {
+        targetPlatform: "darwin",
+        capabilities: { nativePip: { exports: { expectedExports: exports } } },
+      },
     },
   }) as BrowserRuntimeAvailability;
 

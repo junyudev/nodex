@@ -1,3 +1,4 @@
+import { vendorWindowsBrowserRuntime } from "./vendor-windows-browser-runtime";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -11,7 +12,8 @@ import {
   BROWSER_RUNTIME_SCHEMA_VERSION,
   parseBrowserRuntimeManifest,
   type BrowserRuntimeArtifact,
-  type BrowserRuntimeManifest,
+  type MacBrowserRuntimeManifest,
+  type WindowsBrowserRuntimeArch,
 } from "../src/shared/browser-runtime-metadata";
 import { parseMachOMinimumMacosVersion } from "../src/shared/mach-o-minimum-macos";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
@@ -398,7 +400,9 @@ function pruneForeignNativeArtifacts(
   }
 }
 
-export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): BrowserRuntimeManifest {
+export function vendorBrowserRuntime(
+  options: VendorBrowserRuntimeOptions,
+): MacBrowserRuntimeManifest {
   if (process.platform !== "darwin") {
     throw new Error("Preparing the macOS Browser runtime requires macOS");
   }
@@ -498,22 +502,23 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
   const desktopBuildNumber = readPlistValue(plistPath, "CFBundleVersion");
   const pluginVersion = readNonEmptyString(pluginManifest.version, "Browser plugin version");
   const peerSigningTeamId = readSigningTeamId(peerAddonPath);
-  const runtimeVersions: BrowserRuntimeManifest["runtimeVersions"] = {
+  const runtimeVersions: MacBrowserRuntimeManifest["runtimeVersions"] = {
     codexCli: readExecutableVersion(codexPath),
     cuaRuntime: readCuaRuntimeVersion(cuaManifest),
     node: readExecutableVersion(nodePath),
     peerAuthorization: `sha256:${readSha256(peerAddonPath)}`,
   };
   if (options.reuseExisting) {
-    let existing: BrowserRuntimeManifest | null = null;
+    let existing: MacBrowserRuntimeManifest | null = null;
     try {
       const stats = fs.lstatSync(outputPath);
       if (stats.isDirectory() && !stats.isSymbolicLink()) {
-        existing = parseBrowserRuntimeManifest(
+        const parsed = parseBrowserRuntimeManifest(
           JSON.parse(
             fs.readFileSync(path.join(outputPath, BROWSER_RUNTIME_MANIFEST_FILENAME), "utf8"),
           ),
         );
+        if (parsed?.targetPlatform === "darwin") existing = parsed;
       }
     } catch {
       existing = null;
@@ -529,7 +534,7 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
         chromeNativeHostMinimumMacos &&
       JSON.stringify(existing.capabilities.nativePip.exports.expectedExports) ===
         JSON.stringify(skyNativeExports) &&
-      existing.peerAuthorization.signingTeamId === peerSigningTeamId &&
+      existing.trust.signingTeamId === peerSigningTeamId &&
       existing.targetArch === options.targetArch &&
       JSON.stringify(existing.runtimeVersions) === JSON.stringify(runtimeVersions)
     ) {
@@ -577,7 +582,7 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
     );
 
     const artifacts = listArtifacts(preparedRoot, options.targetArch);
-    const manifest: BrowserRuntimeManifest = {
+    const manifest: MacBrowserRuntimeManifest = {
       artifacts,
       browserPlugin: {
         client: "marketplace/plugins/browser/scripts/browser-client.mjs",
@@ -604,7 +609,6 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
                 hostName: "com.openai.codexextension",
                 path: `marketplace/plugins/chrome/extension-host/macos/${options.targetArch}/ChatGPT for Chrome`,
                 productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
-                signingTeamId: readSigningTeamId(chromeNativeHostPath),
               },
               plugin: {
                 id: "chrome@openai-bundled",
@@ -645,7 +649,6 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
                 "runtime/lib/node_modules/@oai/sky/dist/project/cua/sky_js/src/service.js",
               serviceExecutable:
                 "runtime/lib/node_modules/@oai/sky/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
-              signingTeamId: readSigningTeamId(computerUseServicePath),
               status: "available",
             }
           : {
@@ -677,7 +680,11 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
         nodeRepl: "bin/node_repl",
         peerAuthorization: "native/browser-use-peer-authorization.node",
       },
-      peerAuthorization: {
+      trust: {
+        chromeSigningTeamId: readSigningTeamId(chromeNativeHostPath),
+        ...(computerUseAvailable
+          ? { computerUseSigningTeamId: readSigningTeamId(computerUseServicePath) }
+          : {}),
         nodeApiVersion: readNodeApiVersion(nodePath),
         signingTeamId: peerSigningTeamId,
       },
@@ -699,7 +706,15 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
   }
 }
 
-function parseCliOptions(argv: string[]): VendorBrowserRuntimeOptions {
+type VendorOptions =
+  | VendorBrowserRuntimeOptions
+  | {
+      packageRoot: string;
+      codexCompatibilityVersion: string;
+      outputPath: string;
+      targetArch: WindowsBrowserRuntimeArch;
+    };
+function parseCliOptions(argv: string[]): VendorOptions {
   const args = argv.filter((value) => value !== "--");
   const values = new Map<string, string>();
   let reuseExisting = false;
@@ -720,11 +735,30 @@ function parseCliOptions(argv: string[]): VendorBrowserRuntimeOptions {
   const appPath = values.get("--app");
   const outputPath = values.get("--out");
   const targetArch = values.get("--target-arch");
-  if (!appPath || !codexCompatibilityVersion || !outputPath || targetArch !== "arm64") {
+  const packageRoot = values.get("--windows-package");
+  if (
+    packageRoot &&
+    !appPath &&
+    !reuseExisting &&
+    codexCompatibilityVersion &&
+    outputPath &&
+    (targetArch === "x64" || targetArch === "arm64")
+  ) {
+    return { packageRoot, codexCompatibilityVersion, outputPath, targetArch };
+  }
+  if (
+    packageRoot ||
+    !appPath ||
+    !codexCompatibilityVersion ||
+    !outputPath ||
+    targetArch !== "arm64"
+  ) {
     throw new Error(
       "Usage: vendor-browser-runtime.ts " +
         "--codex-compatibility-version <version> --target-arch <arm64> " +
-        "--app <ChatGPT.app> --out <directory> [--reuse-existing]",
+        "--app <ChatGPT.app> --out <directory> [--reuse-existing]\n" +
+        "Windows: --windows-package <extracted MSIX directory> --target-arch <x64|arm64> " +
+        "--codex-compatibility-version <version> --out <directory>",
     );
   }
   return {
@@ -738,7 +772,16 @@ function parseCliOptions(argv: string[]): VendorBrowserRuntimeOptions {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const manifest = vendorBrowserRuntime(parseCliOptions(process.argv.slice(2)));
+    const options = parseCliOptions(process.argv.slice(2));
+    const manifest =
+      "packageRoot" in options
+        ? vendorWindowsBrowserRuntime(options)
+        : vendorBrowserRuntime(options);
+    if (manifest.targetPlatform === "win32") {
+      process.stderr.write(
+        "Static vendoring only. Run Windows version and N-API probes and native Authenticode verification on the matching worker.\n",
+      );
+    }
     process.stdout.write(
       `${JSON.stringify({
         artifacts: manifest.artifacts.length,

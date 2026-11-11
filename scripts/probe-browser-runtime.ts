@@ -161,6 +161,8 @@ export async function inspectBrowserRuntime(
     throw new Error("Agent runtime is missing its app-server runtime version");
   }
   const bundle = runtime.browserRuntime.bundle;
+  if (bundle.manifest.targetPlatform !== "darwin" || !bundle.paths.skyNativeAddon)
+    throw new Error("This Desktop Tool probe requires macOS");
   const nativeCapability = bundle.manifest.capabilities.nativePip;
   const nativeArtifact = bundle.manifest.artifacts.find(
     (artifact) => artifact.path === nativeCapability.addon,
@@ -199,12 +201,12 @@ export async function inspectBrowserRuntime(
       capabilityGroups: nativeCapability.exports.groups,
       expectedExportCount: nativeCapability.exports.expectedExportCount,
       expectedExports: nativeCapability.exports.expectedExports,
-      nodeApiVersion: bundle.manifest.peerAuthorization.nodeApiVersion,
+      nodeApiVersion: bundle.manifest.trust.nodeApiVersion,
       path: bundle.paths.skyNativeAddon,
       productMinimumMacOSVersion: nativeCapability.productMinimumMacOSVersion,
       sha256: nativeArtifact.sha256,
       signature: "verified",
-      signingTeamId: bundle.manifest.peerAuthorization.signingTeamId,
+      signingTeamId: bundle.manifest.trust.signingTeamId,
     },
     targetArch: bundle.manifest.targetArch,
     targetPlatform: bundle.manifest.targetPlatform,
@@ -447,6 +449,9 @@ async function probeBrowserRuntimePromise(
   const appServerRuntimeVersion = runtime.appServerRuntimeVersion;
 
   const bundle = runtime.browserRuntime.bundle;
+  if (bundle.manifest.targetPlatform !== "darwin" || !bundle.paths.skyNativeAddon)
+    throw new Error("This Desktop Tool probe requires macOS");
+  const { manifest } = bundle;
   const scratchRoot = options.scratchRoot ?? path.join(projectRoot, ".generated");
   fs.mkdirSync(scratchRoot, { recursive: true });
   const stateHome = fs.mkdtempSync(path.join(scratchRoot, "browser-runtime-probe-"));
@@ -703,14 +708,14 @@ async function probeBrowserRuntimePromise(
           return {
             appServerRuntimeVersion,
             browserPluginVersion: bundle.manifest.browserPlugin.version,
-            browserRuntimeVersions: bundle.manifest.runtimeVersions,
+            browserRuntimeVersions: manifest.runtimeVersions,
             computerUse,
             foreignAccessHostConnections: accessHost.connections(),
             mode: "conformance",
             nativePipeMethods: [...new Set(nativePipeMethods)],
             nodeReplResult,
             targetArch: bundle.manifest.targetArch,
-            targetPlatform: bundle.manifest.targetPlatform,
+            targetPlatform: manifest.targetPlatform,
           };
         },
       ),

@@ -1,3 +1,12 @@
+import { BROWSER_RUNTIME_MANIFEST_FILENAME } from "../../src/shared/browser-runtime-metadata";
+import {
+  readBrowserRuntimeReleaseLock,
+  resolveBrowserRuntimeReleaseLockPath,
+} from "../browser-runtime-release-lock";
+import {
+  assertBrowserRuntimeSourceClosure,
+  readBrowserRuntimeSourceManifest,
+} from "../stage-browser-runtime";
 import { execFileSync } from "node:child_process";
 import {
   copyFileSync,
@@ -148,6 +157,31 @@ export function buildWindowsDistribution(options: {
   )
     throw new Error("Windows packaged Skills do not match the prepared build.");
 
+  const browserLockPath = resolveBrowserRuntimeReleaseLockPath(cwd);
+  const browserTarget = `win32-${options.architecture}` as const;
+  const browserAsset = readBrowserRuntimeReleaseLock(browserLockPath).assets[browserTarget];
+  const browserRoot = join(resources, "browser-runtime");
+  const desktopTools = existsSync(browserRoot)
+    ? (() => {
+        const manifestSha256 = sha256File(join(browserRoot, BROWSER_RUNTIME_MANIFEST_FILENAME));
+        const manifest = readBrowserRuntimeSourceManifest(browserRoot);
+        if (
+          manifest.targetPlatform !== "win32" ||
+          manifest.targetArch !== options.architecture ||
+          manifestSha256 !== browserAsset.manifestSha256
+        ) {
+          throw new Error("Windows Desktop Tool closure does not match the release lock.");
+        }
+        assertBrowserRuntimeSourceClosure(browserRoot, manifest);
+        return { target: browserTarget, manifestSha256, archiveSha256: browserAsset.archiveSha256 };
+      })()
+    : null;
+  if ((desktopTools === null) !== (browserAsset.url === null)) {
+    throw new Error(
+      "Windows Desktop Tool payload presence does not match the published release lock.",
+    );
+  }
+
   // A failed installed-app probe never produces a distributable architecture bundle.
   task(
     "exec",
@@ -179,7 +213,7 @@ export function buildWindowsDistribution(options: {
   ];
   const runtimeLocks = {
     agentSha256: sha256File(join(cwd, "resources/agent-runtime/codex-app-server.lock.json")),
-    browserSha256: sha256File(join(cwd, "resources/browser-runtime/browser-runtime.lock.json")),
+    browserSha256: sha256File(browserLockPath),
     sparkleSha256: sha256File(join(cwd, "resources/sparkle/sparkle.lock.json")),
     nodeSha256: sha256File(join(cwd, "resources/agent-runtime/node-runtime.lock.json")),
   };
@@ -193,6 +227,7 @@ export function buildWindowsDistribution(options: {
         buildIdentity: identity,
         updates,
         runtimeLocks,
+        desktopTools,
         artifacts,
         preparedManifestSha256: sha256File(preparedPath),
         installedProbeSha256: sha256File(probePath),

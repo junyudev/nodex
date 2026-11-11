@@ -4,7 +4,8 @@ import path from "node:path";
 import { isWindowsSystemDll } from "./windows-system-dlls.mjs";
 export { isWindowsSystemDll };
 
-const machines = { x64: 0x8664, arm64: 0xaa64 };
+import { WINDOWS_PE_MACHINE as machines } from "../src/shared/windows-pe-header.mjs";
+export { inspectWindowsPe } from "../src/shared/windows-pe-header.mjs";
 
 /** Inspect the PE signature and COFF Machine, never a filename or emulation result. */
 function readPeMachine(file) {
@@ -152,6 +153,15 @@ export function assertPeDependencies(file, expected, options = {}) {
       assertPeArchitecture(options.nodeHost, expected);
       continue;
     }
+    // This reviewed addon uses the Electron host's delay-load binding. Its
+    // actual load is a worker probe and is independent of app-local DLLs.
+    if (
+      options.windowsAccountHostProbe === true &&
+      kind === "delay" &&
+      path.basename(file) === "windows-account.node" &&
+      name.toLowerCase() === "chrome.dll"
+    )
+      continue;
     const sibling = siblings.get(name.toLowerCase());
     if (!sibling)
       throw new Error(
@@ -222,8 +232,19 @@ export function verifyWindowsArchitectureClosure(root, expected, options = {}) {
       return false;
     }
     assertPeArchitecture(file, expected);
+    const desktopToolPath = options.desktopToolsRoot
+      ? path.relative(options.desktopToolsRoot, file).split(path.sep).join("/")
+      : null;
+    const isDesktopTool =
+      desktopToolPath !== null &&
+      !path.isAbsolute(desktopToolPath) &&
+      desktopToolPath !== ".." &&
+      !desktopToolPath.startsWith("../");
     assertPeDependencies(file, expected, {
-      nodeHost: options.nodeHost,
+      nodeHost: isDesktopTool
+        ? path.join(options.desktopToolsRoot, "bin/node.exe")
+        : options.nodeHost,
+      windowsAccountHostProbe: isDesktopTool && desktopToolPath === "native/windows-account.node",
       systemOnly: /(?:^|\/)bin\/nodex(?:-core)?\.exe$/iu.test(relative),
     });
     return true;
