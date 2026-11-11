@@ -120,6 +120,8 @@ const fixture = Effect.gen(function* () {
     ["current-project", ["/project/frontend", "/project/backend"]],
   ]);
   const desktopCalls: unknown[] = [];
+  const pipReports: unknown[] = [];
+  const retiredLeases: unknown[] = [];
   let desktopToolsFailure = false;
   let desktopToolsAvailable = true;
   let desktopPreparations = 0;
@@ -215,6 +217,17 @@ const fixture = Effect.gen(function* () {
         cwd === "/worktree" ? { set: { WORKTREE_READY: "prepared" }, exclude: ["NODE_ENV"] } : null,
       ),
     desktop: {
+      pip: {
+        observeRuntimeActivity: (report, isCurrent) =>
+          Effect.sync(() => {
+            if (isCurrent()) pipReports.push(report);
+          }),
+        retireRuntimeLease: (runtimeId, generation) =>
+          Effect.sync(() => {
+            retiredLeases.push({ runtimeId, generation });
+          }),
+        retireTasks: () => Effect.void,
+      },
       desktopTools: Effect.suspend(() => {
         desktopPreparations++;
         if (desktopToolsFailure) return Effect.fail(new Error("secret launch environment"));
@@ -263,6 +276,8 @@ const fixture = Effect.gen(function* () {
   return {
     execute,
     desktopCalls,
+    pipReports,
+    retiredLeases,
     desktopPreparations: () => desktopPreparations,
     failDesktopTools: () => {
       desktopToolsFailure = true;
@@ -779,5 +794,47 @@ it.effect("Desktop Tool turns retain start authorization and lease-only completi
         phase: "ended",
       },
     ]);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("Desktop activity is forwarded only for the live attempt and uses its proved root", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const identity = turn();
+    const report = {
+      ...nativeTurn(identity, "started"),
+      phase: "activity",
+      activity: {
+        kind: "browser-use",
+        surface: { backend: "iab", browserId: "browser", openTabIds: ["1"] },
+      },
+    } as const;
+    yield* Effect.flip(f.execute({ ...report, identity: { ...identity, attemptId: "retired" } }));
+    yield* Effect.flip(
+      f.execute({ ...report, identity: { ...identity, runtimeGeneration: "old" } }),
+    );
+    yield* f.execute(report);
+    assert.deepEqual(f.pipReports, [
+      {
+        source: {
+          kind: "runtime",
+          runtimeId: "runtime",
+          generation: "lease",
+          threadId: identity.threadId,
+          runId: identity.runId,
+          attemptId: identity.attemptId,
+        },
+        desktopSessionId: report.nativeThreadId,
+        turnId: report.nativeTurnId,
+        turnKey: report.nativeTurnId,
+        taskId: "thread:root",
+        ...report.activity,
+      },
+    ]);
+    f.live.delete(identity.runId);
+    yield* Effect.flip(f.execute(report));
+    yield* f.close;
+    assert.deepEqual(f.retiredLeases, [{ runtimeId: "runtime", generation: "lease" }]);
+    assert.lengthOf(f.pipReports, 1);
   }).pipe(Effect.scoped),
 );

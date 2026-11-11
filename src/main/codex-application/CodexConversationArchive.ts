@@ -168,7 +168,7 @@ export const make: Effect.Effect<
   const retireRemoteHostedPip = Effect.fn("CodexConversationArchive.retireRemoteHostedPip")(
     function* (action: "archive" | "delete", threadIds: readonly string[]) {
       yield* remoteHostedPip
-        .retireCodexThreads({ action, threadIds })
+        .retireTasks({ action, threadIds })
         .pipe(
           Effect.catch((cause) =>
             Effect.logWarning("Persisted Thread lifecycle with incomplete PiP retirement").pipe(

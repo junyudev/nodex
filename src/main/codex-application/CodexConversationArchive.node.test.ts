@@ -11,7 +11,7 @@ import {
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import {
   RemoteHostedPipRuntime,
-  type RemoteHostedPipCodexLifecycleSettlement,
+  type RemoteHostedPipTaskRetirement,
 } from "../host-runtime/RemoteHostedPipRuntime";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import {
@@ -101,7 +101,7 @@ const makeArchive = (input: {
   readonly widgetClearFailure?: boolean;
   readonly historyPages?: CodexHistoryPageAdapter["Service"];
   readonly localTranscript?: readonly CodexTranscriptEntry[];
-  readonly pipSettlements?: RemoteHostedPipCodexLifecycleSettlement[];
+  readonly pipSettlements?: RemoteHostedPipTaskRetirement[];
   readonly nativeArchivedPages?: readonly (readonly string[])[];
   readonly nativeRequests?: Array<{ method: string; params: unknown }>;
   readonly deleteRecoveryFailure?: unknown;
@@ -253,7 +253,7 @@ const makeArchive = (input: {
     Effect.provideService(
       RemoteHostedPipRuntime,
       RemoteHostedPipRuntime.of({
-        retireCodexThreads: (settlement: RemoteHostedPipCodexLifecycleSettlement) =>
+        retireTasks: (settlement: RemoteHostedPipTaskRetirement) =>
           Effect.sync(() => {
             if (!input.pipSettlements) return;
             input.pipSettlements.push(settlement);
@@ -432,7 +432,7 @@ it.effect("publishes archived remote read state on the Thread execution host", (
 it.effect("retires the archived root after native success and durable persistence", () =>
   Effect.gen(function* () {
     const events: string[] = [];
-    const pipSettlements: RemoteHostedPipCodexLifecycleSettlement[] = [];
+    const pipSettlements: RemoteHostedPipTaskRetirement[] = [];
     const currentThread = thread({ cwd: "/repo", managedWorktreePath: null });
     const archive = yield* makeArchive({
       events,
@@ -470,7 +470,7 @@ it.effect("retires process-local conversation state after durable archive persis
 it.effect("does not retire deferred archive PiP before durable persistence succeeds", () =>
   Effect.gen(function* () {
     const events: string[] = [];
-    const pipSettlements: RemoteHostedPipCodexLifecycleSettlement[] = [];
+    const pipSettlements: RemoteHostedPipTaskRetirement[] = [];
     const currentThread = thread({ cwd: "/repo", managedWorktreePath: null });
     const archive = yield* makeArchive({
       events,
@@ -694,7 +694,7 @@ it.effect("retires process-local conversation state after durable deletion", () 
 it.effect("does not retire deferred delete PiP before durable deletion succeeds", () =>
   Effect.gen(function* () {
     const events: string[] = [];
-    const pipSettlements: RemoteHostedPipCodexLifecycleSettlement[] = [];
+    const pipSettlements: RemoteHostedPipTaskRetirement[] = [];
     const currentThread = thread({
       archived: true,
       cwd: "/repo",
@@ -720,7 +720,7 @@ it.effect("retires a confirmed native deletion even when widget storage cannot b
   Effect.gen(function* () {
     const events: string[] = [];
     const closures: Array<{ readonly threadId: string; readonly reason: unknown }> = [];
-    const pipSettlements: RemoteHostedPipCodexLifecycleSettlement[] = [];
+    const pipSettlements: RemoteHostedPipTaskRetirement[] = [];
     const applicationEvents: unknown[] = [];
     const currentThread = thread({ archived: true });
     const archive = yield* makeArchive({

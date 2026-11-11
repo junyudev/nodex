@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
+import type { RemoteHostedPipTaskStateSnapshot } from "../../src/shared/remote-hosted-pip";
+import { openSummaryPanel } from "./support/subagents-panel";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import {
@@ -1211,5 +1213,162 @@ test("Claude and Runtime grants survive Stop and restart and end on a permission
     await server.close();
     await harness.close();
     saveEvidence("chat-grants-lease.json", lease.snapshot());
+  }
+});
+
+test("Claude Browser PiP retires on turn end, archive, and Runtime exit", async () => {
+  test.skip(process.platform !== "darwin", "Native PiP requires macOS");
+  // oxlint-disable-next-line nodex/no-explicit-test-timeout -- Covers three real Claude Turns and two signed REPL launches in one lifecycle.
+  test.setTimeout(180_000);
+  const fixture = await startBrowserHttpFixture("CLAUDE_BROWSER_PIP");
+  let finishTurn: () => void = () => {};
+  let gate = new Promise<void>((resolve) => {
+    finishTurn = resolve;
+  });
+  const server = await startScriptedAnthropicServer(async (request) => {
+    const background = backgroundTitleResponse(request);
+    if (background) return background;
+    const turn = request.messages.findLast((message) => text(message).includes("CLAUDE_PIP_"));
+    const marker = /CLAUDE_PIP_(complete|archive|kill)/u.exec(text(turn) ?? "")?.[1];
+    if (!marker) throw new Error("Missing PiP prompt");
+    const callId = `pip_${marker}`;
+    const result = anthropicToolResult(request, callId);
+    if (result) {
+      expect(result).not.toMatchObject({ is_error: true });
+      expect(text(result)).toContain("CLAUDE_BROWSER_PIP");
+      await gate;
+      return { type: "text", text: "Browser PiP test complete" };
+    }
+    const skillId = `skill_${marker}`;
+    if (!anthropicToolResult(request, skillId))
+      return tool(skillId, "Skill", { skill: "browser:control-in-app-browser" });
+    const content = request.messages
+      .flatMap((message) =>
+        typeof message.content === "string"
+          ? [message.content]
+          : message.content.flatMap((block) => (block.type === "text" ? [block.text ?? ""] : [])),
+      )
+      .join("\n");
+    const base = /Base directory for this skill: ([^\r\n]+)/u.exec(content)?.[1]?.trim();
+    if (!base) throw new Error("Missing Browser skill directory");
+    const client = path.resolve(base, "../../scripts/browser-client.mjs");
+    return js(
+      callId,
+      `var { setupBrowserRuntime } = await import(${JSON.stringify(client)}); var browser = await (await setupBrowserRuntime()).browsers.get("iab"); var tab = await browser.tabs.new(); await tab.goto(${JSON.stringify(fixture.url)}); nodeRepl.write(await tab.title()); await nodeRepl.emitImage(await tab.screenshot({fullPage:false}));`,
+      "Open the Browser PiP fixture",
+    );
+  });
+  const harness = await ElectronScenarioHarness.create({
+    label: "claude-browser-pip",
+    prepareAgentRuntime: false,
+    environment: server.environment,
+  });
+  try {
+    const page = await harness.launch();
+    await configureClaude(page, harness, server.environment);
+    await invokeIpc(page, "browser-use-policy-update-origin-rule", {
+      action: "add",
+      kind: "allowed",
+      origin: new URL(fixture.url).origin,
+      resource: "origin",
+    });
+    const snapshot = async () =>
+      (await invokeIpc(page, "remote-hosted-pip:snapshot")) as RemoteHostedPipTaskStateSnapshot;
+    const newSession = async (projectName: string) => {
+      gate = new Promise<void>((resolve) => {
+        finishTurn = resolve;
+      });
+      // Each Runtime Project owns its workspace path for the life of the Profile.
+      const directory = fs.mkdtempSync(path.join(harness.profile.projectsDirectory, "pip-"));
+      const draft = await createAgentSmokeDraft(page, directory, projectName);
+      await refreshComposerModels(page);
+      await chooseComposerModel(page, "Claude Sonnet 5.5", "Claude Sonnet 5.5");
+      await page.keyboard.press("Escape");
+      await selectPermissions(page, "Full access");
+      return draft.projectSessionId;
+    };
+    const waitForPiP = async (sessionId: string, threadId: string, marker: string) => {
+      try {
+        await expect.poll(snapshot, { message: marker }).toMatchObject({
+          activeTaskIds: [threadId],
+          retainedPresentationCount: 1,
+          taskVisibilityActionAvailable: true,
+        });
+      } catch (error) {
+        const conversation = await readRuntimeConversation(page, { sessionId, threadId }).catch(
+          () => null,
+        );
+        const requests = server.requests.filter((request) =>
+          request.messages.some((message) => text(message).includes("CLAUDE_PIP_" + marker)),
+        );
+        const toolResult = requests
+          .map((request) => anthropicToolResult(request, "pip_" + marker))
+          .find((result) => result !== undefined);
+        await test.info().attach("pip-activity", {
+          contentType: "application/json",
+          body: JSON.stringify({
+            marker,
+            runStatus: conversation?.snapshot.projection.runs.at(-1)?.status,
+            requests: requests.length,
+            serverErrors: server.errors.length,
+            hasSkillResult: requests.some((request) =>
+              anthropicToolResult(request, "skill_" + marker),
+            ),
+            hasBrowserResult: toolResult !== undefined,
+            browserResultError: toolResult?.is_error,
+            reachedFixture: text(toolResult)?.includes("CLAUDE_BROWSER_PIP"),
+          }),
+        });
+        throw error;
+      }
+    };
+    const waitForRetirement = () =>
+      expect.poll(snapshot).toMatchObject({ activeTaskIds: [], retainedPresentationCount: 0 });
+
+    const sessionId = await newSession("Claude PiP lifecycle");
+    const threadId = await sendAgentPrompt(page, sessionId, "CLAUDE_PIP_complete");
+    await waitForPiP(sessionId, threadId, "complete");
+    const summary = await openSummaryPanel(page);
+    await summary.getByRole("button", { name: "Hide PiP", exact: true }).click();
+    await expect(summary.getByRole("button", { name: "Show PiP", exact: true })).toBeVisible();
+    expect((await snapshot()).taskVisibilities).toEqual({ [threadId]: "hidden" });
+    await summary.getByRole("button", { name: "Show PiP", exact: true }).click();
+    finishTurn();
+    await waitForRuntimeCompletedAgentTurn(page, { sessionId, threadId }, 45_000);
+    await waitForRetirement();
+    await expect(summary.getByRole("button", { name: "Hide PiP", exact: true })).toHaveCount(0);
+
+    gate = new Promise<void>((resolve) => {
+      finishTurn = resolve;
+    });
+    await sendAgentFollowUp(page, "CLAUDE_PIP_archive");
+    await waitForPiP(sessionId, threadId, "archive");
+    await invokeIpc(page, "project-sessions:archive", {
+      operationId: createBoundedOperationId("e2e.claude.pip.archive"),
+      payload: { sessionId },
+    });
+    await waitForRetirement();
+    finishTurn();
+
+    const nextSessionId = await newSession("Claude PiP Runtime exit");
+    const nextThreadId = await sendAgentPrompt(page, nextSessionId, "CLAUDE_PIP_kill");
+    await waitForPiP(nextSessionId, nextThreadId, "kill");
+    const runtimeHome = path.join(harness.profile.nodexHome, "agent-runtime");
+    const { pid: runtimePid } = JSON.parse(
+      fs.readFileSync(path.join(runtimeHome, ".writer.lock", "owner.json"), "utf8"),
+    ) as { readonly pid: number };
+    expect(Number.isSafeInteger(runtimePid) && runtimePid > 0).toBe(true);
+    const runtimeCommand = execFileSync("ps", ["-ww", "-p", String(runtimePid), "-o", "command="], {
+      encoding: "utf8",
+    });
+    expect(runtimeCommand).toContain(` --home ${runtimeHome} --cwd `);
+    process.kill(runtimePid, "SIGKILL");
+    await waitForRetirement();
+    expect(server.errors).toEqual([]);
+  } finally {
+    finishTurn();
+    await harness.close();
+    await server.close();
+    await fixture.close();
   }
 });

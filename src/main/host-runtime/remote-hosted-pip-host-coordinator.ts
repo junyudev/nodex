@@ -44,6 +44,7 @@ export interface RemoteHostedPipHostCoordinatorOptions {
   readonly isThreadSurfacePresented: (threadId: string, ownerWebContentsId?: number) => boolean;
   readonly native: RemoteHostedPipNativePlatformService;
   readonly preferences: RemoteHostedPipPreferencesAdapter;
+  readonly resolveActiveThreadId: (sessionId: string) => string | null;
   readonly readSnapshot: () => RemoteHostedPipTaskStateSnapshot;
   readonly windows: WindowRuntimeService;
 }
@@ -227,16 +228,18 @@ export function makeRemoteHostedPipHostCoordinator(
           options.native.setSuppressedThreadIds(suppressed),
         );
 
+        const activeSessionId =
+          preferredPrimary?.kind === "primary" ? preferredPrimary.activeSessionId : null;
+        const selectedThreadId = activeSessionId
+          ? options.resolveActiveThreadId(activeSessionId)
+          : null;
         const activeThreadId =
           preferredPrimary?.kind === "primary" &&
           registered.has(preferredPrimary.webContentsId) &&
-          preferredPrimary.activeSessionId &&
-          snapshot.activeTaskIds.includes(preferredPrimary.activeSessionId) &&
-          !options.isThreadSurfacePresented(
-            preferredPrimary.activeSessionId,
-            preferredPrimary.webContentsId,
-          )
-            ? preferredPrimary.activeSessionId
+          selectedThreadId &&
+          snapshot.activeTaskIds.includes(selectedThreadId) &&
+          !options.isThreadSurfacePresented(selectedThreadId, preferredPrimary.webContentsId)
+            ? selectedThreadId
             : null;
         yield* bestEffort("set-active-thread", options.native.setActiveThreadId(activeThreadId));
 

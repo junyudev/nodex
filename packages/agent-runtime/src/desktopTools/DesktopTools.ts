@@ -12,7 +12,13 @@ import {
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { McpProviderDesktopTools } from "@nodex/provider-core/server/mcpSession";
-import type { HostDesktopTools, HostTurnIdentity } from "@nodex/provider-core/server/ExecutionHost";
+import { desktopToolResultActivity } from "@nodex/provider-core/server/desktopToolActivity";
+import type {
+  DesktopTurnObservation,
+  HostDesktopTools,
+  HostTurnIdentity,
+  HostTurnIdentityReport,
+} from "@nodex/provider-core/server/ExecutionHost";
 import type {
   ProviderApprovalDecision,
   ProviderApprovalOption,
@@ -67,12 +73,7 @@ interface Invocation {
 
 interface Ports {
   readonly admit: (caller: DesktopCaller) => Promise<DesktopInvocationAuthority | undefined>;
-  readonly observe: (input: {
-    readonly identity: HostTurnIdentity;
-    readonly nativeThreadId: string;
-    readonly nativeTurnId: string;
-    readonly phase: "started" | "ended";
-  }) => Promise<void>;
+  readonly observe: (input: HostTurnIdentityReport) => Promise<void>;
   readonly ask: (
     input: Parameters<RuntimeApprovals["Service"]["ask"]>[0],
   ) => Promise<ProviderApprovalDecision>;
@@ -106,13 +107,13 @@ export function makeDesktopTools(home: string, ports: Ports) {
   const threads = new Map<ThreadId, Thread>();
   let closed = false;
 
-  const observe = (turn: Turn, phase: "started" | "ended") =>
+  const observe = (turn: Turn, observation: DesktopTurnObservation) =>
     ports
       .observe({
         identity: turn.identity,
         nativeThreadId: turn.metadata.thread_id,
         nativeTurnId: turn.metadata.turn_id,
-        phase,
+        ...observation,
       })
       .catch(() => {});
 
@@ -171,7 +172,7 @@ export function makeDesktopTools(home: string, ports: Ports) {
         });
       hooks.add(cleanup);
       const retiring = Promise.all([turn.started, cleanup])
-        .then(() => observe(turn, "ended"))
+        .then(() => observe(turn, { phase: "ended", completed: hook === "Stop" }))
         .finally(() => retirements.delete(retiring));
       retirements.add(retiring);
       return retiring;
@@ -404,7 +405,7 @@ export function makeDesktopTools(home: string, ports: Ports) {
       if (turn.started === undefined) await thread.whenRetired();
       if (signal.aborted || lookup(caller) !== thread)
         return toolError("Desktop tool call cancelled");
-      turn.started ??= observe(turn, "started");
+      turn.started ??= observe(turn, { phase: "started" });
       await turn.started;
       if (signal.aborted || lookup(caller) !== thread)
         return toolError("Desktop tool call cancelled");
@@ -426,6 +427,9 @@ export function makeDesktopTools(home: string, ports: Ports) {
       const result = await execute().catch(() =>
         toolError(signal.aborted ? "Desktop tool call cancelled" : "Desktop tool call failed"),
       );
+      const activity = desktopToolResultActivity(callId, result);
+      if (activity && !signal.aborted && lookup(caller) === thread)
+        await observe(turn, { phase: "activity", activity });
       if (!thread.closing())
         captures.record({
           threadId: caller.threadId,

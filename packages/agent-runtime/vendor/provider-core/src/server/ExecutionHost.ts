@@ -1,3 +1,4 @@
+import type { DesktopToolActivity } from "./desktopToolActivity.ts";
 import type {
   OrchestrationV2ProviderThread,
   ProjectId,
@@ -34,6 +35,19 @@ export type HostNativeSessionIdentity = Omit<HostTurnIdentity, "runId" | "attemp
   readonly attemptId: null;
   readonly incarnationId: string;
 };
+export type DesktopTurnObservation =
+  | { readonly phase: "started" }
+  | { readonly phase: "ended"; readonly completed?: boolean }
+  | { readonly phase: "activity"; readonly activity: DesktopToolActivity };
+
+export type HostTurnIdentityReport = DesktopTurnObservation & {
+  readonly identity: HostTurnIdentity;
+  readonly nativeThreadId: string;
+  readonly nativeTurnId: string;
+  /** Stable across a native provider changing the Turn ID it uses for routing. */
+  readonly turnKey?: string;
+};
+
 export type HostExecutionIdentity = HostTurnIdentity | HostNativeSessionIdentity;
 
 /**
@@ -146,13 +160,8 @@ export class ExecutionHost extends Context.Reference<{
     readonly nativeDriver: import("@nodex/runtime-contracts").ProviderDriverKind;
     readonly cwd: string | null;
   }) => Effect.Effect<HostThreadPreparation, ExecutionHostError>;
-  /** A host-owned tool follows Turns, which it addresses by their Desktop session and Turn ids. */
-  readonly observeNativeTurn?: (input: {
-    readonly identity: HostTurnIdentity;
-    readonly nativeThreadId: string;
-    readonly nativeTurnId: string;
-    readonly phase: "started" | "ended";
-  }) => Effect.Effect<void>;
+  /** Desktop activity is addressed by its captured execution and opaque Desktop Turn. */
+  readonly observeNativeTurn?: (input: HostTurnIdentityReport) => Effect.Effect<void>;
 }>("@nodex/provider-core/server/ExecutionHost", {
   defaultValue: () => ({ prepareTurn: () => Effect.succeed({}) }),
 }) {}

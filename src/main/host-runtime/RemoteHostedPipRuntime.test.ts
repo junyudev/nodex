@@ -13,10 +13,11 @@ import type { CodexServerNotification } from "../codex-runtime/CodexApplicationP
 import { makeRemoteHostedPipPreferences } from "../remote-hosted-pip-preference-store";
 import {
   RemoteHostedPipRuntime,
-  RemoteHostedPipThreadHostResolutionError,
+  RemoteHostedPipNativeSessionResolutionError,
   testLayer,
   type RemoteHostedPipCodexOccurrence,
   type RemoteHostedPipNativePort,
+  type RuntimeDesktopActivityTarget,
 } from "./RemoteHostedPipRuntime";
 import { RemoteHostedPipNativePlatformError } from "../platform/electron/RemoteHostedPipNativePlatform";
 
@@ -26,6 +27,7 @@ const browserNotification = (
   threadId: string,
   browserId: string,
   surface: Record<string, unknown>,
+  turnId = "turn-1",
 ): CodexServerNotification =>
   notification({
     method: "item/completed",
@@ -46,20 +48,21 @@ const browserNotification = (
         type: "mcpToolCall",
       },
       threadId,
-      turnId: "turn-1",
+      turnId,
     },
   });
 
 const computerNotification = (
   method: "item/completed" | "item/started",
   threadId: string,
+  turnId = "turn-1",
 ): CodexServerNotification =>
   notification({
     method,
     params: {
       item: { id: "computer-1", server: "computer-use", type: "mcpToolCall" },
       threadId,
-      turnId: "turn-1",
+      turnId,
     },
   });
 
@@ -97,7 +100,7 @@ const makeHarness = Effect.fn("RemoteHostedPipRuntimeTest.makeHarness")(function
   readonly resolveChromeBrowserIconPath?: (browserFamily: string) => string | null;
   readonly resolve?: (
     threadId: string,
-  ) => Effect.Effect<string, RemoteHostedPipThreadHostResolutionError>;
+  ) => Effect.Effect<string | null, RemoteHostedPipNativeSessionResolutionError>;
 }) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-remote-pip-"));
   const preferences = makeRemoteHostedPipPreferences(path.join(root, "preferences.json"));
@@ -125,7 +128,7 @@ const makeHarness = Effect.fn("RemoteHostedPipRuntimeTest.makeHarness")(function
       ...(input?.resolveChromeBrowserIconPath
         ? { resolveChromeBrowserIconPath: input.resolveChromeBrowserIconPath }
         : {}),
-      ...(input?.resolve ? { resolveThreadHost: input.resolve } : {}),
+      ...(input?.resolve ? { resolveNativeSession: input.resolve } : {}),
     }),
     scope,
   );
@@ -146,7 +149,7 @@ it.effect("admits only the captured physical local host and durable local Codex 
       resolve: (threadId) =>
         Effect.sync(() => {
           resolutions.push(threadId);
-          return threadId === "acp-thread" ? "remote-host" : "physical-local";
+          return threadId === "acp-thread" ? null : "core-session";
         }),
     });
     const image = { screenshot: { tabId: "1", url: pngDataUrl() } };
@@ -187,6 +190,35 @@ it.effect("admits only the captured physical local host and durable local Codex 
       threadId: "thread-1",
     });
     assert.deepEqual((yield* runtime.snapshot).activeTaskIds, ["thread-1"]);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("a stale native Turn cannot complete or revive its replacement", () =>
+  Effect.gen(function* () {
+    const { runtime, scope } = yield* makeHarness();
+    const completed = (id: string) =>
+      occurrence(
+        notification({
+          method: "turn/completed",
+          params: { threadId: "thread-1", turn: { id, status: "completed" } },
+        }),
+      );
+
+    yield* runtime.observeCodexOccurrence(
+      occurrence(computerNotification("item/started", "thread-1", "old")),
+    );
+    yield* runtime.observeCodexOccurrence(
+      occurrence(browserNotification("thread-1", "browser-2", { openTabIds: ["1"] }, "new")),
+    );
+    yield* runtime.observeCodexOccurrence(completed("old"));
+    assert.deepEqual((yield* runtime.snapshot).activeTaskIds, ["thread-1"]);
+
+    yield* runtime.observeCodexOccurrence(completed("new"));
+    yield* runtime.observeCodexOccurrence(
+      occurrence(computerNotification("item/started", "thread-1", "old")),
+    );
+    assert.deepEqual((yield* runtime.snapshot).activeTaskIds, []);
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -583,7 +615,7 @@ it.effect("retires settled Codex cohorts without synthesizing native completion"
     );
     yield* settleWorker;
 
-    yield* runtime.retireCodexThreads({
+    yield* runtime.retireTasks({
       action: "archive",
       threadIds: ["thread-1", "thread-2"],
     });
@@ -599,18 +631,29 @@ it.effect("retires settled Codex cohorts without synthesizing native completion"
     assert.deepEqual(invalidated, ['browser:["thread-1","browser-1","1"]']);
 
     yield* runtime.observeCodexOccurrence(
+      occurrence(browserNotification("thread-1", "browser-1", { openTabIds: ["1"] })),
+    );
+    assert.deepEqual((yield* runtime.snapshot).activeTaskIds, []);
+    yield* runtime.observeCodexOccurrence(
       occurrence(
-        browserNotification("thread-1", "browser-1", {
-          screenshot: { tabId: "1", url: pngDataUrl() },
-        }),
+        browserNotification(
+          "thread-1",
+          "browser-1",
+          {
+            screenshot: { tabId: "1", url: pngDataUrl() },
+          },
+          "turn-2",
+        ),
         { occurrenceToken: 2 },
       ),
     );
     yield* runtime.observeCodexOccurrence(
-      occurrence(computerNotification("item/started", "thread-2"), { occurrenceToken: 2 }),
+      occurrence(computerNotification("item/started", "thread-2", "turn-2"), {
+        occurrenceToken: 2,
+      }),
     );
     yield* settleWorker;
-    yield* runtime.retireCodexThreads({
+    yield* runtime.retireTasks({
       action: "delete",
       threadIds: ["thread-1", "thread-2"],
     });
@@ -649,4 +692,125 @@ it.effect("persists one visibility batch with one monotonic, idempotent revision
     assert.deepEqual(deleted.taskVisibilities, { "thread-2": "hidden" });
     yield* Scope.close(scope, Exit.void);
   }),
+);
+
+it.effect(
+  "Runtime activity uses the root Thread for visibility and the Desktop session for native content",
+  () =>
+    Effect.gen(function* () {
+      const upserts: string[] = [];
+      const invalidations: [string, string][] = [];
+      const { runtime, scope } = yield* makeHarness({
+        native: {
+          upsertBrowserPresentation: ({ threadId }) =>
+            Effect.sync(() => {
+              upserts.push(threadId);
+              return true;
+            }),
+          invalidateTurn: (threadId, turnId) =>
+            Effect.sync(() => {
+              invalidations.push([threadId, turnId]);
+              return true;
+            }),
+        },
+      });
+      const taskId = "thread:root";
+      const target: RuntimeDesktopActivityTarget = {
+        source: {
+          kind: "runtime",
+          runtimeId: "runtime",
+          generation: "lease-a",
+          threadId: taskId,
+          runId: "run:one",
+          attemptId: "attempt:one",
+        },
+        desktopSessionId: "desktop-session",
+        turnId: "desktop-turn",
+        turnKey: "desktop-turn",
+      };
+      const begin = (target: RuntimeDesktopActivityTarget, current = true) =>
+        runtime.observeRuntimeActivity(
+          { ...target, taskId, kind: "turn-started", sessionId: "session" },
+          () => current,
+        );
+      const browser = (target: RuntimeDesktopActivityTarget, dataUrl: string) =>
+        runtime.observeRuntimeActivity(
+          {
+            ...target,
+            taskId,
+            kind: "browser-use",
+            surface: {
+              backend: "iab",
+              browserId: "browser-a",
+              openTabIds: ["1"],
+              screenshot: { tabId: "1", url: dataUrl },
+            },
+          },
+          () => true,
+        );
+      const computer = runtime.observeRuntimeActivity(
+        {
+          ...target,
+          taskId,
+          kind: "computer-use",
+          active: true,
+          itemId: "computer",
+        },
+        () => true,
+      );
+      yield* browser(target, pngDataUrl());
+      assert.deepEqual((yield* runtime.snapshot).activeTaskIds, []);
+      yield* begin(target);
+      yield* browser(target, pngDataUrl(8193, 1));
+      yield* settleWorker;
+      assert.isEmpty(upserts);
+      yield* browser(target, pngDataUrl());
+      yield* settleWorker;
+      assert.deepEqual(upserts, [target.desktopSessionId]);
+      assert.deepEqual((yield* runtime.snapshot).activeTaskIds, [taskId]);
+      assert.include(
+        yield* runtime.resolveBrowserPresentation('browser:["thread:root","browser-a","1"]'),
+        { threadId: target.desktopSessionId, tabId: "1" },
+      );
+      yield* runtime.setNativeTaskVisibilities([target.desktopSessionId], "hidden");
+      assert.deepEqual((yield* runtime.snapshot).taskVisibilities, { [taskId]: "hidden" });
+
+      yield* runtime.observeCodexOccurrence(
+        occurrence(computerNotification("item/started", "native-thread")),
+      );
+      yield* runtime.retireLocalCodexHost("connection-lost");
+      assert.deepEqual((yield* runtime.snapshot).activeTaskIds, [taskId]);
+      yield* computer;
+      yield* runtime.retireRuntimeLease(target.source.runtimeId, target.source.generation);
+      assert.deepEqual(invalidations, [
+        ["native-thread", "turn-1"],
+        [target.desktopSessionId, target.turnId],
+      ]);
+      assert.deepEqual((yield* runtime.snapshot).activeTaskIds, []);
+      assert.strictEqual((yield* runtime.snapshot).retainedPresentationCount, 0);
+      yield* begin(target, false);
+      yield* browser(target, pngDataUrl());
+      assert.deepEqual((yield* runtime.snapshot).activeTaskIds, []);
+
+      const replacement = {
+        ...target,
+        source: { ...target.source, generation: "lease-b", attemptId: "attempt:two" },
+        turnId: "new-turn",
+        turnKey: "new-turn",
+      };
+      yield* begin(replacement);
+      yield* browser(replacement, pngDataUrl());
+      yield* runtime.observeRuntimeActivity(
+        { ...target, kind: "turn-ended", completed: true },
+        () => true,
+      );
+      assert.deepEqual((yield* runtime.snapshot).activeTaskIds, [taskId]);
+      yield* runtime.retireTasks({ action: "archive", threadIds: [taskId] });
+      yield* browser(replacement, pngDataUrl());
+      assert.deepEqual((yield* runtime.snapshot).activeTaskIds, []);
+      assert.deepEqual((yield* runtime.snapshot).taskVisibilities, { [taskId]: "hidden" });
+      yield* runtime.retireTasks({ action: "delete", threadIds: [taskId] });
+      assert.deepEqual((yield* runtime.snapshot).taskVisibilities, {});
+      yield* Scope.close(scope, Exit.void);
+    }),
 );

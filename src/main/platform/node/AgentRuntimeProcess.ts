@@ -180,7 +180,10 @@ const hostRequestSchema = z.discriminatedUnion("operation", [
       .passthrough(),
     nativeThreadId: z.string().min(1),
     nativeTurnId: z.string().min(1),
-    phase: z.enum(["started", "ended"]),
+    turnKey: z.string().optional(),
+    phase: z.enum(["started", "ended", "activity"]),
+    completed: z.boolean().optional(),
+    activity: z.unknown().optional(),
   }),
 ]);
 // An engine frame this schema rejects ends the connection, so every host operation is admitted.

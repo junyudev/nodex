@@ -1,3 +1,5 @@
+import { codexDesktopToolItemActivity } from "@nodex/provider-core/server/desktopToolActivity";
+import type { DesktopTurnObservation } from "@nodex/provider-core/server/ExecutionHost";
 import { makeProviderEventBuffer } from "../ProviderEventBuffer.ts";
 import type { CodexErrorInfo } from "../../../../codex-app-server-protocol/src/v2/CodexErrorInfo.ts";
 import * as PubSub from "effect/PubSub";
@@ -2895,7 +2897,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
         });
 
         /** Host tools that follow Codex Turns see the root Turns by their Codex identity. */
-        const observeRootTurn = (context: ActiveCodexTurnContext, phase: "started" | "ended") =>
+        const observeRootTurn = (
+          context: ActiveCodexTurnContext,
+          observation: DesktopTurnObservation,
+        ) =>
           context.subagent !== null ||
           context.hostExecutionIdentity === undefined ||
           !context.providerThread.nativeThreadRef?.nativeId ||
@@ -2905,8 +2910,24 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 identity: context.hostExecutionIdentity,
                 nativeThreadId: context.providerThread.nativeThreadRef.nativeId,
                 nativeTurnId: codexTurnId(context.nativeTurnId),
-                phase,
+                turnKey: context.nativeTurnId,
+                ...observation,
               });
+
+        yield* Scope.addFinalizer(
+          scope,
+          Ref.get(activeTurns).pipe(
+            Effect.flatMap((turns) =>
+              Effect.forEach(
+                turns.values(),
+                (context) => observeRootTurn(context, { phase: "ended" }),
+                { concurrency: 4, discard: true },
+              ),
+            ),
+            Effect.timeout("2 seconds"),
+            Effect.ignoreCause,
+          ),
+        );
 
         const recentRootTurns = new Map<ProviderTurnId, ActiveCodexTurnContext>();
         const registerRootTurnWithPermitHeld = (input: {
@@ -2981,7 +3002,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               updated.set(input.nativeTurnId, context);
               return updated;
             });
-            yield* observeRootTurn(context, "started");
+            yield* observeRootTurn(context, { phase: "started" });
             yield* emitProviderEvent({
               type: "provider_turn.updated",
               driver: CODEX_PROVIDER,
@@ -6194,6 +6215,9 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             }
 
             if (payload.item.type === "mcpToolCall" || payload.item.type === "dynamicToolCall") {
+              const activity = codexDesktopToolItemActivity(payload.item, true);
+              if (activity && !resolved.settled && (yield* CodexTurnReplay) === null)
+                yield* observeRootTurn(context, { phase: "activity", activity });
               if (!codexItemStatus(payload.item.status).completed) {
                 yield* trackRunningDynamicTool(payload.turnId, payload.item);
               }
@@ -6403,6 +6427,9 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             }
 
             if (payload.item.type === "mcpToolCall" || payload.item.type === "dynamicToolCall") {
+              const activity = codexDesktopToolItemActivity(payload.item, false);
+              if (activity && !settled && (yield* CodexTurnReplay) === null)
+                yield* observeRootTurn(context, { phase: "activity", activity });
               yield* clearRunningDynamicTool(payload.turnId, payload.item.id);
               const appResourceUri = codexMcpAppResourceUri(payload.item);
               if (appResourceUri !== undefined && payload.item.type === "mcpToolCall") {
@@ -7167,7 +7194,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 if (pending.type === "approval" && pending.context === input.context)
                   yield* cancelApproval(pending.requestId, "The provider turn ended.");
               }
-              yield* observeRootTurn(input.context, "ended");
+              yield* observeRootTurn(input.context, {
+                phase: "ended",
+                completed: input.status === "completed",
+              });
               if (input.status !== "completed") yield* releaseNativeMcpTurn(input.nativeTurnId);
               const providerRetry = yield* Ref.modify(providerRetries, (current) => {
                 const retry = current.get(input.context.providerTurnId);

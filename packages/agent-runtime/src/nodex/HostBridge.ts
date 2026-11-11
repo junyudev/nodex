@@ -319,20 +319,27 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
   });
 
   // Host tools that follow native Turns degrade when the host cannot be told; execution goes on.
-  const observeNativeTurn = Effect.fn("AgentRuntime.observeNativeTurn")(function* (input: {
-    readonly identity: ExecutionHost.HostTurnIdentity;
-    readonly nativeThreadId: string;
-    readonly nativeTurnId: string;
-    readonly phase: "started" | "ended";
-  }) {
+  const observeNativeTurn = Effect.fn("AgentRuntime.observeNativeTurn")(function* (
+    input: ExecutionHost.HostTurnIdentityReport,
+  ) {
     if (configuration.host === undefined) return;
+    // Leave room in the 16 MiB host frame for escaped identifiers and the authority envelope.
+    // An oversized raster still reports open tabs and session closure.
+    let report = input;
+    if (input.phase === "activity" && input.activity.kind === "browser-use") {
+      const { screenshot, ...surface } = input.activity.surface;
+      if (
+        screenshot &&
+        (screenshot.url.length > 12 * 1024 * 1024 ||
+          !/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$/u.test(screenshot.url))
+      )
+        report = { ...input, activity: { ...input.activity, surface } };
+    }
     yield* exchange({
+      ...report,
       type: "host.request",
       operation: "turn.native",
       identity: { ...input.identity, runtimeId, runtimeGeneration },
-      nativeThreadId: input.nativeThreadId,
-      nativeTurnId: input.nativeTurnId,
-      phase: input.phase,
     }).pipe(
       Effect.timeoutOrElse({
         duration: "10 seconds",
@@ -345,7 +352,10 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
           ),
       }),
       Effect.catch((cause) =>
-        Effect.logWarning("Host could not observe a native Turn", { cause, phase: input.phase }),
+        Effect.logWarning("Host could not observe a native Turn", {
+          operation: cause.operation,
+          phase: input.phase,
+        }),
       ),
     );
   });

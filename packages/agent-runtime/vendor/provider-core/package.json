@@ -49,6 +49,7 @@
     "./server/textGenerationUtils": "./src/server/textGenerationUtils.ts",
     "./server/usage": "./src/server/usage.ts",
     "./server/usageLimits": "./src/server/usageLimits.ts",
+    "./server/desktopToolActivity": "./src/server/desktopToolActivity.ts",
     "./server/ExecutionHost": "./src/server/ExecutionHost.ts",
     "./server/nativeInteraction": "./src/server/nativeInteraction.ts",
     "./contextUsage": "./src/contextUsage.ts"

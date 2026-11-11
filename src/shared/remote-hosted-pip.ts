@@ -6,6 +6,7 @@ export type RemoteHostedPipTaskVisibility = "hidden" | "shown";
 
 /** Canonical, bounded Main-owned state consumed by every renderer window. */
 export interface RemoteHostedPipTaskStateSnapshot {
+  /** Each task ID is a Session’s execution root Thread ID. */
   readonly activeTaskIds: readonly string[];
   readonly alwaysHidden: boolean;
   readonly retainedPresentationCount: number;

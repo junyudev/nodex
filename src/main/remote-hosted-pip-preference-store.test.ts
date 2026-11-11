@@ -51,6 +51,29 @@ describe("RemoteHostedPipPreferencesAdapter", () => {
     expect(reloaded.revision).toBeGreaterThan(hidden.revision);
   });
 
+  test("retains existing native root visibility when Runtime root preferences are written", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-pip-preference-"));
+    temporaryRoots.push(root);
+    const filePath = path.join(root, "remote-hosted-pip.json");
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({
+        schemaVersion: 3,
+        alwaysHide: false,
+        maxDisplaySize: null,
+        revision: 4,
+        taskVisibilities: { "native-thread": "hidden" },
+      }),
+    );
+
+    const store = makeRemoteHostedPipPreferences(filePath);
+    store.setTaskVisibility("thread:runtime-root", "shown");
+    expect(makeRemoteHostedPipPreferences(filePath).readSnapshot()).toMatchObject({
+      revision: 5,
+      taskVisibilities: { "native-thread": "hidden", "thread:runtime-root": "shown" },
+    });
+  });
+
   test("commits one native visibility batch with one durable revision", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-pip-preference-"));
     temporaryRoots.push(root);

@@ -1,3 +1,4 @@
+import type { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 import type { HostDesktopTools } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
 import { CODEX_DESKTOP_THREAD_FEATURE_CONFIG } from "../codex/codex-thread-config";
@@ -22,6 +23,10 @@ export type AgentRuntimeNativeTurn = {
 );
 
 export interface AgentRuntimeDesktopTools {
+  readonly pip?: Pick<
+    RemoteHostedPipRuntime["Service"],
+    "observeRuntimeActivity" | "retireRuntimeLease" | "retireTasks"
+  >;
   readonly desktopTools: Effect.Effect<HostDesktopTools | null, unknown>;
   readonly threadConfig: (
     cwd: string | null,
@@ -37,6 +42,7 @@ export interface AgentRuntimeDesktopTools {
  * routes are kept per Nodex Session for release.
  */
 export const make = (ports: {
+  readonly pip?: AgentRuntimeDesktopTools["pip"];
   readonly tools: Pick<DesktopToolRuntime["Service"], "threadConfig" | "desktopTools">;
   readonly browserUse: Pick<
     BrowserUseRuntime["Service"],
@@ -58,6 +64,7 @@ export const make = (ports: {
       )?.webContentsId;
 
   return {
+    pip: ports.pip,
     desktopTools: ports.tools.desktopTools,
     threadConfig: (cwd) =>
       ports.tools

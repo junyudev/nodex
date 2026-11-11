@@ -510,10 +510,10 @@ Application tool interpretation crosses a bounded, lossless invocation inbox, se
 resource acquisition from semantic application dependencies. Withdrawing a caller interrupts its
 interpreter; duplicate delivery cannot execute a ticket twice. The inbox owns no content authority.
 
-Remote Hosted PiP is one Main-owned, revisioned Effect Module. Generated Codex notifications enter
-through the existing per-Thread causal consequence path, and local connection retirement fences the
-captured host generation; observational Gateway streams and transcript residency are not activity
-authority. The Module owns source-aware task activity, durable Profile-local visibility, Browser
+Remote Hosted PiP is one Main-owned, revisioned Effect Module. Desktop tool activity enters through
+causal local Codex notifications or the Agent Runtime host bridge, which proves the live lease and
+Run attempt. Both sources identify the Session’s execution root Thread, and retiring either source
+fences its old generation. The Module owns source-aware task activity, durable Profile-local visibility, Browser
 presentation identities and bounded raster leases. Renderer windows consume a bounded snapshot after
 a revision invalidation and can send only visibility intent or observed host geometry; they never own
 active or hidden task sets.

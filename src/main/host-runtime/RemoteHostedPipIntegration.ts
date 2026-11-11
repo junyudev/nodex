@@ -166,7 +166,7 @@ export const live: Layer.Layer<
           case "visibility-requested":
             if (event.threadIds.length === 0) return Effect.void;
             return ignoreFailure(
-              remoteHostedPip.setTaskVisibilities(
+              remoteHostedPip.setNativeTaskVisibilities(
                 event.threadIds,
                 event.isVisible ? "shown" : "hidden",
               ),

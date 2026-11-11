@@ -42,3 +42,12 @@ export {
 export type * from "./AcpManagementContract.ts";
 export type * from "./WindowsSandboxContract.ts";
 export { decodeAgentAcpFailure } from "./AcpFailureContract.ts";
+
+export {
+  asDesktopRecord,
+  codexDesktopToolItemActivity,
+  parseDesktopIdentifier,
+  parseDesktopToolActivity,
+  type BrowserUsePipSurface,
+  type DesktopToolActivity,
+} from "@nodex/provider-core/server/desktopToolActivity";

@@ -158,12 +158,15 @@ it.effect("routes native click, visibility, and avatar events through their sema
         }
         return Effect.succeed(null);
       },
-      retireCodexThreads: () => Effect.void,
+      observeRuntimeActivity: () => Effect.void,
+      retireRuntimeLease: () => Effect.void,
+      retireTasks: () => Effect.void,
       retireLocalCodexHost: () => Effect.void,
       revisions: Stream.empty,
       setAlwaysHide: () => Effect.void,
       setMaxDisplaySize: () => Effect.void,
-      setTaskVisibilities: (taskIds, value) =>
+      setTaskVisibilities: () => Effect.void,
+      setNativeTaskVisibilities: (taskIds, value) =>
         Effect.sync(() => visibility.push({ taskIds: [...taskIds], value })).pipe(
           Effect.andThen(Deferred.succeed(visibilityApplied, undefined)),
           Effect.asVoid,

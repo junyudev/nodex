@@ -192,6 +192,7 @@ const supervisor = Layer.effectContext(
     );
     const conversations = Option.getOrUndefined(yield* Effect.serviceOption(CodexConversations));
     const desktop = yield* HostDesktopTools;
+    const pip = desktop.pip;
     const appToolCatalog = yield* HostAppToolCatalog;
     const hostPolicy = Option.getOrUndefined(yield* Effect.serviceOption(HostAgentPolicy));
     const fs = yield* FileSystem.FileSystem;
@@ -371,6 +372,12 @@ const supervisor = Layer.effectContext(
       pageWorkspaceThreads: pageWorkspaces.threadsAtPath,
       presentation,
       releaseDesktopSession: desktop.releaseSession,
+      ...(pip
+        ? {
+            retireDesktopTask: (taskId, action) =>
+              pip.retireTasks({ action, threadIds: [taskId] }).pipe(Effect.ignoreCause),
+          }
+        : {}),
       reconcileWorkspace: workspace.reconcile,
       // Product writers span Core admission through execution acknowledgement; hold the process.
       writing: (operation) =>

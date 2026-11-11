@@ -32,7 +32,7 @@ The page bridge exposes only this document-owned registry and callbacks. It gran
 
 ## Native picture in picture
 
-An admitted local task becomes active when Browser Use has an open session or Computer Use has an active item. Admission follows the local Codex connection, so chats running on the Agent Runtime, including Claude Code chats, do not raise picture in picture. A task can have both sources; ending one source does not hide the other. Browser presentations retain only the bounded latest accepted raster for each open presentation. Computer Use remains a native remote layer and is not copied into renderer history.
+An admitted local task becomes active when Browser Use has an open session or Computer Use has an active item. Main admits desktop activity from the current local Codex connection or from a live Agent Runtime lease and its authorized Run attempt. Both producers address the same task, the chat’s execution root Thread. Browser Use and Computer Use can be active in the same task and retire independently. Browser presentations retain only the bounded latest accepted raster for each open presentation. Computer Use remains a native remote layer and is not copied into renderer history.
 
 The native stack attaches to the focused eligible Nodex window, then the most recently eligible window, or the only eligible window. It follows native window movement without renderer animation frames and disables both stack-placement and companion-window motion when the system requests reduced motion. The stack may move to the restricted companion overlay; that overlay has no restorable Workbench Session and does not own task state. When the same Browser surface is already visible in the selected Nodex window, its duplicate native presentation is temporarily suppressed without changing the user's visibility choice.
 
@@ -41,9 +41,9 @@ Presentations produced by the policy-gated CDP backend are display-only and do n
 
 ## Visibility and lifecycle
 
-Users can show or hide one active task, hide all active tasks, or globally suppress native picture in picture. Main persists the global setting, maximum display size, and per-task visibility in the local Profile. Reloading, closing, or archiving a task preserves its choice; permanently deleting the task removes it.
+Users can show or hide one active task, hide all active tasks, or globally suppress native picture in picture. Main persists the global setting, maximum display size, and per-task visibility in the local Profile, keyed by the execution root Thread. Reloading, closing, or archiving a task preserves its choice; permanently deleting the task removes it.
 
-Renderer windows read a bounded revisioned snapshot and submit intents. They do not own active-task truth, the complete visibility map, native callbacks, Browser images, or window attachment. A local Codex connection loss immediately retires the old generation and releases its live presentations. Reconnection starts empty and accepts only new-generation control activity.
+Renderer windows read a bounded revisioned snapshot and submit intents. They do not own active-task truth, the complete visibility map, native callbacks, Browser images, or window attachment. Ending a Turn or Run attempt, archiving or deleting its Thread, losing or replacing its execution generation, and quitting Nodex release its presentations. A new connection or Runtime lease starts empty.
 
 ## Failure and privacy behavior
 

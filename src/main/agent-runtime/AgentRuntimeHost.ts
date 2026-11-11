@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { parseDesktopIdentifier, parseDesktopToolActivity } from "@nodex/agent-runtime/contracts";
+import type { RuntimeDesktopActivitySource } from "../host-runtime/RemoteHostedPipRuntime";
 import { inboundTextHash } from "./ChatMessageDelivery";
 import { HostWorkspace } from "../../host/HostWorkspace";
 import { createOperationId } from "../core-runtime/operation-identity";
@@ -76,7 +78,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     readonly execute: AgentRuntimeHostToolExecutor;
     readonly desktop?: Pick<
       AgentRuntimeDesktopTools,
-      "threadConfig" | "desktopTools" | "observeNativeTurn"
+      "threadConfig" | "desktopTools" | "observeNativeTurn" | "pip"
     >;
     /** What a workspace's Environment setup changed, for providers that start their own processes. */
     readonly workspaceEnvironment?: (cwd: string) => Effect.Effect<
@@ -103,9 +105,10 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
   const { runtimeId, runtimeGeneration: leaseId } = connection.identity;
   let open = true;
   yield* Effect.addFinalizer(() =>
-    Effect.sync(() => {
+    Effect.gen(function* () {
       open = false;
       options.presentation?.finishRuntimeLease(runtimeId, leaseId);
+      yield* options.desktop?.pip?.retireRuntimeLease(runtimeId, leaseId) ?? Effect.void;
     }),
   );
   const shellTaskId = (threadId: string) =>
@@ -384,17 +387,70 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       }
       if (request.operation === "turn.native") {
         const { identity } = request;
-        const { nativeThreadId } = request;
-        if (!options.desktop || identity.runId === null || !nativeThreadId) return {};
-        const turn = { nativeThreadId, nativeTurnId: request.nativeTurnId };
+        const nativeThreadId = parseDesktopIdentifier(request.nativeThreadId);
+        const nativeTurnId = parseDesktopIdentifier(request.nativeTurnId);
+        if (!options.desktop || !nativeThreadId || !nativeTurnId) return {};
+        const turn = { nativeThreadId, nativeTurnId };
+        const source: RuntimeDesktopActivitySource = {
+          kind: "runtime",
+          runtimeId,
+          generation: leaseId,
+          threadId: identity.threadId,
+          runId: identity.runId,
+          attemptId: identity.attemptId,
+        };
+        const target = {
+          source,
+          desktopSessionId: nativeThreadId,
+          turnId: nativeTurnId,
+          turnKey: parseDesktopIdentifier(request.turnKey) ?? nativeTurnId,
+        };
+        const isCurrent = () => isCurrentLease(identity);
+        const pip = options.desktop.pip;
         // Ending only lets go of what the Turn held, so it needs the lease, not a live Run.
         if (request.phase === "ended") {
           if (!isCurrentLease(identity)) return yield* unavailable("turn.native");
+          yield* (
+            pip?.observeRuntimeActivity(
+              {
+                ...target,
+                kind: "turn-ended",
+                completed: request.completed === true,
+              },
+              isCurrent,
+            ) ?? Effect.void
+          );
           yield* options.desktop.observeNativeTurn({ ...turn, phase: "ended" });
           return {};
         }
         const { proof, sessionId, context } = yield* authorize(identity);
-        if (proof.runId === null) return yield* unavailable("turn.native");
+        if (
+          proof.runId === null ||
+          proof.archived ||
+          (proof.status !== "starting" && proof.status !== "running" && proof.status !== "waiting")
+        )
+          return yield* unavailable("turn.native");
+        const taskId = proof.rootThreadId;
+        if (request.phase === "activity") {
+          const activity = parseDesktopToolActivity(request.activity);
+          if (activity)
+            yield* (
+              pip?.observeRuntimeActivity({ ...target, taskId, ...activity }, isCurrent) ??
+                Effect.void
+            );
+          return {};
+        }
+        yield* (
+          pip?.observeRuntimeActivity(
+            {
+              ...target,
+              taskId,
+              kind: "turn-started",
+              sessionId,
+            },
+            isCurrent,
+          ) ?? Effect.void
+        );
         yield* options.desktop.observeNativeTurn({
           ...turn,
           threadId: proof.threadId,

@@ -4036,7 +4036,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ),
   );
 
-  it.effect("starts threads with host tools and tells the host when root Turns start and end", () =>
+  it.effect("reports live desktop activity and Turn lifecycle from Codex", () =>
     Effect.gen(function* () {
       const nativeThreadId = "host-tools";
       const nativeTurnId = "host-tools-turn";
@@ -4062,6 +4062,42 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             },
           },
           ...preamble.slice(4),
+          {
+            type: "emit_inbound",
+            frame: {
+              method: "item/completed",
+              params: {
+                threadId: nativeThreadId,
+                turnId: nativeTurnId,
+                item: {
+                  type: "mcpToolCall",
+                  id: "browser-item",
+                  server: "node_repl",
+                  tool: "js",
+                  status: "completed",
+                  arguments: {},
+                  appContext: null,
+                  mcpAppUi: null,
+                  pluginId: null,
+                  readOnlyHint: null,
+                  error: null,
+                  durationMs: 1,
+                  result: {
+                    content: [],
+                    structuredContent: null,
+                    _meta: {
+                      "codex/toolSurface": {
+                        kind: "browserUse",
+                        backend: "iab",
+                        browserId: "browser",
+                        openTabIds: ["1"],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
           {
             type: "emit_inbound",
             frame: {
@@ -4096,6 +4132,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                 runId: input.identity.runId,
                 nativeTurnId: input.nativeTurnId,
                 phase: input.phase,
+                ...(input.phase === "activity" ? { activity: input.activity } : {}),
               });
             }),
         }),
@@ -4133,6 +4170,15 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       ]);
       assert.deepEqual(observed, [
         { runId: input.runId, nativeTurnId, phase: "started" },
+        {
+          runId: input.runId,
+          nativeTurnId,
+          phase: "activity",
+          activity: {
+            kind: "browser-use",
+            surface: { backend: "iab", browserId: "browser", openTabIds: ["1"] },
+          },
+        },
         { runId: input.runId, nativeTurnId, phase: "ended" },
       ]);
     }).pipe(

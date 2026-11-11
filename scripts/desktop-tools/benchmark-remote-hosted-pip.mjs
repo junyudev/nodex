@@ -218,7 +218,7 @@ const waitUntil = (predicate, label) =>
     return yield* Effect.die(new Error(`Timed out waiting for ${label}`));
   });
 
-async function withRemoteHostedPipRuntime(root, native, resolveThreadHost, evaluate) {
+async function withRemoteHostedPipRuntime(root, native, resolveNativeSession, evaluate) {
   const preferences = makeRemoteHostedPipPreferences(path.join(root, "preferences.json"));
   const scope = await Effect.runPromise(Scope.make());
   try {
@@ -234,7 +234,7 @@ async function withRemoteHostedPipRuntime(root, native, resolveThreadHost, evalu
           localHostId: LOCAL_HOST_ID,
           native,
           preferences,
-          resolveThreadHost,
+          resolveNativeSession,
         }),
         scope,
       ),
@@ -280,7 +280,7 @@ async function runBackendIsolationEvidence(root) {
   return await withRemoteHostedPipRuntime(
     root,
     native.port,
-    (threadId) => Effect.succeed(threadId === "acp-bound-thread" ? "acp-host" : LOCAL_HOST_ID),
+    (threadId) => Effect.succeed(threadId === "acp-bound-thread" ? null : threadId),
     async (runtime) => {
       const image = { screenshot: { tabId: "1", url: pngDataUrl() } };
       await Effect.runPromise(
@@ -326,7 +326,7 @@ async function runRuntimeProjectionBenchmark(root, replacementCount, taskCycleCo
   return await withRemoteHostedPipRuntime(
     root,
     native.port,
-    () => Effect.succeed(LOCAL_HOST_ID),
+    (threadId) => Effect.succeed(threadId),
     async (runtime) => {
       const replacementSamples = [];
       const lifecycleSamples = [];
@@ -419,9 +419,7 @@ async function runRuntimeProjectionBenchmark(root, replacementCount, taskCycleCo
             `task ${cycle} upsert`,
           ),
         );
-        await Effect.runPromise(
-          runtime.retireCodexThreads({ action: "delete", threadIds: [taskId] }),
-        );
+        await Effect.runPromise(runtime.retireTasks({ action: "delete", threadIds: [taskId] }));
         await Effect.runPromise(
           waitUntil(() => native.snapshot().finalPresentationCount === 0, `task ${cycle} teardown`),
         );

@@ -18,7 +18,10 @@ import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
-import type { HostTurnIdentity } from "@nodex/provider-core/server/ExecutionHost";
+import type {
+  HostTurnIdentity,
+  HostTurnIdentityReport,
+} from "@nodex/provider-core/server/ExecutionHost";
 import {
   EnvironmentId,
   NodeId,
@@ -118,6 +121,7 @@ async function setup(
   let waitForAnswer = false;
   const approvals: RuntimeApprovalRequest[] = [];
   const observed: string[] = [];
+  const reports: HostTurnIdentityReport[] = [];
   const trace = join(home, "fixture.jsonl");
   const codexHome = join(home, "codex");
   await mkdir(codexHome);
@@ -162,7 +166,9 @@ async function setup(
     environment: { HOME: home, CODEX_HOME: codexHome, PATH: process.env.PATH },
     admit: async ({ threadId }) =>
       running ? { identity: identity(threadId), runtimeMode: mode } : undefined,
-    observe: async ({ phase }) => {
+    observe: async (report) => {
+      const { phase } = report;
+      if (phase === "activity") reports.push(report);
       if (phase === "started" && !realRoot) await appendFile(trace, '{"event":"main-started"}\n');
       observed.push(phase);
     },
@@ -178,6 +184,7 @@ async function setup(
     server,
     approvals,
     observed,
+    reports,
     setRunning: (value: boolean) => {
       running = value;
     },
@@ -301,6 +308,28 @@ describe("Desktop Tools", () => {
           "codex/toolSurface": { kind: "browserUse", backend: "iab" },
         });
         expect(context.observed).toEqual(["started"]);
+        expect(context.reports).toEqual([]);
+        await first.js("browser-surface");
+        await first.js("computer-surface");
+        expect(context.reports).toEqual([
+          {
+            phase: "activity",
+            identity: identity(threadA),
+            nativeThreadId: expect.stringMatching(/^[a-f0-9]{64}$/u),
+            nativeTurnId: "attempt:test",
+            activity: {
+              kind: "browser-use",
+              surface: { backend: "iab", browserId: "fixture-browser", openTabIds: ["1"] },
+            },
+          },
+          {
+            phase: "activity",
+            identity: identity(threadA),
+            nativeThreadId: expect.stringMatching(/^[a-f0-9]{64}$/u),
+            nativeTurnId: "attempt:test",
+            activity: { kind: "computer-use", active: true, itemId: expect.any(String) },
+          },
+        ]);
         const trace = await readFile(context.trace, "utf8");
         expect(trace.indexOf('"event":"main-started"')).toBeGreaterThanOrEqual(0);
         expect(trace.indexOf('"event":"main-started"')).toBeLessThan(trace.indexOf('"event":"js"'));

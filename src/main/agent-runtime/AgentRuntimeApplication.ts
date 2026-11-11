@@ -225,6 +225,10 @@ export interface AgentRuntimeApplicationOptions {
     folders: readonly import("@nodex/core-protocol").components["schemas"]["ChatFolder"][],
   ) => Effect.Effect<void>;
   /** Desktop resources an archived or deleted Session's Agents held, such as Browser pages. */
+  readonly retireDesktopTask?: (
+    taskId: string,
+    action: "archive" | "delete",
+  ) => Effect.Effect<void>;
   readonly releaseDesktopSession?: (sessionId: string) => Effect.Effect<void>;
   readonly reconcileWorkspace?: NativeSessionWorkspace["Service"]["reconcile"];
   /**
@@ -3658,6 +3662,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   ) {
     if (cleanup.runtime_id !== connection.identity.runtimeId)
       return yield* failure("cleanup", "Execution cleanup belongs to another runtime");
+    yield* options.retireDesktopTask?.(cleanup.runtime_thread_id, "delete") ?? Effect.void;
     const thread = yield* connection.request("thread.read", {
       threadId: cleanup.runtime_thread_id,
     });
@@ -3831,8 +3836,13 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const result = yield* archived
       ? workspace.archiveProjectSession(command)
       : workspace.unarchiveProjectSession(command);
-    if (archived && result.value.archived)
+    if (archived && result.value.archived) {
+      if (result.value.executionRef)
+        yield* (
+          options.retireDesktopTask?.(result.value.executionRef.threadId, "archive") ?? Effect.void
+        );
       yield* options.releaseDesktopSession?.(result.value.id) ?? Effect.void;
+    }
     if (!result.value.executionRef || result.value.archived !== archived) return result;
     yield* afterCommit(
       command.operationId,

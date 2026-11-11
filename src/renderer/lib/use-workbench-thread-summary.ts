@@ -254,6 +254,7 @@ export function useWorkbenchThreadSummary({
       }),
     [activeSession?.id, clockAutomations],
   );
+  // PiP activity and visibility use the execution root for both Runtime and native Sessions.
   const pip = useRemoteHostedPipSummaryControl(conversationThreadId);
   const onOpenSideChatRow = useCallback<
     NonNullable<ThreadStageActions["onOpenSummarySideChatRow"]>

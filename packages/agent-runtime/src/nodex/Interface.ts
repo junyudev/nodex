@@ -1,3 +1,4 @@
+import type { DesktopTurnObservation } from "@nodex/provider-core/server/ExecutionHost";
 import type { ModelPolicy } from "../../../../src/shared/model-policy.ts";
 import type { AgentAcpManagementOperations } from "./AcpManagementContract.ts";
 import type { AgentWindowsSandboxOperations } from "./WindowsSandboxContract.ts";
@@ -1012,15 +1013,15 @@ export type AgentHostRequest =
         readonly nativeDriver: string;
       };
     }
-  | {
+  | (DesktopTurnObservation & {
       readonly type: "host.request";
       readonly id: string;
       readonly operation: "turn.native";
       readonly identity: AgentHostTurnIdentity;
       readonly nativeThreadId: string;
       readonly nativeTurnId: string;
-      readonly phase: "started" | "ended";
-    }
+      readonly turnKey?: string;
+    })
   | {
       readonly type: "host.request";
       readonly id: string;

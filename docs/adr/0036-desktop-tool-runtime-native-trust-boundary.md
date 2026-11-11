@@ -108,9 +108,10 @@ hide request may create or retain the shell, but cannot expand a panel, replace
 the active tab, change split/maximized state, or perturb global MRU ordering.
 
 Main and the operating-system native bridge own Browser, Chrome, and Computer
-Use PiP. Main derives activity from the admitted local Codex notification
-generation, retains bounded latest Browser presentations, and connects only a
-verified Computer Use service. A native Browser presentation can focus its
+Use PiP. Main admits activity from the current local Codex connection or the live Agent
+Runtime lease and authorized Run attempt. Both sources address the chat’s
+execution root Thread. Main retains bounded latest Browser presentations and
+connects only a verified Computer Use service. A native Browser presentation can focus its
 exact in-app tab or exact Chrome extension instance and numeric tab. PiP is
 suppressed while the same Browser surface is visibly presented without changing
 the user's visibility preference.
@@ -152,7 +153,7 @@ reimplemented as renderer state.
 - Native PiP can remain visible independently of React panel mount state but
   cannot become durable task or Scene authority.
 - Local provider execution shares the verified Desktop Tool runtime. Native PiP
-  derives activity from the local Codex notification generation.
+  admits activity from a live local execution generation.
 - Release verification must validate mixed signing identities and exercise the
   actual plugin/host/helper chain and exact native-addon ABI, not only file
   presence.

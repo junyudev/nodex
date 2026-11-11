@@ -2,14 +2,26 @@ import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { act } from "@testing-library/react";
 import { useEffect } from "react";
 import type { RemoteHostedPipTaskStateSnapshot } from "../../../../shared/remote-hosted-pip";
+import { sessionExecutionThreadId, type SessionExecutionSource } from "@/lib/session-execution";
 import { render, settleAsyncRender } from "../../../test/dom";
 import { useRemoteHostedPipSummaryControl } from "./use-remote-hosted-pip-summary-control";
 
 type IpcListener = (payload: unknown) => void;
 type RemoteHostedPipSummaryControlValue = ReturnType<typeof useRemoteHostedPipSummaryControl>;
 
+const runtimeSession: SessionExecutionSource = {
+  id: "session-1",
+  projectId: null,
+  displayTitle: "Browser task",
+  archived: false,
+  createdAt: "2026-11-11",
+  updatedAt: "2026-11-11",
+  thread: null,
+  executionRef: { runtimeId: "runtime", threadId: "thread-1" },
+};
+
 function Probe({ onValue }: { onValue: (value: RemoteHostedPipSummaryControlValue) => void }) {
-  const value = useRemoteHostedPipSummaryControl("thread-1");
+  const value = useRemoteHostedPipSummaryControl(sessionExecutionThreadId(runtimeSession));
   useEffect(() => onValue(value), [onValue, value]);
   return null;
 }
@@ -67,7 +79,7 @@ describe("useRemoteHostedPipSummaryControl", () => {
     else Object.defineProperty(window, "api", { configurable: true, value: originalApi });
   });
 
-  test("derives the row only from the monotonic Main snapshot", async () => {
+  test("uses the Runtime Session root for visibility in the monotonic Main snapshot", async () => {
     let latest: RemoteHostedPipSummaryControlValue | undefined;
     const view = render(<Probe onValue={(value) => void (latest = value)} />);
     await settleAsyncRender();

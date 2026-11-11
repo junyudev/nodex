@@ -8,10 +8,10 @@ let nextElicitation = 0;
 const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...message }) + "\n");
 const result = (id, value) => send({ id, result: value });
 const trace = (entry) => appendFileSync(process.argv[2], JSON.stringify({ pid: process.pid, ...entry }) + "\n");
-const success = (id, value) => result(id, {
+const success = (id, value, surface = { kind: "browserUse", backend: "iab" }) => result(id, {
   content: [{ type: "text", text: "fixture" }, { type: "image", data: "AAAA", mimeType: "image/png" }],
   structuredContent: value,
-  _meta: { "codex/toolSurface": { kind: "browserUse", backend: "iab" } },
+  _meta: { "codex/toolSurface": surface },
 });
 // Model a REPL and kernel that ignore stdin EOF, including while the REPL is idle.
 const kernel = process.argv[3] === "lifetime"
@@ -72,5 +72,8 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     if (code === "elicit-cancel") send({ method: "notifications/cancelled", params: { requestId: reverseId } });
     return;
   }
-  success(id, { meta: params._meta ?? {}, pid: process.pid, cwd: process.cwd() });
+  const surface = code === "browser-surface"
+    ? { kind: "browserUse", backend: "iab", browserId: "fixture-browser", openTabIds: ["1"], currentUrl: "http://example.test/private" }
+    : code === "computer-surface" ? { kind: "computerUse", extra: "private" } : undefined;
+  success(id, { meta: params._meta ?? {}, pid: process.pid, cwd: process.cwd() }, surface);
 });

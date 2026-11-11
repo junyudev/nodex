@@ -169,6 +169,7 @@ it.effect(
         readMaxDisplaySize: () => null,
       } as unknown as RemoteHostedPipPreferencesAdapter;
       const coordinator = yield* makeRemoteHostedPipHostCoordinator({
+        resolveActiveThreadId: (sessionId) => sessionId,
         isThreadSurfacePresented: (threadId) => threadId === "thread-a",
         native,
         preferences,

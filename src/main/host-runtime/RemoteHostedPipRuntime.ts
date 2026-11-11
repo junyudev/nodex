@@ -1,3 +1,4 @@
+import type { DesktopToolActivity } from "@nodex/agent-runtime/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -28,7 +29,9 @@ import {
   type BrowserUsePipSurface,
 } from "../browser-use/browser-use-pip-metadata";
 import type { CodexServerNotification } from "../codex-runtime/CodexApplicationProtocol";
-import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
+import { readCodexLinkedRootSession } from "../codex-application/CodexLinkedRootSession";
+import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { CoreModules } from "../core-runtime/CoreModules";
 import { getLogger } from "../logging/logger";
 import {
   makeRemoteHostedPipPreferences,
@@ -63,10 +66,58 @@ export interface RemoteHostedPipCodexOccurrence {
   readonly occurrenceToken: number;
 }
 
-export interface RemoteHostedPipCodexLifecycleSettlement {
+export interface RemoteHostedPipTaskRetirement {
   readonly action: "archive" | "delete";
   readonly threadIds: readonly string[];
 }
+
+export type RuntimeDesktopActivitySource = {
+  readonly kind: "runtime";
+  readonly runtimeId: string;
+  readonly generation: string;
+  readonly threadId: string;
+  readonly runId: string;
+  readonly attemptId: string;
+};
+
+type DesktopActivitySource =
+  | { readonly kind: "codex"; readonly generation: number }
+  | RuntimeDesktopActivitySource;
+
+export interface RuntimeDesktopActivityTarget {
+  readonly source: RuntimeDesktopActivitySource;
+  readonly desktopSessionId: string;
+  readonly turnId: string;
+  readonly turnKey: string;
+}
+
+interface AdmittedTask {
+  readonly source: DesktopActivitySource;
+  readonly desktopSessionId: string;
+  readonly sessionId: string;
+  readonly turnId: string | undefined;
+  readonly turnKey?: string;
+}
+
+type TaskActivity =
+  | DesktopToolActivity
+  | { readonly kind: "turn-ended"; readonly turnId: string; readonly completed: boolean }
+  | { readonly kind: "thread-ended"; readonly deleted: boolean };
+
+type RuntimeDesktopActivity = RuntimeDesktopActivityTarget &
+  (
+    | { readonly kind: "turn-started"; readonly sessionId: string; readonly taskId: string }
+    | (DesktopToolActivity & { readonly taskId: string })
+    | { readonly kind: "turn-ended"; readonly completed: boolean }
+  );
+
+const sameRuntimeTurn = (source: DesktopActivitySource, incoming: RuntimeDesktopActivitySource) =>
+  source.kind === "runtime" &&
+  source.runtimeId === incoming.runtimeId &&
+  source.generation === incoming.generation &&
+  source.threadId === incoming.threadId &&
+  source.runId === incoming.runId &&
+  source.attemptId === incoming.attemptId;
 
 export type { RemoteHostedPipTaskStateSnapshot } from "../../shared/remote-hosted-pip";
 
@@ -118,7 +169,6 @@ interface BrowserSession {
   readonly browserFamily: string | null;
   readonly browserId: string;
   readonly extensionInstanceId: string | null;
-  readonly generation: number;
   hasOpenTabs: boolean;
   readonly key: string;
   readonly presentations: Map<string, BrowserPresentation>;
@@ -130,7 +180,7 @@ interface PendingImage {
   readonly browserFamily: string | null;
   readonly dataUrl: string;
   readonly extensionInstanceId: string | null;
-  readonly generation: number;
+  readonly desktopSessionId: string;
   readonly presentationId: string;
   readonly sequence: number;
   readonly sessionKey: string;
@@ -140,17 +190,18 @@ interface PendingImage {
 }
 
 interface RuntimeState {
-  readonly admittedThreadGenerations: Map<string, number>;
+  readonly admittedTasks: Map<string, AdmittedTask>;
   readonly browserSessions: Map<string, BrowserSession>;
   readonly computerUseItemsByThread: Map<string, Set<string>>;
-  currentGeneration: number | null;
+  currentCodexGeneration: number | null;
   nextImageSequence: number;
   pendingImageBytes: number;
   readonly pendingImages: Map<string, PendingImage>;
   readonly presentationTargets: Map<string, RemoteHostedPipBrowserPresentationTarget>;
   readonly presentationSequences: Map<string, number>;
   resourceState: BrowserPipResourceState;
-  retiredGeneration: number;
+  retiredCodexGeneration: number;
+  readonly retiredCodexTurns: Set<string>;
   revision: number;
 }
 
@@ -165,6 +216,15 @@ export class RemoteHostedPipRuntime extends Context.Service<
     readonly observeCodexOccurrence: (
       occurrence: RemoteHostedPipCodexOccurrence,
     ) => Effect.Effect<void>;
+    readonly observeRuntimeActivity: (
+      activity: RuntimeDesktopActivity,
+      isCurrent: () => boolean,
+    ) => Effect.Effect<void>;
+    readonly retireRuntimeLease: (runtimeId: string, generation: string) => Effect.Effect<void>;
+    readonly setNativeTaskVisibilities: (
+      desktopSessionIds: readonly string[],
+      visibility: RemoteHostedPipTaskVisibility,
+    ) => Effect.Effect<void, RemoteHostedPipRuntimeError>;
     readonly refresh: Effect.Effect<void, RemoteHostedPipRuntimeError>;
     readonly releaseChromeExtensionInstance: (input: {
       readonly browserFamily: string;
@@ -177,8 +237,8 @@ export class RemoteHostedPipRuntime extends Context.Service<
     readonly resolveBrowserPresentation: (
       presentationId: string,
     ) => Effect.Effect<RemoteHostedPipBrowserPresentationTarget | null>;
-    readonly retireCodexThreads: (
-      settlement: RemoteHostedPipCodexLifecycleSettlement,
+    readonly retireTasks: (
+      settlement: RemoteHostedPipTaskRetirement,
     ) => Effect.Effect<void, RemoteHostedPipRuntimeError>;
     readonly retireLocalCodexHost: (reason: "connection-lost" | "shutdown") => Effect.Effect<void>;
     readonly revisions: Stream.Stream<number>;
@@ -201,8 +261,8 @@ export class RemoteHostedPipRuntimeError extends Schema.TaggedError<RemoteHosted
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
 
-export class RemoteHostedPipThreadHostResolutionError extends Schema.TaggedError<RemoteHostedPipThreadHostResolutionError>()(
-  "RemoteHostedPipThreadHostResolutionError",
+export class RemoteHostedPipNativeSessionResolutionError extends Schema.TaggedError<RemoteHostedPipNativeSessionResolutionError>()(
+  "RemoteHostedPipNativeSessionResolutionError",
   { cause: Schema.Defect() },
 ) {}
 
@@ -230,20 +290,16 @@ interface RuntimePorts {
   readonly diagnostics: RemoteHostedPipDiagnostics;
   readonly preferences: RemoteHostedPipPreferencesAdapter;
   readonly resolveChromeBrowserIconPath: (browserFamily: string) => string | null;
-  readonly resolveThreadHost: (
+  readonly resolveNativeSession: (
     threadId: string,
-  ) => Effect.Effect<string, RemoteHostedPipThreadHostResolutionError>;
+  ) => Effect.Effect<string | null, RemoteHostedPipNativeSessionResolutionError>;
 }
 
 const runtimeError = (operation: string, cause: unknown) =>
   new RemoteHostedPipRuntimeError({ operation, cause });
 
-const sessionKey = (
-  hostId: string,
-  generation: number,
-  threadId: string,
-  surface: BrowserUsePipSurface,
-): string => JSON.stringify([hostId, generation, threadId, surface.browserId]);
+const sessionKey = (threadId: string, surface: BrowserUsePipSurface): string =>
+  JSON.stringify([threadId, surface.browserId]);
 
 const presentationId = (threadId: string, surface: BrowserUsePipSurface, tabId: string): string =>
   `browser:${JSON.stringify([threadId, surface.browserId, tabId])}`;
@@ -254,17 +310,18 @@ const makeRuntime = (
   Effect.gen(function* () {
     const initialPreferences = ports.preferences.readSnapshot();
     const state: RuntimeState = {
-      admittedThreadGenerations: new Map(),
+      admittedTasks: new Map(),
       browserSessions: new Map(),
       computerUseItemsByThread: new Map(),
-      currentGeneration: null,
+      currentCodexGeneration: null,
       nextImageSequence: 1,
       pendingImageBytes: 0,
       pendingImages: new Map(),
       presentationTargets: new Map(),
       presentationSequences: new Map(),
       resourceState: emptyBrowserPipResourceState(),
-      retiredGeneration: 0,
+      retiredCodexGeneration: 0,
+      retiredCodexTurns: new Set(),
       revision: initialPreferences.revision,
     };
     const lock = yield* Semaphore.make(1);
@@ -329,11 +386,36 @@ const makeRuntime = (
     });
 
     if (ports.host) {
+      let lastProjection:
+        | {
+            readonly snapshot: RemoteHostedPipTaskStateSnapshot;
+            readonly native: RemoteHostedPipTaskStateSnapshot;
+          }
+        | undefined;
       hostCoordinator = yield* makeRemoteHostedPipHostCoordinator({
         isThreadSurfacePresented: ports.host.isThreadSurfacePresented,
         native: ports.host.native,
         preferences: ports.preferences,
-        readSnapshot: () => SubscriptionRef.getUnsafe(snapshotRef),
+        readSnapshot: () => {
+          const snapshot = SubscriptionRef.getUnsafe(snapshotRef);
+          if (lastProjection?.snapshot === snapshot) return lastProjection.native;
+          const activeTaskIds = snapshot.activeTaskIds.map(
+            (taskId) => state.admittedTasks.get(taskId)?.desktopSessionId ?? taskId,
+          );
+          const taskVisibilities = Object.fromEntries(
+            snapshot.activeTaskIds.flatMap((taskId) => {
+              const visibility = snapshot.taskVisibilities[taskId];
+              const task = state.admittedTasks.get(taskId);
+              return task && visibility ? [[task.desktopSessionId, visibility]] : [];
+            }),
+          );
+          const native = { ...snapshot, activeTaskIds, taskVisibilities };
+          lastProjection = { snapshot, native };
+          return native;
+        },
+        resolveActiveThreadId: (sessionId) =>
+          [...state.admittedTasks.values()].find((task) => task.sessionId === sessionId)
+            ?.desktopSessionId ?? null,
         windows: ports.host.windows,
       });
     }
@@ -451,63 +533,90 @@ const makeRuntime = (
       session.browserFamily === (source.browserFamily ?? null) &&
       session.extensionInstanceId === (source.extensionInstanceId ?? null);
 
-    const retireGeneration = Effect.fn("RemoteHostedPipRuntime.retireGeneration")(function* (
-      generation: number,
+    const codexTurnKey = (threadId: string, turnId: string) => JSON.stringify([threadId, turnId]);
+    const rememberRetiredCodexTurn = (threadId: string, turnId: string) => {
+      state.retiredCodexTurns.add(codexTurnKey(threadId, turnId));
+      if (state.retiredCodexTurns.size > MAX_ADMITTED_THREADS)
+        state.retiredCodexTurns.delete(state.retiredCodexTurns.values().next().value!);
+    };
+
+    const releaseTasks = Effect.fn("RemoteHostedPipRuntime.releaseTasks")(function* (
+      threadIds: ReadonlySet<string>,
+      invalidateComputerUse = true,
     ) {
-      const browserChanged = yield* releaseSessions((session) => session.generation === generation);
-      let computerChanged = false;
-      for (const threadId of state.computerUseItemsByThread.keys()) {
-        if (state.admittedThreadGenerations.get(threadId) !== generation) continue;
-        state.computerUseItemsByThread.delete(threadId);
-        computerChanged = true;
+      let changed = yield* releaseSessions((session) => threadIds.has(session.threadId));
+      for (const threadId of threadIds) {
+        const task = state.admittedTasks.get(threadId);
+        state.admittedTasks.delete(threadId);
+        if (task?.source.kind === "codex" && task.turnId)
+          rememberRetiredCodexTurn(threadId, task.turnId);
+        if (!state.computerUseItemsByThread.delete(threadId)) continue;
+        changed = true;
+        if (invalidateComputerUse && task?.turnId !== undefined)
+          yield* safeNative(
+            "invalidate-turn",
+            ports.native.invalidateTurn(task.desktopSessionId, task.turnId),
+          );
       }
-      for (const [threadId, admittedGeneration] of state.admittedThreadGenerations) {
-        if (admittedGeneration === generation) state.admittedThreadGenerations.delete(threadId);
-      }
-      return browserChanged || computerChanged;
+      return changed;
     });
+
+    const releaseSource = (matches: (source: DesktopActivitySource) => boolean) =>
+      releaseTasks(
+        new Set(
+          [...state.admittedTasks].flatMap(([taskId, task]) =>
+            matches(task.source) ? [taskId] : [],
+          ),
+        ),
+      );
+
+    const retireGeneration = (generation: number) =>
+      releaseSource((source) => source.kind === "codex" && source.generation === generation);
 
     const advanceGeneration = Effect.fn("RemoteHostedPipRuntime.advanceGeneration")(function* (
       generation: number,
     ) {
-      if (!Number.isSafeInteger(generation) || generation <= state.retiredGeneration) return false;
-      if (state.currentGeneration === null) {
-        state.currentGeneration = generation;
-        return true;
+      if (!Number.isSafeInteger(generation) || generation <= state.retiredCodexGeneration)
+        return false;
+      const previous = state.currentCodexGeneration;
+      if (previous !== null && generation < previous) return false;
+      if (previous === generation) return true;
+      state.currentCodexGeneration = generation;
+      if (previous !== null) {
+        state.retiredCodexGeneration = previous;
+        if (yield* retireGeneration(previous)) yield* publishSnapshot();
       }
-      if (generation < state.currentGeneration) return false;
-      if (generation === state.currentGeneration) return true;
-      const changed = yield* retireGeneration(state.currentGeneration);
-      state.retiredGeneration = state.currentGeneration;
-      state.currentGeneration = generation;
-      if (changed) yield* publishSnapshot();
+      state.retiredCodexTurns.clear();
       return true;
     });
 
-    const admitThread = Effect.fn("RemoteHostedPipRuntime.admitThread")(function* (
+    const admitCodexTask = Effect.fn("RemoteHostedPipRuntime.admitCodexTask")(function* (
       generation: number,
       threadId: string,
+      turnId: string,
     ) {
-      if (state.admittedThreadGenerations.get(threadId) === generation) return true;
-      if (
-        !state.admittedThreadGenerations.has(threadId) &&
-        state.admittedThreadGenerations.size >= MAX_ADMITTED_THREADS
-      ) {
-        return false;
-      }
-      const resolved = yield* ports.resolveThreadHost(threadId).pipe(
-        Effect.match({
-          onFailure: () => null,
-          onSuccess: (hostId) => hostId,
-        }),
-      );
-      if (resolved !== ports.localHostId) return false;
-      state.admittedThreadGenerations.set(threadId, generation);
-      return true;
+      const existing = state.admittedTasks.get(threadId);
+      if (existing?.source.kind === "runtime") return null;
+      if (existing?.turnId === turnId) return existing;
+      if (!existing && state.admittedTasks.size >= MAX_ADMITTED_THREADS) return null;
+      const sessionId = yield* ports
+        .resolveNativeSession(threadId)
+        .pipe(Effect.orElseSucceed(() => null));
+      if (existing && (yield* releaseTasks(new Set([threadId])))) yield* publishSnapshot();
+      if (sessionId === null) return null;
+      // The verified Session's root is already the native Codex Thread.
+      const task: AdmittedTask = {
+        source: { kind: "codex", generation },
+        desktopSessionId: threadId,
+        sessionId,
+        turnId,
+      };
+      state.admittedTasks.set(threadId, task);
+      return task;
     });
 
     const queueImage = Effect.fn("RemoteHostedPipRuntime.queueImage")(function* (
-      occurrence: RemoteHostedPipCodexOccurrence,
+      desktopSessionId: string,
       threadId: string,
       surface: BrowserUsePipSurface,
       key: string,
@@ -522,7 +631,7 @@ const makeRuntime = (
         browserFamily: surface.browserFamily ?? null,
         dataUrl: screenshot.url,
         extensionInstanceId: surface.extensionInstanceId ?? null,
-        generation: occurrence.generation,
+        desktopSessionId,
         presentationId: id,
         sequence: state.nextImageSequence,
         sessionKey: key,
@@ -555,11 +664,11 @@ const makeRuntime = (
     });
 
     const applyBrowserSurface = Effect.fn("RemoteHostedPipRuntime.applyBrowserSurface")(function* (
-      occurrence: RemoteHostedPipCodexOccurrence,
+      desktopSessionId: string,
       threadId: string,
       surface: BrowserUsePipSurface,
     ) {
-      const key = sessionKey(occurrence.hostId, occurrence.generation, threadId, surface);
+      const key = sessionKey(threadId, surface);
       if (surface.sessionEnded === true || surface.openTabIds?.length === 0) {
         const changed = yield* releaseSessions((session) => session.key === key);
         if (changed) yield* publishSnapshot();
@@ -591,7 +700,6 @@ const makeRuntime = (
           browserFamily: surface.browserFamily ?? null,
           browserId: surface.browserId,
           extensionInstanceId: surface.extensionInstanceId ?? null,
-          generation: occurrence.generation,
           hasOpenTabs: (surface.openTabIds?.length ?? 0) > 0,
           key,
           presentations: new Map(),
@@ -601,7 +709,7 @@ const makeRuntime = (
         yield* publishSnapshot();
       }
       if (session && surface.openTabIds) session.hasOpenTabs = surface.openTabIds.length > 0;
-      yield* queueImage(occurrence, threadId, surface, key);
+      yield* queueImage(desktopSessionId, threadId, surface, key);
       if (!session || !surface.openTabIds) return;
       const openTabIds = new Set(surface.openTabIds);
       const invalidated: string[] = [];
@@ -622,10 +730,8 @@ const makeRuntime = (
       yield* publishSnapshot();
     });
 
-    const retireCodexThreadsUnlocked = Effect.fn(
-      "RemoteHostedPipRuntime.retireCodexThreadsUnlocked",
-    )(function* (
-      settlement: RemoteHostedPipCodexLifecycleSettlement,
+    const retireTasksUnlocked = Effect.fn("RemoteHostedPipRuntime.retireTasksUnlocked")(function* (
+      settlement: RemoteHostedPipTaskRetirement,
     ): Effect.fn.Return<void, RemoteHostedPipRuntimeError> {
       const threadIds = new Set(
         settlement.threadIds.map((threadId) => threadId.trim()).filter(Boolean),
@@ -634,11 +740,7 @@ const makeRuntime = (
 
       // Browser content is invalidated by releaseSessions; publishing the canonical removal below
       // drives the native host refresh/stop. completeThread remains reserved for successful turns.
-      let changed = yield* releaseSessions((session) => threadIds.has(session.threadId));
-      for (const threadId of threadIds) {
-        if (state.computerUseItemsByThread.delete(threadId)) changed = true;
-        state.admittedThreadGenerations.delete(threadId);
-      }
+      let changed = yield* releaseTasks(threadIds);
 
       const preferenceFailures: RemoteHostedPipRuntimeError[] = [];
       if (settlement.action === "delete") {
@@ -663,91 +765,146 @@ const makeRuntime = (
       if (preferenceFailure) return yield* Effect.fail(preferenceFailure);
     });
 
-    const observeUnlocked = Effect.fn("RemoteHostedPipRuntime.observeUnlocked")(function* (
-      occurrence: RemoteHostedPipCodexOccurrence,
+    const applyActivity = Effect.fn("RemoteHostedPipRuntime.applyActivity")(function* (
+      taskId: string,
+      task: AdmittedTask,
+      activity: TaskActivity,
     ) {
-      if (occurrence.hostId !== ports.localHostId) return;
-      if (!(yield* advanceGeneration(occurrence.generation))) return;
-      const consequence = parseRemoteHostedPipNotification(occurrence.notification);
-      if (!consequence) return;
-      const admittedGeneration = state.admittedThreadGenerations.get(consequence.threadId);
-      if (
-        admittedGeneration !== occurrence.generation &&
-        consequence.kind !== "browser-use" &&
-        consequence.kind !== "computer-use"
-      ) {
+      if (activity.kind === "browser-use") {
+        yield* applyBrowserSurface(task.desktopSessionId, taskId, activity.surface);
         return;
       }
-      if (
-        (consequence.kind === "browser-use" || consequence.kind === "computer-use") &&
-        !(yield* admitThread(occurrence.generation, consequence.threadId))
-      ) {
-        return;
-      }
-
-      if (consequence.kind === "browser-use") {
-        yield* applyBrowserSurface(occurrence, consequence.threadId, consequence.surface);
-        return;
-      }
-      if (consequence.kind === "computer-use") {
+      if (activity.kind === "computer-use") {
         const before = activeTaskIds();
-        const items = state.computerUseItemsByThread.get(consequence.threadId) ?? new Set<string>();
+        const items = state.computerUseItemsByThread.get(taskId) ?? new Set<string>();
         if (
-          consequence.active &&
-          (items.has(consequence.itemId) || items.size < MAX_COMPUTER_USE_ITEMS_PER_THREAD) &&
-          (state.computerUseItemsByThread.has(consequence.threadId) ||
+          activity.active &&
+          (items.has(activity.itemId) || items.size < MAX_COMPUTER_USE_ITEMS_PER_THREAD) &&
+          (state.computerUseItemsByThread.has(taskId) ||
             state.computerUseItemsByThread.size < MAX_COMPUTER_USE_THREADS)
         ) {
-          items.add(consequence.itemId);
-        } else items.delete(consequence.itemId);
-        if (items.size === 0) state.computerUseItemsByThread.delete(consequence.threadId);
-        else state.computerUseItemsByThread.set(consequence.threadId, items);
+          items.add(activity.itemId);
+        } else items.delete(activity.itemId);
+        if (items.size === 0) state.computerUseItemsByThread.delete(taskId);
+        else state.computerUseItemsByThread.set(taskId, items);
         if (before.join("\0") !== activeTaskIds().join("\0")) yield* publishSnapshot();
         return;
       }
-
-      if (consequence.kind === "thread-ended") {
-        yield* retireCodexThreadsUnlocked({
-          action: consequence.deleted ? "delete" : "archive",
-          threadIds: [consequence.threadId],
+      if (activity.kind === "thread-ended") {
+        yield* retireTasksUnlocked({
+          action: activity.deleted ? "delete" : "archive",
+          threadIds: [taskId],
         });
         return;
       }
 
-      const before = activeTaskIds();
-      yield* releaseSessions(
-        (session) =>
-          session.threadId === consequence.threadId && session.generation === occurrence.generation,
-      );
-      state.computerUseItemsByThread.delete(consequence.threadId);
-      if (consequence.kind === "turn-ended") {
-        // Native completion is a turn outcome, not a generic presentation teardown signal.
+      const changed = yield* releaseTasks(new Set([taskId]), false);
+      // Native completion is a Turn outcome, separate from presentation teardown.
+      if (changed || task.source.kind === "codex") {
         yield* safeNative(
-          consequence.completed ? "complete-thread" : "invalidate-turn",
-          consequence.completed
-            ? ports.native.completeThread(consequence.threadId)
-            : ports.native.invalidateTurn(consequence.threadId, consequence.turnId),
+          activity.completed ? "complete-thread" : "invalidate-turn",
+          activity.completed
+            ? ports.native.completeThread(task.desktopSessionId)
+            : ports.native.invalidateTurn(task.desktopSessionId, activity.turnId),
         );
-        state.admittedThreadGenerations.delete(consequence.threadId);
       }
-      if (before.join("\0") !== activeTaskIds().join("\0")) yield* publishSnapshot();
+      if (changed) yield* publishSnapshot();
     });
 
     const observeCodexOccurrence = (occurrence: RemoteHostedPipCodexOccurrence) =>
       lock
-        .withPermits(1)(observeUnlocked(occurrence))
+        .withPermits(1)(
+          Effect.gen(function* () {
+            if (occurrence.hostId !== ports.localHostId) return;
+            if (!(yield* advanceGeneration(occurrence.generation))) return;
+            const activity = parseRemoteHostedPipNotification(occurrence.notification);
+            if (!activity) return;
+            const { threadId } = activity;
+            const current = state.admittedTasks.get(threadId);
+            if (activity.kind === "thread-ended") {
+              if (current?.source.kind === "codex")
+                yield* applyActivity(threadId, current, activity);
+              return;
+            }
+            const { turnId } = activity;
+            if (!turnId || state.retiredCodexTurns.has(codexTurnKey(threadId, turnId))) return;
+            if (activity.kind === "turn-ended") {
+              rememberRetiredCodexTurn(threadId, turnId);
+              if (current?.source.kind === "codex" && current.turnId === turnId)
+                yield* applyActivity(threadId, current, activity);
+              return;
+            }
+            if (
+              current?.turnId !== turnId &&
+              (activity.kind === "computer-use"
+                ? !activity.active
+                : activity.surface.sessionEnded || activity.surface.openTabIds?.length === 0)
+            )
+              return;
+            const task = yield* admitCodexTask(occurrence.generation, threadId, turnId);
+            if (task) yield* applyActivity(threadId, task, activity);
+          }),
+        )
         .pipe(
-          Effect.catchCause((cause) =>
-            Effect.logWarning("Remote Hosted PiP occurrence was ignored").pipe(
-              Effect.annotateLogs({
-                generation: occurrence.generation,
-                hostId: occurrence.hostId,
-                method: occurrence.notification.method,
-                cause,
-              }),
-            ),
-          ),
+          Effect.catchCause(() => Effect.logWarning("Remote Hosted PiP occurrence was ignored")),
         );
+
+    const observeRuntimeActivity = (activity: RuntimeDesktopActivity, isCurrent: () => boolean) =>
+      lock
+        .withPermits(1)(
+          Effect.gen(function* () {
+            if (!isCurrent()) return;
+            const { source, desktopSessionId, turnId, turnKey } = activity;
+            const matches = (task: AdmittedTask) =>
+              sameRuntimeTurn(task.source, source) &&
+              task.desktopSessionId === desktopSessionId &&
+              task.turnKey === turnKey;
+            if (activity.kind === "turn-ended") {
+              const entry = [...state.admittedTasks].find(([, task]) => matches(task));
+              if (entry) yield* applyActivity(entry[0], entry[1], activity);
+              return;
+            }
+            const { taskId } = activity;
+            const task = state.admittedTasks.get(taskId);
+            if (activity.kind === "turn-started") {
+              if (task && matches(task)) return;
+              if (!task && state.admittedTasks.size >= MAX_ADMITTED_THREADS) return;
+              const changed = task ? yield* releaseTasks(new Set([taskId])) : false;
+              if (!isCurrent()) {
+                if (changed) yield* publishSnapshot();
+                return;
+              }
+              state.admittedTasks.set(taskId, {
+                source,
+                desktopSessionId,
+                turnId,
+                turnKey,
+                sessionId: activity.sessionId,
+              });
+              if (changed) yield* publishSnapshot();
+              return;
+            }
+            if (!task || !matches(task)) return;
+            if (task.turnId !== turnId) state.admittedTasks.set(taskId, { ...task, turnId });
+            yield* applyActivity(taskId, task, activity);
+          }),
+        )
+        .pipe(Effect.catchCause(() => Effect.logWarning("Remote Hosted PiP activity was ignored")));
+
+    const retireRuntimeLease = (runtimeId: string, generation: string) =>
+      lock
+        .withPermits(1)(
+          Effect.gen(function* () {
+            const changed = yield* releaseSource(
+              (source) =>
+                source.kind === "runtime" &&
+                source.runtimeId === runtimeId &&
+                source.generation === generation,
+            );
+            if (changed) yield* publishSnapshot();
+          }),
+        )
+        .pipe(Effect.catchCause(() => Effect.void));
 
     const takeNextImage = lock.withPermits(1)(
       Effect.sync(() => {
@@ -790,9 +947,7 @@ const makeRuntime = (
         Effect.gen(function* () {
           const session = state.browserSessions.get(job.sessionKey);
           if (
-            state.currentGeneration !== job.generation ||
             state.presentationSequences.get(job.presentationId) !== job.sequence ||
-            state.admittedThreadGenerations.get(job.threadId) !== job.generation ||
             !session ||
             !hasSameBrowserSource(session, job) ||
             !chromeImageSourceIsConnected(job)
@@ -862,7 +1017,7 @@ const makeRuntime = (
           browserFamily: job.browserFamily,
           dataUrl: validation.image.dataUrl,
           presentationId: job.presentationId,
-          threadId: job.threadId,
+          threadId: job.desktopSessionId,
         })
         .pipe(Effect.orElseSucceed(() => false));
       if (!inserted) {
@@ -902,9 +1057,7 @@ const makeRuntime = (
           const reservedLease = state.resourceState.leases.get(job.presentationId);
           if (
             !session ||
-            state.currentGeneration !== job.generation ||
             state.presentationSequences.get(job.presentationId) !== job.sequence ||
-            state.admittedThreadGenerations.get(job.threadId) !== job.generation ||
             !hasSameBrowserSource(session, job) ||
             !chromeImageSourceIsConnected(job)
           ) {
@@ -937,7 +1090,7 @@ const makeRuntime = (
               extensionInstanceId: job.extensionInstanceId,
               presentationId: job.presentationId,
               tabId: job.tabId,
-              threadId: job.threadId,
+              threadId: job.desktopSessionId,
             });
           }
           session.presentations.set(job.tabId, {
@@ -991,11 +1144,12 @@ const makeRuntime = (
       lock
         .withPermits(1)(
           Effect.gen(function* () {
-            const generation = state.currentGeneration;
+            const generation = state.currentCodexGeneration;
             if (generation === null) return;
             const changed = yield* retireGeneration(generation);
-            state.retiredGeneration = Math.max(state.retiredGeneration, generation);
-            state.currentGeneration = null;
+            state.retiredCodexGeneration = Math.max(state.retiredCodexGeneration, generation);
+            state.currentCodexGeneration = null;
+            state.retiredCodexTurns.clear();
             if (changed) yield* publishSnapshot();
           }),
         )
@@ -1028,7 +1182,9 @@ const makeRuntime = (
       );
     };
 
-    yield* Effect.addFinalizer(() => retireLocalCodexHost("shutdown"));
+    yield* Effect.addFinalizer(() =>
+      lock.withPermits(1)(releaseSource(() => true).pipe(Effect.andThen(publishSnapshot()))),
+    );
 
     const mutatePreference = (
       operation: string,
@@ -1048,6 +1204,8 @@ const makeRuntime = (
       diagnosticSnapshot: Effect.sync(() => ports.diagnostics.snapshot()),
       getAlwaysHide: ports.legacy.getAlwaysHide,
       observeCodexOccurrence,
+      observeRuntimeActivity,
+      retireRuntimeLease,
       refresh,
       releaseChromeExtensionInstance,
       reportHostLayout: (webContentsId, layout) =>
@@ -1059,8 +1217,7 @@ const makeRuntime = (
             return state.presentationTargets.get(id) ?? null;
           }),
         ),
-      retireCodexThreads: (settlement) =>
-        lock.withPermits(1)(retireCodexThreadsUnlocked(settlement)),
+      retireTasks: (settlement) => lock.withPermits(1)(retireTasksUnlocked(settlement)),
       retireLocalCodexHost,
       revisions: SubscriptionRef.changes(snapshotRef).pipe(
         Stream.map((snapshot) => snapshot.revision),
@@ -1083,6 +1240,16 @@ const makeRuntime = (
         mutatePreference("set-max-display-size", () =>
           ports.preferences.writeMaxDisplaySize(value),
         ).pipe(Effect.andThen(hostCoordinator?.refresh ?? Effect.void)),
+      setNativeTaskVisibilities: (desktopSessionIds, visibility) =>
+        mutatePreference("set-task-visibilities", () => {
+          const ids = new Set(desktopSessionIds);
+          return ports.preferences.setTaskVisibilities(
+            [...state.admittedTasks].flatMap(([taskId, task]) =>
+              ids.has(task.desktopSessionId) ? [taskId] : [],
+            ),
+            visibility,
+          );
+        }),
       setTaskVisibilities: (taskIds, visibility) =>
         mutatePreference("set-task-visibilities", () =>
           ports.preferences.setTaskVisibilities(taskIds, visibility),
@@ -1100,18 +1267,14 @@ export const live = (
 ): Layer.Layer<
   RemoteHostedPipRuntime,
   never,
-  | ChromeControlRuntime
-  | CodexGateway
-  | CodexThreadHostResolver
-  | RemoteHostedPipNativePlatform
-  | WindowRuntime
+  ChromeControlRuntime | CodexGateway | CoreModules | RemoteHostedPipNativePlatform | WindowRuntime
 > =>
   Layer.effect(
     RemoteHostedPipRuntime,
     Effect.gen(function* () {
       const chrome = yield* ChromeControlRuntime;
       const gateway = yield* CodexGateway;
-      const resolver = yield* CodexThreadHostResolver;
+      const core = yield* CoreModules;
       const native = yield* RemoteHostedPipNativePlatform;
       const windows = yield* WindowRuntime;
       const preferences = makeRemoteHostedPipPreferences(options.preferenceFilePath);
@@ -1146,12 +1309,11 @@ export const live = (
         },
         preferences,
         resolveChromeBrowserIconPath: chrome.resolveBrowserIconPath,
-        resolveThreadHost: (threadId) =>
-          resolver
-            .resolve(threadId)
-            .pipe(
-              Effect.mapError((cause) => new RemoteHostedPipThreadHostResolutionError({ cause })),
-            ),
+        resolveNativeSession: (threadId) =>
+          readCodexLinkedRootSession(core, { threadId, hostId: gateway.localHostId }).pipe(
+            Effect.map((session) => (session && !session.archived ? session.id : null)),
+            Effect.mapError((cause) => new RemoteHostedPipNativeSessionResolutionError({ cause })),
+          ),
       });
     }),
   );
@@ -1167,9 +1329,9 @@ export interface RemoteHostedPipRuntimeTestOptions {
   readonly native?: Partial<RemoteHostedPipNativePort>;
   readonly preferences: RemoteHostedPipPreferencesAdapter;
   readonly resolveChromeBrowserIconPath?: (browserFamily: string) => string | null;
-  readonly resolveThreadHost?: (
+  readonly resolveNativeSession?: (
     threadId: string,
-  ) => Effect.Effect<string, RemoteHostedPipThreadHostResolutionError>;
+  ) => Effect.Effect<string | null, RemoteHostedPipNativeSessionResolutionError>;
 }
 
 export const testLayer = (
@@ -1193,7 +1355,7 @@ export const testLayer = (
       },
       preferences: options.preferences,
       resolveChromeBrowserIconPath: options.resolveChromeBrowserIconPath ?? (() => null),
-      resolveThreadHost:
-        options.resolveThreadHost ?? (() => Effect.succeed(options.localHostId ?? "local")),
+      resolveNativeSession:
+        options.resolveNativeSession ?? ((threadId) => Effect.succeed(threadId)),
     }),
   );
