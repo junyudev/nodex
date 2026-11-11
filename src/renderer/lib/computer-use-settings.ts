@@ -41,6 +41,18 @@ const setComputerUseSoundModeCommand = defineRendererCommand({
   protocol: { kind: "returned_value" },
 });
 
+const setComputerUseEnabledCommand = defineRendererCommand({
+  key: "computer_use_settings.set_enabled",
+  channel: "computer-use-settings-set-enabled",
+  authority: "main",
+  owner: "ComputerUseSettings",
+  protocol: { kind: "returned_value" },
+});
+
+export function setComputerUseEnabled(value: boolean) {
+  return invokePlainCommand(setComputerUseEnabledCommand, value);
+}
+
 export function readComputerUseSettings() {
   return invokeRendererQuery("computer-use-settings-get");
 }

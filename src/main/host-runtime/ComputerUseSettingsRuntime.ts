@@ -17,7 +17,8 @@ import {
   type ComputerUseSettingsSnapshot,
   type ComputerUseSoundMode,
 } from "../../shared/computer-use-settings";
-import type { ComputerUseRuntimeResult } from "./ComputerUseRuntime";
+import { ComputerUseRuntime, type ComputerUseRuntimeResult } from "./ComputerUseRuntime";
+import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { MainConfig } from "../app/MainConfig";
 import { DesktopToolRuntime } from "./DesktopToolRuntime";
 import { RemoteHostedPipRuntime } from "./RemoteHostedPipRuntime";
@@ -46,6 +47,9 @@ export class ComputerUseSettingsError extends Schema.TaggedError<ComputerUseSett
 export class ComputerUseSettingsRuntime extends Context.Service<
   ComputerUseSettingsRuntime,
   {
+    readonly setWindowsEnabled?: (
+      enabled: boolean,
+    ) => Effect.Effect<ComputerUseSettingsSnapshot, ComputerUseSettingsError>;
     readonly getSnapshot: Effect.Effect<ComputerUseSettingsSnapshot, ComputerUseSettingsError>;
     readonly removeAppApproval: (
       bundleIdentifier: string,
@@ -86,6 +90,12 @@ export interface ComputerUseSettingsPorts {
   ) => Effect.Effect<ExecResult, ComputerUseSettingsError>;
   readonly getAlwaysHide: () => boolean;
   readonly getRuntimeResult: Effect.Effect<ComputerUseRuntimeResult, ComputerUseSettingsError>;
+  readonly windows?: {
+    readonly enabled: () => boolean;
+    readonly setEnabled: (enabled: boolean) => Effect.Effect<void, ComputerUseSettingsError>;
+    readonly readApprovedApps: Effect.Effect<readonly string[], ComputerUseSettingsError>;
+    readonly revoke: (id: string) => Effect.Effect<void, ComputerUseSettingsError>;
+  };
   readonly homeDirectory: string;
   readonly platform: NodeJS.Platform;
   readonly readLockedUseAllowed: Effect.Effect<boolean, ComputerUseSettingsError>;
@@ -186,10 +196,68 @@ const writeJsonFileAtomically = (
     );
   });
 
+const makeWindowsSettings = (
+  windows: NonNullable<ComputerUseSettingsPorts["windows"]>,
+  getRuntimeResult: ComputerUseSettingsPorts["getRuntimeResult"],
+) =>
+  Effect.gen(function* () {
+    const gate = yield* Semaphore.make(1);
+    const unsupported = Effect.fail(
+      settingsError(
+        "unsupported",
+        new Error("This Computer Use setting is unavailable on Windows."),
+      ),
+    );
+    const getSnapshot = Effect.gen(function* () {
+      const runtime = yield* getRuntimeResult;
+      const available = runtime.status === "available";
+      const approved =
+        available || runtime.reason === "disabled" ? yield* windows.readApprovedApps : [];
+      return {
+        windows: { enabled: windows.enabled() },
+        approvedApps: approved.map((id) => ({ bundleIdentifier: id, displayName: id })),
+        available,
+        message: available ? null : runtime.message,
+      } satisfies ComputerUseSettingsSnapshot;
+    });
+
+    return ComputerUseSettingsRuntime.of({
+      getSnapshot,
+      setWindowsEnabled: (enabled) =>
+        gate.withPermits(1)(windows.setEnabled(enabled).pipe(Effect.andThen(getSnapshot))),
+      removeAppApproval: (id) =>
+        gate.withPermits(1)(
+          requireIdentifier(id, "App identifier").pipe(
+            Effect.flatMap(windows.revoke),
+            Effect.andThen(getSnapshot),
+          ),
+        ),
+      removeMessageApproval: () => unsupported,
+      setAlwaysHidePictureInPicture: () => unsupported,
+      setLockedUseEnabled: () => unsupported,
+      setSoundMode: () => unsupported,
+    });
+  });
+
+const WINDOWS_APPROVAL_KEY = "computer_use.windows.always_allowed_app_ids";
+const configRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+function windowsApprovalEntries(config: unknown): [string, boolean][] {
+  const computerUse = configRecord(configRecord(config).computer_use);
+  const windows = configRecord(computerUse.windows);
+  return Object.entries(configRecord(windows.always_allowed_app_ids)).flatMap(([id, approved]) =>
+    typeof approved === "boolean" ? [[id, approved]] : [],
+  );
+}
+
 const make = (
   ports: ComputerUseSettingsPorts,
 ): Effect.Effect<ComputerUseSettingsRuntime["Service"]> =>
   Effect.gen(function* () {
+    if (ports.windows) return yield* makeWindowsSettings(ports.windows, ports.getRuntimeResult);
     const mutationLock = yield* Semaphore.make(1);
     const applicationSupportPath = path.join(
       ports.homeDirectory,
@@ -267,7 +335,7 @@ const make = (
         { concurrency: "unbounded" },
       );
       const lockedUseEnabled =
-        lockedUseAllowed && runtime.status === "available"
+        lockedUseAllowed && runtime.status === "available" && runtime.platform !== "win32"
           ? yield* readLockedUseEnabled(runtime.appPath)
           : null;
       return {
@@ -318,7 +386,7 @@ const make = (
         mutate(
           Effect.gen(function* () {
             const runtime = yield* ports.getRuntimeResult;
-            if (runtime.status !== "available") {
+            if (runtime.status !== "available" || runtime.platform === "win32") {
               return yield* settingsError(
                 "set-locked-use",
                 new Error("Computer Use is unavailable"),
@@ -367,12 +435,69 @@ const make = (
 export const live: Layer.Layer<
   ComputerUseSettingsRuntime,
   never,
-  DesktopToolRuntime | MainConfig | RemoteHostedPipRuntime
+  ComputerUseRuntime | CodexGateway | DesktopToolRuntime | MainConfig | RemoteHostedPipRuntime
 > = Layer.effect(
   ComputerUseSettingsRuntime,
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const desktopTools = yield* DesktopToolRuntime;
+    const windows = (yield* ComputerUseRuntime).windows;
+    const getRuntimeResult = desktopTools.ensureComputerUse.pipe(
+      Effect.mapError((cause) => settingsError("computer-use-runtime", cause)),
+    );
+    if (windows) {
+      const gateway = yield* CodexGateway;
+      // Read the versioned raw user layer. The normalized config can omit fields
+      // introduced or retired independently of the active helper build.
+      const userConfig = gateway.requestLocal("config/read", { includeLayers: true }).pipe(
+        Effect.map((response) => response.layers?.find((layer) => layer.name.type === "user")),
+        Effect.mapError((cause) => settingsError("windows-approvals.read", cause)),
+      );
+      return yield* makeWindowsSettings(
+        {
+          enabled: windows.enabled,
+          setEnabled: (enabled) =>
+            windows
+              .setEnabled(enabled)
+              .pipe(Effect.mapError((cause) => settingsError("windows-enabled", cause))),
+          readApprovedApps: userConfig.pipe(
+            Effect.map((layer) =>
+              windowsApprovalEntries(layer?.config)
+                .filter(([, approved]) => approved)
+                .map(([id]) => id),
+            ),
+          ),
+          revoke: (id) =>
+            Effect.gen(function* () {
+              const layer = yield* userConfig;
+              if (layer?.name.type !== "user") return;
+              const entries = windowsApprovalEntries(layer.config);
+              if (!entries.some(([app, approved]) => app === id && approved)) return;
+              const result = yield* gateway
+                .requestLocal("config/batchWrite", {
+                  edits: [
+                    {
+                      keyPath: WINDOWS_APPROVAL_KEY,
+                      value: Object.fromEntries(entries.filter(([app]) => app !== id)),
+                      mergeStrategy: "replace",
+                    },
+                  ],
+                  filePath: layer.name.file,
+                  expectedVersion: layer.version,
+                  reloadUserConfig: true,
+                })
+                .pipe(Effect.mapError((cause) => settingsError("windows-approvals.revoke", cause)));
+              if (result.status === "okOverridden") {
+                return yield* settingsError(
+                  "windows-approvals.revoke",
+                  new Error("App approvals are controlled by policy."),
+                );
+              }
+            }),
+        },
+        getRuntimeResult,
+      );
+    }
     const remoteHostedPip = yield* RemoteHostedPipRuntime;
     const exec = (
       executablePath: string,
@@ -392,9 +517,7 @@ export const live: Layer.Layer<
     return yield* make({
       exec,
       getAlwaysHide: remoteHostedPip.getAlwaysHide,
-      getRuntimeResult: desktopTools.ensureComputerUse.pipe(
-        Effect.mapError((cause) => settingsError("computer-use-runtime", cause)),
-      ),
+      getRuntimeResult,
       homeDirectory: homedir(),
       platform: config.platform as NodeJS.Platform,
       readLockedUseAllowed: desktopTools.readConfigRequirements.pipe(

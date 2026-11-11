@@ -2,7 +2,7 @@
 export const hostCapabilities = (
   platform: string,
   architecture?: string,
-  desktopTools?: { readonly browserReady: boolean; readonly computerUseReady?: boolean },
+  desktopTools?: { readonly browserReady?: boolean; readonly computerUseReady?: boolean },
 ) => {
   const mac = platform === "darwin";
   const windows =

@@ -27,7 +27,8 @@ executable before either host Node or Electron starts the tests.
 The Desktop Tools integration suite covers WinVerifyTrust and manifest
 publisher matching with an embedded system signature and a tampered copy. It
 also tests Windows pipe peer admission, the REPL launcher's closed environment
-and UTF-16 arguments, and job termination. The vendor REPL initialization test
+and UTF-16 arguments, shared job termination, and the Computer Use helper’s
+framed stdio and peer admission. The vendor REPL initialization test
 runs only when the matching sealed closure has been staged under
 `.generated/codex-runtime/agent-runtime/browser-runtime`.
 
@@ -158,6 +159,8 @@ Run the checklist with both the arm64 and the x64 installer.
     and sign in again to verify it remains Off. Re-enable it, repeat sign-in and
     uninstall; confirm Startup Apps and the notification area no longer list Nodex.
 
+## Desktop Tools
+
 Before enabling Desktop Tools for a Windows release, check the in-app Browser
 on both native architectures in a standard-user interactive session. Open a
 local test page through Codex and through each local Agent provider, then
@@ -167,6 +170,41 @@ uses the Browser pipe namespace. Confirm each Session discovers only its
 own backend, and repeat from a WSL workspace to confirm local desktop control
 is absent. Verify the signed REPL can start its sandboxed kernel using the
 installed CLI and sibling helpers on the clean machine.
+
+### Computer Use
+
+With a clean Windows 11 standard-user desktop, run the following on
+native x64 and native arm64. Start with the Codex desktop app absent and without a
+separately installed Visual C++ runtime. Repeat the capture and interruption steps
+with Codex installed to check isolation.
+
+- In **Settings → Computer use**, verify **Available**, the enable switch, and the
+  always-allowed app list. Confirm the helper starts only after an Agent makes its
+  first Computer Use call. Record the REPL and helper image paths, machine type,
+  signer, and the helper process tree. On arm64, both executables must run natively.
+- In a local Codex chat and a local non-Codex chat, list apps, select a Notepad window,
+  capture it, and enter disposable text using keyboard and pointer. Check capture
+  and coordinate accuracy on the physical x64 machine at mixed DPI and with two
+  monitors, including a window moved between monitors. Confirm the capture used the
+  verified Windows helper. Record any attempt to load the separate Swift capture
+  helper or an app-local DLL, including the exact module path or loader error.
+- Decline the Notepad prompt and verify no action occurs. Accept for the session
+  and verify the request resumes. If the active approval policy offers **Always**,
+  accept it, open a new chat, confirm the saved app appears in Settings, remove it,
+  and confirm the next request prompts again. Record the offered choices per provider.
+- During an active request, check the native indicator, press physical Escape, and
+  verify the request ends and further Computer Use calls in that Turn are refused.
+  Start a fresh Turn and verify Computer Use works again. Repeat with Nodex's Stop
+  action, then with normal Turn completion. Verify indicators and capture clear.
+- While a request is in progress, turn Computer Use off. Verify the connection and
+  helper process tree close, and a previously configured chat cannot use the old
+  endpoint. Restart Nodex, verify the switch stays off, then turn it back on and
+  confirm a new chat can make a fresh request. Quit during a request and confirm
+  the helper and its job children exit.
+- Lock and unlock Windows during capture and check indicators and recovery. On a
+  test machine, have an administrator open a benign elevated app on the same desktop.
+  From the standard-user Nodex session, verify control of the elevated window is
+  refused and ordinary Notepad control still works.
 
 ## Acceptance before a public Windows release
 

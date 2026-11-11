@@ -5,6 +5,7 @@ import { HostDesktopTools } from "../../host/HostDesktopTools";
 import { make } from "../agent-runtime/AgentRuntimeDesktopTools";
 import { CodexTurnPresentation } from "../../host/TurnPresentation";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
+import { ComputerUseRuntime } from "../host-runtime/ComputerUseRuntime";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
 
@@ -14,6 +15,7 @@ export const live = Layer.effect(
     return make({
       pip: yield* RemoteHostedPipRuntime,
       tools: yield* DesktopToolRuntime,
+      computerUse: (yield* ComputerUseRuntime).windows,
       browserUse: yield* BrowserUseRuntime,
       windows: yield* WindowRuntime,
       presentation: yield* CodexTurnPresentation,

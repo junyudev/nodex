@@ -2098,6 +2098,10 @@ export interface IpcApi
     args: [alwaysHide: boolean];
     result: ComputerUseSettingsSnapshot;
   };
+  "computer-use-settings-set-enabled": {
+    args: [enabled: boolean];
+    result: ComputerUseSettingsSnapshot;
+  };
   "computer-use-settings-set-locked-use": {
     args: [enabled: boolean];
     result: ComputerUseSettingsSnapshot;

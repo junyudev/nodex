@@ -4,6 +4,7 @@ import type { RuntimeDesktopActivitySource } from "../host-runtime/RemoteHostedP
 import { win32 } from "node:path";
 import { isWslWorkspacePath } from "../../shared/codex-workspace-paths";
 import { inboundTextHash } from "./ChatMessageDelivery";
+import { DISABLED_DESKTOP_TOOL_REPL_CONFIG } from "../codex/codex-thread-config";
 import { HostWorkspace } from "../../host/HostWorkspace";
 import { createOperationId } from "../core-runtime/operation-identity";
 import { CoreModuleResponseError } from "../core-client/core-client";
@@ -358,15 +359,17 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     };
   });
 
+  const isWslExecution = (instanceId: string, cwd: string | null) =>
+    isWslWorkspacePath(cwd) ||
+    (config.platform === "win32" && launchesWsl(options.providers[instanceId]?.config));
+
   const prepareDesktop = (
     identity: { providerInstanceId: string; nativeDriver: string },
     cwd: string | null,
   ) => {
     if (
       !options.desktop ||
-      isWslWorkspacePath(cwd) ||
-      (config.platform === "win32" &&
-        launchesWsl(options.providers[identity.providerInstanceId]?.config)) ||
+      isWslExecution(identity.providerInstanceId, cwd) ||
       identity.nativeDriver === "codex" ||
       driverOf(identity.providerInstanceId) !== identity.nativeDriver ||
       (identity.nativeDriver === "opencode" &&
@@ -390,11 +393,17 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       if (request.operation === "thread.prepare") {
         const { identity } = request;
         if (!isCurrentLease(identity)) return yield* unavailable("thread.prepare");
-        if (identity.nativeDriver === "codex" && driverOf(identity.providerInstanceId) === "codex")
+        if (
+          identity.nativeDriver === "codex" &&
+          driverOf(identity.providerInstanceId) === "codex"
+        ) {
+          if (isWslExecution(identity.providerInstanceId, request.cwd))
+            return { config: DISABLED_DESKTOP_TOOL_REPL_CONFIG };
           // Codex applies its worktree's Environment to its shells itself.
           return options.desktop
             ? { config: yield* options.desktop.threadConfig(request.cwd) }
             : {};
+        }
         const environment =
           request.cwd && options.workspaceEnvironment
             ? yield* options.workspaceEnvironment(request.cwd)

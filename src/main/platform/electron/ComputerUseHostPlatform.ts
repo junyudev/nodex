@@ -17,6 +17,7 @@ import {
   type ComputerUseRuntimeConfigWriteInput,
 } from "../../codex/computer-use-runtime-config";
 import { loadSkyNativeAddon, type SkyNativeAddon } from "../../sky-native";
+import type { WindowsComputerUseHost } from "./WindowsComputerUseHostPlatform";
 
 const execFileAsync = promisify(execFile);
 const COMPUTER_USE_APP_NAME = "Codex Computer Use.app";
@@ -50,7 +51,8 @@ export interface ComputerUseHostServicesServer {
   readonly pipePath: string;
 }
 
-export interface ComputerUseHostPlatform {
+/** The macOS addon and materialized application are private to this adapter. */
+export interface MacComputerUseHostPlatform {
   readonly createNativePipeServer: (
     handler: (
       method: string,
@@ -80,6 +82,8 @@ export interface ComputerUseHostPlatform {
     input: ComputerUseRuntimeConfigWriteInput,
   ) => Effect.Effect<string, ComputerUseHostPlatformError>;
 }
+
+export type ComputerUseHostPlatform = MacComputerUseHostPlatform | WindowsComputerUseHost;
 
 type ComputerUseAppVerifier = (input: {
   readonly appPath: string;
@@ -398,7 +402,7 @@ export interface ComputerUseHostPlatformOptions {
 export function makeComputerUseHostPlatform(
   options: ComputerUseHostPlatformOptions,
   callbacks: ScopedCallbackRuntime["Service"],
-): ComputerUseHostPlatform {
+): MacComputerUseHostPlatform {
   return {
     createNativePipeServer: (handler, peerAuthorizationMode, peerAuthorizationAddonPath) =>
       makeBrowserUseNativePipeServer({

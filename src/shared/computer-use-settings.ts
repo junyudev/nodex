@@ -16,16 +16,21 @@ export interface ComputerUseApprovedMessageThread {
   readonly displayName: string;
 }
 
-export interface ComputerUseSettingsSnapshot {
-  readonly alwaysHidePictureInPicture: boolean;
+export type ComputerUseSettingsSnapshot = {
   readonly approvedApps: readonly ComputerUseApprovedApp[];
-  readonly approvedMessageThreads: readonly ComputerUseApprovedMessageThread[];
   readonly available: boolean;
-  readonly lockedUseAllowed: boolean;
-  readonly lockedUseEnabled: boolean | null;
   readonly message: string | null;
-  readonly soundMode: ComputerUseSoundMode;
-}
+} & (
+  | { readonly windows: { readonly enabled: boolean } }
+  | {
+      readonly windows?: never;
+      readonly alwaysHidePictureInPicture: boolean;
+      readonly approvedMessageThreads: readonly ComputerUseApprovedMessageThread[];
+      readonly lockedUseAllowed: boolean;
+      readonly lockedUseEnabled: boolean | null;
+      readonly soundMode: ComputerUseSoundMode;
+    }
+);
 
 export function isComputerUseSoundMode(value: unknown): value is ComputerUseSoundMode {
   return (
