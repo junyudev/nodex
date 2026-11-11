@@ -1621,9 +1621,10 @@ fn phone_push_registration_is_the_phones_own_request_and_recipients_follow_core(
     );
     let host: HandshakeResponse = serde_json::from_value(host).unwrap();
     let binding = Some((host_id.as_str(), host.connection_binding.as_str()));
+    let source_root = nodex_platform::fixture_path!("/tmp/nodex-push-test");
     let (_, initialized) = core.local_request("/core/v1/modules/workspace/apply",binding,
         json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,"store_epoch":host.store_epoch,"operation_id":team_operation_id(),
-        "intent":{"kind":"create_project","project_id":"push-project","name":"Push","description":"","source_roots":["/tmp/nodex-push-test"]}}));
+        "intent":{"kind":"create_project","project_id":"push-project","name":"Push","description":"","source_roots":[source_root]}}));
     assert_eq!(initialized["status"], "ok", "{initialized}");
     let (_, created) = core.local_request("/core/v1/modules/workspace/apply",binding,
         json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,"store_epoch":host.store_epoch,
