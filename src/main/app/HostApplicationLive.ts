@@ -224,7 +224,16 @@ const computerUse = Layer.unwrap(
     const electron = yield* ElectronApp;
     const locale = yield* electron.locale;
     return computerUseRuntimeLive({
-      browserRuntime: codex.runtime.browserRuntime,
+      windows: codex.windowsDesktopTools
+        ? {
+            tools: codex.windowsDesktopTools.native,
+            environment: config.environment,
+            ready: codex.windowsDesktopTools.ready,
+          }
+        : undefined,
+      get browserRuntime() {
+        return codex.runtime.browserRuntime;
+      },
       peerAuthorizationMode: codex.runtime.source === "bundled" ? "packaged" : "development",
       platform: config.platform as NodeJS.Platform,
       runtimeConfig: () => ({ locale }),

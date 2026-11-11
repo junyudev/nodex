@@ -6,7 +6,7 @@ export function resolveSettingsHostPresentation(platform: string) {
   const capabilities = hostCapabilities(platform);
   return {
     terminalShell: platform === "win32",
-    computerUse: capabilities.computerControl,
+    computerUse: platform === "win32" || capabilities.computerControl,
     browserProfileImport: capabilities.browserProfileImport,
     browserControl: platform === "win32" || capabilities.browserControl,
     appUpdates: capabilities.autoUpdate,

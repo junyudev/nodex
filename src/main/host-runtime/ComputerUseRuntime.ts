@@ -12,18 +12,34 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { BrowserUsePeerAuthorizationMode } from "../../shared/browser-use-host-capability";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import type { BrowserRuntimeAvailability } from "../codex/browser-runtime-bundle";
-import type { ComputerUseRuntimeConfigInput } from "../codex/computer-use-runtime-config";
+import {
+  readWindowsComputerUseEnabled,
+  writeWindowsComputerUseEnabled,
+  writeComputerUseRuntimeConfig,
+  type ComputerUseRuntimeConfigInput,
+} from "../codex/computer-use-runtime-config";
 import {
   canonicalComputerUseExecutablePath,
   ComputerUseHostPlatformError,
   makeComputerUseHostPlatform,
   type ComputerUseHostPlatform,
+  type MacComputerUseHostPlatform,
   type ComputerUseServiceAddon,
 } from "../platform/electron/ComputerUseHostPlatform";
+import {
+  makeWindowsComputerUseHostPlatform,
+  resolveWindowsComputerUse,
+  windowsComputerUseTurnKey,
+  type WindowsComputerUseHost,
+  type WindowsComputerUseTurn,
+} from "../platform/electron/WindowsComputerUseHostPlatform";
+import type { WindowsDesktopToolsService } from "../platform/node/WindowsDesktopTools";
 import { isMacOSVersionAtLeast } from "../sky-native";
 
 export type ComputerUseRuntimeUnavailableReason =
   | "architecture-unsupported"
+  | "disabled"
+  | "windows-version-unsupported"
   | "helper-invalid"
   | "helper-materialization-failed"
   | "host-services-failed"
@@ -34,8 +50,15 @@ export type ComputerUseRuntimeUnavailableReason =
 
 export type ComputerUseRuntimeResult =
   | {
+      readonly platform?: "darwin";
       readonly appPath: string;
       readonly hostServicesPipePath: string;
+      readonly serviceExecutablePath: string;
+      readonly status: "available";
+    }
+  | {
+      readonly platform: "win32";
+      readonly nativePipePath: string;
       readonly serviceExecutablePath: string;
       readonly status: "available";
     }
@@ -79,6 +102,12 @@ export class ComputerUseRuntimeError extends Schema.TaggedError<ComputerUseRunti
 export class ComputerUseRuntime extends Context.Service<
   ComputerUseRuntime,
   {
+    readonly windows?: {
+      readonly enabled: () => boolean;
+      readonly setEnabled: (enabled: boolean) => Effect.Effect<void, ComputerUseRuntimeError>;
+      readonly observeTurn: (turn: WindowsComputerUseTurn) => Effect.Effect<void>;
+      readonly releaseSession: (sessionId: string) => Effect.Effect<void>;
+    };
     readonly current: () => ComputerUseRuntimeResult | null;
     readonly ensureReady: Effect.Effect<ComputerUseRuntimeResult, ComputerUseRuntimeError>;
     readonly managedServiceChanges: Stream.Stream<ComputerUseManagedServiceSnapshot>;
@@ -92,6 +121,11 @@ export class ComputerUseRuntime extends Context.Service<
 export interface ComputerUseRuntimeOptions {
   readonly browserRuntime: BrowserRuntimeAvailability;
   readonly macOSRelease?: string;
+  readonly windows?: {
+    readonly tools: WindowsDesktopToolsService;
+    readonly environment: Readonly<Record<string, string>>;
+    readonly ready: Effect.Effect<void>;
+  };
   readonly peerAuthorizationMode: BrowserUsePeerAuthorizationMode;
   readonly platform: NodeJS.Platform;
   readonly runtimeConfig?: () => ComputerUseRuntimeConfigInput;
@@ -109,7 +143,7 @@ interface ComputerUseRuntimeState {
 }
 
 interface ComputerUseRuntimeLayerOptions extends ComputerUseRuntimeOptions {
-  readonly host: ComputerUseHostPlatform;
+  readonly host: MacComputerUseHostPlatform;
 }
 
 interface ComputerUseRuntimeStart {
@@ -171,7 +205,7 @@ function projectManagedService(state: ComputerUseRuntimeState): ComputerUseManag
   return { generation: state.generation, status: "pending" };
 }
 
-const make = (options: ComputerUseRuntimeLayerOptions) =>
+const makeMac = (options: ComputerUseRuntimeLayerOptions) =>
   Effect.gen(function* () {
     const ownerScope = yield* Scope.Scope;
     const state = yield* SubscriptionRef.make(initialState);
@@ -325,7 +359,10 @@ const make = (options: ComputerUseRuntimeLayerOptions) =>
     );
 
     const start: Effect.Effect<ComputerUseRuntimeStart> = Effect.gen(function* () {
-      if (!hostCapabilities(options.host.platform).computerControl) {
+      if (
+        options.host.platform !== "darwin" ||
+        !hostCapabilities(options.host.platform).computerControl
+      ) {
         return {
           addon: null,
           result: unavailable(
@@ -589,14 +626,189 @@ const make = (options: ComputerUseRuntimeLayerOptions) =>
     });
   });
 
+const makeWindows = (options: ComputerUseRuntimeOptions, host: WindowsComputerUseHost) =>
+  Effect.gen(function* () {
+    const gate = yield* Semaphore.make(1);
+    const activeTurns = new Map<string, Extract<WindowsComputerUseTurn, { phase: "started" }>>();
+    let startup: ReturnType<typeof resolveWindowsComputerUse> | undefined;
+    const disabled = unavailable("disabled", "Computer Use is turned off.");
+    const preferences = (enabled: boolean) =>
+      Effect.tryPromise({
+        try: () => writeWindowsComputerUseEnabled(options.runtimeStateHome, enabled),
+        catch: (cause) => runtimeError("windows-preference.write", cause),
+      });
+    let enabled = yield* Effect.tryPromise({
+      try: () => readWindowsComputerUseEnabled(options.runtimeStateHome),
+      catch: (cause) => runtimeError("windows-preference.read", cause),
+    }).pipe(Effect.orElseSucceed(() => false));
+    let closed = false;
+    let result: ComputerUseRuntimeResult | null = null;
+    let listener: {
+      readonly scope: Scope.Closeable;
+      readonly isListening: () => boolean;
+      readonly endTurn: (turn: WindowsComputerUseTurn) => Effect.Effect<void>;
+    } | null = null;
+
+    const stop = Effect.suspend(() => {
+      const previous = listener;
+      listener = null;
+      result = null;
+      return previous ? Scope.close(previous.scope, Exit.void) : Effect.void;
+    });
+    yield* Effect.addFinalizer(() =>
+      gate.withPermits(1)(
+        Effect.sync(() => {
+          closed = true;
+          activeTurns.clear();
+        }).pipe(Effect.andThen(stop)),
+      ),
+    );
+
+    const start = gate.withPermits(1)(
+      Effect.gen(function* () {
+        if (closed)
+          return yield* runtimeError(
+            "ensure-ready.closed",
+            new Error("Computer Use runtime is closed"),
+          );
+        if (!enabled) return disabled;
+        if (result?.status === "available" && listener?.isListening()) return result;
+        yield* stop;
+        startup = resolveWindowsComputerUse(options.browserRuntime, host);
+        if (startup.status === "unavailable") return startup;
+        yield* Effect.tryPromise({
+          try: () =>
+            writeComputerUseRuntimeConfig({
+              ...options.runtimeConfig?.(),
+              runtimeStateHome: options.runtimeStateHome,
+            }),
+          catch: (cause) => runtimeError("windows-overlay-config.write", cause),
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("Could not write Computer Use runtime config").pipe(
+              Effect.annotateLogs({ error: boundedMessage(error) }),
+            ),
+          ),
+        );
+        const scope = yield* Scope.make();
+        const started = yield* host
+          .start(startup.serviceExecutablePath, startup.nodeRepl, activeTurns)
+          .pipe(
+            Scope.provide(scope),
+            Effect.onExit((exit) =>
+              Exit.isFailure(exit) ? Scope.close(scope, Exit.void) : Effect.void,
+            ),
+            Effect.result,
+          );
+        if (started._tag === "Failure") {
+          return unavailable(
+            "host-services-failed",
+            `Computer Use could not start: ${boundedMessage(started.failure)}`,
+          );
+        }
+        listener = {
+          scope,
+          isListening: started.success.isListening,
+          endTurn: started.success.endTurn,
+        };
+        result = {
+          platform: "win32",
+          nativePipePath: started.success.pipePath,
+          serviceExecutablePath: startup.serviceExecutablePath,
+          status: "available",
+        };
+        return result;
+      }).pipe(Effect.uninterruptible),
+    );
+
+    const ensureReady = Effect.suspend(() =>
+      !closed && enabled && options.windows?.ready
+        ? options.windows.ready.pipe(Effect.andThen(start))
+        : start,
+    );
+
+    const endTurn = (turn: WindowsComputerUseTurn) =>
+      Effect.suspend(() => {
+        activeTurns.delete(windowsComputerUseTurnKey(turn));
+        return listener?.endTurn(turn) ?? Effect.void;
+      });
+
+    // The managed macOS process projection feeds native PiP only.
+    const managed = { status: "closed", generation: 0 } as const;
+    return ComputerUseRuntime.of({
+      current: () =>
+        closed
+          ? null
+          : !enabled
+            ? disabled
+            : listener?.isListening()
+              ? result
+              : startup?.status === "unavailable"
+                ? startup
+                : null,
+      ensureReady,
+      managedServiceChanges: Stream.succeed(managed),
+      managedServiceSnapshot: () => managed,
+      reconcileManagedService: () => Effect.succeed(managed),
+      windows: {
+        enabled: () => enabled,
+        setEnabled: (next) =>
+          gate.withPermits(1)(
+            Effect.gen(function* () {
+              if (closed)
+                return yield* runtimeError(
+                  "set-enabled.closed",
+                  new Error("Computer Use runtime is closed"),
+                );
+              if (next === enabled) return;
+              yield* preferences(next);
+              enabled = next;
+              if (!next) yield* stop;
+            }).pipe(Effect.uninterruptible),
+          ),
+        observeTurn: (turn) =>
+          Effect.gen(function* () {
+            if (closed) return;
+            if (turn.phase === "ended") return yield* endTurn(turn);
+            const key = windowsComputerUseTurnKey(turn);
+            if (activeTurns.has(key)) return;
+            for (const active of activeTurns.values()) {
+              if (active.nativeThreadId === turn.nativeThreadId) yield* endTurn(active);
+            }
+            activeTurns.set(key, turn);
+          }),
+        releaseSession: (sessionId) =>
+          Effect.gen(function* () {
+            for (const turn of activeTurns.values()) {
+              if (turn.sessionId === sessionId) yield* endTurn(turn);
+            }
+          }),
+      },
+    });
+  });
+
 export const live = (
   options: ComputerUseRuntimeOptions,
 ): Layer.Layer<ComputerUseRuntime, never, ScopedCallbackRuntime> =>
   Layer.effect(
     ComputerUseRuntime,
     Effect.gen(function* () {
+      if (options.platform === "win32" && options.windows) {
+        return yield* makeWindows(
+          options,
+          makeWindowsComputerUseHostPlatform({
+            ...options.windows,
+            parentPid: process.pid,
+            runtimeStateHome: options.runtimeStateHome,
+            get codexCliPath() {
+              const runtime = options.browserRuntime;
+              return runtime.status === "available" ? runtime.bundle.paths.codexCli : null;
+            },
+          }),
+        );
+      }
       const callbacks = yield* ScopedCallbackRuntime;
-      return yield* make({
+      return yield* makeMac({
         ...options,
         host: makeComputerUseHostPlatform(
           {
@@ -629,4 +841,8 @@ export const live = (
 export const testLayer = (
   options: ComputerUseRuntimeOptions,
   host: ComputerUseHostPlatform,
-): Layer.Layer<ComputerUseRuntime> => Layer.effect(ComputerUseRuntime, make({ ...options, host }));
+): Layer.Layer<ComputerUseRuntime> =>
+  Layer.effect(
+    ComputerUseRuntime,
+    "start" in host ? makeWindows(options, host) : makeMac({ ...options, host }),
+  );

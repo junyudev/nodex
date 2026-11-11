@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { ComputerUseRuntimeResult } from "../host-runtime/ComputerUseRuntime";
 
 const COMPUTER_USE_CONFIG_DIRECTORY = "computer-use";
 const COMPUTER_USE_CONFIG_FILENAME = "config.json";
@@ -129,15 +130,15 @@ export function buildComputerUseRuntimeConfig(
 async function writeConfigAtomically(
   directory: string,
   configPath: string,
-  config: ComputerUseRuntimeConfig,
+  config: object,
 ): Promise<string> {
   const temporaryPath = path.join(
     directory,
-    `${COMPUTER_USE_CONFIG_FILENAME}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`,
+    `${path.basename(configPath)}.${process.pid}.${randomUUID()}.tmp`,
   );
   await mkdir(directory, { recursive: true });
   try {
-    await writeFile(temporaryPath, `${JSON.stringify(config)}\n`, "utf8");
+    await writeFile(temporaryPath, `${JSON.stringify(config)}\n`, { flag: "wx" });
     await rename(temporaryPath, configPath);
   } catch (error) {
     await unlink(temporaryPath).catch(() => undefined);
@@ -153,4 +154,31 @@ export function writeComputerUseRuntimeConfig(
   const directory = path.join(path.resolve(input.runtimeStateHome), COMPUTER_USE_CONFIG_DIRECTORY);
   const configPath = path.join(directory, COMPUTER_USE_CONFIG_FILENAME);
   return writeConfigAtomically(directory, configPath, buildComputerUseRuntimeConfig(input));
+}
+
+/** Pass these bindings only to the verified local REPL when the listener is ready. */
+export function windowsComputerUseReplEnvironment(runtime: ComputerUseRuntimeResult | null) {
+  if (runtime?.status !== "available" || runtime.platform !== "win32") return null;
+  return {
+    SKY_CUA_NATIVE_PIPE: "1",
+    SKY_CUA_NATIVE_PIPE_DIRECTORY: runtime.nativePipePath,
+  };
+}
+
+const windowsPreferencePath = (home: string) =>
+  path.join(home, COMPUTER_USE_CONFIG_DIRECTORY, "windows-settings.json");
+
+export async function readWindowsComputerUseEnabled(home: string): Promise<boolean> {
+  try {
+    const value: unknown = JSON.parse(await readFile(windowsPreferencePath(home), "utf8"));
+    return typeof value === "object" && value !== null && Reflect.get(value, "enabled") === true;
+  } catch (error) {
+    if (error && typeof error === "object" && Reflect.get(error, "code") === "ENOENT") return true;
+    throw error;
+  }
+}
+
+export function writeWindowsComputerUseEnabled(home: string, enabled: boolean): Promise<string> {
+  const target = windowsPreferencePath(home);
+  return writeConfigAtomically(path.dirname(target), target, { enabled });
 }

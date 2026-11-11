@@ -35,7 +35,8 @@ test("Windows mounts one navigation group in the application row above workspace
     await settleLazyRender();
     await view.findByRole("button", { name: "Back to app" });
     expect(header.hidden).toBe(true);
-    expect(view.queryByRole("link", { name: "Computer use", hidden: true })).toBeNull();
+    // Computer Use is a Windows capability too, so its settings are listed here.
+    expect(view.getByRole("link", { name: "Computer use", hidden: true })).not.toBeNull();
   } finally {
     view.unmount();
     if (previousOs === undefined) delete root.dataset.codexOs;

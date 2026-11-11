@@ -197,3 +197,65 @@ it.effect("fails closed when Locked Use is not allowed", () =>
       ),
   ),
 );
+
+it.effect("projects Windows availability and revokes only the selected app", () => {
+  let enabled = true;
+  let approved = ["aumid:Editor", "exe:Calculator"];
+  return withRuntime(
+    (homeDirectory) => ({
+      platform: "win32",
+      homeDirectory,
+      exec: () => Effect.die("Windows settings must not invoke native macOS commands"),
+      getAlwaysHide: () => {
+        throw new Error("Native PiP preference read on Windows");
+      },
+      readLockedUseAllowed: Effect.die("Locked Use read on Windows"),
+      setAlwaysHide: () => Effect.die("Native PiP preference written on Windows"),
+      getRuntimeResult: Effect.sync(() =>
+        enabled
+          ? {
+              platform: "win32",
+              nativePipePath: "fixture-pipe",
+              serviceExecutablePath: "fixture.exe",
+              status: "available",
+            }
+          : { status: "unavailable", reason: "disabled", message: "Computer Use is turned off." },
+      ),
+      windows: {
+        enabled: () => enabled,
+        setEnabled: (next) =>
+          Effect.sync(() => {
+            enabled = next;
+          }),
+        readApprovedApps: Effect.sync(() => approved),
+        revoke: (id) =>
+          Effect.sync(() => {
+            approved = approved.filter((app) => app !== id);
+          }),
+      },
+    }),
+    (runtime) =>
+      Effect.gen(function* () {
+        const initial = yield* runtime.getSnapshot;
+        assert.deepEqual(initial.windows, { enabled: true });
+        assert.isTrue(initial.available);
+        assert.deepEqual(
+          initial.approvedApps.map((app) => app.displayName),
+          approved,
+        );
+        assert.notProperty(initial, "approvedMessageThreads");
+        assert.notProperty(initial, "lockedUseEnabled");
+        const removed = yield* runtime.removeAppApproval("aumid:Editor");
+        assert.deepEqual(
+          removed.approvedApps.map((app) => app.bundleIdentifier),
+          ["exe:Calculator"],
+        );
+        const disabled = yield* runtime.setWindowsEnabled!(false);
+        assert.deepEqual(disabled.windows, { enabled: false });
+        assert.isFalse(disabled.available);
+        assert.deepEqual(disabled.approvedApps, removed.approvedApps);
+        yield* runtime.setSoundMode("off").pipe(Effect.flip);
+        yield* runtime.removeMessageApproval("irrelevant").pipe(Effect.flip);
+      }),
+  );
+});

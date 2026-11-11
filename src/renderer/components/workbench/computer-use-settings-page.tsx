@@ -20,6 +20,7 @@ import {
   removeComputerUseMessageApproval,
   setComputerUseAlwaysHidePictureInPicture,
   setComputerUseLockedUse,
+  setComputerUseEnabled,
   setComputerUseSoundMode,
 } from "@/lib/computer-use-settings";
 import type {
@@ -40,6 +41,7 @@ const SOUND_MODE_OPTIONS: ReadonlyArray<{
 ];
 
 type PendingComputerUseSetting =
+  | "enabled"
   | "always-hide"
   | "locked-use"
   | "sound"
@@ -50,6 +52,7 @@ type PendingComputerUseSetting =
 export interface ComputerUseSettingsViewProps {
   readonly pending: PendingComputerUseSetting;
   readonly snapshot: ComputerUseSettingsSnapshot;
+  readonly onSetWindowsEnabled?: (value: boolean) => void;
   readonly onRemoveAppApproval: (bundleIdentifier: string) => void;
   readonly onRemoveMessageApproval: (chatGuid: string) => void;
   readonly onSetAlwaysHidePictureInPicture: (value: boolean) => void;
@@ -76,15 +79,71 @@ function EmptyApprovals() {
   return <div className="p-3 text-center text-sm text-token-text-secondary">None yet</div>;
 }
 
+function AppApprovals({
+  pending,
+  snapshot,
+  onRemoveAppApproval,
+}: Pick<ComputerUseSettingsViewProps, "pending" | "snapshot" | "onRemoveAppApproval">) {
+  return (
+    <NodexSettingsSection title="Always-allowed apps">
+      {snapshot.approvedApps.length === 0 ? (
+        <EmptyApprovals />
+      ) : (
+        snapshot.approvedApps.map((app) => (
+          <NodexSettingsRow
+            key={app.bundleIdentifier}
+            label={app.displayName}
+            description={snapshot.windows ? undefined : app.bundleIdentifier}
+          >
+            <NodexButton
+              aria-label={`Remove ${app.displayName}`}
+              disabled={pending !== null}
+              size="icon-xs"
+              variant="ghost"
+              onClick={() => onRemoveAppApproval(app.bundleIdentifier)}
+            >
+              <DeleteIcon className="size-3.5" />
+            </NodexButton>
+          </NodexSettingsRow>
+        ))
+      )}
+    </NodexSettingsSection>
+  );
+}
+
 export function ComputerUseSettingsView({
   pending,
   snapshot,
+  onSetWindowsEnabled,
   onRemoveAppApproval,
   onRemoveMessageApproval,
   onSetAlwaysHidePictureInPicture,
   onSetLockedUseEnabled,
   onSetSoundMode,
 }: ComputerUseSettingsViewProps) {
+  if (snapshot.windows) {
+    const { enabled } = snapshot.windows;
+    return (
+      <NodexSettingsPageSurface title="Computer use">
+        <NodexSettingsSection title="Control">
+          <NodexSettingsRow label="Any app" description={enabled ? snapshot.message : null}>
+            {enabled ? <AvailabilityStatus snapshot={snapshot} /> : null}
+            {onSetWindowsEnabled ? (
+              <NodexSwitch
+                ariaLabel="Enable Computer Use"
+                checked={enabled}
+                disabled={pending !== null}
+                onCheckedChange={onSetWindowsEnabled}
+              />
+            ) : null}
+          </NodexSettingsRow>
+        </NodexSettingsSection>
+        {snapshot.available || snapshot.approvedApps.length > 0 ? (
+          <AppApprovals {...{ pending, snapshot, onRemoveAppApproval }} />
+        ) : null}
+      </NodexSettingsPageSurface>
+    );
+  }
   const selectedSoundMode =
     SOUND_MODE_OPTIONS.find((option) => option.value === snapshot.soundMode) ??
     SOUND_MODE_OPTIONS[0];
@@ -134,29 +193,7 @@ export function ComputerUseSettingsView({
 
       {snapshot.available ? (
         <>
-          <NodexSettingsSection title="Always-allowed apps">
-            {snapshot.approvedApps.length === 0 ? (
-              <EmptyApprovals />
-            ) : (
-              snapshot.approvedApps.map((approvedApp) => (
-                <NodexSettingsRow
-                  key={approvedApp.bundleIdentifier}
-                  label={approvedApp.displayName}
-                  description={approvedApp.bundleIdentifier}
-                >
-                  <NodexButton
-                    aria-label={`Remove ${approvedApp.displayName}`}
-                    disabled={pending !== null}
-                    size="icon-xs"
-                    variant="ghost"
-                    onClick={() => onRemoveAppApproval(approvedApp.bundleIdentifier)}
-                  >
-                    <DeleteIcon className="size-3.5" />
-                  </NodexButton>
-                </NodexSettingsRow>
-              ))
-            )}
-          </NodexSettingsSection>
+          <AppApprovals {...{ pending, snapshot, onRemoveAppApproval }} />
 
           {snapshot.approvedMessageThreads.length > 0 ? (
             <NodexSettingsSection title="Always allowed to send">
@@ -288,6 +325,13 @@ export function ComputerUseSettingsPage({ open }: { open: boolean }) {
       <ComputerUseSettingsView
         pending={pending}
         snapshot={snapshot}
+        onSetWindowsEnabled={(value) =>
+          mutate(
+            "enabled",
+            () => setComputerUseEnabled(value),
+            value ? "Computer Use enabled" : "Computer Use turned off",
+          )
+        }
         onRemoveAppApproval={(bundleIdentifier) =>
           mutate(
             `app:${bundleIdentifier}`,

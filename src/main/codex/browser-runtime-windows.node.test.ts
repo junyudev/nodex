@@ -14,6 +14,7 @@ import {
 } from "../platform/node/WindowsDesktopTools";
 import { makeWindowsBrowserRuntimeVerifier } from "../platform/node/WindowsBrowserRuntimeVerifier";
 import { BrowserUseThreadConfigBuilder } from "./browser-use-thread-config";
+import type { ComputerUseRuntimeResult } from "../host-runtime/ComputerUseRuntime";
 import {
   nodexDesktopToolMarketplaceName,
   windowsBrowserSkillBootstrap,
@@ -279,7 +280,14 @@ test.each(["arm64", "x64"] as const)(
         Path: "foreign",
       },
     };
+    let computerUseRuntime: ComputerUseRuntimeResult = {
+      status: "unavailable",
+      reason: "disabled",
+      message: "Computer Use is turned off.",
+    };
     const builder = new BrowserUseThreadConfigBuilder({
+      computerUsePluginReady: () => true,
+      computerUseRuntime: () => computerUseRuntime,
       browserRuntime,
       windows,
       runtimeStateHome,
@@ -288,14 +296,20 @@ test.each(["arm64", "x64"] as const)(
     const result = builder.buildResult();
     if (result.status !== "available") throw new Error(result.message);
     const definition = result.config["mcp_servers.node_repl"];
-    const plugin = builder.buildDesktopTools({
+    const plugins = {
       status: "ready",
       installedVersion: "1",
       enabled: true,
       marketplaceRoot: "C:/Nodex Profile/marketplace",
       chrome: { status: "unavailable", reason: "backend-unavailable", message: "unused" },
-      computerUse: { status: "unavailable", reason: "capability-unavailable", message: "unused" },
-    });
+      computerUse: {
+        status: "ready",
+        enabled: true,
+        installedVersion: "1",
+        pluginRoot: "C:/Nodex Profile/computer-use",
+      },
+    } as const;
+    const plugin = builder.buildDesktopTools(plugins);
     expect(definition).toMatchObject(plugin!.server);
     expect(plugin?.server.command).toBe(windows.jobLauncher);
     const [mode, stdio, image, , environment] = plugin!.server.args;
@@ -318,6 +332,30 @@ test.each(["arm64", "x64"] as const)(
     expect(nodexDesktopToolMarketplaceName(runtimeStateHome.toUpperCase(), "win32")).toBe(
       env.BROWSER_USE_CODEX_APP_BUILD_FLAVOR,
     );
+    expect(env.SKY_CUA_NATIVE_PIPE_DIRECTORY).toBeUndefined();
+    expect(JSON.parse(env.NODE_REPL_TRUSTED_SERVICES)).not.toHaveProperty("sky");
+    for (const nativePipePath of ["cua-first", "cua-restarted"]) {
+      computerUseRuntime = {
+        status: "available",
+        platform: "win32",
+        nativePipePath,
+        serviceExecutablePath: "C:/Nodex Profile/runtime/service.exe",
+      };
+      const withComputerUse = builder.buildResult();
+      if (withComputerUse.status !== "available") throw new Error(withComputerUse.message);
+      const desktopTools = builder.buildDesktopTools(plugins)!;
+      expect(withComputerUse.config["mcp_servers.node_repl"]).toMatchObject(desktopTools.server);
+      expect(desktopTools.pluginRoots).toContain(plugins.computerUse.pluginRoot);
+      const replEnv = JSON.parse(desktopTools.server.args[4]!);
+      expect(replEnv).toMatchObject({
+        SKY_CUA_NATIVE_PIPE: "1",
+        SKY_CUA_NATIVE_PIPE_DIRECTORY: nativePipePath,
+      });
+      expect(JSON.parse(replEnv.NODE_REPL_TRUSTED_SERVICES)).toHaveProperty(
+        "sky",
+        "@oai/sky/service",
+      );
+    }
   },
 );
 

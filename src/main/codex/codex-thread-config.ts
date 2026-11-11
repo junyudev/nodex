@@ -78,6 +78,11 @@ export const CODEX_DESKTOP_THREAD_FEATURE_CONFIG = Object.freeze(
   buildCodexDesktopThreadFeatureConfig(),
 );
 
+export const DISABLED_DESKTOP_TOOL_REPL_CONFIG = Object.freeze({
+  "features.js_repl": false,
+  "mcp_servers.node_repl.enabled": false,
+});
+
 const normalizeConfigValue = (value: unknown): ThreadConfigValue => {
   if (
     value === null ||

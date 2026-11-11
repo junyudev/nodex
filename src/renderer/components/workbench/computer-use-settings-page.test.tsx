@@ -53,6 +53,35 @@ describe("ComputerUseSettingsView", () => {
     expect(onRemoveMessageApproval).toHaveBeenCalledWith("thread-1");
   });
 
+  test("shows the Windows enable switch and lets users revoke an app approval", () => {
+    const setEnabled = vi.fn();
+    const remove = vi.fn();
+    render(
+      <ComputerUseSettingsView
+        pending={null}
+        snapshot={{
+          available: true,
+          message: null,
+          windows: { enabled: true },
+          approvedApps: [{ bundleIdentifier: "aumid:Test.Editor", displayName: "Editor" }],
+        }}
+        onSetWindowsEnabled={setEnabled}
+        onRemoveAppApproval={remove}
+        onRemoveMessageApproval={() => undefined}
+        onSetAlwaysHidePictureInPicture={() => undefined}
+        onSetLockedUseEnabled={() => undefined}
+        onSetSoundMode={() => undefined}
+      />,
+    );
+    expect(screen.getByText("Available")).toBeTruthy();
+    expect(screen.getAllByRole("switch")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Remove Family" })).toBeNull();
+    fireEvent.click(screen.getByRole("switch", { name: "Enable Computer Use" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove Editor" }));
+    expect(setEnabled).toHaveBeenCalledWith(false);
+    expect(remove).toHaveBeenCalledWith("aumid:Test.Editor");
+  });
+
   test("does not expose locked use when configuration requirements deny it", () => {
     render(
       <ComputerUseSettingsView
