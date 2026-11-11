@@ -80,6 +80,8 @@ export const gh = (
   try {
     return execFileSync("gh", [...args], {
       encoding: "utf8",
+      // The paginated release list alone exceeds Node's 1 MiB default.
+      maxBuffer: 256 * 1024 * 1024,
       stdio: ["ignore", "pipe", options?.allowFailure ? "ignore" : "pipe"],
       timeout: options?.timeoutMs,
     }).trim();
