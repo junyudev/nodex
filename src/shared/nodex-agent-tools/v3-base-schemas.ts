@@ -46,6 +46,13 @@ export const DatabaseValueDraftV3Schema = z.strictObject({
   value: JsonValueSchema,
 });
 
+export const DatabasePagePropertyChangeSchema = z.strictObject({
+  propertyId: z.string(),
+  before: JsonValueSchema,
+  after: JsonValueSchema,
+  valueRevision: z.number().int(),
+});
+
 export const DatabaseDestinationViewV3Schema = z.strictObject({
   viewId: ViewIdSchema,
   groupKey: z.string().max(4_096).nullable().optional(),

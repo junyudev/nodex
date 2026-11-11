@@ -15,7 +15,7 @@ import {
 
 export const NODEX_APP_V3_TOOL_NAMESPACE_DESCRIPTION = [
   NODEX_MARKDOWN_COMPACT_HINT,
-  "Page keys are human locators: resolve them with search, then use the returned canonical Page ID for fetches and every mutation.",
+  "Use Page IDs for fetches and structural edits. set_page_properties also accepts Page keys.",
   "Outputs are JSON text. In Code Mode, compose dependent calls in one JavaScript pipeline, parse each result, throw on result.error, keep intermediate rows, Markdown, cursors, and ETags inside JavaScript, serialize dependent writes, and emit only a bounded summary with text().",
 ].join(" ");
 

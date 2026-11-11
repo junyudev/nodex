@@ -86,8 +86,11 @@ pub(super) fn result(path: &[&str]) -> Value {
         ["search"] => document::<crate::search::SearchOutput>(),
         ["page", "properties", "prepare-batch"] => document::<crate::selection_batch::BatchEdits>(),
         ["page", "properties", "set"] => document::<crate::page_properties::PropertySetResult>(),
-        ["data-source", "configure"] | ["page", "properties", "apply"] => combine(
-            document::<nodex_core_contracts::ApplyResponse<DatabaseCommitValue, DatabaseReceipt>>(),
+        ["page", "properties", "apply"] => {
+            document::<crate::page_properties::PropertyBatchReceipt>()
+        }
+        ["data-source", "configure"] => combine(
+            document::<crate::runtime::CompactReceipt<DatabaseCommitValue, DatabaseReceipt>>(),
             [
                 document::<DatabaseCommitValue>(),
                 document::<DatabaseReceipt>(),
@@ -130,7 +133,7 @@ pub(super) fn result(path: &[&str]) -> Value {
         }
         ["page", "accept"] => document::<crate::page_lifecycle::PageAcceptanceResult>(),
         ["page", "create"] => document::<crate::page_lifecycle::PageCreationResult>(),
-        ["page", "move"] => document::<crate::page_lifecycle::PageMoveResult>(),
+        ["page", "move"] => document::<crate::page_lifecycle::PageMoveOutput>(),
         ["page", "duplicate"] => document::<crate::page_lifecycle::PageCopyResult>(),
         ["page", "delete"] => document::<crate::page_lifecycle::PageDeletionResult>(),
         ["page", "file", "list"] => {
@@ -144,7 +147,7 @@ pub(super) fn result(path: &[&str]) -> Value {
         ["backup", "list"] => document::<crate::runtime::BackupListOutput>(),
         ["backup", "create"] => combine(
             document::<
-                nodex_core_contracts::ApplyResponse<
+                crate::runtime::CompactReceipt<
                     StoreAdministrationCommitValue,
                     StoreAdministrationReceipt,
                 >,
@@ -242,6 +245,22 @@ pub(super) fn payloads(path: &[&str]) -> BTreeMap<String, Value> {
             "--input".into(),
             document::<nodex_core_contracts::database_configuration::DatabaseConfigurationScript>(),
         )]),
+        ["page", "properties", "set"] => BTreeMap::from([
+            (
+                "PageIds".into(),
+                combine(
+                    document::<crate::input_document::InputDocument<Vec<String>>>(),
+                    [document::<Vec<String>>()],
+                ),
+            ),
+            (
+                "SqlSelection".into(),
+                combine(
+                    document::<crate::selection_batch::SelectionInput>(),
+                    [document::<nodex_core_contracts::sql::SqlResult>()],
+                ),
+            ),
+        ]),
         ["page", "properties", "prepare-batch"] => BTreeMap::from([
             (
                 "--values".into(),
@@ -283,6 +302,31 @@ pub(super) fn payloads(path: &[&str]) -> BTreeMap<String, Value> {
         }
         _ => BTreeMap::new(),
     }
+}
+
+pub(super) fn payload_names(path: &[&str]) -> Vec<String> {
+    let mut names = std::collections::BTreeSet::new();
+    for (argument, schema) in payloads(path) {
+        names.insert(argument);
+        if let Some(definitions) = schema["$defs"].as_object() {
+            names.extend(definitions.keys().cloned());
+        }
+    }
+    names.into_iter().collect()
+}
+
+pub(super) fn named_payload(path: &[&str], name: &str) -> Option<Value> {
+    let mut schemas = payloads(path);
+    if let Some(mut schema) = schemas.remove(name) {
+        prune_definitions(&mut schema);
+        return Some(schema);
+    }
+    let mut schema = schemas
+        .into_values()
+        .find(|schema| schema["$defs"].get(name).is_some())?;
+    schema["$ref"] = Value::String(format!("#/$defs/{name}"));
+    prune_definitions(&mut schema);
+    Some(schema)
 }
 
 #[cfg(test)]

@@ -12,24 +12,25 @@ resuming. Keep the managed binding so Core records Agent authorship.
 
 ## Choose a route for the task
 
-| Task                                          | Default route                                                                         |
-| --------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Filter, join, summarize or read several Pages | `sql query`; select the needed fields, bodies and validators together                 |
-| Read one known Page body                      | `read`                                                                                |
-| Find ranked candidates                        | `search`; use SQL `search_hits` for combined filters and joins                        |
-| Change exact text or add content              | `patch` or `page insert`                                                              |
-| Change one text, number or select value       | `page properties set`                                                                 |
-| Other value types or several Pages/fields     | `page properties apply`; for SQL-selected targets use SQL → `prepare-batch` → `apply` |
-| Change Property definitions or saved Views    | `data-source configure`; combine related changes in one script                        |
-| Substantial rewrite or local diff             | `draft`                                                                               |
-| Leave an out-of-scope follow-up for the user  | `inbox send`; it starts no work, and the user decides where it goes                   |
+| Task                                          | Default route                                                                                               |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Filter, join, summarize or read several Pages | `sql query`; select the needed fields, bodies and validators together                                       |
+| Read one known Page body                      | `read`                                                                                                      |
+| Find ranked candidates                        | `search`; use SQL `search_hits` for combined filters and joins                                              |
+| Change exact text or add content              | `patch` or `page insert`                                                                                    |
+| Set Properties on existing Pages              | MCP `set_page_properties` for known Pages or CLI `page properties set --selection -` for SQL-selected Pages |
+| Apply heterogeneous fenced or Relation edits  | `page properties apply`                                                                                     |
+| Change Property definitions or saved Views    | `data-source configure`; combine related changes in one script                                              |
+| Substantial rewrite or local diff             | `draft`                                                                                                     |
+| Leave an out-of-scope follow-up for the user  | `inbox send`; it starts no work, and the user decides where it goes                                         |
 
 ## Discover only what you need
 
 Use familiar commands directly. For an unfamiliar command, read its
 machine help: `nodex --json page insert --help`. This compact guide works offline.
 Read `--help-schema input` only when constructing an unfamiliar payload; use
-`--help-schema result` for exact output structure. Cache help for that binary version.
+`--help-schema result` for the output structure. Use `--help-schema names` to
+list payloads and `--help-schema input:NAME` to read one. Cache help for that binary version.
 
 If the published commands and input schema cannot express the requested operation,
 report the specific missing capability and any completed work. End that operation
@@ -40,7 +41,7 @@ for that task and target instance, even when its tools are available.
 
 Read `sql schema` only when the model is unfamiliar, then describe the needed
 relation. `pages` includes all authorized active Pages; Property queries bind a
-Source explicitly.
+Source explicitly. Bound SQL Property columns use the Source’s current display names.
 
 Use `nodex context` when the current context is unknown. The working directory
 can select a Project; `--project` is needed only to choose or disambiguate one.
@@ -114,9 +115,14 @@ Page text, diffs, and File bytes retain their native format.
 
 ## Write with the right scope
 
-Pass stable resource IDs directly; no `@` prefix is required. Resolve names only
-when an ID is not already known. Use Block commands for identity-specific
-structural edits. Prefer an atomic batch when related changes fit its contract.
+Pass stable resource IDs directly. For a destination whose exact ID collides with
+a prefixed selector, use `page:@PAGE_ID` or `data_source:@SOURCE_ID`. Use Block commands for identity-specific
+structural edits. Batch related writes. After moving Pages, verify their membership and Properties in the destination.
+
+Omit group placement to carry a valid Status when moving a Page into a Data
+Source. Check the resulting Status in the receipt. Status requires a stage.
+Use `page properties set PAGE --set Status=done` to change it.
+For MCP Property batches use `set_page_properties`.
 
 Reuse the relevant validator from a prior read when available. On conflicts,
 reread the affected state and reassess the intended change; never silently

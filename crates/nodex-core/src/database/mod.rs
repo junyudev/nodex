@@ -34,6 +34,9 @@ pub(crate) use manual_order::{
 
 pub(crate) use genesis::create_database_authority_records;
 pub(crate) use mutation::apply_as_collaborator as apply_intents_as_collaborator;
+pub(crate) use mutation::page_property_set::{
+    resolve_values as resolve_page_property_values, validate_agent_receipt_size,
+};
 pub(crate) use mutation::{
     ExistingPageTransferTarget, PageCopyDataSourceDestination, PageCopyPositionAnchor,
     PageCopyValueDraft, PageCopyViewPlacement, PageTaskShorthandBatchPlan,
@@ -50,7 +53,8 @@ pub(crate) use mutation::{
     validate_page_transfer_data_source_source,
 };
 pub(crate) use mutation::{
-    WorkflowStatusStep, follow_workflow_status, record_person_status_edit, status_person_revision,
+    StatusEditOrigin, WorkflowStatusStep, follow_workflow_status, record_person_status_edit,
+    status_person_revision,
 };
 pub(crate) use page_key::{
     create_page_key_namespace, current_page_key_for_database_page, current_page_key_for_page,

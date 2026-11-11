@@ -700,7 +700,7 @@ fn relocated_page_undo_restores_logical_neighbors_after_rebalance() {
         LibraryIntent::MovePage {
             page_id: MIDDLE.into(),
             destination: LibraryPageWriteDestination::Library { at: None },
-            expected_etag: prepare_page_move_etag(&library, &context(), MIDDLE),
+            expected_etag: Some(prepare_page_move_etag(&library, &context(), MIDDLE)),
         },
     )
     .committed

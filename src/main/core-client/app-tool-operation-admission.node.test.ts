@@ -1,6 +1,6 @@
 import { expect, test } from "vite-plus/test";
 import { withCoreScenario } from "../../../scripts/scenarios/harness/core-scenario-harness";
-import { DOCUMENT_SYNC_RECOVERY_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/document-sync-recovery";
+import { AGENT_CLI_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/agent-cli-workflow";
 import {
   createBoundedOperationId,
   isBoundedOperationId,
@@ -9,7 +9,7 @@ import {
 import type { AppToolOperationRequest } from "./types";
 
 test("application retry admission is atomic and restart-stable over the authenticated Core transport", async () => {
-  await withCoreScenario({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }, async (scenario) => {
+  await withCoreScenario({ scenarioId: AGENT_CLI_SCENARIO_ID }, async (scenario) => {
     const client = scenario.runtime.clientForProject(scenario.manifest.projectId);
     await client.workspaceApply({
       operationId: createBoundedOperationId("test.caller.create"),
@@ -85,6 +85,40 @@ test("application retry admission is atomic and restart-stable over the authenti
         request: pageRequest,
       },
     });
+    const propertyRetry = {
+      ...request,
+      tool_name: "set_page_properties",
+      idempotency_key: "triage1111-done-first",
+    };
+    const propertyOperation = await client.admitAppToolOperation(propertyRetry);
+    const setStatus = (
+      core: typeof client,
+      execution: typeof authorization,
+      value: string | null,
+      operationId = propertyOperation.operation_id,
+    ) =>
+      core.databaseApply({
+        operationId,
+        intent: [
+          {
+            kind: "set_page_properties",
+            authorization: execution,
+            updates: [
+              {
+                page_ids: [scenario.manifest.pageIdsByKey.meeting!],
+                values: [{ property_id: "Status", value }],
+              },
+            ],
+          },
+        ],
+      });
+    const set = await setStatus(client, authorization, "done");
+    expect(set.receipt.page_properties?.[0]?.values[0]?.after).toBe("done");
+    await expect(
+      setStatus(client, authorization, null, createBoundedOperationId("test.clear.status")),
+    ).rejects.toMatchObject({
+      coreError: { code: "invalid_input", message: expect.stringContaining("plan (Todo)") },
+    });
     await scenario.withStoppedCore(async () => {});
     const reopened = scenario.runtime.clientForProject(scenario.manifest.projectId);
     const retry = await reopened.admitAppToolOperation({
@@ -102,6 +136,12 @@ test("application retry admission is atomic and restart-stable over the authenti
     expect(await reopened.admitAppToolOperation({ ...pageRetry, provenance: later })).toEqual(
       pageOperation,
     );
+    expect(await reopened.admitAppToolOperation({ ...propertyRetry, provenance: later })).toEqual(
+      propertyOperation,
+    );
+    const repeated = await setStatus(reopened, { provenance: later, call_id: "call:two" }, "done");
+    expect(repeated.receipt.duplicate).toBe(true);
+    expect(repeated.receipt.page_properties).toEqual(set.receipt.page_properties);
     const replay = (await preparePage(reopened, { provenance: later, call_id: "call:two" })).value;
     if (replay.kind !== "agent_create_pages_preparation") throw new Error("Expected replay");
     expect(replay.value.preparation.state).toBe("committed_replay");

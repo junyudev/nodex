@@ -81,6 +81,20 @@ describe("resolveNodexToolActivity", () => {
     }
   });
 
+  test("presents a Property batch by its distinct target Pages", () => {
+    const values = [{ propertyId: "status", value: "done" }];
+    const first = { pageIds: [PAGE_ID], values };
+    const single = call("set_page_properties", { updates: [first] });
+    expect(resolveNodexToolActivity(single)?.parts.at(-1)).toMatchObject({
+      kind: "page",
+      pageId: PAGE_ID,
+    });
+    const second = { pageIds: [PAGE_ID, PARENT_ID], values };
+    expect(label(call("set_page_properties", { updates: [first, second] }))).toBe(
+      "Updated properties on 2 pages",
+    );
+  });
+
   test("names a read by its Page and hides the transport format", () => {
     const read = call("fetch", { id: PAGE_ID, format: "markdown" });
 

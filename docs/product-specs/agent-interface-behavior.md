@@ -73,7 +73,7 @@ reports unavailable through application tools. Resuming an old task does not rea
 retired dynamic catalog or select an automatic fallback transport.
 
 The native catalog includes `get_context`, `search`, `fetch`, `query_database_view`,
-`query_data_source`, `create_pages`, `update_page`, `advanced_update_page`, `move_pages`,
+`query_data_source`, `create_pages`, `update_page`, `advanced_update_page`, `set_page_properties`, `move_pages`,
 and `duplicate_page`. `get_context` describes the current Library, optional Project
 routing and opt-in default Database or Markdown guide. These tools use the canonical
 Agent content contracts and semantic execution owner. Calls bind the backend-observed Thread and Turn to persisted Core execution identity;
@@ -105,17 +105,16 @@ without a workspace. Project discovery supplies execution and presentation coord
 execution identity, Profile SQL reads, live Workbench observations and resource lifecycle
 and cloud capabilities.
 
-Content mutation tools and other writes with retry support accept optional `idempotencyKey`,
+Content mutation tools, including `set_page_properties` and `update_page` with
+`values`, and other writes with retry support accept optional `idempotencyKey`,
 an opaque string of 1–128 Unicode scalar values chosen by the Agent. Supply one when
-you may need to retry a call whose outcome you did not see, and reuse it with identical arguments. Within its seven-day window, the same calling Session or root
-conversation and tool retain one host-issued operation identity, including across Turns,
-provider reconnections and application restarts. Concurrent duplicates share admission;
-changed arguments fail with `idempotency_key_reused` and require a new key for a new
-intent. Nodex remembers a key for 7 days. After that, reuse starts a new operation.
-Choose a descriptive prefix with a unique random or timestamp suffix for each new intent
-so a deliberate repeat within the window runs again. Omitting the key
-retains the invocation's stable per-call identity. The host supplies admission time and
-expiry; tool arguments never supply either.
+you may need to retry a call whose outcome you did not see. Within seven days,
+the same calling Session or root conversation, tool and key resolve to one
+operation identity across Turns, provider reconnections and application restarts.
+Concurrent calls with identical arguments share admission. Changed arguments
+return `idempotency_key_reused`. Reusing a key after seven days starts a new
+operation. Use a fresh key for each distinct intent. Calls without a key retain
+their stable per-call identities.
 
 A returned `operationId` is a server-issued receipt or progress handle. Echo the handle
 unchanged where requested, such as `get_handoff_status`; Agents never construct one.
@@ -744,9 +743,16 @@ The content interfaces let an agent:
 
 Page results expose canonical `id`, nullable current `pageKey`, and bounded
 matched-key evidence when a retained historical alias led to the result.
-Agents may discover and discuss a Page through its key, but every structured
-`pageId`/`pageIds` mutation input remains UUID-only: search resolves the key and
-the write reuses the returned canonical identity.
+Use canonical Page IDs for fetches and structural writes.
+`set_page_properties` also accepts Page keys.
+
+`set_page_properties` accepts `updates`, each with `pageIds` and a list of
+`values` in the same `{propertyId, value}` shape as `create_pages`. Property and
+option selectors accept stable IDs or exact unique current names. Use null to
+clear a value. A single-Page update can carry `expectedValueRevisions` keyed by
+Property. Core resolves and commits the entire batch atomically and returns
+the touched values and fresh revisions per Page. `update_page` can include
+`values` with a title or body edit in the same commit.
 
 Nodex Markdown is the one bulk-content representation: GFM plus directives for
 content Markdown cannot express. Fetches, creates, inserts, replacements and

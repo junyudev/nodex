@@ -92,6 +92,17 @@ or `"or"`; each child is a clause or another group. Read the created View ID fro
 `views` and verify the actual saved results with
 `SELECT DISTINCT page_id FROM view_rows(:view)` using `--param 'view="VIEW_ID"'`.
 
+## Batch writes from SQL
+
+```sh
+nodex sql query 'SELECT page_id FROM tasks WHERE "Status" = :status' \
+  --bind tasks=SOURCE_ID --param 'status="plan"' |
+  nodex page properties set --selection - --set Priority=p1-high
+```
+
+Query current Property display names. Use `sql schema` on the bound Source
+after a rename to find the new column name.
+
 ## Preserve query observations for batch edits
 
 Select all four observation columns. Preparation resolves Property names using
@@ -102,7 +113,7 @@ nodex sql query 'SELECT page_id,data_source_id,membership_revision,value_revisio
   --bind tasks=SOURCE_ID --param 'title="Release checklist"' |
   nodex page properties prepare-batch --selection - \
     --set 'Risk={"kind":"select","option_id":"OPTION_ID"}' |
-  nodex page properties apply --input - --idempotency-key selected-risk-1
+  nodex page properties apply --input -
 ```
 
 Missing observed versions fail; reread and reassess rather than supplying guessed

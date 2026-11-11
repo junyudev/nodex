@@ -160,13 +160,19 @@ pub(crate) fn prepare_block_input(command: &mut crate::cli::Command) -> Result<(
         }) => {
             validate_return_fields(&args.mutation.r#return)?;
             parse_anchor(&args.at)?;
-            args.prepared = Some(read_json_file(&args.block_json, "Block draft")?);
+            args.prepared = Some(
+                read_json_file(&args.block_json, "Block draft")
+                    .map_err(|error| crate::input::with_schema_hint(error, "block insert"))?,
+            );
         }
         Command::Block(BlockArgs {
             command: BlockCommand::Update(args),
         }) => {
             validate_return_fields(&args.mutation.r#return)?;
-            args.prepared = Some(read_json_file(&args.patch_json, "Block update patch")?);
+            args.prepared = Some(
+                read_json_file(&args.patch_json, "Block update patch")
+                    .map_err(|error| crate::input::with_schema_hint(error, "block update"))?,
+            );
         }
         _ => {}
     }
@@ -754,14 +760,8 @@ pub(crate) fn read_content_input(
 
 fn read_json_file<T: DeserializeOwned>(path: &Path, label: &str) -> Result<T, CliError> {
     let bytes = crate::input::read_bytes(path, MAX_BLOCK_JSON_BYTES, label)?;
-    serde_json::from_slice(&bytes).map_err(|error| {
-        CliError::new(
-            CliErrorCode::InvalidInput,
-            format!("{label} must match the native semantic JSON contract: {error}"),
-        )
-        .at_path(path.display().to_string())
-        .at_line(error.line())
-    })
+    crate::input::decode_json(&bytes, label)
+        .map_err(|error| error.with_details(serde_json::json!({"input_file": path})))
 }
 
 fn read_bounded(reader: &mut impl Read, limit: usize, label: &str) -> Result<Vec<u8>, CliError> {
@@ -903,7 +903,11 @@ mod tests {
         let error = read_json_file::<DocumentSemanticBlockDraft>(&invalid_path, "Block draft")
             .expect_err("unknown Block draft field");
         assert_eq!(error.code, CliErrorCode::InvalidInput);
-        assert_eq!(error.path.as_deref(), Some(invalid_path.to_str().unwrap()));
+        assert_eq!(error.path.as_deref(), Some("caller_owned_id"));
+        assert_eq!(
+            error.details.unwrap()["input_file"],
+            invalid_path.to_str().unwrap()
+        );
     }
 
     #[test]

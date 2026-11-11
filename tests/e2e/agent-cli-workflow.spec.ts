@@ -187,10 +187,8 @@ test("direct Agent commands update the same Page, properties, and attachments sh
         "properties",
         "set",
         pageId,
-        "--property",
-        status.property_id,
-        "--option",
-        target.id,
+        "--set",
+        `${status.property_id}=${target.id}`,
         "--if-revision",
         String(revision),
       ]);
@@ -265,19 +263,10 @@ test("direct Agent commands update the same Page, properties, and attachments sh
         "--param",
         `title=${JSON.stringify(AGENT_CLI_PAGE_TITLE)}`,
       ]);
-      const edits = await run(
-        [
-          "page",
-          "properties",
-          "prepare-batch",
-          "--selection",
-          "-",
-          "--set",
-          `Risk=${JSON.stringify({ kind: "select", option_id: low.option_id })}`,
-        ],
+      await run(
+        ["page", "properties", "set", "--selection", "-", "--set", `Risk=${low.name}`],
         selection,
       );
-      await run(["page", "properties", "apply", "--input", "-"], edits);
       const riskGroup = await sql<{ page_id: string }>(
         "SELECT page_id FROM view_rows(:view) WHERE group_key=:group ORDER BY ordinal",
         { view: riskView.view_id, group: low.option_id },

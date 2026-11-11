@@ -2,18 +2,16 @@ use crate::cli::MutationArgs;
 use crate::data_source::stable_id;
 use crate::error::{CliError, CliErrorCode};
 use crate::runtime::{
-    CommandOutput, map_client_error, map_core_error, resolve_page_selector, selected_project,
-    unwrap_library,
+    CommandOutput, CompactReceipt, map_client_error, map_core_error, resolve_page_selector,
+    selected_project, unwrap_library,
 };
 use clap::{Args, Subcommand};
 use nodex_core_contracts::database::{
-    DatabaseIntent, DatabasePagePropertyAddress, DatabasePropertyValueEdit,
-    DatabasePropertyValueInput, DatabasePropertyValueMutation,
+    DatabaseIntent, DatabasePagePropertyResult, DatabasePagePropertyUpdate,
+    DatabasePropertyValueMutation,
 };
-use nodex_core_contracts::library::{LibraryPageDataSourceContext, LibraryRead, LibraryReadValue};
-use nodex_core_contracts::{
-    ApplyResponse, DATABASE_CONTRACT_VERSION, ModuleApplyRequest, StoreEpoch,
-};
+use nodex_core_contracts::library::LibraryPageCopyValue;
+use nodex_core_contracts::{DATABASE_CONTRACT_VERSION, ModuleApplyRequest, StoreEpoch};
 use nodex_core_protocol::{ResponseEnvelope, client::CoreClient};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -37,20 +35,19 @@ pub enum PagePropertiesCommand {
         #[command(flatten)]
         mutation: MutationArgs,
     },
-    /// Replace one select, text, or number Property using its current revision.
+    /// Set Properties on one or several Pages atomically.
     Set(PropertySetArgs),
 }
 #[derive(Clone, Debug, PartialEq, Args)]
-#[command(group(clap::ArgGroup::new("value").required(true).multiple(true).args(["option", "text", "number", "assignee", "owner", "auto_start"])))]
 pub struct PropertySetArgs {
-    /// Page ID, Page key, or uniquely resolvable title path.
-    pub page: String,
-    /// Source ID; omitted uses the Page’s current membership.
+    /// Page IDs, Page keys, or uniquely resolvable title paths.
+    #[arg(value_name = "PAGE", conflicts_with = "selection")]
+    pub pages: Vec<String>,
+    /// SQL JSON result containing a page_id or page_key column; - reads stdin.
     #[arg(long)]
-    pub data_source: Option<String>,
-    /// Stable Property ID within the Source (not its display name).
-    #[arg(long)]
-    pub property: Option<String>,
+    pub selection: Option<PathBuf>,
+    #[command(flatten)]
+    pub values: PropertyValuesArgs,
     /// member:<id>, me, agent:<instance>/<model>[/<effort>], or none.
     #[arg(long)]
     pub assignee: Option<String>,
@@ -60,21 +57,103 @@ pub struct PropertySetArgs {
     /// Whether an Agent Assignee starts on its own once its prerequisites are Done.
     #[arg(long, value_name = "true|false")]
     pub auto_start: Option<bool>,
-    /// Select option ID; choose exactly one of --option, --text or --number.
+    #[arg(skip)]
+    pub(crate) prepared: Option<PreparedSet>,
+    /// Optional value revision when setting one Property on one Page.
     #[arg(long)]
-    pub option: Option<String>,
-    /// Replacement text value, including an empty string.
-    #[arg(long)]
-    pub text: Option<String>,
-    /// Replacement numeric value.
-    #[arg(long, allow_hyphen_values = true)]
-    pub number: Option<f64>,
-    /// Observed value revision. Owner, Assignee and Start automatically default to the revision read by this command.
-    #[arg(long, required_unless_present_any = ["assignee", "owner", "auto_start"])]
     pub if_revision: Option<i64>,
     #[command(flatten)]
     pub mutation: MutationArgs,
 }
+impl PropertySetArgs {
+    fn edits_work(&self) -> bool {
+        self.assignee.is_some() || self.owner.is_some() || self.auto_start.is_some()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PreparedSet {
+    pages: Vec<String>,
+    values: Vec<LibraryPageCopyValue>,
+}
+
+#[derive(Clone, Debug, PartialEq, Args)]
+pub struct PropertyValuesArgs {
+    /// Replace a Property value. Use NAME=VALUE. Arrays, numbers and booleans use JSON.
+    #[arg(long, value_name = "PROPERTY=VALUE")]
+    pub set: Vec<String>,
+    /// Clear a Property value.
+    #[arg(long, value_name = "PROPERTY")]
+    pub clear: Vec<String>,
+}
+
+impl PropertyValuesArgs {
+    pub(crate) fn values(&self) -> Result<Vec<LibraryPageCopyValue>, CliError> {
+        self.set
+            .iter()
+            .map(|assignment| {
+                let (property, value) = property_assignment(assignment)?;
+                let value = if value == "null" {
+                    serde_json::Value::String(value.to_owned())
+                } else {
+                    serde_json::from_str(value)
+                        .unwrap_or_else(|_| serde_json::Value::String(value.to_owned()))
+                };
+                Ok(LibraryPageCopyValue {
+                    property_id: stable_id(&property)?,
+                    value,
+                })
+            })
+            .chain(self.clear.iter().map(|property| {
+                Ok(LibraryPageCopyValue {
+                    property_id: stable_id(property)?,
+                    value: serde_json::Value::Null,
+                })
+            }))
+            .collect()
+    }
+}
+
+fn property_assignment(input: &str) -> Result<(String, &str), CliError> {
+    let invalid_assignment = || {
+        invalid(
+            "--set expects PROPERTY=VALUE, for example --set Status=done. Use a JSON string for a Property name containing '='.",
+        )
+    };
+    if input.starts_with('"') {
+        let mut property = serde_json::Deserializer::from_str(input).into_iter::<String>();
+        let selector = property
+            .next()
+            .ok_or_else(invalid_assignment)?
+            .map_err(|_| invalid_assignment())?;
+        let value = input[property.byte_offset()..]
+            .strip_prefix('=')
+            .ok_or_else(invalid_assignment)?;
+        return Ok((selector, value));
+    }
+    input
+        .split_once('=')
+        .map(|(property, value)| (property.to_owned(), value))
+        .ok_or_else(invalid_assignment)
+}
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+enum PropertyBatchStatus {
+    Committed,
+    Duplicate,
+}
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct PropertyBatchReceipt {
+    status: PropertyBatchStatus,
+    operation_id: String,
+    commit_seq: i64,
+    pages: Vec<DatabasePagePropertyResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    commit: Option<nodex_core_contracts::database::DatabaseCommitValue>,
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PropertyApplyInput {
@@ -85,14 +164,29 @@ pub struct PropertyApplyInput {
 pub(crate) type PropertyApplyDocument = crate::input_document::InputDocument<PropertyApplyInput>;
 
 pub(crate) fn prepare(args: &mut PagePropertiesArgs) -> Result<(), CliError> {
-    if let PagePropertiesCommand::PrepareBatch(args) = &mut args.command {
-        return crate::selection_batch::prepare(args);
-    }
-    if let PagePropertiesCommand::Apply {
-        input, prepared, ..
-    } = &mut args.command
-    {
-        *prepared = Some(read_property_edits(input)?);
+    match &mut args.command {
+        PagePropertiesCommand::PrepareBatch(args) => return crate::selection_batch::prepare(args),
+        PagePropertiesCommand::Apply {
+            input, prepared, ..
+        } => {
+            *prepared = Some(read_property_edits(input)?);
+        }
+        PagePropertiesCommand::Set(args) => {
+            let values = args.values.values()?;
+            if values.is_empty() && !args.edits_work() {
+                return Err(invalid(
+                    "Use `nodex page properties set PAGE --set PROPERTY=VALUE`, for example `nodex page properties set NODEX-4 --set Status=done`.",
+                ));
+            }
+            let pages = match &args.selection {
+                Some(path) => selection_pages(path)?,
+                None => args.pages.clone(),
+            };
+            if pages.is_empty() {
+                return Err(invalid("Specify at least one Page or use --selection FILE"));
+            }
+            args.prepared = Some(PreparedSet { pages, values });
+        }
     }
     Ok(())
 }
@@ -161,132 +255,175 @@ pub(crate) fn execute(
     args: PagePropertiesArgs,
 ) -> Result<CommandOutput, CliError> {
     let project = selected_project(client, explicit_project, cwd)?;
-    let command_name = match &args.command {
-        PagePropertiesCommand::Apply { .. } => "page properties apply",
-        _ => "page properties set",
-    };
-    let (edits, mutation) = match args.command {
+    let (command, mut intent, mutation, resolve_selectors) = match args.command {
         PagePropertiesCommand::PrepareBatch(args) => {
             return crate::selection_batch::execute(client, &project.id, args);
         }
         PagePropertiesCommand::Apply {
-            input: _,
-            prepared,
-            mutation,
+            prepared, mutation, ..
         } => (
-            prepared
-                .ok_or_else(|| internal("Property edits input was not prepared"))?
-                .edits,
+            "page properties apply",
+            DatabaseIntent::ApplyPagePropertyEdits {
+                edits: prepared
+                    .ok_or_else(|| internal("Property edits input was not prepared"))?
+                    .edits,
+            },
             mutation,
+            false,
         ),
         PagePropertiesCommand::Set(args) => {
-            if args.assignee.is_some() || args.owner.is_some() || args.auto_start.is_some() {
-                return set_work(client, &project.id, args);
-            }
-            let page_id = resolve_page_selector(client, &project.id, &args.page)?;
-            let property = args
-                .property
-                .as_deref()
-                .ok_or_else(|| invalid("Specify --property for a Data Source value"))?;
-            let data_source_id = match args.data_source {
-                Some(id) => stable_id(&id)?,
-                None => page_source(client, &project.id, &page_id)?
-                    .map(|(id, _)| id)
-                    .ok_or_else(|| {
-                        CliError::new(
-                            CliErrorCode::InvalidInput,
-                            "Page has no Data Source Property schema",
-                        )
-                    })?,
-            };
-            let value = match (args.option, args.text, args.number) {
-                (Some(option), None, None) => DatabasePropertyValueInput::Select {
-                    option_id: stable_id(&option)?,
-                },
-                (None, Some(value), None) => DatabasePropertyValueInput::Text { value },
-                (None, None, Some(value)) if value.is_finite() => {
-                    DatabasePropertyValueInput::Number { value }
-                }
-                _ => {
-                    return Err(CliError::new(
-                        CliErrorCode::InvalidInput,
-                        "Specify exactly one finite --number, --text, or --option value",
+            let PreparedSet {
+                pages: page_selectors,
+                values,
+            } = args
+                .prepared
+                .clone()
+                .ok_or_else(|| internal("Page Property values were not prepared"))?;
+            if args.edits_work() {
+                if page_selectors.len() != 1 || !values.is_empty() {
+                    return Err(invalid(
+                        "Set Owner, Assignee and Start automatically on one Page separately from Data Source Properties",
                     ));
                 }
+                return set_work(client, &project.id, &page_selectors[0], args);
+            }
+            let expected_value_revisions = match args.if_revision {
+                Some(revision) if page_selectors.len() == 1 && values.len() == 1 => {
+                    [(values[0].property_id.clone(), revision)].into()
+                }
+                Some(_) => {
+                    return Err(invalid(
+                        "--if-revision requires exactly one Page and one Property",
+                    ));
+                }
+                None => Default::default(),
             };
             (
-                vec![DatabasePropertyValueMutation {
-                    expected_membership_revision: None,
-                    address: DatabasePagePropertyAddress {
-                        page_id,
-                        data_source_id,
-                        property_id: stable_id(property)?,
-                    },
-                    edit: DatabasePropertyValueEdit::Replace {
-                        expected_value_revision: args.if_revision.ok_or_else(|| {
-                            invalid("Specify --if-revision for a Data Source value")
-                        })?,
-                        value,
-                    },
-                }],
+                "page properties set",
+                DatabaseIntent::SetPageProperties {
+                    updates: vec![DatabasePagePropertyUpdate {
+                        page_ids: page_selectors,
+                        values,
+                        expected_value_revisions,
+                    }],
+                    authorization: None,
+                },
                 args.mutation,
+                args.selection.is_none(),
             )
         }
     };
     crate::page_mutation::validate_return_fields(&mutation.r#return)?;
+    let admitted = crate::retry_key::admit_with_replay(
+        client,
+        Some(&project.id),
+        command,
+        mutation.idempotency_key.as_deref(),
+        (&intent, resolve_selectors),
+        Some(nodex_core_contracts::ModuleName::Database),
+    )?;
+    let committed = match admitted.replay {
+        Some(replay) => serde_json::from_value(replay.result).map_err(internal)?,
+        None => {
+            if resolve_selectors
+                && let DatabaseIntent::SetPageProperties { updates, .. } = &mut intent
+            {
+                for update in updates {
+                    update.page_ids = update
+                        .page_ids
+                        .iter()
+                        .map(|selector| resolve_page_selector(client, &project.id, selector))
+                        .collect::<Result<_, _>>()?;
+                }
+            }
+            apply_database_intent(client, &project.id, admitted.operation_id, intent)?
+        }
+    };
+    let receipt = committed.receipt();
+    serde_json::to_value(PropertyBatchReceipt {
+        status: if receipt.mutation.duplicate {
+            PropertyBatchStatus::Duplicate
+        } else {
+            PropertyBatchStatus::Committed
+        },
+        operation_id: receipt.mutation.operation_id.clone(),
+        commit_seq: committed.commit_cursor(),
+        pages: receipt.page_properties.clone(),
+        commit: mutation
+            .r#return
+            .iter()
+            .any(|field| field == "commit")
+            .then(|| committed.outcome().clone()),
+    })
+    .map(CommandOutput::Json)
+    .map_err(internal)
+}
+
+fn apply_database_intent(
+    client: &CoreClient,
+    project_id: &str,
+    operation_id: String,
+    intent: DatabaseIntent,
+) -> Result<
+    nodex_core_contracts::ApplyResponse<
+        nodex_core_contracts::database::DatabaseCommitValue,
+        nodex_core_contracts::database::DatabaseReceipt,
+    >,
+    CliError,
+> {
     let response = client
         .database_apply(
-            Some(&project.id),
+            Some(project_id),
             ModuleApplyRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
-                operation_id: crate::retry_key::admit(
-                    client,
-                    Some(&project.id),
-                    command_name,
-                    mutation.idempotency_key.as_deref(),
-                    &edits,
-                )?,
+                operation_id,
                 store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
-                intent: vec![DatabaseIntent::EditPropertyValues { edits }],
+                intent: vec![intent],
             },
         )
         .map_err(map_client_error)?;
     match response.0 {
-        ResponseEnvelope::Ok(committed) => serde_json::to_value(committed)
-            .map(CommandOutput::Json)
-            .map_err(internal),
+        ResponseEnvelope::Ok(committed) => Ok(committed),
         ResponseEnvelope::Error(error) => Err(map_core_error(error)),
     }
 }
-fn page_source(
-    client: &CoreClient,
-    project_id: &str,
-    page_id: &str,
-) -> Result<Option<(String, Vec<String>)>, CliError> {
-    let result = unwrap_library(client.library_read(
-        Some(project_id),
-        LibraryRead::PageDetail {
-            page_id: page_id.to_owned(),
-        },
-    ))?;
-    let LibraryReadValue::PageDetail { value } = result.value else {
-        return Err(internal("unexpected Page detail"));
-    };
-    match value.data_source_context {
-        LibraryPageDataSourceContext::Standalone => Ok(None),
-        LibraryPageDataSourceContext::Member {
-            membership,
-            properties,
-            ..
-        } => Ok(Some((
-            membership.data_source_id,
-            properties
-                .into_iter()
-                .map(|property| property.property_id)
-                .collect(),
-        ))),
+
+fn selection_pages(path: &Path) -> Result<Vec<String>, CliError> {
+    let document: serde_json::Value = crate::input_document::read(path, "Page selection")?;
+    if document.is_array() {
+        return serde_json::from_value(document).map_err(|error| {
+            invalid(&format!(
+                "Page selection must be a list of Page IDs or keys: {error}"
+            ))
+        });
     }
+    let selection: crate::selection_batch::Selection =
+        serde_json::from_value(document).map_err(|error| {
+            invalid(&format!(
+                "Expected a SQL result with Page identities: {error}"
+            ))
+        })?;
+    let column = ["page_id", "page_key"]
+        .into_iter()
+        .find_map(|name| selection.columns.iter().position(|column| column == name))
+        .ok_or_else(|| invalid("SQL selection requires a page_id or page_key column"))?;
+    let mut seen = std::collections::HashSet::new();
+    selection
+        .rows
+        .iter()
+        .filter_map(
+            |row| match row.get(column).and_then(serde_json::Value::as_str) {
+                Some(page) if !page.trim().is_empty() => {
+                    seen.insert(page).then(|| Ok(page.to_owned()))
+                }
+                _ => Some(Err(invalid(
+                    "SQL selection Page identities must be nonempty strings",
+                ))),
+            },
+        )
+        .collect()
 }
+
 fn internal(error: impl std::fmt::Display) -> CliError {
     CliError::new(CliErrorCode::Internal, error.to_string())
 }
@@ -365,19 +502,10 @@ fn edit_work(
 fn set_work(
     client: &CoreClient,
     project: &str,
+    page: &str,
     args: PropertySetArgs,
 ) -> Result<CommandOutput, CliError> {
     use nodex_core_contracts::library::*;
-    if args.property.is_some()
-        || args.option.is_some()
-        || args.text.is_some()
-        || args.number.is_some()
-        || args.data_source.is_some()
-    {
-        return Err(invalid(
-            "Set Owner, Assignee and Start automatically separately from Data Source Properties",
-        ));
-    }
     crate::page_mutation::validate_return_fields(&args.mutation.r#return)?;
     let admitted = crate::retry_key::admit_with_replay(
         client,
@@ -385,7 +513,7 @@ fn set_work(
         "page properties set",
         args.mutation.idempotency_key.as_deref(),
         (
-            &args.page,
+            page,
             args.if_revision,
             &args.owner,
             &args.assignee,
@@ -397,7 +525,7 @@ fn set_work(
     if let Some(replay) = admitted.replay {
         return work_output(serde_json::from_value(replay.result).map_err(internal)?);
     }
-    let page = resolve_page_selector(client, project, &args.page)?;
+    let page = resolve_page_selector(client, project, page)?;
     let LibraryReadValue::LocalMember { value: me } =
         unwrap_library(client.library_read(None, LibraryRead::LocalMember))?.value
     else {
@@ -469,9 +597,8 @@ fn work_output(
         };
         return Err(CliError::new(code, &error.message));
     }
-    serde_json::to_value(committed)
-        .map(CommandOutput::Json)
-        .map_err(internal)
+    let duplicate = committed.receipt().mutation.duplicate;
+    crate::runtime::compact_receipt(committed, duplicate)
 }
 
 #[cfg(test)]
@@ -576,17 +703,10 @@ mod tests {
 #[serde(untagged)]
 #[allow(dead_code)]
 pub(crate) enum PropertySetResult {
-    Source(
-        Box<
-            ApplyResponse<
-                nodex_core_contracts::database::DatabaseCommitValue,
-                nodex_core_contracts::database::DatabaseReceipt,
-            >,
-        >,
-    ),
+    Source(PropertyBatchReceipt),
     Page(
         Box<
-            ApplyResponse<
+            CompactReceipt<
                 nodex_core_contracts::library::LibraryCommitValue,
                 nodex_core_contracts::library::LibraryReceipt,
             >,

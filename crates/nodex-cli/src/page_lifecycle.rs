@@ -90,6 +90,24 @@ pub(crate) struct PageMoveResult<'a> {
     commit: Option<&'a nodex_core_contracts::library::LibraryCommitValue>,
 }
 #[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct PageBatchMoveReceipt {
+    operation_id: String,
+    duplicate: bool,
+    commit_seq: i64,
+    pages: Vec<nodex_core_contracts::library::LibraryAgentMovedPage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    commit: Option<nodex_core_contracts::library::LibraryCommitValue>,
+}
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
+#[serde(untagged)]
+#[allow(dead_code)]
+pub(crate) enum PageMoveOutput<'a> {
+    Single(PageMoveResult<'a>),
+    Batch(Box<PageBatchMoveReceipt>),
+}
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
 struct MovedBlocks<'a> {
     page_ids: &'a [String],
     database_ids: &'a [String],
@@ -139,38 +157,45 @@ pub(crate) fn create_page(
         )?
     };
     let project = selected_project(client, explicit_project, cwd)?;
-    let destination = resolve_page_destination(
-        client,
-        &project,
-        &arguments.parent,
-        None,
-        &arguments.data_source,
-    )?;
-    let operation_id = crate::retry_key::admit(
+    let values = arguments.values.values()?;
+    let admitted = crate::retry_key::admit_with_replay(
         client,
         Some(&project.id),
         "page create",
         arguments.mutation.idempotency_key.as_deref(),
-        (&title_markdown, &markdown, &destination),
+        (
+            &title_markdown,
+            &markdown,
+            &arguments.parent,
+            &arguments.data_source.view,
+            &arguments.data_source.group,
+            arguments.data_source.unassigned,
+            &values,
+        ),
+        Some(nodex_core_contracts::ModuleName::Library),
     )?;
-    let response = client
-        .library_apply(
-            Some(&project.id),
-            ModuleApplyRequest {
-                contract_version: LIBRARY_CONTRACT_VERSION,
-                operation_id,
-                store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
-                intent: LibraryIntent::CreatePageFromText {
+    let committed = match admitted.replay {
+        Some(replay) => serde_json::from_value(replay.result).map_err(internal)?,
+        None => {
+            let destination = resolve_page_destination(
+                client,
+                &project,
+                &arguments.parent,
+                None,
+                &arguments.data_source,
+            )?;
+            apply_library_intent(
+                client,
+                &project.id,
+                admitted.operation_id,
+                LibraryIntent::CreatePageFromText {
                     title_markdown,
                     markdown,
                     destination,
+                    values,
                 },
-            },
-        )
-        .map_err(map_client_error)?;
-    let committed = match response.0 {
-        ResponseEnvelope::Ok(committed) => committed,
-        ResponseEnvelope::Error(error) => return Err(map_core_error(error)),
+            )?
+        }
     };
     let created = committed.outcome().page_create.as_ref().ok_or_else(|| {
         CliError::new(
@@ -218,18 +243,89 @@ pub(crate) fn move_page(
     cwd: &Path,
     arguments: PageMoveArgs,
 ) -> Result<CommandOutput, CliError> {
-    transfer_page(
+    if let [page] = arguments.pages.as_slice() {
+        return transfer_page(
+            client,
+            explicit_project,
+            cwd,
+            PageTransferRequest {
+                page: page.clone(),
+                destination: arguments.destination,
+                mutation: arguments.mutation,
+                expected_etag: arguments.if_match,
+                duplicate: false,
+            },
+        );
+    }
+    if arguments.if_match.is_some() {
+        return Err(CliError::new(
+            CliErrorCode::InvalidInput,
+            "--if-match fences one Page move",
+        ));
+    }
+    validate_return_fields(&arguments.mutation.r#return)?;
+    let project = selected_project(client, explicit_project, cwd)?;
+    let anchor = placement_anchor(&arguments.destination)?;
+    let admitted = crate::retry_key::admit_with_replay(
         client,
-        explicit_project,
-        cwd,
-        PageTransferRequest {
-            page: arguments.page,
-            destination: arguments.destination,
-            mutation: arguments.mutation,
-            expected_etag: Some(arguments.if_match),
-            duplicate: false,
-        },
-    )
+        Some(&project.id),
+        "page move",
+        arguments.mutation.idempotency_key.as_deref(),
+        (
+            &arguments.pages,
+            &arguments.destination.to,
+            &anchor,
+            &arguments.destination.data_source.view,
+            &arguments.destination.data_source.group,
+            arguments.destination.data_source.unassigned,
+        ),
+        Some(nodex_core_contracts::ModuleName::Library),
+    )?;
+    let committed = match admitted.replay {
+        Some(replay) => serde_json::from_value(replay.result).map_err(internal)?,
+        None => {
+            let page_ids = arguments
+                .pages
+                .iter()
+                .map(|page| resolve_page_selector(client, &project.id, page))
+                .collect::<Result<Vec<_>, _>>()?;
+            let destination = resolve_page_destination(
+                client,
+                &project,
+                &arguments.destination.to,
+                anchor,
+                &arguments.destination.data_source,
+            )?;
+            apply_library_intent(
+                client,
+                &project.id,
+                admitted.operation_id,
+                LibraryIntent::MovePages {
+                    page_ids,
+                    destination,
+                },
+            )?
+        }
+    };
+    let result = committed
+        .outcome()
+        .agent_move_pages
+        .as_ref()
+        .ok_or_else(|| internal("Core omitted the Page move batch result"))?;
+    serde_json::to_value(PageBatchMoveReceipt {
+        operation_id: committed.receipt().mutation.operation_id.clone(),
+        duplicate: committed.receipt().mutation.duplicate,
+        commit_seq: committed.commit_cursor(),
+        pages: result.pages.clone(),
+        commit: arguments
+            .mutation
+            .r#return
+            .iter()
+            .any(|field| field == "commit")
+            .then(|| committed.outcome().clone()),
+    })
+    .map(CommandOutput::Json)
+    .map_err(internal)
 }
 
 pub(crate) fn duplicate_page(
@@ -317,9 +413,7 @@ fn transfer_page(
                 LibraryIntent::MovePage {
                     page_id,
                     destination,
-                    expected_etag: expected_etag.ok_or_else(|| {
-                        internal("Page move command omitted its required move ETag")
-                    })?,
+                    expected_etag,
                 }
             };
             apply_library_intent(client, &project.id, admitted.operation_id, intent)?
@@ -389,7 +483,7 @@ fn transfer_page(
             duplicate: committed.receipt().mutation.duplicate,
             page_id,
             page_key,
-            status: moved.page_statuses.get(&page_id),
+            status: moved.page_statuses.get(page_id),
             commit_seq: committed.commit_cursor(),
             affected: MovedBlocks {
                 page_ids: &committed.receipt().affected_page_ids,
@@ -527,123 +621,205 @@ fn apply_library_intent(
     }
 }
 
-fn resolve_page_destination(
+pub(crate) fn resolve_page_destination(
     client: &CoreClient,
     project: &ProjectWorkspaceProject,
     selector: &str,
     at: Option<LibraryAgentSiblingAnchor>,
     placement: &DataSourcePlacementArgs,
 ) -> Result<LibraryPageWriteDestination, CliError> {
-    let unprefixed = selector.strip_prefix('@').unwrap_or(selector);
-    if selector == "library" || unprefixed == client.handshake.library_id {
+    if let Some(id) = selector.strip_prefix("data_source:@") {
+        let id = stable_id(id, "Data Source owner")?;
+        let source = exact_data_source(client, &project.id, &id)?
+            .ok_or_else(|| invalid_destination(format!("No active Data Source has ID {id:?}")))?;
+        return data_source_destination(source, placement, at);
+    }
+    if let Some(id) = selector.strip_prefix("page:@") {
+        let id = stable_id(id, "Page owner")?;
+        if !require_destination_page(client, &project.id, &id)? {
+            return Err(invalid_destination(format!("No active Page has ID {id:?}")));
+        }
+        return DestinationId::Page(id).into_destination(placement, at);
+    }
+    let explicit_id = selector.strip_prefix('@');
+    let id = explicit_id.unwrap_or(selector);
+    if (explicit_id.is_none() && selector == "library") || id == client.handshake.library_id {
         reject_data_source_placement(placement)?;
         return Ok(LibraryPageWriteDestination::Library { at });
     }
-    if selector == "database" || unprefixed == project.database_id {
-        return Ok(LibraryPageWriteDestination::DataSource {
-            data_source_id: primary_data_source(client, project)?,
-            view_id: placement
-                .view
-                .as_deref()
-                .map(|view| stable_id(view, "--view"))
-                .transpose()?,
-            group: group_scope(placement)?,
-            at,
-        });
+    if (explicit_id.is_none() && selector == "database") || id == project.database_id {
+        return data_source_destination(primary_data_source(client, project)?, placement, at);
     }
-    if let Some(data_source_id) = selector.strip_prefix("data_source:") {
-        return Ok(LibraryPageWriteDestination::DataSource {
-            data_source_id: stable_id(data_source_id, "Data Source owner")?,
-            view_id: placement
-                .view
-                .as_deref()
-                .map(|view| stable_id(view, "--view"))
-                .transpose()?,
-            group: group_scope(placement)?,
-            at,
-        });
+    let exact = exact_destination(client, project, id)?;
+    if explicit_id.is_some() {
+        return exact
+            .ok_or_else(|| invalid_destination(format!("No destination has ID {id:?}")))?
+            .into_destination(placement, at);
     }
-    if !selector.contains('/') {
-        let page = unwrap_library(client.library_read(
-            Some(&project.id),
-            LibraryRead::PageLifecyclePreflight {
-                page_id: unprefixed.to_owned(),
-            },
-        ))?;
-        let LibraryReadValue::PageLifecyclePreflight { value } = page.value else {
-            return Err(internal("Core returned the wrong Page owner preflight"));
-        };
-        if value.page.is_some_and(|page| page.lifecycle == "active") {
-            reject_data_source_placement(placement)?;
-            return Ok(LibraryPageWriteDestination::Page {
-                page_id: unprefixed.to_owned(),
-                at,
-            });
+    let prefixed = if let Some(page) = selector.strip_prefix("page:") {
+        Some(
+            resolve_page_selector(client, &project.id, page).and_then(|id| {
+                require_destination_page(client, &project.id, &id)?
+                    .then_some(DestinationId::Page(id))
+                    .ok_or_else(|| invalid_destination(format!("No active Page matches {page:?}")))
+            }),
+        )
+    } else {
+        selector.strip_prefix("data_source:").map(|source| {
+            let id = stable_id(source, "Data Source owner")?;
+            exact_data_source(client, &project.id, &id)?
+                .map(DestinationId::DataSource)
+                .ok_or_else(|| invalid_destination(format!("No active Data Source has ID {id:?}")))
+        })
+    };
+    match (exact, prefixed) {
+        (Some(exact), Some(Ok(prefixed))) if exact != prefixed => {
+            Err(invalid_destination(format!(
+                "Destination {selector:?} is ambiguous. Use {} or {} to select the exact ID.",
+                exact.explicit_selector(),
+                prefixed.explicit_selector()
+            )))
         }
-        let database = client
-            .database_read(
-                Some(&project.id),
-                DatabaseRead::Database {
-                    target: DatabaseIdentityTarget::Database {
-                        database_id: unprefixed.to_owned(),
-                    },
-                },
-            )
-            .map_err(map_client_error)?;
-        match database.0 {
-            ResponseEnvelope::Ok(snapshot) => {
-                let DatabaseReadValue::Database { .. } = snapshot.value else {
-                    return Err(internal("Core returned the wrong Database owner snapshot"));
-                };
-                return Ok(LibraryPageWriteDestination::DataSource {
-                    data_source_id: active_data_source_id(client, &project.id, unprefixed)?,
-                    view_id: placement
-                        .view
-                        .as_deref()
-                        .map(|view| stable_id(view, "--view"))
-                        .transpose()?,
-                    group: group_scope(placement)?,
-                    at,
-                });
+        (Some(exact), _) => exact.into_destination(placement, at),
+        (None, Some(prefixed)) => prefixed?.into_destination(placement, at),
+        (None, None) => DestinationId::Page(resolve_page_selector(client, &project.id, selector)?)
+            .into_destination(placement, at),
+    }
+}
+
+#[derive(PartialEq)]
+enum DestinationId {
+    Page(String),
+    DataSource(String),
+}
+
+impl DestinationId {
+    fn explicit_selector(&self) -> String {
+        match self {
+            Self::Page(id) => format!("page:@{id}"),
+            Self::DataSource(id) => format!("data_source:@{id}"),
+        }
+    }
+
+    fn into_destination(
+        self,
+        placement: &DataSourcePlacementArgs,
+        at: Option<LibraryAgentSiblingAnchor>,
+    ) -> Result<LibraryPageWriteDestination, CliError> {
+        match self {
+            Self::Page(page_id) => {
+                reject_data_source_placement(placement)?;
+                Ok(LibraryPageWriteDestination::Page { page_id, at })
             }
-            ResponseEnvelope::Error(error) if error.code == CoreErrorCode::NotFound => {}
-            ResponseEnvelope::Error(error) => return Err(map_core_error(error)),
-        }
-        let source = client
-            .database_read(
-                Some(&project.id),
-                DatabaseRead::DataSource {
-                    data_source_id: unprefixed.to_owned(),
-                },
-            )
-            .map_err(map_client_error)?;
-        match source.0 {
-            ResponseEnvelope::Ok(snapshot) => {
-                let DatabaseReadValue::DataSource { value } = snapshot.value else {
-                    return Err(internal(
-                        "Core returned the wrong Data Source owner snapshot",
-                    ));
-                };
-                return Ok(LibraryPageWriteDestination::DataSource {
-                    data_source_id: value.data_source.data_source_id,
-                    view_id: placement
-                        .view
-                        .as_deref()
-                        .map(|view| stable_id(view, "--view"))
-                        .transpose()?,
-                    group: group_scope(placement)?,
-                    at,
-                });
+            Self::DataSource(data_source_id) => {
+                data_source_destination(data_source_id, placement, at)
             }
-            ResponseEnvelope::Error(error) if error.code == CoreErrorCode::NotFound => {}
-            ResponseEnvelope::Error(error) => return Err(map_core_error(error)),
         }
     }
-    reject_data_source_placement(placement)?;
-    Ok(LibraryPageWriteDestination::Page {
-        page_id: resolve_page_selector(client, &project.id, selector)?,
+}
+
+fn data_source_destination(
+    data_source_id: String,
+    placement: &DataSourcePlacementArgs,
+    at: Option<LibraryAgentSiblingAnchor>,
+) -> Result<LibraryPageWriteDestination, CliError> {
+    Ok(LibraryPageWriteDestination::DataSource {
+        data_source_id,
+        view_id: placement
+            .view
+            .as_deref()
+            .map(|view| stable_id(view, "--view"))
+            .transpose()?,
+        group: group_scope(placement)?,
         at,
     })
+}
+
+fn require_destination_page(
+    client: &CoreClient,
+    project_id: &str,
+    id: &str,
+) -> Result<bool, CliError> {
+    let page = unwrap_library(client.library_read(
+        Some(project_id),
+        LibraryRead::PageLifecyclePreflight {
+            page_id: id.to_owned(),
+        },
+    ))?;
+    let LibraryReadValue::PageLifecyclePreflight { value } = page.value else {
+        return Err(internal("Core returned the wrong Page owner preflight"));
+    };
+    Ok(value.page.is_some_and(|page| page.lifecycle == "active"))
+}
+
+fn exact_data_source(
+    client: &CoreClient,
+    project_id: &str,
+    id: &str,
+) -> Result<Option<String>, CliError> {
+    let source = client
+        .database_read(
+            Some(project_id),
+            DatabaseRead::DataSource {
+                data_source_id: id.to_owned(),
+            },
+        )
+        .map_err(map_client_error)?;
+    match source.0 {
+        ResponseEnvelope::Ok(snapshot) => {
+            let DatabaseReadValue::DataSource { value } = snapshot.value else {
+                return Err(internal(
+                    "Core returned the wrong Data Source owner snapshot",
+                ));
+            };
+            Ok(Some(value.data_source.data_source_id))
+        }
+        ResponseEnvelope::Error(error) if error.code == CoreErrorCode::NotFound => Ok(None),
+        ResponseEnvelope::Error(error) => Err(map_core_error(error)),
+    }
+}
+
+fn exact_destination(
+    client: &CoreClient,
+    project: &ProjectWorkspaceProject,
+    id: &str,
+) -> Result<Option<DestinationId>, CliError> {
+    if id.contains('/') {
+        return Ok(None);
+    }
+    if require_destination_page(client, &project.id, id)? {
+        return Ok(Some(DestinationId::Page(id.to_owned())));
+    }
+    let database = client
+        .database_read(
+            Some(&project.id),
+            DatabaseRead::Database {
+                target: DatabaseIdentityTarget::Database {
+                    database_id: id.to_owned(),
+                },
+            },
+        )
+        .map_err(map_client_error)?;
+    match database.0 {
+        ResponseEnvelope::Ok(snapshot) => {
+            let DatabaseReadValue::Database { .. } = snapshot.value else {
+                return Err(internal("Core returned the wrong Database owner snapshot"));
+            };
+            Ok(Some(DestinationId::DataSource(active_data_source_id(
+                client,
+                &project.id,
+                id,
+            )?)))
+        }
+        ResponseEnvelope::Error(error) if error.code == CoreErrorCode::NotFound => {
+            Ok(exact_data_source(client, &project.id, id)?.map(DestinationId::DataSource))
+        }
+        ResponseEnvelope::Error(error) => Err(map_core_error(error)),
+    }
+}
+
+fn invalid_destination(message: impl Into<String>) -> CliError {
+    CliError::new(CliErrorCode::InvalidInput, message)
 }
 
 fn group_scope(

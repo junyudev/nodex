@@ -61,6 +61,7 @@ pub(crate) fn create_page_in_data_source(
             parent_revision: 1,
         },
         input.now,
+        crate::database::StatusEditOrigin::WorkFact,
     )?;
     let mut page_create = created.page_create;
     page_create.page_key = current_page_key_for_page(connection, input.library_id, input.page_id)?;

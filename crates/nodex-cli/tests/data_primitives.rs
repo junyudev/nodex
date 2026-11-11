@@ -658,10 +658,7 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
     let before = property_state(&home, PAGE_A);
     assert_eq!(before["value_revisions"]["p_clinote0"], 0);
     assert_eq!(before["values"]["p_clinote0"], Value::Null);
-    for (property, flag, value) in [
-        ("p_clinote0", "--text", "Readable text"),
-        ("p_clinum00", "--number", "-12.5"),
-    ] {
+    for assignment in ["p_clinote0=Readable text", "p_clinum00=-12.5"] {
         success(
             &home,
             &[
@@ -669,10 +666,8 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
                 "properties",
                 "set",
                 PAGE_A,
-                "--property",
-                property,
-                flag,
-                value,
+                "--set",
+                assignment,
                 "--if-revision",
                 "0",
             ],
@@ -701,10 +696,8 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
             "properties",
             "set",
             PAGE_A,
-            "--property",
-            "status",
-            "--option",
-            option,
+            "--set",
+            &format!("status={option}"),
             "--if-revision",
             &revision,
         ],
@@ -1200,10 +1193,8 @@ fn sql_success_envelopes_freeze_batch_targets_and_preserve_value_revision_fences
             "properties",
             "set",
             PAGE_A,
-            "--property",
-            property_id,
-            "--number",
-            "5",
+            "--set",
+            &format!("{property_id}=5"),
             "--if-revision",
             &property["value_revisions"][property_id].to_string(),
         ],
@@ -1592,8 +1583,8 @@ fn opaque_retry_keys_bind_property_and_backup_arguments() {
         assert_eq!(applied["ok"], true, "{applied}");
         let replay = input(&home, &args, &prepared);
         assert_eq!(replay["ok"], true, "{replay}");
-        assert_eq!(replay["result"]["receipt"]["duplicate"], true);
-        assert_eq!(applied["result"]["outcome"], replay["result"]["outcome"]);
+        assert_eq!(replay["result"]["status"], "duplicate");
+        assert_eq!(applied["result"]["pages"], replay["result"]["pages"]);
         let mut changed_input = prepared.clone();
         changed_input["result"]["edits"][0]["edit"]["value"]["value"] = serde_json::json!(99);
         let changed = input(&home, &args, &changed_input);
@@ -1761,6 +1752,9 @@ fn machine_help_examples_use_admissible_retry_keys() {
                         tested += 1;
                     }
                 }
+            }
+            MachineHelpDocument::PayloadNames(_) | MachineHelpDocument::Payload(_) => {
+                panic!("{command} --help returned a payload schema");
             }
         }
     }
@@ -1973,6 +1967,59 @@ fn published_write_examples_preserve_existing_content_and_definitions() {
         success(&home, &["read", page])["content"],
         "Release date: Monday.\n\n## Next steps\n\nFinish the release checks.\n\nReview complete.\n"
     );
+    let created = help_example(&home, &["page", "create"], 0, &[("source-id", &source)]);
+    let created_id = created["page_id"].as_str().unwrap();
+    help_example(
+        &home,
+        &["page", "properties", "set"],
+        0,
+        &[("NODEX-4", PAGE_A), ("NODEX-8", created_id)],
+    );
+    assert_eq!(
+        property_state(&home, created_id)["values"]["status"],
+        "done"
+    );
+    let observed = success(&home, &["read", created_id]);
+    help_example(
+        &home,
+        &["page", "replace"],
+        0,
+        &[
+            ("page-id", created_id),
+            (
+                "body-etag",
+                observed["validators"]["body_etag"].as_str().unwrap(),
+            ),
+        ],
+    );
+    let move_etag = help_example(&home, &["page", "prepare"], 0, &[("page-id", created_id)]);
+    success(
+        &home,
+        &[
+            "page",
+            "move",
+            created_id,
+            "--to",
+            "library",
+            "--if-match",
+            move_etag["validators"]["move_etag"].as_str().unwrap(),
+        ],
+    );
+    let moved = help_example(
+        &home,
+        &["page", "move"],
+        0,
+        &[("parent-page-id", PAGE_B), ("page-id", created_id)],
+    );
+    assert_eq!(
+        moved["affected"]["location"]["document_id"],
+        "document:cli-b"
+    );
+    let copy = help_example(&home, &["page", "duplicate"], 0, &[("page-id", created_id)]);
+    assert_eq!(
+        success(&home, &["read", copy["page_id"].as_str().unwrap()])["content"],
+        "## Updated plan\n\nReview the proposal.\n"
+    );
     assert_eq!(
         success(&home, &["read", PAGE_A])["content"],
         before_page["content"]
@@ -2000,10 +2047,8 @@ fn saved_filter_example_and_updates_return_exact_rows_and_preserve_unrelated_sta
             "properties",
             "set",
             PAGE_A,
-            "--property",
-            "status",
-            "--option",
-            "review",
+            "--set",
+            "status=review",
             "--if-revision",
             &properties["value_revisions"]["status"].to_string(),
         ],
@@ -2546,4 +2591,654 @@ fn property_apply_reports_the_inner_kind_and_its_own_variants() {
     let message = error["message"].as_str().unwrap();
     assert!(message.contains("select"), "{message}");
     assert!(!message.contains("patch_set"), "{message}");
+}
+
+#[test]
+fn set_and_create_use_property_selectors_and_return_small_semantic_receipts() {
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
+    let client = connect_or_launch(&home, "property-set", Some(&core_binary)).unwrap();
+    let _guard = CoreGuard(client.handshake.generation.pid);
+    seed(&client, &home);
+    let source = property_state(&home, PAGE_A);
+    let destination = format!("data_source:{}", source["data_source_id"].as_str().unwrap());
+    let created = success(
+        &home,
+        &[
+            "page",
+            "create",
+            "--parent",
+            &destination,
+            "--title",
+            "Another row",
+            "--empty",
+            "--set",
+            "Priority=p1-high",
+        ],
+    );
+    let page_id = created["page_id"].as_str().unwrap();
+    let key = created["page_key"].as_str().unwrap();
+    assert_eq!(
+        property_state(&home, page_id)["values"]["priority"],
+        "p1-high"
+    );
+    let selected = success(
+        &home,
+        &[
+            "sql",
+            "query",
+            "SELECT page_id FROM pages WHERE title = 'Another row'",
+        ],
+    );
+    let selected_update = input(
+        &home,
+        &[
+            "page",
+            "properties",
+            "set",
+            "--selection",
+            "-",
+            "--set",
+            "Status=In Progress",
+        ],
+        &selected,
+    );
+    assert_eq!(selected_update["ok"], true, "{selected_update}");
+    assert_eq!(
+        selected_update["result"]["pages"][0]["values"][0]["after"],
+        "doing"
+    );
+    let updated = success(
+        &home,
+        &[
+            "page",
+            "properties",
+            "set",
+            PAGE_A,
+            key,
+            "--set",
+            "Priority=p1-high",
+            "--set",
+            "Status=Todo",
+        ],
+    );
+    assert_eq!(updated["pages"][0]["page_id"], PAGE_A);
+    assert_eq!(updated["pages"][1]["page_key"], key);
+    assert_eq!(updated["pages"][1]["values"][1]["after"], "plan");
+    let small = success(
+        &home,
+        &["page", "properties", "set", key, "--set", "Status=done"],
+    );
+    assert!(small.to_string().len() < 1200, "{small}");
+    assert_eq!(small["pages"][0]["values"][0]["before"], "plan");
+    assert_eq!(small["pages"][0]["values"][0]["after"], "done");
+    let text = cli_command()
+        .args([
+            "--output-format",
+            "text",
+            "--project",
+            PROJECT,
+            "page",
+            "properties",
+            "set",
+            key,
+            "--set",
+            "Priority=p1-high",
+        ])
+        .env("NODEX_HOME", &home)
+        .current_dir(&home)
+        .output()
+        .unwrap();
+    assert!(
+        text.status.success(),
+        "{}",
+        String::from_utf8_lossy(&text.stderr)
+    );
+    assert!(
+        text.stdout.len() < 1600,
+        "{}",
+        String::from_utf8_lossy(&text.stdout)
+    );
+    let receipt: Value = serde_json::from_slice(&text.stdout).unwrap();
+    assert_eq!(receipt["pages"][0]["page_id"], page_id);
+    assert_eq!(receipt["pages"][0]["page_key"], key);
+    assert_eq!(receipt["pages"][0]["values"][0]["after"], "p1-high");
+    let status_revision = property_state(&home, page_id)["value_revisions"]["status"]
+        .as_i64()
+        .unwrap();
+    let intent = nodex_core_contracts::database::DatabaseIntent::SetPageProperties {
+        updates: vec![nodex_core_contracts::database::DatabasePagePropertyUpdate {
+            page_ids: vec![page_id.into()],
+            values: vec![nodex_core_contracts::library::LibraryPageCopyValue {
+                property_id: "Status".into(),
+                value: serde_json::json!("plan"),
+            }],
+            expected_value_revisions: [
+                ("Status".into(), status_revision - 1),
+                ("status".into(), status_revision),
+            ]
+            .into(),
+        }],
+        authorization: None,
+    };
+    let response = client
+        .database_apply(
+            Some(PROJECT),
+            ModuleApplyRequest {
+                contract_version: nodex_core_contracts::DATABASE_CONTRACT_VERSION,
+                operation_id: "test:duplicate-fence".into(),
+                store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
+                intent: vec![intent],
+            },
+        )
+        .unwrap();
+    let ResponseEnvelope::Error(error) = response.0 else {
+        panic!("Aliased stale fence was accepted");
+    };
+    assert_eq!(
+        error.code,
+        nodex_core_contracts::CoreErrorCode::InvalidInput
+    );
+    assert!(
+        error.message.contains("\"Status\"") && error.message.contains("\"status\""),
+        "{error:?}"
+    );
+    let conflicting = ["Status", "status"]
+        .into_iter()
+        .zip(["doing", "plan"])
+        .map(
+            |(selector, value)| nodex_core_contracts::database::DatabasePagePropertyUpdate {
+                page_ids: vec![page_id.into()],
+                values: vec![nodex_core_contracts::library::LibraryPageCopyValue {
+                    property_id: selector.into(),
+                    value: serde_json::json!(value),
+                }],
+                expected_value_revisions: Default::default(),
+            },
+        )
+        .collect();
+    let conflict = client
+        .database_apply(
+            Some(PROJECT),
+            ModuleApplyRequest {
+                contract_version: nodex_core_contracts::DATABASE_CONTRACT_VERSION,
+                operation_id: "test:duplicate-edit".into(),
+                store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
+                intent: vec![
+                    nodex_core_contracts::database::DatabaseIntent::SetPageProperties {
+                        updates: conflicting,
+                        authorization: None,
+                    },
+                ],
+            },
+        )
+        .unwrap();
+    let ResponseEnvelope::Error(error) = conflict.0 else {
+        panic!("Conflicting updates were accepted");
+    };
+    assert_eq!(
+        error.code,
+        nodex_core_contracts::CoreErrorCode::InvalidInput
+    );
+    assert!(error.message.contains(page_id), "{error:?}");
+    assert_eq!(property_state(&home, page_id)["values"]["status"], "done");
+    let unowned = run(
+        &home,
+        &[
+            "page",
+            "properties",
+            "set",
+            PAGE_A,
+            PAGE_B,
+            "--set",
+            "Status=done",
+        ],
+    );
+    assert_eq!(unowned["error"]["code"], "SCOPE_NOT_FOUND", "{unowned}");
+    assert_eq!(property_state(&home, PAGE_A)["values"]["status"], "plan");
+
+    let source_id = source["data_source_id"].as_str().unwrap();
+    let revision = source_description(&home, source_id)["schema_revision"]
+        .as_i64()
+        .unwrap();
+    let configured = input(
+        &home,
+        &["data-source", "configure", source_id, "--input", "-"],
+        &serde_json::json!({"if_schema_revision":revision,"operations":[
+            {"kind":"add_property","name":"Cost=USD","schema":{"kind":"number"}},
+            {"kind":"add_property","name":"Note","schema":{"kind":"text"}},
+            {"kind":"add_property","name":"Labels","schema":{"kind":"multi_select"},
+                "options":["Risk=High"]}
+        ]}),
+    );
+    assert_eq!(configured["ok"], true, "{configured}");
+    let typed = success(
+        &home,
+        &[
+            "page",
+            "properties",
+            "set",
+            page_id,
+            "--set",
+            r#""Cost=USD"=25"#,
+            "--set",
+            r#"Note="true""#,
+            "--set",
+            r#"Labels=["Risk=High"]"#,
+            "--set",
+            "Due date=2026-12-03",
+            "--clear",
+            "Priority",
+        ],
+    );
+    let values = typed["pages"][0]["values"].as_array().unwrap();
+    assert_eq!(values[0]["after"], 25.0);
+    assert_eq!(values[1]["after"], "true");
+    assert_eq!(values[2]["after"].as_array().unwrap().len(), 1);
+    assert_eq!(values[3]["after"], "2026-12-03");
+    assert!(values[4]["after"].is_null());
+    let repeated = run(
+        &home,
+        &[
+            "page",
+            "properties",
+            "set",
+            page_id,
+            "--set",
+            "Priority=p1-high",
+            "--clear",
+            "priority",
+        ],
+    );
+    assert_eq!(repeated["error"]["code"], "INVALID_INPUT", "{repeated}");
+    let message = repeated["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains("\"Priority\"") && message.contains("\"priority\""),
+        "{message}"
+    );
+    let rejected = run(
+        &home,
+        &[
+            "page",
+            "properties",
+            "set",
+            PAGE_A,
+            key,
+            "--set",
+            "Priority=p0-critical",
+            "--set",
+            "Status=bogus",
+        ],
+    );
+    let error = rejected["error"]["message"].as_str().unwrap();
+    assert!(error.contains("Todo") && error.contains("plan"), "{error}");
+    assert_eq!(
+        property_state(&home, PAGE_A)["values"]["priority"],
+        "p1-high"
+    );
+    assert_eq!(property_state(&home, page_id)["values"]["status"], "done");
+}
+
+#[test]
+fn page_move_accepts_explicit_page_destinations_and_prepares_a_source_move() {
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
+    let client = connect_or_launch(&home, "move-destinations", Some(&core_binary)).unwrap();
+    let _guard = CoreGuard(client.handshake.generation.pid);
+    seed(&client, &home);
+    let prepared_library = success(
+        &home,
+        &[
+            "page",
+            "prepare",
+            PAGE_A,
+            "--operation",
+            "move",
+            "--to",
+            "library",
+        ],
+    );
+    let wrong_target = input_text(
+        &home,
+        &[
+            "page",
+            "move",
+            PAGE_A,
+            "--to",
+            &format!("page:{PAGE_B}"),
+            "--if-match",
+            prepared_library["validators"]["move_etag"]
+                .as_str()
+                .unwrap(),
+        ],
+        "",
+    );
+    assert_eq!(
+        wrong_target["error"]["code"], "ETAG_CONFLICT",
+        "{wrong_target}"
+    );
+    let message = wrong_target["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains("library") && message.contains(PAGE_B),
+        "{message}"
+    );
+    let source = property_state(&home, PAGE_A);
+    let source_target = format!("data_source:{}", source["data_source_id"].as_str().unwrap());
+    let page_target = format!("page:{PAGE_B}");
+    success(&home, &["page", "move", PAGE_A, "--to", &page_target]);
+    let prepared = success(
+        &home,
+        &[
+            "page",
+            "prepare",
+            PAGE_A,
+            "--operation",
+            "move",
+            "--to",
+            &source_target,
+        ],
+    );
+    let moved = success(
+        &home,
+        &[
+            "page",
+            "move",
+            PAGE_A,
+            "--to",
+            &source_target,
+            "--if-match",
+            prepared["validators"]["move_etag"].as_str().unwrap(),
+        ],
+    );
+    assert_eq!(moved["page_id"], PAGE_A);
+    assert!(moved["page_key"].is_string());
+    let parent = success(
+        &home,
+        &[
+            "page",
+            "create",
+            "--parent",
+            "library",
+            "--title",
+            "Batch move parent",
+            "--empty",
+        ],
+    );
+    let parent_id = parent["page_id"].as_str().unwrap();
+    let batch = success(
+        &home,
+        &[
+            "page",
+            "move",
+            PAGE_A,
+            PAGE_B,
+            "--to",
+            &format!("page:{parent_id}"),
+        ],
+    );
+    assert_eq!(batch["pages"][0]["page_id"], PAGE_A);
+    assert_eq!(batch["pages"][1]["page_id"], PAGE_B);
+    assert_eq!(batch["pages"][0]["location"]["page_id"], parent_id);
+    assert_eq!(batch["pages"][1]["location"]["page_id"], parent_id);
+}
+
+#[test]
+fn page_destinations_reject_a_collision_between_exact_id_and_prefix() {
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
+    let client = connect_or_launch(&home, "destination-collision", Some(&core_binary)).unwrap();
+    let _guard = CoreGuard(client.handshake.generation.pid);
+    seed(&client, &home);
+    let source = property_state(&home, PAGE_A);
+    for id in ["page:review-target", "review-target"] {
+        let response = client
+            .library_apply(
+                Some(PROJECT),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: format!("test:create:{id}"),
+                    store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
+                    intent: LibraryIntent::CreatePage {
+                        page_id: id.into(),
+                        document_id: format!("document:{id}"),
+                        title: format!("Target {id}"),
+                        parent: LibraryWriteParent::Library { before: None },
+                    },
+                },
+            )
+            .unwrap();
+        assert!(
+            matches!(response.0, ResponseEnvelope::Ok(_)),
+            "{response:?}"
+        );
+    }
+    let collision = run(
+        &home,
+        &["page", "move", PAGE_A, "--to", "page:review-target"],
+    );
+    assert_eq!(collision["error"]["code"], "INVALID_INPUT", "{collision}");
+    let message = collision["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains("@page:review-target") && message.contains("@review-target"),
+        "{message}"
+    );
+    let moved = success(
+        &home,
+        &["page", "move", PAGE_A, "--to", "@page:review-target"],
+    );
+    assert_eq!(
+        moved["affected"]["location"]["document_id"],
+        "document:page:review-target"
+    );
+    let source_id = source["data_source_id"].as_str().unwrap();
+    let prefixed_id = format!("data_source:{source_id}");
+    let response = client
+        .library_apply(
+            Some(PROJECT),
+            ModuleApplyRequest {
+                contract_version: LIBRARY_CONTRACT_VERSION,
+                operation_id: "test:create:prefixed-source-page".into(),
+                store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
+                intent: LibraryIntent::CreatePage {
+                    page_id: prefixed_id.clone(),
+                    document_id: "document:prefixed-source-page".into(),
+                    title: "Prefixed Source Page".into(),
+                    parent: LibraryWriteParent::Library { before: None },
+                },
+            },
+        )
+        .unwrap();
+    assert!(
+        matches!(response.0, ResponseEnvelope::Ok(_)),
+        "{response:?}"
+    );
+    let args = [
+        "page",
+        "create",
+        "--parent",
+        &prefixed_id,
+        "--title",
+        "Choose a Source",
+        "--empty",
+    ];
+    let ambiguous = run(&home, &args);
+    assert_eq!(ambiguous["error"]["code"], "INVALID_INPUT", "{ambiguous}");
+    let message = ambiguous["error"]["message"].as_str().unwrap();
+    let explicit_source = format!("data_source:@{source_id}");
+    assert!(
+        message.contains(&format!("page:@{prefixed_id}")) && message.contains(&explicit_source),
+        "{message}"
+    );
+    let mut explicit = args;
+    explicit[3] = &explicit_source;
+    let created = success(&home, &explicit);
+    assert_eq!(
+        property_state(&home, created["page_id"].as_str().unwrap())["data_source_id"],
+        source_id
+    );
+}
+
+#[test]
+fn grouped_moves_preserve_status_and_batch_writes_replay_exact_receipts() {
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
+    let client = connect_or_launch(&home, "grouped-move-retry", Some(&core_binary)).unwrap();
+    let _core = CoreGuard(client.handshake.generation.pid);
+    seed(&client, &home);
+    verify_database_override(&client, &home);
+    let alternate = "data_source:019b1000-1000-7000-8000-000000000005";
+    let default_view = "019b1000-1000-7000-8000-000000000006";
+    let source = property_state(&home, PAGE_A);
+    let original = format!("data_source:{}", source["data_source_id"].as_str().unwrap());
+
+    let create = [
+        "page",
+        "create",
+        "--parent",
+        &original,
+        "--title",
+        "Retry row",
+        "--empty",
+        "--set",
+        "Status=plan",
+        "--idempotency-key",
+        "triage1111-create",
+    ];
+    let created = success(&home, &create);
+    validate_result(&["page", "create"], &created);
+    assert_eq!(
+        created["status"],
+        serde_json::json!({"option_id":"plan","label":"Todo"})
+    );
+    let page = created["page_id"].as_str().unwrap();
+    let mut changed_create = create;
+    changed_create[8] = "Status=done";
+    assert_eq!(
+        run(&home, &changed_create)["error"]["code"],
+        "IDEMPOTENCY_KEY_REUSED"
+    );
+
+    success(
+        &home,
+        &["page", "properties", "set", PAGE_A, "--set", "Status=plan"],
+    );
+    let prepared = success(
+        &home,
+        &[
+            "page",
+            "prepare",
+            PAGE_A,
+            "--operation",
+            "move",
+            "--to",
+            alternate,
+        ],
+    );
+    let moved = success(
+        &home,
+        &[
+            "page",
+            "move",
+            PAGE_A,
+            "--to",
+            alternate,
+            "--if-match",
+            prepared["validators"]["move_etag"].as_str().unwrap(),
+        ],
+    );
+    assert_eq!(moved["status"], created["status"]);
+    success(&home, &["page", "move", PAGE_A, "--to", &original]);
+    let batch = [
+        "page",
+        "move",
+        PAGE_A,
+        page,
+        "--to",
+        alternate,
+        "--idempotency-key",
+        "triage1111-move",
+    ];
+    let moved = success(&home, &batch);
+    validate_result(&["page", "move"], &moved);
+    for row in moved["pages"].as_array().unwrap() {
+        assert_eq!(row["status"], created["status"]);
+    }
+    let mut changed_batch = batch;
+    changed_batch[5] = &original;
+    assert_eq!(
+        run(&home, &changed_batch)["error"]["code"],
+        "IDEMPOTENCY_KEY_REUSED"
+    );
+    assert_eq!(
+        sql_rows(
+            &home,
+            "SELECT page_id FROM view_rows(:view) WHERE group_key='plan' ORDER BY page_id",
+            &[("view", default_view)],
+            &[],
+        )
+        .len(),
+        2
+    );
+    assert_eq!(success(&home, &create)["page_id"], created["page_id"]);
+
+    let set = [
+        "page",
+        "properties",
+        "set",
+        PAGE_A,
+        page,
+        "--set",
+        "Status=done",
+        "--idempotency-key",
+        "triage1111-done-first",
+    ];
+    let first = success(&home, &set);
+    validate_result(&["page", "properties", "set"], &first);
+    let replay = success(&home, &set);
+    assert_eq!(replay["status"], "duplicate");
+    for field in ["pages", "commit_seq", "operation_id"] {
+        assert_eq!(replay[field], first[field]);
+    }
+    assert_eq!(first["pages"][0]["values"][0]["before"], "plan");
+    assert_eq!(first["pages"][0]["values"][0]["after"], "done");
+    let moved_replay = success(&home, &batch);
+    assert_eq!(moved_replay["duplicate"], true);
+    assert_eq!(moved_replay["pages"], moved["pages"]);
+    let mut changed_set = set;
+    changed_set[6] = "Status=plan";
+    assert_eq!(
+        run(&home, &changed_set)["error"]["code"],
+        "IDEMPOTENCY_KEY_REUSED"
+    );
+
+    let refused = run(
+        &home,
+        &[
+            "page",
+            "properties",
+            "set",
+            PAGE_A,
+            page,
+            "--clear",
+            "Status",
+        ],
+    );
+    assert_eq!(refused["error"]["code"], "INVALID_INPUT");
+    let message = refused["error"]["message"].as_str().unwrap();
+    for stage in ["triage (Triage)", "plan (Todo)", "done (Done)"] {
+        assert!(message.contains(stage), "{message}");
+    }
+    assert_eq!(property_state(&home, PAGE_A)["values"]["status"], "done");
 }

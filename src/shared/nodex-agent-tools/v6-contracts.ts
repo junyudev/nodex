@@ -8,6 +8,8 @@ import {
   MovePagesV6OutputSchema,
   QueryDatabaseV6OutputSchema,
   SearchV6OutputSchema,
+  SetPagePropertiesV6InputSchema,
+  SetPagePropertiesV6OutputSchema,
 } from "./v6-schemas";
 
 const defineV6Contract = <TInputSchema extends z.ZodType, TOutputSchema extends z.ZodType>(
@@ -16,7 +18,7 @@ const defineV6Contract = <TInputSchema extends z.ZodType, TOutputSchema extends 
 
 /**
  * Revision-6 catalog. Page reads and structural receipts project current Page
- * keys while canonical UUIDs remain the only fetch and mutation identities.
+ * keys. Fetches and structural mutations use canonical IDs.
  */
 export const NODEX_AGENT_V6_TOOL_CONTRACTS = {
   ...NODEX_AGENT_V5_TOOL_CONTRACTS,
@@ -43,6 +45,14 @@ export const NODEX_AGENT_V6_TOOL_CONTRACTS = {
   create_pages: defineV6Contract({
     ...NODEX_AGENT_V5_TOOL_CONTRACTS.create_pages,
     outputSchema: CreatePagesV6OutputSchema,
+  }),
+  set_page_properties: defineV6Contract({
+    description:
+      "Atomically set Properties on existing Data Source Pages. Use Page IDs or keys, and Property and option IDs or exact unique names. Supply null to clear a value. For an optional fence on a single Page, supply expectedValueRevisions keyed by Property. Returns before and after values and fresh revisions per Page.",
+    inputSchema: SetPagePropertiesV6InputSchema,
+    outputSchema: SetPagePropertiesV6OutputSchema,
+    classifyEffect: () => "write",
+    deferLoading: true,
   }),
   move_pages: defineV6Contract({
     ...NODEX_AGENT_V5_TOOL_CONTRACTS.move_pages,

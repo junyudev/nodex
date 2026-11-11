@@ -968,6 +968,97 @@ fn a_persons_move_including_aba_fences_a_later_report() {
     }
 }
 #[test]
+fn a_batch_group_move_away_and_back_fences_a_later_report() {
+    use nodex_core_contracts::database::DatabaseGroupScope;
+    use nodex_core_contracts::library::*;
+    use nodex_core_contracts::{ModuleApplyRequest, StoreEpoch};
+
+    for mode in ["batch move", "single move", "batch set"] {
+        let w = stage_fixture();
+        let data_source_id = w
+            .kernel
+            .readers()
+            .read_default(|connection| {
+                Ok(connection.query_row(
+                    "SELECT parent_id FROM pages WHERE block_id = ?1",
+                    [STAGE_PAGE],
+                    |row| row.get::<_, String>(0),
+                )?)
+            })
+            .unwrap();
+        let library = crate::library::LibraryModule::new("profile-1", "library-1", &w.kernel);
+        for status in ["plan", "doing"] {
+            let destination = LibraryPageWriteDestination::DataSource {
+                data_source_id: data_source_id.clone(),
+                view_id: None,
+                group: Some(DatabaseGroupScope::Path {
+                    group_key: Some(status.into()),
+                    subgroup_key: None,
+                }),
+                at: None,
+            };
+            let operation_id = format!("person:{mode}:{status}");
+            if mode == "batch set" {
+                use nodex_core_contracts::database::*;
+                crate::database::DatabaseModule::new("profile-1", "library-1", &w.kernel)
+                    .apply(
+                        &context(),
+                        ModuleApplyRequest {
+                            contract_version: nodex_core_contracts::DATABASE_CONTRACT_VERSION,
+                            store_epoch: StoreEpoch("epoch-1".into()),
+                            operation_id,
+                            intent: vec![DatabaseIntent::SetPageProperties {
+                                updates: vec![DatabasePagePropertyUpdate {
+                                    page_ids: vec![STAGE_PAGE.into()],
+                                    values: vec![LibraryPageCopyValue {
+                                        property_id: "Status".into(),
+                                        value: serde_json::json!(status),
+                                    }],
+                                    expected_value_revisions: Default::default(),
+                                }],
+                                authorization: None,
+                            }],
+                        },
+                    )
+                    .unwrap();
+            } else {
+                let intent = if mode == "batch move" {
+                    LibraryIntent::MovePages {
+                        page_ids: vec![STAGE_PAGE.into()],
+                        destination,
+                    }
+                } else {
+                    LibraryIntent::MovePage {
+                        page_id: STAGE_PAGE.into(),
+                        destination,
+                        expected_etag: None,
+                    }
+                };
+                library
+                    .apply(
+                        &context(),
+                        ModuleApplyRequest {
+                            contract_version: LIBRARY_CONTRACT_VERSION,
+                            store_epoch: StoreEpoch("epoch-1".into()),
+                            operation_id,
+                            intent,
+                        },
+                    )
+                    .unwrap();
+            }
+            assert_eq!(stage(&w), status);
+        }
+        apply(
+            &w.module,
+            "report",
+            outcome_report(WorkReportOutcome::Ready),
+        );
+        assert_eq!(stage(&w), "doing");
+        assert!(!report_moved(&w), "{mode}");
+    }
+}
+
+#[test]
 fn an_old_chat_reports_evidence_without_moving_the_new_attempt() {
     let w = stage_fixture();
     apply(&w.module, "new", launch("new"));

@@ -30,7 +30,7 @@ The Database transition collaborator runs inside the transaction recording each 
 | Blocked or failed report | None                      | Unchanged   |
 
 Core maintains a Page-local, monotonic revision for person Status edits. Explicit Desktop,
-CLI and person commands advance it independently of automatic Property revisions. A Page launch and its work link retain the person revision at the attempt's creation.
+CLI and person commands advance it independently of automatic Property revisions. An explicit Status group placement also advances it when an Agent places the Page for a Member. A Page launch and its work link retain the person revision at the attempt's creation.
 A related-only link captures no attempt; its first handoff records the current fence. A fact moves Status only when
 the current predecessor and captured person revision match. Moving A → B → A still advances
 the fence. The same transaction retains skipped facts and whether the move applied. Acceptance

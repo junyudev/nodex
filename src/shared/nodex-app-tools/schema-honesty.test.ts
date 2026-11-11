@@ -181,12 +181,18 @@ describe("hosted tool schema honesty", () => {
   });
 });
 
-test("hosted content retry keys count Unicode scalar values", () => {
-  const schema = appToolArgumentSchemas.create_pages!;
-  const published = appToolCatalog.find((tool) => tool.name === "create_pages")!;
+test.each([
+  ["create_pages", { destination: { kind: "library" }, pages: [{ title: "Retry test" }] }],
+  [
+    "set_page_properties",
+    { updates: [{ pageIds: ["NODEX-4"], values: [{ propertyId: "Status", value: "done" }] }] },
+  ],
+  ["update_page", { pageId: "page:retry", values: [{ propertyId: "Status", value: "done" }] }],
+] as const)("hosted %s retry keys count Unicode scalar values", (name, args) => {
+  const schema = appToolArgumentSchemas[name]!;
+  const published = appToolCatalog.find((tool) => tool.name === name)!;
   const keyProperty = published.inputSchema.properties?.idempotencyKey as { pattern: string };
   const pattern = new RegExp(keyProperty.pattern);
-  const args = { destination: { kind: "library" }, pages: [{ title: "Retry test" }] };
   for (const key of [" ", " /:", "nodexop:v1:broken", "cli-1-reorg", "😀".repeat(128)]) {
     expect(schema.safeParse({ ...args, idempotencyKey: key }).success).toBe(true);
     expect(pattern.test(key)).toBe(true);

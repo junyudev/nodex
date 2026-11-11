@@ -116,6 +116,8 @@ pub(crate) fn prepare_semantic_mutation(
             .map(|root| root.id.clone());
     for command in commands {
         match command {
+            // The Page-owned Database values are applied by the aggregate writer.
+            DocumentSemanticCommand::SetPageProperties { .. } => {}
             DocumentSemanticCommand::SetTitle {
                 inline_markdown,
                 expected_etag,

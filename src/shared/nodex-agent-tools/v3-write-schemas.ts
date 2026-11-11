@@ -15,6 +15,7 @@ import {
   PageLocationV3Schema,
   DatabaseDestinationViewV3Schema,
   DatabaseValueDraftV3Schema,
+  DatabasePagePropertyChangeSchema,
   InlineMarkdownTitleSchema,
   MarkdownFragmentSchema,
   MarkdownSchema,
@@ -147,11 +148,12 @@ export const UpdatePageV3InputSchema = z
       )
       .optional(),
     body: PageBodyUpdateV3Schema.optional(),
+    values: z.array(DatabaseValueDraftV3Schema).min(1).max(512).optional(),
     return: PageUpdateReturnV3Schema.optional(),
   })
   .refine(
-    (input) => input.title !== undefined || input.body !== undefined,
-    "update_page requires title or body",
+    (input) => input.title !== undefined || input.body !== undefined || input.values !== undefined,
+    "update_page requires a title, body, or Property values",
   );
 
 const PageUpdateEffectsV3Schema = z.strictObject({
@@ -180,6 +182,7 @@ const PageUpdateEffectsV3Schema = z.strictObject({
 export const PageUpdateV3DataSchema = z.strictObject({
   pageId: BlockIdSchema,
   effects: PageUpdateEffectsV3Schema,
+  values: z.array(DatabasePagePropertyChangeSchema).optional(),
   body: z
     .strictObject({
       format: z.literal("markdown"),

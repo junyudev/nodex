@@ -13,6 +13,12 @@ export const appContentToolContracts = {
       idempotencyKey: idempotencyKeySchema.optional(),
     }),
   },
+  set_page_properties: {
+    ...NODEX_AGENT_V6_TOOL_CONTRACTS.set_page_properties,
+    inputSchema: NODEX_AGENT_V6_TOOL_CONTRACTS.set_page_properties.inputSchema.safeExtend({
+      idempotencyKey: idempotencyKeySchema.optional(),
+    }),
+  },
   update_page: {
     ...NODEX_AGENT_V6_TOOL_CONTRACTS.update_page,
     inputSchema: NODEX_AGENT_V6_TOOL_CONTRACTS.update_page.inputSchema.safeExtend({

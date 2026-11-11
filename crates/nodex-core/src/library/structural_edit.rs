@@ -9957,6 +9957,7 @@ mod tests {
                     operation_id: "turn-nonempty:create-subpage".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: LibraryIntent::CreatePageFromText {
+                        values: Vec::new(),
                         title_markdown: "Rich **subpage** [link](https://nodex.local)".to_owned(),
                         markdown: "Body paragraph\n\n- first\n  - nested".to_owned(),
                         destination: LibraryPageWriteDestination::Page {

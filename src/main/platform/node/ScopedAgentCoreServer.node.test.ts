@@ -281,6 +281,8 @@ test("the Agent CLI retains live Run attribution across Core restarts and wrappe
         code: 2,
         stdout: expect.stringContaining("AGENT_TURN_ENDED"),
       });
+      const laterRename = JSON.parse((await viaWrapper(rename, "run:two")).stdout).result;
+      expect(laterRename).toEqual({ ...firstRename, duplicate: true });
       const otherProject = await scenario.seed.createProject({ name: "CLI override", sources: [] });
       const selected = await viaWrapper(
         [

@@ -172,6 +172,23 @@ export const executeNodexAgentV3Tool = (
         if (result.tool !== tool) throw new Error("Nodex v3 read tool mismatch");
         return result.output;
       }
+      case "set_page_properties": {
+        actorProject(context);
+        const authority = context.authority!;
+        const result = yield* withExecutionTimeout(
+          application.apply({
+            kind: "set_page_properties",
+            input: input as NodexAgentV3ToolInput<"set_page_properties">,
+            authority,
+            callId: context.callId,
+            operationId: context.operationId,
+          }),
+          executionTimeoutMs,
+        );
+        if (result.kind !== tool) throw new Error("Nodex application result mismatch");
+        if (!result.value.ok) return fail({ error: result.value.error });
+        return result.value.output;
+      }
       case "create_pages": {
         const parsed = input as NodexAgentV3ToolInput<"create_pages">;
         const projectId = actorProject(context);

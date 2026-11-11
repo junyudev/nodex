@@ -4679,6 +4679,16 @@
                       }
                     ]
                   },
+                  "page_properties": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/DatabasePagePropertyResult"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "recovery": {
                     "oneOf": [
                       {
@@ -4846,6 +4856,16 @@
                     "oneOf": [
                       {
                         "$ref": "#/components/schemas/DocumentOwnerEffect"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "page_properties": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/DatabasePagePropertyResult"
                       },
                       {
                         "type": "null"
@@ -14568,6 +14588,58 @@
           {
             "type": "object",
             "required": [
+              "updates",
+              "kind"
+            ],
+            "properties": {
+              "authorization": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AgentExecutionAuthorization"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_page_properties"
+                ]
+              },
+              "updates": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DatabasePagePropertyUpdate"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "edits",
+              "kind"
+            ],
+            "properties": {
+              "edits": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DatabasePropertyValueMutation"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "apply_page_property_edits"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "edits",
               "kind"
             ],
@@ -15927,6 +15999,91 @@
           },
           "property_id": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DatabasePagePropertyChange": {
+        "type": "object",
+        "required": [
+          "property_id",
+          "before",
+          "after",
+          "value_revision"
+        ],
+        "properties": {
+          "after": {},
+          "before": {},
+          "property_id": {
+            "type": "string"
+          },
+          "value_revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "DatabasePagePropertyResult": {
+        "type": "object",
+        "required": [
+          "page_id",
+          "data_source_id",
+          "membership_revision",
+          "values"
+        ],
+        "properties": {
+          "data_source_id": {
+            "type": "string"
+          },
+          "membership_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page_id": {
+            "type": "string"
+          },
+          "page_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabasePagePropertyChange"
+            }
+          }
+        }
+      },
+      "DatabasePagePropertyUpdate": {
+        "type": "object",
+        "required": [
+          "page_ids",
+          "values"
+        ],
+        "properties": {
+          "expected_value_revisions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "page_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryPageCopyValue"
+            }
           }
         },
         "additionalProperties": false
@@ -19833,6 +19990,27 @@
       },
       "DocumentSemanticCommand": {
         "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "values",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_page_properties"
+                ]
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/LibraryPageCopyValue"
+                }
+              }
+            }
+          },
           {
             "type": "object",
             "required": [
@@ -28632,6 +28810,24 @@
           {
             "type": "object",
             "required": [
+              "destination",
+              "kind"
+            ],
+            "properties": {
+              "destination": {
+                "$ref": "#/components/schemas/LibraryPageWriteDestination"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "move_to"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "kind"
             ],
             "properties": {
@@ -33241,6 +33437,12 @@
                   },
                   "title_markdown": {
                     "type": "string"
+                  },
+                  "values": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/LibraryPageCopyValue"
+                    }
                   }
                 }
               },
@@ -33520,7 +33722,6 @@
                 "required": [
                   "page_id",
                   "destination",
-                  "expected_etag",
                   "kind"
                 ],
                 "properties": {
@@ -33528,7 +33729,10 @@
                     "$ref": "#/components/schemas/LibraryPageWriteDestination"
                   },
                   "expected_etag": {
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "kind": {
                     "type": "string",
@@ -33538,6 +33742,31 @@
                   },
                   "page_id": {
                     "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "page_ids",
+                  "destination",
+                  "kind"
+                ],
+                "properties": {
+                  "destination": {
+                    "$ref": "#/components/schemas/LibraryPageWriteDestination"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "move_pages"
+                    ]
+                  },
+                  "page_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 }
               },
@@ -38855,6 +39084,58 @@
                     },
                     "visibility": {
                       "$ref": "#/components/schemas/DatabasePagePropertyVisibility"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "updates",
+                    "kind"
+                  ],
+                  "properties": {
+                    "authorization": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/AgentExecutionAuthorization"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "set_page_properties"
+                      ]
+                    },
+                    "updates": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DatabasePagePropertyUpdate"
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "edits",
+                    "kind"
+                  ],
+                  "properties": {
+                    "edits": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DatabasePropertyValueMutation"
+                      }
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "apply_page_property_edits"
+                      ]
                     }
                   }
                 },
@@ -57842,6 +58123,12 @@
                                 "items": {
                                   "$ref": "#/components/schemas/DatabaseOperationOutcome"
                                 }
+                              },
+                              "page_properties": {
+                                "type": "array",
+                                "items": {
+                                  "$ref": "#/components/schemas/DatabasePagePropertyResult"
+                                }
                               }
                             }
                           }
@@ -57949,6 +58236,12 @@
                                 "type": "array",
                                 "items": {
                                   "$ref": "#/components/schemas/DatabaseOperationOutcome"
+                                }
+                              },
+                              "page_properties": {
+                                "type": "array",
+                                "items": {
+                                  "$ref": "#/components/schemas/DatabasePagePropertyResult"
                                 }
                               }
                             }
@@ -58641,6 +58934,16 @@
                               }
                             ]
                           },
+                          "page_properties": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/DatabasePagePropertyResult"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "recovery": {
                             "oneOf": [
                               {
@@ -58808,6 +59111,16 @@
                             "oneOf": [
                               {
                                 "$ref": "#/components/schemas/DocumentOwnerEffect"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "page_properties": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/DatabasePagePropertyResult"
                               },
                               {
                                 "type": "null"

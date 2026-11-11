@@ -481,6 +481,9 @@ pub enum DocumentRevisionKind {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DocumentSemanticCommand {
+    SetPageProperties {
+        values: Vec<crate::library::LibraryPageCopyValue>,
+    },
     SetTitle {
         inline_markdown: String,
         expected_etag: String,
@@ -686,6 +689,8 @@ pub struct OwnedDocumentCommitValue {
     pub semantic_local_block_ids: Option<BTreeMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub semantic_deleted_owner_block_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_properties: Option<crate::database::DatabasePagePropertyResult>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

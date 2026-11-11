@@ -8,6 +8,7 @@ import {
   NODEX_APP_TOOLSET_REVISION,
   type NodexAgentCreatePagesCommand,
 } from "../../shared/nodex-agent-tools";
+import { SetPagePropertiesV6InputSchema } from "../../shared/nodex-agent-tools/v6-schemas";
 import { NodexAgentApplication } from "./NodexAgentApplication";
 import { executeNodexAgentV3Tool } from "./NodexAgentDynamicExecution";
 import {
@@ -135,6 +136,7 @@ it.effect("publishes and enforces the current Nodex tool catalog at the protocol
           "query_data_source",
           "query_database_view",
           "search",
+          "set_page_properties",
           "update_page",
         ],
       );
@@ -228,4 +230,58 @@ it.effect(
         });
       }),
     ),
+);
+
+it.effect("dispatches one atomic batch of Page Property updates", () =>
+  Effect.gen(function* () {
+    const updates = [
+      { pageIds: ["NODEX-4", "NODEX-8"], values: [{ propertyId: "Status", value: "Done" }] },
+    ];
+    const unexpected = () => Effect.die("unexpected operation");
+    const output = {
+      data: {
+        pages: [
+          {
+            pageId: "page",
+            pageKey: "NODEX-4",
+            dataSourceId: "source",
+            membershipRevision: 1,
+            values: [{ propertyId: "status", before: "plan", after: "done", valueRevision: 4 }],
+          },
+        ],
+      },
+    };
+    const app = NodexAgentApplication.of({
+      read: unexpected,
+      readPageObservation: unexpected,
+      completePageUpdate: unexpected,
+      prepare: unexpected,
+      apply: (command) =>
+        Effect.sync(() => {
+          assert.equal(command.kind, "set_page_properties");
+          if (command.kind !== "set_page_properties") throw new Error("wrong command");
+          assert.deepEqual(command.input, SetPagePropertiesV6InputSchema.parse({ updates }));
+          return { kind: command.kind, value: { ok: true as const, output } } as never;
+        }),
+    });
+    const result = yield* executeNodexAgentV3Tool(
+      "set_page_properties",
+      { updates },
+      {
+        threadId: "thread",
+        callId: "call",
+        operationId: "operation",
+        authority: {
+          threadId: "thread",
+          turnId: "turn",
+          rootThreadId: "thread",
+          actorProjectId: "project",
+          libraryId: "library",
+          storeEpoch: "epoch",
+          admittedAtMs: 1,
+        },
+      },
+    ).pipe(Effect.provideService(NodexAgentApplication, app));
+    assert.deepEqual(result, output);
+  }),
 );

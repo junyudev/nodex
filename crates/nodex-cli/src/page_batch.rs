@@ -57,7 +57,10 @@ fn default_true() -> bool {
     true
 }
 pub(crate) fn prepare(args: &mut PageCreateBatchArgs) -> Result<(), CliError> {
-    args.prepared = Some(read_json(&args.input, "Page batch")?);
+    args.prepared = Some(
+        read_json(&args.input, "Page batch")
+            .map_err(|error| crate::input::with_schema_hint(error, "page create-batch"))?,
+    );
     Ok(())
 }
 pub(crate) fn execute(

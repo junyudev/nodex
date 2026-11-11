@@ -296,6 +296,9 @@ pub struct PagePrepareArgs {
     /// Operation whose concurrency conditions should be prepared.
     #[arg(long, value_enum)]
     pub operation: PrepareOperation,
+    /// Destination selector for a move to a different Data Source.
+    #[arg(long)]
+    pub to: Option<String>,
     /// Saved View ID for a move within that View; valid only with move.
     #[arg(long, value_name = "VIEW_ID")]
     pub view: Option<String>,
@@ -668,6 +671,8 @@ pub struct PageCreateArgs {
     #[command(flatten)]
     pub content: BodyInputArgs,
     #[command(flatten)]
+    pub values: crate::page_properties::PropertyValuesArgs,
+    #[command(flatten)]
     pub data_source: DataSourcePlacementArgs,
     #[command(flatten)]
     pub mutation: MutationArgs,
@@ -754,13 +759,14 @@ pub struct DataSourcePlacementArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PageMoveArgs {
-    /// Page ID, Page key, or uniquely resolvable title path.
-    pub page: String,
+    /// Page IDs, Page keys, or uniquely resolvable title paths.
+    #[arg(required = true, value_name = "PAGE")]
+    pub pages: Vec<String>,
     #[command(flatten)]
     pub destination: PageDestinationArgs,
-    /// validators.move_etag from page prepare --operation move using the same View.
+    /// Optional validators.move_etag from page prepare --operation move.
     #[arg(long = "if-match")]
-    pub if_match: String,
+    pub if_match: Option<String>,
     #[command(flatten)]
     pub mutation: MutationArgs,
 }
@@ -1187,13 +1193,15 @@ mod tests {
         .expect_err("placement modes are exclusive");
         assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
 
-        let missing_etag =
-            Cli::try_parse_from(["nodex", "page", "move", "@page_1", "--to", "library"])
-                .expect_err("Page movement requires its narrow ETag");
-        assert_eq!(
-            missing_etag.kind(),
-            clap::error::ErrorKind::MissingRequiredArgument
-        );
+        let unfenced = Cli::try_parse_from(["nodex", "page", "move", "@page_1", "--to", "library"])
+            .expect("Page movement accepts an omitted ETag");
+        let Command::Page(PageArgs {
+            command: PageCommand::Move(arguments),
+        }) = unfenced.command
+        else {
+            panic!("expected Page move command");
+        };
+        assert_eq!(arguments.if_match, None);
 
         let grouped = Cli::try_parse_from([
             "nodex",

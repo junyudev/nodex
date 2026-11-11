@@ -92,12 +92,12 @@ local Member connection.
 
 If a connection fails, stop the current batch and use the recovery in the error.
 
-| Code | Recovery |
-| --- | --- |
-| `AGENT_TURN_ENDED` | Run the command from an active Turn. |
-| `AGENT_SESSION_UNAVAILABLE` | Reopen the Session or start a new one. |
-| `AGENT_GENERATION_CHANGED` | Run `nodex context` again in the active Turn. |
-| `AGENT_BINDING_MALFORMED` | Use plain `nodex` in the managed shell. |
+| Code                        | Recovery                                      |
+| --------------------------- | --------------------------------------------- |
+| `AGENT_TURN_ENDED`          | Run the command from an active Turn.          |
+| `AGENT_SESSION_UNAVAILABLE` | Reopen the Session or start a new one.        |
+| `AGENT_GENERATION_CHANGED`  | Run `nodex context` again in the active Turn. |
+| `AGENT_BINDING_MALFORMED`   | Use plain `nodex` in the managed shell.       |
 
 ## Direct input, output, and help
 
@@ -263,18 +263,32 @@ automatically, so set `--auto-start true` in a separate command after reassignin
 For Owner and Assignee, omitting `--if-revision` uses the revision observed by the
 command's Page read; a concurrent edit still fails the revision precondition.
 
-`page properties set` performs a narrow select/text/number replacement with
-`--option`, `--text` or `--number` and observed `--if-revision`. Read versions from
-`property_values`, or query a Source's `value_revisions` and `membership_revision`
-for a batch. `page properties prepare-batch --selection FILE|- --set NAME=JSON`
-preserves those original observations in typed edits accepted by
-`page properties apply --input FILE|-`. It does not refresh them before writing;
-conflicts reject the atomic apply. Conditions protect membership and edited
-fields, not arbitrary WHERE/JOIN dependencies.
+`page properties set PAGE... --set PROPERTY=VALUE` updates matching Data Source
+Properties on the selected Pages in one transaction. Use a stable Property or
+option ID or its exact unique current name. An exact ID takes precedence over a name.
+For a Property name containing an equals sign, quote the selector as JSON, for
+example `--set '"Cost=USD"=25'`. Repeat `--set` and `--clear PROPERTY`
+to set and clear several fields. Use JSON numbers, booleans and multi-select
+arrays, and JSON strings for text that looks like JSON. For a SQL result with a
+`page_id` or `page_key` column, pass `--selection FILE|-` in place of Page arguments.
+
+```sh
+nodex page properties set NODEX-4 NODEX-8 --set Status=done --set Priority=p1-high
+nodex page create --parent data_source:SOURCE_ID --title 'Follow up' --empty --set Status=plan
+```
+
+Use optional `--if-revision` to fence one value on one Page. Use `page properties apply`
+for heterogeneous fenced edits and Relation edits. Use `prepare-batch` to carry
+observed membership and value revisions from SQL to `apply`.
 
 `page create-batch --input -` atomically creates 1–16 Pages at one destination,
-with at most 2 MiB of combined body text. Drafts use `title_markdown`, `markdown`, and typed `values`. Separate commands are
-separate transactions.
+with at most 2 MiB of combined body text. Drafts use `title_markdown`, `markdown`,
+and typed `values`. Create receipts include each new Page ID and its current
+key in input order. A standalone Page has a null key.
+
+Property write receipts include the operation ID, commit status, and each Page's
+ID, key, Data Source ID, membership revision, and each touched value’s before and after values and new revision. A retry returns the original changes and commit sequence with `status: "duplicate"`.
+CLI receipts omit Desktop delivery data in text and JSON output.
 See [Agent CLI queries and configuration](product-specs/agent-cli-queries.md)
 for the complete relation, execution identity, lifecycle and observation contracts.
 
@@ -309,9 +323,9 @@ reported ready.
 
 `page rename PAGE TITLE --if-match ETAG` changes only the title. Structured
 `read` and SQL provide title/body validators from the observed state. Use
-`page prepare PAGE --operation move|delete [--view VIEW_ID]` for operation-specific
-conditions; View scope is valid only for move. Reuse these conditions without
-silently refreshing them before a write.
+`page prepare PAGE --operation delete` for the Page deletion ETag. To fence a move,
+use `page prepare PAGE --operation move --to DESTINATION` with the same destination
+and any explicit `--view` used by the write. This validator binds the resolved destination and placement.
 
 Semantic mutation families create, duplicate, move, rename, replace, patch,
 insert, or delete Pages and stable Blocks. Bodies use Nodex Markdown in one
@@ -324,21 +338,27 @@ when correspondence is ambiguous; see [Agent content behavior](product-specs/age
 Page deletion always uses the typed lifecycle path. For a nested Page, the
 headless CLI resolves and fences the current canonical host Document inside the
 same writer transaction; it never emits a generic Document deletion.
-Move and View placement consume one exact validator and commit membership,
-group value, position, ownership, Documents, projections, and receipt as one
-semantic operation.
+`page move PAGE... --to DESTINATION` moves up to 16 Pages atomically. Use
+`library`, `page:PAGE_ID`, `data_source:SOURCE_ID`, a bare ID or a Page key as
+the destination. When a prefixed selector also names a different resource by exact ID,
+use `page:@PAGE_ID` or `data_source:@SOURCE_ID` to select by type and exact ID.
+A single move accepts an optional `--if-match MOVE_ETAG` from
+`page prepare PAGE --operation move --to DESTINATION`. Pass the same destination and any explicit View for
+preparation and the move. Verify
+the resulting membership and Properties in the destination Source after moving.
 
 For a Data Source destination, `page create`, `page create-batch`,
 `page move`, and `page duplicate` return a compact `status` object with
-`option_id` and the destination's current `label`. Omit the group to keep a
+`option_id` and the destination's current `label`. A batch move reports it on
+each row in `pages`. Omit the group to keep a
 valid carried value or use the destination default. `--unassigned` explicitly
 selects the empty group. Clearing Status that way or with an explicit null
 value returns `INVALID_INPUT` with the valid IDs and current names.
 
-Drafts manage their own retries. Narrow ETags bind the current
-resource and guard kind; they are not capabilities. An exact retry returns the
-first immutable result, including a body patch whose original text is no longer present. Core resolves the receipt before checking current patch matches. A stale or mismatched guard fails before mutation and
-requires a fresh read.
+Drafts manage their own retries. ETags guard the observed resource state. Core
+resolves an exact retry before checking the current state, so a patch can replay
+its original receipt even after it replaced the matching text. A fresh operation
+with a stale or mismatched guard requires a fresh read.
 
 CLI writes that expose `--idempotency-key` and MCP writes that expose `idempotencyKey`
 accept an optional opaque string of 1–128 Unicode scalar values, such as `priority-update-8f6e29bc`.
@@ -351,7 +371,7 @@ operation. Use `--idempotency-key=VALUE` for keys beginning with a hyphen.
 Core issues its own operation identities, which may appear as receipt or progress handles.
 
 - `IDEMPOTENCY_KEY_REUSED`: Use a new key for a new intent.
-- `IDEMPOTENCY_WINDOW_EXPIRED`: Core no longer knows the outcome. Re-read state before issuing a fresh call with a new key or no key.
+- `IDEMPOTENCY_WINDOW_EXPIRED`: A retry of an earlier operation identity could not recover its receipt. Read the affected state before issuing a new operation.
 
 ## Automations
 

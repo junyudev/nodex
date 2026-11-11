@@ -85,7 +85,7 @@ fn every_leaf_exposes_machine_readable_help_without_core() {
     assert_eq!(document["command"], "nodex page move");
     assert_eq!(document["capability"], "pageWrite");
     assert_eq!(document["effect"], "write");
-    assert_eq!(document["resultSchemaRevision"], 1);
+    assert_eq!(document["resultSchemaRevision"], 2);
 }
 
 #[test]
@@ -240,4 +240,29 @@ fn page_help_points_to_trash_and_lists_named_payload_schemas() {
             .windows(b"replace_one_relation".len())
             .any(|part| part == b"replace_one_relation")
     );
+}
+
+#[test]
+fn property_set_teaches_the_corrected_positional_invocation_offline() {
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let home = directory.path().join("no-core");
+    let output = cli_command()
+        .args([
+            "--json",
+            "page",
+            "properties",
+            "set",
+            "NODEX-4",
+            "Status",
+            "done",
+        ])
+        .env("NODEX_HOME", &home)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("nodex page properties set NODEX-4 --set Status=done")
+    );
+    assert!(!home.exists());
 }

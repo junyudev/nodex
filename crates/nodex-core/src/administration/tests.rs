@@ -1087,6 +1087,7 @@ fn restores_a_turned_page_then_collects_only_its_dormant_document() {
     let child = apply(
         "restore-turn:child",
         LibraryIntent::CreatePageFromText {
+            values: Vec::new(),
             title_markdown: "Child".into(),
             markdown: "Preserved body".into(),
             destination: LibraryPageWriteDestination::Page {

@@ -3,10 +3,11 @@ use std::path::Path;
 use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::database::DatabaseGroupScope;
 use nodex_core_contracts::library::{
-    LibraryAgentSiblingAnchor, LibraryBlockTransferDataSourcePlacement,
-    LibraryBlockTransferLogicalIntent, LibraryBlockTransferMode, LibraryBlockTransferSource,
-    LibraryBlockTransferTarget, LibraryPageCopyDestination, LibraryPageCopyPositionAnchor,
-    LibraryPageCopyValue, LibraryPageCopyViewPlacement, LibraryPageWriteDestination,
+    LibraryAgentPageDestination, LibraryAgentSiblingAnchor,
+    LibraryBlockTransferDataSourcePlacement, LibraryBlockTransferLogicalIntent,
+    LibraryBlockTransferMode, LibraryBlockTransferSource, LibraryBlockTransferTarget,
+    LibraryPageCopyDestination, LibraryPageCopyPositionAnchor, LibraryPageCopyValue,
+    LibraryPageCopyViewPlacement, LibraryPageWriteDestination,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -38,12 +39,39 @@ pub(super) fn create_page(
     title_markdown: &str,
     markdown: &str,
     destination: &LibraryPageWriteDestination,
+    values: &[LibraryPageCopyValue],
 ) -> Result<LibraryApplyOutcome, StoreError> {
     use nodex_core_contracts::library::{
-        LibraryAgentCreatePageDraft, LibraryAgentCreatePagesRequest, LibraryAgentPageDestination,
+        LibraryAgentCreatePageDraft, LibraryAgentCreatePagesRequest,
     };
     let native_destination = destination;
-    let destination = match destination {
+    let destination = agent_destination(native_destination)?;
+    super::agent_page_create::create_native_pages(
+        connection,
+        context,
+        store_epoch,
+        library_id,
+        operation_id,
+        request_hash,
+        &LibraryAgentCreatePagesRequest {
+            destination,
+            pages: vec![LibraryAgentCreatePageDraft {
+                title_markdown: title_markdown.to_owned(),
+                markdown: markdown.to_owned(),
+                values: values.to_vec(),
+            }],
+            include_block_ids: true,
+            include_etags: true,
+        },
+        true,
+        Some(native_destination),
+    )
+}
+
+pub(super) fn agent_destination(
+    destination: &LibraryPageWriteDestination,
+) -> Result<LibraryAgentPageDestination, StoreError> {
+    Ok(match destination {
         LibraryPageWriteDestination::Library { at } => {
             LibraryAgentPageDestination::Library { at: at.clone() }
         }
@@ -63,7 +91,7 @@ pub(super) fn create_page(
                     subgroup_key,
                 }) => {
                     if subgroup_key.is_some() {
-                        return Err(invalid("Page creation does not accept a subgroup"));
+                        return Err(invalid("Page placement does not accept a subgroup"));
                     }
                     Some(group_key.clone())
                 }
@@ -77,27 +105,7 @@ pub(super) fn create_page(
                 at: at.clone(),
             }
         }
-    };
-    super::agent_page_create::create_native_pages(
-        connection,
-        context,
-        store_epoch,
-        library_id,
-        operation_id,
-        request_hash,
-        &LibraryAgentCreatePagesRequest {
-            destination,
-            pages: vec![LibraryAgentCreatePageDraft {
-                title_markdown: title_markdown.to_owned(),
-                markdown: markdown.to_owned(),
-                values: Vec::new(),
-            }],
-            include_block_ids: true,
-            include_etags: true,
-        },
-        true,
-        Some(native_destination),
-    )
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -182,7 +190,7 @@ pub(super) fn move_page(
     request_hash: &str,
     page_id: &str,
     destination: &LibraryPageWriteDestination,
-    expected_etag: &str,
+    expected_etag: Option<&str>,
     assets_root: &Path,
 ) -> Result<LibraryApplyOutcome, StoreError> {
     move_page_in_scope(
@@ -194,7 +202,7 @@ pub(super) fn move_page(
         request_hash,
         page_id,
         destination,
-        Some(expected_etag),
+        expected_etag,
         assets_root,
         None,
     )
@@ -231,14 +239,7 @@ pub(crate) fn move_page_in_scope(
         Some(page_id),
         destination_authority,
     )?;
-    let validator_view_id = match &destination {
-        LibraryPageCopyDestination::DataSource { view, .. } => {
-            view.as_ref().map(|view| view.view_id.clone())
-        }
-        LibraryPageCopyDestination::Library { .. } | LibraryPageCopyDestination::Page { .. } => {
-            crate::database::default_page_move_view_id(connection, library_id, page_id)?
-        }
-    };
+    let validator_view_id = move_validator_view(connection, library_id, page_id, &destination)?;
     let current_etag = crate::database::mint_page_move_etag_prevalidated(
         connection,
         library_id,
@@ -247,10 +248,30 @@ pub(crate) fn move_page_in_scope(
         page_id,
         validator_view_id.as_deref(),
     )?;
-    if expected_etag
-        .is_some_and(|expected| !constant_time_equal(expected.as_bytes(), current_etag.as_bytes()))
-    {
-        return Err(conflict("Page move ETag changed"));
+    if let Some(expected) = expected_etag {
+        if let Some((_, label)) = expected.split_once(".destination.") {
+            let requested = destination_label(&destination);
+            let current = bind_move_etag(
+                connection,
+                project_id,
+                store_epoch,
+                page_id,
+                &current_etag,
+                &destination,
+            )?;
+            if !constant_time_equal(expected.as_bytes(), current.as_bytes()) {
+                let prepared = (label.len() <= MAX_ID_BYTES * 4)
+                    .then(|| hex::decode(label).ok())
+                    .flatten()
+                    .and_then(|label| String::from_utf8(label).ok());
+                return Err(conflict(format!(
+                    "Page move ETag prepared for {:?} does not match requested destination {requested:?} and its current placement",
+                    prepared.as_deref().unwrap_or("unknown destination")
+                )));
+            }
+        } else if !constant_time_equal(expected.as_bytes(), current_etag.as_bytes()) {
+            return Err(conflict("Page move ETag changed"));
+        }
     }
     let target = transfer_target(library_id, &destination)?;
     let intent = LibraryBlockTransferLogicalIntent {
@@ -287,6 +308,94 @@ pub(crate) fn move_page_in_scope(
         prepared,
         attached_scope,
     )
+}
+
+pub(super) fn prepare_move_to(
+    connection: &Connection,
+    library_id: &str,
+    project_id: Option<&str>,
+    store_epoch: &str,
+    page_id: &str,
+    destination: &LibraryPageWriteDestination,
+) -> Result<String, StoreError> {
+    let resolved = resolve_destination(
+        connection,
+        library_id,
+        destination,
+        Some(page_id),
+        DestinationAuthority {
+            actor_project_id: project_id,
+        },
+    )?;
+    let view = move_validator_view(connection, library_id, page_id, &resolved)?;
+    let base = crate::database::mint_page_move_etag_prevalidated(
+        connection,
+        library_id,
+        project_id,
+        store_epoch,
+        page_id,
+        view.as_deref(),
+    )?;
+    bind_move_etag(
+        connection,
+        project_id,
+        store_epoch,
+        page_id,
+        &base,
+        &resolved,
+    )
+}
+
+fn bind_move_etag(
+    connection: &Connection,
+    project_id: Option<&str>,
+    store_epoch: &str,
+    page_id: &str,
+    base_etag: &str,
+    destination: &LibraryPageCopyDestination,
+) -> Result<String, StoreError> {
+    let state = serde_json::to_value((base_etag, destination))
+        .map_err(|_| corrupt("Page move destination could not be encoded"))?;
+    let etag = crate::document::mint_etag(
+        connection,
+        "page_move_destination",
+        project_id,
+        store_epoch,
+        &[page_id],
+        state,
+    )
+    .map_err(super::page_projection::etag_error)?;
+    // Include the signed destination's readable identity for conflict diagnostics.
+    Ok(format!(
+        "{etag}.destination.{}",
+        hex::encode(destination_label(destination))
+    ))
+}
+
+fn destination_label(destination: &LibraryPageCopyDestination) -> String {
+    match destination {
+        LibraryPageCopyDestination::Library { .. } => "library".into(),
+        LibraryPageCopyDestination::Page { page_id, .. } => format!("page:{page_id}"),
+        LibraryPageCopyDestination::DataSource { data_source_id, .. } => {
+            format!("data_source:{data_source_id}")
+        }
+    }
+}
+
+fn move_validator_view(
+    connection: &Connection,
+    library_id: &str,
+    page_id: &str,
+    destination: &LibraryPageCopyDestination,
+) -> Result<Option<String>, StoreError> {
+    match destination {
+        LibraryPageCopyDestination::DataSource { view, .. } => {
+            Ok(view.as_ref().map(|view| view.view_id.clone()))
+        }
+        LibraryPageCopyDestination::Library { .. } | LibraryPageCopyDestination::Page { .. } => {
+            crate::database::default_page_move_view_id(connection, library_id, page_id)
+        }
+    }
 }
 
 fn read_source(

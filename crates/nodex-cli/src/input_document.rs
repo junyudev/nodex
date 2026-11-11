@@ -19,6 +19,7 @@ pub(crate) struct SuccessInput<T> {
     ok: bool,
     result: T,
 }
+#[cfg(test)]
 impl<T> InputDocument<T> {
     pub(crate) fn into_inner(self) -> T {
         match self {

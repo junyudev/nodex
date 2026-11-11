@@ -88,14 +88,17 @@ test("the real Desktop binds plain nodex to its connected Profile and task Proje
     expect(threadId, connection).toBeDefined();
     expect(connection).toContain("Run nodex for content work");
     expect(shellEnvironment?.PATH).toBeDefined();
-    const result = await exec("/bin/zsh", ["-lc", "nodex context"], {
-      cwd: harness.profile.runRoot,
-      env: {
-        ...shellEnvironment,
-        CODEX_THREAD_ID: threadId,
-        NODEX_HOME: "/unavailable/other-profile",
-      },
-    });
+    expect(connection).toContain("set_page_properties");
+    const run = (...args: string[]) =>
+      exec("/bin/zsh", ["-lc", 'exec nodex "$@"', "nodex", ...args], {
+        cwd: harness.profile.runRoot,
+        env: {
+          ...shellEnvironment,
+          CODEX_THREAD_ID: threadId,
+          NODEX_HOME: path.join(harness.profile.runRoot, "alternate-profile"),
+        },
+      });
+    const result = await run("context");
     const resolved = JSON.parse(result.stdout).result;
     expect(resolved.actor).toMatchObject({
       type: "agent",
@@ -106,6 +109,20 @@ test("the real Desktop binds plain nodex to its connected Profile and task Proje
     expect(resolved.profile.id).toBe(
       readCoreRuntimeConnection(harness.profile.nodexHome).descriptor.profile_id,
     );
+    const set = [
+      "page",
+      "properties",
+      "set",
+      manifest.pageIdsByKey.meeting!,
+      "--set",
+      "Status=done",
+      "--idempotency-key",
+      "gateway-status-done",
+    ];
+    const first = JSON.parse((await run(...set)).stdout).result;
+    expect(first.pages[0].values[0].after).toBe("done");
+    const replay = JSON.parse((await run(...set)).stdout).result;
+    expect(replay).toEqual({ ...first, status: "duplicate" });
     await page.getByRole("button", { name: "Stop", exact: true }).click();
   } finally {
     await testInfo.attach("requests", {

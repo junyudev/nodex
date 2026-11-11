@@ -786,6 +786,7 @@ fn apply_pages(
                         parent_revision: 1,
                     },
                     &now,
+                    crate::database::StatusEditOrigin::Person,
                 )?;
                 affected_database_ids.insert(placement.database_id.clone());
                 affected_view_ids.extend(placement.affected_view_ids.iter().cloned());
@@ -1002,7 +1003,22 @@ fn compile_resolved_preflight(
     let mut pages = Vec::with_capacity(request.pages.len());
     let mut created_roots = Vec::new();
     for (index, draft) in request.pages.iter().enumerate() {
-        validate_values(connection, &request.destination, &draft.values)?;
+        let values = match &request.destination {
+            LibraryAgentPageDestination::DataSource { data_source_id, .. } => {
+                crate::database::resolve_page_property_values(
+                    connection,
+                    data_source_id,
+                    &draft.values,
+                )?
+            }
+            _ if draft.values.is_empty() => Vec::new(),
+            _ => {
+                return Err(invalid(
+                    "Initial Property values require a Data Source destination",
+                ));
+            }
+        };
+        validate_values(connection, &request.destination, &values)?;
         let page_operation_id = format!("{operation_id}:page:{index}");
         let page_id = if single {
             stable_uuid_v7(operation_id, "page", &format!("{library_id}:semantic"))
@@ -1047,7 +1063,7 @@ fn compile_resolved_preflight(
             body_block_ids,
             primary_membership_id,
             target_membership_id,
-            destination: destination_with_values(&destination, &draft.values),
+            destination: destination_with_values(&destination, &values),
             genesis: Some(genesis),
         });
     }

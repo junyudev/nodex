@@ -1,3 +1,13 @@
+import type { z } from "zod";
+import {
+  type SetPagePropertiesV6InputSchema,
+  SetPagePropertiesV6OutputSchema,
+} from "../../shared/nodex-agent-tools/v6-schemas";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
+import type { ToolFailure } from "../../shared/nodex-agent-tools";
+import { nativeAgentClient } from "../core-client/native-nodex-agent-core";
+import { toCoreAgentExecutionAuthorization } from "../core-client/core-agent-execution-authorization";
+import { mapNativeNodexAgentCoreError } from "../core-client/native-nodex-agent-page-update";
 import type {
   NodexAgentPreparedPageUpdate,
   NodexAgentPageUpdateCommandResult,
@@ -121,6 +131,13 @@ export type NodexAgentPreparationResult =
     };
 
 export type NodexAgentApplicationCommand =
+  | {
+      readonly kind: "set_page_properties";
+      readonly input: z.output<typeof SetPagePropertiesV6InputSchema>;
+      readonly authority: NodexAgentTurnContext;
+      readonly operationId: string;
+      readonly callId: string;
+    }
   | { readonly kind: "document_mutation"; readonly request: NodexAgentPreparedPageUpdate }
   | {
       readonly kind: "create_pages";
@@ -131,6 +148,12 @@ export type NodexAgentApplicationCommand =
   | { readonly kind: "move_pages"; readonly command: NodexAgentMovePagesCommand };
 
 export type NodexAgentApplicationResult =
+  | {
+      readonly kind: "set_page_properties";
+      readonly value:
+        | { readonly ok: true; readonly output: z.input<typeof SetPagePropertiesV6OutputSchema> }
+        | { readonly ok: false; readonly error: ToolFailure["error"] };
+    }
   | {
       readonly kind: "document_mutation";
       readonly value: NodexAgentPageUpdateCommandResult;
@@ -516,6 +539,67 @@ export const live: Layer.Layer<
           }),
         ),
       apply: (command) => {
+        if (command.kind === "set_page_properties") {
+          return inMutationLane(
+            command.operationId,
+            useNative("nodexAgent.apply.setPageProperties", async (runtime, signal) => {
+              const { authority, operationId, callId, input } = command;
+              try {
+                const response = await nativeAgentClient(
+                  runtime,
+                  authority.actorProjectId,
+                ).databaseApply(
+                  {
+                    operationId,
+                    intent: [
+                      {
+                        kind: "set_page_properties",
+                        authorization: toCoreAgentExecutionAuthorization(
+                          runtime.identity.profileId,
+                          authority,
+                          callId,
+                        ),
+                        updates: input.updates.map((update) => ({
+                          page_ids: update.pageIds,
+                          values: update.values.map(({ propertyId, value }) => ({
+                            property_id: propertyId,
+                            value,
+                          })),
+                          expected_value_revisions: update.expectedValueRevisions,
+                        })),
+                      },
+                    ],
+                  },
+                  { signal },
+                );
+                const pages = (response.receipt.page_properties ?? []).map((page) => ({
+                  pageId: page.page_id,
+                  pageKey: page.page_key ?? null,
+                  dataSourceId: page.data_source_id,
+                  membershipRevision: page.membership_revision,
+                  values: page.values.map((value) => ({
+                    propertyId: value.property_id,
+                    before: value.before,
+                    after: value.after,
+                    valueRevision: value.value_revision,
+                  })),
+                }));
+                return {
+                  kind: command.kind,
+                  value: {
+                    ok: true,
+                    output: SetPagePropertiesV6OutputSchema.parse({ data: { pages } }),
+                  },
+                } as const;
+              } catch (error) {
+                return {
+                  kind: command.kind,
+                  value: { ok: false, error: mapNativeNodexAgentCoreError(error) },
+                } as const;
+              }
+            }),
+          );
+        }
         const mutationId =
           command.kind === "document_mutation"
             ? command.request.mutationId

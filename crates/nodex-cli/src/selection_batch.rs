@@ -61,8 +61,7 @@ pub(crate) fn prepare(args: &mut PrepareBatchArgs) -> Result<(), CliError> {
             "Only one of --selection and --values can read stdin",
         ));
     }
-    let selection =
-        crate::input::read_json::<SelectionInput>(&args.selection, "SQL selection")?.into_inner();
+    let selection = crate::input_document::read(&args.selection, "SQL selection")?;
     let values: BTreeMap<String, DatabasePropertyValueInput> = if let Some(path) = &args.values {
         crate::input::read_json(path, "Batch Property values")?
     } else {

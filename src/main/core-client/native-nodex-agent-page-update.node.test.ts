@@ -5,7 +5,10 @@ import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { UpdatePageV3InputSchema } from "../../shared/nodex-agent-tools/v3-write-schemas";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { CoreClient } from "./core-client";
-import { toCoreAgentExecutionAuthorization } from "./core-agent-execution-authorization";
+import {
+  toCoreAgentExecutionAuthorization,
+  toCoreAgentTurnProvenance,
+} from "./core-agent-execution-authorization";
 import {
   applyNativeNodexAgentPageUpdate,
   prepareNativeNodexAgentPageUpdate,
@@ -299,5 +302,66 @@ test("an Agent inserts and replaces Page content with Nodex Markdown", async () 
     });
     expect(replaced.result, JSON.stringify(replaced.result)).toMatchObject({ ok: true });
     expect((await read()).markdown).toBe("## Steps\n\n1. Export\n2. Import\n\nCosts $5.");
+  });
+});
+
+test("an admitted update_page commits body and Property values together and replays the receipt", async () => {
+  await withCoreScenario({ scenarioId: "agent/cli-workflow" }, async (context) => {
+    const { runtime, projectId, pageId, threadId, authority, read } = await agentPage(
+      context,
+      "retry-page-values",
+      "Original body",
+    );
+    const client = runtime.clientForProject(projectId);
+    const input = UpdatePageV3InputSchema.parse({
+      pageId,
+      body: { kind: "replace", ifMatch: (await read()).body_etag, markdown: "Revised body" },
+      return: ["markdown"],
+      values: [{ propertyId: "Status", value: "done" }],
+    });
+    const { operation_id: operationId } = await client.admitAppToolOperation({
+      tool_name: "update_page",
+      idempotency_key: "retry-page-values",
+      request_hash: "a".repeat(64),
+      provenance: toCoreAgentTurnProvenance(runtime.identity.profileId, authority),
+    });
+    const prepare = () =>
+      prepareNativeNodexAgentPageUpdate(runtime, {
+        projectId,
+        threadId,
+        callId: createUuidV7(),
+        authority,
+        operationId,
+        tool: "update_page",
+        input,
+      });
+    const first = await prepare();
+    if (
+      !first.result.result.ok ||
+      first.result.result.value.kind !== "prepared" ||
+      first.transition.kind !== "retain"
+    )
+      throw new Error(`Expected Page preparation: ${JSON.stringify(first.result)}`);
+    const applied = await applyNativeNodexAgentPageUpdate(
+      runtime,
+      first.transition.pending,
+      first.result.result.value.mutation,
+    );
+    if (!applied.result.ok || applied.transition.kind !== "retain")
+      throw new Error(`Expected committed Page values: ${JSON.stringify(applied.result)}`);
+    expect((await read()).markdown).toBe("Revised body");
+    const replay = (await prepare()).result.result;
+    expect(replay).toMatchObject({
+      ok: true,
+      value: {
+        kind: "completed",
+        output: {
+          data: {
+            body: { markdown: "Revised body" },
+            values: [{ propertyId: "status", after: "done" }],
+          },
+        },
+      },
+    });
   });
 });
