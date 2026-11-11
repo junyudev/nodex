@@ -131,7 +131,7 @@ const program = Effect.gen(function* () {
       }),
     );
     yield* Effect.tryPromise(() =>
-      writeHostStatus(coreHome, {
+      writeHostStatus(coreHome, coreExecutable, {
         state: "ready",
         running: true,
         instance,

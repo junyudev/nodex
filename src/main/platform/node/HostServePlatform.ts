@@ -1,10 +1,10 @@
 /* @effect-diagnostics asyncFunction:off newPromise:off preferSchemaOverJson:off globalTimers:off -- Bounded native lifecycle/filesystem work is a Node Adapter. */
 import { withoutAgentShell } from "./agent-shell-environment";
 import { spawn } from "node:child_process";
-import { lstat, open, realpath, rename, unlink, writeFile } from "node:fs/promises";
+import { lstat, open, realpath, rename, unlink } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { z } from "zod";
-import { verifyPrivatePaths } from "./private-filesystem";
+import { makePrivatePaths, verifyPrivatePaths } from "./private-filesystem";
 
 const configuration = z.strictObject({
   version: z.literal(1),
@@ -172,12 +172,20 @@ export async function openHostLease(input: {
 
 export async function writeHostStatus(
   coreHome: string,
+  coreExecutable: string,
   value: { readonly instance: string } & Readonly<Record<string, unknown>>,
 ): Promise<void> {
   const file = join(coreHome, "run/host.json");
   const pending = `${file}.${value.instance}.pending`;
+  const handle = await open(pending, "wx", 0o600);
   try {
-    await writeFile(pending, JSON.stringify(value), { mode: 0o600, flag: "wx" });
+    try {
+      if (process.platform === "win32")
+        await makePrivatePaths([{ path: pending, directory: false }], coreExecutable);
+      await handle.writeFile(JSON.stringify(value));
+    } finally {
+      await handle.close();
+    }
     await rename(pending, file);
   } finally {
     await unlink(pending).catch(() => undefined);

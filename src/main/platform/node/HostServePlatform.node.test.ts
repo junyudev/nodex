@@ -101,7 +101,8 @@ test("initialization prepares identity without listening and the native lease fe
     await replacement.closed;
     const old = instance();
     const current = instance();
-    await writeHostStatus(initialized.home, { instance: current, state: "starting" });
+    await writeHostStatus(initialized.home, core, { instance: current, state: "starting" });
+    await verifyHostSecrets(initialized.home, core, { running: false });
     await clearHostStatus(initialized.home, old);
     expect(JSON.parse(await readFile(join(initialized.home, "run/host.json"), "utf8"))).toEqual({
       instance: current,
