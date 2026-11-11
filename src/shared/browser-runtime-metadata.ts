@@ -3,13 +3,11 @@ import { BROWSER_RUNTIME_SCHEMA_VERSION as schemaVersion } from "./browser-runti
 export const BROWSER_RUNTIME_BUNDLE_DIRECTORY = "browser-runtime";
 export const BROWSER_RUNTIME_MANIFEST_FILENAME = "browser-runtime-manifest.json";
 export const BROWSER_RUNTIME_SCHEMA_VERSION = schemaVersion;
-const LEGACY_BROWSER_RUNTIME_SCHEMA_VERSION = 5;
-const RPC_BROWSER_RUNTIME_SCHEMA_VERSION = 6;
 export const BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION = "15.0";
 export const BROWSER_PLUGIN_NODE_MODULE_DIR = "marketplace/plugins/browser/node_modules";
 
 export type BrowserRuntimeArtifactArchitecture = "any" | "arm64" | "universal" | "x64";
-export type BrowserRuntimeArtifactKind = "data" | "executable" | "native-addon";
+export type BrowserRuntimeArtifactKind = "data" | "executable" | "native-addon" | "library";
 export type BrowserRuntimeBackend = "chrome" | "iab";
 
 export type BrowserRuntimeBundledPlugin = {
@@ -37,7 +35,6 @@ export type BrowserRuntimeComputerUseCapability =
       productMinimumMacOSVersion: typeof BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION;
       rpcService: string;
       serviceExecutable: string;
-      signingTeamId: string;
       status: "available";
     };
 
@@ -132,18 +129,20 @@ export type BrowserRuntimeNativePipCapability = {
   status: "available";
 };
 
-export type BrowserRuntimeChromeCapability =
+export type BrowserRuntimeChromeCapability<
+  HostTrust = {
+    artifactMinimumMacOSVersion: string;
+    productMinimumMacOSVersion: typeof BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION;
+  },
+> =
   | { reason: "not-bundled"; status: "unavailable" }
   | {
       extensionIds: string[];
       familyDescriptor: string;
       installManifest: string;
-      nativeHost: {
-        artifactMinimumMacOSVersion: string;
+      nativeHost: HostTrust & {
         hostName: "com.openai.codexextension";
         path: string;
-        productMinimumMacOSVersion: typeof BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION;
-        signingTeamId: string;
       };
       plugin: {
         id: "chrome@openai-bundled";
@@ -154,9 +153,9 @@ export type BrowserRuntimeChromeCapability =
       status: "available";
     };
 
-export type BrowserRuntimeBrowserUseCapability = {
+export type BrowserRuntimeBrowserUseCapability<Chrome = BrowserRuntimeChromeCapability> = {
   backends: {
-    chrome: BrowserRuntimeChromeCapability;
+    chrome: Chrome;
     iab: { status: "available" };
   };
 };
@@ -170,7 +169,7 @@ export type BrowserRuntimeArtifact = {
   size: number;
 };
 
-export type BrowserRuntimeManifest = {
+type BrowserRuntimeManifestCommon = {
   artifacts: BrowserRuntimeArtifact[];
   browserPlugin: {
     client: string;
@@ -184,36 +183,79 @@ export type BrowserRuntimeManifest = {
     service: string;
     version: string;
   };
+  buildFlavor: string;
+  codexCompatibilityVersion: string;
+  desktopBuild: string;
+  desktopBuildNumber: string;
+  schemaVersion: typeof BROWSER_RUNTIME_SCHEMA_VERSION;
+  supportedBackends: BrowserRuntimeBackend[];
+};
+
+type BrowserRuntimeEntrypoints = { codexCli: string; node: string; nodeRepl: string };
+type BrowserRuntimeVersions = { codexCli: string; cuaRuntime: string; node: string };
+
+export type MacBrowserRuntimeManifest = BrowserRuntimeManifestCommon & {
   capabilities: {
     browserUse: BrowserRuntimeBrowserUseCapability;
     computerUse: BrowserRuntimeComputerUseCapability;
     nativePip: BrowserRuntimeNativePipCapability;
   };
-  buildFlavor: string;
-  codexCompatibilityVersion: string;
-  desktopBuild: string;
-  desktopBuildNumber: string;
-  entrypoints: {
-    codexCli: string;
-    node: string;
-    nodeRepl: string;
-    peerAuthorization: string;
-  };
-  peerAuthorization: {
-    nodeApiVersion: string;
+  entrypoints: BrowserRuntimeEntrypoints & { peerAuthorization: string };
+  runtimeVersions: BrowserRuntimeVersions & { peerAuthorization: string };
+  targetArch: "arm64";
+  targetPlatform: "darwin";
+  trust: {
     signingTeamId: string;
+    nodeApiVersion: string;
+    computerUseSigningTeamId?: string;
+    chromeSigningTeamId?: string;
   };
-  runtimeVersions: {
-    codexCli: string;
-    cuaRuntime: string;
-    node: string;
-    peerAuthorization: string;
-  };
-  schemaVersion: typeof BROWSER_RUNTIME_SCHEMA_VERSION;
-  supportedBackends: BrowserRuntimeBackend[];
-  targetArch: "arm64" | "x64";
-  targetPlatform: "darwin" | "linux" | "win32";
 };
+
+export type WindowsBrowserRuntimeArch = "x64" | "arm64";
+export type WindowsAuthenticodePublisherPolicy = {
+  subject: string;
+  issuer: string;
+};
+export type WindowsBrowserRuntimePe = {
+  machine: WindowsBrowserRuntimeArch;
+  publisher: WindowsAuthenticodePublisherPolicy;
+};
+export type WindowsBrowserRuntimePackageIdentity = {
+  name: string;
+  publisher: string;
+  version: string;
+};
+export type WindowsBrowserRuntimeManifest = BrowserRuntimeManifestCommon & {
+  capabilities: {
+    browserUse: BrowserRuntimeBrowserUseCapability<BrowserRuntimeChromeCapability<unknown>>;
+    computerUse: {
+      plugin: BrowserRuntimeBundledPlugin;
+      serviceExecutable: string;
+      captureExecutable: string;
+      status: "available";
+    };
+    nativePip?: never;
+  };
+  entrypoints: BrowserRuntimeEntrypoints & { processEnumeration: string };
+  runtimeVersions: BrowserRuntimeVersions;
+  sourcePackage: WindowsBrowserRuntimePackageIdentity;
+  targetArch: WindowsBrowserRuntimeArch;
+  targetPlatform: "win32";
+  trust: { pe: Record<string, WindowsBrowserRuntimePe> };
+};
+
+export type BrowserRuntimeManifest = MacBrowserRuntimeManifest | WindowsBrowserRuntimeManifest;
+export type BrowserRuntimeTargetKey = "darwin-arm64" | "win32-x64" | "win32-arm64";
+
+export function browserRuntimeTargetKey(
+  platform: string,
+  arch: string,
+): BrowserRuntimeTargetKey | null {
+  if (platform === "darwin" && arch === "arm64") return "darwin-arm64";
+  if (platform === "win32" && (arch === "x64" || arch === "arm64")) return `win32-${arch}`;
+  return null;
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -223,6 +265,20 @@ export function isSafeBrowserRuntimeRelativePath(value: string): boolean {
   if (value.length === 0 || value.startsWith("/") || value.includes("\\")) return false;
   const segments = value.split("/");
   return segments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+}
+
+export function isSafeWindowsBrowserRuntimePath(value: string): boolean {
+  return (
+    isSafeBrowserRuntimeRelativePath(value) &&
+    value
+      .split("/")
+      .every(
+        (segment) =>
+          !/[<>:"|?*\x00-\x1f]/u.test(segment) &&
+          !/[. ]$/u.test(segment) &&
+          !/^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/iu.test(segment),
+      )
+  );
 }
 
 function parseNonEmptyString(value: unknown): string | null {
@@ -239,7 +295,7 @@ function parseArtifact(value: unknown): BrowserRuntimeArtifact | null {
     return null;
   if (typeof value.executable !== "boolean") return null;
   if (!["any", "arm64", "universal", "x64"].includes(String(value.architecture))) return null;
-  if (!["data", "executable", "native-addon"].includes(String(value.kind))) return null;
+  if (!["data", "executable", "native-addon", "library"].includes(String(value.kind))) return null;
 
   const kind = value.kind as BrowserRuntimeArtifactKind;
   if ((kind === "executable") !== value.executable) return null;
@@ -256,18 +312,15 @@ function parseArtifact(value: unknown): BrowserRuntimeArtifact | null {
   };
 }
 
-function parseEntrypoints(value: unknown): BrowserRuntimeManifest["entrypoints"] | null {
+function parseEntrypoints(value: unknown): BrowserRuntimeEntrypoints | null {
   if (!isObject(value)) return null;
   const codexCli = parseNonEmptyString(value.codexCli);
   const node = parseNonEmptyString(value.node);
   const nodeRepl = parseNonEmptyString(value.nodeRepl);
-  const peerAuthorization = parseNonEmptyString(value.peerAuthorization);
-  if (!codexCli || !node || !nodeRepl || !peerAuthorization) return null;
-  if (![codexCli, node, nodeRepl, peerAuthorization].every(isSafeBrowserRuntimeRelativePath)) {
-    return null;
-  }
-  if (new Set([codexCli, node, nodeRepl, peerAuthorization]).size !== 4) return null;
-  return { codexCli, node, nodeRepl, peerAuthorization };
+  if (!codexCli || !node || !nodeRepl) return null;
+  if (![codexCli, node, nodeRepl].every(isSafeBrowserRuntimeRelativePath)) return null;
+  if (new Set([codexCli, node, nodeRepl]).size !== 3) return null;
+  return { codexCli, node, nodeRepl };
 }
 
 function parseBrowserPlugin(value: unknown): BrowserRuntimeManifest["browserPlugin"] | null {
@@ -377,21 +430,14 @@ function hasExactStringArray(value: unknown, expected: readonly string[]): boole
   );
 }
 
-function parseNativePipCapability(
-  value: unknown,
-  schemaVersion: number,
-): BrowserRuntimeNativePipCapability | null {
-  if (!isObject(value)) return null;
-  const isLegacy = schemaVersion === LEGACY_BROWSER_RUNTIME_SCHEMA_VERSION;
+function parseNativePipCapability(value: unknown): BrowserRuntimeNativePipCapability | null {
   if (
-    isLegacy
-      ? value.minimumMacOSVersion !== "13.0"
-      : value.status !== "available" ||
-        value.artifactMinimumMacOSVersion !== "13.0" ||
-        value.productMinimumMacOSVersion !== BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION
-  ) {
+    !isObject(value) ||
+    value.status !== "available" ||
+    value.artifactMinimumMacOSVersion !== "13.0" ||
+    value.productMinimumMacOSVersion !== BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION
+  )
     return null;
-  }
   const addon = parseNonEmptyString(value.addon);
   if (!addon || !isSafeBrowserRuntimeRelativePath(addon)) return null;
   if (!Array.isArray(value.controlAssets) || value.controlAssets.length !== 2) return null;
@@ -404,28 +450,23 @@ function parseNativePipCapability(
   ) {
     return null;
   }
-  let expectedExports: string[];
-  if (isLegacy) {
-    expectedExports = [...BROWSER_RUNTIME_LEGACY_SKY_NATIVE_EXPORTS];
-  } else {
-    if (!isObject(value.exports) || !Array.isArray(value.exports.expectedExports)) return null;
-    expectedExports = value.exports.expectedExports.map((entry) =>
-      typeof entry === "string" ? entry : "",
-    );
-    if (
-      expectedExports.length === 0 ||
-      value.exports.expectedExportCount !== expectedExports.length ||
-      new Set(expectedExports).size !== expectedExports.length ||
-      !expectedExports.every((entry) => /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(entry)) ||
-      expectedExports.some((entry, index) => index > 0 && entry <= expectedExports[index - 1]!)
-    ) {
-      return null;
-    }
-    if (!isObject(value.exports.groups)) return null;
-    for (const [group, expected] of Object.entries(BROWSER_RUNTIME_NATIVE_PIP_EXPORT_GROUPS)) {
-      if (!hasExactStringArray(value.exports.groups[group], expected)) return null;
-      if (!expected.every((exportName) => expectedExports.includes(exportName))) return null;
-    }
+  if (!isObject(value.exports) || !Array.isArray(value.exports.expectedExports)) return null;
+  const expectedExports = value.exports.expectedExports.map((entry) =>
+    typeof entry === "string" ? entry : "",
+  );
+  if (
+    expectedExports.length === 0 ||
+    value.exports.expectedExportCount !== expectedExports.length ||
+    new Set(expectedExports).size !== expectedExports.length ||
+    !expectedExports.every((entry) => /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(entry)) ||
+    expectedExports.some((entry, index) => index > 0 && entry <= expectedExports[index - 1]!)
+  ) {
+    return null;
+  }
+  if (!isObject(value.exports.groups)) return null;
+  for (const [group, expected] of Object.entries(BROWSER_RUNTIME_NATIVE_PIP_EXPORT_GROUPS)) {
+    if (!hasExactStringArray(value.exports.groups[group], expected)) return null;
+    if (!expected.every((exportName) => expectedExports.includes(exportName))) return null;
   }
   return {
     addon,
@@ -441,41 +482,26 @@ function parseNativePipCapability(
   };
 }
 
-function parseComputerUseCapability(
-  value: unknown,
-  schemaVersion: number,
-): BrowserRuntimeComputerUseCapability | null {
+function parseComputerUseCapability(value: unknown): BrowserRuntimeComputerUseCapability | null {
   if (!isObject(value)) return null;
   if (value.status === "unavailable") {
     return value.reason === "architecture-unsupported"
       ? { reason: value.reason, status: value.status }
       : null;
   }
-  const isLegacy = schemaVersion === LEGACY_BROWSER_RUNTIME_SCHEMA_VERSION;
-  if (value.status !== "available") return null;
   if (
-    isLegacy
-      ? value.minimumMacOSVersion !== "14.4" || value.ipcProtocol !== "CodexComputerUseIPC-2"
-      : value.artifactMinimumMacOSVersion !== "14.4" ||
-        value.productMinimumMacOSVersion !== BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION ||
-        value.ipcProtocol !== "CodexComputerUseIPC-5"
-  ) {
+    value.status !== "available" ||
+    value.artifactMinimumMacOSVersion !== "14.4" ||
+    value.productMinimumMacOSVersion !== BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION ||
+    value.ipcProtocol !== "CodexComputerUseIPC-5"
+  )
     return null;
-  }
   const appBundle = parseNonEmptyString(value.appBundle);
   const appBundleIdentifier = parseNonEmptyString(value.appBundleIdentifier);
   const rpcService = parseNonEmptyString(value.rpcService);
   const serviceExecutable = parseNonEmptyString(value.serviceExecutable);
-  const signingTeamId = parseNonEmptyString(value.signingTeamId);
   const plugin = parseComputerUsePlugin(value.plugin);
-  if (
-    !appBundle ||
-    !appBundleIdentifier ||
-    !rpcService ||
-    !serviceExecutable ||
-    !signingTeamId ||
-    !plugin
-  ) {
+  if (!appBundle || !appBundleIdentifier || !rpcService || !serviceExecutable || !plugin) {
     return null;
   }
   if (![appBundle, rpcService, serviceExecutable].every(isSafeBrowserRuntimeRelativePath)) {
@@ -492,26 +518,14 @@ function parseComputerUseCapability(
     productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
     rpcService,
     serviceExecutable,
-    signingTeamId,
     status: value.status,
   };
 }
 
-function parseBrowserUseCapability(
+function parseBrowserUseCapability<HostTrust>(
   value: unknown,
-  supportedBackends: readonly BrowserRuntimeBackend[],
-  schemaVersion: number,
-): BrowserRuntimeBrowserUseCapability | null {
-  if (schemaVersion === LEGACY_BROWSER_RUNTIME_SCHEMA_VERSION) {
-    return supportedBackends.includes("iab")
-      ? {
-          backends: {
-            chrome: { reason: "not-bundled", status: "unavailable" },
-            iab: { status: "available" },
-          },
-        }
-      : null;
-  }
+  parseHostTrust: (value: Record<string, unknown>) => HostTrust | null,
+): BrowserRuntimeBrowserUseCapability<BrowserRuntimeChromeCapability<HostTrust>> | null {
   if (!isObject(value) || !isObject(value.backends)) return null;
   if (!isObject(value.backends.iab) || value.backends.iab.status !== "available") return null;
   const chrome = value.backends.chrome;
@@ -534,26 +548,19 @@ function parseBrowserUseCapability(
   const familyDescriptor = parseNonEmptyString(chrome.familyDescriptor);
   const installManifest = parseNonEmptyString(chrome.installManifest);
   const nativeHostPath = parseNonEmptyString(chrome.nativeHost.path);
-  const signingTeamId = parseNonEmptyString(chrome.nativeHost.signingTeamId);
-  const artifactMinimumMacOSVersion = parseNonEmptyString(
-    chrome.nativeHost.artifactMinimumMacOSVersion,
-  );
+  const hostTrust = parseHostTrust(chrome.nativeHost);
   if (
     chrome.plugin.id !== "chrome@openai-bundled" ||
     chrome.nativeHost.hostName !== "com.openai.codexextension" ||
-    chrome.nativeHost.productMinimumMacOSVersion !==
-      BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION ||
     !pluginRoot ||
     !pluginManifest ||
     !pluginVersion ||
     !familyDescriptor ||
     !installManifest ||
     !nativeHostPath ||
-    !signingTeamId ||
-    !artifactMinimumMacOSVersion
-  ) {
+    !hostTrust
+  )
     return null;
-  }
   const ownedPaths = [
     pluginRoot,
     pluginManifest,
@@ -585,11 +592,9 @@ function parseBrowserUseCapability(
         familyDescriptor,
         installManifest,
         nativeHost: {
-          artifactMinimumMacOSVersion,
+          ...hostTrust,
           hostName: chrome.nativeHost.hostName,
           path: nativeHostPath,
-          productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
-          signingTeamId,
         },
         plugin: {
           id: chrome.plugin.id,
@@ -604,24 +609,13 @@ function parseBrowserUseCapability(
   };
 }
 
-function parseRuntimeVersions(value: unknown): BrowserRuntimeManifest["runtimeVersions"] | null {
+function parseRuntimeVersions(value: unknown): BrowserRuntimeVersions | null {
   if (!isObject(value)) return null;
   const codexCli = parseNonEmptyString(value.codexCli);
   const cuaRuntime = parseNonEmptyString(value.cuaRuntime);
   const node = parseNonEmptyString(value.node);
-  const peerAuthorization = parseNonEmptyString(value.peerAuthorization);
-  if (!codexCli || !cuaRuntime || !node || !peerAuthorization) return null;
-  return { codexCli, cuaRuntime, node, peerAuthorization };
-}
-
-function parsePeerAuthorization(
-  value: unknown,
-): BrowserRuntimeManifest["peerAuthorization"] | null {
-  if (!isObject(value)) return null;
-  const nodeApiVersion = parseNonEmptyString(value.nodeApiVersion);
-  const signingTeamId = parseNonEmptyString(value.signingTeamId);
-  if (!nodeApiVersion || !signingTeamId) return null;
-  return { nodeApiVersion, signingTeamId };
+  if (!codexCli || !cuaRuntime || !node) return null;
+  return { codexCli, cuaRuntime, node };
 }
 
 function parseSupportedBackends(value: unknown): BrowserRuntimeBackend[] | null {
@@ -633,19 +627,11 @@ function parseSupportedBackends(value: unknown): BrowserRuntimeBackend[] | null 
 }
 
 export function parseBrowserRuntimeManifest(value: unknown): BrowserRuntimeManifest | null {
-  if (!isObject(value)) return null;
-  if (
-    value.schemaVersion !== BROWSER_RUNTIME_SCHEMA_VERSION &&
-    value.schemaVersion !== LEGACY_BROWSER_RUNTIME_SCHEMA_VERSION &&
-    value.schemaVersion !== RPC_BROWSER_RUNTIME_SCHEMA_VERSION
-  ) {
-    return null;
-  }
-  const sourceSchemaVersion = value.schemaVersion;
-  if (value.targetArch !== "arm64" && value.targetArch !== "x64") return null;
-  if (!["darwin", "linux", "win32"].includes(String(value.targetPlatform))) return null;
-  if (value.targetPlatform === "darwin" && value.targetArch !== "arm64") return null;
-
+  if (!isObject(value) || value.schemaVersion !== BROWSER_RUNTIME_SCHEMA_VERSION) return null;
+  const { targetArch, targetPlatform } = value;
+  if (targetArch !== "arm64" && targetArch !== "x64") return null;
+  if (targetPlatform !== "darwin" && targetPlatform !== "win32") return null;
+  if (targetPlatform === "darwin" && targetArch !== "arm64") return null;
   const desktopBuild = parseNonEmptyString(value.desktopBuild);
   const desktopBuildNumber = parseNonEmptyString(value.desktopBuildNumber);
   const buildFlavor = parseNonEmptyString(value.buildFlavor);
@@ -654,135 +640,245 @@ export function parseBrowserRuntimeManifest(value: unknown): BrowserRuntimeManif
     return null;
 
   if (!Array.isArray(value.artifacts)) return null;
-  const artifacts = value.artifacts.map(parseArtifact);
-  if (artifacts.some((artifact) => artifact === null)) return null;
-  const parsedArtifacts = artifacts as BrowserRuntimeArtifact[];
-  const artifactsByPath = new Map(parsedArtifacts.map((artifact) => [artifact.path, artifact]));
-  if (artifactsByPath.size !== parsedArtifacts.length) return null;
+  const artifacts = value.artifacts.map(parseArtifact).filter((artifact) => artifact !== null);
+  if (artifacts.length !== value.artifacts.length) return null;
+  const index = new Map(artifacts.map((artifact) => [artifact.path, artifact]));
+  if (index.size !== artifacts.length) return null;
 
   const entrypoints = parseEntrypoints(value.entrypoints);
   const browserPlugin = parseBrowserPlugin(value.browserPlugin);
   const supportedBackends = parseSupportedBackends(value.supportedBackends);
-  if (!supportedBackends) return null;
-  const capabilities = isObject(value.capabilities)
-    ? {
-        browserUse: parseBrowserUseCapability(
-          value.capabilities.browserUse,
-          supportedBackends,
-          sourceSchemaVersion,
-        ),
-        computerUse: parseComputerUseCapability(
-          value.capabilities.computerUse,
-          sourceSchemaVersion,
-        ),
-        nativePip: parseNativePipCapability(value.capabilities.nativePip, sourceSchemaVersion),
-      }
-    : null;
-  const peerAuthorization = parsePeerAuthorization(value.peerAuthorization);
   const runtimeVersions = parseRuntimeVersions(value.runtimeVersions);
   if (
     !entrypoints ||
     !browserPlugin ||
-    !capabilities?.browserUse ||
-    !capabilities.computerUse ||
-    !capabilities.nativePip ||
-    !peerAuthorization ||
+    !supportedBackends ||
     !runtimeVersions ||
-    !supportedBackends
+    !isObject(value.capabilities) ||
+    !isObject(value.entrypoints) ||
+    !isObject(value.runtimeVersions) ||
+    !isObject(value.trust)
   )
     return null;
 
-  const targetArch = value.targetArch;
-  const isCompatibleBinary = (artifact: BrowserRuntimeArtifact | undefined): boolean =>
-    artifact !== undefined &&
-    (artifact.architecture === targetArch || artifact.architecture === "universal");
-  const codexCli = artifactsByPath.get(entrypoints.codexCli);
-  const node = artifactsByPath.get(entrypoints.node);
-  const nodeRepl = artifactsByPath.get(entrypoints.nodeRepl);
-  const peerAddon = artifactsByPath.get(entrypoints.peerAuthorization);
+  const compatible = (name: string, kind: BrowserRuntimeArtifactKind): boolean => {
+    const artifact = index.get(name);
+    return (
+      artifact?.kind === kind &&
+      (artifact.architecture === targetArch ||
+        (targetPlatform === "darwin" && artifact.architecture === "universal"))
+    );
+  };
   if (
-    !isCompatibleBinary(codexCli) ||
-    codexCli?.kind !== "executable" ||
-    !isCompatibleBinary(node) ||
-    node?.kind !== "executable" ||
-    nodeRepl?.kind !== "executable" ||
+    !compatible(entrypoints.codexCli, "executable") ||
+    !compatible(entrypoints.node, "executable") ||
     !(
-      nodeRepl.architecture === "any" ||
-      nodeRepl.architecture === targetArch ||
-      nodeRepl.architecture === "universal"
-    ) ||
-    !isCompatibleBinary(peerAddon) ||
-    peerAddon?.kind !== "native-addon"
-  ) {
-    return null;
-  }
-
-  const pluginArtifacts = [
-    artifactsByPath.get(browserPlugin.manifest),
-    artifactsByPath.get(browserPlugin.client),
-    artifactsByPath.get(browserPlugin.service),
-    artifactsByPath.get(browserPlugin.docs),
-    artifactsByPath.get(browserPlugin.marketplaceManifest),
-  ];
-  if (pluginArtifacts.some((artifact) => artifact?.kind !== "data")) return null;
-
-  const chrome = capabilities.browserUse.backends.chrome;
-  if (chrome.status === "available") {
-    const chromeArtifacts = [
-      artifactsByPath.get(chrome.plugin.manifest),
-      artifactsByPath.get(chrome.familyDescriptor),
-      artifactsByPath.get(chrome.installManifest),
-    ];
-    if (chromeArtifacts.some((artifact) => artifact?.kind !== "data")) return null;
-    const nativeHost = artifactsByPath.get(chrome.nativeHost.path);
-    if (!isCompatibleBinary(nativeHost) || nativeHost?.kind !== "executable") return null;
-    if (!supportedBackends.includes("chrome")) return null;
-  } else if (supportedBackends.includes("chrome")) {
-    return null;
-  }
-
-  const nativePipAddon = artifactsByPath.get(capabilities.nativePip.addon);
-  if (!isCompatibleBinary(nativePipAddon) || nativePipAddon?.kind !== "native-addon") return null;
-  if (
-    capabilities.nativePip.controlAssets.some(
-      (assetPath) => artifactsByPath.get(assetPath)?.kind !== "data",
+      compatible(entrypoints.nodeRepl, "executable") ||
+      (targetPlatform === "darwin" &&
+        index.get(entrypoints.nodeRepl)?.kind === "executable" &&
+        index.get(entrypoints.nodeRepl)?.architecture === "any")
     )
-  ) {
+  )
     return null;
-  }
 
-  if (capabilities.computerUse.status === "available") {
-    if (targetArch !== "arm64" || value.targetPlatform !== "darwin") return null;
-    const computerUseArtifacts = [
-      artifactsByPath.get(capabilities.computerUse.plugin.manifest),
-      artifactsByPath.get(capabilities.computerUse.plugin.docs),
-      artifactsByPath.get(capabilities.computerUse.plugin.marketplaceManifest),
-      artifactsByPath.get(capabilities.computerUse.rpcService),
-      artifactsByPath.get(capabilities.computerUse.serviceExecutable),
-    ];
-    if (computerUseArtifacts.some((artifact) => artifact === undefined)) return null;
-    if (computerUseArtifacts.slice(0, 3).some((artifact) => artifact?.kind !== "data")) return null;
-    if (computerUseArtifacts[3]?.kind !== "data") return null;
-    if (computerUseArtifacts[4]?.kind !== "executable") return null;
-  }
-  return {
-    artifacts: parsedArtifacts,
+  const hasData = (...names: string[]) => names.every((name) => index.get(name)?.kind === "data");
+  if (
+    !hasData(
+      browserPlugin.manifest,
+      browserPlugin.client,
+      browserPlugin.service,
+      browserPlugin.docs,
+      browserPlugin.marketplaceManifest,
+    )
+  )
+    return null;
+  const hasPlugin = (plugin: BrowserRuntimeBundledPlugin) =>
+    hasData(plugin.manifest, plugin.docs, plugin.marketplaceManifest);
+  const hasChrome = (
+    browserUse: BrowserRuntimeBrowserUseCapability<BrowserRuntimeChromeCapability<unknown>>,
+  ) => {
+    const chrome = browserUse.backends.chrome;
+    return chrome.status === "available"
+      ? supportedBackends.includes("chrome") &&
+          hasData(chrome.plugin.manifest, chrome.familyDescriptor, chrome.installManifest) &&
+          compatible(chrome.nativeHost.path, "executable")
+      : !supportedBackends.includes("chrome");
+  };
+  const common = {
+    artifacts,
     browserPlugin,
     buildFlavor,
-    capabilities: {
-      browserUse: capabilities.browserUse,
-      computerUse: capabilities.computerUse,
-      nativePip: capabilities.nativePip,
-    },
     codexCompatibilityVersion,
     desktopBuild,
     desktopBuildNumber,
-    entrypoints,
-    peerAuthorization,
-    runtimeVersions,
     schemaVersion: BROWSER_RUNTIME_SCHEMA_VERSION,
-    supportedBackends: chrome.status === "available" ? ["iab", "chrome"] : ["iab"],
-    targetArch,
-    targetPlatform: value.targetPlatform as BrowserRuntimeManifest["targetPlatform"],
+    supportedBackends,
   };
+
+  if (targetPlatform === "win32") {
+    const browserUse = parseBrowserUseCapability(value.capabilities.browserUse, () => ({}));
+    const computerUse = parseWindowsComputerUse(value.capabilities.computerUse);
+    const sourcePackage = parseWindowsBrowserRuntimePackageIdentity(value.sourcePackage);
+    const processEnumeration = parseNonEmptyString(value.entrypoints.processEnumeration);
+    const pe = parseWindowsPeTrust(value.trust.pe, artifacts, targetArch);
+    if (
+      "nativePip" in value.capabilities ||
+      "peerAuthorization" in value.entrypoints ||
+      "peerAuthorization" in value.runtimeVersions ||
+      Object.keys(value.trust).length !== 1 ||
+      !pe ||
+      !sourcePackage ||
+      !browserUse ||
+      !hasChrome(browserUse) ||
+      !processEnumeration ||
+      !compatible(processEnumeration, "native-addon") ||
+      !computerUse ||
+      !hasPlugin(computerUse.plugin) ||
+      !compatible(computerUse.serviceExecutable, "executable") ||
+      !compatible(computerUse.captureExecutable, "executable") ||
+      [...browserPlugin.nodeModuleDirs, ...computerUse.plugin.nodeModuleDirs].some(
+        (directory) =>
+          !isSafeWindowsBrowserRuntimePath(directory) ||
+          !artifacts.some((artifact) => artifact.path.startsWith(`${directory}/`)),
+      )
+    )
+      return null;
+    return {
+      ...common,
+      capabilities: { browserUse, computerUse },
+      sourcePackage,
+      entrypoints: { ...entrypoints, processEnumeration },
+      runtimeVersions,
+      targetArch,
+      targetPlatform,
+      trust: { pe },
+    };
+  }
+
+  const browserUse = parseBrowserUseCapability(value.capabilities.browserUse, (host) => {
+    const artifactMinimumMacOSVersion = parseNonEmptyString(host.artifactMinimumMacOSVersion);
+    return artifactMinimumMacOSVersion &&
+      host.productMinimumMacOSVersion === BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION
+      ? {
+          artifactMinimumMacOSVersion,
+          productMinimumMacOSVersion:
+            BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION as typeof BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
+        }
+      : null;
+  });
+  const computerUse = parseComputerUseCapability(value.capabilities.computerUse);
+  const nativePip = parseNativePipCapability(value.capabilities.nativePip);
+  const peerAddon = parseNonEmptyString(value.entrypoints.peerAuthorization);
+  const peerAuthorization = parseNonEmptyString(value.runtimeVersions.peerAuthorization);
+  const signingTeamId = parseNonEmptyString(value.trust.signingTeamId);
+  const nodeApiVersion = parseNonEmptyString(value.trust.nodeApiVersion);
+  const computerUseSigningTeamId = parseNonEmptyString(value.trust.computerUseSigningTeamId);
+  const chromeSigningTeamId = parseNonEmptyString(value.trust.chromeSigningTeamId);
+  if (
+    !browserUse ||
+    !hasChrome(browserUse) ||
+    !computerUse ||
+    !nativePip ||
+    !peerAddon ||
+    !compatible(peerAddon, "native-addon") ||
+    !peerAuthorization ||
+    !signingTeamId ||
+    !nodeApiVersion ||
+    !compatible(nativePip.addon, "native-addon") ||
+    !hasData(...nativePip.controlAssets)
+  )
+    return null;
+  if (browserUse.backends.chrome.status === "available" && !chromeSigningTeamId) return null;
+  if (
+    computerUse.status === "available" &&
+    (!computerUseSigningTeamId ||
+      !hasPlugin(computerUse.plugin) ||
+      !hasData(computerUse.rpcService) ||
+      index.get(computerUse.serviceExecutable)?.kind !== "executable")
+  )
+    return null;
+  return {
+    ...common,
+    capabilities: { browserUse, computerUse, nativePip },
+    entrypoints: { ...entrypoints, peerAuthorization: peerAddon },
+    runtimeVersions: { ...runtimeVersions, peerAuthorization },
+    targetArch: "arm64",
+    targetPlatform,
+    trust: {
+      signingTeamId,
+      nodeApiVersion,
+      ...(computerUseSigningTeamId ? { computerUseSigningTeamId } : {}),
+      ...(chromeSigningTeamId ? { chromeSigningTeamId } : {}),
+    },
+  };
+}
+
+export function parseWindowsBrowserRuntimePackageIdentity(
+  value: unknown,
+): WindowsBrowserRuntimePackageIdentity | null {
+  if (!isObject(value)) return null;
+  const name = parseNonEmptyString(value.name);
+  const publisher = parseNonEmptyString(value.publisher);
+  const version = parseNonEmptyString(value.version);
+  return name && publisher && version && /^\d+(?:\.\d+){3}$/u.test(version)
+    ? { name, publisher, version }
+    : null;
+}
+
+function parseWindowsComputerUse(
+  value: unknown,
+): WindowsBrowserRuntimeManifest["capabilities"]["computerUse"] | null {
+  if (!isObject(value) || value.status !== "available") return null;
+  const plugin = parseComputerUsePlugin(value.plugin);
+  const serviceExecutable = parseNonEmptyString(value.serviceExecutable);
+  const captureExecutable = parseNonEmptyString(value.captureExecutable);
+  if (
+    !plugin ||
+    !serviceExecutable ||
+    !captureExecutable ||
+    serviceExecutable === captureExecutable
+  )
+    return null;
+  return { status: "available", plugin, serviceExecutable, captureExecutable };
+}
+
+function parseWindowsPeTrust(
+  value: unknown,
+  artifacts: readonly BrowserRuntimeArtifact[],
+  arch: WindowsBrowserRuntimeArch,
+): Record<string, WindowsBrowserRuntimePe> | null {
+  if (!isObject(value)) return null;
+  const pe = new Map<string, WindowsBrowserRuntimePe>();
+  const spellings = new Map<string, string>();
+  const files = new Set(artifacts.map((artifact) => artifact.path));
+  for (const artifact of artifacts) {
+    if (!isSafeWindowsBrowserRuntimePath(artifact.path)) return null;
+    let prefix = "";
+    for (const segment of artifact.path.split("/")) {
+      prefix = prefix ? `${prefix}/${segment}` : segment;
+      const key = prefix.toLowerCase();
+      const prior = spellings.get(key);
+      if ((prior && prior !== prefix) || (prefix !== artifact.path && files.has(prefix)))
+        return null;
+      spellings.set(key, prefix);
+    }
+    if (artifact.kind === "data") {
+      if (/\.(exe|dll|node)$/iu.test(artifact.path)) return null;
+      continue;
+    }
+    const entry = value[artifact.path];
+    if (
+      !isObject(entry) ||
+      !isObject(entry.publisher) ||
+      entry.machine !== arch ||
+      artifact.architecture !== arch ||
+      Object.keys(entry.publisher).length !== 2
+    )
+      return null;
+    const subject = parseNonEmptyString(entry.publisher.subject);
+    const issuer = parseNonEmptyString(entry.publisher.issuer);
+    if (!subject || !issuer) return null;
+    pe.set(artifact.path, { machine: arch, publisher: { subject, issuer } });
+  }
+  return pe.size === Object.keys(value).length ? Object.fromEntries(pe) : null;
 }

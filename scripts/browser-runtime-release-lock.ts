@@ -1,31 +1,52 @@
+import type { AppServerRuntimeIdentity } from "../src/shared/browser-app-server-compatibility";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-export type BrowserRuntimeTargetPlatform = "darwin";
-export type BrowserRuntimeTargetArch = "arm64";
-export type BrowserRuntimeTargetKey = `${BrowserRuntimeTargetPlatform}-${BrowserRuntimeTargetArch}`;
+import {
+  parseWindowsBrowserRuntimePackageIdentity,
+  type BrowserRuntimeTargetKey,
+  type WindowsBrowserRuntimePackageIdentity,
+} from "../src/shared/browser-runtime-metadata";
 
-export type BrowserRuntimeReleaseAsset = {
+export type { BrowserRuntimeTargetKey };
+export type BrowserRuntimeTargetPlatform = "darwin" | "win32";
+export type BrowserRuntimeTargetArch = "arm64" | "x64";
+
+type BrowserRuntimeReleaseAssetCommon = {
   archiveSha256: string;
   archiveSize: number;
   assetName: string;
   manifestSha256: string;
-  runtimeVersions: {
-    codexCli: string;
-    cuaRuntime: string;
-    node: string;
-    peerAuthorization: string;
-  };
-  url: string;
+  url: string | null;
 };
+type RuntimeVersions = { codexCli: string; cuaRuntime: string; node: string };
+
+type MacBrowserRuntimeReleaseAsset = BrowserRuntimeReleaseAssetCommon & {
+  runtimeVersions: RuntimeVersions & { peerAuthorization: string };
+  archiveManifestSha256?: string;
+  sourcePackage?: never;
+};
+export type WindowsBrowserRuntimeReleaseAsset = BrowserRuntimeReleaseAssetCommon & {
+  appServer: AppServerRuntimeIdentity;
+  runtimeVersions: RuntimeVersions;
+  sourcePackage: WindowsBrowserRuntimePackageIdentity;
+  archiveManifestSha256?: never;
+};
+export type BrowserRuntimeReleaseAsset =
+  | MacBrowserRuntimeReleaseAsset
+  | WindowsBrowserRuntimeReleaseAsset;
 
 export type BrowserRuntimeReleaseLock = {
-  assets: Record<BrowserRuntimeTargetKey, BrowserRuntimeReleaseAsset>;
+  assets: {
+    "darwin-arm64": MacBrowserRuntimeReleaseAsset;
+    "win32-arm64": WindowsBrowserRuntimeReleaseAsset;
+    "win32-x64": WindowsBrowserRuntimeReleaseAsset;
+  };
   browserPluginVersion: string;
   codexCompatibilityVersion: string;
   repository: string;
   runtimeFamily: "browser";
-  schemaVersion: 1;
+  schemaVersion: 2;
   source: {
     buildNumber: string;
     desktopBuild: string;
@@ -35,7 +56,11 @@ export type BrowserRuntimeReleaseLock = {
 };
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
-const EXPECTED_TARGET_KEYS = ["darwin-arm64"] as const;
+export const BROWSER_RUNTIME_RELEASE_TARGETS = [
+  "darwin-arm64",
+  "win32-arm64",
+  "win32-x64",
+] as const;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -62,10 +87,7 @@ function requireAssetName(value: unknown, label: string): string {
   return parsed;
 }
 
-function parseRuntimeVersions(
-  value: unknown,
-  label: string,
-): BrowserRuntimeReleaseAsset["runtimeVersions"] {
+function parseRuntimeVersions(value: unknown, label: string): RuntimeVersions {
   if (!isObject(value)) {
     throw new Error(`Invalid Browser runtime release lock ${label}`);
   }
@@ -73,34 +95,100 @@ function parseRuntimeVersions(
     codexCli: requireString(value.codexCli, `${label}.codexCli`),
     cuaRuntime: requireString(value.cuaRuntime, `${label}.cuaRuntime`),
     node: requireString(value.node, `${label}.node`),
-    peerAuthorization: requireString(value.peerAuthorization, `${label}.peerAuthorization`),
   };
 }
 
-function parseAsset(value: unknown, label: string): BrowserRuntimeReleaseAsset {
+function parseAsset(value: unknown, target: "darwin-arm64"): MacBrowserRuntimeReleaseAsset;
+function parseAsset(
+  value: unknown,
+  target: "win32-x64" | "win32-arm64",
+): WindowsBrowserRuntimeReleaseAsset;
+function parseAsset(value: unknown, target: BrowserRuntimeTargetKey): BrowserRuntimeReleaseAsset {
+  const label = `assets.${target}`;
   if (!isObject(value)) {
     throw new Error(`Invalid Browser runtime release lock ${label}`);
   }
   if (!Number.isSafeInteger(value.archiveSize) || (value.archiveSize as number) <= 0) {
     throw new Error(`Invalid Browser runtime release lock ${label}.archiveSize`);
   }
-  const url = requireString(value.url, `${label}.url`);
-  const parsedUrl = new URL(url);
-  if (parsedUrl.protocol !== "https:") {
+  const url = value.url === null ? null : requireString(value.url, `${label}.url`);
+  if (url !== null && !url.startsWith("https://")) {
     throw new Error(`Invalid Browser runtime release lock ${label}.url`);
   }
-  return {
+  const common = {
     archiveSha256: requireSha256(value.archiveSha256, `${label}.archiveSha256`),
     archiveSize: value.archiveSize as number,
     assetName: requireAssetName(value.assetName, `${label}.assetName`),
     manifestSha256: requireSha256(value.manifestSha256, `${label}.manifestSha256`),
-    runtimeVersions: parseRuntimeVersions(value.runtimeVersions, `${label}.runtimeVersions`),
     url,
   };
+  const runtimeVersions = parseRuntimeVersions(value.runtimeVersions, `${label}.runtimeVersions`);
+  if (!isObject(value.runtimeVersions))
+    throw new Error(`Invalid Browser runtime versions: ${label}`);
+  if (target === "darwin-arm64") {
+    if ("sourcePackage" in value) throw new Error(`Invalid macOS package metadata: ${label}`);
+    return {
+      ...common,
+      runtimeVersions: {
+        ...runtimeVersions,
+        peerAuthorization: requireString(
+          value.runtimeVersions.peerAuthorization,
+          `${label}.runtimeVersions.peerAuthorization`,
+        ),
+      },
+      ...(value.archiveManifestSha256 === undefined
+        ? {}
+        : {
+            archiveManifestSha256: requireSha256(
+              value.archiveManifestSha256,
+              `${label}.archiveManifestSha256`,
+            ),
+          }),
+    };
+  }
+  const sourcePackage = parseWindowsBrowserRuntimePackageIdentity(value.sourcePackage);
+  if (
+    !sourcePackage ||
+    "archiveManifestSha256" in value ||
+    "peerAuthorization" in value.runtimeVersions
+  ) {
+    throw new Error(`Invalid Windows package metadata: ${label}`);
+  }
+  if (!isObject(value.appServer)) throw new Error(`Missing app-server identity: ${label}`);
+  const targetArch = target === "win32-arm64" ? "arm64" : "x64";
+  const sourceCommit = requireString(
+    value.appServer.sourceCommit,
+    `${label}.appServer.sourceCommit`,
+  );
+  if (
+    !/^[a-f0-9]{40}$/u.test(sourceCommit) ||
+    value.appServer.targetPlatform !== "win32" ||
+    value.appServer.targetArch !== targetArch
+  ) {
+    throw new Error(`Invalid app-server identity: ${label}`);
+  }
+  const appServer = {
+    entrypointSha256: requireSha256(
+      value.appServer.entrypointSha256,
+      `${label}.appServer.entrypointSha256`,
+    ),
+    protocolSchemaFingerprint: requireSha256(
+      value.appServer.protocolSchemaFingerprint,
+      `${label}.appServer.protocolSchemaFingerprint`,
+    ),
+    runtimeVersion: requireString(
+      value.appServer.runtimeVersion,
+      `${label}.appServer.runtimeVersion`,
+    ),
+    sourceCommit,
+    targetArch,
+    targetPlatform: "win32",
+  };
+  return { ...common, runtimeVersions, sourcePackage, appServer };
 }
 
 export function parseBrowserRuntimeReleaseLock(value: unknown): BrowserRuntimeReleaseLock {
-  if (!isObject(value) || value.schemaVersion !== 1 || value.runtimeFamily !== "browser") {
+  if (!isObject(value) || value.schemaVersion !== 2 || value.runtimeFamily !== "browser") {
     throw new Error("Invalid Browser runtime release lock header");
   }
   if (!isObject(value.source) || value.source.product !== "chatgpt-desktop") {
@@ -110,8 +198,10 @@ export function parseBrowserRuntimeReleaseLock(value: unknown): BrowserRuntimeRe
     throw new Error("Invalid Browser runtime release lock assets");
   }
   const actualTargetKeys = Object.keys(value.assets).sort();
-  if (JSON.stringify(actualTargetKeys) !== JSON.stringify(EXPECTED_TARGET_KEYS)) {
-    throw new Error("Browser runtime release lock must contain exactly darwin-arm64 asset");
+  if (JSON.stringify(actualTargetKeys) !== JSON.stringify(BROWSER_RUNTIME_RELEASE_TARGETS)) {
+    throw new Error(
+      "Browser runtime release lock must contain exactly darwin-arm64, win32-arm64 and win32-x64 assets",
+    );
   }
 
   const repository = requireString(value.repository, "repository");
@@ -122,15 +212,22 @@ export function parseBrowserRuntimeReleaseLock(value: unknown): BrowserRuntimeRe
   if (!/^[A-Za-z0-9._-]+$/u.test(tag)) {
     throw new Error("Invalid Browser runtime release lock tag");
   }
+  const desktopBuild = requireString(value.source.desktopBuild, "source.desktopBuild");
   const assets = {
-    "darwin-arm64": parseAsset(value.assets["darwin-arm64"], "assets.darwin-arm64"),
+    "darwin-arm64": parseAsset(value.assets["darwin-arm64"], "darwin-arm64"),
+    "win32-arm64": parseAsset(value.assets["win32-arm64"], "win32-arm64"),
+    "win32-x64": parseAsset(value.assets["win32-x64"], "win32-x64"),
   };
-  for (const targetKey of EXPECTED_TARGET_KEYS) {
-    const asset = assets[targetKey];
-    const expectedUrl = `https://github.com/${repository}/releases/download/${tag}/${asset.assetName}`;
-    if (asset.url !== expectedUrl) {
+  for (const target of BROWSER_RUNTIME_RELEASE_TARGETS) {
+    const asset = assets[target];
+    const expectedName = `nodex-browser-runtime-${desktopBuild}-${target}.tar.gz`;
+    if (asset.assetName !== expectedName) {
+      throw new Error(`Browser runtime release lock ${target} asset name must be ${expectedName}`);
+    }
+    const expectedUrl = `https://github.com/${repository}/releases/download/${tag}/${expectedName}`;
+    if (asset.url !== null && asset.url !== expectedUrl) {
       throw new Error(
-        `Browser runtime release lock ${targetKey} URL does not match its repository and tag`,
+        `Browser runtime release lock ${target} URL does not match its repository and tag`,
       );
     }
   }
@@ -147,7 +244,7 @@ export function parseBrowserRuntimeReleaseLock(value: unknown): BrowserRuntimeRe
     schemaVersion: value.schemaVersion,
     source: {
       buildNumber: requireString(value.source.buildNumber, "source.buildNumber"),
-      desktopBuild: requireString(value.source.desktopBuild, "source.desktopBuild"),
+      desktopBuild,
       product: value.source.product,
     },
     tag,

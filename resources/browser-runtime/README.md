@@ -1,10 +1,10 @@
 # Browser runtime release
 
 Nodex builds consume the Browser runtime exclusively through
-`browser-runtime.lock.json`. The macOS arm64 archive is immutable and
-bound by its byte size, archive SHA-256, inner manifest SHA-256, source desktop
-build, Browser plugin version, vendor compatibility metadata, and component
-versions. Runtime admission never infers compatibility from semver order or
+`browser-runtime.lock.json`. Each target pins an immutable archive by byte size
+and SHA-256, plus the manifest digest, source desktop build, Browser plugin
+version and component versions. Local Windows candidates have a null URL and
+can be materialized from a local archive for worker verification. Runtime admission never infers compatibility from semver order or
 requires the independently supplied Browser peer CLI and primary app-server to
 have equal versions. The runtime must instead match one exact,
 conformance-tested app-server/Browser artifact identity committed in
@@ -35,8 +35,8 @@ desktop application.
 
 Updating the runtime is an explicit maintainer workflow:
 
-1. Obtain the intended signed desktop builds for macOS arm64.
-2. Run the following for `arm64`, preserving the reviewed
+1. Obtain the intended signed desktop build for each target.
+2. For macOS arm64, run the following with the reviewed
    vendor compatibility metadata for that closure:
 
    ```sh
@@ -47,6 +47,12 @@ Updating the runtime is an explicit maintainer workflow:
      --out .generated/browser-runtime-vendor/<arch>
    ```
 
+   For Windows, substitute `--windows-package <extracted MSIX directory>`
+   for `--app` and select the matching architecture. Vendoring checks the package
+   layout, BlockMap and embedded signer metadata without launching vendor code.
+   Run native version, signature and app-server conformance checks on matching
+   Windows workers.
+
 3. Seal the prepared closure:
 
    ```sh
@@ -55,9 +61,9 @@ Updating the runtime is an explicit maintainer workflow:
      --out .generated/browser-runtime-release/<asset>.tar.gz
    ```
 
-4. Prepare and review a candidate lock containing the archive identity and
-   its final immutable release URL. Keep it outside the production lock
-   path until the remote release exists.
+4. Record the local archive identity with a null URL. For publication, prepare
+   a reviewed copy of the lock containing each approved archive's final
+   immutable release URL.
 5. Create and push the dedicated annotated tag at the exact reviewed Nodex
    source commit chosen to own this runtime release. The guarded publisher
    requires the remote tag to exist and will not infer a target from a moving
@@ -71,6 +77,9 @@ Updating the runtime is an explicit maintainer workflow:
      --lock <reviewed-candidate-lock.json> \
      --arm64 .generated/browser-runtime-release/<arm64-asset>.tar.gz
    ```
+
+   Include `--win32-x64 <archive>` and `--win32-arm64 <archive>` for their
+   respective published targets.
 
    The publisher proves the local archive against that lock in a fresh temporary
    extraction, so shared runtime caches cannot substitute for upload verification.
@@ -86,5 +95,5 @@ Updating the runtime is an explicit maintainer workflow:
 8. Run the Browser runtime conformance test for the release artifact before
    publishing a Nodex release.
 
-The vendor command accepts an application path only when it is explicitly
-provided. This keeps local application state outside the normal build contract.
+The vendor command requires an explicit source path. Normal builds select
+locked release assets.

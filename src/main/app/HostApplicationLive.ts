@@ -213,7 +213,7 @@ const remoteHostedPipNative = Layer.unwrap(
     return remoteHostedPipNativePlatformLive({
       expectedExports:
         browserRuntime.status === "available"
-          ? browserRuntime.bundle.manifest.capabilities.nativePip.exports.expectedExports
+          ? (browserRuntime.bundle.manifest.capabilities.nativePip?.exports.expectedExports ?? [])
           : [],
       platform: config.platform as NodeJS.Platform,
       verifiedAddonPath:

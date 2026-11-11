@@ -5,12 +5,12 @@ import {
   BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
   BROWSER_RUNTIME_SCHEMA_VERSION,
   parseBrowserRuntimeManifest,
-  type BrowserRuntimeManifest,
+  type MacBrowserRuntimeManifest,
 } from "./browser-runtime-metadata";
 
 const HASH = "a".repeat(64);
 
-function makeManifest(): BrowserRuntimeManifest {
+function makeManifest(): MacBrowserRuntimeManifest {
   return {
     artifacts: [
       {
@@ -207,7 +207,6 @@ function makeManifest(): BrowserRuntimeManifest {
               hostName: "com.openai.codexextension",
               path: "marketplace/plugins/chrome/extension-host/macos/arm64/ChatGPT for Chrome",
               productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
-              signingTeamId: "TESTTEAM",
             },
             plugin: {
               id: "chrome@openai-bundled",
@@ -239,7 +238,6 @@ function makeManifest(): BrowserRuntimeManifest {
         rpcService: "runtime/lib/node_modules/@oai/sky/dist/project/cua/sky_js/src/service.js",
         serviceExecutable:
           "runtime/lib/node_modules/@oai/sky/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
-        signingTeamId: "TESTTEAM",
         status: "available",
       },
       nativePip: {
@@ -267,7 +265,9 @@ function makeManifest(): BrowserRuntimeManifest {
       nodeRepl: "bin/node_repl",
       peerAuthorization: "peer/authorize.node",
     },
-    peerAuthorization: {
+    trust: {
+      chromeSigningTeamId: "TESTTEAM",
+      computerUseSigningTeamId: "TESTTEAM",
       nodeApiVersion: "127",
       signingTeamId: "TESTTEAM",
     },
@@ -289,21 +289,9 @@ describe("parseBrowserRuntimeManifest", () => {
     expect(parseBrowserRuntimeManifest(makeManifest())).toEqual(makeManifest());
   });
 
-  test("rejects Intel Mac closures while preserving other x64 targets", () => {
-    const manifest = makeManifest();
-    manifest.targetArch = "x64";
-    manifest.artifacts = manifest.artifacts.map((artifact) => ({
-      ...artifact,
-      architecture: artifact.architecture === "arm64" ? "x64" : artifact.architecture,
-    }));
-    manifest.capabilities.computerUse = {
-      reason: "architecture-unsupported",
-      status: "unavailable",
-    };
-
-    expect(parseBrowserRuntimeManifest(manifest)).toBeNull();
-    manifest.targetPlatform = "linux";
-    expect(parseBrowserRuntimeManifest(manifest)).toEqual(manifest);
+  test("rejects unsupported targets", () => {
+    expect(parseBrowserRuntimeManifest({ ...makeManifest(), targetArch: "x64" })).toBeNull();
+    expect(parseBrowserRuntimeManifest({ ...makeManifest(), targetPlatform: "linux" })).toBeNull();
   });
 
   test("admits Computer Use through its trusted RPC service without a separate client launcher", () => {
@@ -318,41 +306,8 @@ describe("parseBrowserRuntimeManifest", () => {
     expect(parseBrowserRuntimeManifest(manifest)).toEqual(manifest);
   });
 
-  test("upgrades archived schema-v5 metadata to the current runtime contract", () => {
-    const current = makeManifest();
-    const computerUse = current.capabilities.computerUse;
-    if (computerUse.status !== "available") throw new Error("Computer Use fixture is unavailable");
-    const legacy = {
-      ...current,
-      capabilities: {
-        computerUse: {
-          ...computerUse,
-          artifactMinimumMacOSVersion: undefined,
-          ipcProtocol: "CodexComputerUseIPC-2",
-          minimumMacOSVersion: "14.4",
-          productMinimumMacOSVersion: undefined,
-        },
-        nativePip: {
-          addon: current.capabilities.nativePip.addon,
-          controlAssets: current.capabilities.nativePip.controlAssets,
-          minimumMacOSVersion: "13.0",
-        },
-      },
-      schemaVersion: 5,
-      supportedBackends: ["iab"],
-    };
-
-    const parsed = parseBrowserRuntimeManifest(legacy);
-    expect(parsed?.schemaVersion).toBe(BROWSER_RUNTIME_SCHEMA_VERSION);
-    expect(parsed?.capabilities.computerUse).toMatchObject({
-      artifactMinimumMacOSVersion: "14.4",
-      ipcProtocol: "CodexComputerUseIPC-5",
-      productMinimumMacOSVersion: "15.0",
-    });
-    expect(parsed?.capabilities.nativePip.exports.expectedExportCount).toBe(38);
-    expect(parsed?.capabilities.nativePip.exports.expectedExports).toEqual(
-      BROWSER_RUNTIME_LEGACY_SKY_NATIVE_EXPORTS,
-    );
+  test("requires the current schema at load time", () => {
+    expect(parseBrowserRuntimeManifest({ ...makeManifest(), schemaVersion: 7 })).toBeNull();
   });
 
   test("rejects a native add-on contract without its exact export set", () => {

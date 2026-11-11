@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Stats } from "node:fs";
 import fs from "node:fs/promises";
 import {
@@ -9,6 +10,7 @@ import {
   BROWSER_RUNTIME_BUNDLE_DIRECTORY,
   BROWSER_RUNTIME_MANIFEST_FILENAME,
   parseBrowserRuntimeManifest,
+  browserRuntimeTargetKey,
   type BrowserRuntimeArtifact,
   type BrowserRuntimeManifest,
 } from "../../shared/browser-runtime-metadata";
@@ -18,6 +20,13 @@ import {
   type BrowserPeerRuntimeIdentity,
   type TestedBrowserAppServerPair,
 } from "../../shared/browser-app-server-compatibility";
+
+import { openRegularFile } from "../platform/node/open-regular-file";
+import { createBrowserRuntimePlatformArtifactVerifier } from "./browser-runtime-platform-verifier";
+import {
+  WINDOWS_BROWSER_RUNTIME_VERIFICATION_UNAVAILABLE,
+  type WindowsBrowserRuntimeVerifierPort,
+} from "./browser-runtime-windows-verifier-port";
 
 export type BrowserRuntimeUnavailableReason =
   | "artifact-integrity"
@@ -55,8 +64,9 @@ export type VerifiedBrowserRuntimeBundle = {
     computerUseService: string | null;
     node: string;
     nodeRepl: string;
-    peerAuthorization: string;
-    skyNativeAddon: string;
+    peerAuthorization: string | null;
+    processEnumeration?: string;
+    skyNativeAddon: string | null;
   };
   rootPath: string;
 };
@@ -80,6 +90,7 @@ type ResolveBrowserRuntimeBundleOptions = {
   targetArch?: NodeJS.Architecture;
   targetPlatform?: NodeJS.Platform;
   testedPairs?: readonly TestedBrowserAppServerPair[];
+  windowsVerifier?: WindowsBrowserRuntimeVerifierPort;
 };
 
 export type BrowserRuntimePlatformArtifactVerifier = (input: {
@@ -119,6 +130,7 @@ async function validateArtifact(
   rootPath: string,
   artifact: BrowserRuntimeArtifact,
   signal?: AbortSignal,
+  requireExecutableMode = true,
 ): Promise<BrowserRuntimeAvailability | null> {
   signal?.throwIfAborted();
   const segments = artifact.path.split("/");
@@ -145,7 +157,7 @@ async function validateArtifact(
       `Browser runtime artifact is not a regular file: ${artifact.path}`,
     );
   }
-  if (artifact.executable && process.platform !== "win32" && (stats.mode & 0o111) === 0) {
+  if (artifact.executable && requireExecutableMode && (stats.mode & 0o111) === 0) {
     return unavailable(
       "artifact-invalid",
       `Browser runtime artifact is not executable: ${artifact.path}`,
@@ -163,12 +175,54 @@ async function validateArtifact(
   return null;
 }
 
-async function readManifest(manifestPath: string): Promise<BrowserRuntimeManifest | null> {
+async function readManifest(manifestPath: string) {
   try {
-    return parseBrowserRuntimeManifest(JSON.parse(await fs.readFile(manifestPath, "utf8")));
+    const file = await openRegularFile(manifestPath);
+    try {
+      const bytes = await file.readFile();
+      const manifest = parseBrowserRuntimeManifest(JSON.parse(bytes.toString("utf8")));
+      return manifest
+        ? { manifest, sha256: createHash("sha256").update(bytes).digest("hex") }
+        : null;
+    } finally {
+      await file.close();
+    }
   } catch {
     return null;
   }
+}
+
+async function checkWindowsClosure(
+  rootPath: string,
+  manifest: BrowserRuntimeManifest,
+  signal?: AbortSignal,
+) {
+  const files = new Set([
+    BROWSER_RUNTIME_MANIFEST_FILENAME,
+    ...manifest.artifacts.map(({ path }) => path),
+  ]);
+  const directories = new Set<string>();
+  for (const file of files) {
+    let parent = path.posix.dirname(file);
+    while (parent !== ".") {
+      directories.add(parent);
+      parent = path.posix.dirname(parent);
+    }
+  }
+  async function walk(relative: string): Promise<string | null> {
+    signal?.throwIfAborted();
+    for (const entry of await fs.readdir(resolveRelativePath(rootPath, relative), {
+      withFileTypes: true,
+    })) {
+      const name = relative ? `${relative}/${entry.name}` : entry.name;
+      if (entry.isFile() && files.has(name)) continue;
+      if (!entry.isDirectory() || !directories.has(name)) return name;
+      const failure = await walk(name);
+      if (failure) return failure;
+    }
+    return null;
+  }
+  return walk("");
 }
 
 export async function resolveBrowserRuntimeBundle(
@@ -177,13 +231,9 @@ export async function resolveBrowserRuntimeBundle(
   options.signal?.throwIfAborted();
   const rootPath = path.join(options.runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
   const manifestPath = path.join(rootPath, BROWSER_RUNTIME_MANIFEST_FILENAME);
-  if (!(await fs.lstat(manifestPath).catch(() => null))) {
-    return unavailable(
-      "manifest-missing",
-      `Browser runtime bundle is unavailable: ${BROWSER_RUNTIME_MANIFEST_FILENAME} is missing`,
-    );
-  }
-
+  const targetPlatform = options.targetPlatform ?? process.platform;
+  const targetArch = options.targetArch ?? process.arch;
+  const targetKey = browserRuntimeTargetKey(targetPlatform, targetArch);
   let rootStats: Stats;
   try {
     rootStats = await fs.lstat(rootPath);
@@ -193,6 +243,28 @@ export async function resolveBrowserRuntimeBundle(
   if (!rootStats.isDirectory() || rootStats.isSymbolicLink()) {
     return unavailable("invalid-manifest", "Browser runtime bundle directory is invalid");
   }
+  if (!targetKey) {
+    return unavailable(
+      "target-mismatch",
+      "Desktop Tools have no asset for this platform and architecture",
+    );
+  }
+  if (targetPlatform === "win32") {
+    if (!options.windowsVerifier) {
+      return unavailable(
+        "platform-verification-failed",
+        WINDOWS_BROWSER_RUNTIME_VERIFICATION_UNAVAILABLE,
+      );
+    }
+    try {
+      const paths = await options.windowsVerifier.verifyClosurePaths(rootPath, options.signal);
+      if (!paths.ok) return unavailable("platform-verification-failed", paths.reason);
+    } catch (error) {
+      options.signal?.throwIfAborted();
+      return unavailable("platform-verification-failed", String(error));
+    }
+  }
+
   let manifestStats: Stats;
   try {
     manifestStats = await fs.lstat(manifestPath);
@@ -203,14 +275,12 @@ export async function resolveBrowserRuntimeBundle(
     return unavailable("invalid-manifest", "Browser runtime bundle manifest is not a regular file");
   }
 
-  const manifest = await readManifest(manifestPath);
-  if (!manifest) {
+  const parsed = await readManifest(manifestPath);
+  if (!parsed) {
     return unavailable("invalid-manifest", "Browser runtime bundle manifest is invalid");
   }
-  if (
-    manifest.targetPlatform !== (options.targetPlatform ?? process.platform) ||
-    manifest.targetArch !== (options.targetArch ?? process.arch)
-  ) {
+  const { manifest, sha256 } = parsed;
+  if (manifest.targetPlatform !== targetPlatform || manifest.targetArch !== targetArch) {
     return unavailable(
       "target-mismatch",
       "Browser runtime bundle does not match the active platform and architecture",
@@ -219,7 +289,7 @@ export async function resolveBrowserRuntimeBundle(
 
   const browserIdentity: BrowserPeerRuntimeIdentity = {
     browserPluginVersion: manifest.browserPlugin.version,
-    manifestSha256: await readRuntimeArtifactSha256(manifestPath, options.signal),
+    manifestSha256: sha256,
     peerCliVersion: manifest.runtimeVersions.codexCli,
     targetArch: manifest.targetArch,
     targetPlatform: manifest.targetPlatform,
@@ -233,15 +303,28 @@ export async function resolveBrowserRuntimeBundle(
     );
   }
 
+  const verifier =
+    manifest.targetPlatform === "win32"
+      ? createBrowserRuntimePlatformArtifactVerifier({
+          platform: "win32",
+          windowsVerifier: options.windowsVerifier,
+        })
+      : options.platformArtifactVerifier;
   const failures = await verifyRuntimeArtifacts(
     manifest.artifacts,
     async (artifact) => {
-      const failure = await validateArtifact(rootPath, artifact, options.signal);
+      const failure = await validateArtifact(
+        rootPath,
+        artifact,
+        options.signal,
+        manifest.targetPlatform !== "win32",
+      );
       if (failure) return failure;
-      if (artifact.kind === "data" || !options.platformArtifactVerifier) return null;
+      if (!verifier || (manifest.targetPlatform === "darwin" && artifact.kind === "data"))
+        return null;
       let verificationMessage: string | null;
       try {
-        verificationMessage = await options.platformArtifactVerifier({
+        verificationMessage = await verifier({
           signal: options.signal,
           artifact,
           artifactPath: resolveRelativePath(rootPath, artifact.path),
@@ -263,6 +346,16 @@ export async function resolveBrowserRuntimeBundle(
   );
   const failure = failures.find((candidate) => candidate !== null);
   if (failure) return failure;
+  if (manifest.targetPlatform === "win32") {
+    const extra = await checkWindowsClosure(rootPath, manifest, options.signal).catch(
+      (error: unknown) => {
+        options.signal?.throwIfAborted();
+        return String(error);
+      },
+    );
+    if (extra)
+      return unavailable("artifact-invalid", `Unexpected Windows Desktop Tool entry: ${extra}`);
+  }
   for (const nodeModuleDir of manifest.browserPlugin.nodeModuleDirs) {
     if (!(await validateDirectoryPath(rootPath, nodeModuleDir))) {
       return unavailable(
@@ -315,6 +408,7 @@ export async function resolveBrowserRuntimeBundle(
         chromePluginRoot: chrome.status === "available" ? resolve(chrome.plugin.root) : null,
         codexCli: resolve(manifest.entrypoints.codexCli),
         computerUseApp:
+          manifest.targetPlatform === "darwin" &&
           manifest.capabilities.computerUse.status === "available"
             ? resolve(manifest.capabilities.computerUse.appBundle)
             : null,
@@ -323,6 +417,7 @@ export async function resolveBrowserRuntimeBundle(
             ? resolve(manifest.capabilities.computerUse.plugin.root)
             : null,
         computerUseRpcService:
+          manifest.targetPlatform === "darwin" &&
           manifest.capabilities.computerUse.status === "available"
             ? resolve(manifest.capabilities.computerUse.rpcService)
             : null,
@@ -332,8 +427,17 @@ export async function resolveBrowserRuntimeBundle(
             : null,
         node: resolve(manifest.entrypoints.node),
         nodeRepl: resolve(manifest.entrypoints.nodeRepl),
-        peerAuthorization: resolve(manifest.entrypoints.peerAuthorization),
-        skyNativeAddon: resolve(manifest.capabilities.nativePip.addon),
+        peerAuthorization:
+          manifest.targetPlatform === "darwin"
+            ? resolve(manifest.entrypoints.peerAuthorization)
+            : null,
+        ...(manifest.targetPlatform === "win32"
+          ? { processEnumeration: resolve(manifest.entrypoints.processEnumeration) }
+          : {}),
+        skyNativeAddon:
+          manifest.targetPlatform === "darwin"
+            ? resolve(manifest.capabilities.nativePip.addon)
+            : null,
       },
       rootPath,
     },

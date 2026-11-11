@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import {
-  BROWSER_PLUGIN_NODE_MODULE_DIR,
   BROWSER_RUNTIME_BUNDLE_DIRECTORY,
   BROWSER_RUNTIME_MANIFEST_FILENAME,
   BROWSER_RUNTIME_SCHEMA_VERSION,
@@ -39,31 +38,13 @@ function testedPairsForSource(sourceRoot: string): readonly TestedBrowserAppServ
   const sourceValue = JSON.parse(sourceBytes.toString("utf8")) as { schemaVersion?: unknown };
   const sourceManifest = parseBrowserRuntimeManifest(sourceValue);
   if (!sourceManifest) throw new Error("Expected a valid Browser fixture manifest");
-  const manifest = sourceManifest.browserPlugin.nodeModuleDirs.includes(
-    "marketplace/plugins/browser/scripts/node_modules",
-  )
-    ? {
-        ...sourceManifest,
-        browserPlugin: {
-          ...sourceManifest.browserPlugin,
-          nodeModuleDirs: sourceManifest.browserPlugin.nodeModuleDirs.map((directory) =>
-            directory === "marketplace/plugins/browser/scripts/node_modules"
-              ? BROWSER_PLUGIN_NODE_MODULE_DIR
-              : directory,
-          ),
-        },
-      }
-    : sourceManifest;
-  const manifestBytes =
-    sourceValue.schemaVersion === 5 || sourceValue.schemaVersion === 6
-      ? sourceBytes
-      : Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  const manifest = sourceManifest;
   return [
     {
       appServer: APP_SERVER_IDENTITY,
       browser: {
         browserPluginVersion: manifest.browserPlugin.version,
-        manifestSha256: createHash("sha256").update(manifestBytes).digest("hex"),
+        manifestSha256: createHash("sha256").update(sourceBytes).digest("hex"),
         peerCliVersion: manifest.runtimeVersions.codexCli,
         targetArch: manifest.targetArch,
         targetPlatform: manifest.targetPlatform,
@@ -131,85 +112,20 @@ describe.skipIf(process.platform === "win32")("stageBrowserRuntime", () => {
     ).toBe("available");
   });
 
-  test.each([5, 6])("preserves a published schema-v%i manifest identity", async (schemaVersion) => {
+  test("preserves the exact current manifest bytes during staging", async () => {
     const sourceRoot = makeRoot("nodex-browser-source-");
     const runtimeRoot = makeRoot("nodex-browser-destination-");
     writeBrowserRuntimeFixture(sourceRoot);
     const manifestPath = path.join(sourceRoot, BROWSER_RUNTIME_MANIFEST_FILENAME);
-    const current = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
-      capabilities: {
-        browserUse?: unknown;
-        computerUse: Record<string, unknown>;
-        nativePip: Record<string, unknown>;
-      };
-      schemaVersion: number;
-      supportedBackends: string[];
-    };
-    const computerUse = current.capabilities.computerUse;
-    current.schemaVersion = schemaVersion;
-    if (schemaVersion === 5) {
-      current.supportedBackends = ["iab"];
-      delete current.capabilities.browserUse;
-      current.capabilities.computerUse = {
-        ...computerUse,
-        ipcProtocol: "CodexComputerUseIPC-2",
-        minimumMacOSVersion: computerUse.artifactMinimumMacOSVersion,
-      };
-      delete current.capabilities.computerUse.artifactMinimumMacOSVersion;
-      delete current.capabilities.computerUse.productMinimumMacOSVersion;
-      current.capabilities.nativePip = {
-        addon: current.capabilities.nativePip.addon,
-        controlAssets: current.capabilities.nativePip.controlAssets,
-        minimumMacOSVersion: current.capabilities.nativePip.artifactMinimumMacOSVersion,
-      };
-    }
-    fs.writeFileSync(manifestPath, `${JSON.stringify(current, null, 2)}\n`);
-    const sourceBytes = fs.readFileSync(manifestPath);
-
+    fs.appendFileSync(manifestPath, "\n");
     const staged = await stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
-    const activeBytes = fs.readFileSync(
-      path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY, BROWSER_RUNTIME_MANIFEST_FILENAME),
+    const activePath = path.join(
+      runtimeRoot,
+      BROWSER_RUNTIME_BUNDLE_DIRECTORY,
+      BROWSER_RUNTIME_MANIFEST_FILENAME,
     );
-
-    expect(activeBytes).toEqual(sourceBytes);
+    expect(fs.readFileSync(activePath)).toEqual(fs.readFileSync(manifestPath));
     expect(staged.schemaVersion).toBe(BROWSER_RUNTIME_SCHEMA_VERSION);
-    expect(staged.capabilities.computerUse).toMatchObject({
-      ipcProtocol: "CodexComputerUseIPC-5",
-      productMinimumMacOSVersion: "15.0",
-    });
-  });
-
-  test("normalizes legacy Browser plugin module paths during staging", async () => {
-    const sourceRoot = makeRoot("nodex-browser-source-");
-    const runtimeRoot = makeRoot("nodex-browser-destination-");
-    writeBrowserRuntimeFixture(sourceRoot);
-    const manifestPath = path.join(sourceRoot, BROWSER_RUNTIME_MANIFEST_FILENAME);
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
-      browserPlugin: { nodeModuleDirs: string[] };
-    };
-    manifest.browserPlugin.nodeModuleDirs = manifest.browserPlugin.nodeModuleDirs.map(
-      (directory) =>
-        directory === BROWSER_PLUGIN_NODE_MODULE_DIR
-          ? "marketplace/plugins/browser/scripts/node_modules"
-          : directory,
-    );
-    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-
-    const stagedManifest = await stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
-
-    expect(stagedManifest.browserPlugin.nodeModuleDirs).toContain(BROWSER_PLUGIN_NODE_MODULE_DIR);
-    expect(stagedManifest.browserPlugin.nodeModuleDirs).not.toContain(
-      "marketplace/plugins/browser/scripts/node_modules",
-    );
-    const activeRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
-    const activeRootInode = fs.statSync(activeRoot, { bigint: true }).ino;
-
-    await stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
-
-    expect(
-      (await resolveBrowserRuntimeBundle(resolveOptions(runtimeRoot, sourceRoot))).status,
-    ).toBe("available");
-    expect(fs.statSync(activeRoot, { bigint: true }).ino).toBe(activeRootInode);
   });
 
   test("preserves the previously active bundle when source verification fails", async () => {

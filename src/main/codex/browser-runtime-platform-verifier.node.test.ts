@@ -33,7 +33,7 @@ const verificationInput = (
     artifactPath,
     manifest: {
       capabilities: { computerUse: { reason: "architecture-unsupported", status: "unavailable" } },
-      peerAuthorization: { signingTeamId: "TEAM" },
+      trust: { signingTeamId: "TEAM" },
       targetArch: "arm64",
       targetPlatform: "darwin",
     },
