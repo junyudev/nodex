@@ -1,7 +1,7 @@
 /* @effect-diagnostics asyncFunction:off newPromise:off preferSchemaOverJson:off -- Verifies the native Host lease and administration lifecycle with disposable files and Core. */
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmod, mkdtemp, mkdir, readFile, realpath, rm } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -60,8 +60,9 @@ test("initialization prepares identity without listening and the native lease fe
     const config = await readHostConfiguration(initialized.home, core);
     expect(config.spaceId).toBe(initialized.spaceId);
     expect(config.ownerMemberId).toBe(initialized.ownerMemberId);
-    expect(config.executionHome).toBe(initialized.executionHome);
-    expect(config.repositories).toEqual({ [remote]: await realpath(clone) });
+    expect(config.executionHome).toBe(await realpath(initialized.executionHome));
+    expect(Object.keys(config.repositories)).toEqual([remote]);
+    expect(await realpath(config.repositories[remote]!)).toBe(await realpath(clone));
     expect(initialized.projectId).toEqual(expect.any(String));
     await verifyHostSecrets(initialized.home, core, { running: false });
     expect(JSON.parse((await run(["status"])).stdout).result).toMatchObject({
@@ -110,8 +111,20 @@ test("initialization prepares identity without listening and the native lease fe
     await expect(readFile(join(initialized.home, "run/host.json"))).rejects.toMatchObject({
       code: "ENOENT",
     });
+    const configurationPath = join(initialized.home, "host.json");
+    const rawConfiguration = await readFile(configurationPath, "utf8");
+    const nestedExecution = join(initialized.home, "..execution");
+    await mkdir(nestedExecution);
+    await writeFile(
+      configurationPath,
+      JSON.stringify({ ...JSON.parse(rawConfiguration), executionHome: nestedExecution }),
+    );
+    await expect(readHostConfiguration(initialized.home, core)).rejects.toThrow(
+      "Execution state must be outside the private Core home",
+    );
+    await writeFile(configurationPath, rawConfiguration);
     if (process.platform !== "win32") {
-      await chmod(join(initialized.home, "host.json"), 0o640);
+      await chmod(configurationPath, 0o640);
       await expect(readHostConfiguration(initialized.home, core)).rejects.toThrow();
     }
   } finally {

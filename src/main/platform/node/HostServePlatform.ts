@@ -2,7 +2,7 @@
 import { withoutAgentShell } from "./agent-shell-environment";
 import { spawn } from "node:child_process";
 import { lstat, open, realpath, rename, unlink, writeFile } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { z } from "zod";
 import { verifyPrivatePaths } from "./private-filesystem";
 
@@ -48,18 +48,23 @@ export async function readHostConfiguration(
     }
   })();
   const value = configuration.parse(JSON.parse(source));
-  const executionHome = await realpath(value.executionHome);
-  const withinCore = relative(coreHome, executionHome);
-  const containsCore = relative(executionHome, coreHome);
+  const [physicalCoreHome, executionHome] = await Promise.all([
+    realpath(coreHome),
+    realpath(value.executionHome),
+  ]);
   if (
-    !withinCore ||
-    (!withinCore.startsWith("..") && !isAbsolute(withinCore)) ||
-    (!containsCore.startsWith("..") && !isAbsolute(containsCore))
+    containsPath(physicalCoreHome, executionHome) ||
+    containsPath(executionHome, physicalCoreHome)
   )
     throw new Error("Execution state must be outside the private Core home");
   if (!(await lstat(executionHome)).isDirectory())
     throw new Error("Execution home must be a directory");
   return { ...value, executionHome };
+}
+
+function containsPath(parent: string, child: string): boolean {
+  const path = relative(parent, child);
+  return !isAbsolute(path) && path !== ".." && !path.startsWith(`..${sep}`);
 }
 
 /** An OS advisory lock survives stale files and releases when the Host's pipe closes. */
