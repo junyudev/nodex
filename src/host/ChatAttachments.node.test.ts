@@ -220,7 +220,7 @@ const replyFixture = Effect.gen(function* () {
     "`![Not shown](secret.png)`",
   ].join("\n\n");
   const attachments = yield* make.pipe(
-    Effect.provide(testLayer()),
+    Effect.provide(testLayer({ platform: process.platform })),
     Effect.provideService(ProjectWorkspace, {
       getProjectSession: (sessionId: string) =>
         Effect.succeed(sessionId === "chat" ? ({ id: "chat" } as ProjectSession) : null),
