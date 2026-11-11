@@ -12,6 +12,7 @@ use std::{
     fs,
     io::{self, BufRead, BufReader, Read, Write},
     net::TcpStream,
+    path::Path,
     process::{Child, Command, Stdio},
     sync::Arc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -27,27 +28,7 @@ struct Core {
 impl Core {
     fn start() -> Self {
         let home = tempdir().unwrap();
-        let mut child = Command::new(env!("CARGO_BIN_EXE_nodex-core"))
-            .args(["--home", home.path().to_str().unwrap()])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
-        let mut line = String::new();
-        BufReader::new(child.stdout.take().unwrap())
-            .read_line(&mut line)
-            .unwrap();
-        if line.is_empty() {
-            let mut errors = String::new();
-            child
-                .stderr
-                .take()
-                .unwrap()
-                .read_to_string(&mut errors)
-                .unwrap();
-            panic!("Core failed: {errors}");
-        }
-        let _: CoreSelectionResult = serde_json::from_str(&line).unwrap();
+        let child = Self::spawn(home.path(), None);
         let local = CoreClient::connect(home.path(), "team-test").unwrap();
         let info = local
             .space_listen(ListenRequest {
@@ -67,11 +48,20 @@ impl Core {
     fn restart(&mut self, operator_address: Option<&str>) {
         let _ = self.child.kill();
         self.child.wait().unwrap();
+        self.child = Self::spawn(self.home.path(), operator_address);
+        self.local = CoreClient::connect(self.home.path(), "transport-restart").unwrap();
+    }
+
+    fn spawn(home: &Path, operator_address: Option<&str>) -> Child {
         let mut command = Command::new(env!("CARGO_BIN_EXE_nodex-core"));
-        command.args(["--home", self.home.path().to_str().unwrap()]);
+        command.arg("--home").arg(home);
         if let Some(address) = operator_address {
             command.args(["--listen", address]);
         }
+        // Restart and shutdown assertions own the Core process handle. On Windows
+        // the regular launcher re-execs Core, which can outlive the launcher.
+        #[cfg(windows)]
+        command.env("NODEX_CORE_ISOLATED_LAUNCH", "1");
         let mut child = command
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -89,11 +79,15 @@ impl Core {
                 .unwrap()
                 .read_to_string(&mut errors)
                 .unwrap();
-            panic!("Core restart failed: {errors}");
+            panic!("Core failed: {errors}");
         }
-        let _: CoreSelectionResult = serde_json::from_str(&line).unwrap();
-        self.child = child;
-        self.local = CoreClient::connect(self.home.path(), "transport-restart").unwrap();
+        let selection: CoreSelectionResult = serde_json::from_str(&line).unwrap();
+        assert_eq!(
+            selection.descriptor.pid,
+            child.id(),
+            "fixture must own Core"
+        );
+        child
     }
 
     fn tls(
