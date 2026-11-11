@@ -21,6 +21,7 @@ import {
   ProviderSessionId,
   ProviderThreadId,
   ProviderTurnId,
+  RunAttemptId,
   RuntimeRequestId,
   type RuntimeMode,
   ThreadId,
@@ -207,7 +208,7 @@ const setup = Effect.fn("TaskQuestions.setup")(function* (
   const task = (yield* projections.getThreadRecords(parentId, ["subagents"])).subagents[0]!;
   const addRequest = Effect.fn("TaskQuestions.addRequest")(function* (
     id: string,
-    capability: "live" | "message" | "codex_question_reply" = "live",
+    capability: "live" | "runtime" | "message" | "codex_question_reply" = "live",
     kind: OrchestrationV2RuntimeRequest["kind"] = "user_input",
     target = task,
     createdAt?: DateTime.Utc,
@@ -234,9 +235,14 @@ const setup = Effect.fn("TaskQuestions.setup")(function* (
         responseCapability:
           capability === "live"
             ? { type: "live", providerSessionId }
-            : capability === "codex_question_reply"
-              ? { type: "message", replyFormat: "codex_question_reply" }
-              : { type: "message" },
+            : capability === "runtime"
+              ? {
+                  type: "runtime",
+                  attemptId: run.activeAttemptId ?? RunAttemptId.make("task-attempt"),
+                }
+              : capability === "codex_question_reply"
+                ? { type: "message", replyFormat: "codex_question_reply" }
+                : { type: "message" },
         createdAt: now,
         resolvedAt: null,
       },
@@ -946,7 +952,7 @@ it.effect.each(["user_input", "permission"] as const)(
     }).pipe(Effect.provide(layerTest)),
 );
 
-it.effect("reports only the oldest live approval on an unfinished task Run", () =>
+it.effect("reports the oldest answerable approval on an unfinished task Run", () =>
   Effect.gen(function* () {
     const f = yield* setup();
     const now = yield* DateTime.now;
@@ -957,7 +963,7 @@ it.effect("reports only the oldest live approval on an unfinished task Run", () 
       f.task,
       DateTime.add(now, { seconds: 1 }),
     );
-    const oldest = yield* f.addRequest("approval:oldest", "live", "permission", f.task, now);
+    const oldest = yield* f.addRequest("approval:oldest", "runtime", "permission", f.task, now);
     yield* f.addRequest(
       "approval:message",
       "message",

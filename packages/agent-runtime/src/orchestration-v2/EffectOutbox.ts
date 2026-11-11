@@ -110,7 +110,8 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
     modelPolicyOrigin: Schema.optional(
       Schema.Literals(["person", "nodex-agent", "agent", "automatic"]),
     ),
-    providerSessionId: ProviderSessionId,
+    // An absent provider session targets the Runtime's own approval waiter.
+    providerSessionId: Schema.optional(ProviderSessionId),
     requestId: RuntimeRequestId,
     decision: Schema.optional(ProviderApprovalDecision),
     optionId: Schema.optional(Schema.String),
@@ -365,7 +366,8 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
     // cannot start while a failed rollback is about to restore files. A claim
     // that skips restart continuations is not blocked by them either.
     // Title generation is correlated metadata work, so it has its own
-    // per-thread lane and cannot delay provider lifecycle effects.
+    // per-thread lane and cannot delay provider lifecycle effects. Runtime
+    // answers only wake a local waiter, which a provider effect may depend on.
     const claimableCandidatePredicate = (
       availableBefore?: string,
       excludeRestartContinuations = false,
@@ -378,31 +380,39 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
             : sql`candidate.available_at <= ${availableBefore}`
         }
         AND candidate.status = 'pending'
-        AND (candidate.effect_type IN ('provider-turn.interrupt','provider-task.stop','provider-session.detach','delegated-tasks.stop','checkpoint.capture','side-chat.discard-native') OR NOT ${ExecutionPause.heldSql(sql, sql`candidate.thread_id`)})
-        AND (${deadlineNow === undefined ? sql`0` : sql`candidate.available_at > ${deadlineNow}`} OR candidate.effect_type <> 'provider-turn.start'
-          OR NOT EXISTS (SELECT 1 FROM orchestration_v2_projection_runs run
-            WHERE run.run_id = json_extract(candidate.payload_json, '$.runId')
-              AND run.status IN ('queued', 'preparing', 'starting', 'running', 'waiting'))
-          OR NOT EXISTS (SELECT 1 FROM orchestration_v2_run_activations activation
-            WHERE activation.run_id = json_extract(candidate.payload_json, '$.runId') AND activation.state = 'waiting'))
-        AND NOT EXISTS (
-          SELECT 1
-          FROM orchestration_v2_effect_outbox AS active
-          WHERE active.thread_id = candidate.thread_id
-            AND (
-              active.status = 'running'
-              OR (
-                active.status = 'pending'
-                AND active.rowid < candidate.rowid
-                AND (candidate.effect_type NOT IN ${sql.in(RunAdmission.CONTROL_EFFECT_TYPES)}
-                  OR active.effect_type NOT IN ${sql.in(RunAdmission.START_EFFECT_TYPES)})
-                AND ${
-                  excludeRestartContinuations
-                    ? sql`active.effect_type != 'provider-runtime.continue'`
-                    : sql`1 = 1`
-                }
-              )
+        AND (
+          (candidate.effect_type = 'runtime-request.respond'
+            AND json_extract(candidate.payload_json, '$.providerSessionId') IS NULL)
+          OR (
+            (candidate.effect_type IN ('provider-turn.interrupt','provider-task.stop','provider-session.detach','delegated-tasks.stop','checkpoint.capture','side-chat.discard-native') OR NOT ${ExecutionPause.heldSql(sql, sql`candidate.thread_id`)})
+            AND (${deadlineNow === undefined ? sql`0` : sql`candidate.available_at > ${deadlineNow}`} OR candidate.effect_type <> 'provider-turn.start'
+              OR NOT EXISTS (SELECT 1 FROM orchestration_v2_projection_runs run
+                WHERE run.run_id = json_extract(candidate.payload_json, '$.runId')
+                  AND run.status IN ('queued', 'preparing', 'starting', 'running', 'waiting'))
+              OR NOT EXISTS (SELECT 1 FROM orchestration_v2_run_activations activation
+                WHERE activation.run_id = json_extract(candidate.payload_json, '$.runId') AND activation.state = 'waiting'))
+            AND NOT EXISTS (
+              SELECT 1
+              FROM orchestration_v2_effect_outbox AS active
+              WHERE active.thread_id = candidate.thread_id
+                AND NOT (active.effect_type = 'runtime-request.respond'
+                  AND json_extract(active.payload_json, '$.providerSessionId') IS NULL)
+                AND (
+                  active.status = 'running'
+                  OR (
+                    active.status = 'pending'
+                    AND active.rowid < candidate.rowid
+                    AND (candidate.effect_type NOT IN ${sql.in(RunAdmission.CONTROL_EFFECT_TYPES)}
+                      OR active.effect_type NOT IN ${sql.in(RunAdmission.START_EFFECT_TYPES)})
+                    AND ${
+                      excludeRestartContinuations
+                        ? sql`active.effect_type != 'provider-runtime.continue'`
+                        : sql`1 = 1`
+                    }
+                  )
+                )
             )
+          )
         )
       `;
 

@@ -1777,6 +1777,7 @@ export function applyToProjection(
     case "thread.metadata-updated":
     case "thread.pull-request-synced":
     case "thread.runtime-mode-updated":
+    case "thread.runtime-chat-grant-added":
     case "thread.interaction-mode-updated":
     case "thread.model-selection-updated":
     case "thread.provider-switched":
@@ -3148,6 +3149,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           case "thread.metadata-updated":
           case "thread.pull-request-synced":
           case "thread.runtime-mode-updated":
+          case "thread.runtime-chat-grant-added":
           case "thread.interaction-mode-updated":
           case "thread.model-selection-updated":
           case "thread.provider-switched": {
@@ -4302,6 +4304,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           event.type !== "thread.marked-unread" &&
           event.type !== "thread.metadata-updated" &&
           event.type !== "thread.runtime-mode-updated" &&
+          event.type !== "thread.runtime-chat-grant-added" &&
           event.type !== "thread.interaction-mode-updated" &&
           event.type !== "thread.model-selection-updated" &&
           event.type !== "thread.provider-switched"
@@ -7622,7 +7625,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               FROM orchestration_v2_projection_runtime_requests AS request
               WHERE request.thread_id = COALESCE(task.child_thread_id, task.thread_id) AND request.status = 'pending'
                 AND request.kind NOT IN ('dynamic_tool_call', 'auth_refresh')
-                AND json_extract(request.payload_json, '$.responseCapability.type') IN ('live', 'message')
+                AND json_extract(request.payload_json, '$.responseCapability.type') IN ('live', 'runtime', 'message')
                 AND EXISTS (SELECT 1 FROM orchestration_v2_projection_nodes AS node
                   WHERE node.node_id = request.node_id AND node.thread_id = request.thread_id
                     AND ((task.child_thread_id IS NULL AND node.provider_thread_id = task.provider_thread_id)

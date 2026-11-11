@@ -437,6 +437,9 @@ export const OrchestrationV2SideChat = Schema.Struct({
   contextCleared: Schema.optional(Schema.Literal(true)),
 });
 
+export const RuntimeChatGrant = Schema.Literal("desktop-tools-javascript");
+export type RuntimeChatGrant = typeof RuntimeChatGrant.Type;
+
 export const OrchestrationV2AppThread = Schema.Struct({
   ...OrchestrationV2CreationFields,
   id: ThreadId,
@@ -445,6 +448,11 @@ export const OrchestrationV2AppThread = Schema.Struct({
   providerInstanceId: ProviderInstanceId,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
+  runtimeChatGrants: Schema.optional(Schema.Struct({
+    mode: RuntimeMode,
+    modeRevision: Schema.optional(EventId),
+    grants: Schema.Array(RuntimeChatGrant),
+  })),
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
@@ -1303,6 +1311,14 @@ export const OrchestrationV2RuntimeRequest = Schema.Struct({
       providerSessionId: ProviderSessionId,
       /** The provider can carry decline feedback back to the asking Agent. */
       supportsFeedback: Schema.optional(Schema.Boolean),
+    }),
+    Schema.Struct({
+      type: Schema.Literal("runtime"),
+      attemptId: RunAttemptId,
+      chatGrant: Schema.optional(Schema.Struct({
+        grant: RuntimeChatGrant,
+        modeRevision: Schema.optional(EventId),
+      })),
     }),
     Schema.Struct({
       type: Schema.Literal("message"),
@@ -2194,6 +2210,7 @@ export const OrchestrationV2DomainEvent = Schema.Union([
       "thread.metadata-updated",
       "thread.pull-request-synced",
       "thread.runtime-mode-updated",
+      "thread.runtime-chat-grant-added",
       "thread.interaction-mode-updated",
       "thread.model-selection-updated",
       "thread.provider-switched",
@@ -3085,6 +3102,7 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
       "thread.pull-request-synced",
       "thread.metadata-updated",
       "thread.runtime-mode-updated",
+      "thread.runtime-chat-grant-added",
       "thread.interaction-mode-updated",
       "thread.model-selection-updated",
       "thread.provider-switched",

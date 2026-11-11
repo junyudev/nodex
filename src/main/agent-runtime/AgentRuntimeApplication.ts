@@ -3313,8 +3313,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       if ((yield* CoreApplicationAgent) !== null || input.respondedBy !== undefined)
         return yield* failure("respond", "Agents cannot answer execution approvals");
       if (
-        capability.type !== "live" ||
-        (request.status === "pending" &&
+        (capability.type !== "live" && capability.type !== "runtime") ||
+        (capability.type === "live" &&
+          request.status === "pending" &&
           !snapshot.projection.providerSessions.some(
             (session) =>
               session.id === capability.providerSessionId &&
@@ -3338,6 +3339,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       if (
         input.feedback !== undefined &&
         (input.decision !== "decline" ||
+          capability.type !== "live" ||
           !capability.supportsFeedback ||
           !input.feedback.trim() ||
           input.feedback.length > 10_000)

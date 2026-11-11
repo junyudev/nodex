@@ -1575,6 +1575,15 @@ describe("Runtime pending approval projection", () => {
         live: true,
         supportsFeedback: true,
       });
+      expect(
+        projectAgentPendingApproval(
+          { ...item, runId: "run" },
+          {
+            ...request,
+            responseCapability: { type: "runtime", attemptId: "attempt" },
+          },
+        ),
+      ).toMatchObject({ live: true, runId: "run", supportsFeedback: false });
       expect(projectAgentRuntimeRequest(item, "project", null)).toBeNull();
       expect(projectAgentPendingApproval(item, { ...request, status: "resolved" })).toBeNull();
       expect(

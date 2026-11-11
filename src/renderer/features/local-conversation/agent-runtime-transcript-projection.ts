@@ -1135,7 +1135,8 @@ export function projectAgentPendingApproval(
     appName: item.appName ?? null,
     options: resolveAgentApprovalOptions(item.options),
     fullAccessOverride: item.fullAccessOverride ?? null,
-    live: request?.responseCapability.type === "live",
+    live:
+      request?.responseCapability.type === "live" || request?.responseCapability.type === "runtime",
     supportsFeedback:
       request?.responseCapability.type === "live" &&
       request.responseCapability.supportsFeedback === true,

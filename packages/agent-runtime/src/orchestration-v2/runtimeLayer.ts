@@ -36,6 +36,7 @@ import * as RunExecutionService from "./RunExecutionService.ts";
 import * as RunLivenessService from "./RunLivenessService.ts";
 import * as RunFinalizationService from "./RunFinalization.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
+import * as RuntimeApprovalsLive from "./RuntimeApprovalsLive.ts";
 import * as RuntimeRequestService from "./RuntimeRequestService.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ThreadForkService from "./ThreadForkService.ts";
@@ -169,10 +170,18 @@ const layerProviderTurnControlServiceProvided = ProviderTurnControlService.layer
   Layer.provide(Layer.merge(ProjectionStore.layer, layerProviderSessionManagerProvided)),
 );
 
+/** One owner of pending Runtime approvals: whoever asks and whoever delivers must share it. */
+export const layerRuntimeApprovalsProvided = RuntimeApprovalsLive.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(ProjectionStore.layer, layerEventSinkProvided, ThreadCommandExecutor.layer),
+  ),
+);
+
 const layerRuntimeRequestServiceProvided = RuntimeRequestService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
       ProjectionStore.layer,
+      layerRuntimeApprovalsProvided,
       layerProviderSessionManagerProvided,
       layerEventSinkProvided,
     ),
@@ -305,6 +314,7 @@ const layerMcpAppRequestsProvided = McpAppRequests.layer.pipe(
 );
 
 export const layer = Layer.mergeAll(
+  layerRuntimeApprovalsProvided,
   layerOrchestratorProvided,
   layerMcpAppRequestsProvided,
   layerThreadManagementProvided,

@@ -50,6 +50,8 @@ import * as RunExecutionService from "../RunExecutionService.ts";
 import * as RunFinalizationService from "../RunFinalization.ts";
 import * as RuntimePolicy from "../RuntimePolicy.ts";
 import * as TurnItemPositionStore from "../TurnItemPositionStore.ts";
+import { RuntimeApprovals } from "../RuntimeApprovals.ts";
+import * as RuntimeApprovalsLive from "../RuntimeApprovalsLive.ts";
 import * as RuntimeRequestService from "../RuntimeRequestService.ts";
 import * as ThreadCommandExecutor from "../ThreadCommandExecutor.ts";
 import * as ThreadForkService from "../ThreadForkService.ts";
@@ -243,6 +245,7 @@ export function layerProviderReplay<Transcript extends ProviderReplayTranscript,
   | EffectOutbox.EffectOutboxV2
   | EventSink.EventSinkV2
   | ProviderSessionManager.ProviderSessionManagerV2
+  | RuntimeApprovals
   | ProjectionStore.ProjectionStoreV2,
   Error | MigrationError | PlatformError.PlatformError | SqlError
 > {
@@ -267,6 +270,7 @@ export function layerWithRegistry<Error>(
   | EffectOutbox.EffectOutboxV2
   | EventSink.EventSinkV2
   | ProviderSessionManager.ProviderSessionManagerV2
+  | RuntimeApprovals
   | ProjectionStore.ProjectionStoreV2,
   Error | MigrationError | PlatformError.PlatformError | SqlError
 > {
@@ -392,9 +396,17 @@ export function layerWithRegistry<Error>(
   const layerProviderTurnControlServiceProvided = ProviderTurnControlService.layer.pipe(
     Layer.provide(Layer.merge(layerStores, layerProviderSessionManagerProvided)),
   );
+  const layerRuntimeApprovalsProvided = RuntimeApprovalsLive.layer.pipe(
+    Layer.provide(Layer.mergeAll(layerStores, layerEventSinkProvided, ThreadCommandExecutor.layer)),
+  );
   const layerRuntimeRequestServiceProvided = RuntimeRequestService.layer.pipe(
     Layer.provide(
-      Layer.mergeAll(layerStores, layerProviderSessionManagerProvided, layerEventSinkProvided),
+      Layer.mergeAll(
+        layerStores,
+        layerProviderSessionManagerProvided,
+        layerEventSinkProvided,
+        layerRuntimeApprovalsProvided,
+      ),
     ),
   );
   const layerCheckpointRollbackServiceProvided = CheckpointRollbackService.layer.pipe(
@@ -503,6 +515,7 @@ export function layerWithRegistry<Error>(
     Layer.provide(Layer.merge(layerStores, layerEffectExecutorProvided)),
   );
   const layerReplayRuntime = Layer.mergeAll(
+    layerRuntimeApprovalsProvided,
     layerStores,
     layerOrchestratorProvided,
     layerProviderSessionManagerProvided,

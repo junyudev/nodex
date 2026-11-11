@@ -18,6 +18,7 @@ import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapt
 import * as EventSink from "./EventSink.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
+import { RuntimeApprovalDelivery } from "./RuntimeApprovalsLive.ts";
 import * as RuntimeRequestService from "./RuntimeRequestService.ts";
 
 function projectionWithRuntimeRequest(
@@ -55,6 +56,7 @@ function layerRuntimeRequestTest(
   return RuntimeRequestService.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
+        Layer.mock(RuntimeApprovalDelivery)({}),
         Layer.mock(EventSink.EventSinkV2)({ write: () => Effect.succeed([]) }),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRuntimeRequest: (_threadId, requestId) =>
@@ -103,6 +105,7 @@ it.effect("forwards orchestrator-resolved runtime requests to the live adapter",
   const layerTest = RuntimeRequestService.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
+        Layer.mock(RuntimeApprovalDelivery)({}),
         Layer.mock(EventSink.EventSinkV2)({ write: () => Effect.succeed([]) }),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRuntimeRequest: (_threadId, requestId) =>
@@ -169,6 +172,7 @@ it.effect("rejects expired runtime requests before invoking the live adapter", (
   const layerTest = RuntimeRequestService.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
+        Layer.mock(RuntimeApprovalDelivery)({}),
         Layer.mock(EventSink.EventSinkV2)({ write: () => Effect.succeed([]) }),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRuntimeRequest: (_threadId, requestId) =>

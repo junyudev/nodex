@@ -3,6 +3,11 @@ import {
   CommandId,
   MessageId,
   RunId,
+  RunAttemptId,
+  OrchestrationV2RuntimeRequestJson,
+  type OrchestrationV2Run,
+  type OrchestrationV2RunAttempt,
+  type ProviderApprovalOption,
   ProviderTurnId,
   EventId,
   NodeId,
@@ -18,6 +23,10 @@ import {
   type ProviderRequestKind,
 } from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
+import * as Fiber from "effect/Fiber";
+import * as Option from "effect/Option";
+import * as Result from "effect/Result";
+import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
@@ -30,6 +39,12 @@ import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ProviderRuntimeRecoveryService from "./ProviderRuntimeRecoveryService.ts";
+import { RuntimeApprovals, type RuntimeApprovalRequest } from "./RuntimeApprovals.ts";
+import * as RuntimeApprovalsLive from "./RuntimeApprovalsLive.ts";
+import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
+import { EventSinkV2 } from "./EventSink.ts";
+import { readRootActivity } from "./ExecutionActivity.ts";
+import { readSessionAttention } from "./SessionAttention.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EffectWorker from "./EffectWorker.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -708,4 +723,579 @@ it.effect(
       ]);
     }).pipe(Effect.provide(layerTest(deliveries)));
   },
+);
+
+const runtimeGrant = "desktop-tools-javascript";
+const sessionOptions: ReadonlyArray<ProviderApprovalOption> = [
+  { decision: "accept", label: "Approve" },
+  { decision: "acceptForSession", label: "Allow JavaScript for this chat" },
+  { decision: "decline", label: "Decline" },
+  { decision: "cancel", label: "Decline and stop" },
+];
+
+const seedRuntimeAttempt = Effect.gen(function* () {
+  const engine = yield* Orchestrator.OrchestratorV2;
+  const projections = yield* ProjectionStore.ProjectionStoreV2;
+  const events = yield* EventSinkV2;
+  const approvals = yield* RuntimeApprovals;
+  const now = yield* DateTime.now;
+  const threadId = ThreadId.make("runtime-approval-thread");
+  const runId = RunId.make("runtime-approval-run");
+  const attemptId = RunAttemptId.make("runtime-approval-attempt");
+  const providerThreadId = ProviderThreadId.make("runtime-approval-provider-thread");
+  const rootNodeId = NodeId.make("runtime-approval-root");
+  yield* engine.dispatch({
+    type: "thread.create",
+    commandId: CommandId.make("create:runtime-approval"),
+    threadId,
+    projectId: ProjectId.make("project"),
+    title: "Runtime approvals",
+    modelSelection,
+    runtimeMode: "approval-required",
+    interactionMode: "default",
+    branch: null,
+    worktreePath: null,
+    createdBy: "user",
+    creationSource: "web",
+  });
+
+  const base = { threadId, runId, occurredAt: now };
+  const run: OrchestrationV2Run = {
+    id: runId,
+    threadId,
+    ordinal: 1,
+    providerInstanceId: instanceId,
+    modelSelection,
+    providerThreadId,
+    userMessageId: MessageId.make("runtime-approval-message"),
+    rootNodeId,
+    activeAttemptId: attemptId,
+    status: "running",
+    requestedAt: now,
+    startedAt: now,
+    completedAt: null,
+    checkpointId: null,
+    contextHandoffId: null,
+  };
+  const attempt: OrchestrationV2RunAttempt = {
+    id: attemptId,
+    runId,
+    attemptOrdinal: 1,
+    rootNodeId,
+    providerInstanceId: instanceId,
+    providerThreadId,
+    providerTurnId: null,
+    reason: "initial",
+    status: "running",
+    startedAt: now,
+    completedAt: null,
+  };
+  yield* events.write({
+    events: [
+      { ...base, id: EventId.make("runtime-test:run"), type: "run.updated", payload: run },
+      {
+        ...base,
+        id: EventId.make("runtime-test:attempt"),
+        type: "run-attempt.created",
+        payload: attempt,
+      },
+      {
+        ...base,
+        id: EventId.make("runtime-test:root"),
+        type: "node.updated",
+        payload: {
+          id: rootNodeId,
+          threadId,
+          runId,
+          parentNodeId: null,
+          rootNodeId,
+          kind: "root_turn",
+          status: "running",
+          countsForRun: true,
+          providerThreadId,
+          providerTurnId: null,
+          nativeItemRef: null,
+          runtimeRequestId: null,
+          checkpointScopeId: null,
+          startedAt: now,
+          completedAt: null,
+        },
+      },
+      {
+        ...base,
+        id: EventId.make("runtime-test:provider-thread"),
+        type: "provider-thread.updated",
+        payload: {
+          id: providerThreadId,
+          driver,
+          providerInstanceId: instanceId,
+          providerSessionId: null,
+          appThreadId: threadId,
+          ownerNodeId: rootNodeId,
+          nativeThreadRef: null,
+          nativeConversationHeadRef: null,
+          status: "active",
+          firstRunOrdinal: 1,
+          lastRunOrdinal: 1,
+          handoffIds: [],
+          forkedFrom: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+    ],
+  });
+  const start = (overrides: Partial<RuntimeApprovalRequest> = {}) =>
+    Effect.gen(function* () {
+      const afterSequence = yield* events.latestSequence({ threadId });
+      const answer = yield* approvals
+        .ask({
+          threadId,
+          runId,
+          attemptId,
+          kind: "command",
+          prompt: "console.log('hello')",
+          appName: "Browser",
+          ...overrides,
+        })
+        .pipe(Effect.forkChild);
+      const pendingCard = events.stream({ threadId, afterSequence }).pipe(
+        Stream.filterMap(({ event }) =>
+          event.type === "runtime-request.updated" &&
+          event.payload.status === "pending" &&
+          event.payload.responseCapability.type === "runtime"
+            ? Result.succeed(event.payload)
+            : Result.fail(undefined),
+        ),
+        Stream.runHead,
+        Effect.map(Option.getOrThrow),
+      );
+      const card = yield* Effect.raceFirst(
+        pendingCard,
+        Fiber.join(answer).pipe(
+          Effect.andThen(Effect.die("Approval settled without opening a card")),
+        ),
+      );
+      return { answer, card };
+    });
+  return {
+    engine,
+    projections,
+    events,
+    approvals,
+    now,
+    threadId,
+    runId,
+    attemptId,
+    run,
+    attempt,
+    start,
+  };
+});
+
+it.effect.each(["accept", "acceptForSession", "decline", "cancel"] as const)(
+  "persists a Runtime approval and delivers %s from the outbox",
+  (decision) => {
+    const nativeDeliveries: ProviderAdapter.ProviderAdapterV2RuntimeRequestResponseInput[] = [];
+    return Effect.gen(function* () {
+      const f = yield* seedRuntimeAttempt;
+      const withGrant = decision === "acceptForSession";
+      const { answer, card } = yield* f.start(
+        withGrant ? { options: sessionOptions, chatGrant: runtimeGrant } : {},
+      );
+      const context = yield* f.projections.getRuntimeResponseContext(f.threadId, card.id);
+      assert.equal(context.node?.runId, f.runId);
+      assert.equal(context.node?.parentNodeId, f.attempt.rootNodeId);
+      assert.equal(card.providerTurnId, null);
+      assert.equal(context.session, undefined);
+      assert.equal(card.responseCapability.type, "runtime");
+      assert.deepEqual(
+        Schema.decodeUnknownSync(OrchestrationV2RuntimeRequestJson)(
+          Schema.encodeSync(OrchestrationV2RuntimeRequestJson)(card),
+        ),
+        card,
+      );
+      if (context.item?.type !== "approval_request") return yield* Effect.die("Missing card");
+      assert.equal(context.item.prompt, "console.log('hello')");
+      assert.equal(context.item.appName, "Browser");
+      assert.deepEqual(
+        context.item.options?.map(({ decision }) => decision),
+        withGrant
+          ? ["accept", "acceptForSession", "decline", "cancel"]
+          : ["accept", "decline", "cancel"],
+      );
+      assert.equal(
+        (yield* f.projections.getThreadShell(f.threadId))?.pendingRuntimeRequest?.id,
+        card.id,
+      );
+      const attention = yield* readSessionAttention([f.threadId], f.runId);
+      assert.deepEqual(attention.get(f.threadId)?.activeFlags, ["waitingOnApproval"]);
+      assert.deepEqual(attention.get(f.threadId)?.requests, [{ id: card.id, kind: "approval" }]);
+      const activity = yield* readRootActivity({ rootThreadIds: [f.threadId] });
+      assert.equal(activity.items[0]?.approvalPrompt, "console.log('hello')");
+      if (!withGrant) {
+        const result = yield* f.engine
+          .dispatch({
+            type: "runtime-request.respond",
+            commandId: CommandId.make("unsupported-session-grant"),
+            threadId: f.threadId,
+            requestId: card.id,
+            decision: "acceptForSession",
+          })
+          .pipe(Effect.result);
+        assert.equal(result._tag, "Failure");
+      }
+      yield* f.engine.dispatch({
+        type: "runtime-request.respond",
+        commandId: CommandId.make("answer-runtime-approval"),
+        threadId: f.threadId,
+        requestId: card.id,
+        decision,
+      });
+      const recorded = yield* f.projections.getRuntimeRequest(f.threadId, card.id);
+      assert.equal(recorded?.status, "resolved");
+      assert.equal(recorded?.decision, decision);
+      if (decision !== "cancel") assert.isUndefined(answer.pollUnsafe());
+      if (withGrant)
+        assert.isTrue(
+          yield* f.approvals.isAllowedForChat({
+            threadId: f.threadId,
+            grant: runtimeGrant,
+          }),
+        );
+      yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain(10);
+      assert.equal(yield* Fiber.join(answer), decision);
+      assert.isEmpty(nativeDeliveries);
+      if (decision === "cancel")
+        assert.equal(
+          (yield* f.projections.getThreadProjection(f.threadId)).runs[0]?.status,
+          "interrupted",
+        );
+    }).pipe(Effect.provide(layerTest(nativeDeliveries)));
+  },
+);
+
+it.effect.each([
+  "terminal attempt",
+  "replacement attempt",
+  "retirement",
+  "interrupt",
+  "stop",
+  "archive",
+  "delete",
+  "abort",
+  "restart",
+] as const)("withdraws a Runtime approval on %s", (cause) =>
+  Effect.gen(function* () {
+    const f = yield* seedRuntimeAttempt;
+    const abort = new AbortController();
+    const { answer, card } = yield* f.start({ signal: abort.signal });
+    const base = {
+      id: EventId.make("runtime-test:end"),
+      threadId: f.threadId,
+      runId: f.runId,
+      occurredAt: f.now,
+    };
+    switch (cause) {
+      case "terminal attempt":
+        yield* f.events.write({
+          events: [
+            {
+              ...base,
+              type: "run-attempt.updated",
+              payload: { ...f.attempt, status: "completed", completedAt: f.now },
+            },
+          ],
+        });
+        break;
+      case "replacement attempt":
+        yield* f.events.write({
+          events: [
+            {
+              ...base,
+              type: "run.updated",
+              payload: { ...f.run, activeAttemptId: RunAttemptId.make("replacement") },
+            },
+          ],
+        });
+        break;
+      case "retirement": {
+        const operationId = "runtime-test:retirement";
+        const thread = yield* f.projections.getThread(f.threadId);
+        yield* f.events.write({
+          events: [
+            {
+              ...base,
+              id: EventId.make("runtime-test:hold"),
+              type: "thread.metadata-updated",
+              payload: { ...thread, executionHandoff: { operationId, recoveryRequired: false } },
+            },
+          ],
+        });
+        yield* f.events.write({
+          events: [
+            {
+              ...base,
+              type: "run.execution-retired",
+              payload: {
+                runId: f.runId,
+                attemptId: f.attemptId,
+                rootNodeId: f.attempt.rootNodeId,
+                providerThreadId: f.attempt.providerThreadId,
+                cohortParentRunId: f.runId,
+                deliveryRunId: null,
+                operationId,
+                retirementEffectId: null,
+              },
+            },
+          ],
+        });
+        break;
+      }
+      case "interrupt":
+        yield* f.engine.dispatch({
+          type: "run.interrupt",
+          commandId: CommandId.make("interrupt"),
+          threadId: f.threadId,
+          runId: f.runId,
+        });
+        break;
+      case "stop":
+      case "archive":
+      case "delete":
+        yield* f.engine.dispatch({
+          type: `thread.${cause}`,
+          commandId: CommandId.make(cause),
+          threadId: f.threadId,
+        });
+        break;
+      case "abort":
+        abort.abort();
+        break;
+      case "restart": {
+        const recovery = yield* ProviderRuntimeRecoveryService.ProviderRuntimeRecoveryService.pipe(
+          Effect.provide(ProviderRuntimeRecoveryService.layer),
+          Effect.provide(ServerSettings.layerTest()),
+          Effect.provide(IdAllocator.layer),
+        );
+        yield* recovery.reconcile("startup");
+        break;
+      }
+    }
+    assert.equal(yield* Fiber.join(answer), "cancel");
+    const context = yield* f.projections.getRuntimeResponseContext(f.threadId, card.id);
+    assert.equal(context.request?.status, cause === "restart" ? "expired" : "cancelled");
+    assert.equal(context.request?.responseCapability.type, "not_resumable");
+    assert.equal(context.node?.status, "cancelled");
+    assert.equal(context.item?.status, "cancelled");
+  }).pipe(Effect.provide(layerTest([]))),
+);
+
+it.effect("refuses an old attempt and isolates simultaneous approvals on the current Run", () =>
+  Effect.gen(function* () {
+    const f = yield* seedRuntimeAttempt;
+    yield* f.events.write({
+      events: [
+        {
+          id: EventId.make("runtime-test:old-attempt"),
+          threadId: f.threadId,
+          runId: f.runId,
+          occurredAt: f.now,
+          type: "run-attempt.created",
+          payload: { ...f.attempt, id: RunAttemptId.make("old-attempt"), attemptOrdinal: 2 },
+        },
+      ],
+    });
+    assert.equal(
+      yield* f.approvals.ask({
+        threadId: f.threadId,
+        runId: f.runId,
+        attemptId: RunAttemptId.make("old-attempt"),
+        kind: "command",
+        prompt: "old request",
+      }),
+      "cancel",
+    );
+    assert.isEmpty((yield* f.projections.getThreadProjection(f.threadId)).runtimeRequests);
+
+    const first = yield* f.start();
+    const second = yield* f.start({ prompt: "other request" });
+    assert.notEqual(first.card.id, second.card.id);
+    for (const [requestId, decision] of [
+      [second.card.id, "decline"],
+      [first.card.id, "accept"],
+    ] as const) {
+      yield* f.engine.dispatch({
+        type: "runtime-request.respond",
+        commandId: CommandId.make(`answer:${decision}`),
+        threadId: f.threadId,
+        requestId,
+        decision,
+      });
+      yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain(10);
+      if (decision === "decline") {
+        assert.equal(yield* Fiber.join(second.answer), "decline");
+        assert.isUndefined(first.answer.pollUnsafe());
+      }
+    }
+    assert.equal(yield* Fiber.join(first.answer), "accept");
+  }).pipe(Effect.provide(layerTest([]))),
+);
+
+it.effect("delivers an answer while the provider's effect lane is occupied", () =>
+  Effect.gen(function* () {
+    const f = yield* seedRuntimeAttempt;
+    const { answer, card } = yield* f.start();
+    const outbox = yield* EffectOutbox.EffectOutboxV2;
+    const effectId = "provider-effect-in-flight";
+    yield* outbox.enqueue([
+      {
+        id: effectId,
+        commandId: CommandId.make(effectId),
+        threadId: f.threadId,
+        request: {
+          type: "provider-turn.interrupt",
+          providerSessionId: ProviderSessionId.make("provider-effect-session"),
+          providerThreadId: f.attempt.providerThreadId,
+          providerTurnId: ProviderTurnId.make("provider-effect-turn"),
+        },
+      },
+    ]);
+    const claimed = yield* outbox.claimNext({
+      workerId: "provider-worker",
+      leaseDurationMs: 60_000,
+    });
+    assert.equal(Option.getOrThrow(claimed).id, effectId);
+
+    yield* f.engine.dispatch({
+      type: "runtime-request.respond",
+      commandId: CommandId.make("answer-during-provider-effect"),
+      threadId: f.threadId,
+      requestId: card.id,
+      decision: "accept",
+    });
+    yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).runOnce;
+    assert.equal(yield* Fiber.join(answer), "accept");
+    assert.equal(Option.getOrThrow(yield* outbox.get(effectId)).status, "running");
+  }).pipe(Effect.provide(layerTest([]))),
+);
+
+it.effect(
+  "persists chat allowances across service replacement, ends them on a mode change, and excludes forks",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* seedRuntimeAttempt;
+      const grant = { threadId: f.threadId, grant: runtimeGrant } as const;
+      const beforeGrant = yield* f.projections.getThread(f.threadId);
+      yield* f.approvals.allowForChat(grant);
+      const withGrant = yield* f.projections.getThread(f.threadId);
+      const updateTitle = (thread: typeof beforeGrant, title: string) =>
+        f.events.write({
+          events: [
+            {
+              id: EventId.make(`runtime-test:title:${title}`),
+              type: "thread.metadata-updated",
+              threadId: f.threadId,
+              occurredAt: f.now,
+              payload: { ...thread, title },
+            },
+          ],
+        });
+      yield* updateTitle(beforeGrant, "Approval title");
+      const restarted = yield* RuntimeApprovals.pipe(
+        Effect.provide(
+          RuntimeApprovalsLive.layer.pipe(Layer.fresh, Layer.provide(ThreadCommandExecutor.layer)),
+        ),
+      );
+      assert.isTrue(yield* restarted.isAllowedForChat(grant));
+
+      const forkId = ThreadId.make("runtime-approval-fork");
+      yield* f.engine.dispatch({
+        type: "thread.fork",
+        commandId: CommandId.make("fork-runtime-approval-thread"),
+        sourceThreadId: f.threadId,
+        targetThreadId: forkId,
+        sourcePoint: { type: "latest_stable" },
+        sideChat: true,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      assert.isFalse(yield* restarted.isAllowedForChat({ ...grant, threadId: forkId }));
+      assert.isTrue(yield* restarted.isAllowedForChat(grant));
+      for (const [index, mode] of (
+        ["approval-required", "auto", "approval-required"] as const
+      ).entries()) {
+        yield* f.engine.dispatch({
+          type: "thread.runtime-mode.set",
+          commandId: CommandId.make(`permission-mode:${index}`),
+          threadId: f.threadId,
+          runtimeMode: mode,
+        });
+        assert.equal((yield* f.projections.getThread(f.threadId)).runtimeMode, mode);
+        assert.equal(yield* restarted.isAllowedForChat(grant), index === 0);
+        if (mode === "auto") {
+          yield* updateTitle(withGrant, "Title from before the mode change");
+          assert.equal((yield* f.projections.getThread(f.threadId)).runtimeMode, "auto");
+          assert.isFalse(yield* restarted.isAllowedForChat(grant));
+        }
+      }
+      yield* updateTitle(withGrant, "Updated approval title");
+      assert.isFalse(yield* restarted.isAllowedForChat(grant));
+    }).pipe(Effect.provide(layerTest([]))),
+);
+
+it.effect("clears chat grants on a metadata mode change and fences stale writes in the batch", () =>
+  Effect.gen(function* () {
+    const f = yield* seedRuntimeAttempt;
+    const grant = { threadId: f.threadId, grant: runtimeGrant } as const;
+    yield* f.approvals.allowForChat(grant);
+    const withGrant = yield* f.projections.getThread(f.threadId);
+    const { answer } = yield* f.start({ options: sessionOptions, chatGrant: runtimeGrant });
+    const metadata = {
+      type: "thread.metadata-updated",
+      threadId: f.threadId,
+      occurredAt: f.now,
+    } as const;
+    yield* f.events.write({
+      events: [
+        {
+          ...metadata,
+          id: EventId.make("runtime-test:metadata-mode-change"),
+          payload: { ...withGrant, runtimeMode: "full-access" },
+        },
+        {
+          ...metadata,
+          id: EventId.make("runtime-test:stale-metadata"),
+          payload: { ...withGrant, title: "Renamed chat" },
+        },
+      ],
+    });
+    const updated = yield* f.projections.getThread(f.threadId);
+    assert.equal(updated.runtimeMode, "full-access");
+    assert.equal(updated.title, "Renamed chat");
+    assert.isFalse(yield* f.approvals.isAllowedForChat(grant));
+    assert.equal(yield* Fiber.join(answer), "cancel");
+  }).pipe(Effect.provide(layerTest([]))),
+);
+
+it.effect("withdraws a chat-grant offer when its permission mode changes", () =>
+  Effect.gen(function* () {
+    const f = yield* seedRuntimeAttempt;
+    const { answer, card } = yield* f.start({ options: sessionOptions, chatGrant: runtimeGrant });
+    for (const runtimeMode of ["auto", "approval-required"] as const)
+      yield* f.engine.dispatch({
+        type: "thread.runtime-mode.set",
+        commandId: CommandId.make(`mode:${runtimeMode}`),
+        threadId: f.threadId,
+        runtimeMode,
+      });
+    assert.equal(yield* Fiber.join(answer), "cancel");
+    assert.equal(
+      (yield* f.projections.getRuntimeRequest(f.threadId, card.id))?.status,
+      "cancelled",
+    );
+    assert.isFalse(
+      yield* f.approvals.isAllowedForChat({ threadId: f.threadId, grant: runtimeGrant }),
+    );
+  }).pipe(Effect.provide(layerTest([]))),
 );

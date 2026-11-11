@@ -7555,6 +7555,57 @@ for (const kind of [
   );
 }
 
+it.effect("answers a Runtime approval without a provider session", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    const launched = yield* owner.launch(launch);
+    const current = fixture.snapshots.get(launched.threadId)!;
+    fixture.snapshots.set(launched.threadId, {
+      ...current,
+      projection: {
+        ...current.projection,
+        nodes: [
+          { id: "approval-node", threadId: launched.threadId, runId: "approval-run" },
+        ] as never,
+        providerSessions: [],
+        runtimeRequests: [
+          {
+            id: "approval",
+            kind: "command",
+            nodeId: "approval-node",
+            status: "pending",
+            responseCapability: { type: "runtime", attemptId: "approval-attempt" },
+          },
+        ] as never,
+        turnItems: [
+          {
+            id: "approval-item",
+            type: "approval_request",
+            requestId: "approval",
+            options: [
+              { decision: "accept", label: "Approve once" },
+              { decision: "decline", label: "Decline" },
+            ],
+          },
+        ] as never,
+      },
+    });
+    const input = { sessionId: launched.sessionId, requestId: "approval", runId: "approval-run" };
+    const withFeedback = yield* owner
+      .respond({ ...input, decision: "decline", feedback: "Please use a different approach" })
+      .pipe(Effect.result);
+    assert.equal(withFeedback._tag, "Failure");
+    yield* owner.respond({ ...input, decision: "accept" });
+    assert.deepInclude([...fixture.commands.values()].at(-1), {
+      type: "runtime-request.respond",
+      threadId: launched.threadId,
+      requestId: input.requestId,
+      decision: "accept",
+    });
+  }),
+);
+
 it.effect("retains the caller ceiling when the target broadens during resource preparation", () =>
   Effect.gen(function* () {
     let f: ReturnType<typeof setup>;

@@ -93,6 +93,7 @@ export function forkThread(input: ForkThreadInput): OrchestrationV2AppThread {
   const {
     sideChat: _sideChat,
     capturedContext: _capturedContext,
+    runtimeChatGrants: _runtimeChatGrants,
     ...source
   } = input.sourceProjection.thread;
   return {

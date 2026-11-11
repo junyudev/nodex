@@ -62,13 +62,13 @@ stays visible until it is answered, even when earlier work is collapsed.
 
 - **Approve** allows this request once.
 - **Allow for this chat** allows similar requests for the rest of the chat, including after
-  Stop, a model change, or restarting Nodex. Changing the permission mode ends it, and a forked
-  chat starts without it.
+  Stop, a model change, or restarting Nodex. Changing the permission mode ends the allowance
+  permanently, even if you return to the earlier mode. A forked chat starts without it.
 - **Decline** refuses the request. The Agent continues and may try another approach.
 - **Decline and stop** refuses the request and stops the turn.
 
-An Agent may offer a narrower set of choices or its own labels; the chat shows exactly the
-choices the Agent can honor. A request that still reaches the person in Full access explains
+An Agent or Runtime tool may offer a narrower set of choices or its own labels. The chat shows
+the choices that the execution source can honor. A request that still reaches the person in Full access explains
 why: an ask rule in the Agent's own settings, or a native safety check that no setting can skip.
 
 Network approvals show the requested destination, including its protocol and any supplied port;
@@ -88,16 +88,19 @@ requests leave no extra row; the action itself shows the outcome.
 
 ### Lifecycle
 
-An approval belongs to the exact Run and provider session that asked. Every window answers
-through the same execution owner; the first accepted answer wins and later answers are refused.
-A retried answer with the same identity returns the accepted result.
+An approval belongs to the execution that asked. Agent requests belong to their provider
+session and Run when present. Runtime tool requests belong to the exact Run attempt and can
+be answered from the same card. Every window answers through the same execution owner. The
+first accepted answer wins, and later answers are refused. A retry with the same identity
+returns the accepted result.
 
 Stopping the turn cancels its pending approvals. Losing the Agent's process, restarting the
 Runtime or ending the provider turn while a request is unanswered closes it; the chat shows that
-the Agent stopped before it was answered. A replacement process never inherits an earlier
-request. Decline and stop interrupts that exact owning Run even if its native denial response has
-no stop variant, and closes the Run's sibling approvals. A completed or replaced Run is never
-stopped by a late answer. An accepted answer that could not be delivered stays recorded and is
+the Agent stopped before it was answered. A Runtime tool's approval also closes if the tool
+withdraws it, the attempt is replaced, or the chat is archived or deleted. A replacement process
+never inherits an earlier request. Decline and stop interrupts the owning Run and closes its
+sibling approvals, even if the native denial response has no stop variant. A late answer cannot
+stop a completed or replaced Run. An accepted answer that could not be delivered stays recorded and is
 never reopened.
 
 ### Waiting signals

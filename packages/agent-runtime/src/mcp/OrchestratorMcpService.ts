@@ -226,7 +226,8 @@ function pendingTaskApproval(
   for (const request of child.runtimeRequests) {
     if (
       request.status !== "pending" ||
-      request.responseCapability.type !== "live" ||
+      (request.responseCapability.type !== "live" &&
+        request.responseCapability.type !== "runtime") ||
       !isApprovalRequestKind(request.kind)
     )
       continue;
@@ -995,7 +996,8 @@ export const make = Effect.gen(function* () {
         .filter(
           (request) =>
             request.status === "pending" &&
-            request.responseCapability.type === "live" &&
+            (request.responseCapability.type === "live" ||
+              request.responseCapability.type === "runtime") &&
             isApprovalRequestKind(request.kind),
         )
         .map((request) => request.nodeId);

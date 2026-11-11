@@ -152,6 +152,7 @@ import { ProviderSessionManagerV2 } from "./ProviderSessionManager.ts";
 import { ProviderSwitchServiceV2 } from "./ProviderSwitchService.ts";
 import { isRuntimeDeliveryRun, queuedRunsInDeliveryOrder } from "./QueuedRunOrder.ts";
 import { isRuntimeDeliveryMessage, queuedMessageKind } from "./QueuedRunKind.ts";
+import { addRuntimeChatGrant } from "./RuntimeApprovals.ts";
 import { RuntimePolicyV2 } from "./RuntimePolicy.ts";
 import {
   endOrphanedNativeSubagent,
@@ -8594,15 +8595,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           cause: "This request does not accept this response.",
         });
       }
+      const capability = runtimeRequest.responseCapability;
+      const runtimeOwned = capability.type === "runtime";
       if (
         isApproval &&
-        (command.decision === undefined || runtimeRequest.responseCapability.type !== "live")
+        (command.decision === undefined || (capability.type !== "live" && !runtimeOwned))
       ) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
           reason: "unsupported",
-          cause: "Approvals require a decision for the original live provider session.",
+          cause: "Approvals require a decision and an active execution source.",
         });
       }
       if (
@@ -8672,7 +8675,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           commandId: command.commandId,
           commandType: command.type,
           reason: "unsupported",
-          cause: "The provider does not offer this approval decision.",
+          cause: "This approval does not offer that decision.",
         });
       }
       const offeredChoices =
@@ -8689,7 +8692,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           commandId: command.commandId,
           commandType: command.type,
           reason: "unsupported",
-          cause: "Choose the provider's exact approval scope.",
+          cause: "Choose the exact approval scope.",
         });
       const messageResponse = runtimeRequest.responseCapability.type === "message";
       const cancelled = command.decision === "decline" || command.decision === "cancel";
@@ -8775,6 +8778,28 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           : { responseFingerprint: command.responseFingerprint }),
       };
       const emitEvent = emit(events, command);
+      if (capability.type === "runtime" && capability.chatGrant !== undefined) {
+        const thread = yield* projectionStore
+          .getThread(command.threadId)
+          .pipe(mapDispatchError(command));
+        if (thread.runtimeChatGrants?.modeRevision !== capability.chatGrant.modeRevision)
+          return yield* new OrchestratorDispatchError({
+            commandId: command.commandId,
+            commandType: command.type,
+            reason: "not_pending",
+            cause: "The conversation's permission mode changed.",
+          });
+        if (command.decision === "acceptForSession") {
+          const runtimeChatGrants = addRuntimeChatGrant(thread, capability.chatGrant.grant);
+          if (runtimeChatGrants !== undefined)
+            yield* emitEvent({
+              type: "thread.runtime-chat-grant-added",
+              threadId: command.threadId,
+              occurredAt: now,
+              payload: { ...thread, runtimeChatGrants },
+            });
+        }
+      }
       const requestNode = context.node;
       const resolvedNodeStatus = cancelled
         ? ("cancelled" as const)
@@ -8950,7 +8975,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         yield* dispatchMessage(replyCommand, events, effects);
         return yield* recordSubagentFollowup(replyCommand, events).pipe(mapDispatchError(command));
       }
-      if (providerSessionId === null) return;
+      if (providerSessionId === null && !runtimeOwned) return;
       yield* Ref.update(effects, (existing) => [
         ...existing,
         {
@@ -8959,7 +8984,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           threadId: command.threadId,
           request: {
             type: "runtime-request.respond",
-            ...(context.node?.runId
+            ...(!runtimeOwned && context.node?.runId
               ? {
                   runId: context.node.runId,
                   activationClass: command.respondedBy
@@ -8968,7 +8993,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 }
               : {}),
             modelPolicyOrigin,
-            providerSessionId,
+            ...(providerSessionId === null ? {} : { providerSessionId }),
             requestId: command.requestId,
             ...(command.decision === undefined ? {} : { decision: command.decision }),
             ...(command.optionId === undefined ? {} : { optionId: command.optionId }),
@@ -8988,7 +9013,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const providerThread = owner.providerThreads.find(
         (thread) => thread.id === run.providerThreadId,
       );
-      if (providerThread?.providerSessionId !== providerSessionId) return;
+      if (capability.type === "runtime") {
+        if (run.activeAttemptId !== capability.attemptId) return;
+      } else if (providerThread?.providerSessionId !== providerSessionId) return;
       // A late answer may deny its old callback, but cannot stop a replacement native turn.
       if (
         runtimeRequest.providerTurnId !== null &&

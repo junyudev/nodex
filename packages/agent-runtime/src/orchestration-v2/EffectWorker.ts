@@ -511,7 +511,9 @@ export const layerExecutor: Layer.Layer<
               .respond({
                 modelPolicyOrigin: effect.request.modelPolicyOrigin ?? "automatic",
                 threadId: effect.threadId,
-                providerSessionId: effect.request.providerSessionId,
+                ...(effect.request.providerSessionId === undefined
+                  ? {}
+                  : { providerSessionId: effect.request.providerSessionId }),
                 requestId: effect.request.requestId,
                 ...(effect.request.decision === undefined
                   ? {}

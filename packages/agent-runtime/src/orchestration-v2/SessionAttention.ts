@@ -28,7 +28,7 @@ export const REQUEST_ATTENTION_KIND_SQL = `CASE WHEN kind <> '${USER_INPUT_REQUE
 /** Request status and response capability own answerability, independently of the Run. */
 export const PENDING_ATTENTION_REQUEST_PREDICATE = `status = 'pending' AND kind NOT IN ('dynamic_tool_call', 'auth_refresh')
   AND CASE WHEN json_valid(payload_json)
-    THEN json_extract(payload_json, '$.responseCapability.type') IN ('live', 'message') ELSE 0 END`;
+    THEN json_extract(payload_json, '$.responseCapability.type') IN ('live', 'runtime', 'message') ELSE 0 END`;
 
 /** Async questions await the person only after their own Thread stops working. */
 export const AWAITS_PERSON_PREDICATE = `facts.kind <> '${ATTENTION_KINDS.question}' OR NOT EXISTS (

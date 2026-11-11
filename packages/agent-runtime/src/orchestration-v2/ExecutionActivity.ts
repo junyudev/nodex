@@ -244,7 +244,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
               INDEXED BY orchestration_v2_projection_turn_items_node_ordinal_idx
               ON item.node_id = request.node_id AND item.thread_id = request.thread_id AND item.type = 'approval_request'
             WHERE attention.root_thread_id = activity.root_thread_id AND attention.kind = ${ATTENTION_KINDS.approval}
-              AND json_extract(request.payload_json, '$.responseCapability.type') = 'live'
+              AND json_extract(request.payload_json, '$.responseCapability.type') IN ('live', 'runtime')
               AND TRIM(COALESCE(json_extract(item.payload_json, '$.prompt'), '')) <> ''
             ORDER BY attention.at, attention.thread_id, attention.request_id, item.ordinal DESC LIMIT 1) AS approval_prompt
         FROM activity LEFT JOIN background_tasks ON background_tasks.root_thread_id = activity.root_thread_id

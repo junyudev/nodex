@@ -29,6 +29,7 @@ import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ProviderTurnControlService from "./ProviderTurnControlService.ts";
 import * as EventSink from "./EventSink.ts";
+import { RuntimeApprovalDelivery } from "./RuntimeApprovalsLive.ts";
 import * as RuntimeRequestService from "./RuntimeRequestService.ts";
 import { derive } from "@nodex/provider-core/server/IdAllocator";
 import { buildBoundedThreadStreamSnapshot } from "./ThreadStream.ts";
@@ -907,6 +908,7 @@ it.effect.each(storageCases)(
         Effect.provide(
           Layer.merge(ProviderTurnControlService.layer, RuntimeRequestService.layer).pipe(
             Layer.provide(layerSessions),
+            Layer.provide(Layer.mock(RuntimeApprovalDelivery)({})),
             Layer.provide(Layer.mock(EventSink.EventSinkV2)({ write: () => Effect.succeed([]) })),
           ),
         ),

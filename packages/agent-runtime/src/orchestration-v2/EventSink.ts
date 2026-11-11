@@ -2,6 +2,7 @@ import {
   CommandId,
   EventId,
   ProviderRequestKind,
+  type OrchestrationV2AppThread,
   type OrchestrationV2Run,
   OrchestrationV2ProviderThreadJson,
   OrchestrationV2DomainEvent,
@@ -81,6 +82,14 @@ type ProviderThreadUpdate = Extract<
   { type: "provider-thread.updated" }
 >;
 
+type ThreadSnapshotEvent = Extract<
+  OrchestrationV2DomainEvent,
+  { payload: OrchestrationV2AppThread }
+>;
+
+const isThreadSnapshotEvent = (event: OrchestrationV2DomainEvent): event is ThreadSnapshotEvent =>
+  event.type.startsWith("thread.") && "runtimeMode" in event.payload;
+
 export interface EventSinkV2Shape {
   readonly writeProviderBackgroundTasks: (
     event: ProviderThreadUpdate,
@@ -108,6 +117,8 @@ export interface EventSinkV2Shape {
     readonly effects: ReadonlyArray<EffectOutbox.PendingOrchestrationEffectV2>;
   }) => Effect.Effect<ReadonlyArray<OrchestrationV2StoredEvent>, EventSinkV2Error>;
   readonly writeIfRunCurrent: (input: {
+    /** Runtime approvals require a running attempt on an open, unstopped Thread. */
+    readonly requireApprovalOwner?: boolean;
     readonly guardProviderRequestUpdates?: boolean;
     readonly commandId?: CommandId;
     readonly threadId: ThreadId;
@@ -404,6 +415,59 @@ const layerBase: Layer.Layer<
         return { ...event, payload };
       });
 
+    const normalizeThreadPermissions = Effect.fnUntraced(function* (
+      event: ThreadSnapshotEvent,
+      prior: Map<ThreadId, OrchestrationV2AppThread>,
+    ) {
+      const { runtimeChatGrants: offeredGrants, ...offered } = event.payload;
+      if (event.type === "thread.created") {
+        prior.set(event.threadId, event.payload);
+        return event;
+      }
+
+      const current =
+        prior.get(event.threadId) ??
+        (yield* projectionStore
+          .getThread(event.threadId)
+          .pipe(
+            Effect.catchTag("ProjectionStoreThreadNotFoundError", (error) =>
+              event.type === "thread.runtime-chat-grant-added"
+                ? Effect.fail(error)
+                : Effect.succeed(undefined),
+            ),
+          ));
+      if (current === undefined) return event;
+
+      const currentGrants = current.runtimeChatGrants;
+      const sameRevision = currentGrants?.modeRevision === offeredGrants?.modeRevision;
+      if (event.type === "thread.runtime-chat-grant-added") {
+        if (!sameRevision || offeredGrants?.mode !== current.runtimeMode)
+          return yield* Effect.fail(new Error("The conversation's permission mode changed."));
+        const payload = { ...current, runtimeChatGrants: offeredGrants };
+        prior.set(event.threadId, payload);
+        return { ...event, payload };
+      }
+
+      // Metadata can be planned outside the Thread command lock. Only a metadata
+      // write based on the current mode revision can carry a mode transition.
+      const runtimeMode =
+        event.type === "thread.runtime-mode-updated" ||
+        (event.type === "thread.metadata-updated" && sameRevision)
+          ? offered.runtimeMode
+          : current.runtimeMode;
+      const runtimeChatGrants =
+        runtimeMode === current.runtimeMode
+          ? currentGrants
+          : { mode: runtimeMode, modeRevision: event.id, grants: [] };
+      const payload = {
+        ...offered,
+        runtimeMode,
+        ...(runtimeChatGrants === undefined ? {} : { runtimeChatGrants }),
+      };
+      prior.set(event.threadId, payload);
+      return { ...event, payload };
+    });
+
     const normalizeEvents = (events: ReadonlyArray<OrchestrationV2DomainEvent>) =>
       Effect.gen(function* () {
         for (const event of events) {
@@ -494,11 +558,13 @@ const layerBase: Layer.Layer<
           ),
         );
         const providerThreads = new Map<ProviderThreadId, ProviderThreadUpdate["payload"]>();
+        const threads = new Map<ThreadId, OrchestrationV2AppThread>();
         return yield* Effect.forEach(
           events,
           (event): Effect.Effect<OrchestrationV2DomainEvent, unknown> => {
             if (event.type === "provider-thread.updated")
               return preserveBackgroundTasks(event, providerThreads);
+            if (isThreadSnapshotEvent(event)) return normalizeThreadPermissions(event, threads);
             return event.type === "turn-item.updated"
               ? turnItemPositions
                   .normalize(
@@ -733,6 +799,30 @@ const layerBase: Layer.Layer<
       );
     });
 
+    const hasApprovalOwner = (threadId: ThreadId, runId: RunId, attemptId: RunAttemptId) =>
+      sql<{ readonly eligible: number }>`
+        SELECT 1 AS eligible
+        FROM orchestration_v2_projection_runs run
+        JOIN orchestration_v2_projection_threads thread ON thread.thread_id = run.thread_id
+        JOIN orchestration_v2_projection_run_attempts attempt ON attempt.run_id = run.run_id
+          AND attempt.attempt_id = ${attemptId} AND attempt.status = 'running'
+        WHERE run.run_id = ${runId} AND run.thread_id = ${threadId}
+          AND run.status = 'running'
+          AND json_extract(run.payload_json, '$.activeAttemptId') = attempt.attempt_id
+          AND thread.archived_at IS NULL AND thread.deleted_at IS NULL
+          AND run.ordinal > COALESCE(json_extract(thread.payload_json, '$.executionStoppedThroughOrdinal'), 0)
+          AND NOT EXISTS (
+            SELECT 1 FROM orchestration_v2_projection_runs newer
+            WHERE newer.thread_id = run.thread_id AND newer.status = 'running' AND newer.ordinal > run.ordinal
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM orchestration_v2_projection_turn_items interrupt
+            WHERE interrupt.thread_id = run.thread_id AND interrupt.run_id = run.run_id
+              AND interrupt.type = 'run_interrupt_request'
+          )
+        LIMIT 1
+      `.pipe(Effect.map((rows) => rows.length > 0));
+
     const writeIfRunCurrentEffect = Effect.fn("orchestrationV2.EventSink.writeIfRunCurrent")(
       function* (input: Parameters<EventSinkV2Shape["writeIfRunCurrent"]>[0]) {
         yield* Effect.annotateCurrentSpan({
@@ -760,7 +850,9 @@ const layerBase: Layer.Layer<
             if (
               current === undefined ||
               current.status !== input.expectedStatus ||
-              current.active_attempt_id !== input.activeAttemptId
+              current.active_attempt_id !== input.activeAttemptId ||
+              (input.requireApprovalOwner === true &&
+                !(yield* hasApprovalOwner(input.threadId, input.runId, input.activeAttemptId)))
             ) {
               return {
                 committed: false as const,
@@ -881,6 +973,35 @@ const layerBase: Layer.Layer<
           if (!reserved) {
             const existing = yield* existingCommandResult(input.commandId);
             return { ...existing, committed: false as const, cancelledEffectIds: [] };
+          }
+
+          // Provider events may retire the attempt while a thread command is planning.
+          // Fence Runtime approval responses, including the interrupt planned by a Cancel choice.
+          for (const event of input.events) {
+            if (
+              event.type !== "runtime-request.updated" ||
+              event.payload.status !== "resolved" ||
+              event.payload.responseCapability.type !== "runtime"
+            )
+              continue;
+            const { attemptId, chatGrant } = event.payload.responseCapability;
+            const current = yield* projectionStore.getRuntimeRequest(
+              event.threadId,
+              event.payload.id,
+            );
+            if (
+              current?.status !== "pending" ||
+              event.runId === undefined ||
+              !(yield* hasApprovalOwner(event.threadId, event.runId, attemptId))
+            )
+              return yield* Effect.fail(
+                new Error("This Runtime approval is no longer pending on its original attempt."),
+              );
+            if (chatGrant !== undefined) {
+              const thread = yield* projectionStore.getThread(event.threadId);
+              if (thread.runtimeChatGrants?.modeRevision !== chatGrant.modeRevision)
+                return yield* Effect.fail(new Error("The conversation's permission mode changed."));
+            }
           }
 
           const normalized = yield* normalizeEvents(
