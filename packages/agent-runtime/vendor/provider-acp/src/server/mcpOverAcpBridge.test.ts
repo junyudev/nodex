@@ -2,6 +2,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import { acpRequestIdentity } from "effect-acp/protocol";
 
 import { makeAcpMcpOverAcpBridge } from "./mcpOverAcpBridge.ts";
 
@@ -98,9 +99,11 @@ describe("AcpMcpOverAcpBridge", () => {
         fetchImplementation: () => Promise.resolve(new Response(null, { status: 202 })),
       });
 
-      expect(yield* bridge.connect({ serverId: "other" }).pipe(Effect.flip)).toMatchObject({
-        _tag: "AcpMcpOverAcpError",
-      });
+      for (const serverId of ["other", "node_repl"]) {
+        expect(yield* bridge.connect({ serverId }).pipe(Effect.flip)).toMatchObject({
+          _tag: "AcpMcpOverAcpError",
+        });
+      }
       expect(
         yield* bridge.message({ connectionId: "missing", method: "tools/list" }).pipe(Effect.flip),
       ).toMatchObject({ _tag: "AcpMcpOverAcpError" });
@@ -117,3 +120,95 @@ describe("AcpMcpOverAcpBridge", () => {
     }),
   );
 });
+
+it.effect.each(["nodex_app", "node_repl"] as const)(
+  "routes %s and sends cancellation before its call completes",
+  (serverId) =>
+    Effect.gen(function* () {
+      const appEndpoint = "http://127.0.0.1:1/mcp";
+      const desktopEndpoint = `${appEndpoint}/node_repl`;
+      const endpoint = serverId === "node_repl" ? desktopEndpoint : appEndpoint;
+      const callStarted = Promise.withResolvers<number>();
+      const callAborted = Promise.withResolvers<void>();
+      let cancelledAtServer = false;
+      const bridge = yield* makeAcpMcpOverAcpBridge({
+        endpoint: appEndpoint,
+        desktopEndpoint,
+        authorization: "Bearer bridge-test",
+        allocateConnectionId: Effect.succeed("connection-1"),
+        fetchImplementation: async (url, init) => {
+          expect(url).toBe(endpoint);
+          expect(new Headers(init?.headers).get("authorization")).toBe("Bearer bridge-test");
+          const body = JSON.parse(String(init?.body));
+          if (body.method === "tools/call") {
+            callStarted.resolve(body.id);
+            init?.signal?.addEventListener("abort", () => callAborted.resolve(), { once: true });
+            // MCP may leave the call unanswered after acknowledging cancellation.
+            return new Promise<Response>(() => {});
+          }
+          const id = await callStarted.promise;
+          expect(body).toMatchObject({
+            method: "notifications/cancelled",
+            params: { requestId: id, reason: "cancelled by agent" },
+          });
+          cancelledAtServer = true;
+          return new Response(null, { status: 202 });
+        },
+      });
+      const { connectionId } = yield* bridge.connect({ serverId });
+      const call = yield* bridge
+        .message({ connectionId, method: "tools/call" }, acpRequestIdentity(42))
+        .pipe(Effect.flip, Effect.forkChild);
+      yield* Effect.promise(() => callStarted.promise);
+      const queued = yield* bridge
+        .message({ connectionId, method: "tools/call" }, acpRequestIdentity(43))
+        .pipe(Effect.flip, Effect.forkChild({ startImmediately: true }));
+      yield* bridge.notification({
+        connectionId,
+        method: "notifications/cancelled",
+        params: { requestId: 43 },
+      });
+      expect((yield* Fiber.join(queued)).message).toBe("MCP request cancelled.");
+      expect(cancelledAtServer).toBe(false);
+
+      yield* bridge.notification({
+        connectionId,
+        method: "notifications/cancelled",
+        params: { requestId: 42, reason: "cancelled by agent" },
+      });
+      expect((yield* Fiber.join(call)).message).toBe("MCP request cancelled.");
+      yield* Effect.promise(() => callAborted.promise);
+      expect(cancelledAtServer).toBe(true);
+    }),
+);
+
+it.effect("binds a fork's Desktop server ID to its own endpoint and credential", () =>
+  Effect.gen(function* () {
+    const source = { endpoint: "http://127.0.0.1:1/mcp/node_repl", authorization: "Bearer source" };
+    const fork = { endpoint: "http://127.0.0.1:2/mcp/node_repl", authorization: "Bearer fork" };
+    let nextId = 0;
+    const bridge = yield* makeAcpMcpOverAcpBridge({
+      endpoint: "http://127.0.0.1:1/mcp",
+      desktopEndpoint: source.endpoint,
+      authorization: source.authorization,
+      allocateConnectionId: Effect.sync(() => String(++nextId)),
+      fetchImplementation: async (endpoint, init) =>
+        Response.json({
+          jsonrpc: "2.0",
+          id: JSON.parse(String(init?.body)).id,
+          result: { endpoint, authorization: new Headers(init?.headers).get("authorization") },
+        }),
+    });
+    const sourceId = yield* bridge.registerDesktopRoute(source);
+    const forkId = yield* bridge.registerDesktopRoute(fork);
+    expect(sourceId).toBe("node_repl");
+    expect(forkId).not.toBe(sourceId);
+    for (const [serverId, route] of [
+      [sourceId, source],
+      [forkId, fork],
+    ] as const) {
+      const { connectionId } = yield* bridge.connect({ serverId });
+      expect(yield* bridge.message({ connectionId, method: "tools/list" })).toEqual(route);
+    }
+  }),
+);

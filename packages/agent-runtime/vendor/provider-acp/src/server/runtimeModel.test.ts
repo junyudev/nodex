@@ -1475,6 +1475,21 @@ describe("extractMcpToolCallIdentity", () => {
     ).toEqual({ server: "nodex_app", tool: "delegate_task", input: { task: "x" } });
   });
 
+  it("recovers Desktop tool identity and arguments from the terminal fallback selector", () => {
+    const toolCall = toolCallFromUpdate({
+      sessionUpdate: "tool_call",
+      toolCallId: "desktop-exec",
+      kind: "execute",
+      title: 'acp-mcp-call --server node_repl js {"code":"console.log(42)"}',
+      status: "in_progress",
+    });
+    expect(extractMcpToolCallIdentity(toolCall)).toEqual({
+      server: "node_repl",
+      tool: "js",
+      input: { code: "console.log(42)" },
+    });
+  });
+
   it("recovers Nodex identity from pi-acp title-only fallback execs", () => {
     // Captured verbatim from pi-acp 0.0.33 2026-08-14: rawInput is null and
     // the command line only appears as the verbatim title, which the

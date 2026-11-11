@@ -1069,7 +1069,7 @@ export interface AcpMcpToolCallIdentity {
 }
 
 /** Matches an invocation of Nodex's `acp-mcp-call` bridge fallback CLI. */
-const ACP_MCP_FALLBACK_CALL = /(?:^|[\s"'=])acp-mcp-call[\s"']+([A-Za-z0-9_.-]+)(?:\s+(.+?))?\s*$/u;
+const ACP_MCP_FALLBACK_CALL = /(?:^|[\s"'=])acp-mcp-call[\s"']+(?:--server\s+(nodex_app|node_repl)\s+)?([A-Za-z0-9_.-]+)(?:\s+(.+?))?\s*$/u;
 
 function acpMcpFallbackInput(value: string | undefined): Record<string, unknown> | undefined {
   if (value === undefined) return undefined;
@@ -1115,6 +1115,20 @@ const NODEX_APP_TITLE_SUFFIX_CALL = new RegExp(
   "i",
 );
 
+const DESKTOP_TOOL_NAMES: ReadonlySet<string> = new Set(["js", "js_reset", "js_add_node_module_dir"]);
+const DESKTOP_TITLE_CALL = /^(?:(?:node_repl[._]|mcp__node_repl__)(?<prefixTool>\w+)$|(?<suffixTool>\w+) \(node_repl MCP Server\)(?::|$))/;
+
+function desktopToolFromTitle(title: unknown): string | undefined {
+  if (typeof title !== "string") return undefined;
+  const match = DESKTOP_TITLE_CALL.exec(title.trim());
+  const tool = match?.groups?.prefixTool ?? match?.groups?.suffixTool;
+  return tool !== undefined && DESKTOP_TOOL_NAMES.has(tool) ? tool : undefined;
+}
+
+function mcpToolIdentity(server: string, tool: string): AcpMcpToolCallIdentity {
+  return { server, tool: server === "node_repl" ? (desktopToolFromTitle(tool) ?? tool) : tool };
+}
+
 const BARE_TOOL_TITLE_CALL = /^(?<tool>[A-Za-z0-9_]+)(?::\s|$)/;
 
 /**
@@ -1132,14 +1146,28 @@ export function extractMcpToolCallIdentity(
   options?: {
     /** Command lines of client terminals embedded in this tool call. */
     readonly embeddedTerminalCommands?: ReadonlyArray<string>;
+    readonly skipTerminalFallback?: boolean;
   },
 ): AcpMcpToolCallIdentity | undefined {
   const rawInput = isRecord(toolCall.data.rawInput) ? toolCall.data.rawInput : undefined;
   const meta = isRecord(toolCall.data.meta) ? toolCall.data.meta : undefined;
+  const gemini = isRecord(meta?.["gemini-cli"]) ? meta["gemini-cli"] : undefined;
+  const geminiMcp = isRecord(gemini?.mcp) ? gemini.mcp : undefined;
+  const geminiServer = typeof geminiMcp?.server_name === "string" ? geminiMcp.server_name : "";
+  const assertsForeignGeminiOrigin = geminiServer.length > 0 && geminiServer !== "node_repl";
+  if (geminiServer === "node_repl") {
+    const reportedTool = geminiMcp?.tool_name ?? toolCall.data.name ?? toolCall.data.title;
+    if (typeof reportedTool === "string") {
+      const tool = desktopToolFromTitle(reportedTool) ?? reportedTool;
+      if (DESKTOP_TOOL_NAMES.has(tool)) return { server: "node_repl", tool };
+    }
+  }
   const server = typeof rawInput?.server === "string" ? rawInput.server.trim() : "";
   const tool = typeof rawInput?.tool === "string" ? rawInput.tool.trim() : "";
   if (meta?.is_mcp_tool_call === true && server.length > 0 && tool.length > 0) {
-    return { server, tool };
+    return server === "node_repl" && assertsForeignGeminiOrigin
+      ? undefined
+      : mcpToolIdentity(server, tool);
   }
   // Agents without tagged rawInput identify their MCP calls through _meta
   // (goose, qwen, claude-acp) or only through the namespaced function name
@@ -1184,19 +1212,31 @@ export function extractMcpToolCallIdentity(
       metaToolName.startsWith(prefix),
     );
     const tool = prefix === undefined ? metaToolName : metaToolName.slice(prefix.length);
-    return tool ? { server: metaServerId, tool } : undefined;
+    if (metaServerId === "node_repl" && assertsForeignGeminiOrigin) return undefined;
+    return tool ? mcpToolIdentity(metaServerId, tool) : undefined;
   }
+  const canInferDesktopOrigin =
+    !assertsForeignGeminiOrigin &&
+    !isNodexAppMcpServer(metaServerId) &&
+    !isNodexAppMcpServer(gooseExtension);
   const candidates = [
     meta?.toolName,
     claudeCode?.toolName,
     gooseToolCall?.toolName,
+    desktopToolFromTitle(toolCall.data.name) === undefined ? undefined : toolCall.data.name,
     toolCall.data.title,
   ].filter((value): value is string => typeof value === "string");
   for (const candidate of candidates) {
     const trimmed = candidate.trim();
     const qualified = /^mcp__(.+?)__(.+)$/i.exec(trimmed);
-    if (qualified?.[1] && qualified[2] && !isNodexAppMcpServer(qualified[1]))
+    if (qualified?.[1] && qualified[2] && !isNodexAppMcpServer(qualified[1])) {
+      if (qualified[1] === "node_repl" && !canInferDesktopOrigin) continue;
       return { server: qualified[1], tool: qualified[2] };
+    }
+    const desktopTool = desktopToolFromTitle(trimmed);
+    if (desktopTool !== undefined && canInferDesktopOrigin) {
+      return { server: "node_repl", tool: desktopTool };
+    }
     const match =
       NODEX_APP_TITLE_CALL.exec(trimmed) ??
       NODEX_APP_TITLE_SUFFIX_CALL.exec(trimmed) ??
@@ -1206,6 +1246,7 @@ export function extractMcpToolCallIdentity(
       return { server: NODEX_APP_MCP_SERVER, tool: candidateTool };
     }
   }
+  if (options?.skipTerminalFallback === true) return undefined;
   const commands = [
     ...(toolCall.command === undefined ? [] : [toolCall.command]),
     // pi-acp reports the exec command line only as the verbatim title.
@@ -1214,13 +1255,11 @@ export function extractMcpToolCallIdentity(
   ];
   for (const command of commands) {
     const match = ACP_MCP_FALLBACK_CALL.exec(command);
-    if (match?.[1] !== undefined) {
-      // The acp-mcp-call CLI exists only as Nodex's bridge fallback, so the
-      // server identity is Nodex's by construction.
-      const input = acpMcpFallbackInput(match[2]);
+    if (match?.[2] !== undefined) {
+      const input = acpMcpFallbackInput(match[3]);
       return {
-        server: NODEX_APP_MCP_SERVER,
-        tool: match[1],
+        server: match[1] ?? NODEX_APP_MCP_SERVER,
+        tool: match[2],
         ...(input === undefined ? {} : { input }),
       };
     }
@@ -1251,11 +1290,14 @@ export function withTrackedPermissionToolCall(
   tracked: AcpToolCallState | undefined,
 ): EffectAcpSchema.RequestPermissionRequest {
   if (tracked === undefined) return params;
-  const { title, kind, rawInput } = params.toolCall;
+  const { name, title, kind, rawInput } = params.toolCall;
   return {
     ...params,
     toolCall: {
       ...params.toolCall,
+      ...(name === undefined && typeof tracked.data.name === "string"
+        ? { name: tracked.data.name }
+        : {}),
       ...(title === undefined && typeof tracked.data.title === "string"
         ? { title: tracked.data.title }
         : {}),
@@ -1274,6 +1316,7 @@ export function parsePermissionRequest(
   const toolCall = makeToolCallState(
     {
       toolCallId: params.toolCall.toolCallId,
+      name: params.toolCall.name,
       title: params.toolCall.title,
       kind: params.toolCall.kind,
       status: params.toolCall.status,
@@ -1281,6 +1324,7 @@ export function parsePermissionRequest(
       rawOutput: params.toolCall.rawOutput,
       content: params.toolCall.content,
       locations: params.toolCall.locations,
+      _meta: params.toolCall._meta,
     },
     { fallbackStatus: "pending" },
   );
@@ -1295,6 +1339,22 @@ export function parsePermissionRequest(
     ...(detail ? { detail } : {}),
     ...(toolCall ? { toolCall } : {}),
   };
+}
+
+/** Desktop MCP permission is advisory. Ordinary shell execution retains ACP policy. */
+export function isAcpDesktopToolPermission(
+  params: EffectAcpSchema.RequestPermissionRequest,
+  tracked: AcpToolCallState | undefined,
+): boolean {
+  if (params.subject != null && params.subject.type !== "tool_call") return false;
+  const { kind, toolCall } = parsePermissionRequest(params);
+  if (kind === "edit" || kind === "delete" || kind === "move") return false;
+  if (toolCall === undefined || toolCall.command !== undefined) return false;
+  const identity = extractMcpToolCallIdentity({
+    ...toolCall,
+    data: { ...toolCall.data, meta: toolCall.data.meta ?? tracked?.data.meta },
+  }, { skipTerminalFallback: true });
+  return identity?.server === "node_repl" && DESKTOP_TOOL_NAMES.has(identity.tool);
 }
 
 export function sessionUpdateIsReplay(params: EffectAcpSchema.SessionNotification): boolean {

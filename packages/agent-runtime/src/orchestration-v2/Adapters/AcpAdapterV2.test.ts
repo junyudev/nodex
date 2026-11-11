@@ -1264,65 +1264,152 @@ describe("AcpAdapterV2", () => {
     );
   });
 
-  it.effect("starts the MCP bridge directly from the self-contained runtime", () =>
-    Effect.gen(function* () {
-      const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const path = yield* Path.Path;
-      const selfInvocation = yield* resolveSelfInvocation().pipe(
-        Effect.provideService(HostProcess.IsExecutable, true),
-      );
-      const mockAgentPath = yield* path.fromFileUrl(
-        new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
-      );
+  it.live.each([
+    { method: "session/new", transport: "stdio", desktop: false },
+    { method: "session/new", transport: "stdio", desktop: true },
+    { method: "session/new", transport: "acp", desktop: true },
+    { method: "session/load", transport: "stdio", desktop: true },
+    { method: "session/resume", transport: "stdio", desktop: true },
+  ] as const)(
+    "advertises $transport MCP servers for $method (Desktop Tools: $desktop)",
+    ({ method, transport, desktop }) =>
+      Effect.gen(function* () {
+        const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const path = yield* Path.Path;
+        const selfInvocation = yield* resolveSelfInvocation().pipe(
+          Effect.provideService(HostProcess.IsExecutable, true),
+        );
+        const mockAgentPath = yield* path.fromFileUrl(
+          new URL(
+            method !== "session/new"
+              ? "../../../../../scripts/scenarios/runtime/scripted-acp-agent.ts"
+              : "../../../scripts/acp-mock-agent.ts",
+            import.meta.url,
+          ),
+        );
+        const protocolEvents = yield* Queue.unbounded<EffectAcpProtocol.AcpProtocolLogEvent>();
 
-      const instanceId = ProviderInstanceId.make("acp-test-self-contained-mcp-bridge");
-      const threadId = ThreadId.make("thread-acp-self-contained-mcp-bridge");
-      yield* (yield* McpProviderSessions.McpProviderSessions).set({
-        environmentId: EnvironmentId.make("environment-acp-self-contained-mcp-bridge"),
-        threadId,
-        providerSessionId: "mcp-session-acp-self-contained-mcp-bridge",
-        providerInstanceId: instanceId,
-        endpoint: "http://127.0.0.1:43123/mcp",
-        authorizationHeader: "Bearer self-contained-mcp-bridge-token",
-        browserToolsAvailable: false,
-      });
+        const instanceId = ProviderInstanceId.make("acp-test-self-contained-mcp-bridge");
+        const threadId = ThreadId.make("thread-acp-self-contained-mcp-bridge");
+        yield* (yield* McpProviderSessions.McpProviderSessions).set({
+          environmentId: EnvironmentId.make("environment-acp-self-contained-mcp-bridge"),
+          threadId,
+          providerSessionId: "mcp-session-acp-self-contained-mcp-bridge",
+          providerInstanceId: instanceId,
+          endpoint: "http://127.0.0.1:43123/mcp",
+          authorizationHeader: "Bearer self-contained-mcp-bridge-token",
+          browserToolsAvailable: false,
+          ...(desktop
+            ? {
+                desktopTools: {
+                  endpoint: "http://127.0.0.1:43123/mcp/node_repl",
+                  pluginRoots: [],
+                  skills: [],
+                },
+              }
+            : {}),
+        });
 
-      let runtimeInput: AcpAdapterV2RuntimeInput | undefined;
-      const makeRuntime = makeMockRuntime({ childProcessSpawner, mockAgentPath });
-      const adapter = yield* makeAcpAdapterV2({
-        instanceId,
-        flavor: {
-          driver: ACP_TEST_DRIVER,
-          capabilities: AcpProviderCapabilitiesV2,
-          makeRuntime: (input) =>
-            Effect.sync(() => {
-              runtimeInput = input;
-            }).pipe(Effect.andThen(makeRuntime(input))),
-        },
-        selfInvocation,
-      });
-      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
-        runtimeMode: "full-access",
-        interactionMode: "default",
-        cwd: process.cwd(),
-      });
-      const modelSelection = { instanceId, model: "default" } as const;
-      yield* adapter.openSession({
-        threadId,
-        providerSessionId: ProviderSessionId.make("provider-session-acp-self-contained-mcp-bridge"),
-        modelSelection,
-        runtimePolicy,
-      });
+        let runtimeInput: AcpAdapterV2RuntimeInput | undefined;
+        const makeRuntime = makeMockRuntime({
+          childProcessSpawner,
+          mockAgentPath,
+          protocolEvents,
+          environment: {
+            ...(transport === "acp" ? { NODEX_ACP_MCP_ACP: "1" } : {}),
+            ...(method !== "session/new"
+              ? {
+                  NODEX_SCRIPTED_ACP_SCENARIO: JSON.stringify({
+                    sessionLifecycle: method === "session/load" ? { load: true } : { resume: true },
+                    sessionConfig: {
+                      id: "model",
+                      category: "model",
+                      currentValue: "default",
+                      values: ["default"],
+                    },
+                  }),
+                }
+              : {}),
+          },
+        });
+        const adapter = yield* makeAcpAdapterV2({
+          instanceId,
+          flavor: {
+            driver: ACP_TEST_DRIVER,
+            capabilities: AcpProviderCapabilitiesV2,
+            makeRuntime: (input) =>
+              Effect.sync(() => {
+                runtimeInput = input;
+              }).pipe(Effect.andThen(makeRuntime(input))),
+          },
+          selfInvocation,
+        });
+        const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          cwd: process.cwd(),
+        });
+        const modelSelection = { instanceId, model: "default" } as const;
+        yield* adapter.openSession({
+          threadId,
+          providerSessionId: ProviderSessionId.make(
+            "provider-session-acp-self-contained-mcp-bridge",
+          ),
+          modelSelection,
+          runtimePolicy,
+          ...(method === "session/new" ? {} : { initialNativeThreadId: "mock-session-1" }),
+        });
 
-      const mcpServer = runtimeInput?.mcpServers[0];
-      if (mcpServer === undefined || !("command" in mcpServer)) {
-        return yield* Effect.die("ACP runtime must receive the nodex_app stdio MCP server");
-      }
-      assert.equal(mcpServer.command, process.execPath);
-      assert.deepEqual(mcpServer.args, ["acp-mcp-bridge"]);
-      assert.equal(runtimeInput?.processEnvironment?.NODEX_ACP_MCP_NODE, process.execPath);
-      assert.equal(runtimeInput?.processEnvironment?.NODEX_ACP_MCP_ENTRYPOINT, undefined);
-    }).pipe(Effect.provide(layerTest), Effect.scoped),
+        const setup = Option.getOrThrow(
+          yield* Stream.fromQueue(protocolEvents).pipe(
+            Stream.filter(
+              (event) => event.direction === "outgoing" && rawProtocolMethod(event) === method,
+            ),
+            Stream.runHead,
+            Effect.timeout("5 seconds"),
+          ),
+        );
+        const expectedNames = desktop ? ["nodex_app", "node_repl"] : ["nodex_app"];
+        const servers = rawProtocolRequestParam(setup, "mcpServers");
+        if (!Array.isArray(servers)) return yield* Effect.die("Missing ACP MCP servers");
+        assert.deepEqual(
+          servers.map((server) => server.name),
+          expectedNames,
+        );
+        if (transport === "acp") {
+          assert.deepEqual(
+            servers,
+            expectedNames.map((name) => ({ type: "acp", name, serverId: name })),
+          );
+        } else if (desktop) {
+          assert.deepEqual(servers[1], {
+            ...(method === "session/new" ? { type: "stdio" } : {}),
+            name: "node_repl",
+            command: process.execPath,
+            args: ["acp-mcp-bridge"],
+            env: [
+              { name: "ELECTRON_RUN_AS_NODE", value: "1" },
+              { name: "NODEX_ACP_MCP_ENDPOINT", value: "http://127.0.0.1:43123/mcp/node_repl" },
+              {
+                name: "NODEX_ACP_MCP_AUTHORIZATION",
+                value: "Bearer self-contained-mcp-bridge-token",
+              },
+            ],
+          });
+        }
+        assert.equal(
+          runtimeInput?.processEnvironment?.NODEX_ACP_DESKTOP_MCP_ENDPOINT,
+          desktop ? "http://127.0.0.1:43123/mcp/node_repl" : undefined,
+        );
+        const mcpServer = runtimeInput?.mcpServers[0];
+        if (mcpServer === undefined || !("command" in mcpServer)) {
+          return yield* Effect.die("ACP runtime must receive the nodex_app stdio MCP server");
+        }
+        assert.equal(mcpServer.command, process.execPath);
+        assert.deepEqual(mcpServer.args, ["acp-mcp-bridge"]);
+        assert.equal(runtimeInput?.processEnvironment?.NODEX_ACP_MCP_NODE, process.execPath);
+        assert.equal(runtimeInput?.processEnvironment?.NODEX_ACP_MCP_ENTRYPOINT, undefined);
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
   it.live("refreshes ACP prompt instructions when the interaction mode changes", () =>
@@ -1336,7 +1423,8 @@ describe("AcpAdapterV2", () => {
       const protocolEvents = yield* Queue.unbounded<EffectAcpProtocol.AcpProtocolLogEvent>();
       const instanceId = ProviderInstanceId.make("acp-test-instruction-transitions");
       const threadId = ThreadId.make("thread-acp-instruction-transitions");
-      yield* (yield* McpProviderSessions.McpProviderSessions).set({
+      const sessions = yield* McpProviderSessions.McpProviderSessions;
+      const mcpSession = {
         environmentId: EnvironmentId.make("environment-acp-instruction-transitions"),
         threadId,
         providerSessionId: "mcp-session-acp-instruction-transitions",
@@ -1344,7 +1432,8 @@ describe("AcpAdapterV2", () => {
         endpoint: "http://127.0.0.1:43123/mcp",
         authorizationHeader: "Bearer instruction-transition-token",
         browserToolsAvailable: false,
-      });
+      };
+      yield* sessions.set(mcpSession);
       const adapter = yield* makeAcpAdapterV2({
         instanceId,
         flavor: {
@@ -1378,9 +1467,10 @@ describe("AcpAdapterV2", () => {
         ordinal: number,
         runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
         messageText: string,
+        hostInstructions?: string,
       ) {
-        yield* runtime.startTurn(
-          makeTurnInput({
+        yield* runtime.startTurn({
+          ...makeTurnInput({
             threadId,
             providerThread,
             instanceId,
@@ -1389,7 +1479,8 @@ describe("AcpAdapterV2", () => {
             ordinal,
             messageText,
           }),
-        );
+          ...(hostInstructions === undefined ? {} : { hostInstructions }),
+        });
         yield* runtime.events.pipe(
           Stream.takeUntil((event) => event.type === "turn.terminal"),
           Stream.runDrain,
@@ -1413,6 +1504,7 @@ describe("AcpAdapterV2", () => {
       const firstDefault = yield* runTurn(1, defaultPolicy, "First default request.");
       assert.include(firstDefault.prompt, "<nodex_instructions>");
       assert.include(firstDefault.prompt, "Nodex interaction mode: Default");
+      assert.notInclude(firstDefault.prompt, "node_repl");
       assert.notInclude(
         firstDefault.methods,
         "session/set_config_option",
@@ -1433,6 +1525,32 @@ describe("AcpAdapterV2", () => {
       );
       const restoredBuild = yield* runTurn(5, defaultPolicy, "Implement the change.");
       assert.include(restoredBuild.prompt, "Nodex interaction mode: Default");
+
+      const readyDesktopSkills = (name: string) =>
+        sessions.set({
+          ...mcpSession,
+          desktopTools: {
+            endpoint: "http://127.0.0.1:43123/mcp/node_repl",
+            pluginRoots: ["/ready-plugin"],
+            skills: [
+              { name, path: `/ready-plugin/skills/${name}/SKILL.md`, description: "Open a page" },
+            ],
+          },
+        });
+      yield* readyDesktopSkills("browser");
+      const firstDesktop = yield* runTurn(6, defaultPolicy, "Read a page.");
+      assert.include(firstDesktop.prompt, "/ready-plugin/skills/browser/SKILL.md");
+      assert.include(firstDesktop.prompt, "Open a page");
+      assert.include(firstDesktop.prompt, "the `js` tool of the `node_repl` MCP server");
+      assert.include(firstDesktop.prompt, "acp-mcp-call --server node_repl");
+      const unchanged = yield* runTurn(7, defaultPolicy, "Read another page.");
+      assert.notInclude(unchanged.prompt, "node_repl");
+      yield* readyDesktopSkills("chrome");
+      const changed = yield* runTurn(8, defaultPolicy, "Open a tab.");
+      assert.include(changed.prompt, "/ready-plugin/skills/chrome/SKILL.md");
+      const perPrompt = yield* runTurn(9, defaultPolicy, "Open another tab.", "Host instructions");
+      assert.include(perPrompt.prompt, "Host instructions");
+      assert.include(perPrompt.prompt, "/ready-plugin/skills/chrome/SKILL.md");
       assert.notInclude(restoredBuild.methods, "session/set_config_option");
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
@@ -3234,6 +3352,11 @@ describe("AcpAdapterV2", () => {
         endpoint: "http://127.0.0.1:43123/mcp",
         authorizationHeader: "Bearer source-thread-token",
         browserToolsAvailable: true,
+        desktopTools: {
+          endpoint: "http://127.0.0.1:43123/mcp/node_repl",
+          pluginRoots: [],
+          skills: [],
+        },
       });
       yield* (yield* McpProviderSessions.McpProviderSessions).set({
         environmentId: EnvironmentId.make("environment-acp-native-fork"),
@@ -3243,6 +3366,11 @@ describe("AcpAdapterV2", () => {
         endpoint: "http://127.0.0.1:43123/mcp",
         authorizationHeader: "Bearer target-thread-token",
         browserToolsAvailable: true,
+        desktopTools: {
+          endpoint: "http://127.0.0.1:43123/mcp/node_repl",
+          pluginRoots: [],
+          skills: [],
+        },
       });
       const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
         runtimeMode: "full-access",
@@ -3302,6 +3430,20 @@ describe("AcpAdapterV2", () => {
             env: [
               { name: "ELECTRON_RUN_AS_NODE", value: "1" },
               { name: "NODEX_ACP_MCP_ENDPOINT", value: "http://127.0.0.1:43123/mcp" },
+              { name: "NODEX_ACP_MCP_AUTHORIZATION", value: "Bearer target-thread-token" },
+            ],
+          },
+          {
+            type: "stdio",
+            name: "node_repl",
+            command: process.execPath,
+            args: [
+              process.argv[1] === undefined ? "nodex" : NodePath.resolve(process.argv[1]),
+              "acp-mcp-bridge",
+            ],
+            env: [
+              { name: "ELECTRON_RUN_AS_NODE", value: "1" },
+              { name: "NODEX_ACP_MCP_ENDPOINT", value: "http://127.0.0.1:43123/mcp/node_repl" },
               { name: "NODEX_ACP_MCP_AUTHORIZATION", value: "Bearer target-thread-token" },
             ],
           },
@@ -14028,8 +14170,9 @@ describe("Claude ACP native work", () => {
 });
 
 const makeAcpApprovalHarness = Effect.fnUntraced(function* (
-  mode: "approval-required" | "full-access" = "approval-required",
+  mode: "approval-required" | "auto" | "full-access" = "approval-required",
   appEndpoint = false,
+  desktop = false,
 ) {
   type Native = AcpSessionRuntime.AcpSessionRuntime["Service"];
   let permission: Parameters<Native["handleRequestPermission"]>[0] | undefined;
@@ -14044,7 +14187,7 @@ const makeAcpApprovalHarness = Effect.fnUntraced(function* (
   const events: ProviderAdapter.ProviderAdapterV2Event[] = [];
   const instanceId = ProviderInstanceId.make("acp-approval-contract");
   const threadId = ThreadId.make("acp-approval-contract");
-  if (appEndpoint)
+  if (appEndpoint || desktop)
     yield* (yield* McpProviderSessions.McpProviderSessions).set({
       threadId,
       providerInstanceId: instanceId,
@@ -14053,6 +14196,15 @@ const makeAcpApprovalHarness = Effect.fnUntraced(function* (
       endpoint: "http://127.0.0.1:43123/mcp",
       authorizationHeader: "Bearer acp-approval-contract",
       browserToolsAvailable: false,
+      ...(desktop
+        ? {
+            desktopTools: {
+              endpoint: "http://127.0.0.1:43123/mcp/node_repl",
+              pluginRoots: [],
+              skills: [],
+            },
+          }
+        : {}),
     });
   const makeRuntime = makeMockRuntime({
     childProcessSpawner: yield* ChildProcessSpawner.ChildProcessSpawner,
@@ -14184,6 +14336,122 @@ const acpApprovalOptions = [
   { kind: "allow_always", optionId: "native-session-id", name: "Allow commands for this session" },
   { kind: "reject_once", optionId: "native-reject-id", name: "Reject this command" },
 ] as const;
+
+describe("ACP Desktop Tool permissions", () => {
+  const gemini = (server_name: string) => ({
+    "gemini-cli": { mcp: { server_name, tool_name: "js" } },
+  });
+
+  it.live.each(["approval-required", "auto", "full-access"] as const)(
+    "uses only the native allow-once option in %s mode",
+    (mode) =>
+      Effect.gen(function* () {
+        const h = yield* makeAcpApprovalHarness(mode, true, true);
+        const positive: EffectAcpSchema.RequestPermissionRequest["toolCall"][] = [
+          { toolCallId: "gemini-title", title: "js (node_repl MCP Server)" },
+          { toolCallId: "gemini-meta", title: "Running JavaScript", _meta: gemini("node_repl") },
+          {
+            toolCallId: "gemini-server-meta",
+            title: "js",
+            _meta: { "gemini-cli": { mcp: { server_name: "node_repl" } } },
+          },
+          { toolCallId: "qualified", title: "mcp__node_repl__js" },
+          { toolCallId: "qualified-name", name: "mcp__node_repl__js" },
+          { toolCallId: "qwen-meta", _meta: { serverId: "node_repl", toolName: "node_repl_js" } },
+          { toolCallId: "dotted", title: "node_repl.js" },
+          { toolCallId: "underscore", title: "node_repl_js" },
+          {
+            toolCallId: "wrapped",
+            rawInput: { server: "node_repl", tool: "js" },
+            _meta: { is_mcp_tool_call: true },
+          },
+        ];
+        yield* h.update({
+          sessionId: "mock-session-1",
+          update: {
+            sessionUpdate: "tool_call",
+            toolCallId: "tracked",
+            title: "Running a tool",
+            _meta: gemini("node_repl"),
+            kind: "execute",
+            status: "pending",
+          },
+        });
+        positive.push({ toolCallId: "tracked" });
+        for (const toolCall of positive) {
+          const response = yield* h
+            .permission(
+              {
+                sessionId: "mock-session-1",
+                toolCall: { kind: "execute", ...toolCall },
+                options: acpApprovalOptions,
+              },
+              { method: "session/request_permission", requestId: toolCall.toolCallId },
+            )
+            .pipe(Effect.timeout("2 seconds"));
+          assert.deepEqual(response.outcome, { outcome: "selected", optionId: "native-once-id" });
+          yield* h.acknowledge(toolCall.toolCallId);
+        }
+        const noAllowOnce = yield* h.permission(
+          {
+            sessionId: "mock-session-1",
+            toolCall: { toolCallId: "always-only", title: "node_repl.js", kind: "execute" },
+            options: acpApprovalOptions.slice(1),
+          },
+          { method: "session/request_permission", requestId: "always-only" },
+        );
+        assert.deepEqual(noAllowOnce.outcome, { outcome: "cancelled" });
+        yield* h.acknowledge("always-only");
+        assert.isFalse(h.events.some((event) => event.type === "runtime_request.updated"));
+        if (mode === "approval-required") {
+          assert.isTrue(Exit.isFailure(yield* h.createTerminal().pipe(Effect.exit)));
+        }
+        yield* h.finish;
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.live.each([
+    { title: "js", desktop: true },
+    { title: "js (other MCP Server)", desktop: true },
+    { title: "mcp__other__js", desktop: true },
+    { title: "js", desktop: true, _meta: gemini("other") },
+    { title: "node_repl.js", desktop: true, _meta: gemini("other") },
+    { title: "node_repl.unknown_tool", desktop: true },
+    { title: "node_repl.js", desktop: true, rawInput: { command: "printf hello" } },
+    { title: "acp-mcp-call --server node_repl js '{}'", desktop: true },
+    { title: "node_repl.js", desktop: false },
+  ])(
+    "uses ordinary approval policy for $title (Desktop Tools: $desktop)",
+    ({ desktop, ...toolCall }) =>
+      Effect.gen(function* () {
+        const h = yield* makeAcpApprovalHarness("approval-required", true, desktop);
+        const native = yield* h
+          .permission(
+            {
+              sessionId: "mock-session-1",
+              toolCall: { toolCallId: "approval-required", kind: "execute", ...toolCall },
+              options: acpApprovalOptions,
+            },
+            { method: "session/request_permission", requestId: "ordinary-approval" },
+          )
+          .pipe(Effect.forkScoped);
+        const request = yield* Queue.take(h.requests).pipe(Effect.timeout("2 seconds"));
+        const response = yield* h.runtime
+          .respondToRuntimeRequest({
+            requestId: request.id,
+            decision: "decline",
+          })
+          .pipe(Effect.forkScoped);
+        assert.deepEqual((yield* Fiber.join(native)).outcome, {
+          outcome: "selected",
+          optionId: "native-reject-id",
+        });
+        yield* h.acknowledge("ordinary-approval");
+        yield* Fiber.join(response);
+        yield* h.finish;
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+});
 
 describe("ACP interactive approval contract", () => {
   it.live("keeps full-access permissions automatic after turn settlement", () =>
