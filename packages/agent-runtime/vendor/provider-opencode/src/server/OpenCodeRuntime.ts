@@ -264,6 +264,7 @@ export class OpenCodeRuntime extends Context.Service<
       readonly serverUrl?: string | null;
       readonly serverPassword?: string;
       readonly environment?: NodeJS.ProcessEnv;
+      readonly desktopSkillPaths?: ReadonlyArray<string>;
       readonly port?: number;
       readonly hostname?: string;
       readonly timeoutMs?: number;
@@ -856,6 +857,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       const environment = yield* NativeExecutionPlugin.environment(
         input.environment ?? process.env,
         "v1",
+        input.desktopSkillPaths,
       ).pipe(
         Effect.provideService(FileSystem.FileSystem, fileSystem),
         Effect.mapError(

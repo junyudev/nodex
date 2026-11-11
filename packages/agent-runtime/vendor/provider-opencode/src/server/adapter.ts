@@ -62,6 +62,9 @@ import {
   mcpToolPresentation,
   publicMcpToolInput,
 } from "@nodex/provider-core/server/mcpToolPresentation";
+import type { McpProviderSessionConfig } from "@nodex/provider-core/server/mcpSession";
+import * as DesktopTools from "./DesktopTools.ts";
+import { skillPaths } from "./NativeExecutionPlugin.ts";
 import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
 import * as ProviderEventLoggers from "@nodex/provider-core/server/ProviderEventLoggers";
 import {
@@ -635,12 +638,20 @@ const OPENCODE_APP_PERMISSION: PermissionRuleset[number] = {
   action: "allow",
 };
 
+const DESKTOP_TOOL_PERMISSION: PermissionRuleset[number] = {
+  permission: `${DesktopTools.DESKTOP_MCP_SERVER}_*`,
+  pattern: "*",
+  action: "allow",
+};
+
 /** OpenCode has no OS sandbox; native permission rules enforce the Session mode. */
 export function openCodePermissionRules(
   runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
+  desktopTools = false,
 ): PermissionRuleset {
+  const desktopRules = desktopTools ? [DESKTOP_TOOL_PERMISSION] : [];
   if (runtimePolicy.runtimeMode === "full-access") {
-    return [{ permission: "*", pattern: "*", action: "allow" }];
+    return [{ permission: "*", pattern: "*", action: "allow" }, ...desktopRules];
   }
   // Children initially inherit only denies; seed them before overrides to protect the policy-install gap.
   const rules: PermissionRuleset = [
@@ -671,7 +682,7 @@ export function openCodePermissionRules(
     { permission: "read", pattern: "*.env.example", action: "allow" },
   );
 
-  rules.push(OPENCODE_APP_PERMISSION);
+  rules.push(OPENCODE_APP_PERMISSION, ...desktopRules);
   return rules;
 }
 
@@ -694,8 +705,9 @@ export function openCodeChildPermissionRules(
   runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
   childRules: PermissionRuleset,
   previousParentRules: PermissionRuleset = [],
+  desktopTools = false,
 ): PermissionRuleset {
-  const parentRules = openCodePermissionRules(runtimePolicy);
+  const parentRules = openCodePermissionRules(runtimePolicy, desktopTools);
   const inheritedRules = [
     ...parentRules.filter(
       (rule) => rule.permission === "external_directory" || rule.action === "deny",
@@ -708,9 +720,12 @@ export function openCodeChildPermissionRules(
   );
   return [
     ...[...parentRules, ...childSpecificRules].filter(
-      (rule) => rule.permission !== OPENCODE_APP_PERMISSION.permission,
+      (rule) =>
+        rule.permission !== OPENCODE_APP_PERMISSION.permission &&
+        (!desktopTools || rule.permission !== DESKTOP_TOOL_PERMISSION.permission),
     ),
     OPENCODE_APP_PERMISSION,
+    ...(desktopTools ? [DESKTOP_TOOL_PERMISSION] : []),
   ];
 }
 
@@ -921,12 +936,13 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
   const executionHost = yield* ExecutionHost.ExecutionHost;
   const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
   const messageIdClock = yield* Ref.make({ epochMillis: -1, counter: 0 });
-  const connectClient = Effect.fnUntraced(function* (cwd: string) {
+  const connectClient = Effect.fnUntraced(function* (cwd: string, desktopSkillPaths?: ReadonlyArray<string>) {
     const connection = yield* runtime.connectToOpenCodeServer({
       binaryPath: options.settings.binaryPath,
       directory: cwd,
       serverUrl: options.settings.serverUrl,
       environment: options.environment,
+      ...(desktopSkillPaths === undefined ? {} : { desktopSkillPaths }),
     });
     const client = runtime.createOpenCodeSdkClient({
       baseUrl: connection.url,
@@ -982,9 +998,11 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
       function* (input: ProviderAdapter.ProviderAdapterV2OpenSessionInput) {
         const scope = yield* Effect.scope;
         const cwd = input.runtimePolicy.cwd ?? host.paths.cwd;
-        const { client, connection } = yield* connectClient(cwd);
-
-        const mcpSession = yield* mcpSessions.read(input.threadId);
+        const mcpSession = options.settings.serverUrl.trim()
+          ? undefined
+          : yield* mcpSessions.read(input.threadId);
+        const desktopSkillPaths = skillPaths(mcpSession?.desktopTools?.pluginRoots);
+        const { client, connection } = yield* connectClient(cwd, desktopSkillPaths);
         const hasAppTools = mcpSession !== undefined && !connection.external;
         if (hasAppTools) {
           yield* OpenCodeRuntime.runOpenCodeSdk("mcp.add", () =>
@@ -1000,6 +1018,60 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             }),
           );
         }
+
+        let desktopRegistration:
+          | { readonly endpoint: string; readonly credential: string; connected: boolean }
+          | undefined;
+        const syncDesktopTools = Effect.fnUntraced(function* (config: McpProviderSessionConfig | undefined) {
+          if (connection.external) return;
+          const desktop = config?.desktopTools;
+          const name = DesktopTools.DESKTOP_MCP_SERVER;
+          if (desktop === undefined || config === undefined) {
+            const retired = desktopRegistration;
+            if (retired === undefined) return;
+            // 1.x has no remove route. A disabled replacement closes the MCP
+            // client, removes its tools and clears the stored Authorization header.
+            yield* OpenCodeRuntime.runOpenCodeSdk("mcp.add", (signal) =>
+              client.mcp.add({
+                name,
+                config: { type: "remote", url: retired.endpoint, enabled: false, oauth: false },
+              }, { signal, throwOnError: true }),
+            ).pipe(Effect.timeout("5 seconds"));
+            desktopRegistration = undefined;
+            return;
+          }
+          const credential = config.authorizationHeader;
+          if (desktopRegistration?.connected &&
+              desktopRegistration.endpoint === desktop.endpoint &&
+              desktopRegistration.credential === credential) return desktop;
+          // Record the attempt even if the HTTP response is lost. The server may
+          // have installed the entry, and a later turn must be able to retire it.
+          const attempted = { endpoint: desktop.endpoint, credential, connected: false };
+          desktopRegistration = attempted;
+          const added = yield* OpenCodeRuntime.runOpenCodeSdk("mcp.add", (signal) =>
+            client.mcp.add({
+              name,
+              config: {
+                type: "remote",
+                url: desktop.endpoint,
+                headers: { Authorization: credential },
+                oauth: false,
+                timeout: DesktopTools.DESKTOP_TOOL_TIMEOUT_MS,
+              },
+            }, { signal, throwOnError: true }),
+          ).pipe(
+            Effect.timeout("5 seconds"),
+            Effect.map((response) => response.data?.[name]?.status === "connected"),
+            Effect.catch(() => Effect.logWarning("Could not add Desktop Tools to OpenCode.").pipe(Effect.as(false))),
+          );
+          attempted.connected = added;
+          return added ? desktop : undefined;
+        });
+        yield* syncDesktopTools(mcpSession);
+
+        const hasDesktopTools = () => desktopRegistration?.connected === true;
+        const permissionRules = (policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy) =>
+          openCodePermissionRules(policy, hasDesktopTools());
 
         const now = yield* DateTime.now;
         let sessionEntity: OrchestrationV2ProviderSession = {
@@ -1454,6 +1526,8 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             const childPermission = openCodeChildPermissionRules(
               turn.runtimePolicy,
               nativeChildSession.permission ?? [],
+              [],
+              hasDesktopTools(),
             );
             yield* sdkCall(
               "session.update",
@@ -1477,7 +1551,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               nextChildTurnOrdinal: 1,
               nextAdmissionGeneration: 1,
               permission: childPermission,
-              inheritedPermission: openCodePermissionRules(turn.runtimePolicy),
+              inheritedPermission: permissionRules(turn.runtimePolicy),
             });
             yield* emitProviderEvent({
               type: "app_thread.created",
@@ -1637,10 +1711,12 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             | "completedAt"
             | "updatedAt"
           >;
+          const desktopTool = !connection.external &&
+            part.tool.startsWith(`${DesktopTools.DESKTOP_MCP_SERVER}_`);
           const input = toolInput(part);
           const output = toolOutput(part);
           const isNativeTool = part.tool === "code_search" || part.tool === "apply_patch";
-          if (!isNativeTool && part.tool.includes("_") && turn.mcpServerNames === undefined) {
+          if (!desktopTool && !isNativeTool && part.tool.includes("_") && turn.mcpServerNames === undefined) {
             const serverNames = yield* OpenCodeRuntime.runOpenCodeSdk("mcp.status", (signal) =>
               client.mcp.status(undefined, { signal, throwOnError: true }),
             ).pipe(
@@ -1650,10 +1726,12 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             );
             if (serverNames !== undefined) turn.mcpServerNames = serverNames;
           }
-          const matchingServers = turn.mcpServerNames?.filter(
-            (name) =>
-              !isNativeTool && part.tool.startsWith(`${name.replace(/[^a-zA-Z0-9_-]/g, "_")}_`),
-          );
+          const matchingServers = desktopTool
+            ? [DesktopTools.DESKTOP_MCP_SERVER]
+            : turn.mcpServerNames?.filter(
+                (name) =>
+                  !isNativeTool && part.tool.startsWith(`${name.replace(/[^a-zA-Z0-9_-]/g, "_")}_`),
+              );
           const serverName = matchingServers?.length === 1 ? matchingServers[0] : undefined;
           const presentation =
             serverName === undefined
@@ -1663,14 +1741,17 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   toolName: part.tool.slice(serverName.replace(/[^a-zA-Z0-9_-]/g, "_").length + 1),
                   title: toolTitle(part) === part.tool ? undefined : toolTitle(part),
                 });
+          const mcpOutput = desktopTool && part.state.status === "completed"
+            ? DesktopTools.toolOutput(output, part.state.attachments ?? [])
+            : output;
           const turnItem: OrchestrationV2TurnItem = matchingServers?.length
             ? {
                 ...base,
                 type: "dynamic_tool",
                 ...presentation,
                 toolName: part.tool,
-                input,
-                ...(output === undefined ? {} : { output }),
+                input: desktopTool ? part.state.input : input,
+                ...(mcpOutput === undefined ? {} : { output: mcpOutput }),
               }
             : openCodeToolTurnItem(base, {
                 name: part.tool,
@@ -2963,14 +3044,14 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
           state: OpenCodeThreadState,
           policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
         ) {
-          const parentRules = openCodePermissionRules(policy);
+          const parentRules = permissionRules(policy);
           const pending = [state];
           for (let target = pending.pop(); target !== undefined; target = pending.pop()) {
             const previous = target.permission;
             const permission =
               target.parentSubagent === null
                 ? parentRules
-                : openCodeChildPermissionRules(policy, previous, target.inheritedPermission);
+                : openCodeChildPermissionRules(policy, previous, target.inheritedPermission, hasDesktopTools());
             if (
               permission.length !== previous.length ||
               !permission.every((rule, index) => permissionRuleEquals(rule, previous[index]!))
@@ -3204,10 +3285,10 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               // session.create leaves it unset (SessionPrompt.ensureTitle).
               const response = yield* sdkCall(
                 "session.create",
-                { permission: openCodePermissionRules(threadInput.runtimePolicy) },
+                { permission: permissionRules(threadInput.runtimePolicy) },
                 () =>
                   client.session.create({
-                    permission: openCodePermissionRules(threadInput.runtimePolicy),
+                    permission: permissionRules(threadInput.runtimePolicy),
                   }),
               );
               const nativeSession = unwrapData("session.create", response);
@@ -3238,7 +3319,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               registerThread(
                 {
                   ...nativeSession,
-                  permission: openCodePermissionRules(threadInput.runtimePolicy),
+                  permission: permissionRules(threadInput.runtimePolicy),
                 },
                 providerThread,
                 null,
@@ -3304,6 +3385,9 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   `OpenCode provider thread ${turnInput.providerThread.id} already has an active turn`,
                 );
               }
+              const desktop = yield* syncDesktopTools(
+                connection.external ? undefined : yield* mcpSessions.read(turnInput.threadId),
+              );
               yield* applyPermissionRules(state, turnInput.runtimePolicy);
               const parsedModel = OpenCodeRuntime.parseOpenCodeModelSlug(
                 turnInput.modelSelection.model,
@@ -3437,6 +3521,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 cliBound ? NativeExecutionPlugin.cliInstruction(turnInput.hostCliShell) : undefined,
                 hasAppTools ? turnInput.hostOrchestrationInstructions : undefined,
                 turnInput.hostInstructions,
+                DesktopTools.instructions(desktop, DesktopTools.DESKTOP_MCP_SERVER, desktopSkillPaths),
                 buildRuntimeInstructions({
                   harness: "OpenCode",
                   model: turnInput.modelSelection.model,
@@ -3821,7 +3906,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 yield* sdkCall("session.update", { sessionID: fork.id }, () =>
                   client.session.update({
                     sessionID: fork.id,
-                    permission: openCodePermissionRules(input.runtimePolicy),
+                    permission: permissionRules(input.runtimePolicy),
                   }),
                 );
                 retainedThread = {
@@ -3888,7 +3973,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               yield* sdkCall("session.update", { sessionID: nativeSession.id }, () =>
                 client.session.update({
                   sessionID: nativeSession.id,
-                  permission: openCodePermissionRules(
+                  permission: permissionRules(
                     forkInput.runtimePolicy ?? input.runtimePolicy,
                   ),
                 }),

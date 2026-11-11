@@ -1,8 +1,11 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, delimiter } from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { assert, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
 import { expect, test, vi } from "vite-plus/test";
-import { source } from "./NativeExecutionPlugin.ts";
+import { environment, source, withSkills } from "./NativeExecutionPlugin.ts";
 
 test("each OpenCode shell tool execution pins the Run and restores the original command", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nodex-opencode-shell-"));
@@ -54,3 +57,28 @@ test("each OpenCode shell tool execution pins the Run and restores the original 
     await rm(directory, { recursive: true, force: true });
   }
 });
+it.effect("merges desktop skill paths into each generation's inline configuration", () =>
+  Effect.gen(function* () {
+    const paths = ["/plugins/browser/skills", "/plugins/chrome/skills"];
+    const v1 = yield* environment(
+      {
+        OPENCODE_CONFIG_CONTENT: JSON.stringify({
+          skills: { paths: ["/existing", paths[0]], urls: ["https://catalog.invalid"] },
+        }),
+      },
+      "v1",
+      paths,
+    );
+    assert.deepEqual(JSON.parse(v1.OPENCODE_CONFIG_CONTENT!).skills, {
+      paths: ["/existing", ...paths],
+      urls: ["https://catalog.invalid"],
+    });
+
+    const v2 = yield* environment({
+      OPENCODE_CONFIG_CONTENT: JSON.stringify({ skills: ["/existing", paths[0]] }),
+    });
+    const merged = withSkills(v2, paths);
+    assert.deepEqual(JSON.parse(merged.OPENCODE_CONFIG_CONTENT!).skills, ["/existing", ...paths]);
+    assert.deepEqual(JSON.parse(v2.OPENCODE_CONFIG_CONTENT!).skills, ["/existing", paths[0]]);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);

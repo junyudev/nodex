@@ -28,6 +28,7 @@ export interface OpenCode2Connection extends OpenCode2Client.OpenCode2Api {
   readonly version: string;
   readonly external: boolean;
   readonly bindCliShell?: NativeExecutionPlugin.ShellRouter;
+  readonly desktopSkillPaths?: ReadonlyArray<string>;
 }
 
 export class OpenCode2Server extends Context.Service<
@@ -36,6 +37,7 @@ export class OpenCode2Server extends Context.Service<
     /** Runs `use` against the instance's server, spawning it first when Nodex owns it. */
     readonly withConnection: <A, E, R>(
       use: (connection: OpenCode2Connection) => Effect.Effect<A, E, R>,
+      desktopSkillPaths?: ReadonlyArray<string>,
     ) => Effect.Effect<A, E | OpenCodeRuntime.OpenCodeRuntimeError, R>;
   }
 >()("@nodex/provider-opencode/server/v2/OpenCode2Server") {}
@@ -192,16 +194,20 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
   const owner = yield* OpenCodeServerOwner.make({
     binaryPath: input.binaryPath,
     directory: input.directory,
-    environment: serverEnvironment(environment, password),
-    verify: (url) => connectTo(url, password, false, bindCliShell).pipe(Effect.flatMap(remember)),
   });
   return OpenCode2Server.of({
-    withConnection: (use) =>
+    withConnection: (use, desktopSkillPaths = []) =>
       owner.withServer((server) =>
         // The owner verifies every server it starts before lending it out.
         latest?.url === server.url
           ? use(latest)
           : Effect.die(new Error("OpenCode 2 server was lent before verification.")),
+        {
+          environment: serverEnvironment(NativeExecutionPlugin.withSkills(environment, desktopSkillPaths), password),
+          verify: (url) => connectTo(url, password, false, bindCliShell).pipe(
+            Effect.flatMap((connection) => remember({ ...connection, desktopSkillPaths })),
+          ),
+        },
       ),
   });
 });

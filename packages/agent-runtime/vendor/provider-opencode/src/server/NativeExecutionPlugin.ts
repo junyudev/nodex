@@ -1,6 +1,8 @@
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
+import * as Predicate from "effect/Predicate";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { HostCliShell } from "@nodex/provider-core/server/ExecutionHost";
 
@@ -150,10 +152,40 @@ export default async function () {
 }
 `;
 
+export const skillPaths = (pluginRoots: ReadonlyArray<string> | undefined): ReadonlyArray<string> =>
+  pluginRoots?.map((root) => join(root, "skills")) ?? [];
+
+function skillConfig(
+  skills: unknown,
+  generation: "v1" | "v2",
+  paths: ReadonlyArray<string>,
+): { readonly skills?: unknown } {
+  if (paths.length === 0) return {};
+  if (generation === "v2") {
+    return { skills: [...new Set([...(Array.isArray(skills) ? skills : []), ...paths])] };
+  }
+  const previous = Predicate.isObject(skills) ? skills : {};
+  const existing = "paths" in previous && Array.isArray(previous.paths) ? previous.paths : [];
+  return { skills: { ...previous, paths: [...new Set([...existing, ...paths])] } };
+}
+
+/** Adds process-scoped v2 skills to the inline config produced by `environment`. */
+export function withSkills(inherited: NodeJS.ProcessEnv, paths: ReadonlyArray<string>): NodeJS.ProcessEnv {
+  const content = inherited.OPENCODE_CONFIG_CONTENT;
+  if (paths.length === 0 || content === undefined) return inherited;
+  // The plugin environment has already decoded and serialized the inline config.
+  const config = JSON.parse(content) as Record<string, unknown>;
+  return {
+    ...inherited,
+    OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...config, ...skillConfig(config.skills, "v2", paths) }),
+  };
+}
+
 /** One private, credential-free plugin for the locally owned server's lifetime. */
 export const environment = Effect.fn("OpenCode.NativeExecutionPlugin.environment")(function* (
   inherited: NodeJS.ProcessEnv,
   generation: "v1" | "v2" = "v2",
+  desktopSkillPaths: ReadonlyArray<string> = [],
 ) {
   const fs = yield* FileSystem.FileSystem;
   const directory = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-opencode-native-" });
@@ -172,6 +204,7 @@ export const environment = Effect.fn("OpenCode.NativeExecutionPlugin.environment
     NODEX_OPENCODE_CLI_ROUTING: routing,
     OPENCODE_CONFIG_CONTENT: JSON.stringify({
       ...config,
+      ...skillConfig(config.skills, generation, desktopSkillPaths),
       ...(generation === "v1"
         ? {
             plugin: [

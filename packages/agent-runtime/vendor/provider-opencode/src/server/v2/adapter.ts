@@ -55,6 +55,7 @@ import {
   type ProviderApprovalDecision,
   type RunId,
   type RuntimeRequestId,
+  type ThreadId,
 } from "@nodex/runtime-contracts";
 import type * as Cause from "effect/Cause";
 import { publicMcpToolInput } from "@nodex/provider-core/server/mcpToolPresentation";
@@ -101,6 +102,8 @@ import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import { turnScopedSelectionTransition } from "@nodex/provider-core/server/selectionTransition";
 import { OPENCODE_PROVIDER } from "../adapter.ts";
 import { openCodeToolTurnItem } from "../toolItems.ts";
+import * as DesktopTools from "../DesktopTools.ts";
+import { skillPaths } from "../NativeExecutionPlugin.ts";
 import { APP_TOOLS_PROVIDER_TIMEOUT_MS, NODEX_APP_MCP_SERVER } from "@nodex/runtime-shared/nodexAppMcp";
 
 const OpenCode2ProviderCapabilities = {
@@ -338,6 +341,14 @@ interface OpenBlock {
   text: string;
 }
 
+interface McpRegistration {
+  readonly name: string;
+  readonly directory: string;
+  readonly credential: string;
+  readonly endpoint: string;
+  ready: boolean;
+}
+
 interface ThreadState {
   readonly sessionId: string;
   providerThread: OrchestrationV2ProviderThread;
@@ -416,10 +427,8 @@ interface ThreadState {
    * inbox, where the next prompt would deliver them first, so it cancels them.
    */
   readonly strandedSteers: Set<string>;
-  /** Nodex's MCP server as registered for this thread, and the instructions entry sent with it. */
-  mcp:
-    | { readonly name: string; readonly directory: string; readonly credential: string }
-    | undefined;
+  /** The Thread's MCP registrations on the current owned server. */
+  readonly mcp: Map<string, McpRegistration>;
   instructions: string | undefined;
 }
 
@@ -485,11 +494,23 @@ const mcpRules = (name: string | null): ReadonlyArray<Rule> =>
         { action: `${name}_*`, resource: "*", effect: "allow" },
       ];
 
+const desktopMcpServerName = (appServerName: string) =>
+  DesktopTools.DESKTOP_MCP_SERVER + appServerName.slice(NODEX_APP_MCP_SERVER.length);
+
+// Exact actions avoid allowing a different Thread whose namespace extends this one's.
+const desktopToolActions = (server: string) =>
+  ["js", "js_reset", "js_add_node_module_dir"].map((tool) => `${server}_${tool}`);
+
+// OpenCode 2.1 debounces MCP tool catalog updates by 100ms after discovery.
+// A prompt sent immediately after mcp.add can take the previous tool snapshot.
+const MCP_TOOL_CATALOG_SETTLE = "200 millis";
+
 export const openCode2SessionRules = (
   policy: RulesPolicy,
   paths: ReadonlyArray<Rule>,
   grants: ReadonlyArray<Rule>,
   mcpServerName: string | null,
+  ownsServer = true,
 ): ReadonlyArray<Rule> => [
   ...(policy.runtimeMode === "full-access"
     ? [rule("*", "allow")]
@@ -506,6 +527,14 @@ export const openCode2SessionRules = (
       ]),
   ...paths,
   ...mcpRules(mcpServerName),
+  ...(ownsServer
+    ? [
+        rule(`${DesktopTools.DESKTOP_MCP_SERVER}-*`, "deny"),
+        ...(mcpServerName === null
+          ? []
+          : desktopToolActions(desktopMcpServerName(mcpServerName)).map((action) => rule(action, "allow"))),
+      ]
+    : []),
 ];
 
 const DECLINED = "The user declined this request.";
@@ -621,6 +650,13 @@ const sessionIdOf = (providerThread: OrchestrationV2ProviderThread) => {
 
 const textOf = (content: ReadonlyArray<{ readonly type: string; readonly text?: string }>) =>
   content.flatMap((part) => (part.type === "text" && part.text ? [part.text] : [])).join("\n");
+
+const toolFiles = (
+  content: ReadonlyArray<
+    | { readonly type: "text"; readonly text: string }
+    | { readonly type: "file"; readonly mime: string; readonly uri: string }
+  >,
+) => content.flatMap((part) => part.type === "file" ? [{ mime: part.mime, url: part.uri }] : []);
 
 const stringField = (record: Readonly<Record<string, unknown>> | undefined, key: string) => {
   const value = record?.[key];
@@ -836,7 +872,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
    * Lends the instance's server to a session until its scope closes. A spawned
    * server that died is started again on the next borrow.
    */
-  const borrow = Effect.gen(function* () {
+  const borrow = Effect.fnUntraced(function* (threadId: ThreadId) {
+    const mcpSession = yield* mcpSessions.read(threadId);
     const lent = yield* Deferred.make<
       OpenCode2Server.OpenCode2Connection,
       OpenCodeRuntime.OpenCodeRuntimeError
@@ -844,6 +881,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     yield* server
       .withConnection((connection) =>
         Deferred.succeed(lent, connection).pipe(Effect.andThen(Effect.never)),
+        skillPaths(mcpSession?.desktopTools?.pluginRoots),
       )
       .pipe(
         Effect.catch((error) => Deferred.fail(lent, error)),
@@ -991,7 +1029,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       reports: new Map(),
       stoppedChildren: new Set(),
       strandedSteers: new Set(),
-      mcp: undefined,
+      mcp: new Map(),
       instructions: undefined,
     });
 
@@ -1211,7 +1249,11 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       turn: ActiveTurn,
       id: string,
       status: "running" | "completed" | "failed" | "interrupted",
-      result?: { readonly output: string | undefined; readonly metadata: unknown },
+      result?: {
+        readonly output: string | undefined;
+        readonly metadata: unknown;
+        readonly files?: ReadonlyArray<{ readonly mime: string; readonly url: string }>;
+      },
     ) {
       const tool = turn.tools.get(id);
       if (tool === undefined) return;
@@ -1220,11 +1262,30 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       const completedAt = status === "running" ? null : updatedAt;
       const nativeId = `${turn.scope}${id}`;
       yield* emitNode(state, turn, nativeId, "tool_call", status, startedAt, completedAt);
+      const base = itemBase(state, turn, nativeId, status, startedAt, completedAt, updatedAt);
+      const appThreadId = rootOf(state).providerThread.appThreadId;
+      if (!connection.external && appThreadId !== null &&
+          tool.name.startsWith(`${DesktopTools.DESKTOP_MCP_SERVER}-`) &&
+          desktopToolActions(desktopMcpServerName(yield* mcpServerNameFor(appThreadId))).includes(tool.name)) {
+        const output = DesktopTools.toolOutput(result?.output, result?.files ?? []);
+        yield* emit({
+          type: "turn_item.updated",
+          driver,
+          turnItem: {
+            ...base,
+            type: "dynamic_tool",
+            toolName: tool.name,
+            input: tool.input,
+            ...(output === undefined ? {} : { output }),
+          },
+        });
+        return;
+      }
       yield* emit({
         type: "turn_item.updated",
         driver,
         turnItem: openCodeToolTurnItem(
-          itemBase(state, turn, nativeId, status, startedAt, completedAt, updatedAt),
+          base,
           {
             name: tool.name,
             input: publicMcpToolInput(tool.input),
@@ -2226,7 +2287,9 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         if (
           asked.type === "permission" &&
           ownMcp !== undefined &&
-          asked.request.action.startsWith(`${ownMcp}_`)
+          (asked.request.action.startsWith(`${ownMcp}_`) ||
+            (rootOf(state).mcp.get(desktopMcpServerName(ownMcp))?.ready === true &&
+              desktopToolActions(desktopMcpServerName(ownMcp)).includes(asked.request.action)))
         ) {
           yield* deliver(
             client.permission
@@ -2384,6 +2447,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           yield* emitTool(state, turn, event.data.id, "completed", {
             output,
             metadata: event.data.metadata,
+            files: toolFiles(event.data.content),
           });
           turn.tools.delete(event.data.id);
           return;
@@ -2884,6 +2948,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
             yield* emitTool(state, turn, part.id, "completed", {
               output: textOf(part.state.content),
               metadata: part.state.metadata,
+              files: toolFiles(part.state.content),
             });
             turn.tools.delete(part.id);
           } else if (part.state.status === "error") {
@@ -3028,7 +3093,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       // sends a reconnect still in flight, so a spawned server can idle-stop.
       const scope = yield* Scope.make();
       const { next, stream } = yield* Effect.gen(function* () {
-        const next = yield* borrow.pipe(Effect.provideService(Scope.Scope, scope));
+        const next = yield* borrow(input.threadId).pipe(Effect.provideService(Scope.Scope, scope));
         return { next, stream: yield* next.events };
       }).pipe(Effect.onError(() => Scope.close(scope, Exit.void)));
       const previous = currentScope;
@@ -3039,12 +3104,18 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           Effect.forEach([...nativeCalls.keys()], releaseNativeCall, { discard: true }),
         );
       }
+      const previousConnection = connection;
       connection = next;
       client = next.client;
       currentScope = scope;
       yield* Scope.close(previous, Exit.void);
-      // A restarted server forgot Nodex's MCP servers; the next turn adds them again.
-      for (const state of threads.values()) state.mcp = undefined;
+      if (next !== previousConnection) {
+        // A restarted server forgot the dynamic registrations and instruction cache.
+        for (const state of threads.values()) {
+          state.mcp.clear();
+          state.instructions = undefined;
+        }
+      }
       yield* lock.withPermit(reconcile).pipe(Effect.timeout(RECONCILE_TIMEOUT));
       return stream;
     }).pipe(
@@ -3185,6 +3256,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         paths,
         policy.runtimeMode === "full-access" ? [] : thread.grants,
         appThreadId === null ? null : yield* mcpServerNameFor(appThreadId),
+        !connection.external,
       );
     });
 
@@ -3433,81 +3505,101 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     const removeMcp = (mcp: { readonly name: string; readonly directory: string }) =>
       Effect.suspend(() =>
         client.mcp.remove({ server: mcp.name, location: { directory: mcp.directory } }),
-      ).pipe(Effect.timeout("5 seconds"), Effect.ignore({ log: true }));
+      ).pipe(
+        Effect.catchTag("McpServerNotFoundError", () => Effect.void),
+        Effect.timeout("5 seconds"),
+      );
+    const disposeMcp = (entry: McpRegistration) =>
+      removeMcp(entry).pipe(Effect.ignore({ log: true }));
 
-    // Nodex's MCP registrations outlive a session only on an external server; a
-    // spawned one forgets them when it stops.
+    // The shared process may outlive this adapter session.
     yield* Effect.addFinalizer(() =>
       Effect.forEach(
-        [...threads.values()].flatMap((state) => (state.mcp === undefined ? [] : [state.mcp])),
-        removeMcp,
+        [...threads.values()].flatMap((state) => [...state.mcp.values()]),
+        disposeMcp,
         { concurrency: 8, discard: true },
       ),
     );
 
     /**
-     * Nodex's MCP server for this thread, and the per-turn instructions. The MCP
-     * server is registered for the session's directory under the thread's own
-     * name and credential, and removed when
-     * the thread unloads or the session closes. OpenCode 2 has no per-prompt
-     * system field, so the instructions are a session instructions entry,
-     * which applies from the next step; it is only rewritten when it changes.
+     * Reconciles the Thread's MCP registrations in its current directory.
+     * OpenCode 2 has no per-prompt system field, so the guidance is stored
+     * in a session instructions entry and rewritten when it changes.
      */
     const prepareTurn = Effect.fnUntraced(function* (
       sessionId: string,
       state: ThreadState,
       turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
     ) {
-      const mcpSession = yield* mcpSessions.read(turnInput.threadId);
+      const mcpSession = connection.external ? undefined : yield* mcpSessions.read(turnInput.threadId);
       const directory = turnInput.runtimePolicy.cwd ?? host.paths.cwd;
-      const name = yield* mcpServerNameFor(turnInput.threadId);
-      // An external server may not reach Nodex's MCP endpoint, as with 1.x.
-      const wanted =
-        mcpSession === undefined || connection.external
-          ? undefined
-          : { name, directory, credential: mcpSession.authorizationHeader };
-      if (
-        state.mcp !== undefined &&
-        (wanted === undefined ||
-          state.mcp.directory !== wanted.directory ||
-          state.mcp.credential !== wanted.credential)
-      ) {
-        yield* removeMcp(state.mcp);
-        state.mcp = undefined;
+      const appName = yield* mcpServerNameFor(turnInput.threadId);
+      const desktopName = desktopMcpServerName(appName);
+      const wanted = new Map<string, string>();
+      if (mcpSession !== undefined) wanted.set(appName, mcpSession.endpoint);
+      const desktop = mcpSession?.desktopTools;
+      if (desktop !== undefined) wanted.set(desktopName, desktop.endpoint);
+      const credential = mcpSession?.authorizationHeader;
+
+      let desktopCatalogChanged = false;
+      for (const entry of state.mcp.values()) {
+        if (
+          wanted.get(entry.name) === entry.endpoint &&
+          entry.directory === directory &&
+          entry.credential === credential
+        ) continue;
+        if (entry.name === desktopName) {
+          yield* removeMcp(entry);
+          desktopCatalogChanged = true;
+        } else yield* disposeMcp(entry);
+        state.mcp.delete(entry.name);
       }
-      // Nodex's tools are an addition: a server that cannot add them still runs the turn.
-      if (wanted !== undefined && state.mcp === undefined) {
-        const added = yield* client.mcp
-          .add({
+      if (credential !== undefined) {
+        for (const [name, endpoint] of wanted) {
+          if (state.mcp.get(name)?.ready) continue;
+          // A timed out add may have installed the server. Keep it in the
+          // registry for retirement and retry it on the next turn.
+          const entry = { name, directory, credential, endpoint, ready: false };
+          state.mcp.set(name, entry);
+          const direct = name === desktopName;
+          const added = yield* client.mcp.add({
             server: name,
             location: { directory },
             config: new Mcp.RemoteConfig({
               type: "remote",
-              url: mcpSession!.endpoint,
-              headers: { Authorization: wanted.credential },
+              url: endpoint,
+              headers: { Authorization: credential },
               oauth: false,
-              timeout: new Mcp.TimeoutConfig({ execution: APP_TOOLS_PROVIDER_TIMEOUT_MS }),
+              ...(direct ? { codemode: false } : {}),
+              timeout: new Mcp.TimeoutConfig({
+                execution: direct ? DesktopTools.DESKTOP_TOOL_TIMEOUT_MS : APP_TOOLS_PROVIDER_TIMEOUT_MS,
+              }),
             }),
-          })
-          .pipe(
+          }).pipe(
             Effect.timeout(INVENTORY_TIMEOUT),
             Effect.as(true),
-            Effect.catchCause((cause) =>
-              Effect.logWarning("Could not add the application MCP server to OpenCode.", cause).pipe(
+            Effect.catch(() =>
+              Effect.logWarning(`Could not add the ${direct ? "Desktop Tools" : "application"} MCP server to OpenCode.`).pipe(
                 Effect.as(false),
               ),
             ),
           );
-        if (added) state.mcp = wanted;
+          if (direct && added) desktopCatalogChanged = true;
+          entry.ready = added;
+        }
       }
+      if (desktopCatalogChanged) yield* Effect.sleep(MCP_TOOL_CATALOG_SETTLE);
       const cliBound = yield* (connection.bindCliShell?.(sessionId, turnInput.hostCliShell) ?? Effect.succeed(false)).pipe(Effect.orElseSucceed(() => false));
       const instructions = [
         cliBound ? NativeExecutionPlugin.cliInstruction(turnInput.hostCliShell) : undefined,
         buildRuntimeInstructions({ harness: "OpenCode", model: turnInput.modelSelection.model }),
-        state.mcp !== undefined
-          ? turnInput.hostOrchestrationInstructions
-          : undefined,
+        state.mcp.get(appName)?.ready ? turnInput.hostOrchestrationInstructions : undefined,
         turnInput.hostInstructions,
+        DesktopTools.instructions(
+          state.mcp.get(desktopName)?.ready ? desktop : undefined,
+          desktopName,
+          connection.desktopSkillPaths ?? [],
+        ),
       ]
         .filter((part) => part !== undefined && part.length > 0)
         .join("\n\n");
@@ -4349,7 +4441,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
             threads.delete(child);
             sessionGrants.delete(child);
           }
-          if (state.mcp !== undefined) yield* removeMcp(state.mcp);
+          yield* Effect.forEach(state.mcp.values(), disposeMcp, { discard: true });
         }),
       respondToRuntimeRequest: (requestInput) =>
         Effect.gen(function* () {
@@ -4655,7 +4747,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       Effect.gen(function* () {
         const scope = yield* Scope.make();
         yield* Effect.addFinalizer((exit) => Scope.close(scope, exit));
-        const connection = yield* borrow.pipe(Effect.provideService(Scope.Scope, scope));
+        const connection = yield* borrow(input.threadId).pipe(Effect.provideService(Scope.Scope, scope));
         return yield* openSession(input, { connection, scope });
       }).pipe(
         Effect.mapError(

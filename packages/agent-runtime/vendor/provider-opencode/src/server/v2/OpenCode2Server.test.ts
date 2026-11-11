@@ -194,6 +194,9 @@ describe("OpenCode2Server passwords", () => {
 // prints the 2.x banner (plus the generated-password line 2.x prints when no
 // password is set, which Nodex must never need).
 const FAKE_SERVER = `import { createServer } from "node:http";
+import { writeFileSync } from "node:fs";
+const inline = JSON.parse(process.env.OPENCODE_CONFIG_CONTENT);
+writeFileSync(new URL("skill-paths.json", import.meta.url), JSON.stringify(inline.skills));
 const expected = "Basic " + Buffer.from("opencode:" + process.env.OPENCODE_PASSWORD).toString("base64");
 const server = createServer((request, response) => {
   if (request.headers.authorization !== expected) {
@@ -236,10 +239,24 @@ describe("OpenCode2Server spawned server", () => {
           serverUrl: "",
           serverPassword: "",
           directory,
-          environment: { ...(yield* HostProcess.Environment), OPENCODE_SERVER_PASSWORD: "ambient" },
+          environment: {
+            ...(yield* HostProcess.Environment),
+            OPENCODE_SERVER_PASSWORD: "ambient",
+            OPENCODE_CONFIG_CONTENT: JSON.stringify({ skills: ["/existing/skills"] }),
+          },
         });
-        const first = yield* server.withConnection((connection) => Effect.succeed(connection));
-        const second = yield* server.withConnection((connection) => Effect.succeed(connection));
+        const first = yield* server.withConnection(
+          Effect.succeed,
+          ["/desktop/skills"],
+        );
+        const second = yield* server.withConnection(
+          Effect.succeed,
+          ["/late/skills"],
+        );
+        assert.deepEqual(first.desktopSkillPaths, ["/desktop/skills"]);
+        assert.deepEqual(second.desktopSkillPaths, first.desktopSkillPaths);
+        const skillPaths = yield* fs.readFileString(path.join(directory, "skill-paths.json"));
+        assert.deepEqual(JSON.parse(skillPaths), ["/existing/skills", "/desktop/skills"]);
         assert.strictEqual(first.version, "2.0.18");
         assert.strictEqual(first.external, false);
         assert.strictEqual(second.client, first.client);

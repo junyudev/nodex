@@ -42,6 +42,7 @@ import { describe } from "vite-plus/test";
 import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
+import { buildRuntimeInstructions } from "@nodex/provider-core/server/runtimeInstructions";
 import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as ProviderContinuationRequests from "@nodex/provider-core/server/ProviderContinuationRequests";
 import {
@@ -94,11 +95,17 @@ const event = (
 const durable = { durable: { aggregateID: SESSION, seq: 1, version: 1 } };
 
 /** The root Session keeps its authenticated MCP entry in every mode. */
-const hostRules = [
+const externalRules = [
   { action: "*", resource: "*", effect: "allow" },
   { action: "nodex_app-*", resource: "*", effect: "deny" },
   { action: "nodex_app-thread_opencode2-adapter_*", resource: "*", effect: "allow" },
 ];
+const hostRules = openCode2SessionRules(
+  { runtimeMode: "full-access" },
+  [],
+  [],
+  "nodex_app-thread_opencode2-adapter",
+);
 /** The thread's title, which the recorded session already carries. */
 const TITLE = "Prime check";
 const sessionInfo = (overrides: Record<string, unknown> = {}) => ({
@@ -177,17 +184,17 @@ const withInstructions = (
         "skill.list",
       ].includes(String(entry.frame.type)),
   );
-  // Nodex's MCP server is added before the entry that describes it.
-  const after = entries.findIndex(
-    (entry, index) =>
-      index < first &&
-      entry.type === "emit_inbound" &&
-      typeof entry.frame === "object" &&
-      entry.frame !== null &&
-      "operation" in entry.frame &&
-      entry.frame.operation === "mcp.add",
-  );
-  const at = after < 0 ? first : after + 1;
+  const at = first;
+  if (
+    entries
+      .slice(0, first)
+      .some(
+        (entry) =>
+          entry.type === "expect_outbound" &&
+          (entry.frame as { type?: string }).type === "session.instructions.entry.put",
+      )
+  )
+    return entries;
   return first < 0
     ? entries
     : [
@@ -337,7 +344,10 @@ const resumed = (
       withInstructions([
         ...opening,
         out("session.get", { sessionID: SESSION }),
-        replyData("session.get", sessionInfo()),
+        replyData(
+          "session.get",
+          sessionInfo(options?.external ? { permissions: externalRules } : {}),
+        ),
         ...noOpenRequests,
         ...(options?.runtimeMode === "approval-required"
           ? [
@@ -713,6 +723,28 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
 
   it.effect("stops running turns on an external server when the session closes", () =>
     Effect.gen(function* () {
+      const sessions = yield* McpProviderSessions.McpProviderSessions;
+      yield* sessions.set({
+        environmentId: EnvironmentId.make("environment:opencode2-adapter"),
+        providerSessionId: "mcp:opencode2-adapter",
+        providerInstanceId: instanceId,
+        threadId,
+        endpoint: "http://127.0.0.1:3773/mcp",
+        authorizationHeader: "Bearer fixture",
+        browserToolsAvailable: false,
+        desktopTools: {
+          endpoint: "http://127.0.0.1:3773/mcp/node_repl",
+          pluginRoots: ["/profile/plugin"],
+          skills: [
+            {
+              name: "fixture",
+              description: "Fixture",
+              path: "/profile/plugin/skills/fixture/SKILL.md",
+            },
+          ],
+        },
+      });
+      yield* Effect.addFinalizer(() => sessions.clear(threadId));
       const scope = yield* Scope.make();
       const { runtime, thread } = yield* resumed(
         [
@@ -2749,7 +2781,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         [
           ...opening,
           out("session.get", { sessionID: SESSION }),
-          replyData("session.get", sessionInfo()),
+          replyData("session.get", sessionInfo({ permissions: externalRules })),
           out("permission.list", { sessionID: SESSION }),
           replyData("permission.list", [shellAsk.data]),
           out("session.form.list", { sessionID: SESSION }),
@@ -3659,6 +3691,223 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
       }).pipe(Effect.scoped),
   );
 
+  it.effect(
+    "registers, rotates and retires Desktop Tools and projects public arguments and images",
+    () =>
+      Effect.gen(function* () {
+        const sessions = yield* McpProviderSessions.McpProviderSessions;
+        const app = "nodex_app-thread_opencode2-adapter";
+        const desktop = "node_repl-thread_opencode2-adapter";
+        const endpoint = "http://127.0.0.1:3773/mcp";
+        const plugin = "/profile/desktop-plugin";
+        const skill = {
+          name: "browser",
+          description: "Use the in-app browser",
+          path: `${plugin}/skills/browser/SKILL.md`,
+        };
+        const tools = { endpoint: `${endpoint}/node_repl`, pluginRoots: [plugin], skills: [skill] };
+        const config = {
+          environmentId: EnvironmentId.make("environment:opencode2-adapter"),
+          providerSessionId: "mcp:opencode2-adapter",
+          threadId,
+          providerInstanceId: instanceId,
+          endpoint,
+          authorizationHeader: "Bearer first",
+          browserToolsAvailable: false,
+          desktopTools: tools,
+        };
+        yield* sessions.set(config);
+        yield* Effect.addFinalizer(() => sessions.clear(threadId));
+        const add = (server: string, bearer: string, directory: string = WORK) => [
+          out("mcp.add", {
+            server,
+            "location[directory]": directory,
+            config: {
+              type: "remote",
+              url: server === desktop ? tools.endpoint : endpoint,
+              headers: { Authorization: `Bearer ${bearer}` },
+              oauth: false,
+              codemode: server === desktop ? false : undefined,
+              timeout: { execution: server === desktop ? 3_900_000 : 3_670_000 },
+            },
+          }),
+          reply("mcp.add", null),
+        ];
+        const remove = (server: string, directory: string = WORK) => [
+          out("mcp.remove", { server, "location[directory]": directory }),
+          reply("mcp.remove", null),
+        ];
+        const runtimeInstructions = buildRuntimeInstructions({
+          harness: "OpenCode",
+          model: bigPickle.model,
+        });
+        const instructionEntry = (value: string) => [
+          out("session.instructions.entry.put", { sessionID: SESSION, key: "nodex", value }),
+          reply("session.instructions.entry.put", null),
+        ];
+        const prompt = [
+          out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+          promptAccepted,
+        ];
+        const terminal = event("session.execution.succeeded", { sessionID: SESSION });
+        const call = {
+          sessionID: SESSION,
+          id: "call_desktop",
+          assistantMessageID: "msg_desktop",
+          name: `${desktop}_js`,
+        };
+        const input = { code: "1 + 1", title: "Arithmetic", options: { names: ["a", "b"] } };
+        const data = "aW1hZ2U=";
+        const { runtime, thread } = yield* resumed([
+          ...add(app, "first"),
+          ...add(desktop, "first"),
+          ...instructionEntry(
+            [
+              runtimeInstructions,
+              "Host guidance",
+              "## Desktop skills",
+              "This app can control its in-app Browser and other desktop surfaces for you. Each skill below is a file of instructions. When a request needs one, read the whole file first and follow it; do not guess its API.",
+              `- \`browser\` (${skill.path}): ${skill.description}`,
+              `Desktop skills call the JavaScript tool \`mcp__node_repl__js\`. Here that is \`${desktop}_js\`; its state persists between calls.`,
+            ].join("\n\n"),
+          ),
+          ...prompt,
+          event("session.execution.started", { sessionID: SESSION }),
+          event("session.tool.input.started", call),
+          event("session.tool.called", { ...call, input, executed: true }),
+          event(
+            "session.tool.success",
+            {
+              ...call,
+              executed: true,
+              content: [
+                { type: "text", text: "two" },
+                { type: "file", mime: "image/png", uri: `data:image/png;base64,${data}` },
+              ],
+              metadata: {},
+            },
+            undefined,
+            2,
+          ),
+          terminal,
+          ...remove(app),
+          ...remove(desktop),
+          ...add(app, "rotated"),
+          ...add(desktop, "rotated"),
+          ...prompt,
+          terminal,
+          ...remove(desktop),
+          ...instructionEntry(`${runtimeInstructions}\n\nHost guidance`),
+          ...prompt,
+          terminal,
+          ...remove(app),
+        ]);
+        const send = (ordinal: number) =>
+          Effect.gen(function* () {
+            const collected = yield* runtime.events.pipe(
+              Stream.takeUntil((entry) => entry.type === "turn.terminal"),
+              Stream.runCollect,
+              Effect.forkScoped,
+            );
+            yield* runtime.startTurn({
+              ...turnInput(thread),
+              runId: RunId.make(`run:desktop:${ordinal}`),
+              attemptId: RunAttemptId.make(`attempt:desktop:${ordinal}`),
+              providerTurnOrdinal: ordinal,
+              hostInstructions: "Host guidance",
+            });
+            return yield* Fiber.join(collected);
+          });
+        const first = yield* send(1);
+        const item = first.find(
+          (entry) => entry.type === "turn_item.updated" && entry.turnItem.status === "completed",
+        );
+        assert.deepInclude(item?.type === "turn_item.updated" ? item.turnItem : {}, {
+          type: "dynamic_tool",
+          toolName: call.name,
+          input,
+          output: [
+            { type: "text", text: "two" },
+            { type: "image", mimeType: "image/png", data },
+          ],
+        });
+        yield* sessions.set({ ...config, authorizationHeader: "Bearer rotated" });
+        assert.deepInclude((yield* send(2)).at(-1), { type: "turn.terminal", status: "completed" });
+        const { desktopTools: _removed, ...appOnly } = config;
+        yield* sessions.set({ ...appOnly, authorizationHeader: "Bearer rotated" });
+        assert.deepInclude((yield* send(3)).at(-1), { type: "turn.terminal", status: "completed" });
+        yield* runtime.unloadThread!({ providerThread: thread });
+      }).pipe(Effect.scoped, TestClock.withLive),
+  );
+
+  it.effect.each([false, true])(
+    "keeps Desktop Tools attached across reconnects and re-registers on a new process (%s)",
+    (replaceConnectionOnReconnect) =>
+      Effect.gen(function* () {
+        const sessions = yield* McpProviderSessions.McpProviderSessions;
+        const app = "nodex_app-thread_opencode2-adapter";
+        const desktop = "node_repl-thread_opencode2-adapter";
+        const endpoint = "http://127.0.0.1:3773/mcp";
+        yield* sessions.set({
+          environmentId: EnvironmentId.make("environment:opencode2-adapter"),
+          providerSessionId: "mcp:opencode2-adapter",
+          providerInstanceId: instanceId,
+          threadId,
+          endpoint,
+          authorizationHeader: "Bearer fixture",
+          browserToolsAvailable: false,
+          desktopTools: { endpoint: `${endpoint}/node_repl`, pluginRoots: [], skills: [] },
+        });
+        yield* Effect.addFinalizer(() => sessions.clear(threadId));
+        const add = [
+          out("mcp.add", { server: app, "location[directory]": WORK }),
+          reply("mcp.add", null),
+          out("mcp.add", { server: desktop, "location[directory]": WORK }),
+          reply("mcp.add", null),
+        ];
+        const prompt = [
+          out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+          promptAccepted,
+        ];
+        const { runtime, thread } = yield* resumed(
+          [
+            ...add,
+            out("session.prompt", { sessionID: SESSION, id: PROMPT_ID, text: "<any>" }),
+            promptAccepted,
+            event("session.execution.started", { sessionID: SESSION }),
+            ...reconnected({ [SESSION]: { type: "running" } }),
+            ...openRequests([]),
+            event("session.execution.succeeded", { sessionID: SESSION }),
+            ...(replaceConnectionOnReconnect
+              ? [
+                  ...add,
+                  out("session.instructions.entry.put", { sessionID: SESSION, key: "nodex" }),
+                  reply("session.instructions.entry.put", null),
+                ]
+              : []),
+            ...prompt,
+            event("session.execution.succeeded", { sessionID: SESSION }),
+            out("mcp.remove", { server: app }),
+            reply("mcp.remove", null),
+            out("mcp.remove", { server: desktop }),
+            reply("mcp.remove", null),
+          ],
+          { replaceConnectionOnReconnect },
+        );
+        const first = yield* terminalOf(runtime).pipe(Effect.forkScoped);
+        yield* runtime.startTurn(turnInput(thread));
+        assert.equal((yield* Fiber.join(first))?.status, "completed");
+        const second = yield* terminalOf(runtime).pipe(Effect.forkScoped);
+        yield* runtime.startTurn({
+          ...turnInput(thread),
+          attemptId: RunAttemptId.make("attempt:desktop-reconnect:2"),
+          providerTurnOrdinal: 2,
+        });
+        assert.equal((yield* Fiber.join(second))?.status, "completed");
+        yield* runtime.unloadThread!({ providerThread: thread });
+      }).pipe(Effect.scoped, TestClock.withLive),
+  );
+
   it.effect("registers a long thread id's MCP server under a name OpenCode accepts", () =>
     Effect.gen(function* () {
       // Spelled out, this delegated thread's server name would be 120 characters.
@@ -3684,10 +3933,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         replyData(
           "session.get",
           sessionInfo({
-            permissions: [
-              ...hostRules.slice(0, 2),
-              { action: `${server}_*`, resource: "*", effect: "allow" },
-            ],
+            permissions: openCode2SessionRules(policy(), [], [], server),
           }),
         ),
         ...noOpenRequests,
@@ -4634,10 +4880,12 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         replyData("session.fork", sessionInfo({ id: FORK })),
         out("session.update", {
           sessionID: FORK,
-          permissions: [
-            ...hostRules.slice(0, 2),
-            { action: "nodex_app-thread_opencode2-adapter_fork_*", resource: "*", effect: "allow" },
-          ],
+          permissions: openCode2SessionRules(
+            policy(),
+            [],
+            [],
+            "nodex_app-thread_opencode2-adapter_fork",
+          ),
         }),
         reply("session.update", null),
         // The fork's Nodex MCP server is the target thread's.
@@ -4745,10 +4993,12 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         replyData("session.fork", sessionInfo({ id: FORK })),
         out("session.update", {
           sessionID: FORK,
-          permissions: [
-            ...hostRules.slice(0, 2),
-            { action: "nodex_app-thread_opencode2-adapter_fork_*", resource: "*", effect: "allow" },
-          ],
+          permissions: openCode2SessionRules(
+            policy(),
+            [],
+            [],
+            "nodex_app-thread_opencode2-adapter_fork",
+          ),
         }),
         reply("session.update", null),
       ]);
@@ -5552,6 +5802,11 @@ it("enforces OpenCode 2 execution modes with ordered read, secret-file, and MCP 
   for (const mode of ["approval-required", "full-access"] as const) {
     assert.equal(action(mode, "nodex_app-this-session_page_write"), "allow");
     assert.equal(action(mode, "nodex_app-other-session_page_write"), "deny");
+    assert.equal(action(mode, "node_repl-this-session_js"), "allow");
+    assert.equal(action(mode, "node_repl-this-session_js_reset"), "allow");
+    assert.equal(action(mode, "node_repl-this-session_js_add_node_module_dir"), "allow");
+    assert.equal(action(mode, "node_repl-other-session_js"), "deny");
+    assert.equal(action(mode, "node_repl-this-session_other_js"), "deny");
   }
 });
 

@@ -17,11 +17,17 @@ interface OpenCodeServerOwnerState {
   idleCloseFiber: Fiber.Fiber<void, never> | null;
 }
 
+type LaunchOptions = {
+  readonly environment?: NodeJS.ProcessEnv;
+  readonly verify?: (url: string) => Effect.Effect<string, OpenCodeRuntime.OpenCodeRuntimeError>;
+};
+
 export class OpenCodeServerOwner extends Context.Service<
   OpenCodeServerOwner,
   {
     readonly withServer: <A, E, R>(
       use: (server: OpenCodeRuntime.OpenCodeServerProcess) => Effect.Effect<A, E, R>,
+      launch?: LaunchOptions,
     ) => Effect.Effect<A, E | OpenCodeRuntime.OpenCodeRuntimeError, R>;
   }
 >()("@nodex/provider-opencode/server/OpenCodeServerOwner") {}
@@ -84,7 +90,7 @@ export const make = Effect.fn("OpenCodeServerOwner.make")(function* (input: {
     );
   });
 
-  const acquireServer = mutex.withPermit(
+  const acquireServer = (launch: LaunchOptions | undefined) => mutex.withPermit(
     Effect.gen(function* () {
       if (closed) {
         return yield* new OpenCodeRuntime.OpenCodeRuntimeError({
@@ -115,6 +121,7 @@ export const make = Effect.fn("OpenCodeServerOwner.make")(function* (input: {
                     : {}),
                   ...(input.environment ? { environment: input.environment } : {}),
                   ...(input.verify ? { verify: input.verify } : {}),
+                  ...launch,
                 })
                 .pipe(Effect.provideService(Scope.Scope, serverScope)),
             ),
@@ -182,10 +189,10 @@ export const make = Effect.fn("OpenCodeServerOwner.make")(function* (input: {
   );
 
   return OpenCodeServerOwner.of({
-    withServer: (use) =>
+    withServer: (use, launch) =>
       Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
-          const startup = yield* acquireServer.pipe(
+          const startup = yield* acquireServer(launch).pipe(
             Effect.forkIn(ownerScope, { uninterruptible: false }),
           );
           const server = yield* restore(Fiber.join(startup)).pipe(
