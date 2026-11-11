@@ -1,3 +1,4 @@
+import { formatAppVersion } from "../../shared/app-version";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -84,7 +85,9 @@ export class ProductAnalytics extends Context.Reference<ProductAnalyticsShape>(
 
 export interface ProductAnalyticsPorts {
   readonly statePath: string;
-  readonly context: AnalyticsContext;
+  readonly context: Omit<AnalyticsContext, "channel">;
+  readonly channel: Effect.Effect<AnalyticsContext["channel"]>;
+  readonly appBuildVersion?: string | undefined;
   readonly telemetry: TelemetrySettings;
   readonly telemetryChanges: Stream.Stream<TelemetrySettings>;
   /** Whether any remote signal is on, so the notice describes something that is happening. */
@@ -100,6 +103,8 @@ export const make = Effect.fn("ProductAnalytics.make")(function* (ports: Product
   const crypto = yield* Crypto.Crypto;
   const newId = crypto.randomUUIDv4().pipe(Effect.orDie);
   const directory = path.dirname(ports.statePath);
+  const launchVersion = formatAppVersion(ports.context.appVersion, ports.appBuildVersion);
+  const readContext = ports.channel.pipe(Effect.map((channel) => ({ ...ports.context, channel })));
 
   const persist = (state: ProductAnalyticsState) =>
     Effect.gen(function* () {
@@ -188,7 +193,7 @@ export const make = Effect.fn("ProductAnalytics.make")(function* (ports: Product
   const admitActivation = Effect.gen(function* () {
     const profile = yield* ports.profileKind;
     yield* mutate((current, now) =>
-      admitLaunch(current, { appVersion: ports.context.appVersion, profile, time: now }),
+      admitLaunch(current, { appVersion: launchVersion, profile, time: now }),
     );
   });
 
@@ -225,8 +230,9 @@ export const make = Effect.fn("ProductAnalytics.make")(function* (ports: Product
       });
       if (batch.length === 0) return;
       const { installationId } = yield* Ref.get(state);
+      const context = yield* readContext;
       const outcome = yield* ports
-        .send(statsigRequest({ installationId, context: ports.context, entries: batch, now }))
+        .send(statsigRequest({ installationId, context, entries: batch, now }))
         .pipe(Effect.result);
       if (outcome._tag === "Failure" || shouldRetryStatus(outcome.success)) {
         const consecutive = (yield* Ref.get(failures)) + 1;
@@ -304,7 +310,7 @@ export const make = Effect.fn("ProductAnalytics.make")(function* (ports: Product
       return {
         active: yield* Ref.get(active),
         installationId: current.installationId,
-        context: contextFields(ports.context),
+        context: contextFields(yield* readContext),
         pending: current.outbox.map(toEntry),
         sent: (yield* Ref.get(sent)).map(toEntry),
       };

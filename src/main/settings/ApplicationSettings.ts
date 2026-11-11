@@ -1,3 +1,4 @@
+import { getLogger } from "../logging/logger";
 import { DEFAULT_MODEL_POLICY, sameModelPolicy, type ModelPolicy } from "../../shared/model-policy";
 import { getModelPolicy, updateModelPolicy } from "./application-settings-persistence";
 import {
@@ -82,6 +83,7 @@ import {
   getClaudeAgentSettings,
   getClaudeLaunchConfiguration,
   getAppUpdateSettings,
+  preserveLegacyNightlyChannel,
   getBackupSettings,
   getCodexDeveloperInstructionSettings,
   getCodexExecutionHostSettings,
@@ -228,14 +230,11 @@ export class ApplicationSettings extends Context.Service<
     readonly claudeLaunchConfiguration: (
       instanceId: string,
     ) => Effect.Effect<ReturnType<typeof getClaudeLaunchConfiguration>, ApplicationSettingsError>;
-    readonly snapshot: (
-      buildDefaultChannel?: AppUpdateSettings["channel"],
-    ) => Effect.Effect<ApplicationSettingsSnapshot, ApplicationSettingsError>;
+    readonly snapshot: () => Effect.Effect<ApplicationSettingsSnapshot, ApplicationSettingsError>;
     readonly update: (
       command: ApplicationSettingsCommand,
       options?: {
         readonly expectedRevision?: string;
-        readonly buildDefaultChannel?: AppUpdateSettings["channel"];
       },
     ) => Effect.Effect<
       ApplicationSettingsSnapshot,
@@ -283,10 +282,7 @@ export function prepareCommandKeymapMutation(
   };
 }
 
-function makeSnapshot(
-  source: ApplicationSettingsDocumentSource,
-  buildDefaultChannel: AppUpdateSettings["channel"] = "stable",
-): ApplicationSettingsSnapshot {
+function makeSnapshot(source: ApplicationSettingsDocumentSource): ApplicationSettingsSnapshot {
   const document = readSettingsTomlDocumentSnapshot(source.settingsPath);
   const snapshotSource: ApplicationSettingsDocumentSource = {
     ...source,
@@ -316,7 +312,7 @@ function makeSnapshot(
     claudeAgents: getClaudeAgentSettings(snapshotSource),
     openCodeAgents: getOpenCodeAgentSettings(snapshotSource),
     commandKeymap: getCommandKeymapState(snapshotSource),
-    appUpdate: getAppUpdateSettings(snapshotSource, buildDefaultChannel),
+    appUpdate: getAppUpdateSettings(snapshotSource),
     windowRestore: getWindowRestoreSettings(snapshotSource),
     terminalShell: getTerminalShellSettings(snapshotSource),
     inbox: getInboxSettings(snapshotSource),
@@ -331,7 +327,6 @@ function makeSnapshot(
 function applyCommand(
   source: ApplicationSettingsDocumentSource,
   command: ApplicationSettingsCommand,
-  buildDefaultChannel: AppUpdateSettings["channel"],
 ): void {
   switch (command.type) {
     case "update-backup":
@@ -380,7 +375,7 @@ function applyCommand(
       resetCommandKeybindings(source);
       return;
     case "update-app-update":
-      updateAppUpdateSettings(command.input, source, buildDefaultChannel);
+      updateAppUpdateSettings(command.input, source);
       return;
     case "update-terminal-shell":
       updateTerminalShellSettings(command.input, source);
@@ -451,10 +446,8 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
       try: evaluate,
       catch: (cause) => new ApplicationSettingsError({ operation, cause }),
     });
-  const readUnlocked = Effect.fn("ApplicationSettings.readUnlocked")(function* (
-    buildDefaultChannel: AppUpdateSettings["channel"] = "stable",
-  ) {
-    const snapshot = yield* attempt("read", () => makeSnapshot(source, buildDefaultChannel));
+  const readUnlocked = Effect.fn("ApplicationSettings.readUnlocked")(function* () {
+    const snapshot = yield* attempt("read", () => makeSnapshot(source));
     if (!sameModelPolicy(yield* SubscriptionRef.get(modelPolicy), snapshot.modelPolicy)) {
       yield* SubscriptionRef.set(modelPolicy, snapshot.modelPolicy);
     }
@@ -519,13 +512,12 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
           getClaudeLaunchConfiguration(source, instanceId),
         ),
       ),
-    snapshot: (buildDefaultChannel = "stable") =>
-      writes.withPermits(1)(readUnlocked(buildDefaultChannel)),
+    snapshot: () => writes.withPermits(1)(readUnlocked()),
     update: (command, options = {}) =>
       writes.withPermits(1)(
         Effect.gen(function* () {
           const { revision: actualRevision, composerPredictions: previousComposerPredictions } =
-            yield* readUnlocked(options.buildDefaultChannel ?? "stable");
+            yield* readUnlocked();
           if (
             options.expectedRevision !== undefined &&
             actualRevision !== options.expectedRevision
@@ -535,10 +527,8 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
               actualRevision,
             });
           }
-          yield* attempt(command.type, () =>
-            applyCommand(source, command, options.buildDefaultChannel ?? "stable"),
-          );
-          const snapshot = yield* readUnlocked(options.buildDefaultChannel ?? "stable");
+          yield* attempt(command.type, () => applyCommand(source, command));
+          const snapshot = yield* readUnlocked();
           if (snapshot.composerPredictions.enabled !== previousComposerPredictions.enabled) {
             yield* PubSub.publish(composerPredictionChanges, snapshot.composerPredictions);
           }
@@ -558,12 +548,23 @@ export const live: Layer.Layer<ApplicationSettings, never, MainConfig | SecretEn
     ApplicationSettings,
     Effect.gen(function* () {
       const config = yield* MainConfig;
-      return yield* make({
+      const source = {
         hostHomeDirectory: config.homeDirectory,
         environment: config.environment,
         isPackaged: config.isPackaged,
         settingsPath: config.profileSettingsPath,
         secretEncryption: yield* SecretEncryption,
+      };
+      yield* Effect.sync(() => {
+        try {
+          preserveLegacyNightlyChannel(source, config.nodexHome, config.appVersion);
+        } catch (error) {
+          getLogger({ component: "app-update-settings" }).warn(
+            "Could not preserve the previous update channel",
+            { error },
+          );
+        }
       });
+      return yield* make(source);
     }),
   );

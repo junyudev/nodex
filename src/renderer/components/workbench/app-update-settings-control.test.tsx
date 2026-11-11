@@ -30,7 +30,7 @@ vi.mock("./app-update-settings-control-deps", () => {
         return {
           status: "idle",
           supported: true,
-          currentVersion: "0.1.5",
+          currentVersion: "0.1.5 (2523)",
           availableVersion: null,
           releaseName: null,
           releaseDate: null,
@@ -41,7 +41,6 @@ vi.mock("./app-update-settings-control-deps", () => {
           checkedAt: "2026-03-18T09:10:11.000Z",
           message: "Automatic background checks are ready.",
           channel: "stable",
-          buildDefaultChannel: "stable",
           channelChangeAllowed: true,
         };
       case "settings:app-updates:update":
@@ -54,7 +53,7 @@ vi.mock("./app-update-settings-control-deps", () => {
         return {
           status: "checking",
           supported: true,
-          currentVersion: "0.1.5",
+          currentVersion: "0.1.5 (2523)",
           availableVersion: null,
           releaseName: null,
           releaseDate: null,
@@ -65,7 +64,6 @@ vi.mock("./app-update-settings-control-deps", () => {
           checkedAt: "2026-03-18T10:00:00.000Z",
           message: "Checking for updates…",
           channel: "stable",
-          buildDefaultChannel: "stable",
           channelChangeAllowed: false,
         };
       case "app:update:install":
@@ -132,7 +130,7 @@ test("clears busy state after a failed restart and keeps it pending after an acc
     status({
       status: "downloaded",
       supported: true,
-      currentVersion: "0.1.5",
+      currentVersion: "0.1.5 (2523)",
       availableVersion: "0.1.6",
       releaseName: null,
       releaseDate: null,
@@ -143,7 +141,6 @@ test("clears busy state after a failed restart and keeps it pending after an acc
       checkedAt: null,
       message: null,
       channel: "stable",
-      buildDefaultChannel: "stable",
       channelChangeAllowed: false,
     });
     await Promise.resolve();
@@ -186,7 +183,7 @@ describe("AppUpdateSettingRows", () => {
 
     await settleAsyncRender();
 
-    expect(textContent(view.container).includes("Nodex 0.1.5")).toBe(true);
+    expect(textContent(view.container).includes("Nodex 0.1.5 (2523)")).toBe(true);
     expect(textContent(view.container).includes("Automatic background checks are ready.")).toBe(
       true,
     );
@@ -220,7 +217,7 @@ describe("AppUpdateSettingRows", () => {
       mockState.subscribeCallback?.({
         status: "downloaded",
         supported: true,
-        currentVersion: "0.1.5",
+        currentVersion: "0.1.5 (2523)",
         availableVersion: "0.1.6",
         releaseName: null,
         releaseDate: null,
@@ -231,7 +228,6 @@ describe("AppUpdateSettingRows", () => {
         checkedAt: "2026-03-18T10:10:00.000Z",
         message: "Update ready. Restart Nodex to install it.",
         channel: "stable",
-        buildDefaultChannel: "stable",
         channelChangeAllowed: false,
       });
     });
@@ -257,7 +253,7 @@ test("Windows uses the shared update actions and preferences", async () => {
   try {
     const { AppUpdateSettingRows } = await import("./app-update-settings-control");
     const view = render(<AppUpdateSettingRows open />);
-    await waitFor(() => expect(view.getByText("Nodex 0.1.5")).toBeTruthy());
+    await waitFor(() => expect(view.getByText("Nodex 0.1.5 (2523)")).toBeTruthy());
     const check = await view.findByRole("button", { name: "Check now" });
     expect(view.getByRole("switch", { name: "Check for updates automatically" })).toBeTruthy();
     await act(async () => {

@@ -43,17 +43,16 @@ export const windowsQuitWarning = (input: {
   return null;
 };
 
-// Packaged channel identity must survive executable upgrades and preference changes.
+// The packaged tray identity survives executable upgrades and update preference changes.
 const TRAY_GUIDS = {
-  stable: "e2ce4e99-33a1-40a6-bf07-76b2ca126cef",
-  nightly: "70232475-312d-41ed-8050-20b597599bd1",
+  enabled: "e2ce4e99-33a1-40a6-bf07-76b2ca126cef",
   disabled: "4c366c1d-c046-4cd9-808c-1a3df9cef174",
 } as const;
 
 export const windowsTrayGuid = (
   packaged: boolean,
-  channel: keyof typeof TRAY_GUIDS,
-): string | undefined => (packaged ? TRAY_GUIDS[channel] : undefined);
+  updates: keyof typeof TRAY_GUIDS,
+): string | undefined => (packaged ? TRAY_GUIDS[updates] : undefined);
 
 export const trayChatLabel = (title: string): string => {
   const points = Array.from(title);

@@ -60,6 +60,7 @@ const startupFailureRecord = (incident: MainFatalIncident) => {
     version: 1,
     id: incident.id,
     occurredAt: incident.occurredAt,
+    appVersion: incident.appVersion,
     reason: core ? "core-startup-failed" : "desktop-startup-failed",
     ...(core ? { executable: "nodex-core.exe" } : {}),
     ...(typeof exitCode === "number" && Number.isInteger(exitCode)

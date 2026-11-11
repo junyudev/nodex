@@ -3,7 +3,7 @@ import { fireEvent } from "@testing-library/react";
 import { render, textContent } from "../../test/dom";
 
 describe("AppUpdateRestartNotice", () => {
-  test("renders the restart CTA for downloaded updates", async () => {
+  test("shows the downloaded Nightly build beside the restart CTA", async () => {
     let restartCalls = 0;
     let dismissCalls = 0;
     const { AppUpdateRestartNotice } = await import("./app-update-restart-notice");
@@ -13,8 +13,8 @@ describe("AppUpdateRestartNotice", () => {
         status={{
           status: "downloaded",
           supported: true,
-          currentVersion: "0.1.5",
-          availableVersion: "0.1.6",
+          currentVersion: "0.5.5 (2523)",
+          availableVersion: "0.5.5 (2524)",
           releaseName: null,
           releaseDate: null,
           releaseNotes: null,
@@ -23,8 +23,7 @@ describe("AppUpdateRestartNotice", () => {
           totalBytes: 10,
           checkedAt: null,
           message: "Update ready. Restart Nodex to install it.",
-          channel: "stable",
-          buildDefaultChannel: "stable",
+          channel: "nightly",
           channelChangeAllowed: false,
         }}
         onDismiss={() => {
@@ -36,7 +35,7 @@ describe("AppUpdateRestartNotice", () => {
       />,
     );
 
-    expect(textContent(view.container).includes("Nodex 0.1.6 is ready.")).toBe(true);
+    expect(view.getByText("Nodex 0.5.5 (2524) is ready.")).toBeTruthy();
 
     fireEvent.click(view.getByText("Restart to Update"));
     fireEvent.click(view.getByText("Later"));
@@ -63,7 +62,6 @@ describe("AppUpdateRestartNotice", () => {
           checkedAt: null,
           message: "You’re up to date.",
           channel: "stable",
-          buildDefaultChannel: "stable",
           channelChangeAllowed: true,
         }}
         onDismiss={() => {}}

@@ -1,3 +1,7 @@
+import {
+  decodeState,
+  PRODUCT_ANALYTICS_STATE_FILE,
+} from "../product-analytics/product-analytics-state";
 import { resolveRemoteSignal } from "../../shared/product-analytics/remote-signals";
 import {
   ModelPolicySchema,
@@ -63,6 +67,7 @@ import {
   fsyncSync,
   mkdirSync,
   openSync,
+  readFileSync,
   renameSync,
   unlinkSync,
   writeFileSync,
@@ -463,10 +468,7 @@ function threadNotificationSettingsFromConfig(
   };
 }
 
-function appUpdateSettingsFromConfig(
-  config: ServerTomlConfig,
-  buildDefaultChannel: AppUpdateSettings["channel"] = "stable",
-): AppUpdateSettings {
+function appUpdateSettingsFromConfig(config: ServerTomlConfig): AppUpdateSettings {
   return {
     automaticChecksEnabled:
       typeof config.app_updates_auto_check_enabled === "boolean"
@@ -475,7 +477,7 @@ function appUpdateSettingsFromConfig(
     channel:
       config.app_updates_channel === "stable" || config.app_updates_channel === "nightly"
         ? config.app_updates_channel
-        : buildDefaultChannel,
+        : "stable",
   };
 }
 
@@ -1206,18 +1208,14 @@ export function updateThreadNotificationSettings(
   return getThreadNotificationSettings(source);
 }
 
-export function getAppUpdateSettings(
-  source: ApplicationSettingsDocumentSource,
-  buildDefaultChannel: AppUpdateSettings["channel"] = "stable",
-): AppUpdateSettings {
+export function getAppUpdateSettings(source: ApplicationSettingsDocumentSource): AppUpdateSettings {
   const profileServerToml = loadProfileServerTomlConfig(source);
-  return appUpdateSettingsFromConfig(profileServerToml, buildDefaultChannel);
+  return appUpdateSettingsFromConfig(profileServerToml);
 }
 
 export function updateAppUpdateSettings(
   input: UpdateAppUpdateSettingsInput,
   source: ApplicationSettingsDocumentSource,
-  buildDefaultChannel: AppUpdateSettings["channel"] = "stable",
 ): AppUpdateSettings {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
     throw new Error("App update settings input must be an object");
@@ -1254,7 +1252,29 @@ export function updateAppUpdateSettings(
   nextToml.server = nextServer;
 
   writeTomlConfig(profileSettingsPath, nextToml);
-  return getAppUpdateSettings(source, buildDefaultChannel);
+  return getAppUpdateSettings(source);
+}
+
+/** Preserve an implicit Nightly choice before analytics records the new build's launch. */
+export function preserveLegacyNightlyChannel(
+  source: ApplicationSettingsDocumentSource,
+  nodexHome: string,
+  appVersion: string,
+): void {
+  if (!source.isPackaged || appVersion.includes("-")) return;
+  const config = loadProfileServerTomlConfig(source);
+  if (config.app_updates_channel !== undefined) return;
+
+  let previousVersion: string | null;
+  try {
+    const statePath = path.join(nodexHome, PRODUCT_ANALYTICS_STATE_FILE);
+    previousVersion = decodeState(readFileSync(statePath, "utf8")).lastLaunchVersion;
+  } catch {
+    return;
+  }
+  if (previousVersion?.includes("-nightly.")) {
+    updateAppUpdateSettings({ channel: "nightly" }, source);
+  }
 }
 
 /** An optional Inbox choice: a trimmed, bounded name, or unset. */

@@ -1,3 +1,4 @@
+import { formatAppVersion } from "../../shared/app-version";
 import { SessionFolders, live as sessionFoldersLive } from "../agent-backend/SessionFolders";
 import { isDevelopmentFeatureEnabled } from "../../shared/development-features";
 import * as Effect from "effect/Effect";
@@ -72,7 +73,7 @@ const transport = Layer.unwrap(
 
     return coreTransportLive({
       appResourcesPath: config.isPackaged ? config.resourcesPath : undefined,
-      buildId: `nodex-desktop/${config.appVersion}`,
+      buildId: `nodex-desktop/${formatAppVersion(config.appVersion, config.appBuildVersion)}`,
       isPackaged: config.isPackaged,
       nodexHome: config.nodexHome,
       onAuthorityProcessExit: (event) => {

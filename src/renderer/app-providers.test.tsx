@@ -49,7 +49,6 @@ const updateStatus = (status: AppUpdateStatus["status"], message: string): AppUp
   totalBytes: null,
   transferredBytes: null,
   channel: "stable",
-  buildDefaultChannel: "stable",
   channelChangeAllowed: status === "idle" || status === "upToDate" || status === "error",
 });
 

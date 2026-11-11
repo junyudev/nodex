@@ -12,7 +12,7 @@ import { parseSparkleNativeEvent } from "./sparkle-native-binding";
 const runtimeManifest = (overrides: Record<string, unknown> = {}) => ({
   architecture: "arm64",
   artifacts: {},
-  buildChannel: "stable",
+  updates: "enabled",
   feedUrls: {
     stable: "https://nodex.jyu.app/updates/stable/arm64/appcast.xml",
     nightly: "https://nodex.jyu.app/updates/nightly/arm64/appcast.xml",
@@ -26,10 +26,10 @@ const runtimeManifest = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe("packaged Sparkle runtime boundary", () => {
-  test("accepts only the pinned architecture-specific stable feed", () => {
+  test("accepts the pinned architecture-specific feeds", () => {
     expect(parseSparkleRuntimeConfig(runtimeManifest())).toMatchObject({
       architecture: "arm64",
-      buildChannel: "stable",
+      updates: "enabled",
       sparkleVersion: "2.9.4",
     });
     expect(() =>
@@ -41,7 +41,7 @@ describe("packaged Sparkle runtime boundary", () => {
           },
         }),
       ),
-    ).toThrow("does not match");
+    ).toThrow("do not match");
     expect(() =>
       parseSparkleRuntimeConfig(
         runtimeManifest({
@@ -55,18 +55,30 @@ describe("packaged Sparkle runtime boundary", () => {
     expect(
       parseSparkleRuntimeConfig(
         runtimeManifest({
-          buildChannel: "disabled",
+          updates: "disabled",
           feedUrls: null,
         }),
       ),
-    ).toMatchObject({ buildChannel: "disabled", feedUrls: null });
+    ).toMatchObject({ updates: "disabled", feedUrls: null });
     expect(() =>
       parseSparkleRuntimeConfig(
         runtimeManifest({
-          buildChannel: "disabled",
+          updates: "disabled",
         }),
       ),
-    ).toThrow("does not match");
+    ).toThrow("do not match");
+  });
+
+  test("rejects a build channel field, channel-valued updates and missing enabled feeds", () => {
+    expect(() => parseSparkleRuntimeConfig(runtimeManifest({ buildChannel: "nightly" }))).toThrow(
+      "unsupported shape",
+    );
+    expect(() => parseSparkleRuntimeConfig(runtimeManifest({ updates: "stable" }))).toThrow(
+      "update availability is invalid",
+    );
+    expect(() => parseSparkleRuntimeConfig(runtimeManifest({ feedUrls: null }))).toThrow(
+      "do not match",
+    );
   });
 
   test("returns before native addon loading for a disabled package", () => {
@@ -75,7 +87,7 @@ describe("packaged Sparkle runtime boundary", () => {
       mkdirSync(join(resourcesPath, "native"));
       writeFileSync(
         join(resourcesPath, "native", "sparkle-runtime.json"),
-        JSON.stringify(runtimeManifest({ buildChannel: "disabled", feedUrls: null })),
+        JSON.stringify(runtimeManifest({ updates: "disabled", feedUrls: null })),
       );
 
       expect(

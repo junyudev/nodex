@@ -1,3 +1,4 @@
+import { formatAppVersion } from "../../shared/app-version";
 import { hostCapabilities } from "../../shared/host-capabilities";
 import type { AppUpdateSettings, AppUpdateStatus } from "../../shared/types";
 import type { AppUpdaterEvent } from "../app-updater";
@@ -38,7 +39,6 @@ const unsupportedRuntimeMessage = (input: {
 };
 
 export const initialAppUpdateState = (input: {
-  readonly buildDefaultChannel: AppUpdateSettings["channel"];
   readonly currentVersion: string;
   readonly architecture?: string;
   readonly isInApplicationsFolder: boolean;
@@ -59,7 +59,6 @@ export const initialAppUpdateState = (input: {
     settings: input.settings,
     status: {
       availableVersion: null,
-      buildDefaultChannel: input.buildDefaultChannel,
       channel: input.settings.channel,
       channelChangeAllowed: supported,
       checkedAt: null,
@@ -112,17 +111,25 @@ export const reduceAppUpdateStatus = (
         totalBytes: null,
         transferredBytes: null,
       };
-    case "update-found":
+    case "update-found": {
+      const version = formatAppVersion(
+        event.version,
+        status.channel === "nightly" ? event.buildVersion : undefined,
+      );
       return {
         ...status,
-        availableVersion: event.version,
+        availableVersion: version,
         checkedAt,
-        message: "Update found. Downloading in the background…",
+        message:
+          status.channel === "nightly"
+            ? `Version ${version} is available. Downloading in the background…`
+            : "Update found. Downloading in the background…",
         releaseDate: event.releaseDate ?? null,
         releaseName: event.releaseName ?? null,
         releaseNotes: event.releaseNotes?.trim() || null,
         status: "available",
       };
+    }
     case "download-started":
       return {
         ...status,
@@ -144,11 +151,20 @@ export const reduceAppUpdateStatus = (
       };
     case "update-ready": {
       const totalBytes = status.totalBytes;
+      const version = event.version
+        ? formatAppVersion(
+            event.version,
+            status.channel === "nightly" ? event.buildVersion : undefined,
+          )
+        : status.availableVersion;
       return {
         ...status,
-        availableVersion: event.version || status.availableVersion,
+        availableVersion: version,
         checkedAt,
-        message: "Update ready. Restart Nodex to install it.",
+        message:
+          status.channel === "nightly" && version
+            ? `Version ${version} is ready. Restart Nodex to install it.`
+            : "Update ready. Restart Nodex to install it.",
         progressPercent: 100,
         releaseDate: event.releaseDate ?? status.releaseDate,
         releaseName: event.releaseName ?? status.releaseName,

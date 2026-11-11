@@ -148,7 +148,12 @@ it.live("persists bounded non-secret Windows startup evidence when Core cannot e
         ),
       },
       { failures: [] },
-      { id: randomUUID(), occurredAt: "2026-11-02T00:00:00.000Z", appVersion: "0.5.0" },
+      {
+        id: randomUUID(),
+        occurredAt: "2026-11-02T00:00:00.000Z",
+        appVersion: "0.5.0",
+        appBuildVersion: "1.25.23",
+      },
     );
     const store = yield* MainFatalIncidentStore.pipe(
       Effect.provide(layerForHome(home, path.join(home, "missing-core.exe"))),
@@ -161,6 +166,7 @@ it.live("persists bounded non-secret Windows startup evidence when Core cannot e
       version: 1,
       id: record.id,
       occurredAt: value.occurredAt,
+      appVersion: "0.5.0 (2523)",
       reason: "core-startup-failed",
       executable: "nodex-core.exe",
       exitCode: -1073741515,

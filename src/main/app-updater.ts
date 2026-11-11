@@ -1,5 +1,7 @@
 export type AppUpdaterCheckKind = "background" | "user";
-export type AppUpdateChannel = "stable" | "nightly";
+import type { AppUpdateChannel } from "../shared/types";
+
+export type { AppUpdateChannel };
 
 export type AppUpdaterEvent =
   | { readonly type: "check-started"; readonly kind: AppUpdaterCheckKind }
@@ -48,7 +50,6 @@ export interface AppUpdaterSession {
  * updater lease; the caller must register `release` in its owning Scope.
  */
 export interface AppUpdaterPlatform {
-  readonly buildDefaultChannel: AppUpdateChannel;
   readonly acquire: (
     channel: AppUpdateChannel,
     onEvent: (event: AppUpdaterEvent) => void,

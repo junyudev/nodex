@@ -1,3 +1,4 @@
+import { formatAppVersion } from "../../shared/app-version";
 import {
   parsePageDeepLink,
   parseViewDeepLink,
@@ -34,7 +35,9 @@ import { CoreRuntimeError, coreRuntimeError } from "../core-runtime/CoreRuntimeE
 const registry = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
-    return registryLive({ buildId: `nodex-desktop/${config.appVersion}` }).pipe(
+    return registryLive({
+      buildId: `nodex-desktop/${formatAppVersion(config.appVersion, config.appBuildVersion)}`,
+    }).pipe(
       Layer.provide(storageLive(config.nodexHome).pipe(Layer.provide(SecretEncryption.live))),
     );
   }),

@@ -7,6 +7,7 @@ import * as Schema from "effect/Schema";
 export const MainConfigValue = Schema.Struct({
   assistantStreamingDebug: Schema.Boolean,
   appVersion: Schema.String,
+  appBuildVersion: Schema.optionalKey(Schema.String),
   arch: Schema.String,
   argv: Schema.Array(Schema.String),
   composerAppshotHelperPath: Schema.NullOr(Schema.String),

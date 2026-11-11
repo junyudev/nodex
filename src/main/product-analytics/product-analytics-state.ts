@@ -2,6 +2,8 @@ import { z } from "zod";
 import { decodeProductEvent, type ProductEvent } from "../../shared/product-analytics/catalog";
 import { STATSIG_CLIENT_KEY } from "../../shared/product-analytics/statsig";
 
+export const PRODUCT_ANALYTICS_STATE_FILE = "product-analytics/state.json";
+
 export const MAX_OUTBOX_EVENTS = 1_000;
 export const MAX_EVENT_AGE_MS = 14 * 24 * 60 * 60 * 1_000;
 export const MAX_BATCH_EVENTS = 100;
@@ -88,7 +90,7 @@ export const enqueue = (
   outbox: [...state.outbox, { seq: nextSeq(state), time, event }].slice(-MAX_OUTBOX_EVENTS),
 });
 
-/** One launch of this version, plus the installation event the first time analytics are active. */
+/** One launch of this build, plus the installation event the first time analytics are active. */
 export const admitLaunch = (
   state: ProductAnalyticsState,
   input: {
