@@ -505,7 +505,7 @@ pub(super) fn create_native_pages(
             view_id: view_id.clone(),
             group: group_key.as_ref().map(|key| {
                 nodex_core_contracts::database::DatabaseGroupScope::Path {
-                    group_key: Some(key.clone()),
+                    group_key: key.clone(),
                     subgroup_key: None,
                 }
             }),
@@ -603,6 +603,7 @@ pub(super) fn create_native_pages(
                 Some(nodex_core_contracts::library::LibraryPageCreateResult {
                     page_id: page.page_id.clone(),
                     page_key: page.page_key.clone(),
+                    status: page.status.clone(),
                     document_id,
                     document_generation,
                     document_head_seq,
@@ -859,6 +860,7 @@ fn apply_pages(
         created.push(LibraryAgentCreatedPage {
             page_id: page.page_id.clone(),
             page_key: current_page_key_for_page(connection, library_id, &page.page_id)?,
+            status: super::page_lifecycle::read_page_workflow_status(connection, &page.page_id)?,
             location: page_location(library_id, &request.destination),
             body_blocks_created: u32::try_from(page.body_block_ids.len())
                 .map_err(|_| invalid("Created Page body exceeds its block bound"))?,

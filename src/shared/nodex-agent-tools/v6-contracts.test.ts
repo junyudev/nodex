@@ -129,6 +129,7 @@ describe("nodex_app@6 contracts", () => {
                 pageKey: "LAB-13",
                 location,
                 bodyBlocksCreated: 0,
+                status: { optionId: "triage", label: "New" },
               },
             ],
             created: 1,
@@ -145,7 +146,14 @@ describe("nodex_app@6 contracts", () => {
         contract: NODEX_AGENT_V6_TOOL_CONTRACTS.move_pages,
         valid: {
           data: {
-            pages: [{ pageId: "page-1", pageKey: null, location }],
+            pages: [
+              {
+                pageId: "page-1",
+                pageKey: null,
+                location,
+                status: { optionId: "plan", label: "Scheduled" },
+              },
+            ],
             moved: 1,
           },
         },
@@ -165,6 +173,7 @@ describe("nodex_app@6 contracts", () => {
             pageKey: "LAB-14",
             location,
             bodyBlocksCreated: 0,
+            status: { optionId: "plan", label: "Scheduled" },
           },
         },
         missing: {

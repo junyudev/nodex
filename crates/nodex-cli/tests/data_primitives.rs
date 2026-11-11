@@ -739,6 +739,40 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
         ],
     );
     assert!(prepared_move["validators"]["move_etag"].is_string());
+    let to = format!("data_source:{source_id}");
+    let empty_group = run(
+        &home,
+        &[
+            "page",
+            "create",
+            "--parent",
+            &to,
+            "--title",
+            "No stage",
+            "--empty",
+            "--unassigned",
+        ],
+    );
+    assert_eq!(empty_group["ok"], false, "{empty_group}");
+    let message = empty_group["error"]["message"].as_str().unwrap();
+    assert!(message.contains("Status (status)"), "{message}");
+    assert!(message.contains("triage (Triage)"), "{message}");
+    let moved = success(
+        &home,
+        &[
+            "page",
+            "move",
+            PAGE_A,
+            "--to",
+            &to,
+            "--if-match",
+            prepared_move["validators"]["move_etag"].as_str().unwrap(),
+        ],
+    );
+    assert_eq!(
+        moved["status"],
+        serde_json::json!({"option_id":"review","label":"In Review"})
+    );
     let projected = sql_rows(
         &home,
         "SELECT page_id,Status FROM tasks ORDER BY page_id LIMIT 1",
@@ -776,6 +810,10 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
     for page in created["result"]["pages"].as_array().unwrap() {
         assert_eq!(page["block_ids"], serde_json::json!([]));
         assert_eq!(page["body_blocks_created"], 1);
+        assert_eq!(
+            page["status"],
+            serde_json::json!({"option_id":"triage","label":"Triage"})
+        );
     }
     let replay = input(
         &home,

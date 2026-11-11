@@ -105,7 +105,7 @@ describe("library/page-relocation authoritative scenario", () => {
           targetWindowAfterMove.value.value.rows.items.find(
             (row) => row.page_id === facts.sourcePageId,
           )?.database_values.status,
-        ).toBe("triage");
+        ).toBe("doing");
         await expect(
           ctx.seed.readPage(facts.targetProjectId, facts.sourcePageId),
         ).resolves.toMatchObject({

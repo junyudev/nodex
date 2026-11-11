@@ -366,7 +366,7 @@ fn resolve_data_source_placement(
                 data_source_id,
                 view_id,
                 preferences_override,
-                group_key.as_deref(),
+                group_key.as_ref().map(|key| key.as_deref()),
                 before_page_id.as_deref(),
                 &values,
             )
@@ -495,23 +495,6 @@ pub(super) enum PreparedBlockTransfer {
     Ordinary(Box<PreparedTransfer>),
     PageParent(Box<PreparedPageParentTransfer>),
     PageOwnership(Box<PreparedPageOwnershipTransfer>),
-}
-
-fn preserve_page_relocation_source_values(
-    prepared: &mut PreparedBlockTransfer,
-) -> Result<(), StoreError> {
-    let PreparedBlockTransfer::PageOwnership(prepared) = prepared else {
-        return Err(corrupt("Page relocation Undo selected the wrong compiler"));
-    };
-    let PreparedPageOwnershipTarget::DataSource { destination } = &mut prepared.target else {
-        return Err(corrupt("Page relocation Undo lost its source Database"));
-    };
-    // Direct placement normally derives Property writes from the target View.
-    // Undo is different: the historical source membership already owns the
-    // exact dormant values, so applying a missing group key would overwrite
-    // the restored row (for example, clearing its workflow status).
-    destination.values.clear();
-    Ok(())
 }
 
 impl PreparedBlockTransfer {
@@ -801,6 +784,7 @@ pub(super) fn prepare_for_agent_page_move(
         operation_id,
         intent,
         PageOwnershipTransferContext::Agent(authority),
+        true,
         cache,
     )
     .map(Box::new)
@@ -846,6 +830,7 @@ pub(super) fn prepare_for_semantic_page_move(
         operation_id,
         intent,
         transfer_authority,
+        true,
         cache,
     )
     .map(Box::new)
@@ -910,6 +895,7 @@ pub(super) fn prepare_for_apply(
             operation_id,
             intent,
             PageOwnershipTransferContext::ProductRoute { project_id },
+            false,
             cache,
         )
         .map(Box::new)
@@ -1465,6 +1451,7 @@ fn apply_with_authority(
                 document_commits: public_commits,
                 affected_database_ids: Vec::new(),
                 page_keys,
+                page_statuses: BTreeMap::new(),
                 page_etags: BTreeMap::new(),
                 move_etags: BTreeMap::new(),
                 page_view_placements: BTreeMap::new(),
@@ -1973,6 +1960,7 @@ fn prepare_page_ownership_transfer(
     operation_id: &str,
     intent: &LibraryBlockTransferLogicalIntent,
     authority: PageOwnershipTransferContext<'_>,
+    durable_placement: bool,
     cache: Option<&Arc<Mutex<crate::document::DocumentRuntimeCache>>>,
 ) -> Result<PreparedPageOwnershipTransfer, StoreError> {
     check_request_interruption()?;
@@ -2086,7 +2074,7 @@ fn prepare_page_ownership_transfer(
             data_source_id,
             placement,
         } => {
-            let destination = if authority.uses_page_move_compiler() {
+            let destination = if durable_placement {
                 let LibraryBlockTransferDataSourcePlacement::Direct {
                     view_id,
                     preferences_override: _,
@@ -2111,7 +2099,7 @@ fn prepare_page_ownership_transfer(
                     authority.actor_project_id(),
                     data_source_id,
                     view_id,
-                    group_key.as_deref(),
+                    group_key.as_ref().map(|key| key.as_deref()),
                     before_page_id.as_deref(),
                 )?
             } else {
@@ -2686,7 +2674,12 @@ fn apply_page_ownership_transfer(
                 PreparedPageOwnershipTarget::Library { .. } => {
                     transfer_page(ExistingPageTransferTarget::Library)?
                 }
-                PreparedPageOwnershipTarget::DataSource { destination, .. } => {
+                PreparedPageOwnershipTarget::DataSource { destination }
+                    if matches!(history, PageOwnershipHistory::UndoRelocation { .. }) =>
+                {
+                    transfer_page(ExistingPageTransferTarget::RestoreDataSource(destination))?
+                }
+                PreparedPageOwnershipTarget::DataSource { destination } => {
                     transfer_page(ExistingPageTransferTarget::DataSource(destination))?
                 }
                 PreparedPageOwnershipTarget::Document { page_id, .. } => {
@@ -2917,7 +2910,7 @@ fn apply_page_ownership_transfer(
                     page_id.clone(),
                     LibraryPageViewPlacementResult {
                         view_id: view.view_id.clone(),
-                        group_key: view.group_key.clone(),
+                        group_key: view.group_key.clone().flatten(),
                         position_revision,
                     },
                 );
@@ -2952,6 +2945,16 @@ fn apply_page_ownership_transfer(
             }
             PageOwnershipHistory::None | PageOwnershipHistory::RecordRelocation => None,
         };
+        let mut page_statuses = BTreeMap::new();
+        if matches!(history, PageOwnershipHistory::RecordRelocation) {
+            for page_id in &result_block_ids {
+                if let Some(status) =
+                    super::page_lifecycle::read_page_workflow_status(connection, page_id)?
+                {
+                    page_statuses.insert(page_id.clone(), status);
+                }
+            }
+        }
         let result = LibraryBlockTransferResult {
             mode: LibraryBlockTransferMode::Move,
             source_root_block_ids: intent.root_block_ids.clone(),
@@ -2966,6 +2969,7 @@ fn apply_page_ownership_transfer(
                 .collect(),
             affected_database_ids: affected_database_ids.clone(),
             page_keys,
+            page_statuses,
             page_etags,
             move_etags,
             page_view_placements,
@@ -3231,6 +3235,7 @@ fn apply_page_ownership_copy(
         document_commits: document_commits.clone(),
         affected_database_ids: affected_database_ids.clone(),
         page_keys,
+        page_statuses: BTreeMap::new(),
         page_etags: BTreeMap::new(),
         move_etags: BTreeMap::new(),
         page_view_placements: BTreeMap::new(),
@@ -4444,6 +4449,7 @@ fn apply_page_parent_transfer(
                     .collect(),
                 affected_database_ids: affected_database_ids.clone(),
                 page_keys,
+                page_statuses: BTreeMap::new(),
                 page_etags: BTreeMap::new(),
                 move_etags: BTreeMap::new(),
                 page_view_placements: BTreeMap::new(),
@@ -6747,7 +6753,7 @@ pub(crate) fn undo_page_relocation_in_scope(
         target,
         promotion_policy: LibraryPagePromotionPolicy::Literal,
     };
-    let mut prepared = prepare_for_semantic_page_move(
+    let prepared = prepare_for_semantic_page_move(
         connection,
         None,
         context,
@@ -6757,12 +6763,6 @@ pub(crate) fn undo_page_relocation_in_scope(
         &intent,
         &authority,
     )?;
-    if matches!(
-        &recipe.source,
-        PageRelocationUndoSourceV3::DataSource { .. }
-    ) {
-        preserve_page_relocation_source_values(&mut prepared)?;
-    }
     let transfer_authority = match authority.requesting_project_id.as_deref() {
         Some(project_id) => PageOwnershipTransferContext::ProductRoute {
             project_id: Some(project_id),

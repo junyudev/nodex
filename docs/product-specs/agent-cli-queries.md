@@ -61,6 +61,12 @@ All SQL row ordering is explicit: use `ORDER BY`; natural scan order is not a
 contract. View and search use their public `ordinal`, not physical rank.
 `COUNT(DISTINCT page_id)` counts independent Pages in a View.
 
+The `pages` relation and bound Source tables expose `updated_at` as the
+Page's last edit time, including Database Property value edits. The workflow
+Status column is non-null in bound Sources. Its `property_values` entry
+always contains a stage ID, and a View grouped by Status uses that ID in the
+corresponding `view_rows` group key.
+
 Source Property columns use unique display names where possible; collisions use
 the stable spelling published by schema discovery. Quote discovered names.
 Select cells contain option IDs, multi-select cells contain JSON arrays of

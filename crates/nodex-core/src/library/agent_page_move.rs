@@ -600,6 +600,7 @@ fn apply_pages(
             Ok(LibraryAgentMovedPage {
                 page_id: page_id.clone(),
                 page_key: current_page_key_for_page(connection, library_id, page_id)?,
+                status: super::page_lifecycle::read_page_workflow_status(connection, page_id)?,
                 location: location.clone(),
             })
         })
@@ -689,8 +690,8 @@ fn compile_preflight(
         );
         if same_data_source
             && matches!(
-                &destination,
-                LibraryPageCopyDestination::DataSource { values, .. } if !values.is_empty()
+                &request.destination,
+                LibraryAgentPageDestination::DataSource { values, .. } if !values.is_empty()
             )
         {
             return Err(invalid(
@@ -1096,7 +1097,7 @@ fn transfer_intent(
                 placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
                     view_id: view.view_id.clone(),
                     preferences_override: Default::default(),
-                    group_key: view.group_key.clone(),
+                    group_key: None,
                     before_page_id: view.before.as_ref().map(|anchor| anchor.page_id.clone()),
                     sorted_property_values: Vec::new(),
                 }),

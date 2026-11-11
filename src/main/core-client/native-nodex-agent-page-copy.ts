@@ -74,6 +74,9 @@ const output = (result: CoreCopyResult, includeBlockMap: boolean) =>
       pageId: result.page_id,
       pageKey: result.page_key ?? null,
       location: nativeAgentPageLocation(result.location),
+      ...(result.status
+        ? { status: { optionId: result.status.option_id, label: result.status.label } }
+        : {}),
       bodyBlocksCreated: result.body_blocks_created,
       ...(includeBlockMap && result.block_map ? { blockMap: result.block_map } : {}),
       ...(result.etags ? { etags: { title: result.etags.title, body: result.etags.body } } : {}),

@@ -706,7 +706,7 @@ pub(super) fn resolve_destination(
             data_source_id,
             values,
             view_id.as_deref(),
-            group_key.as_deref(),
+            group_key.as_ref().map(|key| key.as_deref()),
             at.as_ref(),
         ),
     }
@@ -721,7 +721,7 @@ fn resolve_data_source_destination(
     data_source_id: &str,
     values: &[LibraryPageCopyValue],
     requested_view_id: Option<&str>,
-    group_key: Option<&str>,
+    group_key: Option<Option<&str>>,
     at: Option<&LibraryAgentSiblingAnchor>,
 ) -> Result<ResolvedDestination, StoreError> {
     validate_id(data_source_id, "destination.data_source_id")?;
@@ -806,15 +806,38 @@ fn resolve_data_source_destination(
             })
         })
         .transpose()?;
+    let placement = crate::database::resolve_page_transfer_data_source_destination(
+        connection,
+        library_id,
+        authorization
+            .provenance
+            .authority
+            .actor_project_id
+            .as_deref(),
+        data_source_id,
+        &view_id,
+        group_key,
+        None,
+    )?;
+    let values = values
+        .iter()
+        .cloned()
+        .chain(placement.values.into_iter().filter_map(|draft| {
+            (!property_ids.contains(draft.property_id.as_str())).then_some(LibraryPageCopyValue {
+                property_id: draft.property_id,
+                value: draft.value,
+            })
+        }))
+        .collect();
     Ok(ResolvedDestination {
         destination: LibraryPageCopyDestination::DataSource {
             data_source_id: data_source_id.to_owned(),
             expected_data_source_revision: source_revision,
-            values: values.to_vec(),
+            values,
             view: Some(LibraryPageCopyViewPlacement {
                 view_id,
                 expected_view_revision: view_revision,
-                group_key: group_key.map(str::to_owned),
+                group_key: group_key.map(|key| key.map(str::to_owned)),
                 before,
             }),
         },
@@ -895,6 +918,7 @@ fn agent_result(
     Ok(LibraryAgentPageCopyResult {
         source_page_id: request.source_page_id.clone(),
         page_key: current_page_key_for_page(connection, library_id, &page_id)?,
+        status: execution.result.status.clone(),
         page_id,
         location: match &request.destination {
             LibraryAgentPageDestination::Library { .. } => LibraryAgentPageLocation::Library {

@@ -1,3 +1,4 @@
+import { WORKFLOW_STATUS_ORDER } from "../workflow-status";
 import { uniqueScalarValues } from "../schema-constraints";
 import { z } from "zod";
 import {
@@ -70,9 +71,15 @@ const PageMutationEtagsV3Schema = z.strictObject({
   body: ETagSchema,
 });
 
+const WorkflowStatusValueSchema = z.strictObject({
+  optionId: z.enum(WORKFLOW_STATUS_ORDER),
+  label: z.string(),
+});
+
 export const CreatePagesResultPageV3Schema = z.strictObject({
   pageId: BlockIdSchema,
   location: PageLocationV3Schema,
+  status: WorkflowStatusValueSchema.optional(),
   bodyBlocksCreated: z.number().int().min(0),
   blockIds: z.array(BlockIdSchema).optional(),
   etags: PageMutationEtagsV3Schema.optional(),
@@ -243,6 +250,7 @@ export const MovePagesV3InputSchema = z.strictObject({
 export const MovePagesResultPageV3Schema = z.strictObject({
   pageId: BlockIdSchema,
   location: PageLocationV3Schema,
+  status: WorkflowStatusValueSchema.optional(),
 });
 
 export const MovePagesV3DataSchema = z.strictObject({
@@ -277,6 +285,7 @@ export const DuplicatePageV3DataSchema = z.strictObject({
   sourcePageId: BlockIdSchema,
   pageId: BlockIdSchema,
   location: PageLocationV3Schema,
+  status: WorkflowStatusValueSchema.optional(),
   bodyBlocksCreated: z.number().int().min(0),
   blockMap: BlockIdMapV3Schema.optional(),
   etags: PageMutationEtagsV3Schema.optional(),

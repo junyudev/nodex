@@ -9,7 +9,6 @@ use nodex_core_contracts::library::{
     LibraryPageCopyValue, LibraryPageCopyViewPlacement, LibraryPageWriteDestination,
 };
 use rusqlite::{Connection, OptionalExtension, params};
-use serde_json::Value;
 
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
@@ -66,7 +65,7 @@ pub(super) fn create_page(
                     if subgroup_key.is_some() {
                         return Err(invalid("Page creation does not accept a subgroup"));
                     }
-                    group_key.clone()
+                    Some(group_key.clone())
                 }
                 None => None,
             };
@@ -399,9 +398,9 @@ fn resolve_destination(
             at,
         } => {
             validate_id(data_source_id, "destination.data_source_id")?;
-            let (view_id, view_config) = connection
+            let view_id = connection
                 .query_row(
-                    "SELECT view.id, view.config_json FROM data_sources source \
+                    "SELECT view.id FROM data_sources source \
                      JOIN database_containers container \
                        ON container.block_id = source.home_database_block_id \
                      JOIN database_views view \
@@ -410,41 +409,10 @@ fn resolve_destination(
                        AND source.lifecycle = 'active' AND container.lifecycle = 'active' \
                        AND view.data_source_id = source.id AND view.lifecycle = 'active'",
                     params![data_source_id, library_id, requested_view_id],
-                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                    |row| row.get::<_, String>(0),
                 )
                 .optional()?
                 .ok_or_else(|| not_found("Destination Data Source has no default View"))?;
-            let view_config = serde_json::from_str::<serde_json::Value>(&view_config)
-                .map_err(|_| corrupt("Destination View config is invalid"))?;
-            let group_property_id = view_config
-                .pointer("/presentation/group/propertyId")
-                .and_then(serde_json::Value::as_str);
-            let existing_group_key = if group.is_none() {
-                moving_page_id
-                    .map(|page_id| {
-                        read_canonical_group_key(
-                            connection,
-                            data_source_id,
-                            page_id,
-                            group_property_id,
-                        )
-                    })
-                    .transpose()?
-                    .flatten()
-            } else {
-                None
-            };
-            let intake_stage: Option<String> = match moving_page_id {
-                Some(page) if group.is_none() && group_property_id == Some("status") => connection
-                    .query_row(
-                        "SELECT stage FROM inbox_intake WHERE page_id=?1",
-                        [page],
-                        |r| r.get::<_, Option<String>>(0),
-                    )
-                    .optional()?
-                    .flatten(),
-                _ => None,
-            };
             let group_key = match group {
                 Some(DatabaseGroupScope::Path {
                     group_key,
@@ -458,11 +426,9 @@ fn resolve_destination(
                     if let Some(key) = group_key {
                         validate_id(key, "destination.group")?;
                     }
-                    group_key.clone()
+                    Some(group_key.clone())
                 }
-                None => existing_group_key
-                    .or(intake_stage)
-                    .or_else(|| (group_property_id == Some("status")).then(|| "triage".to_owned())),
+                None => None,
             };
             let ids = connection
                 .prepare(&format!(
@@ -491,7 +457,7 @@ fn resolve_destination(
                 project_id,
                 data_source_id,
                 &view_id,
-                group_key.as_deref(),
+                group_key.as_ref().map(|key| key.as_deref()),
                 before_page_id.as_deref(),
             )?;
             Ok(LibraryPageCopyDestination::DataSource {
@@ -535,52 +501,6 @@ pub(super) fn resolve_batch_destination(
             actor_project_id: context.project_id.as_ref().map(|id| id.0.as_str()),
         },
     )
-}
-
-fn read_canonical_group_key(
-    connection: &Connection,
-    data_source_id: &str,
-    page_id: &str,
-    property_id: Option<&str>,
-) -> Result<Option<String>, StoreError> {
-    let Some(property_id) = property_id else {
-        return Ok(None);
-    };
-    let value_json = connection
-        .query_row(
-            "SELECT value.value_json \
-             FROM data_source_page_memberships membership \
-             LEFT JOIN data_source_property_values value \
-               ON value.data_source_id = membership.data_source_id \
-              AND value.membership_id = membership.id \
-              AND value.property_id = ?3 \
-             WHERE membership.data_source_id = ?1 \
-               AND membership.page_block_id = ?2 \
-               AND membership.removed_at IS NULL",
-            params![data_source_id, page_id, property_id],
-            |row| row.get::<_, Option<String>>(0),
-        )
-        .optional()?
-        .flatten();
-    let Some(value_json) = value_json else {
-        return Ok(None);
-    };
-    let value = serde_json::from_str::<Value>(&value_json)
-        .map_err(|_| corrupt("Grouped Property canonical value is invalid"))?;
-    canonical_group_key(&value)
-}
-
-fn canonical_group_key(value: &Value) -> Result<Option<String>, StoreError> {
-    if value.is_null() || value.as_str() == Some("") || value.as_array().is_some_and(Vec::is_empty)
-    {
-        return Ok(None);
-    }
-    if let Some(value) = value.as_str() {
-        return Ok(Some(value.to_owned()));
-    }
-    serde_json::to_string(value)
-        .map(Some)
-        .map_err(|_| corrupt("Grouped Property canonical value cannot encode"))
 }
 
 fn resolve_before_anchor(

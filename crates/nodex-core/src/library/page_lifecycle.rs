@@ -407,6 +407,46 @@ fn read_membership(
     }))
 }
 
+/// Read the committed stage and current Source-owned label for a receipt.
+pub(super) fn read_page_workflow_status(
+    connection: &Connection,
+    page_id: &str,
+) -> Result<Option<nodex_core_contracts::library::LibraryPageWorkflowStatusValue>, StoreError> {
+    use nodex_core_contracts::library::LibraryPageWorkflowStatusValue;
+    let row = connection.query_row(
+        "SELECT value.value_json, property.config_json
+         FROM pages page
+         LEFT JOIN data_source_page_memberships membership
+           ON membership.page_block_id = page.block_id AND membership.removed_at IS NULL
+           AND membership.data_source_id = page.parent_id
+         LEFT JOIN data_source_property_values value
+           ON value.data_source_id = membership.data_source_id AND value.membership_id = membership.id
+           AND value.property_id = ?2
+         LEFT JOIN data_source_properties property
+           ON property.data_source_id = membership.data_source_id AND property.id = ?2
+           AND property.lifecycle = 'active'
+         WHERE page.block_id = ?1 AND page.parent_kind = 'data_source'",
+        params![page_id, crate::database::property_semantics::STATUS_PROPERTY_ID],
+        |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?)),
+    ).optional()?;
+    let Some((value, config)) = row else {
+        return Ok(None);
+    };
+    let value: Value = serde_json::from_str(&required(value, "Page is missing workflow Status")?)
+        .map_err(|_| corrupt("Page workflow Status is invalid"))?;
+    let option_id = workflow_status(&value)?;
+    let config: crate::database::property_semantics::PropertyOptionConfig =
+        serde_json::from_str(&required(config, "Page is missing the Status Property")?)
+            .map_err(|_| corrupt("Status options are invalid"))?;
+    let label = config
+        .options
+        .into_iter()
+        .find(|option| Some(option.id.as_str()) == value.as_str())
+        .map(|option| option.name)
+        .ok_or_else(|| corrupt("Page workflow Status option is unavailable"))?;
+    Ok(Some(LibraryPageWorkflowStatusValue { option_id, label }))
+}
+
 fn workflow_status(value: &Value) -> Result<LibraryPageWorkflowStatus, StoreError> {
     match value.as_str() {
         Some("triage") => Ok(LibraryPageWorkflowStatus::Triage),

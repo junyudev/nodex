@@ -1927,27 +1927,42 @@ mod tests {
                 .as_deref(),
             Some("RND-1")
         );
-        database_apply(
-            &workspace,
-            "clear-status",
-            DatabaseIntent::EditPropertyValues {
-                edits: vec![DatabasePropertyValueMutation {
-                    expected_membership_revision: None,
-                    address: DatabasePagePropertyAddress {
-                        page_id: "page:work".to_owned(),
-                        data_source_id: data_source_id.clone(),
-                        property_id: "status".to_owned(),
+        let error =
+            crate::database::DatabaseModule::new("profile-1", "library-1", &workspace.kernel)
+                .apply(
+                    &context(),
+                    nodex_core_contracts::ModuleApplyRequest {
+                        contract_version: nodex_core_contracts::DATABASE_CONTRACT_VERSION,
+                        operation_id: "clear-status".to_owned(),
+                        store_epoch: nodex_core_contracts::StoreEpoch("epoch-1".to_owned()),
+                        intent: vec![DatabaseIntent::EditPropertyValues {
+                            edits: vec![DatabasePropertyValueMutation {
+                                expected_membership_revision: None,
+                                address: DatabasePagePropertyAddress {
+                                    page_id: "page:work".to_owned(),
+                                    data_source_id: data_source_id.clone(),
+                                    property_id: "status".to_owned(),
+                                },
+                                edit: DatabasePropertyValueEdit::Replace {
+                                    expected_value_revision: value_revision + 1,
+                                    value: DatabasePropertyValueInput::Empty,
+                                },
+                            }],
+                        }],
                     },
-                    edit: DatabasePropertyValueEdit::Replace {
-                        expected_value_revision: value_revision + 1,
-                        value: DatabasePropertyValueInput::Empty,
-                    },
-                }],
-            },
+                )
+                .expect_err("workflow Status cannot be cleared");
+        assert_eq!(error.code, CoreErrorCode::InvalidInput);
+        assert!(error.message.contains("Progress (status)"));
+        assert!(error.message.contains("doing (In progress)"));
+        assert_eq!(
+            linked_pages(&workspace, &["session:work"])[0]
+                .page
+                .status
+                .as_ref()
+                .map(|status| status.option_id.as_str()),
+            Some("doing"),
         );
-        let without_status = linked_pages(&workspace, &["session:work"]);
-        assert_eq!(without_status[0].page.page_id, "page:work");
-        assert_eq!(without_status[0].page.status, None);
         database_apply(
             &workspace,
             "detach-work",

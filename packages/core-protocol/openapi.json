@@ -21667,6 +21667,16 @@
               "string",
               "null"
             ]
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LibraryPageWorkflowStatusValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -21843,6 +21853,16 @@
               "string",
               "null"
             ]
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LibraryPageWorkflowStatusValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -21997,6 +22017,16 @@
           },
           "source_page_id": {
             "type": "string"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LibraryPageWorkflowStatusValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -22058,7 +22088,6 @@
             "type": "object",
             "required": [
               "data_source_id",
-              "values",
               "kind"
             ],
             "properties": {
@@ -23573,6 +23602,15 @@
                 "string",
                 "null"
               ]
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "page_statuses": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/LibraryPageWorkflowStatusValue"
             },
             "propertyNames": {
               "type": "string"
@@ -25996,6 +26034,16 @@
           "source_page_id": {
             "type": "string"
           },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LibraryPageWorkflowStatusValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "title_etag": {
             "type": "string"
           }
@@ -26086,6 +26134,16 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LibraryPageWorkflowStatusValue"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "title_etag": {

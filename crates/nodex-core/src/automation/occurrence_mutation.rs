@@ -745,6 +745,10 @@ fn apply_schedule_patch(
         )
         .optional()?
         .ok_or_else(|| corrupt("Scheduled Page disappeared during mutation"))?;
+    connection.execute(
+        "UPDATE pages SET updated_at = ?1 WHERE block_id = ?2 AND library_id = ?3",
+        params![now, target.page.page_id, target.library_id],
+    )?;
     refresh_page_read_model(connection, target, metadata_revision, now)?;
     refresh_scheduled_index(connection, &target.page.page_id, now)
 }

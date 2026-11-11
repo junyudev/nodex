@@ -92,7 +92,9 @@ const toCoreIntent = (intent: BlockTransferIntent): CoreTransferIntent => ({
                   preferences_override: toCoreDatabaseViewPreferencesOverride(
                     intent.target.placement.preferencesOverride,
                   ),
-                  group_key: intent.target.placement.groupKey,
+                  ...(intent.target.placement.groupKey !== undefined
+                    ? { group_key: intent.target.placement.groupKey }
+                    : {}),
                   before_page_id: intent.target.placement.beforePageId ?? null,
                   sorted_property_values: (intent.target.placement.sortedPropertyValues ?? []).map(
                     (entry) => ({

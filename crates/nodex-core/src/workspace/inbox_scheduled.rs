@@ -551,7 +551,7 @@ pub(crate) fn prepare_automation_run_pages(
                 automation.project_id.as_deref(),
                 &home.data_source_id,
                 &home.view_id,
-                Some("doing"),
+                Some(Some("doing")),
                 None,
             )?;
             crate::library::page_genesis::create_page_in_data_source(

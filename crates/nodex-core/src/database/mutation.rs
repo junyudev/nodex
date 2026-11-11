@@ -1288,6 +1288,7 @@ fn apply_intent(
             effects,
             false,
             false,
+            false,
         ),
     }
 }
@@ -2808,22 +2809,14 @@ fn set_value(
     if address.property_id == "status" {
         effects.status_edit_page_ids.insert(address.page_id.clone());
     }
-    connection.execute(
-        "INSERT INTO data_source_property_values(\
-           data_source_id, membership_id, property_id, value_type, value_json, revision, updated_at\
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
-         ON CONFLICT(data_source_id, membership_id, property_id) DO UPDATE SET \
-           value_type = excluded.value_type, value_json = excluded.value_json, \
-           revision = excluded.revision, updated_at = excluded.updated_at",
-        params![
-            address.data_source_id,
-            membership,
-            address.property_id,
-            property.value_type,
-            serde_json::to_string(&value).map_err(|_| internal("Property value"))?,
-            revision,
-            now,
-        ],
+    write_scalar_value(
+        connection,
+        &address.data_source_id,
+        &membership,
+        &property,
+        &value,
+        revision,
+        now,
     )?;
     if address.property_id == "status" {
         crate::workspace::inbox::status_changed(
@@ -2924,9 +2917,8 @@ pub(crate) fn synchronize_membership_completion_timestamp(
             |row| row.get::<_, String>(0),
         )
         .optional()?
-        .map(|value| parse_json(&value, "Workflow status value"))
-        .transpose()?
-        .unwrap_or(Value::Null);
+        .ok_or_else(|| corrupt("Membership is missing its workflow Status"))?;
+    let status = parse_json(&status, "Workflow status value")?;
     update_membership_completion_timestamp(
         connection,
         membership_id,
@@ -3055,7 +3047,8 @@ pub(crate) struct PageCopyPositionAnchor {
 pub(crate) struct PageCopyViewPlacement {
     pub(crate) view_id: String,
     pub(crate) expected_view_revision: i64,
-    pub(crate) group_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) group_key: Option<Option<String>>,
     pub(crate) before: Option<PageCopyPositionAnchor>,
 }
 
@@ -3427,6 +3420,7 @@ pub(crate) enum ExistingPageTransferTarget<'a> {
     Library,
     Page { page_id: &'a str },
     DataSource(&'a PageCopyDataSourceDestination),
+    RestoreDataSource(&'a PageCopyDataSourceDestination),
 }
 
 pub(crate) struct ExistingPageTransferPlacement {
@@ -3464,7 +3458,7 @@ pub(crate) fn resolve_page_transfer_board_destination(
     data_source_id: &str,
     view_id: &str,
     preferences_override: &DatabaseViewPreferencesOverrideInput,
-    group_key: Option<&str>,
+    group_key: Option<Option<&str>>,
     before_page_id: Option<&str>,
     sorted_property_values: &[PageCopyValueDraft],
 ) -> Result<PageCopyDataSourceDestination, StoreError> {
@@ -3521,7 +3515,7 @@ pub(crate) fn resolve_page_transfer_data_source_destination(
     requesting_project_id: Option<&str>,
     data_source_id: &str,
     view_id: &str,
-    group_key: Option<&str>,
+    group_key: Option<Option<&str>>,
     before_page_id: Option<&str>,
 ) -> Result<PageCopyDataSourceDestination, StoreError> {
     resolve_page_transfer_destination(
@@ -3582,6 +3576,7 @@ pub(crate) fn resolve_page_transfer_list_destination(
             "Block transfer target View belongs to another Data Source",
         ));
     }
+    let (group, subgroup) = super::list_drag::chosen_group_axes(&projection.graph, &normalized);
     let axes = [
         (
             projection
@@ -3590,7 +3585,7 @@ pub(crate) fn resolve_page_transfer_list_destination(
                 .group
                 .as_ref()
                 .map(|group| group.property_id.as_str()),
-            normalized.group_key.as_deref(),
+            group,
         ),
         (
             projection
@@ -3599,13 +3594,13 @@ pub(crate) fn resolve_page_transfer_list_destination(
                 .subgroup
                 .as_ref()
                 .map(|group| group.property_id.as_str()),
-            normalized.subgroup_key.as_deref(),
+            subgroup,
         ),
     ];
     let mut seen_property_ids = HashSet::new();
     let mut values = axes
         .into_iter()
-        .filter_map(|(property_id, key)| property_id.map(|property_id| (property_id, key)))
+        .filter_map(|(property_id, key)| property_id.zip(key))
         .map(|(property_id, key)| {
             if !seen_property_ids.insert(property_id.to_owned()) {
                 return Err(invalid(
@@ -3615,7 +3610,7 @@ pub(crate) fn resolve_page_transfer_list_destination(
             let property = active_property(connection, data_source_id, property_id)?;
             Ok(PageCopyValueDraft {
                 property_id: property_id.to_owned(),
-                value: database_group_value_from_key(&property.value_type, key),
+                value: normalize_group_value(&property, key)?,
             })
         })
         .collect::<Result<Vec<_>, StoreError>>()?;
@@ -3649,7 +3644,7 @@ pub(crate) fn resolve_page_transfer_list_destination(
         view: Some(PageCopyViewPlacement {
             view_id: view.id,
             expected_view_revision: view.revision,
-            group_key: normalized.group_key,
+            group_key: group.map(|key| key.map(str::to_owned)),
             before,
         }),
     })
@@ -3714,7 +3709,7 @@ fn resolve_page_transfer_destination(
     requesting_project_id: Option<&str>,
     data_source_id: &str,
     view_id: &str,
-    group_key: Option<&str>,
+    group_key: Option<Option<&str>>,
     before_page_id: Option<&str>,
     group_axis: TransferGroupAxis<'_>,
 ) -> Result<PageCopyDataSourceDestination, StoreError> {
@@ -3736,12 +3731,13 @@ fn resolve_page_transfer_destination(
         TransferGroupAxis::Durable => view_group_property(&definition),
         TransferGroupAxis::Effective(property_id) => property_id,
     };
-    let values = group_property_id
-        .map(|property_id| {
+    let values = group_key
+        .zip(group_property_id)
+        .map(|(key, property_id)| {
             let property = active_property(connection, data_source_id, property_id)?;
             Ok::<_, StoreError>(PageCopyValueDraft {
                 property_id: property_id.to_owned(),
-                value: database_group_value_from_key(&property.value_type, group_key),
+                value: normalize_group_value(&property, key)?,
             })
         })
         .transpose()?
@@ -3757,7 +3753,7 @@ fn resolve_page_transfer_destination(
         view: Some(PageCopyViewPlacement {
             view_id: view.id,
             expected_view_revision: view.revision,
-            group_key: group_key.map(str::to_owned),
+            group_key: group_key.map(|key| key.map(str::to_owned)),
             before,
         }),
     })
@@ -4076,7 +4072,6 @@ fn place_page_in_data_source(
         &membership_id,
         &destination.data_source_id,
         now,
-        false,
         None,
     )?;
     if let Some(source_membership) = source_membership
@@ -4265,7 +4260,8 @@ fn transfer_existing_page_for_structural_move(
 ) -> Result<ExistingPageTransferPlacement, StoreError> {
     let mut effects = MutationEffects::default();
     let same_data_source = match &target {
-        ExistingPageTransferTarget::DataSource(destination) => connection
+        ExistingPageTransferTarget::DataSource(destination)
+        | ExistingPageTransferTarget::RestoreDataSource(destination) => connection
             .query_row(
                 "SELECT membership.data_source_id = ?2 \
                  FROM data_source_page_memberships membership \
@@ -4284,9 +4280,12 @@ fn transfer_existing_page_for_structural_move(
         ExistingPageTransferTarget::Page { page_id } => DatabaseTransferTarget::Page {
             page_id: (*page_id).to_owned(),
         },
-        ExistingPageTransferTarget::DataSource(destination) => DatabaseTransferTarget::DataSource {
-            data_source_id: destination.data_source_id.clone(),
-        },
+        ExistingPageTransferTarget::DataSource(destination)
+        | ExistingPageTransferTarget::RestoreDataSource(destination) => {
+            DatabaseTransferTarget::DataSource {
+                data_source_id: destination.data_source_id.clone(),
+            }
+        }
     };
     if same_data_source {
         let (parent_kind, parent_id, parent_revision, membership_revision) = connection
@@ -4342,10 +4341,13 @@ fn transfer_existing_page_for_structural_move(
             now,
             &mut effects,
             true,
+            matches!(target, ExistingPageTransferTarget::RestoreDataSource(_)),
             defer_projection_refresh,
         )?;
     }
-    if let ExistingPageTransferTarget::DataSource(destination) = target {
+    if let ExistingPageTransferTarget::DataSource(destination)
+    | ExistingPageTransferTarget::RestoreDataSource(destination) = target
+    {
         for value in &destination.values {
             let expected_value_revision = connection
                 .query_row(
@@ -4516,44 +4518,6 @@ pub(crate) fn finalize_agent_moved_pages_in_data_source(
                 "Agent Page-move target View belongs to another Data Source",
             ));
         }
-        let definition =
-            super::view_contract::decode_definition_json(&view.config_json).map_err(corrupt)?;
-        if let Some(property_id) = view_group_property(&definition) {
-            let property = active_property(connection, &destination.data_source_id, property_id)?;
-            let value =
-                database_group_value_from_key(&property.value_type, placement.group_key.as_deref());
-            for page_id in page_ids {
-                let expected_value_revision = connection
-                    .query_row(
-                        "SELECT property_value.revision \
-                         FROM data_source_property_values property_value \
-                         JOIN data_source_page_memberships membership \
-                           ON membership.id = property_value.membership_id \
-                         WHERE membership.page_block_id = ?1 \
-                           AND membership.data_source_id = ?2 \
-                           AND membership.removed_at IS NULL \
-                           AND property_value.property_id = ?3",
-                        params![page_id, destination.data_source_id, property_id],
-                        |row| row.get::<_, i64>(0),
-                    )
-                    .optional()?
-                    .unwrap_or(0);
-                set_value(
-                    connection,
-                    library_id,
-                    requesting_project_id,
-                    &DatabasePagePropertyAddress {
-                        page_id: page_id.clone(),
-                        data_source_id: destination.data_source_id.clone(),
-                        property_id: property_id.to_owned(),
-                    },
-                    expected_value_revision,
-                    &value,
-                    now,
-                    &mut effects,
-                )?;
-            }
-        }
         let pages = page_ids
             .iter()
             .map(|page_id| {
@@ -4594,6 +4558,13 @@ pub(crate) fn finalize_agent_moved_pages_in_data_source(
     })
 }
 
+fn normalize_group_value(property: &PropertyRow, key: Option<&str>) -> Result<Value, StoreError> {
+    normalize_value(
+        property,
+        &database_group_value_from_key(&property.value_type, key),
+    )
+}
+
 fn database_group_value_from_key(value_type: &str, group_key: Option<&str>) -> Value {
     let Some(group_key) = group_key else {
         return Value::Null;
@@ -4623,6 +4594,7 @@ fn transfer_page(
     effects: &mut MutationEffects,
 
     allow_page_parent_transition: bool,
+    restore_historical_values: bool,
     defer_projection_refresh: bool,
 ) -> Result<(), StoreError> {
     validate_id(page_id, "page_id", MAX_ID_LENGTH)?;
@@ -4845,19 +4817,14 @@ fn transfer_page(
                 page_id,
                 now,
             )?;
-            let carry_intake_status = active_membership.is_some()
-                && connection.query_row(
-                    "SELECT EXISTS(SELECT 1 FROM inbox_entries WHERE page_id=?1)",
-                    [page_id],
-                    |row| row.get::<_, bool>(0),
-                )?;
             ensure_transferred_built_in_values(
                 connection,
-                active_membership.as_ref(),
+                active_membership
+                    .as_ref()
+                    .filter(|_| !restore_historical_values),
                 &membership_id,
                 data_source_id,
                 now,
-                carry_intake_status,
                 Some(effects),
             )?;
             synchronize_membership_completion_timestamp(
@@ -4919,7 +4886,6 @@ fn ensure_transferred_built_in_values(
     target_membership_id: &str,
     target_data_source_id: &str,
     now: &str,
-    carry_intake_status: bool,
     mut effects: Option<&mut MutationEffects>,
 ) -> Result<(), StoreError> {
     let properties = connection
@@ -4947,38 +4913,49 @@ fn ensure_transferred_built_in_values(
         }
         let existing = connection
             .query_row(
-                "SELECT 1 FROM data_source_property_values WHERE data_source_id = ?1 \
+                "SELECT value_json, revision FROM data_source_property_values WHERE data_source_id = ?1
                  AND membership_id = ?2 AND property_id = ?3",
-                params![
-                    target_data_source_id,
-                    target_membership_id,
-                    target_property.id
-                ],
-                |_| Ok(()),
+                params![target_data_source_id, target_membership_id, target_property.id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
             )
             .optional()?;
-        if existing.is_some() && !(carry_intake_status && target_property.id == "status") {
+        let required =
+            super::property_semantics::required_scalar_default(&target_property.id).is_some();
+        if existing.is_some()
+            && !required
+            && (source_membership.is_none() || target_property.value_type == "relation")
+        {
             continue;
         }
+        let stored = existing
+            .as_ref()
+            .map(|(raw, _)| parse_json(raw, "Stored Property value"))
+            .transpose()?;
+        if required
+            && source_membership.is_none()
+            && let Some(value) = stored.as_ref()
+        {
+            match normalize_value(&target_property, value) {
+                Ok(_) => continue,
+                Err(error) if error.code == StoreErrorCode::InvalidInput => {}
+                Err(error) => return Err(error),
+            }
+        }
         let value = transfer_value(connection, source_membership, &target_property)?;
-        let revision = connection.query_row(
-            "INSERT INTO data_source_property_values(\
-               data_source_id, membership_id, property_id, value_type, value_json, revision, updated_at\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6)
-             ON CONFLICT(data_source_id, membership_id, property_id) DO UPDATE SET
-               value_json=excluded.value_json, revision=revision+1, updated_at=excluded.updated_at
-             WHERE value_json<>excluded.value_json RETURNING revision",
-            params![
-                target_data_source_id,
-                target_membership_id,
-                target_property.id,
-                target_property.value_type,
-                serde_json::to_string(&value).map_err(|_| internal("Transferred value"))?,
-                now,
-            ],
-            |row| row.get::<_, i64>(0),
-        ).optional()?;
-        if let (Some(effects), Some(revision)) = (effects.as_deref_mut(), revision) {
+        if stored.as_ref() == Some(&value) {
+            continue;
+        }
+        let revision = existing.map_or(1, |(_, revision)| revision + 1);
+        write_scalar_value(
+            connection,
+            target_data_source_id,
+            target_membership_id,
+            &target_property,
+            &value,
+            revision,
+            now,
+        )?;
+        if let Some(effects) = effects.as_deref_mut() {
             effects.revisions.insert(
                 format!(
                     "value:{target_data_source_id}:{target_membership_id}:{}",
@@ -4989,6 +4966,130 @@ fn ensure_transferred_built_in_values(
         }
     }
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_scalar_value(
+    connection: &Connection,
+    data_source_id: &str,
+    membership_id: &str,
+    property: &PropertyRow,
+    value: &Value,
+    revision: i64,
+    now: &str,
+) -> Result<(), StoreError> {
+    connection.execute(
+        "INSERT INTO data_source_property_values(
+           data_source_id, membership_id, property_id, value_type, value_json, revision, updated_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT(data_source_id, membership_id, property_id) DO UPDATE SET
+           value_type = excluded.value_type, value_json = excluded.value_json,
+           revision = excluded.revision, updated_at = excluded.updated_at",
+        params![
+            data_source_id,
+            membership_id,
+            property.id,
+            property.value_type,
+            value.to_string(),
+            revision,
+            now
+        ],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn initialize_cloned_membership(
+    connection: &Connection,
+    data_source_id: &str,
+    membership_id: &str,
+    now: &str,
+) -> Result<(), StoreError> {
+    ensure_transferred_built_in_values(connection, None, membership_id, data_source_id, now, None)?;
+    synchronize_membership_completion_timestamp(connection, data_source_id, membership_id, now)
+}
+
+/// Repair canonical values and the active row projections before opening the store.
+pub(crate) fn repair_required_workflow_statuses(
+    connection: &Connection,
+    now: &str,
+) -> Result<usize, StoreError> {
+    use super::property_semantics::{STATUS_OPTION_IDS, STATUS_PROPERTY_ID};
+    let memberships = connection
+        .prepare(
+            "SELECT membership.data_source_id, membership.id, membership.page_block_id,
+                    membership.removed_at IS NULL, COALESCE(value.revision, 0)
+             FROM data_source_page_memberships membership
+             LEFT JOIN data_source_property_values value
+               ON value.data_source_id = membership.data_source_id
+               AND value.membership_id = membership.id AND value.property_id = ?1
+             WHERE value.value_type IS NOT 'select'
+                OR json_type(value.value_json) IS NOT 'text'
+                OR json_extract(value.value_json, '$') NOT IN (SELECT value FROM json_each(?2))",
+        )?
+        .query_map(
+            params![
+                STATUS_PROPERTY_ID,
+                serde_json::json!(STATUS_OPTION_IDS).to_string()
+            ],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, bool>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            },
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut effects = MutationEffects::default();
+    for (source_id, membership_id, page_id, active, revision) in &memberships {
+        let property = property_row(connection, source_id, STATUS_PROPERTY_ID)?
+            .ok_or_else(|| corrupt("Membership Data Source is missing its Status Property"))?;
+        let value = default_built_in_value(&property)?;
+        write_scalar_value(
+            connection,
+            source_id,
+            membership_id,
+            &property,
+            &value,
+            revision + 1,
+            now,
+        )?;
+        update_membership_completion_timestamp(
+            connection,
+            membership_id,
+            STATUS_PROPERTY_ID,
+            &value,
+            now,
+        )?;
+        if !active {
+            continue;
+        }
+        update_grouped_view_projections(
+            connection,
+            source_id,
+            STATUS_PROPERTY_ID,
+            page_id,
+            &value,
+            now,
+            &mut effects,
+        )?;
+        let metadata_revision = bump_page_metadata_revision(connection, page_id, now)?;
+        refresh_value_projection(
+            connection,
+            page_id,
+            STATUS_PROPERTY_ID,
+            &value,
+            revision + 1,
+            metadata_revision,
+            &property,
+            now,
+        )?;
+        effects.page_ids.insert(page_id.clone());
+    }
+    refresh_scheduled_page_indexes(connection, &effects.page_ids, now)?;
+    Ok(memberships.len())
 }
 
 fn copy_same_source_property_values(
@@ -5064,13 +5165,15 @@ fn transfer_value(
         .optional()?
         .map(|value| parse_json(&value, "Transferred source value"))
         .transpose()?;
-    let Some(source_value) = source_value else {
+    let Some(source_value) = source_value.filter(|value| !value.is_null()) else {
         return Ok(fallback);
     };
-    if target_property.id == "tags" {
-        return map_tags_between_properties(&source_property, &source_value, target_property);
-    }
-    match normalize_value(target_property, &source_value) {
+    let carried = if target_property.id == "tags" {
+        map_tags_between_properties(&source_property, &source_value, target_property)
+    } else {
+        normalize_value(target_property, &source_value)
+    };
+    match carried {
         Ok(value) => Ok(value),
         Err(error) if error.code == StoreErrorCode::InvalidInput => Ok(fallback),
         Err(error) => Err(error),
@@ -5081,11 +5184,9 @@ fn default_built_in_value(property: &PropertyRow) -> Result<Value, StoreError> {
     if property.id == "tags" {
         return Ok(Value::Array(Vec::new()));
     }
-    if property.id == "status" {
-        let config = option_config(property)?;
-        if config.options.iter().any(|option| option.id == "triage") {
-            return Ok(Value::String("triage".to_owned()));
-        }
+    if let Some(id) = super::property_semantics::required_scalar_default(&property.id) {
+        return normalize_value(property, &Value::String(id.to_owned()))
+            .map_err(|_| corrupt("Required Property default is unavailable"));
     }
     Ok(Value::Null)
 }
@@ -7433,6 +7534,28 @@ fn persist_option_config(
 }
 
 pub(crate) fn normalize_value(property: &PropertyRow, value: &Value) -> Result<Value, StoreError> {
+    if super::property_semantics::required_scalar_default(&property.id).is_some() {
+        let config = option_config(property)?;
+        if let Some(id) = value.as_str()
+            && super::property_semantics::is_canonical_option_id(&property.id, id)
+            && config.options.iter().any(|option| option.id == id)
+        {
+            return Ok(value.clone());
+        }
+        let options = config
+            .options
+            .iter()
+            .filter(|option| {
+                super::property_semantics::is_canonical_option_id(&property.id, &option.id)
+            })
+            .map(|option| format!("{} ({})", option.id, option.name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(invalid(format!(
+            "{} ({}) requires an option ID. Choose one of: {options}",
+            property.name, property.id
+        )));
+    }
     if value.is_null() {
         return Ok(Value::Null);
     }
@@ -7677,6 +7800,10 @@ fn bump_page_metadata_revision(
         )
         .optional()?
         .ok_or_else(|| corrupt("Database row Page disappeared during metadata commit"))?;
+    connection.execute(
+        "UPDATE pages SET updated_at = ?1 WHERE block_id = ?2",
+        params![now, page_id],
+    )?;
     Ok(metadata_revision)
 }
 

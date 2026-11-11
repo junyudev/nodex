@@ -39,7 +39,7 @@ pub(super) fn tables(
                 schema::column("title", "TEXT", false, "Plain title"),
                 schema::column("data_source_id", "TEXT", false, "Bound Source identity"),
                 schema::column("created_at", "TEXT", false, "Page creation time"),
-                schema::column("updated_at", "TEXT", false, "Page update time"),
+                schema::column("updated_at", "TEXT", false, "Last Page edit time, including Property value edits"),
                 schema::column("membership_revision", "INTEGER", false, "Observed member revision for edits"),
                 schema::column("value_revisions", "TEXT", false, "JSON object mapping Property IDs to observed revisions; select for prepare-batch"),
             ];
@@ -50,7 +50,8 @@ pub(super) fn tables(
                 let name = if unique { property.name.clone() } else { format!("property_{}", property.property_id) };
                 if !names.insert(name.to_ascii_lowercase()) { return Err(invalid("Property column names collide; rename the conflicting Property")); }
                 let storage = match property.schema { DatabasePropertySchema::Number { .. } => "REAL", DatabasePropertySchema::Checkbox => "INTEGER", _ => "TEXT" };
-                let mut column = schema::column(&name, storage, true, "Canonical Property value; select uses option IDs, arrays use JSON text");
+                let nullable = crate::database::property_semantics::required_scalar_default(&property.property_id).is_none();
+                let mut column = schema::column(&name, storage, nullable, "Canonical Property value; select uses option IDs, arrays use JSON text");
                 column.property_id = Some(property.property_id.clone());
                 column.property_schema = Some(property.schema.clone());
                 if include_options { column.options = db.property_options(&binding.data_source_id, &property.property_id)?; }

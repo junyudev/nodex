@@ -6058,4 +6058,4 @@ CREATE TABLE project_session_chat_folders (
   output_directory TEXT,
   origin TEXT NOT NULL CHECK (origin IN ('generated', 'chosen'))
 ) WITHOUT ROWID;
-PRAGMA user_version=211;
+PRAGMA user_version=212;

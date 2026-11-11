@@ -2790,13 +2790,22 @@ fn restore_membership(
     if changed != 1 {
         return Err(conflict("Deleted Page membership changed during restore"));
     }
+    database::initialize_cloned_membership(
+        connection,
+        &requested.data_source_id,
+        &requested.membership_id,
+        now,
+    )?;
+    let status = super::page_lifecycle::read_page_workflow_status(connection, page_id)?
+        .ok_or_else(|| corrupt("Restored Database Page has no workflow Status"))?
+        .option_id;
     database::ensure_database_page_key(connection, library_id, &database_id, page_id, now)?;
     Ok(MembershipCoordinates {
         membership_id: requested.membership_id.clone(),
         database_id,
         data_source_id: requested.data_source_id.clone(),
         membership_revision: revision + 1,
-        status: requested.status,
+        status,
         view_id: requested
             .position
             .as_ref()
