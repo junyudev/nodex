@@ -40,9 +40,22 @@ pub(crate) fn read_json<T: DeserializeOwned>(path: &Path, label: &str) -> Result
 }
 
 pub(crate) fn decode_json<T: DeserializeOwned>(bytes: &[u8], label: &str) -> Result<T, CliError> {
-    serde_json::from_slice(bytes).map_err(|error| {
+    let mut deserializer = serde_json::Deserializer::from_slice(bytes);
+    let result = serde_path_to_error::deserialize(&mut deserializer).map_err(|error| {
+        let path = error.path().to_string();
+        let inner = error.inner();
+        let mut diagnostic = invalid(format!(
+            "{label} must match its JSON input schema at {path}: {inner}"
+        ));
+        if inner.line() != 0 {
+            diagnostic = diagnostic.at_line(inner.line());
+        }
+        diagnostic.at_path(path)
+    })?;
+    deserializer.end().map_err(|error| {
         invalid(format!("{label} must match its JSON input schema: {error}")).at_line(error.line())
-    })
+    })?;
+    Ok(result)
 }
 
 fn read_bounded(reader: &mut impl Read, limit: usize, label: &str) -> Result<Vec<u8>, CliError> {

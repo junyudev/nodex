@@ -1,7 +1,6 @@
 use crate::cli::MutationArgs;
 use crate::data_source::stable_id;
 use crate::error::{CliError, CliErrorCode};
-use crate::input::read_json;
 use crate::runtime::{
     CommandOutput, map_client_error, map_core_error, resolve_page_selector, selected_project,
     unwrap_library,
@@ -93,10 +92,68 @@ pub(crate) fn prepare(args: &mut PagePropertiesArgs) -> Result<(), CliError> {
         input, prepared, ..
     } = &mut args.command
     {
-        *prepared = Some(read_json::<PropertyApplyDocument>(input, "Property edits")?.into_inner());
+        *prepared = Some(read_property_edits(input)?);
     }
     Ok(())
 }
+fn read_property_edits(path: &Path) -> Result<PropertyApplyInput, CliError> {
+    use crate::input::{MAX_JSON_BYTES, decode_json, read_bytes, with_schema_hint};
+    const LABEL: &str = "Property edits";
+    let bytes = read_bytes(path, MAX_JSON_BYTES, LABEL)?;
+    let shape: serde_json::Value = decode_json(&bytes, LABEL)?;
+    crate::input_document::decode(&bytes, &shape, LABEL).map_err(|error| {
+        with_schema_hint(
+            refine_edit_kind_error(&shape, error),
+            "page properties apply",
+        )
+    })
+}
+
+fn refine_edit_kind_error(shape: &serde_json::Value, error: CliError) -> CliError {
+    use nodex_core_contracts::database::{DatabasePropertySetDelta, DatabasePropertyValueInput};
+    let Some(path) = error.path.as_deref() else {
+        return error;
+    };
+    let (payload, path_without_result) = path
+        .strip_prefix("result.")
+        .map_or((shape, path), |path| (&shape["result"], path));
+    let Some(index) = path_without_result
+        .strip_prefix("edits[")
+        .and_then(|path| path.strip_suffix("].edit"))
+        .and_then(|index| index.parse::<usize>().ok())
+    else {
+        return error;
+    };
+    let edit = &payload["edits"][index]["edit"];
+    let (field, nested_error) = match edit["kind"].as_str() {
+        Some("replace") => (
+            "value",
+            DatabasePropertyValueInput::deserialize(&edit["value"]).err(),
+        ),
+        Some("patch_set") => (
+            "delta",
+            DatabasePropertySetDelta::deserialize(&edit["delta"]).err(),
+        ),
+        _ => ("", None),
+    };
+    if let Some(nested) =
+        nested_error.filter(|nested| nested.to_string().starts_with("unknown variant"))
+    {
+        let field_path = format!("{path}.{field}.kind");
+        let message = if field == "value" && edit[field]["kind"] == "relation" {
+            "Relation values use replace_one_relation, patch_set, or clear_many_relation.".into()
+        } else {
+            nested.to_string()
+        };
+        return invalid(&format!("{field_path}: {message}")).at_path(field_path);
+    }
+    if error.message.contains("unknown variant") && field.is_empty() {
+        let field_path = format!("{path}.kind");
+        return error.at_path(field_path);
+    }
+    error
+}
+
 pub(crate) fn execute(
     client: &CoreClient,
     explicit_project: Option<&str>,

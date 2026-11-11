@@ -27,6 +27,35 @@ impl<T> InputDocument<T> {
         }
     }
 }
+/// Select the envelope by its own fields before decoding the typed payload.
+pub(crate) fn read<T: serde::de::DeserializeOwned>(
+    path: &std::path::Path,
+    label: &str,
+) -> Result<T, crate::error::CliError> {
+    use crate::input::{MAX_JSON_BYTES, decode_json, read_bytes};
+    let bytes = read_bytes(path, MAX_JSON_BYTES, label)?;
+    let shape = decode_json(&bytes, label)?;
+    decode(&bytes, &shape, label)
+}
+
+pub(crate) fn is_envelope(shape: &serde_json::Value) -> bool {
+    ["version", "ok", "result"]
+        .iter()
+        .any(|key| shape.get(key).is_some())
+}
+
+pub(crate) fn decode<T: serde::de::DeserializeOwned>(
+    bytes: &[u8],
+    shape: &serde_json::Value,
+    label: &str,
+) -> Result<T, crate::error::CliError> {
+    use crate::input::decode_json;
+    if is_envelope(shape) {
+        return decode_json::<SuccessInput<T>>(bytes, label).map(|envelope| envelope.result);
+    }
+    decode_json(bytes, label)
+}
+
 fn true_schema() -> utoipa::openapi::schema::Object {
     utoipa::openapi::schema::ObjectBuilder::new()
         .schema_type(utoipa::openapi::schema::Type::Boolean)
