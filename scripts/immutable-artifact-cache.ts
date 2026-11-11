@@ -24,7 +24,10 @@ import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
+import { resolvePrimaryCheckoutRoot } from "./primary-checkout";
 import { DownloadHttpError, retryTransientDownload } from "./transient-download";
+
+export { resolvePrimaryCheckoutRoot };
 
 export const LOCAL_ARTIFACT_CACHE_DIRECTORY = "cache.local";
 
@@ -114,24 +117,6 @@ function resolveCacheFamilyRoot(
     LOCAL_ARTIFACT_CACHE_DIRECTORY,
     input.family,
   );
-}
-
-/** Keep task artifacts and shared caches in the primary checkout for linked worktrees. */
-export function resolvePrimaryCheckoutRoot(projectRoot: string): string {
-  let checkoutRoot = path.resolve(projectRoot);
-  try {
-    // Git lists the primary checkout first; NUL records preserve spaces/newlines in paths.
-    const firstRecord = execFileSync("git", ["worktree", "list", "--porcelain", "-z"], {
-      cwd: checkoutRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 5_000,
-    }).split("\0")[0];
-    if (firstRecord?.startsWith("worktree ")) checkoutRoot = firstRecord.slice(9);
-  } catch {
-    // Source archives and disposable non-Git test roots keep a local cache.
-  }
-  return checkoutRoot;
 }
 
 function assertArchiveSha256(archiveSha256: string): void {

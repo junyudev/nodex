@@ -153,6 +153,11 @@ const singleOwnerEventHandlerFiles = [
   "src/renderer/lib/mcp-app/mcp-app-port-rpc.ts",
 ];
 
+// The compiler holds the whole program in memory (about 11 GiB at its peak), so it claims
+// that much of the shared computer budget; three at once would exhaust a 36 GiB computer.
+const semanticCommand =
+  'tsx scripts/tooling/with-machine-budget.ts 4 11 "semantic check" -- "tsc-rs --build --noEmit && tsx scripts/ci/lint-warning-ratchet.ts"';
+
 const toolingFixtureIgnorePatterns = new Set(["scripts/fixtures/tooling/**", "**/fixtures/**"]);
 export default defineConfig({
   lint: {
@@ -429,8 +434,7 @@ export default defineConfig({
         },
       },
       check: {
-        command:
-          "vp fmt --check && tsc-rs --build --noEmit && tsx scripts/ci/lint-warning-ratchet.ts",
+        command: `vp fmt --check && ${semanticCommand}`,
         cache: {
           env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
           input: [
@@ -468,7 +472,7 @@ export default defineConfig({
         },
       },
       lint: {
-        command: "tsc-rs --build --noEmit && tsx scripts/ci/lint-warning-ratchet.ts",
+        command: semanticCommand,
         cache: {
           env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
           input: [
@@ -489,7 +493,7 @@ export default defineConfig({
         },
       },
       "check:semantic": {
-        command: "tsc-rs --build --noEmit && tsx scripts/ci/lint-warning-ratchet.ts",
+        command: semanticCommand,
         cache: {
           env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
           input: [
@@ -510,7 +514,7 @@ export default defineConfig({
         },
       },
       typecheck: {
-        command: "tsc-rs --build --noEmit && tsx scripts/ci/lint-warning-ratchet.ts",
+        command: semanticCommand,
         cache: {
           env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
           input: [

@@ -5,6 +5,8 @@ import { acquireMachineBudget, machineBudgetCapacity } from "./tooling/machine-b
 
 /** One Playwright worker drives Electron's main, renderer and GPU processes plus Core. */
 const ELECTRON_WORKER_WEIGHT = 3;
+/** The application build before the run is the memory peak. */
+const E2E_MEMORY_GIB = 8;
 
 const PERFORMANCE_GREP =
   "keeps representative large-content surfaces bounded|keeps Page ready and idle CPU bounded with 14k LocalCommit history|measures high-pressure nested Block transfer into a populated Board|keeps production-scale Database context menus inside the interaction budget";
@@ -114,7 +116,8 @@ const runPlaywrightE2e = async (arguments_: readonly string[]): Promise<void> =>
   const lease = await acquireMachineBudget(
     {
       label: invocation.scriptName,
-      weight: invocation.exclusive ? (capacity ?? 0) : ELECTRON_WORKER_WEIGHT,
+      weight: invocation.exclusive ? (capacity?.cores ?? 0) : ELECTRON_WORKER_WEIGHT,
+      memoryGiB: invocation.exclusive ? (capacity?.memoryGiB ?? 0) : E2E_MEMORY_GIB,
     },
     { env: process.env, cwd: process.cwd(), capacity: capacity ?? undefined },
   );

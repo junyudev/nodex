@@ -1,23 +1,35 @@
 import type { Reporter, TestSpecification, Vitest } from "vite-plus/test/node";
 import { resolveVitestTestTier } from "../../config/vitest-test-tier.ts";
-import { acquireMachineBudget, machineBudgetCapacity, type BudgetLease } from "./machine-budget.ts";
+import {
+  acquireMachineBudget,
+  machineBudgetCapacity,
+  type BudgetLease,
+  type BudgetRequest,
+} from "./machine-budget.ts";
 
 export interface VitestRunShape {
   readonly files: number;
   readonly maxWorkers: number;
-  readonly browser: boolean;
+  readonly runtime: "node" | "dom" | "browser";
   readonly stress: boolean;
-  readonly capacity: number;
+  readonly cores: number;
 }
 
-/** Cores a run keeps busy: one per worker it can actually start. */
-export function vitestRunWeight(run: VitestRunShape): number {
+/** Peak resident memory of one worker, from sampled runs of each suite. */
+const WORKER_MEMORY_GIB = { node: 0.5, dom: 1, browser: 2 } as const;
+
+/** What a run keeps busy: one core per worker it can actually start, plus their memory. */
+export function vitestRunClaim(run: VitestRunShape): Pick<BudgetRequest, "weight" | "memoryGiB"> {
   // Vitest resolves a serial suite to one worker.
   const workers = Math.min(run.maxWorkers, run.files);
   // A browser worker is a Chromium page plus the Vite server that feeds it.
-  const weight = run.browser ? workers * 2 : workers;
-  // Stress files measure scale and timing, so they keep half the computer to themselves.
-  return run.stress ? Math.max(weight, Math.ceil(run.capacity / 2)) : weight;
+  const weight = run.runtime === "browser" ? workers * 2 : workers;
+  return {
+    // Stress files measure scale and timing, so they keep half the computer to themselves.
+    weight: run.stress ? Math.max(weight, Math.ceil(run.cores / 2)) : weight,
+    // One more worker's worth for the Vitest process and its transform cache.
+    memoryGiB: (workers + 1) * WORKER_MEMORY_GIB[run.runtime],
+  };
 }
 
 /**
@@ -44,12 +56,16 @@ export default class MachineBudgetReporter implements Reporter {
     this.lease = await acquireMachineBudget(
       {
         label: `${this.options.suite} tests (${files} ${files === 1 ? "file" : "files"})`,
-        weight: vitestRunWeight({
+        ...vitestRunClaim({
           files,
           maxWorkers: config.maxWorkers,
-          browser: config.browser.enabled,
+          runtime: config.browser.enabled
+            ? "browser"
+            : config.environment === "node"
+              ? "node"
+              : "dom",
           stress: resolveVitestTestTier() === "stress",
-          capacity,
+          cores: capacity.cores,
         }),
       },
       { env: process.env, cwd: config.root, capacity },

@@ -12,18 +12,21 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resolvePrimaryCheckoutRoot } from "../immutable-artifact-cache.ts";
+import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 
 /**
- * One CPU budget shared by every checkout on this computer.
+ * One CPU and memory budget shared by every checkout on this computer.
  *
- * Each heavy development command claims a weight before it starts and waits its turn when the
- * computer is full, so parallel Agents queue instead of overloading each other into timeouts.
- * Waiting happens before the command runs and therefore never counts against a test timeout.
+ * Each heavy development command claims cores and memory before it starts and waits its turn
+ * when the computer is full, so parallel Agents queue instead of overloading each other into
+ * timeouts or swap. Waiting happens before the command runs and therefore never counts against a
+ * test timeout.
  */
 
-/** `off` disables the budget; a positive integer overrides the detected capacity. */
+/** `off` disables the budget; a positive integer overrides the detected core capacity. */
 export const MACHINE_BUDGET_ENV = "NODEX_MACHINE_BUDGET";
+/** Overrides the memory capacity, in GiB. */
+export const MACHINE_BUDGET_MEMORY_ENV = "NODEX_MACHINE_BUDGET_MEMORY_GB";
 /** Overrides the shared state directory. */
 export const MACHINE_BUDGET_DIRECTORY_ENV = "NODEX_MACHINE_BUDGET_DIR";
 /** Set for children of a holder so that nested commands share their parent's claim. */
@@ -37,7 +40,10 @@ const STALE_LOCK_MS = 10_000;
 export interface BudgetTicket {
   readonly id: string;
   readonly pid: number;
+  /** Cores. */
   readonly weight: number;
+  /** Absent on claims written by checkouts that predate memory accounting. */
+  readonly memoryGiB?: number;
   readonly label: string;
   readonly cwd: string;
   readonly enqueuedAt: number;
@@ -47,7 +53,14 @@ export interface BudgetTicket {
 export interface BudgetRequest {
   /** Roughly the number of busy cores the command needs. Larger than capacity means exclusive. */
   readonly weight: number;
+  /** Peak resident memory of the command's whole process tree. */
+  readonly memoryGiB: number;
   readonly label: string;
+}
+
+export interface BudgetCapacity {
+  readonly cores: number;
+  readonly memoryGiB: number;
 }
 
 export interface BudgetLease {
@@ -63,7 +76,9 @@ export interface BudgetContext {
   readonly signal?: AbortSignal;
   readonly log?: (line: string) => void;
   readonly directory?: string;
-  readonly capacity?: number;
+  readonly capacity?: BudgetCapacity;
+  /** Whether the operating system is short of memory right now, whoever is using it. */
+  readonly memoryPressure?: () => boolean;
   readonly pid?: number;
   readonly isAlive?: (pid: number) => boolean;
   readonly pollIntervalMs?: number;
@@ -87,12 +102,12 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-function detectCapacity(): number {
+function detectCores(): number {
   if (process.platform === "darwin") {
     try {
       // Efficiency cores stay free for the desktop and the Agents' own processes.
       const performanceCores = Number(
-        execFileSync("sysctl", ["-n", "hw.perflevel0.logicalcpu"], {
+        execFileSync("/usr/sbin/sysctl", ["-n", "hw.perflevel0.logicalcpu"], {
           encoding: "utf8",
           stdio: ["ignore", "pipe", "ignore"],
           timeout: 2_000,
@@ -106,40 +121,92 @@ function detectCapacity(): number {
   return Math.max(1, os.availableParallelism() - 1);
 }
 
-/** The budget is a local-development courtesy; CI runners are already isolated. */
-export function machineBudgetCapacity(env: NodeJS.ProcessEnv): number | null {
-  const setting = env[MACHINE_BUDGET_ENV]?.trim();
-  if (setting === "off" || env[MACHINE_BUDGET_HELD_ENV]) return null;
-  if (setting) {
-    const capacity = Number(setting);
-    if (!Number.isSafeInteger(capacity) || capacity <= 0) {
-      throw new Error(`${MACHINE_BUDGET_ENV} must be "off" or a positive integer.`);
-    }
-    return capacity;
+const positiveInteger = (name: string, value: string): number => {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
   }
-  if (env.CI === "true" || env.CI === "1") return null;
-  return detectCapacity();
+  return parsed;
+};
+
+/** The budget is a local-development courtesy; CI runners are already isolated. */
+export function machineBudgetCapacity(env: NodeJS.ProcessEnv): BudgetCapacity | null {
+  const cores = env[MACHINE_BUDGET_ENV]?.trim();
+  const memory = env[MACHINE_BUDGET_MEMORY_ENV]?.trim();
+  if (cores === "off" || env[MACHINE_BUDGET_HELD_ENV]) return null;
+  if (!cores && !memory && (env.CI === "true" || env.CI === "1")) return null;
+  return {
+    cores: cores ? positiveInteger(MACHINE_BUDGET_ENV, cores) : detectCores(),
+    // The other half stays with the desktop, editors, running apps and the Agents themselves.
+    memoryGiB: memory
+      ? positiveInteger(MACHINE_BUDGET_MEMORY_ENV, memory)
+      : Math.max(1, Math.floor(os.totalmem() / 2 ** 31)),
+  };
+}
+
+/** macOS reports 1 while memory is plentiful, 2 when it starts compressing and swapping hard. */
+function systemMemoryPressure(): boolean {
+  if (process.platform !== "darwin") return false;
+  try {
+    const level = Number(
+      execFileSync("/usr/sbin/sysctl", ["-n", "kern.memorystatus_vm_pressure_level"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 2_000,
+      }).trim(),
+    );
+    return level >= 2;
+  } catch {
+    return false;
+  }
 }
 
 const queueOrder = (left: BudgetTicket, right: BudgetTicket): number =>
   left.enqueuedAt - right.enqueuedAt || left.id.localeCompare(right.id);
 
+const claimOf = (ticket: BudgetTicket, capacity: BudgetCapacity): BudgetCapacity => ({
+  cores: Math.min(ticket.weight, capacity.cores),
+  memoryGiB: Math.min(ticket.memoryGiB ?? 0, capacity.memoryGiB),
+});
+
+const usedBy = (tickets: readonly BudgetTicket[], capacity: BudgetCapacity): BudgetCapacity =>
+  tickets
+    .map((ticket) => claimOf(ticket, capacity))
+    .reduce(
+      (sum, claim) => ({
+        cores: sum.cores + claim.cores,
+        memoryGiB: sum.memoryGiB + claim.memoryGiB,
+      }),
+      { cores: 0, memoryGiB: 0 },
+    );
+
 /**
  * Waiting tickets that may start now. Admission is strictly first-come, first-served: a small
  * command never overtakes a large one, so an exclusive claim cannot starve.
+ *
+ * Declared memory is an estimate and other programs use memory too, so while the operating
+ * system reports memory pressure nothing new starts beside a running claim.
  */
 export function admittedTickets(
   tickets: readonly BudgetTicket[],
-  capacity: number,
+  capacity: BudgetCapacity,
+  memoryPressure = false,
 ): ReadonlySet<string> {
-  const claim = (ticket: BudgetTicket) => Math.min(ticket.weight, capacity);
-  let used = tickets
-    .filter((ticket) => ticket.grantedAt !== null)
-    .reduce((sum, ticket) => sum + claim(ticket), 0);
+  const holders = tickets.filter((ticket) => ticket.grantedAt !== null);
+  let used = usedBy(holders, capacity);
+  let running = holders.length;
   const admitted = new Set<string>();
   for (const ticket of tickets.filter((ticket) => ticket.grantedAt === null).sort(queueOrder)) {
-    if (used + claim(ticket) > capacity) break;
-    used += claim(ticket);
+    const claim = claimOf(ticket, capacity);
+    if (
+      used.cores + claim.cores > capacity.cores ||
+      used.memoryGiB + claim.memoryGiB > capacity.memoryGiB ||
+      (memoryPressure && running > 0)
+    ) {
+      break;
+    }
+    used = { cores: used.cores + claim.cores, memoryGiB: used.memoryGiB + claim.memoryGiB };
+    running += 1;
     admitted.add(ticket.id);
   }
   return admitted;
@@ -153,24 +220,27 @@ const formatDuration = (durationMs: number): string => {
 function describeQueue(
   tickets: readonly BudgetTicket[],
   own: BudgetTicket,
-  capacity: number,
+  capacity: BudgetCapacity,
+  memoryPressure: boolean,
   now: number,
 ): { readonly state: string; readonly line: string } {
   const holders = tickets.filter((ticket) => ticket.grantedAt !== null);
   const ahead = tickets.filter(
     (ticket) => ticket.grantedAt === null && queueOrder(ticket, own) < 0,
   ).length;
-  const used = holders.reduce((sum, ticket) => sum + Math.min(ticket.weight, capacity), 0);
+  const used = usedBy(holders, capacity);
   const name = (ticket: BudgetTicket) => `${ticket.label} in ${path.basename(ticket.cwd)}`;
-  const state = `${holders.map((ticket) => ticket.id).join(",")}|${ahead}`;
+  const state = `${holders.map((ticket) => ticket.id).join(",")}|${ahead}|${memoryPressure}`;
   const running = holders
     .map((ticket) => `${name(ticket)} (${formatDuration(now - (ticket.grantedAt ?? now))})`)
     .join(", ");
   return {
     state,
     line:
-      `${used}/${capacity} cores in use by ${running || "claims that are starting"}` +
-      (ahead ? `; ${ahead} ahead in the queue` : ""),
+      `${used.cores}/${capacity.cores} cores and ${used.memoryGiB}/${capacity.memoryGiB} GiB ` +
+      `in use by ${running || "claims that are starting"}` +
+      (ahead ? `; ${ahead} ahead in the queue` : "") +
+      (memoryPressure ? "; the computer is short of memory, so claims run one at a time" : ""),
   };
 }
 
@@ -300,6 +370,7 @@ export async function acquireMachineBudget(
     id: randomUUID(),
     pid: context.pid ?? process.pid,
     weight: Math.max(1, Math.round(request.weight)),
+    memoryGiB: Math.max(0, Math.ceil(request.memoryGiB)),
     label: request.label,
     cwd: context.cwd,
     enqueuedAt: 0,
@@ -309,6 +380,8 @@ export async function acquireMachineBudget(
   let enqueued = false;
   let reportedState: string | undefined;
   let reportedAt = 0;
+  let memoryPressure = false;
+  const readMemoryPressure = context.memoryPressure ?? systemMemoryPressure;
   try {
     while (true) {
       if (context.signal?.aborted) throw new Error("Cancelled while waiting for the computer.");
@@ -321,7 +394,12 @@ export async function acquireMachineBudget(
           enqueued = true;
           releaseOnExit(own.id, store);
         }
-        if (admittedTickets([...others, own], capacity).has(own.id)) {
+        // Pressure only matters to a claim that would otherwise start beside another one.
+        memoryPressure =
+          others.some((ticket) => ticket.grantedAt !== null) &&
+          admittedTickets([...others, own], capacity).has(own.id) &&
+          readMemoryPressure();
+        if (admittedTickets([...others, own], capacity, memoryPressure).has(own.id)) {
           own = { ...own, grantedAt: now };
         }
         store.write(own);
@@ -330,13 +408,14 @@ export async function acquireMachineBudget(
       if (own.grantedAt !== null) break;
       if (queue) {
         const now = Date.now();
-        const status = describeQueue(queue, own, capacity, now);
+        const status = describeQueue(queue, own, capacity, memoryPressure, now);
         if (status.state !== reportedState || now - reportedAt >= STATUS_REPEAT_MS) {
           reportedState = status.state;
           reportedAt = now;
           log(
             `[machine-budget] ${own.label} is waiting ${formatDuration(now - startedAt)} for ` +
-              `${Math.min(own.weight, capacity)} cores: ${status.line}. ` +
+              `${Math.min(own.weight, capacity.cores)} cores and ` +
+              `${Math.min(own.memoryGiB ?? 0, capacity.memoryGiB)} GiB: ${status.line}. ` +
               "Queueing is expected; it does not count against test timeouts.",
           );
         }

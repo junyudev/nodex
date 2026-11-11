@@ -872,30 +872,37 @@ upgrade review process live in [Lint governance](LINTING.md).
 ### Sharing the computer between checkouts
 
 Several Agents usually run checks in different worktrees at once. Left alone they overload the
-computer together, and tests then time out for reasons unrelated to the change under test. Heavy
-commands therefore claim a share of one computer-wide CPU budget before they start and wait in
-line while it is full:
+computer together: tests time out for reasons unrelated to the change under test, and a few
+compilers side by side push it into swap. Heavy commands therefore claim cores and memory from
+one computer-wide budget before they start, and wait in line while either is full:
 
-- Every Vitest suite claims one core per worker it can start, just before its first worker
-  starts. This holds for `vp run test*` and for a direct `vp test run --config ...`. Stress
-  runs claim at least half the computer.
-- `vp run test:e2e*` claims three cores for its builds and Playwright run;
-  `test:e2e:performance` claims the whole computer, because latency budgets only mean something
-  when nothing else competes.
-- `core:test:workspace` and `core:test:migration` claim four cores.
+| Command                                                                              | Cores                                                               | Memory                                                                                                      |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Semantic gate (`typecheck`, `lint`, `check:semantic`, `check`) when it actually runs | 4                                                                   | 11 GiB                                                                                                      |
+| A Vitest suite, through `vp run test*` or a direct `vp test run --config ...`        | one per worker it can start; stress runs at least half the computer | 0.5 GiB per Node worker, 1 GiB per jsdom worker, 2 GiB per Chromium worker, plus one more for Vitest itself |
+| `vp run test:e2e*`, including its builds                                             | 3                                                                   | 8 GiB                                                                                                       |
+| `vp run test:e2e:performance`                                                        | all                                                                 | all                                                                                                         |
+| `core:test:workspace`, `core:test:migration`                                         | 4                                                                   | 6 GiB                                                                                                       |
 
-The budget defaults to the number of performance cores. Claims are served strictly in arrival
-order, so a small run never overtakes a waiting exclusive one, and a claim ends when its process
-exits, however it exits. A waiting command prints who holds the computer, for example
-`[machine-budget] renderer tests (693 files) is waiting 40s for 4 cores: 10/10 cores in use by
-...`. Waiting happens before any test starts and never counts against a test timeout; let it
-wait, in the background if the command is long, instead of cancelling and retrying.
+The budget defaults to the performance cores and half the installed memory; the rest stays with
+the desktop, editors, running apps and the Agents themselves. Memory figures are sampled peaks
+of each command's process tree, so they are estimates, and other programs use memory too.
+While macOS reports memory pressure, a claim therefore does not start beside one that is already
+running, whatever the arithmetic says.
+
+Claims are served strictly in arrival order, so a small run never overtakes a waiting exclusive
+one, and a claim ends when its process exits, however it exits. A waiting command prints who
+holds the computer, for example `[machine-budget] semantic check is waiting 40s for 4 cores and
+11 GiB: 4/10 cores and 11/18 GiB in use by ...`. Waiting happens before the command's work starts
+and never counts against a test timeout; let it wait, in the background if the command is long,
+instead of cancelling and retrying. A semantic gate answered from its cache claims nothing.
 
 The state lives in the primary checkout's `cache.local/machine-budget/`. CI does not use it.
-`NODEX_MACHINE_BUDGET=off` opts one command out, and `NODEX_MACHINE_BUDGET=<cores>` changes the
-capacity that command assumes. To put another heavy command under the budget, start it through
-`tsx scripts/tooling/with-machine-budget.ts <cores> <label> -- <command>`. The semantic gate
-(`vp run typecheck`) and builds outside E2E do not claim a share yet.
+`NODEX_MACHINE_BUDGET=off` opts one command out; `NODEX_MACHINE_BUDGET=<cores>` and
+`NODEX_MACHINE_BUDGET_MEMORY_GB=<GiB>` change the capacity that command assumes. To put another
+heavy command under the budget, start it through
+`tsx scripts/tooling/with-machine-budget.ts <cores> <GiB> <label> -- <command line>`. Application
+builds outside E2E and the development app do not claim a share yet.
 
 ### Working on Effect Main modules
 

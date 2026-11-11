@@ -189,7 +189,7 @@ Each runtime has its own runner; the wrong one fails, or passes, for the wrong r
 - Electron E2E: `vp run test:e2e tests/e2e/<spec>.spec.ts`. A standalone `--` before the file makes Playwright collect the whole suite; a focused run's banner reads `Running 1 test`.
 - Semantic gate: `vp run typecheck`, the same task as `lint` and `check:semantic` with a shared cache, covers types and lint; `vp run --no-cache check:semantic` forces real analysis.
 - Broader: `vp run build` for build configuration, entrypoints, packaging, or startup failures; `vp run test` when targeted suites cannot bound a change's impact; `vp run test:all` for a release gate.
-- Test suites, E2E runs, and Rust tests from all worktrees queue for one computer-wide CPU budget. A `[machine-budget] ... is waiting` line is the queue working: let the command wait, in the background if needed, rather than cancelling or retrying it. See [Sharing the computer between checkouts](docs/development.md#sharing-the-computer-between-checkouts).
+- The semantic gate, test suites, E2E runs, and Rust tests from all worktrees queue for one computer-wide CPU and memory budget. A `[machine-budget] ... is waiting` line is the queue working: let the command wait, in the background if needed, rather than cancelling or retrying it. See [Sharing the computer between checkouts](docs/development.md#sharing-the-computer-between-checkouts).
 
 ### Blind spots
 

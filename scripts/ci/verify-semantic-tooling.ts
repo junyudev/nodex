@@ -26,12 +26,16 @@ function fixtureWorkspace(run: (directory: string) => void): void {
     symlinkSync(path.join(root, "node_modules"), path.join(directory, "node_modules"), "junction");
     copyFileSync(path.join(root, ".node-version"), path.join(directory, ".node-version"));
     mkdirSync(path.join(directory, "scripts/ci"), { recursive: true });
+    mkdirSync(path.join(directory, "scripts/tooling"));
     mkdirSync(path.join(directory, "config"));
     for (const filename of [
       "scripts/ci/count-ratchet.ts",
       "scripts/ci/lint-warning-ratchet.ts",
       "scripts/ci/react-compiler-ratchet.ts",
       "scripts/vite-plus-command.ts",
+      "scripts/primary-checkout.ts",
+      "scripts/tooling/machine-budget.ts",
+      "scripts/tooling/with-machine-budget.ts",
       "config/renderer-react-compiler.ts",
       "config/renderer-vite-shared.ts",
     ])
@@ -64,6 +68,8 @@ function command(directory: string, args: readonly string[], environment: NodeJS
     encoding: "utf8",
     env: {
       ...process.env,
+      // Fixture projects are tiny; they must not queue behind real checks.
+      NODEX_MACHINE_BUDGET: "off",
       NODEX_TOOLING_FIXTURE_MODE: "",
       ESLINT_BETTER_TAILWIND: "",
       ...environment,
