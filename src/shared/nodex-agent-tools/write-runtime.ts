@@ -36,7 +36,7 @@ export type PreparedNodexAgentCreateDestination =
       readonly view?: {
         readonly viewId: string;
         readonly viewRevision: number;
-        readonly groupKey: string | null;
+        readonly groupKey?: string | null;
         readonly beforePageId?: string;
       };
     };

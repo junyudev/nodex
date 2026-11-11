@@ -65,7 +65,7 @@ export type BlockTransferDataSourcePlacement =
       readonly kind: "direct";
       readonly viewId: string;
       readonly preferencesOverride: DatabaseViewPreferencesOverride;
-      readonly groupKey: string | null;
+      readonly groupKey?: string | null;
       readonly beforePageId?: BlockId;
       readonly sortedPropertyValues?: readonly BlockTransferPropertyValue[];
     }
@@ -169,7 +169,7 @@ export type BlockTransferTarget =
       readonly kind: "data_source";
       readonly dataSourceId: string;
       readonly viewId: string;
-      readonly groupKey: string | null;
+      readonly groupKey?: string | null;
       readonly beforePageId?: BlockId;
     };
 
@@ -590,11 +590,11 @@ const parseTarget = (value: unknown, rootBlockIds: readonly BlockId[]): BlockTra
     assertExactKeys(
       target,
       "blockTransfer.target",
-      ["kind", "dataSourceId", "viewId", "groupKey"],
-      ["beforePageId"],
+      ["kind", "dataSourceId", "viewId"],
+      ["groupKey", "beforePageId"],
     );
     const groupKey = target.groupKey;
-    if (groupKey !== null && typeof groupKey !== "string") {
+    if (groupKey !== undefined && groupKey !== null && typeof groupKey !== "string") {
       throw new BlockTransferContractError(
         "blockTransfer.target.groupKey must be a string or null",
       );
@@ -609,7 +609,7 @@ const parseTarget = (value: unknown, rootBlockIds: readonly BlockId[]): BlockTra
       kind: "data_source",
       dataSourceId: readString(target, "dataSourceId", "blockTransfer.target"),
       viewId: readString(target, "viewId", "blockTransfer.target"),
-      groupKey,
+      ...(groupKey !== undefined ? { groupKey } : {}),
       ...(beforePageId ? { beforePageId } : {}),
     };
   }
@@ -741,13 +741,13 @@ const parseIntentTarget = (
         assertExactKeys(
           placement,
           "blockTransferIntent.target.placement",
-          ["kind", "viewId", "preferencesOverride", "groupKey"],
-          ["beforePageId", "sortedPropertyValues"],
+          ["kind", "viewId", "preferencesOverride"],
+          ["groupKey", "beforePageId", "sortedPropertyValues"],
         );
         const groupKey =
           placement.groupKey === null
             ? null
-            : readString(placement, "groupKey", "blockTransferIntent.target.placement");
+            : readOptionalString(placement, "groupKey", "blockTransferIntent.target.placement");
         const beforePageId = readOptionalString(
           placement,
           "beforePageId",
@@ -805,7 +805,7 @@ const parseIntentTarget = (
           kind: placement.kind,
           viewId: readString(placement, "viewId", "blockTransferIntent.target.placement"),
           preferencesOverride: parseDatabaseViewPreferencesOverride(placement.preferencesOverride),
-          groupKey,
+          ...(groupKey !== undefined ? { groupKey } : {}),
           ...(beforePageId ? { beforePageId } : {}),
           ...(sortedPropertyValues.length > 0 ? { sortedPropertyValues } : {}),
         };
@@ -1014,7 +1014,7 @@ export const blockTransferIntentFromRequest = (
         kind: "direct",
         viewId: request.target.viewId,
         preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
-        groupKey: request.target.groupKey,
+        ...(request.target.groupKey !== undefined ? { groupKey: request.target.groupKey } : {}),
         ...(request.target.beforePageId ? { beforePageId: request.target.beforePageId } : {}),
       },
     };

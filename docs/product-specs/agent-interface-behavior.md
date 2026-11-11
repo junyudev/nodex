@@ -102,6 +102,14 @@ arguments cannot supply execution identity. Execution rechecks the captured invo
 and current native lifetime. Mutations retain stable operation identities, and
 results must satisfy their content contract and the complete-response byte budget.
 
+For Data Source destinations, `create_pages`, `move_pages`, and
+`duplicate_page` return each Page's resulting `status` with `optionId` and
+the destination's current `label`. Omit `view.groupKey` to use a carried
+value or the destination default. Passing `view.groupKey: null` explicitly
+selects the empty group. Clearing Status through a group or `values`
+returns `invalid_arguments` with `details.domainCode: "invalid_input"`.
+The message lists the valid IDs and their display names.
+
 Local Codex Sessions use the bundled `nodex_app` MCP server when the verified Node runtime
 is available. `get_session_context` returns the calling Session, Thread, Turn, Project, Host,
 and working directory. Execution identity cannot be supplied in arguments. Its default

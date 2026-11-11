@@ -83,6 +83,9 @@ const output = (result: CoreCreateResult, request: PrepareNodexAgentCreatePagesR
         pageId: page.page_id,
         pageKey: page.page_key ?? null,
         location: nativeAgentPageLocation(page.location),
+        ...(page.status
+          ? { status: { optionId: page.status.option_id, label: page.status.label } }
+          : {}),
         bodyBlocksCreated: page.body_blocks_created,
         ...(request.input.return?.includes("block_ids") ? { blockIds: page.block_ids } : {}),
         ...(page.etags ? { etags: { title: page.etags.title, body: page.etags.body } } : {}),

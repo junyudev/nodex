@@ -471,6 +471,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 211,
         apply: migrate_v210_to_v211,
     },
+    MigrationStep {
+        from_revision: 211,
+        to_revision: 212,
+        apply: migrate_v211_to_v212,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2729,6 +2734,50 @@ fn migrate_v208_to_v209(
     Ok(())
 }
 
+fn migrate_v211_to_v212(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    let now = timestamp_from_unix_ms(context.completed_at_unix_ms)?;
+    let repaired = crate::database::repair_required_workflow_statuses(connection, &now)?;
+    // SQL reads the Page clock while search and View windows read its projection.
+    // Stage the affected keys once, then update both clocks without rebuilding rows.
+    connection.execute_batch(
+        "CREATE TEMP TABLE workflow_status_update_times AS
+         SELECT page.block_id AS page_id, MAX(value.updated_at) AS updated_at
+         FROM pages page
+         JOIN data_source_page_memberships membership
+           ON membership.page_block_id = page.block_id AND membership.removed_at IS NULL
+         JOIN data_source_property_values value
+           ON value.data_source_id = membership.data_source_id AND value.membership_id = membership.id
+         WHERE page.updated_at < value.updated_at
+         GROUP BY page.block_id",
+    )?;
+    let updated = connection.execute(
+        "UPDATE pages SET updated_at = edits.updated_at FROM workflow_status_update_times edits
+         WHERE pages.block_id = edits.page_id",
+        [],
+    )?;
+    connection.execute_batch(
+        "UPDATE page_read_model SET updated_at = MAX(page_read_model.updated_at, edits.updated_at)
+         FROM workflow_status_update_times edits WHERE page_read_model.page_block_id = edits.page_id;
+         DROP TABLE workflow_status_update_times;",
+    )?;
+    // Status repairs can change whose move it is before the first ordinary commit.
+    crate::workspace::page_turn::initialize(connection, "migration:v212", &now)?;
+    if repaired != 0 || updated != 0 {
+        super::local_commit::reset_delivery_window(connection)?;
+    }
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            json!({"repaired_workflow_statuses": repaired, "backfilled_page_update_times": updated}).to_string()],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v209_to_v210(
     connection: &Connection,
     context: &MigrationContext,
@@ -4143,7 +4192,7 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
 }
 
 #[cfg(test)]
-fn rewind_inbox_later(connection: &Connection) -> Result<(), StoreError> {
+pub(super) fn rewind_inbox_later(connection: &Connection) -> Result<(), StoreError> {
     let foreign_keys: bool =
         connection.pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
     let legacy: bool =

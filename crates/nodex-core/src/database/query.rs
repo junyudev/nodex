@@ -221,12 +221,20 @@ impl QueryContext<'_> {
             "SELECT value_json FROM data_source_property_values WHERE data_source_id = ?1 AND membership_id = ?2 AND property_id = ?3",
             params![source, membership, property], |row| row.get::<_, String>(0),
         ).optional()?;
-        value
+        let value = value
             .map(|value| {
                 serde_json::from_str(&value).map_err(|_| corrupt("Property value is invalid"))
             })
-            .transpose()
-            .map(|value| value.unwrap_or(Value::Null))
+            .transpose()?
+            .unwrap_or(Value::Null);
+        if super::property_semantics::required_scalar_default(property).is_some()
+            && !value
+                .as_str()
+                .is_some_and(|id| super::property_semantics::is_canonical_option_id(property, id))
+        {
+            return Err(corrupt("Membership has an invalid required Property value"));
+        }
+        Ok(value)
     }
 
     pub(crate) fn source_versions(&self, source: &str, page: &str) -> Result<Value, StoreError> {

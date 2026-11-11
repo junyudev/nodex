@@ -822,7 +822,7 @@ fn capture_message_in_scope(
         inbox_project,
         &home_ref.data_source_id,
         &home_ref.view_id,
-        Some(INBOX_STATUS_GROUP_KEY),
+        Some(Some(INBOX_STATUS_GROUP_KEY)),
         None,
     )?;
     let created_page = crate::library::page_genesis::create_page_in_data_source(

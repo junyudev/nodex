@@ -126,7 +126,7 @@ pub(super) fn confirm(
             Some(&step.project_id),
             &home.data_source_id,
             &home.view_id,
-            Some("plan"),
+            Some(Some("plan")),
             None,
         )?;
         let page_id = &ids[step.key.as_str()];

@@ -453,11 +453,30 @@ pub(crate) fn resolve_list_insertion_target(
     resolve_target(&projection.graph, &HashSet::new(), target)
 }
 
+/// A root drop chooses neither axis. A top-level group header chooses only
+/// the primary axis, even when the List also has a subgroup.
+pub(crate) fn chosen_group_axes<'a>(
+    graph: &ListProjectionGraph,
+    normalized: &'a DatabaseListMoveNormalizedTarget,
+) -> (Option<Option<&'a str>>, Option<Option<&'a str>>) {
+    let Some(key) = normalized.target_occurrence_key.as_deref() else {
+        return (None, None);
+    };
+    let group = Some(normalized.group_key.as_deref());
+    let subgroup = (!matches!(
+        graph.occurrence(key),
+        Some(DatabaseListProjectionRow::Group { .. })
+    ))
+    .then(|| normalized.subgroup_key.as_deref());
+    (group, subgroup)
+}
+
 fn scalar_target_value(
     property: &PropertyRow,
     target_key: Option<&str>,
 ) -> Result<DatabasePropertyValueInput, StoreError> {
     let Some(target_key) = target_key else {
+        super::normalize_value(property, &Value::Null)?;
         return Ok(DatabasePropertyValueInput::Empty);
     };
     match property.value_type.as_str() {
@@ -500,6 +519,7 @@ fn property_adoption(
     ),
     StoreError,
 > {
+    let (group, subgroup) = chosen_group_axes(graph, normalized);
     let axes = [
         (
             graph
@@ -507,7 +527,7 @@ fn property_adoption(
                 .group
                 .as_ref()
                 .map(|group| group.property_id.as_str()),
-            normalized.group_key.as_deref(),
+            group,
             true,
         ),
         (
@@ -516,7 +536,7 @@ fn property_adoption(
                 .subgroup
                 .as_ref()
                 .map(|group| group.property_id.as_str()),
-            normalized.subgroup_key.as_deref(),
+            subgroup,
             false,
         ),
     ];
@@ -529,7 +549,7 @@ fn property_adoption(
     let mut states = Vec::new();
     let mut seen_addresses = HashSet::new();
     for (property_id, target_key, primary_axis) in axes.iter().copied() {
-        let Some(property_id) = property_id else {
+        let Some((property_id, target_key)) = property_id.zip(target_key) else {
             continue;
         };
         if matches!(property_id, "owner" | "assignee") {

@@ -30,7 +30,8 @@ const BUILT_IN_PROPERTY_IDS: [&str; 11] = [
     TASK_PARENT_PROPERTY_ID,
     BLOCKED_BY_PROPERTY_ID,
 ];
-const STATUS_OPTION_IDS: [&str; 6] = ["triage", "plan", "doing", "review", "done", "canceled"];
+pub(crate) const STATUS_OPTION_IDS: [&str; 6] =
+    ["triage", "plan", "doing", "review", "done", "canceled"];
 const ESTIMATE_OPTION_IDS: [&str; 5] = ["xs", "s", "m", "l", "xl"];
 const MAX_OPTION_NAME_LENGTH: usize = 256;
 const MAX_OPTION_COLOR_LENGTH: usize = 128;
@@ -84,6 +85,12 @@ pub(crate) fn is_custom_property_id(value: &str) -> bool {
 
 pub(crate) fn is_required_property_id(value: &str) -> bool {
     matches!(value, STATUS_PROPERTY_ID | TASK_PARENT_PROPERTY_ID)
+}
+
+/// A required scalar has a non-empty default. Parent is schema-required,
+/// but its empty Relation is how a root Page is represented.
+pub(crate) fn required_scalar_default(property_id: &str) -> Option<&'static str> {
+    (property_id == STATUS_PROPERTY_ID).then_some(STATUS_OPTION_IDS[0])
 }
 
 pub(crate) fn is_custom_option_id(value: &str) -> bool {

@@ -113,6 +113,123 @@ fn public_sql_exposes_when_a_value_changed_and_how_many_blocks_a_page_holds() {
 }
 
 #[test]
+fn data_source_creation_rejects_null_status_and_an_explicit_empty_group() {
+    let directory = tempdir().unwrap();
+    let kernel = SqliteStoreKernel::open_test(&directory.path().canonicalize().unwrap()).unwrap();
+    let _module = seed_grouped_fixture(&kernel, vec![]);
+    let library = LibraryModule::new("profile-1", "library-1", &kernel);
+
+    for (key, group_key, values) in [
+        (
+            "null-value",
+            None,
+            vec![nodex_core_contracts::library::LibraryPageCopyValue {
+                property_id: "status".into(),
+                value: Value::Null,
+            }],
+        ),
+        ("empty-group", Some(None), vec![]),
+    ] {
+        let error = library
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: format!("sql:create-{key}"),
+                    store_epoch: StoreEpoch("epoch-1".into()),
+                    intent: LibraryIntent::CreatePagesFromText {
+                        request: LibraryAgentCreatePagesRequest {
+                            destination: LibraryAgentPageDestination::DataSource {
+                                data_source_id: SOURCE_ID.into(),
+                                values: vec![],
+                                view_id: None,
+                                group_key,
+                                at: None,
+                            },
+                            pages: vec![LibraryAgentCreatePageDraft {
+                                title_markdown: "Unplaced".into(),
+                                markdown: String::new(),
+                                values,
+                            }],
+                            include_block_ids: false,
+                            include_etags: false,
+                        },
+                    },
+                },
+            )
+            .expect_err("creation requires a Status");
+        assert_eq!(error.code, CoreErrorCode::InvalidInput);
+        assert!(error.message.contains("triage (Triage)"));
+    }
+    let query = QueryModule::new("profile-1", "library-1", &kernel);
+    assert_eq!(
+        sql(&query, tasks_scope(), "SELECT count(*) FROM tasks")
+            .unwrap()
+            .rows,
+        vec![vec![json!(0)]]
+    );
+}
+
+#[test]
+fn status_only_edit_advances_bound_page_updated_at() {
+    let directory = tempdir().unwrap();
+    let kernel = SqliteStoreKernel::open_test(&directory.path().canonicalize().unwrap()).unwrap();
+    let database = seed_grouped_fixture(&kernel, vec![]);
+    let query = QueryModule::new("profile-1", "library-1", &kernel);
+    let library = LibraryModule::new("profile-1", "library-1", &kernel);
+    create_rows(&kernel, &library, SOURCE_ID, 1, "status-only");
+    let initial = sql(&query, tasks_scope(), "SELECT page_id, Status FROM tasks").unwrap();
+    let page_id = initial.rows[0][0].as_str().unwrap().to_owned();
+    assert_eq!(initial.rows[0][1], json!("triage"));
+    kernel
+        .writer()
+        .call(|connection| {
+            connection.execute("UPDATE pages SET updated_at = ?1", [NOW])?;
+            Ok(())
+        })
+        .unwrap();
+    let committed = database
+        .apply(
+            &context(),
+            ModuleApplyRequest {
+                contract_version: DATABASE_CONTRACT_VERSION,
+                operation_id: "sql:status-only-edit".into(),
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent: vec![DatabaseIntent::EditPropertyValues {
+                    edits: vec![DatabasePropertyValueMutation {
+                        address: DatabasePagePropertyAddress {
+                            page_id,
+                            data_source_id: SOURCE_ID.into(),
+                            property_id: "status".into(),
+                        },
+                        expected_membership_revision: Some(1),
+                        edit: DatabasePropertyValueEdit::Replace {
+                            expected_value_revision: 1,
+                            value: DatabasePropertyValueInput::Select {
+                                option_id: "plan".into(),
+                            },
+                        },
+                    }],
+                }],
+            },
+        )
+        .unwrap();
+    let rows = sql(
+        &query,
+        tasks_scope(),
+        &format!("SELECT Status, updated_at FROM tasks WHERE updated_at > '{NOW}'"),
+    )
+    .unwrap();
+    assert_eq!(
+        rows.rows,
+        vec![vec![
+            json!("plan"),
+            json!(committed.committed.receipt.committed_at)
+        ]]
+    );
+}
+
+#[test]
 fn public_sql_counts_complete_windows_and_enforces_cross_source_authority() {
     let directory = tempdir().unwrap();
     let kernel = SqliteStoreKernel::open_test(&directory.path().canonicalize().unwrap()).unwrap();

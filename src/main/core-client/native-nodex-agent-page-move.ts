@@ -74,6 +74,9 @@ const output = (result: CoreMoveResult) =>
         pageId: page.page_id,
         pageKey: page.page_key ?? null,
         location: nativeAgentPageLocation(page.location),
+        ...(page.status
+          ? { status: { optionId: page.status.option_id, label: page.status.label } }
+          : {}),
       })),
       moved: result.pages.length,
     },

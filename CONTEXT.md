@@ -609,7 +609,8 @@ A Data Source-parented Page is the active row identity. It has exactly one
 matching active historical-membership record. Leaving the Source tombstones
 that membership while retaining values; dormant data is excluded from queries,
 scheduling, summaries, and mutations. Returning to the same Source reactivates
-the record. Moving to another Source performs no implicit value mapping.
+the record. Moves across Sources carry compatible built-in values, including
+the workflow stage ID. Custom Property identities remain Source-local.
 
 Status, priority, due date, and similar collection fields are Source-defined
 properties. Scalar edits use revision preconditions; set-like values preserve
@@ -621,7 +622,7 @@ Priority has four assigned option identities in severity order:
 `p0-critical`, `p1-high`, `p2-medium`, and `p3-low`.
 An unset value is `No priority`; planning horizons such as “later” belong to workflow or scheduling rather than the priority scale.
 
-Status is the work's single stage. Its stable identities are `triage`, not yet
+Every active member Page has one workflow Status. Its stable identities are `triage`, not yet
 decided; `plan`, decided but not started; `doing`, in progress; `review`, waiting
 for acceptance; `done`, accepted; and `canceled`, no longer needed. Default names
 are Triage, Todo, In Progress, In Review, Done, and Canceled. A Data Source may

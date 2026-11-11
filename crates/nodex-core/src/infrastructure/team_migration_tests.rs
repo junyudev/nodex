@@ -105,6 +105,14 @@ fn text_assignees_become_the_local_member_and_every_page_gains_work() {
       INSERT INTO data_source_properties(data_source_id,id,name,value_type,rank_key,created_at,updated_at) VALUES('source','assignee','Assignee','text','a','today','today');
       INSERT INTO data_source_page_layouts VALUES('source',1,'today','today');
       INSERT INTO data_source_page_layout_entries VALUES('source','assignee','a','always_show');").unwrap();
+    connection.execute(
+        "INSERT INTO data_source_properties(data_source_id,id,name,value_type,config_json,rank_key,created_at,updated_at)
+         VALUES('source','status','Status','select',?1,'b','today','today')",
+        [json!({"options":[
+            {"id":"triage","name":"Triage"}, {"id":"plan","name":"Plan"},
+            {"id":"doing","name":"Doing"}, {"id":"review","name":"Review"}, {"id":"done","name":"Done"}
+        ]}).to_string()],
+    ).unwrap();
     connection.execute("INSERT INTO database_views(id,database_block_id,data_source_id,name,layout,config_json,rank_key,created_at,updated_at) VALUES('view','database','source','Assigned','list',?1,'a','today','today')",[json!({"rules":{"filter":{"kind":"group","operator":"and","children":[{"kind":"clause","propertyId":"assignee","operator":"text_is","value":"Alex"},{"kind":"clause","propertyId":"title","operator":"text_contains","value":"Alex"}]}}}).to_string()]).unwrap();
     connection.execute("INSERT INTO database_view_personal_preferences VALUES('profile','view',?1,1,'today','today')",[json!({"rules_override":{"advanced_filter":{"kind":"clause","propertyId":"assignee","operator":"text_is_not","value":"Alex"}}}).to_string()]).unwrap();
     for (id, text) in [
@@ -120,6 +128,11 @@ fn text_assignees_become_the_local_member_and_every_page_gains_work() {
         }
         connection.execute("INSERT INTO data_source_page_memberships(id,data_source_id,page_block_id,created_at,removed_at) VALUES(?1,'source',?1,'today',?2)",params![id,if id=="dormant" {Some("today")} else {None}]).unwrap();
         connection.execute("INSERT INTO data_source_property_values(data_source_id,membership_id,property_id,value_type,value_json,updated_at) VALUES('source',?1,'assignee','text',?2,'today')",params![id,json!(text).to_string()]).unwrap();
+        connection.execute(
+            "INSERT INTO data_source_property_values(data_source_id,membership_id,property_id,value_type,value_json,updated_at)
+             VALUES('source',?1,'status','select',?2,'today')",
+            params![id, json!("triage").to_string()],
+        ).unwrap();
     }
     migrate(&mut connection);
     let local = local_member(&connection, "library");

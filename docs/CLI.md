@@ -307,6 +307,13 @@ Move and View placement consume one exact validator and commit membership,
 group value, position, ownership, Documents, projections, and receipt as one
 semantic operation.
 
+For a Data Source destination, `page create`, `page create-batch`,
+`page move`, and `page duplicate` return a compact `status` object with
+`option_id` and the destination's current `label`. Omit the group to keep a
+valid carried value or use the destination default. `--unassigned` explicitly
+selects the empty group. Clearing Status that way or with an explicit null
+value returns `INVALID_INPUT` with the valid IDs and current names.
+
 Ordinary mutations accept an optional stable idempotency key; drafts manage their own apply identity. Narrow ETags bind the current
 resource and guard kind; they are not capabilities. An exact retry returns the
 first immutable result, including a body patch whose original text is no longer present. Core resolves the receipt before checking current patch matches. A stale or mismatched guard fails before mutation and

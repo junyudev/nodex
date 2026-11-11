@@ -4922,7 +4922,7 @@ mod tests {
                                                         ..Default::default()
                                                     },
                                             },
-                                        group_key: Some("p2-medium".to_owned()),
+                                        group_key: Some(Some("p2-medium".to_owned())),
                                         before_page_id: None,
                                         sorted_property_values: vec![LibraryPageCopyValue {
                                             property_id: "estimate".to_owned(),
@@ -5003,7 +5003,7 @@ mod tests {
                 placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
                     view_id: VIEW.to_owned(),
                     preferences_override: Default::default(),
-                    group_key: Some("done".to_owned()),
+                    group_key: Some(Some("done".to_owned())),
                     before_page_id: None,
                     sorted_property_values: Vec::new(),
                 }),
@@ -5326,7 +5326,7 @@ mod tests {
                         .map_err(Into::into)
                 })
                 .expect("root List status value");
-            assert_eq!(status, "null");
+            assert_eq!(status, serde_json::json!("triage").to_string());
         }
         library
             .apply(
@@ -5525,7 +5525,7 @@ mod tests {
                                 placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
                                     view_id: VIEW.to_owned(),
                                     preferences_override: Default::default(),
-                                    group_key: Some("done".to_owned()),
+                                    group_key: Some(Some("done".to_owned())),
                                     before_page_id: None,
                                     sorted_property_values: Vec::new(),
                                 }),
@@ -5678,7 +5678,7 @@ mod tests {
                                 placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
                                     view_id: VIEW.to_owned(),
                                     preferences_override: Default::default(),
-                                    group_key: Some("done".to_owned()),
+                                    group_key: Some(Some("done".to_owned())),
                                     before_page_id: None,
                                     sorted_property_values: Vec::new(),
                                 }),
@@ -6029,7 +6029,7 @@ mod tests {
                 placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
                     view_id: VIEW.to_owned(),
                     preferences_override: Default::default(),
-                    group_key: Some("done".to_owned()),
+                    group_key: Some(Some("done".to_owned())),
                     before_page_id: None,
                     sorted_property_values: Vec::new(),
                 }),
@@ -6647,7 +6647,7 @@ mod tests {
                 placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
                     view_id: VIEW.to_owned(),
                     preferences_override: Default::default(),
-                    group_key: Some("done".to_owned()),
+                    group_key: Some(Some("done".to_owned())),
                     before_page_id: None,
                     sorted_property_values: Vec::new(),
                 }),
@@ -6782,7 +6782,7 @@ mod tests {
                                     LibraryBlockTransferDataSourcePlacement::Direct {
                                         view_id: VIEW.to_owned(),
                                         preferences_override: Default::default(),
-                                        group_key: Some("done".to_owned()),
+                                        group_key: Some(Some("done".to_owned())),
                                         before_page_id: None,
                                         sorted_property_values: Vec::new(),
                                     },

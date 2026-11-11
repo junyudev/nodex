@@ -12,7 +12,7 @@ use crate::database::{
     PageCopyDataSourceDestination, PageCopyPositionAnchor, PageCopyValueDraft,
     PageCopyViewPlacement, copy_relation_edges, current_page_key_for_page,
     ensure_database_page_key, place_copied_page_in_data_source,
-    synchronize_membership_completion_timestamp, validate_page_copy_data_source_destination,
+    validate_page_copy_data_source_destination,
 };
 use crate::document::{
     BlockDocumentSchema, DocumentMaterialization, DocumentPlacementEvidence, PersistYjsGenesis,
@@ -246,6 +246,36 @@ pub(super) fn copy_page(
             context,
         },
         |scope| {
+            let mut destination = destination.clone();
+            if let LibraryPageCopyDestination::DataSource {
+                data_source_id,
+                values,
+                view: Some(view),
+                ..
+            } = &mut destination
+                && let Some(group_key) = &view.group_key
+            {
+                let group = crate::database::resolve_page_transfer_data_source_destination(
+                    connection,
+                    library_id,
+                    context.project_id.as_ref().map(|id| id.0.as_str()),
+                    data_source_id,
+                    &view.view_id,
+                    Some(group_key.as_deref()),
+                    None,
+                )?;
+                for draft in group.values {
+                    if !values
+                        .iter()
+                        .any(|value| value.property_id == draft.property_id)
+                    {
+                        values.push(nodex_core_contracts::library::LibraryPageCopyValue {
+                            property_id: draft.property_id,
+                            value: draft.value,
+                        });
+                    }
+                }
+            }
             let execution = execute_page_copy(
                 connection,
                 context,
@@ -259,7 +289,7 @@ pub(super) fn copy_page(
                 expected_active_membership_revision,
                 expected_document_generation,
                 expected_document_head_seq,
-                destination,
+                &destination,
                 PageCopyParentDocumentMode::Commit,
                 assets_root,
                 &now,
@@ -622,6 +652,7 @@ pub(super) fn execute_page_copy(
         result: LibraryPageCopyResult {
             source_page_id: source_page_id.to_owned(),
             page_key: current_page_key_for_page(connection, library_id, &target_page_id)?,
+            status: super::page_lifecycle::read_page_workflow_status(connection, &target_page_id)?,
             page_id: target_page_id,
             document_id: target_document_id,
             block_ids: plan.block_ids,
@@ -834,7 +865,7 @@ pub(crate) fn clone_page_for_occurrence(
             ],
         )?;
     }
-    synchronize_membership_completion_timestamp(
+    crate::database::initialize_cloned_membership(
         connection,
         &source.data_source_id,
         &membership_id,
@@ -2976,9 +3007,40 @@ mod tests {
             "Storage source",
             LibraryWriteParent::Library { before: None },
         );
+        create_database(&module);
+        crate::database::DatabaseModule::new("profile-1", "library-1", &kernel)
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: nodex_core_contracts::DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:seed-agent-storage-membership".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![
+                        nodex_core_contracts::database::DatabaseIntent::TransferPage {
+                            page_id: "page:agent-storage-source".to_owned(),
+                            expected_parent_revision: 1,
+                            expected_active_membership_revision: 0,
+                            target:
+                                nodex_core_contracts::database::DatabaseTransferTarget::DataSource {
+                                    data_source_id: "018f0000-0000-7000-8000-000000000102"
+                                        .to_owned(),
+                                },
+                        },
+                    ],
+                },
+            )
+            .expect("place Page in source Data Source");
         kernel
             .writer()
             .call(|connection| {
+                connection.execute(
+                    "UPDATE data_source_property_values SET value_json = ?1 WHERE property_id = 'status'",
+                    [serde_json::json!("plan").to_string()],
+                )?;
+                connection.execute(
+                    "UPDATE projects SET database_block_id = '018f0000-0000-7000-8000-000000000101' WHERE id = 'project-1'",
+                    [],
+                )?;
                 connection.execute(
                     "INSERT INTO projects(id, library_id, name, created, updated) \
                      VALUES ('project-2', 'library-1', 'Database target', ?1, ?1)",
@@ -3017,20 +3079,27 @@ mod tests {
             .expect("bind target Database");
         let mut authorization = agent_move_authorization(&kernel);
 
-        execute_agent_move(
+        let moved = execute_agent_move(
             &module,
             authorization.clone(),
             "operation:agent-move-to-foreign-data-source",
             LibraryAgentMovePagesRequest {
                 page_ids: vec!["page:agent-storage-source".to_owned()],
-                destination: LibraryAgentPageDestination::DataSource {
-                    data_source_id: "018f0000-0000-7000-8000-000000000502".to_owned(),
-                    values: Vec::new(),
-                    view_id: Some("018f0000-0000-7000-8000-000000000503".to_owned()),
-                    group_key: None,
-                    at: None,
-                },
+                destination: serde_json::from_value(serde_json::json!({
+                    "kind": "data_source",
+                    "data_source_id": "018f0000-0000-7000-8000-000000000502"
+                }))
+                .expect("destination with omitted View and group"),
             },
+        );
+        assert_eq!(
+            moved.committed.value.agent_move_pages.unwrap().pages[0].status,
+            Some(
+                nodex_core_contracts::library::LibraryPageWorkflowStatusValue {
+                    option_id: nodex_core_contracts::library::LibraryPageWorkflowStatus::Plan,
+                    label: "Todo".to_owned(),
+                }
+            ),
         );
         kernel
             .readers()
@@ -3065,6 +3134,13 @@ mod tests {
                         Some("018f0000-0000-7000-8000-000000000501".to_owned()),
                     )
                 );
+                let (status, group) = connection.query_row(
+                    "SELECT json_extract(database_values_json, '$.status'), view_group_key                      FROM page_read_model WHERE page_block_id = 'page:agent-storage-source'",
+                    [],
+                    |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?)),
+                )?;
+                assert_eq!(status.as_deref(), Some("plan"));
+                assert_eq!(group.as_deref(), Some("plan"));
                 Ok(())
             })
             .expect("verify foreign Data Source storage");
@@ -3167,7 +3243,10 @@ mod tests {
             ],
             destination: LibraryAgentPageDestination::DataSource {
                 data_source_id: "018f0000-0000-7000-8000-000000000102".to_owned(),
-                values: Vec::new(),
+                values: vec![LibraryPageCopyValue {
+                    property_id: "status".to_owned(),
+                    value: serde_json::json!("review"),
+                }],
                 view_id: Some("018f0000-0000-7000-8000-000000000103".to_owned()),
                 group_key: None,
                 at: Some(nodex_core_contracts::library::LibraryAgentSiblingAnchor::Start),
@@ -3218,6 +3297,16 @@ mod tests {
             vec!["018f0000-0000-7000-8000-000000000101".to_owned()]
         );
         assert!(result.document_commits.is_empty());
+        assert!(
+            result
+                .pages
+                .iter()
+                .all(|page| page.status.as_ref().is_some_and(|status| {
+                    status.option_id
+                        == nodex_core_contracts::library::LibraryPageWorkflowStatus::Review
+                }))
+        );
+
         kernel
             .readers()
             .read_default(|connection| {
@@ -3246,12 +3335,21 @@ mod tests {
             })
             .expect("verify Agent Data Source move order");
 
+        let mut destination = request.destination;
+        let LibraryAgentPageDestination::DataSource {
+            values, group_key, ..
+        } = &mut destination
+        else {
+            panic!("Data Source destination");
+        };
+        values.clear();
+        *group_key = Some(Some("done".to_owned()));
         let same_source_request = LibraryAgentMovePagesRequest {
             page_ids: vec![
                 "page:agent-database-move-first".to_owned(),
                 "page:agent-database-move-second".to_owned(),
             ],
-            destination: request.destination,
+            destination,
         };
         let prepared = module
             .read(
@@ -3271,7 +3369,7 @@ mod tests {
             panic!("same-Data-Source Agent move preparation");
         };
         assert!(value.document_heads.is_empty());
-        module
+        let committed = module
             .apply(
                 &context(),
                 ModuleApplyRequest {
@@ -3288,6 +3386,16 @@ mod tests {
                 },
             )
             .expect("execute same-Data-Source Agent move");
+        let pages = committed.committed.value.agent_move_pages.unwrap().pages;
+        assert!(
+            pages
+                .iter()
+                .all(|page| page.status.as_ref().is_some_and(|status| {
+                    status.option_id
+                        == nodex_core_contracts::library::LibraryPageWorkflowStatus::Done
+                }))
+        );
+
         kernel
             .readers()
             .read_default(|connection| {
@@ -3570,11 +3678,26 @@ mod tests {
                 view: Some(LibraryPageCopyViewPlacement {
                     view_id: "018f0000-0000-7000-8000-000000000103".to_owned(),
                     expected_view_revision: 1,
-                    group_key: Some("done".to_owned()),
+                    group_key: Some(Some("done".to_owned())),
                     before: None,
                 }),
             },
         );
+        let mut invalid = request.clone();
+        invalid.operation_id = "operation:copy-to-data-source-with-null".to_owned();
+        let LibraryIntent::CopyPage {
+            destination: LibraryPageCopyDestination::DataSource { values, .. },
+            ..
+        } = &mut invalid.intent
+        else {
+            panic!("Data Source copy");
+        };
+        values[0].value = serde_json::Value::Null;
+        let error = module
+            .apply(&context(), invalid)
+            .expect_err("cannot duplicate with null Status");
+        assert_eq!(error.code, CoreErrorCode::InvalidInput);
+        assert!(error.message.contains("triage (Triage)"));
         let copied = module
             .apply(&context(), request.clone())
             .expect("copy Page to Data Source");
@@ -3587,6 +3710,10 @@ mod tests {
             .page_copy
             .as_ref()
             .expect("copy result");
+        assert_eq!(
+            result.status.as_ref().map(|status| status.option_id),
+            Some(nodex_core_contracts::library::LibraryPageWorkflowStatus::Done)
+        );
         assert!(copied.event.is_some());
         assert!(replay.event.is_none());
         assert!(replay.committed.receipt.mutation.duplicate);

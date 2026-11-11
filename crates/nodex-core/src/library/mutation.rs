@@ -2146,6 +2146,7 @@ fn create_page_records_and_genesis(
     Ok(LibraryPageCreateResult {
         page_id: page_id.to_owned(),
         page_key: None,
+        status: None,
         document_id: document_id.to_owned(),
         document_generation: 1,
         document_head_seq: persisted.head_seq,
@@ -6580,6 +6581,11 @@ mod tests {
         assert_eq!(created.page_key.as_deref(), Some("LAB-1"));
         assert_eq!(created.block_ids.len(), 2);
         assert_eq!(
+            created.status.as_ref().map(|status| status.option_id),
+            Some(nodex_core_contracts::library::LibraryPageWorkflowStatus::Triage)
+        );
+
+        assert_eq!(
             first.committed.receipt.affected_database_ids,
             vec!["018f0000-0000-7000-8000-000000000001"]
         );
@@ -6673,7 +6679,7 @@ mod tests {
             (
                 "library-1".to_owned(),
                 2,
-                3,
+                2,
                 "data_source".to_owned(),
                 "018f0000-0000-7000-8000-000000000002".to_owned(),
                 1,

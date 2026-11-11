@@ -79,7 +79,7 @@ export const toCoreAgentPageDestination = (
       value: value.value,
     })),
     view_id: destination.view?.viewId ?? null,
-    group_key: destination.view?.groupKey ?? null,
+    ...(destination.view?.groupKey !== undefined ? { group_key: destination.view.groupKey } : {}),
     at: siblingAnchor(destination.view?.at),
   };
 };
@@ -123,7 +123,9 @@ export const preparedAgentPageDestination = (
           view: {
             viewId: destination.view.view_id,
             viewRevision: destination.view.expected_view_revision,
-            groupKey: destination.view.group_key ?? null,
+            ...(destination.view.group_key !== undefined
+              ? { groupKey: destination.view.group_key }
+              : {}),
             ...(destination.view.before ? { beforePageId: destination.view.before.page_id } : {}),
           },
         }

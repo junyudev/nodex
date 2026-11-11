@@ -5428,6 +5428,7 @@ export interface components {
             readonly location: components["schemas"]["LibraryAgentPageLocation"];
             readonly page_id: string;
             readonly page_key?: string | null;
+            readonly status?: components["schemas"]["LibraryPageWorkflowStatusValue"] | null;
         };
         readonly LibraryAgentCreatePageDraft: {
             readonly markdown: string;
@@ -5471,6 +5472,7 @@ export interface components {
             readonly location: components["schemas"]["LibraryAgentPageLocation"];
             readonly page_id: string;
             readonly page_key?: string | null;
+            readonly status?: components["schemas"]["LibraryPageWorkflowStatusValue"] | null;
         };
         readonly LibraryAgentMovePagePreparation: {
             readonly page_id: string;
@@ -5526,6 +5528,7 @@ export interface components {
             readonly page_id: string;
             readonly page_key?: string | null;
             readonly source_page_id: string;
+            readonly status?: components["schemas"]["LibraryPageWorkflowStatusValue"] | null;
         };
         readonly LibraryAgentPageDestination: {
             readonly at?: components["schemas"]["LibraryAgentSiblingAnchor"] | null;
@@ -5542,7 +5545,7 @@ export interface components {
             readonly group_key?: string | null;
             /** @enum {string} */
             readonly kind: "data_source";
-            readonly values: readonly components["schemas"]["LibraryPageCopyValue"][];
+            readonly values?: readonly components["schemas"]["LibraryPageCopyValue"][];
             readonly view_id?: string | null;
         };
         readonly LibraryAgentPageEtags: {
@@ -5882,6 +5885,9 @@ export interface components {
              */
             readonly page_keys: {
                 readonly [key: string]: string | null;
+            };
+            readonly page_statuses?: {
+                readonly [key: string]: components["schemas"]["LibraryPageWorkflowStatusValue"];
             };
             readonly page_view_placements: {
                 readonly [key: string]: components["schemas"]["LibraryPageViewPlacementResult"];
@@ -6485,6 +6491,7 @@ export interface components {
             readonly page_id: string;
             readonly page_key?: string | null;
             readonly source_page_id: string;
+            readonly status?: components["schemas"]["LibraryPageWorkflowStatusValue"] | null;
             readonly title_etag: string;
         };
         readonly LibraryPageCopyValue: {
@@ -6508,6 +6515,7 @@ export interface components {
             readonly document_id: string;
             readonly page_id: string;
             readonly page_key?: string | null;
+            readonly status?: components["schemas"]["LibraryPageWorkflowStatusValue"] | null;
             readonly title_etag: string;
         };
         readonly LibraryPageDataSourceContext: {

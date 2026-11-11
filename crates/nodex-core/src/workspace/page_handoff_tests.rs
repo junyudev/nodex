@@ -170,7 +170,6 @@ fn handoff_advances_only_early_stage_ids_and_preserves_other_value_revisions() {
         Some("review"),
         Some(COMPLETED),
         Some("canceled"),
-        None,
     ] {
         let page = create_page(
             &workspace,

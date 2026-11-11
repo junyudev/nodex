@@ -39,14 +39,15 @@ pub(crate) use mutation::{
     PageCopyValueDraft, PageCopyViewPlacement, PageTaskShorthandBatchPlan,
     PageTaskShorthandCandidate, PageTaskShorthandPreservedReason, StagedPagePlacementRevisions,
     active_property, apply_page_task_shorthand_schema, finalize_agent_moved_pages_in_data_source,
-    normalize_value, page_copy_view_start_anchor, place_copied_page_in_data_source,
-    place_staged_page_in_data_source, plan_page_task_shorthand,
+    initialize_cloned_membership, normalize_value, page_copy_view_start_anchor,
+    place_copied_page_in_data_source, place_staged_page_in_data_source, plan_page_task_shorthand,
     refresh_transferred_page_projection as refresh_copied_page_projection,
-    repair_scheduled_page_indexes, resolve_page_transfer_board_destination,
-    resolve_page_transfer_data_source_destination, resolve_page_transfer_list_destination,
-    synchronize_membership_completion_timestamp, synchronize_relation_value_projections,
-    transfer_existing_page_for_agent_move, transfer_existing_page_for_block_transfer,
-    validate_page_copy_data_source_destination, validate_page_transfer_data_source_source,
+    repair_required_workflow_statuses, repair_scheduled_page_indexes,
+    resolve_page_transfer_board_destination, resolve_page_transfer_data_source_destination,
+    resolve_page_transfer_list_destination, synchronize_membership_completion_timestamp,
+    synchronize_relation_value_projections, transfer_existing_page_for_agent_move,
+    transfer_existing_page_for_block_transfer, validate_page_copy_data_source_destination,
+    validate_page_transfer_data_source_source,
 };
 pub(crate) use mutation::{
     WorkflowStatusStep, follow_workflow_status, record_person_status_edit, status_person_revision,
@@ -2234,6 +2235,20 @@ mod tests {
         };
         assert!(empty_source.rows.items.is_empty());
 
+        kernel
+            .writer()
+            .call(|connection| {
+                connection.execute(
+                    "UPDATE data_source_property_values SET value_json = 'null'
+                 WHERE property_id = 'status' AND membership_id IN (
+                   SELECT id FROM data_source_page_memberships
+                   WHERE page_block_id = 'page:database-row' AND removed_at IS NOT NULL
+                 )",
+                    [],
+                )?;
+                Ok(())
+            })
+            .expect("fixture with an invalid historical Status");
         module
             .apply(
                 &context(),
@@ -2270,6 +2285,10 @@ mod tests {
         let DatabaseReadValue::ViewWindow { value: returned } = returned.value else {
             panic!("Data Source query snapshot");
         };
+        assert_eq!(
+            returned.rows.items[0].database_values.get("status"),
+            Some(&json!("triage"))
+        );
         assert_eq!(returned.rows.items[0].membership_revision, 3);
         let page_parent_rejection = module
             .apply(

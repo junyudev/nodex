@@ -1225,12 +1225,7 @@ fn command_line_sends_are_labeled_with_their_project() {
         panic!("summary")
     };
     assert_eq!(summary.entry_count, 1);
-    set_status_in_context(
-        &workspace,
-        &command_line(true),
-        "page:project",
-        Some("plan"),
-    );
+    set_status_in_context(&workspace, &command_line(true), "page:project", "plan");
     assert_eq!(
         window_in(
             module,
@@ -4801,14 +4796,6 @@ fn set_status_by_hand(
     page_id: &str,
     option_id: &str,
 ) -> crate::database::DatabaseApplyOutcome {
-    set_status_option_by_hand(workspace, page_id, Some(option_id))
-}
-
-fn set_status_option_by_hand(
-    workspace: &TestWorkspace,
-    page_id: &str,
-    option_id: Option<&str>,
-) -> crate::database::DatabaseApplyOutcome {
     set_status_in_context(workspace, &host(), page_id, option_id)
 }
 
@@ -4816,7 +4803,7 @@ fn set_status_in_context(
     workspace: &TestWorkspace,
     context: &BoundModuleContext,
     page_id: &str,
-    option_id: Option<&str>,
+    option_id: &str,
 ) -> crate::database::DatabaseApplyOutcome {
     let revision = {
         let page_id = page_id.to_owned();
@@ -4841,10 +4828,7 @@ fn set_status_in_context(
             context,
             ModuleApplyRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
-                operation_id: format!(
-                    "status-{page_id}-{revision}-{}",
-                    option_id.unwrap_or("empty")
-                ),
+                operation_id: format!("status-{page_id}-{revision}-{option_id}"),
                 store_epoch: StoreEpoch("epoch-1".to_owned()),
                 intent: vec![DatabaseIntent::EditPropertyValues {
                     edits: vec![DatabasePropertyValueMutation {
@@ -4856,12 +4840,9 @@ fn set_status_in_context(
                         },
                         edit: DatabasePropertyValueEdit::Replace {
                             expected_value_revision: revision,
-                            value: option_id.map_or(
-                                DatabasePropertyValueInput::Empty,
-                                |option_id| DatabasePropertyValueInput::Select {
-                                    option_id: option_id.to_owned(),
-                                },
-                            ),
+                            value: DatabasePropertyValueInput::Select {
+                                option_id: option_id.to_owned(),
+                            },
                         },
                     }],
                 }],
@@ -5021,7 +5002,7 @@ fn an_agent_property_edit_routes_intake_for_its_requesting_member() {
         ..host()
     };
     let page = "page:agent-routed";
-    set_status_in_context(&w, &agent, page, Some("plan"));
+    set_status_in_context(&w, &agent, page, "plan");
     assert!(
         window_in(
             module,
@@ -5030,7 +5011,7 @@ fn an_agent_property_edit_routes_intake_for_its_requesting_member() {
         )
         .is_empty()
     );
-    set_status_in_context(&w, &agent, page, Some("triage"));
+    set_status_in_context(&w, &agent, page, "triage");
     let rows = window_in(
         module,
         project_scope(),

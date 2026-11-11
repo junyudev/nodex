@@ -738,6 +738,22 @@ several Data Sources uses the default names. An empty stage stays out of a Board
 or List unless the View shows empty groups, so a Database that never uses In Review
 never shows it.
 
+Every active Data Source member has one of the six stage IDs. A Page with no
+prior valid Status starts in Triage. Moving or duplicating a Page between Data
+Sources carries its valid stage ID, including when the destination already has
+a historical membership. Returning from the Library or undoing a move
+preserves a valid historical stage. The destination supplies the display name in every case.
+
+With no group selected, a placement keeps a valid carried Property value or
+uses the destination default. Custom Properties are local to their Data Source.
+Selecting an empty group clears a nullable Property. Status cannot be cleared
+by a Property edit, initial value, or empty-group placement. The rejection
+identifies the Property and gives the available option IDs and current names.
+Explicit Property values take precedence over implicit placement defaults.
+
+A Database Property value edit advances the Page's last-edited time, including
+the `updated_at` field exposed by SQL.
+
 Done and Canceled both count as completed for View filters and completion sorting. A
 membership's `completed_at` marks entering either terminal stage, is retained between
 terminal stages, and clears when reopened. Only Done is accepted work; it alone satisfies

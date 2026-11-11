@@ -64,6 +64,8 @@ pub(crate) fn create_page_in_data_source(
     )?;
     let mut page_create = created.page_create;
     page_create.page_key = current_page_key_for_page(connection, input.library_id, input.page_id)?;
+    page_create.status =
+        super::page_lifecycle::read_page_workflow_status(connection, input.page_id)?;
     Ok(CreatedPageGenesis {
         page_create,
         data_source_id: placement.data_source_id,
@@ -123,6 +125,7 @@ fn create_page_in_library(
     let page_create = LibraryPageCreateResult {
         page_id: input.page_id.to_owned(),
         page_key: current_page_key_for_page(connection, input.library_id, input.page_id)?,
+        status: None,
         document_id: staged.document_id.clone(),
         document_generation: 1,
         document_head_seq: staged.document_head_seq,

@@ -100,6 +100,29 @@ describe("BlockTransfer contract", () => {
     expect(canonicalizeBlockTransferLogicalIntent(fencedLogical)).not.toContain("fence-document");
   });
 
+  test("preserves the difference between an omitted group and the empty group", () => {
+    for (const choice of [{}, { groupKey: null }]) {
+      const placement = {
+        ...request(),
+        target: { kind: "data_source", dataSourceId: "data-source-b", viewId: "view-b", ...choice },
+      };
+      const parsed = parseBlockTransferRequest(placement);
+      const intent = blockTransferIntentFromRequest(parsed);
+      expect(parsed.target).toEqual(placement.target);
+      expect(intent.target).toEqual({
+        kind: "data_source",
+        dataSourceId: "data-source-b",
+        placement: {
+          kind: "direct",
+          viewId: "view-b",
+          preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
+          ...choice,
+        },
+      });
+      expect(parseBlockTransferIntent(intent)).toEqual(intent);
+    }
+  });
+
   test("preserves bounded sorted Property inference for a direct View placement", () => {
     const logical = blockTransferIntentFromRequest(request());
     const inferred = {

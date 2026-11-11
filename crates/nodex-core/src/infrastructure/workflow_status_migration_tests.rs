@@ -403,3 +403,246 @@ fn v196_deleted_pages_keep_readable_restore_evidence_and_verified_receipts() {
         )
         .unwrap();
 }
+
+#[test]
+fn v210_inbox_upgrade_then_repairs_invalid_workflow_statuses() {
+    assert_workflow_status_repair(210);
+}
+
+#[test]
+fn v211_repairs_invalid_workflow_statuses_in_active_and_historical_memberships() {
+    assert_workflow_status_repair(211);
+}
+
+fn assert_workflow_status_repair(predecessor_version: i64) {
+    let (home, mut connection) = predecessor();
+    prepare_profile_store(&mut connection, home.path()).unwrap();
+    let (profile, library, epoch, source, tags_revision): (String, String, String, String, i64) =
+        connection.query_row(
+            "SELECT library.profile_id, library.id, (SELECT store_epoch FROM block_store_metadata),
+                    source.id, tags.schema_revision
+             FROM data_sources source JOIN libraries library ON library.id = source.library_id
+             JOIN data_source_properties tags ON tags.data_source_id = source.id AND tags.id = 'tags'
+             LIMIT 1", [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        ).unwrap();
+    let recurring = "019b0000-0000-7000-8000-000000000001";
+    let unaffected = "019b0000-0000-7000-8000-000000000002";
+    let scheduled = "019b0000-0000-7000-8000-000000000003";
+    drop(connection);
+    {
+        let kernel = SqliteStoreKernel::open_test(home.path()).unwrap();
+        let context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
+            editor_history_owner: None,
+            principal: None,
+            agent_attribution: None,
+            profile_id: ProfileId(profile.clone()),
+            library_id: LibraryId(library.clone()),
+            project_id: None,
+            connection_id: "workflow-migration".into(),
+            adapter: AdapterKind::Test,
+        };
+        let module = crate::library::LibraryModule::new(&profile, &library, &kernel);
+        for (page_id, repeats) in [(recurring, true), (unaffected, false), (scheduled, false)] {
+            module.apply(
+                &context,
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: operation_id("seed-scheduled-page"),
+                    store_epoch: StoreEpoch(epoch.clone()),
+                    intent: LibraryIntent::ApplyPageLifecycle {
+                        mutation: Box::new(LibraryPageLifecycleMutation::CreatePage {
+                            page_id: page_id.into(),
+                            title: format!("Scheduled {page_id}"),
+                            rich_title: None,
+                            markdown: String::new(),
+                            status: if repeats { LibraryPageWorkflowStatus::Done } else { LibraryPageWorkflowStatus::Plan },
+                            priority: None,
+                            estimate: None,
+                            due_date: None,
+                            scheduled_start: Some("2026-09-01T12:00:00.000Z".into()),
+                            scheduled_end: Some("2026-09-01T13:00:00.000Z".into()),
+                            is_all_day: false,
+                            recurrence: repeats.then(|| json!({"frequency":"daily","interval":1})),
+                            reminders: if repeats { vec![json!({"offsetMinutes":15})] } else { vec![] },
+                            schedule_timezone: Some("UTC".into()),
+                            assignee: None,
+                            run_in_target: "localProject".into(),
+                            run_in_local_path: None,
+                            run_in_base_branch: None,
+                            run_in_worktree_path: None,
+                            run_in_environment_path: None,
+                            before_block_id: None,
+                            view_placement: nodex_core_contracts::library::LibraryPageLifecycleViewPlacement::End,
+                            data_source_id: source.clone(),
+                            tag_option_ids: vec![],
+                            new_tag_options: vec![],
+                            expected_tags_property_revision: tags_revision,
+                        }),
+                    },
+                },
+            ).unwrap();
+        }
+    }
+    let mut connection = open_writer(&home.path().join("nodex.db")).unwrap();
+    with_immediate_transaction(&mut connection, |connection| {
+        connection.execute(
+            "DELETE FROM core_store_migration_history WHERE target_revision > ?1",
+            [predecessor_version],
+        )?;
+        connection.pragma_update(None, "user_version", predecessor_version)?;
+        connection.execute(
+            "UPDATE data_source_property_values SET value_json = 'null'
+             WHERE property_id = 'status' AND membership_id IN
+               (SELECT id FROM data_source_page_memberships WHERE page_block_id <> ?1)", [unaffected],
+        )?;
+        connection.execute(
+            "UPDATE data_source_property_values SET updated_at = '2099-01-01T00:00:00.000Z'
+             WHERE property_id = 'status' AND membership_id IN
+               (SELECT id FROM data_source_page_memberships WHERE page_block_id = ?1)", [unaffected],
+        )?;
+        connection.execute(
+            "UPDATE page_read_model SET database_values_json = json_set(database_values_json, '$.status', NULL),
+                    view_group_key = NULL WHERE membership_id IS NOT NULL AND page_block_id <> ?1",
+            [unaffected],
+        )?;
+        connection.execute(
+            "INSERT INTO data_source_page_memberships(id,data_source_id,page_block_id,revision,created_at,removed_at,completed_at)
+             SELECT 'history:' || row_number() OVER (ORDER BY page.block_id), membership.data_source_id,
+                    page.block_id, 1, page.created_at, page.created_at, page.created_at
+             FROM pages page
+             CROSS JOIN (SELECT data_source_id FROM data_source_page_memberships WHERE removed_at IS NULL LIMIT 1) membership
+             WHERE page.parent_kind = 'library'", [],
+        )?;
+        connection.execute(
+            "INSERT INTO data_source_property_values(data_source_id,membership_id,property_id,value_type,value_json,revision,updated_at)
+             SELECT data_source_id,id,'status','select',?1,3,created_at
+             FROM data_source_page_memberships WHERE id = 'history:2'", [json!("garbage").to_string()],
+        )?;
+        connection.execute_batch(
+            "WITH RECURSIVE numbers(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM numbers WHERE n<10000)
+             INSERT INTO data_sources(id,library_id,home_database_block_id,name,schema_key,lifecycle,rank_key,created_at,updated_at)
+             SELECT 'scale:' || n, source.library_id, source.home_database_block_id,
+                    'Archived source ' || n, source.schema_key, 'archived', 'a', source.created_at, source.updated_at
+             FROM numbers
+             CROSS JOIN data_source_page_memberships membership
+             JOIN data_sources source ON source.id = membership.data_source_id
+             WHERE membership.id = 'history:1';
+             INSERT INTO data_source_properties(data_source_id,id,name,value_type,config_json,rank_key,lifecycle,schema_revision,created_at,updated_at)
+             SELECT source.id, property.id, property.name, property.value_type, property.config_json,
+                    property.rank_key, property.lifecycle, property.schema_revision, property.created_at, property.updated_at
+             FROM data_sources source
+             CROSS JOIN data_source_page_memberships membership
+             JOIN data_source_properties property ON property.data_source_id = membership.data_source_id
+               AND property.id = 'status'
+             WHERE source.id LIKE 'scale:%' AND membership.id = 'history:1';
+             INSERT INTO data_source_page_memberships(id,data_source_id,page_block_id,revision,created_at,removed_at)
+             SELECT source.id, source.id, membership.page_block_id, 1, membership.created_at, membership.removed_at
+             FROM data_sources source CROSS JOIN data_source_page_memberships membership
+             WHERE source.id LIKE 'scale:%' AND membership.id = 'history:1';
+             INSERT INTO data_source_property_values(data_source_id,membership_id,property_id,value_type,value_json,revision,updated_at)
+             SELECT data_source_id,id,'status','select',json_quote('triage'),1,created_at
+             FROM data_source_page_memberships WHERE id LIKE 'scale:%';
+             CREATE TEMP TABLE migration_projection_writes(kind, page_id);
+             CREATE TEMP TRIGGER watch_schedule_repair AFTER UPDATE ON main.scheduled_page_index
+             BEGIN INSERT INTO migration_projection_writes VALUES ('schedule', NEW.page_block_id); END;
+             CREATE TEMP TRIGGER watch_view_repair AFTER UPDATE ON main.page_read_model
+             BEGIN INSERT INTO migration_projection_writes VALUES ('row', NEW.page_block_id); END;",
+        )?;
+        Ok(())
+    }).unwrap();
+    if predecessor_version == 210 {
+        rewind_inbox_later(&connection).unwrap();
+    }
+    let migrated = prepare_profile_store(&mut connection, home.path()).unwrap();
+    assert_eq!(migrated.migrated_from_version, Some(predecessor_version));
+    assert_eq!(migrated.schema_version, 212);
+    assert_eq!(
+        json_column(
+            &connection,
+            &format!(
+                "SELECT json_group_array(json_array(source_revision,target_revision)) FROM (
+                   SELECT source_revision,target_revision FROM core_store_migration_history
+                   WHERE target_revision > {predecessor_version} ORDER BY target_revision
+                 )",
+            ),
+        ),
+        if predecessor_version == 210 {
+            json!([[210, 211], [211, 212]])
+        } else {
+            json!([[211, 212]])
+        }
+    );
+    validate_store(&connection).unwrap();
+    super::super::store_validation::validate_store_semantics(&connection).unwrap();
+    let schedules = json_column(&connection,
+        "SELECT json_group_array(json_array(index_row.page_block_id, scheduled_start, scheduled_end,
+           json(recurrence_json), json(reminders_json), index_row.source_metadata_revision = block.metadata_revision))
+         FROM scheduled_page_index index_row JOIN blocks block ON block.id = index_row.page_block_id
+         WHERE json_type(recurrence_json) = 'object'");
+    assert_eq!(
+        schedules,
+        json!([[recurring, "2026-09-01T12:00:00.000Z",
+        "2026-09-01T13:00:00.000Z", {"frequency":"daily","interval":1},
+        [{"offsetMinutes":15}], 1]])
+    );
+    let repaired: i64 = connection
+        .query_row(
+            "SELECT count(*) FROM data_source_page_memberships membership
+         JOIN data_source_property_values value ON value.data_source_id=membership.data_source_id
+           AND value.membership_id=membership.id AND value.property_id='status'
+         WHERE membership.id NOT LIKE 'scale:%' AND membership.page_block_id <> ?1
+           AND value.value_json = json_quote('triage') AND membership.completed_at IS NULL",
+            [unaffected],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(repaired, 5);
+    assert_eq!(
+        json_column(
+            &connection,
+            "SELECT json_array(json_extract(database_values_json, '$.status'), view_group_key)
+             FROM page_read_model WHERE page_block_id = '019b0000-0000-7000-8000-000000000001'"
+        ),
+        json!(["triage", "triage"])
+    );
+    assert_eq!(
+        json_column(
+            &connection,
+            "SELECT json_array(page.updated_at, model.updated_at)
+         FROM pages page JOIN page_read_model model ON model.page_block_id = page.block_id
+         WHERE page.block_id = '019b0000-0000-7000-8000-000000000002'"
+        ),
+        json!(["2099-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z"])
+    );
+    assert_eq!(
+        json_column(
+            &connection,
+            "SELECT json_group_array(kind) FROM migration_projection_writes
+         WHERE page_id = '019b0000-0000-7000-8000-000000000002'"
+        ),
+        json!(["row"])
+    );
+    assert_eq!(
+        json_column(
+            &connection,
+            "SELECT json_array(count(*), count(DISTINCT page_id)) FROM migration_projection_writes
+         WHERE kind = 'schedule'"
+        ),
+        json!([2, 2])
+    );
+    assert_eq!(
+        crate::database::repair_required_workflow_statuses(&connection, "2026-01-01T00:00:00.000Z")
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        prepare_profile_store(&mut connection, home.path())
+            .unwrap()
+            .migrated_from_version,
+        None
+    );
+}

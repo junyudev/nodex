@@ -263,8 +263,20 @@ pub struct LibraryPageCopyValue {
 pub struct LibraryPageCopyViewPlacement {
     pub view_id: String,
     pub expected_view_revision: i64,
-    pub group_key: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_group_choice",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[schema(value_type = Option<String>)]
+    pub group_key: Option<Option<String>>,
     pub before: Option<LibraryPageCopyPositionAnchor>,
+}
+
+fn deserialize_group_choice<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Option<String>>, D::Error> {
+    Option::<String>::deserialize(deserializer).map(Some)
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -312,9 +324,16 @@ pub enum LibraryAgentPageDestination {
     },
     DataSource {
         data_source_id: String,
+        #[serde(default)]
         values: Vec<LibraryPageCopyValue>,
         view_id: Option<String>,
-        group_key: Option<String>,
+        #[serde(
+            default,
+            deserialize_with = "deserialize_group_choice",
+            skip_serializing_if = "Option::is_none"
+        )]
+        #[schema(value_type = Option<String>)]
+        group_key: Option<Option<String>>,
         at: Option<LibraryAgentSiblingAnchor>,
     },
 }
@@ -382,6 +401,8 @@ pub struct LibraryAgentPageCopyResult {
     pub source_page_id: String,
     pub page_id: String,
     pub page_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<LibraryPageWorkflowStatusValue>,
     pub location: LibraryAgentPageLocation,
     pub body_blocks_created: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -419,6 +440,8 @@ pub struct LibraryAgentCreatePagesPreparation {
 pub struct LibraryAgentCreatedPage {
     pub page_id: String,
     pub page_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<LibraryPageWorkflowStatusValue>,
     pub location: LibraryAgentPageLocation,
     pub body_blocks_created: u32,
     pub block_ids: Vec<String>,
@@ -462,6 +485,8 @@ pub struct LibraryAgentMovePagesPreparation {
 pub struct LibraryAgentMovedPage {
     pub page_id: String,
     pub page_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<LibraryPageWorkflowStatusValue>,
     pub location: LibraryAgentPageLocation,
 }
 
@@ -524,7 +549,13 @@ pub enum LibraryBlockTransferDataSourcePlacement {
     Direct {
         view_id: String,
         preferences_override: DatabaseViewPreferencesOverrideInput,
-        group_key: Option<String>,
+        #[serde(
+            default,
+            deserialize_with = "deserialize_group_choice",
+            skip_serializing_if = "Option::is_none"
+        )]
+        #[schema(value_type = Option<String>)]
+        group_key: Option<Option<String>>,
         before_page_id: Option<String>,
         #[serde(default)]
         sorted_property_values: Vec<LibraryPageCopyValue>,
@@ -680,6 +711,8 @@ pub struct LibraryBlockTransferResult {
     /// value means the root is a Page that is not currently in a keyed
     /// Database namespace.
     pub page_keys: std::collections::BTreeMap<String, Option<String>>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub page_statuses: std::collections::BTreeMap<String, LibraryPageWorkflowStatusValue>,
     pub page_etags: std::collections::BTreeMap<String, String>,
     pub move_etags: std::collections::BTreeMap<String, String>,
     pub page_view_placements: std::collections::BTreeMap<String, LibraryPageViewPlacementResult>,
@@ -3276,6 +3309,8 @@ pub struct LibraryCanvasMutationResult {
 pub struct LibraryPageCreateResult {
     pub page_id: String,
     pub page_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<LibraryPageWorkflowStatusValue>,
     pub document_id: String,
     pub document_generation: i64,
     pub document_head_seq: i64,
@@ -3289,6 +3324,8 @@ pub struct LibraryPageCopyResult {
     pub source_page_id: String,
     pub page_id: String,
     pub page_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<LibraryPageWorkflowStatusValue>,
     pub document_id: String,
     pub block_ids: std::collections::BTreeMap<String, String>,
     pub document_ids: std::collections::BTreeMap<String, String>,

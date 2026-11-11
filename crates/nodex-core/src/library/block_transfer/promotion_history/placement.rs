@@ -146,6 +146,12 @@ impl PromotionPlacement {
                 if changed != 1 {
                     return Err(conflict("Promotion membership changed before Redo"));
                 }
+                crate::database::initialize_cloned_membership(
+                    connection,
+                    data_source_id,
+                    membership_id,
+                    now,
+                )?;
             }
         }
         Ok(())

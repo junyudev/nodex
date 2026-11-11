@@ -31,6 +31,8 @@ pub(crate) struct PageCreationResult<'a> {
     duplicate: bool,
     page_id: &'a str,
     page_key: &'a Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<&'a nodex_core_contracts::library::LibraryPageWorkflowStatusValue>,
     document_id: &'a str,
     generation: i64,
     head_seq: i64,
@@ -56,6 +58,8 @@ pub(crate) struct PageCopyResult<'a> {
     source_page_id: &'a str,
     page_id: &'a str,
     page_key: &'a Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<&'a nodex_core_contracts::library::LibraryPageWorkflowStatusValue>,
     document_id: &'a str,
     generation: i64,
     head_seq: i64,
@@ -77,6 +81,8 @@ pub(crate) struct PageMoveResult<'a> {
     duplicate: bool,
     page_id: &'a str,
     page_key: &'a Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<&'a nodex_core_contracts::library::LibraryPageWorkflowStatusValue>,
     commit_seq: i64,
     affected: MovedBlocks<'a>,
     etags: PageMoveEtags<'a>,
@@ -171,6 +177,7 @@ pub(crate) fn create_page(
         duplicate: committed.receipt().mutation.duplicate,
         page_id: &created.page_id,
         page_key: &created.page_key,
+        status: created.status.as_ref(),
         document_id: &created.document_id,
         generation: created.document_generation,
         head_seq: created.document_head_seq,
@@ -313,6 +320,7 @@ fn transfer_page(
             source_page_id: &copied.source_page_id,
             page_id: &copied.page_id,
             page_key: &copied.page_key,
+            status: copied.status.as_ref(),
             document_id: &copied.document_id,
             generation: copied.document_generation,
             head_seq: copied.document_head_seq,
@@ -359,6 +367,7 @@ fn transfer_page(
             duplicate: committed.receipt().mutation.duplicate,
             page_id: &page_id,
             page_key,
+            status: moved.page_statuses.get(&page_id),
             commit_seq: committed.commit_cursor(),
             affected: MovedBlocks {
                 page_ids: &committed.receipt().affected_page_ids,

@@ -6791,12 +6791,12 @@ fn clone_snapshot_into_target(
     )?;
     document_commits.push(host_commit);
     let mut cloned_snapshot = remap_snapshot(
+        connection,
+        &parent.authority.head.library_id,
         snapshot,
         &block_ids,
         &document_ids,
         &data_source_ids,
-        &view_ids,
-        &membership_ids,
         mapped_target.clone(),
     )?;
     refresh_snapshot_authorities(connection, &mut cloned_snapshot)?;
@@ -7154,6 +7154,7 @@ fn stage_database_clone_rows(
                 ],
             )?;
         }
+        crate::database::initialize_cloned_membership(connection, source_id, membership_id, now)?;
         for edge in &row.relation_edges {
             let target_page_id = block_ids
                 .get(&edge.target_page_id)
@@ -7231,11 +7232,27 @@ fn refresh_cloned_database_row_projections(
     for database in &snapshot.databases {
         for row in &database.rows {
             let page_id = mapped(block_ids, &row.page_id, "Database row Page")?;
-            let property_revisions = row
+            let membership_id = mapped(membership_ids, &row.membership_id, "Membership")?;
+            let source_id = mapped(data_source_ids, &row.source_id, "Data Source")?;
+            let (status_json, status_revision) = connection.query_row(
+                "SELECT value_json, revision FROM data_source_property_values
+                 WHERE data_source_id = ?1 AND membership_id = ?2 AND property_id = ?3",
+                params![
+                    source_id,
+                    membership_id,
+                    crate::database::property_semantics::STATUS_PROPERTY_ID
+                ],
+                |stored| Ok((stored.get::<_, String>(0)?, stored.get::<_, i64>(1)?)),
+            )?;
+            let mut property_revisions = row
                 .property_values
                 .iter()
                 .map(|value| (value.property_id.clone(), serde_json::Value::from(1)))
                 .collect::<serde_json::Map<_, _>>();
+            property_revisions.insert(
+                crate::database::property_semantics::STATUS_PROPERTY_ID.to_owned(),
+                serde_json::Value::from(status_revision),
+            );
             let current_revisions = connection.query_row(
                 "SELECT property_revisions_json FROM page_read_model WHERE page_block_id = ?1",
                 [page_id],
@@ -7264,11 +7281,15 @@ fn refresh_cloned_database_row_projections(
             }).transpose()?.flatten();
             let changed = connection.execute(
                 "UPDATE page_read_model SET membership_id = ?1, database_block_id = ?2, \
-                   view_id = ?3, view_group_key = ?4, view_rank_key = ?5, \
-                   database_values_json = ?6, property_revisions_json = ?7, updated_at = ?8 \
+                   view_id = ?3, view_group_key = CASE WHEN EXISTS(
+                     SELECT 1 FROM database_views WHERE id = ?3
+                       AND json_extract(config_json, '$.presentation.group.propertyId') = 'status'
+                   ) THEN json_extract(?10, '$') ELSE ?4 END, view_rank_key = ?5,
+                   database_values_json = json_set(?6, '$.status', json(?10)),
+                   property_revisions_json = ?7, updated_at = ?8
                  WHERE page_block_id = ?9",
                 params![
-                    mapped(membership_ids, &row.membership_id, "Membership")?,
+                    membership_id,
                     mapped(block_ids, &database.block_id, "Database")?,
                     projected_view_id,
                     row.view_group_key,
@@ -7277,19 +7298,11 @@ fn refresh_cloned_database_row_projections(
                     revisions_json,
                     now,
                     page_id,
+                    status_json,
                 ],
             )?;
             if changed != 1 {
                 return Err(corrupt("Cloned Database row projection disappeared"));
-            }
-            let expected_source = mapped(data_source_ids, &row.source_id, "Data Source")?;
-            let actual_source = connection.query_row(
-                "SELECT data_source_id FROM data_source_page_memberships WHERE id = ?1",
-                [mapped(membership_ids, &row.membership_id, "Membership")?],
-                |stored| stored.get::<_, String>(0),
-            )?;
-            if &actual_source != expected_source {
-                return Err(corrupt("Cloned Database row membership source diverged"));
             }
         }
     }
@@ -7419,14 +7432,13 @@ fn remap_location(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 fn remap_snapshot(
+    connection: &Connection,
+    library_id: &str,
     snapshot: &OwnershipClosureSnapshot,
     block_ids: &BTreeMap<String, String>,
     document_ids: &BTreeMap<String, String>,
     data_source_ids: &BTreeMap<String, String>,
-    view_ids: &BTreeMap<String, String>,
-    membership_ids: &BTreeMap<String, String>,
     source: StructuralLocation,
 ) -> Result<OwnershipClosureSnapshot, StoreError> {
     let blocks = snapshot
@@ -7518,169 +7530,13 @@ fn remap_snapshot(
             })
         })
         .collect::<Result<Vec<_>, StoreError>>()?;
+    // Record the cloned authority after initializing required values and View order.
     let databases = snapshot
         .databases
         .iter()
         .map(|database| {
-            Ok(DatabaseAuthoritySnapshot {
-                block_id: mapped(block_ids, &database.block_id, "Database")?.clone(),
-                name: if snapshot
-                    .roots
-                    .iter()
-                    .any(|root| root.id == database.block_id)
-                {
-                    duplicate_plain_title(&database.name)
-                } else {
-                    database.name.clone()
-                },
-                lifecycle: "active".to_owned(),
-                default_view_id: database
-                    .default_view_id
-                    .as_ref()
-                    .map(|view_id| mapped(view_ids, view_id, "Default View").cloned())
-                    .transpose()?,
-                metadata_revision: 1,
-                sources: database
-                    .sources
-                    .iter()
-                    .map(|item| {
-                        Ok(DatabaseSourceSnapshot {
-                            source_id: mapped(data_source_ids, &item.source_id, "Data Source")?
-                                .clone(),
-                            name: item.name.clone(),
-                            schema_key: item.schema_key.clone(),
-                            schema_revision: 1,
-                            rank_key: item.rank_key.clone(),
-                        })
-                    })
-                    .collect::<Result<Vec<_>, StoreError>>()?,
-                properties: database
-                    .properties
-                    .iter()
-                    .map(|item| {
-                        Ok(DatabasePropertySnapshot {
-                            source_id: mapped(data_source_ids, &item.source_id, "Data Source")?
-                                .clone(),
-                            property_id: item.property_id.clone(),
-                            name: item.name.clone(),
-                            value_type: item.value_type.clone(),
-                            config_json: item.config_json.clone(),
-                            rank_key: item.rank_key.clone(),
-                            lifecycle: item.lifecycle.clone(),
-                            schema_revision: 1,
-                        })
-                    })
-                    .collect::<Result<Vec<_>, StoreError>>()?,
-                relation_properties: database
-                    .relation_properties
-                    .iter()
-                    .map(|item| {
-                        Ok(DatabaseRelationPropertySnapshot {
-                            source_id: mapped(data_source_ids, &item.source_id, "Data Source")?
-                                .clone(),
-                            property_id: item.property_id.clone(),
-                            target_source_id: data_source_ids
-                                .get(&item.target_source_id)
-                                .unwrap_or(&item.target_source_id)
-                                .clone(),
-                            cardinality: item.cardinality.clone(),
-                        })
-                    })
-                    .collect::<Result<Vec<_>, StoreError>>()?,
-                views: database
-                    .views
-                    .iter()
-                    .map(|item| {
-                        Ok(DatabaseViewSnapshot {
-                            view_id: mapped(view_ids, &item.view_id, "View")?.clone(),
-                            source_id: mapped(data_source_ids, &item.source_id, "Data Source")?
-                                .clone(),
-                            name: item.name.clone(),
-                            layout: item.layout.clone(),
-                            config_json: item.config_json.clone(),
-                            revision: 1,
-                            rank_key: item.rank_key.clone(),
-                            lifecycle: item.lifecycle.clone(),
-                        })
-                    })
-                    .collect::<Result<Vec<_>, StoreError>>()?,
-                rows: database
-                    .rows
-                    .iter()
-                    .map(|row| {
-                        Ok(DatabaseRowSnapshot {
-                            membership_id: mapped(
-                                membership_ids,
-                                &row.membership_id,
-                                "Membership",
-                            )?
-                            .clone(),
-                            source_id: mapped(data_source_ids, &row.source_id, "Data Source")?
-                                .clone(),
-                            page_id: mapped(block_ids, &row.page_id, "Database row Page")?.clone(),
-                            revision: 1,
-                            completed_at: row.completed_at.clone(),
-                            projected_view_id: row
-                                .projected_view_id
-                                .as_ref()
-                                .map(|view_id| mapped(view_ids, view_id, "View").cloned())
-                                .transpose()?,
-                            view_group_key: row.view_group_key.clone(),
-                            view_rank_key: None,
-                            database_values_json: row.database_values_json.clone(),
-                            property_values: row
-                                .property_values
-                                .iter()
-                                .map(|value| DatabasePropertyValueSnapshot {
-                                    property_id: value.property_id.clone(),
-                                    value_type: value.value_type.clone(),
-                                    value_json: value.value_json.clone(),
-                                    revision: 1,
-                                })
-                                .collect(),
-                            view_positions: row
-                                .view_positions
-                                .iter()
-                                .map(|position| {
-                                    Ok(DatabaseViewPositionSnapshot {
-                                        view_id: mapped(view_ids, &position.view_id, "View")?
-                                            .clone(),
-                                        rank_key: position.rank_key.clone(),
-                                        revision: 1,
-                                        semantic_reset_epoch: 1,
-                                    })
-                                })
-                                .collect::<Result<Vec<_>, StoreError>>()?,
-                            relation_edges: row
-                                .relation_edges
-                                .iter()
-                                .map(|edge| {
-                                    Ok(DatabaseRelationEdgeSnapshot {
-                                        edge_id: sha256(
-                                            format!(
-                                                "{}\0{}",
-                                                mapped(
-                                                    membership_ids,
-                                                    &row.membership_id,
-                                                    "Membership",
-                                                )?,
-                                                edge.edge_id
-                                            )
-                                            .as_bytes(),
-                                        ),
-                                        property_id: edge.property_id.clone(),
-                                        target_page_id: block_ids
-                                            .get(&edge.target_page_id)
-                                            .unwrap_or(&edge.target_page_id)
-                                            .clone(),
-                                        sibling_rank: edge.sibling_rank.clone(),
-                                    })
-                                })
-                                .collect::<Result<Vec<_>, StoreError>>()?,
-                        })
-                    })
-                    .collect::<Result<Vec<_>, StoreError>>()?,
-            })
+            let database_id = mapped(block_ids, &database.block_id, "Database")?;
+            capture_database(connection, library_id, database_id)
         })
         .collect::<Result<Vec<_>, StoreError>>()?;
     Ok(OwnershipClosureSnapshot {
