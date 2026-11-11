@@ -7,10 +7,18 @@ import {
   type AgentContext,
   type PromptResponse,
 } from "@agentclientprotocol/sdk/unstable";
+import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
-import { EventEmitter, once } from "node:events";
 import { Readable, Writable } from "node:stream";
 import { z } from "zod";
+
+const desktopCallSchema = z.object({
+  code: z.string(),
+  title: z.string().optional(),
+  timeout_ms: z.number().int().positive().optional(),
+});
 
 const scenarioSchema = z.object({
   sessionId: z.string().min(1).default("scripted-root-session"),
@@ -77,6 +85,16 @@ const scenarioSchema = z.object({
   malformedBeforeInitialize: z.boolean().default(false),
   crashOnPrompt: z.boolean().default(false),
   failFirstPromptRequest: z.boolean().default(false),
+  desktopToolCall: desktopCallSchema.optional(),
+  desktopTurns: z
+    .record(
+      z.string(),
+      z.object({
+        calls: z.array(desktopCallSchema),
+        reply: z.string(),
+      }),
+    )
+    .optional(),
   waitForCancel: z.boolean().default(false),
   afterCancel: z.array(z.string()).default([]),
   stopReason: z
@@ -122,6 +140,15 @@ type Observation =
     }
   | { readonly method: "elicitation/create"; readonly mode: string; readonly action: string }
   | { readonly method: "elicitation/complete"; readonly elicitationId: string }
+  | { readonly method: "desktop/servers"; readonly names: readonly string[] }
+  | {
+      readonly method: "node_repl/tools/result";
+      readonly title: string | undefined;
+      readonly isError: boolean;
+      readonly text: readonly string[];
+      readonly contentTypes: readonly string[];
+    }
+  | { readonly method: "node_repl/tools/list"; readonly tools: readonly string[] }
   | { readonly method: "session/cancel"; readonly sessionId: string };
 
 const loadScenario = (): z.output<typeof scenarioSchema> => {
@@ -137,9 +164,112 @@ export const runScriptedAcpAgent = (): void => {
   const observationPath = process.env.NODEX_SCRIPTED_ACP_OBSERVATION;
   const observations: Observation[] = [];
   let phase: "boot" | "initialized" | "session" | "prompting" = "boot";
-  const cancellationEvents = new EventEmitter();
+  let cancelPrompt: (() => void) | undefined;
   let authenticated = false;
   let promptRequestFailed = false;
+  let desktopServer: ConstructorParameters<typeof StdioClientTransport>[0] | undefined;
+  const rememberDesktopServer = (servers: unknown) => {
+    if (scenario.desktopToolCall === undefined && scenario.desktopTurns === undefined) return;
+    const descriptors = z.array(z.object({ name: z.string() }).passthrough()).parse(servers);
+    const stdio = descriptors.find(({ name }) => name === "node_repl");
+    if (scenario.desktopTurns)
+      observe({ method: "desktop/servers", names: descriptors.map(({ name }) => name) });
+    if (stdio === undefined) {
+      desktopServer = undefined;
+      return;
+    }
+    const server = z
+      .object({
+        command: z.string(),
+        args: z.array(z.string()),
+        env: z.array(z.object({ name: z.string(), value: z.string() })),
+      })
+      .parse(stdio);
+    desktopServer = {
+      command: server.command,
+      args: server.args,
+      env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])),
+    };
+  };
+
+  const callDesktopTool = async (
+    client: AgentContext,
+    sessionId: string,
+    args: NonNullable<typeof scenario.desktopToolCall>,
+    cancellation: Promise<void>,
+  ): Promise<boolean> => {
+    if (desktopServer === undefined) throw new Error("Missing node_repl stdio descriptor");
+    const toolCallId = `scripted-node-repl-${randomUUID()}`;
+    const transport = new StdioClientTransport(desktopServer);
+    const mcp = new McpClient({ name: "scripted-acp", version: "1" });
+    const abort = new AbortController();
+    void cancellation.then(() => abort.abort());
+    try {
+      await mcp.connect(transport);
+      const { tools } = await mcp.listTools();
+      observe({ method: "node_repl/tools/list", tools: tools.map(({ name }) => name) });
+      if (!tools.some(({ name }) => name === "js")) throw new Error("Missing node_repl js tool");
+      await client.notify(methods.client.session.update, {
+        sessionId,
+        update: {
+          sessionUpdate: "tool_call",
+          toolCallId,
+          title: "js (node_repl MCP Server)",
+          kind: "execute",
+          status: "in_progress",
+          rawInput: args,
+        },
+      });
+      if (scenario.desktopTurns) {
+        const permission = await client.request(methods.client.session.requestPermission, {
+          sessionId,
+          toolCall: {
+            toolCallId,
+            title: "js (node_repl MCP Server)",
+            kind: "execute",
+            rawInput: args,
+          },
+          options: [
+            { optionId: "allow", name: "Allow", kind: "allow_once" },
+            { optionId: "deny", name: "Deny", kind: "reject_once" },
+          ],
+        });
+        if (permission.outcome.outcome !== "selected" || permission.outcome.optionId !== "allow")
+          throw new Error("ACP client declined its node_repl permission request");
+      }
+      const result = await mcp.callTool({ name: "js", arguments: args }, undefined, {
+        signal: abort.signal,
+        timeout: 65 * 60_000,
+      });
+      await client.notify(methods.client.session.update, {
+        sessionId,
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId,
+          status: result.isError === true ? "failed" : "completed",
+          rawOutput: result,
+        },
+      });
+      if (scenario.desktopTurns) {
+        const blocks = z
+          .array(z.object({ type: z.string(), text: z.string().optional() }))
+          .parse(result.content);
+        observe({
+          method: "node_repl/tools/result",
+          title: args.title,
+          isError: result.isError === true,
+          text: blocks.flatMap(({ text }) => (text === undefined ? [] : [text.slice(0, 1024)])),
+          contentTypes: blocks.map(({ type }) => type),
+        });
+      }
+      return false;
+    } catch (error) {
+      if (abort.signal.aborted) return true;
+      throw error;
+    } finally {
+      await mcp.close();
+    }
+  };
 
   const observe = (event: Observation): void => {
     observations.push(event);
@@ -249,6 +379,7 @@ export const runScriptedAcpAgent = (): void => {
       if (scenario.requireAuthenticationBeforeSession && !authenticated) {
         throw RequestError.authRequired();
       }
+      rememberDesktopServer(context.params.mcpServers);
       phase = "session";
       return { sessionId: scenario.sessionId, ...sessionState() };
     })
@@ -258,6 +389,7 @@ export const runScriptedAcpAgent = (): void => {
       if (scenario.requireAuthenticationBeforeSession && !authenticated) {
         throw RequestError.authRequired();
       }
+      rememberDesktopServer(context.params.mcpServers);
       phase = "session";
       await sendAll(context.client, context.params.sessionId, scenario.sessionLifecycle.loadReplay);
       return sessionState();
@@ -268,6 +400,7 @@ export const runScriptedAcpAgent = (): void => {
       if (scenario.requireAuthenticationBeforeSession && !authenticated) {
         throw RequestError.authRequired();
       }
+      rememberDesktopServer(context.params.mcpServers);
       phase = "session";
       return sessionState();
     })
@@ -277,6 +410,7 @@ export const runScriptedAcpAgent = (): void => {
       if (scenario.requireAuthenticationBeforeSession && !authenticated) {
         throw RequestError.authRequired();
       }
+      rememberDesktopServer(context.params.mcpServers);
       phase = "session";
       return { sessionId: scenario.sessionId, ...sessionState() };
     })
@@ -335,13 +469,16 @@ export const runScriptedAcpAgent = (): void => {
         throw RequestError.internalError(undefined, "Scripted prompt rejection");
       }
       phase = "prompting";
-      const cancellation = once(cancellationEvents, "cancel").then(() => undefined);
+      const cancellation = new Promise<void>((resolve) => {
+        cancelPrompt = resolve;
+      });
 
       if (scenario.crashOnPrompt) {
         setImmediate(() => process.exit(17));
         return new Promise<PromptResponse>(() => undefined);
       }
 
+      let desktopCancelled = false;
       let turn = sendAll(context.client, context.params.sessionId, scenario.beforePrompt).then(() =>
         sendAll(
           context.client,
@@ -480,22 +617,60 @@ export const runScriptedAcpAgent = (): void => {
         });
       }
 
+      const desktopToolCall = scenario.desktopToolCall;
+      if (desktopToolCall !== undefined) {
+        turn = turn.then(async () => {
+          desktopCancelled = await callDesktopTool(
+            context.client,
+            context.params.sessionId,
+            desktopToolCall,
+            cancellation,
+          );
+        });
+      }
+
+      if (scenario.desktopTurns) {
+        const text = context.params.prompt.flatMap((block) =>
+          block.type === "text" ? [block.text] : [],
+        );
+        const scripted = Object.entries(scenario.desktopTurns).find(([marker]) =>
+          text.some((value) => value.includes(marker)),
+        )?.[1];
+        turn = turn.then(async () => {
+          if (!scripted) throw new Error("No matching scripted ACP Desktop Tools Turn");
+          for (const call of scripted.calls) {
+            desktopCancelled = await callDesktopTool(
+              context.client,
+              context.params.sessionId,
+              call,
+              cancellation,
+            );
+            if (desktopCancelled) return;
+          }
+          await sendAll(context.client, context.params.sessionId, [scripted.reply]);
+        });
+      }
+
       const waitForCancel =
         scenario.waitForCancel || (scenario.requestPermission && !scenario.completeAfterPermission);
       if (waitForCancel) turn = turn.then(() => cancellation);
       return turn
         .then(() => sendAll(context.client, context.params.sessionId, scenario.afterCancel))
-        .then(() => {
+        .then(
+          () =>
+            ({
+              stopReason: waitForCancel || desktopCancelled ? "cancelled" : scenario.stopReason,
+            }) satisfies PromptResponse,
+        )
+        .finally(() => {
+          cancelPrompt = undefined;
           phase = "session";
-          return {
-            stopReason: waitForCancel ? "cancelled" : scenario.stopReason,
-          } satisfies PromptResponse;
         });
     })
     .onNotification(methods.agent.session.cancel, (context) => {
       if (phase !== "prompting") return;
       observe({ method: "session/cancel", sessionId: context.params.sessionId });
-      cancellationEvents.emit("cancel");
+      cancelPrompt?.();
     });
 
   application.connect(

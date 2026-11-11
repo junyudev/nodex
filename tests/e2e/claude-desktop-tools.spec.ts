@@ -1,14 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
-import {
-  ElectronScenarioHarness,
-  readBoundedElectronRuntimeLogs,
-} from "../../scripts/scenarios/harness/electron-e2e-harness";
+import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import {
   startScriptedAnthropicServer,
   anthropicToolResult,
@@ -25,6 +23,7 @@ import {
 } from "./support/agent-smoke-harness";
 import { chooseComposerModel, refreshComposerModels } from "./support/composer-model-picker";
 import { startBrowserHttpFixture } from "./support/browser-http-fixture";
+import { monitorRuntimeLease } from "./support/desktop-tools-smoke";
 
 const evidenceRoot = process.env.NODEX_CDT_EVIDENCE_DIR;
 const saveEvidence = (name: string, value: unknown) => {
@@ -84,14 +83,29 @@ const configureClaude = async (
         ).resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/claude`),
         configDirectory: harness.profile.claudeConfigHome,
         enabled: true,
-        environment: Object.entries(environment).map(([name, value]) => ({
-          name,
-          value,
-          sensitive: false,
-        })),
+        environment: Object.entries({ ...environment, ENABLE_TOOL_SEARCH: "true" }).map(
+          ([name, value]) => ({
+            name,
+            value,
+            sensitive: false,
+          }),
+        ),
       },
     ],
   });
+};
+const selectPermissions = async (page: Page, label: "Full access" | "Ask for approval") => {
+  const selected = page.getByRole("button", { name: `Permissions: ${label}`, exact: true });
+  if (await selected.isVisible()) return;
+  await page.getByRole("button", { name: /^Permissions:/ }).click();
+  await page.getByRole("menuitem", { name: new RegExp(label) }).click();
+  if (label === "Full access") {
+    await page
+      .getByRole("dialog", { name: "Turn on Full access?" })
+      .getByRole("button", { name: "Turn on", exact: true })
+      .click();
+  }
+  await expect(selected).toBeVisible();
 };
 const activeExecs = (
   home: string,
@@ -118,6 +132,133 @@ const alive = (pid: number) => {
   }
 };
 
+test("measures native Claude Plan mode with an allowed HTTP MCP tool", async () => {
+  const { query } = await import("@anthropic-ai/claude-agent-sdk");
+  const { Server } = await import("@modelcontextprotocol/sdk/server/index.js");
+  const { StreamableHTTPServerTransport } =
+    await import("@modelcontextprotocol/sdk/server/streamableHttp.js");
+  const { ListToolsRequestSchema, CallToolRequestSchema } =
+    await import("@modelcontextprotocol/sdk/types.js");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-cdt-plan-"));
+  let calls = 0;
+  const permissionCallbacks: string[] = [];
+  const toolName = "mcp__node_repl__js";
+  const resultId = "plan_probe";
+  let result: ReturnType<typeof anthropicToolResult>;
+  const model = await startScriptedAnthropicServer((request) => {
+    result = anthropicToolResult(request, resultId);
+    if (result) return { type: "text", text: "PLAN_PROBE_DONE" };
+    expect(request.tools.find((entry) => entry.name === toolName)?.defer_loading).not.toBe(true);
+    expect(request.tools.some((entry) => entry.name === toolName)).toBe(true);
+    return tool(resultId, toolName, { code: "1 + 1" });
+  });
+
+  // Match the tool metadata the Runtime sends. The probe has no executable code path.
+  const endpoint = http.createServer(async (request, response) => {
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+    });
+    const mcp = new Server({ name: "node_repl", version: "1" }, { capabilities: { tools: {} } });
+    mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
+      tools: [
+        {
+          name: "js",
+          description: "A JavaScript tool with no read-only annotation",
+          inputSchema: { type: "object", properties: { code: { type: "string" } } },
+          _meta: { "anthropic/alwaysLoad": true },
+        },
+      ],
+    }));
+    mcp.setRequestHandler(CallToolRequestSchema, async () => {
+      calls++;
+      return { content: [{ type: "text", text: "PLAN_PROBE_REACHED_ENDPOINT" }] };
+    });
+    try {
+      await mcp.connect(transport);
+      await transport.handleRequest(request, response);
+    } finally {
+      await mcp.close();
+    }
+  });
+  await new Promise<void>((resolve) => endpoint.listen(0, "127.0.0.1", resolve));
+  const address = endpoint.address();
+  if (!address || typeof address === "string") throw new Error("Missing Plan probe MCP port");
+
+  let release: () => void = () => {};
+  const ready = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  async function* prompts() {
+    await ready;
+    yield {
+      type: "user" as const,
+      message: { role: "user" as const, content: "Probe native Plan mode permissions." },
+      parent_tool_use_id: null,
+      session_id: "",
+    };
+    await new Promise<void>(() => {});
+  }
+  const cli = query({
+    prompt: prompts(),
+    options: {
+      cwd: directory,
+      env: {
+        PATH: process.env.PATH,
+        HOME: directory,
+        CLAUDE_CONFIG_DIR: path.join(directory, "claude"),
+        ENABLE_TOOL_SEARCH: "true",
+        ...model.environment,
+      },
+      settingSources: [],
+      model: "claude-sonnet-5-5",
+      permissionMode: "plan",
+      allowedTools: ["mcp__node_repl__*"],
+      canUseTool: async (name) => {
+        permissionCallbacks.push(name);
+        return { behavior: "deny", message: "Plan probe denied the native permission request" };
+      },
+    },
+  });
+  try {
+    const registration = await cli.setMcpServers({
+      node_repl: {
+        type: "http",
+        url: `http://127.0.0.1:${address.port}/mcp/node_repl`,
+        timeout: 65 * 60_000,
+      },
+    });
+    expect(registration.errors).toEqual({});
+    release();
+    let cliVersion: string | undefined;
+    for await (const message of cli) {
+      if (message.type === "system" && message.subtype === "init")
+        cliVersion = message.claude_code_version;
+      if (message.type !== "result") continue;
+      expect(message.subtype).toBe("success");
+      break;
+    }
+    expect(model.errors).toEqual([]);
+    expect(result).toBeDefined();
+    saveEvidence("cli-plan-mode.json", {
+      cliVersion,
+      endpointCalls: calls,
+      permissionCallbacks,
+      result,
+    });
+    expect(permissionCallbacks).toEqual([toolName]);
+    expect(calls).toBe(0);
+    expect(result).toMatchObject({ is_error: true });
+  } finally {
+    cli.close();
+    await cli[Symbol.asyncDispose]();
+    endpoint.closeAllConnections();
+    await new Promise<void>((resolve) => endpoint.close(() => resolve()));
+    await model.close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 for (const mode of ["full-access", "approval-required"] as const) {
   test(`Claude drives the real in-app Browser with ${mode}`, async () => {
     test.setTimeout(240_000);
@@ -125,7 +266,11 @@ for (const mode of ["full-access", "approval-required"] as const) {
     let phase = 0;
     let pluginRoot = "";
     let documentationResult = "";
-    let originDeclined = false;
+    let idleStopReady = false;
+    let releaseIdleStop: () => void = () => {};
+    const idleStopGate = new Promise<void>((resolve) => {
+      releaseIdleStop = resolve;
+    });
     let releaseFinal: () => void = () => {};
     const finalGate = new Promise<void>((resolve) => {
       releaseFinal = resolve;
@@ -143,16 +288,44 @@ for (const mode of ["full-access", "approval-required"] as const) {
           results[id] = value;
           return value;
         };
+        const lastMessage = text(request.messages.at(-1));
+        if (
+          lastMessage.includes("CDT_STOP_WITHOUT_RUNNING_CODE") ||
+          lastMessage.includes('"tool_use_id":"before_idle_stop"')
+        ) {
+          if (!anthropicToolResult(request, "before_idle_stop"))
+            return js("before_idle_stop", "nodeRepl.write({kept});", "Read binding before Stop");
+          expect(text(result("before_idle_stop"))).toContain("37");
+          idleStopReady = true;
+          await idleStopGate;
+          return { type: "text", text: "Stopped" };
+        }
+        if (
+          lastMessage.includes("CDT_CHECK_MEMORY_AFTER_IDLE_STOP") ||
+          lastMessage.includes('"tool_use_id":"idle_stop_memory"')
+        ) {
+          const memory = anthropicToolResult(request, "idle_stop_memory");
+          if (!memory)
+            return js("idle_stop_memory", "nodeRepl.write({kept});", "Read binding after Stop");
+          expect(text(result("idle_stop_memory"))).toContain("37");
+          return { type: "text", text: "CLAUDE_IDLE_STOP_MEMORY_DONE" };
+        }
         if (phase++ === 0) {
-          saveEvidence(`${mode}-first-request.json`, request);
           const repl = request.tools.find((candidate) => candidate.name === "mcp__node_repl__js");
           expect(repl).toBeDefined();
           expect(repl?.defer_loading).not.toBe(true);
+          expect(request.tools.some((candidate) => candidate.name === "ToolSearch")).toBe(true);
           expect(request.tools.some((candidate) => candidate.name.includes("turn_ended"))).toBe(
             false,
           );
           expect(text(request)).toContain("browser:control-in-app-browser");
           expect(text(request).includes("computer-use:computer-use")).toBe(computerUseReady);
+          saveEvidence(`${mode}-discovery.json`, {
+            model: request.model,
+            tools: request.tools.map(({ name, defer_loading }) => ({ name, defer_loading })),
+            browserSkill: true,
+            computerUseSkill: computerUseReady,
+          });
           return tool("skill", "Skill", { skill: "browser:control-in-app-browser" });
         }
         if (phase === 2) {
@@ -180,7 +353,6 @@ for (const mode of ["full-access", "approval-required"] as const) {
         if (phase === 3) {
           documentationResult = text(result("bootstrap"));
           expect(documentationResult).toContain("documentationCharacters");
-          saveEvidence(`${mode}-documentation-result.json`, results.bootstrap);
           return js(
             "navigate",
             `const tab = await iab.tabs.new(); await tab.goto(${JSON.stringify(fixture.url)}); await tab.markDeliverable(); await (await iab.capabilities.get("visibility")).set(true); nodeRepl.write(JSON.stringify({title: await tab.title(), url: await tab.url()})); await nodeRepl.emitImage(await tab.screenshot({fullPage:false}));`,
@@ -192,10 +364,8 @@ for (const mode of ["full-access", "approval-required"] as const) {
           if (mode === "full-access") {
             expect(text(navigation)).toContain(`CLAUDE_BROWSER_${mode}`);
             expect(text(navigation)).toContain('"image"');
-          } else if (originDeclined) {
-            expect(navigation).toMatchObject({ is_error: true });
           } else {
-            expect(text(navigation)).toContain(`CLAUDE_BROWSER_${mode}`);
+            expect(navigation).toMatchObject({ is_error: true });
           }
           if (mode === "full-access") await finalGate;
           return { type: "text", text: "CLAUDE_BROWSER_TURN_ONE_DONE" };
@@ -244,18 +414,10 @@ for (const mode of ["full-access", "approval-required"] as const) {
       },
     });
     let failurePage: Page | undefined;
+    const lease = monitorRuntimeLease();
     try {
-      const page = await harness.launch();
+      const page = await harness.launch(lease.launchOptions);
       failurePage = page;
-      const diagnosticChunks: string[] = [];
-      harness.application.process().stderr?.on("data", (chunk) => {
-        diagnosticChunks.push(String(chunk));
-        saveEvidence(`${mode}-stderr.json`, diagnosticChunks.join(""));
-      });
-      harness.application.process().stdout?.on("data", (chunk) => {
-        diagnosticChunks.push(String(chunk));
-        saveEvidence(`${mode}-stderr.json`, diagnosticChunks.join(""));
-      });
       await configureClaude(page, harness, server.environment);
       const computer = (await invokeIpc(page, "computer-use-settings-get")) as {
         available: boolean;
@@ -270,17 +432,7 @@ for (const mode of ["full-access", "approval-required"] as const) {
       await refreshComposerModels(page);
       await chooseComposerModel(page, "Claude Sonnet 5.5", "Claude Sonnet 5.5");
       await page.keyboard.press("Escape");
-      const permissionLabel = mode === "full-access" ? "Full access" : "Ask for approval";
-      if (
-        (await page
-          .getByRole("button", { name: `Permissions: ${permissionLabel}`, exact: true })
-          .count()) === 0
-      ) {
-        await page.getByRole("button", { name: /^Permissions:/ }).click();
-        await page.getByRole("menuitem", { name: new RegExp(permissionLabel) }).click();
-        if (mode === "full-access")
-          await page.getByRole("button", { name: "Turn on", exact: true }).click();
-      }
+      await selectPermissions(page, mode === "full-access" ? "Full access" : "Ask for approval");
       if (mode === "full-access") {
         await invokeIpc(page, "browser-use-policy-update-origin-rule", {
           action: "add",
@@ -304,57 +456,38 @@ for (const mode of ["full-access", "approval-required"] as const) {
           exact: true,
         });
         await expect(allow).toBeVisible();
-        // A person approves the code itself, not its JSON envelope or the tool's internal name.
-        await expect(page.getByText("mcp__node_repl__js")).toHaveCount(0);
-        saveEvidence("approval-card.json", {
-          aria: await page.locator("body").ariaSnapshot(),
-          conversation: await readRuntimeConversation(page, target),
+        const snapshot = (await readRuntimeConversation(page, target)).snapshot.projection;
+        const pending = snapshot.runtimeRequests.filter((request) => request.status === "pending");
+        expect(pending).toHaveLength(1);
+        expect(pending[0]).toMatchObject({
+          kind: "command",
+          responseCapability: { type: "runtime" },
         });
+        const card = snapshot.visibleTurnItems
+          .map(({ item }) => item)
+          .find((item) => item.type === "approval_request" && item.requestId === pending[0]?.id);
+        expect(card).toMatchObject({
+          prompt: expect.stringMatching(/^const \{ setupBrowserRuntime \} = await import/u),
+        });
+        expect(activeExecs(harness.profile.codexHome)).toEqual([]);
         await screenshot(page, "claude-tool-approval.png");
         await allow.click();
-        // Wait for a fresh pending request; the resolved native card remains visible but inert.
-        let originPending = false;
+
         await expect
-          .poll(
-            async () => {
-              if (results.navigate) return "completed";
-              const state = await readRuntimeConversation(page, target);
-              const pending = state.snapshot.projection.runtimeRequests.filter(
-                (request) => request.status === "pending",
-              );
-              if (pending.some((request) => request.kind === "mcp-elicitation")) {
-                originPending = true;
-                return "origin";
-              }
-              expect(
-                pending.filter((request) => request.kind === "command"),
-                "The next JS call must use the chat grant",
-              ).toEqual([]);
-              return "waiting";
-            },
-            { timeout: 30_000 },
-          )
-          .not.toBe("waiting");
-        if (originPending) {
-          await expect(page.getByRole("button", { name: "Decline", exact: true })).toBeEnabled();
-          saveEvidence("origin-approval-card.json", await page.locator("body").ariaSnapshot());
-          await expect(
-            page.getByRole("button", { name: /^Approve(?: once)?$/, exact: true }),
-          ).toBeEnabled();
-          await page.getByRole("button", { name: "More approval options", exact: true }).click();
-          // Origin requests in this runtime advertise no session persistence. Do not invent a grant.
-          await expect(page.getByRole("menuitem", { name: /for this chat$/ })).toHaveCount(0);
-          test.info().annotations.push({
-            type: "runtime-gap",
-            description:
-              "Origin consent does not advertise a for-this-chat option; SDK MCP fixture tests cover session grants when advertised.",
-          });
-          saveEvidence("origin-request.json", await readRuntimeConversation(page, target));
-          await screenshot(page, "claude-origin-approval.png");
-          await page.keyboard.press("Escape");
-          originDeclined = true;
-          await page.getByRole("button", { name: "Decline", exact: true }).click();
-        }
+          .poll(async () => {
+            const state = (await readRuntimeConversation(page, target)).snapshot.projection;
+            return state.runtimeRequests
+              .filter((request) => request.status === "pending")
+              .map((request) => request.kind);
+          })
+          .toEqual(["mcp-elicitation"]);
+        const consent = (await readRuntimeConversation(page, target)).snapshot.projection;
+        expect(consent.thread.runtimeChatGrants?.grants).toEqual(["desktop-tools-javascript"]);
+        expect(consent.providerThreads.at(-1)?.chatGrants).toBeUndefined();
+        expect(
+          consent.runtimeRequests.filter((request) => request.kind === "command"),
+        ).toHaveLength(1);
+        await page.getByRole("button", { name: "Decline", exact: true }).click();
       }
       if (mode === "full-access") {
         await expect.poll(() => Boolean(results.navigate), { timeout: 30_000 }).toBe(true);
@@ -384,12 +517,11 @@ for (const mode of ["full-access", "approval-required"] as const) {
         await page.locator(`[data-app-action-sidebar-thread-id="${threadId}"]`).click();
       }
       const conversation = await readRuntimeConversation(page, target);
-      saveEvidence(`${mode}-conversation.json`, conversation);
       const mcp = conversation.snapshot.projection.visibleTurnItems
         .map((visible) => visible.item)
         .filter((item) => item.type === "dynamic_tool" && item.mcpToolCall?.server === "node_repl");
       expect(mcp.length).toBeGreaterThanOrEqual(2);
-      if (originDeclined)
+      if (mode === "approval-required")
         expect(mcp.at(-1)).toMatchObject({
           mcpToolCall: { status: "failed", error: { message: expect.any(String) } },
         });
@@ -411,7 +543,8 @@ for (const mode of ["full-access", "approval-required"] as const) {
         );
         const activity = page.getByRole("button", { name: /^Worked for/u });
         if ((await activity.count()) && (await activity.getAttribute("aria-expanded")) !== "true")
-          await activity.click();
+          // The title bar can cover this row after the reply scrolls; the keyboard does not care.
+          await activity.press("Enter");
         const groupBody = page.getByTestId("agent-activity-group-body");
         if ((await groupBody.count()) && (await groupBody.getAttribute("aria-hidden")) === "true")
           await groupBody.locator("..").getByRole("button").first().click();
@@ -443,16 +576,44 @@ for (const mode of ["full-access", "approval-required"] as const) {
           attachmentId: `tool-result:${imageIndex}`,
           dataUrlCharacters: attachment.dataUrl.length,
         });
+        await expect(
+          page.locator(
+            '[data-browser-sidebar-webview-manager-root][data-browser-sidebar-webview-host-kind="panel"] webview',
+          ),
+        ).toBeVisible();
         await screenshot(page, "claude-browser-mcp.png");
       }
       if (mode === "approval-required") {
         expect(server.errors).toEqual([]);
-        saveEvidence("approval-required-results.json", { results, originDeclined });
-        if (originDeclined) expect(fixture.requests).toEqual([]);
+        expect(fixture.requests).toEqual([]);
+        saveEvidence("approval-required-results.json", {
+          javaScriptApprovalCount: conversation.snapshot.projection.runtimeRequests.filter(
+            (request) => request.kind === "command",
+          ).length,
+          grant: conversation.snapshot.projection.thread.runtimeChatGrants,
+          siteAccessDeclined: true,
+          navigationIsError: (results.navigate as { is_error?: boolean }).is_error === true,
+          turnStatus: conversation.snapshot.projection.runs.at(-1)?.status,
+        });
         return;
       }
       await sendAgentFollowUp(page, "Read the binding from the previous Turn.");
       await waitForFinalMarker(page, "CLAUDE_MEMORY_DONE");
+      await waitForRuntimeCompletedAgentTurn(page, target, 30_000);
+      await sendAgentFollowUp(page, "CDT_STOP_WITHOUT_RUNNING_CODE");
+      await expect.poll(() => idleStopReady).toBe(true);
+      expect(activeExecs(harness.profile.codexHome)).toEqual([]);
+      await page.getByRole("button", { name: "Stop", exact: true }).click();
+      await expect
+        .poll(
+          async () =>
+            (await readRuntimeConversation(page, target)).snapshot.projection.runs.at(-1)?.status,
+        )
+        .toBe("interrupted");
+      releaseIdleStop();
+      await sendAgentFollowUp(page, "CDT_CHECK_MEMORY_AFTER_IDLE_STOP");
+      await waitForFinalMarker(page, "CLAUDE_IDLE_STOP_MEMORY_DONE");
+      await waitForRuntimeCompletedAgentTurn(page, target, 30_000);
       await sendAgentFollowUp(page, "Start a long JavaScript call so I can stop it.");
       await expect
         .poll(() => activeExecs(harness.profile.codexHome), { timeout: 30_000 })
@@ -471,7 +632,7 @@ for (const mode of ["full-access", "approval-required"] as const) {
       expect(launcherCommand).toContain(
         path.resolve(".generated/codex-runtime/agent-runtime/browser-runtime"),
       );
-      const bridgePids = [records[0]!.nodeReplPid, codexPid, launcherPid];
+      const replPids = [records[0]!.nodeReplPid, codexPid, launcherPid];
       const stoppedAt = Date.now();
       await page.getByRole("button", { name: "Stop", exact: true }).click();
       await expect
@@ -482,7 +643,7 @@ for (const mode of ["full-access", "approval-required"] as const) {
         .toBe("interrupted");
       await expect.poll(() => activeExecs(harness.profile.codexHome)).toEqual([]);
       await expect.poll(() => alive(records[0]!.kernelPid)).toBe(false);
-      saveEvidence(`${mode}-stop.json`, { elapsedMs: Date.now() - stoppedAt, records, bridgePids });
+      saveEvidence(`${mode}-stop.json`, { elapsedMs: Date.now() - stoppedAt, records, replPids });
       await sendAgentFollowUp(
         page,
         "Use JavaScript again and check whether the old binding exists.",
@@ -490,29 +651,33 @@ for (const mode of ["full-access", "approval-required"] as const) {
       await waitForFinalMarker(page, "CLAUDE_RESET_DONE");
       expect(server.errors).toEqual([]);
       saveEvidence(`${mode}-results.json`, {
-        results,
         documentationResultCharacters: documentationResult.length,
-        originDeclined,
-        paths: server.paths,
+        memoryAfterNextTurn: text(results.memory).includes("37"),
+        memoryAfterStopWithoutRunningCode: text(results.idle_stop_memory).includes("37"),
+        cleanAfterStopWithRunningCode: text(results.reset).includes("undefined"),
+        modelPaths: server.paths,
       });
-      // The bridge's detached process group contains its replacement kernel too.
-      const ownedPids = execFileSync("ps", ["-g", String(launcherPid), "-o", "pid="], {
+      // The REPL's detached process group contains its replacement kernel too.
+      const group = execFileSync("ps", ["-p", String(launcherPid), "-o", "pgid="], {
+        encoding: "utf8",
+      }).trim();
+      const ownedPids = execFileSync("ps", ["-g", group, "-o", "pid="], {
         encoding: "utf8",
       })
         .trim()
         .split(/\s+/u)
         .map(Number);
-      expect(ownedPids).toEqual(expect.arrayContaining(bridgePids));
-      expect(ownedPids.length).toBeGreaterThan(bridgePids.length);
+      expect(ownedPids).toEqual(expect.arrayContaining(replPids));
+      expect(ownedPids.length).toBeGreaterThan(replPids.length);
       await invokeIpc(page, "project-sessions:archive", {
         operationId: createBoundedOperationId("e2e.cdt.archive"),
         payload: { sessionId: draft.projectSessionId },
       });
       await expect.poll(() => ownedPids.map(alive)).toEqual(ownedPids.map(() => false));
       saveEvidence("lifecycle.json", {
-        bridgePids,
+        replPids,
         ownedPids,
-        bridgeAlive: ownedPids.map(alive),
+        replAlive: ownedPids.map(alive),
         kernelAlive: alive(records[0]!.kernelPid),
         activeExecs: activeExecs(harness.profile.codexHome),
       });
@@ -525,25 +690,28 @@ for (const mode of ["full-access", "approval-required"] as const) {
         expect(fs.readFileSync(realManifest, "utf8")).not.toContain(
           path.basename(harness.profile.runRoot),
         );
+      lease.verify(1);
     } catch (error) {
       if (failurePage) await screenshot(failurePage, `${mode}-failure.png`).catch(() => {});
-      const logDir = path.join(harness.profile.nodexHome, "logs");
-      for (const name of fs.readdirSync(logDir).filter((name) => name.startsWith("backend")))
-        saveEvidence(`${mode}-${name}.json`, fs.readFileSync(path.join(logDir, name), "utf8"));
       saveEvidence(`${mode}-failure.json`, {
         error: String(error),
         phase,
-        results,
-        errors: server.errors,
-        logs: await readBoundedElectronRuntimeLogs(harness.profile, 90_000),
+        toolResults: Object.fromEntries(
+          Object.entries(results).map(([id, value]) => [
+            id,
+            { error: (value as { is_error?: boolean } | undefined)?.is_error ?? false },
+          ]),
+        ),
+        modelErrorCount: server.errors.length,
       });
       throw error;
     } finally {
       releaseFinal();
-      saveEvidence(`${mode}-model-requests.json`, server.requests);
+      releaseIdleStop();
       await harness.close();
       await server.close();
       await fixture.close();
+      saveEvidence(`${mode}-lease.json`, lease.snapshot());
     }
   });
 }
@@ -654,7 +822,7 @@ test("measures real Claude CLI SDK MCP output persistence and tool metadata limi
       expect(fs.readFileSync(filePath, "utf8")).toContain("_END");
       return [{ name, filePath, bytes: fs.statSync(filePath).size }];
     });
-    saveEvidence("cli-output-limits.json", { cases, results, persisted });
+    saveEvidence("cli-output-limits.json", { cases, persisted });
   } finally {
     cli.close();
     await cli[Symbol.asyncDispose]();
@@ -689,8 +857,9 @@ test("Claude completes a Turn when Desktop Tools are unavailable", async () => {
   );
   const saved = `${manifest}.cdt-e2e-unavailable`;
   fs.renameSync(manifest, saved);
+  const lease = monitorRuntimeLease();
   try {
-    const page = await harness.launch();
+    const page = await harness.launch(lease.launchOptions);
     await configureClaude(page, harness, model.environment);
     const draft = await createAgentSmokeDraft(
       page,
@@ -712,18 +881,19 @@ test("Claude completes a Turn when Desktop Tools are unavailable", async () => {
     expect(model.requests.filter((request) => !backgroundTitleResponse(request))).toHaveLength(1);
     expect(model.errors).toEqual([]);
     saveEvidence("unavailable-runtime.json", {
-      request: model.requests[0],
-      conversation,
-      logs: await readBoundedElectronRuntimeLogs(harness.profile),
+      toolNames: model.requests[0]?.tools.map(({ name }) => name),
+      turnStatus: conversation.snapshot.projection.runs.at(-1)?.status,
     });
+    lease.verify(1);
   } finally {
     await harness.close();
+    saveEvidence("unavailable-lease.json", lease.snapshot());
     fs.renameSync(saved, manifest);
     await model.close();
   }
 });
 
-test("Claude chat grants survive Stop and restart, and end on a permission mode change", async () => {
+test("Claude and Runtime grants survive Stop and restart and end on a permission mode change", async () => {
   // Multiple native lifetimes include their bounded shutdown budgets.
   test.setTimeout(360_000);
   const results: Record<string, unknown> = {};
@@ -747,7 +917,7 @@ test("Claude chat grants survive Stop and restart, and end on a permission mode 
       results[id] = result;
       return { type: "text", text: `CHAT_GRANTS_DONE_${phase}` };
     }
-    if (phase === "bash" || phase === "bash_again")
+    if (phase.startsWith("bash"))
       return tool(id, "Bash", { command: bashCommand, description: "Run the punctuation fixture" });
     return js(
       id,
@@ -772,6 +942,7 @@ test("Claude chat grants survive Stop and restart, and end on a permission mode 
   fs.writeFileSync(executable, "#!/bin/sh\nprintf 'CHAT_GRANTS_BASH_OK\\n'\n", { mode: 0o755 });
   const bashCommand = `${JSON.stringify(executable)} hello`;
   let page: Page | undefined;
+  const lease = monitorRuntimeLease();
   let target: { sessionId: string; threadId: string } | undefined;
   const state = () => readRuntimeConversation(page!, target!);
   const cliPid = async () => {
@@ -836,7 +1007,6 @@ test("Claude chat grants survive Stop and restart, and end on a permission mode 
       .getByRole("button", { name: "More approval options", exact: true })
       .click({ timeout: 30_000 });
     await expect(page!.getByRole("menuitem", { name })).toBeVisible();
-    saveEvidence("chat-grants-approval.json", await state());
     return answerApproval(() => page!.getByRole("menuitem", { name }).click());
   };
   const followUp = async (phase: string) => sendAgentFollowUp(page!, `CHAT_GRANTS_${phase}`);
@@ -857,7 +1027,7 @@ test("Claude chat grants survive Stop and restart, and end on a permission mode 
     await waitForRuntimeCompletedAgentTurn(page!, target!, 30_000);
   };
   try {
-    page = await harness.launch();
+    page = await harness.launch(lease.launchOptions);
     await configureClaude(page, harness, server.environment);
     const draft = await createAgentSmokeDraft(
       page,
@@ -867,14 +1037,7 @@ test("Claude chat grants survive Stop and restart, and end on a permission mode 
     await refreshComposerModels(page);
     await chooseComposerModel(page, "Claude Sonnet 5.5", "Claude Sonnet 5.5");
     await page.keyboard.press("Escape");
-    if (
-      !(await page
-        .getByRole("button", { name: "Permissions: Ask for approval", exact: true })
-        .count())
-    ) {
-      await page.getByRole("button", { name: /^Permissions:/ }).click();
-      await page.getByRole("menuitem", { name: /Ask for approval/ }).click();
-    }
+    await selectPermissions(page, "Ask for approval");
     const threadId = await sendAgentPrompt(page, draft.projectSessionId, "CHAT_GRANTS_initial");
     target = { sessionId: draft.projectSessionId, threadId };
     const clickedAt = await allowForChat(/^Allow JavaScript for this chat$/u);
@@ -884,25 +1047,53 @@ test("Claude chat grants survive Stop and restart, and end on a permission mode 
     measurements.liveGrant = { clickedAt, toolStartedAt, clickToToolMs: toolStartedAt - clickedAt };
     saveEvidence("chat-grants-measurements.json", measurements);
     expect(toolStartedAt - clickedAt).toBeGreaterThanOrEqual(0);
+    expect((await state()).snapshot.projection.thread.runtimeChatGrants?.grants).toEqual([
+      "desktop-tools-javascript",
+    ]);
+    expect((await state()).snapshot.projection.providerThreads.at(-1)?.chatGrants).toBeUndefined();
+    await followUp("bash");
+    await allowForChat(/for this chat$/u);
+    await finish("bash");
+    const withBoth = await state();
+    const grants = withBoth.snapshot.projection.providerThreads.at(-1)?.chatGrants;
+    expect(grants?.rules).not.toContain("mcp__node_repl__js");
     expect(
-      toolStartedAt - clickedAt,
-      "The live apply must finish without the 10-second fallback",
-    ).toBeLessThan(8000);
-    saveEvidence("chat-grants-live-applied.json", await assertNoCommand());
+      grants?.rules.some(
+        (rule) =>
+          rule.startsWith("Bash(") && rule.includes("a, b") && rule.includes(String.raw`\(`),
+      ),
+    ).toBe(true);
+    await followUp("stop_again");
+    await awaitExecution();
+    await stop();
+    await followUp("both");
+    await awaitExecution();
+    await finish("both");
+    await followUp("bash_again");
+    await finish("bash_again");
+
+    page = await harness.restart(lease.launchOptions);
+    await expect(page.getByRole("button", { name: "Send prompt", exact: true })).toBeVisible({
+      timeout: 30_000,
+    });
+    await followUp("restarted");
+    await awaitExecution();
+    await finish("restarted");
+    await followUp("bash_restarted");
+    await finish("bash_restarted");
     const pidBeforeModeChange = await cliPid();
-    // A prompted Turn crosses the adapter boundary that revokes standing grants.
-    await page.getByRole("button", { name: /^Permissions:/ }).click();
-    await page.getByRole("menuitem", { name: /Full access/ }).click();
-    await page.getByRole("button", { name: "Turn on", exact: true }).click();
+    await selectPermissions(page, "Full access");
     await followUp("modechanged");
     await finish("modechanged");
+    const fullAccess = (await state()).snapshot.projection.thread;
+    expect(fullAccess.runtimeMode).toBe("full-access");
+    expect(fullAccess.runtimeChatGrants?.grants).toEqual([]);
     expect((await state()).snapshot.projection.providerThreads.at(-1)?.chatGrants).toBeUndefined();
     const pidInFullAccess = await cliPid();
     measurements.modeChange = { pidBeforeModeChange, pidInFullAccess };
     saveEvidence("chat-grants-measurements.json", measurements);
     expect(pidInFullAccess).toBe(pidBeforeModeChange);
-    await page.getByRole("button", { name: /^Permissions:/ }).click();
-    await page.getByRole("menuitem", { name: /Ask for approval/ }).click();
+    await selectPermissions(page, "Ask for approval");
     await followUp("revoked");
     await expect(
       page.getByRole("button", { name: "More approval options", exact: true }),
@@ -919,9 +1110,8 @@ test("Claude chat grants survive Stop and restart, and end on a permission mode 
     measurements.modeChange = { pidBeforeModeChange, pidInFullAccess, pidBackInAsk };
     saveEvidence("chat-grants-measurements.json", measurements);
     expect(pidBackInAsk).toBe(pidBeforeModeChange);
+    expect((await state()).snapshot.projection.thread.runtimeChatGrants?.grants).toEqual([]);
     expect((await state()).snapshot.projection.providerThreads.at(-1)?.chatGrants).toBeUndefined();
-    saveEvidence("chat-grants-revoked.json", await state());
-    await screenshot(page, "chat-grants-revoked.png");
     // Approve once must still produce an ordinary completed transcript tool row.
     await answerApproval(() => page!.getByRole("button", { name: "Approve", exact: true }).click());
     await finish("revoked");
@@ -940,67 +1130,27 @@ test("Claude chat grants survive Stop and restart, and end on a permission mode 
     await expect(
       page.getByRole("button", { name: "Chat grant revoked", exact: true }),
     ).toBeVisible();
-    saveEvidence("chat-grants-approved-once.json", once);
-    await screenshot(page, "chat-grants-approved-once.png");
-    await followUp("regrant");
-    await allowForChat(/^Allow JavaScript for this chat$/u);
-    await finish("regrant");
-    await followUp("bash");
-    await allowForChat(/for this chat$/u);
-    await finish("bash");
-    const withBoth = await state();
-    saveEvidence("chat-grants-bash-rule.json", { command: bashCommand, conversation: withBoth });
-    const grants = withBoth.snapshot.projection.providerThreads.at(-1)?.chatGrants;
-    expect(grants?.rules).toContain("mcp__node_repl__js");
-    expect(
-      grants?.rules.some(
-        (rule) =>
-          rule.startsWith("Bash(") && rule.includes("a, b") && rule.includes(String.raw`\(`),
-      ),
-    ).toBe(true);
-    await followUp("stop_again");
-    await awaitExecution();
-    await stop();
-    await followUp("both");
-    await awaitExecution();
-    saveEvidence("chat-grants-post-stop-running.json", await assertNoCommand());
-    await screenshot(page, "chat-grants-post-stop-running.png");
-    await finish("both");
-    saveEvidence("chat-grants-combined-bare-rule.json", await assertNoCommand());
-    await followUp("bash_again");
-    await finish("bash_again");
-    saveEvidence("chat-grants-punctuation-after-stop.json", await assertNoCommand());
-
-    page = await harness.restart();
-    await expect(page.getByRole("button", { name: "Send prompt", exact: true })).toBeVisible({
-      timeout: 30_000,
-    });
-    await followUp("restarted");
-    await awaitExecution();
-    await finish("restarted");
-    saveEvidence("chat-grants-restarted.json", await assertNoCommand());
     expect(server.errors).toEqual([]);
-    saveEvidence("chat-grants-results.json", { results, measurements });
     saveEvidence("chat-grants-success.json", {
-      requests: server.requests,
-      errors: server.errors,
-      conversation: await state(),
-      logs: await readBoundedElectronRuntimeLogs(harness.profile, 90_000),
+      measurements,
+      passedPhases: Object.keys(results),
+      modeAfterRevocation: once.snapshot.projection.thread.runtimeMode,
+      grantsAfterRevocation: once.snapshot.projection.thread.runtimeChatGrants?.grants,
+      approvedOnceToolStatus: row?.type === "dynamic_tool" ? row.mcpToolCall?.status : undefined,
     });
+    lease.verify(2);
   } catch (error) {
     if (page) await screenshot(page, "chat-grants-failure.png").catch(() => {});
     saveEvidence("chat-grants-failure.json", {
       error: String(error),
-      results,
+      completedPhases: Object.keys(results),
       measurements,
-      requests: server.requests,
-      errors: server.errors,
-      conversation: page && target ? await state().catch(() => null) : null,
-      logs: await readBoundedElectronRuntimeLogs(harness.profile, 90_000),
+      modelErrorCount: server.errors.length,
     });
     throw error;
   } finally {
     await server.close();
     await harness.close();
+    saveEvidence("chat-grants-lease.json", lease.snapshot());
   }
 });

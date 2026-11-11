@@ -70,6 +70,40 @@ model requests, tool results, approval cards, and screenshots after Profile clea
 The separate CLI output-limit case measures persistence and tool metadata with
 text pressure fixtures; it does not claim to exercise Browser execution.
 
+## OpenCode and ACP Desktop Tool smokes
+
+On macOS Apple Silicon, run the two focused Electron specs after staging the
+signed Desktop Tool runtime:
+
+```bash
+vp run stage:codex-runtime:mac:cached
+vp run test:e2e tests/e2e/opencode-desktop-tools.spec.ts
+vp run test:e2e tests/e2e/acp-desktop-tools.spec.ts
+```
+
+OpenCode uses the production adapter and a SHA-256-pinned OpenCode 2.1.4
+executable in the shared development cache. Its disposable Profile enables the
+loopback model through Model Settings before the first Composer submission. A
+Chat Completions server scripts the model and rejects unexpected requests. The spec skips when
+the executable is uncached and the registry cannot be reached. ACP uses a
+scripted stdio peer that opens the advertised MCP descriptor, asks for native
+permission and records the results returned by the actual tools. Both run in
+disposable Profiles without subscription credentials.
+
+Each spec isolates Browser navigation and screenshot attachments, approval
+and Session cleanup, and a chat without the Desktop Tool bundle in separate
+Profiles. The Browser case also verifies REPL memory across Turns and handles
+site consent if the Browser requests it. Set
+`NODEX_DTAA_EVIDENCE_DIR` to an absolute local artifacts directory to keep
+provider observations and screenshots. The specs compare the real Chrome
+native messaging registration before and after each launch using SHA-256.
+
+The Chat Completions wire fixture has a focused check:
+
+```bash
+vp test run --config vitest.node.config.ts scripts/scenarios/runtime/scripted-chat-completions-server.test.ts
+```
+
 ## Agent runtime conformance probes
 
 Release-lock tests verify that the committed Agent and Browser artifacts form an

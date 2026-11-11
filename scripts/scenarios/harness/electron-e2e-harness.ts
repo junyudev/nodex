@@ -429,7 +429,12 @@ export class ElectronScenarioHarness {
     return this.#page;
   }
 
-  async launch(options?: { readonly phase?: "application-ready" | "first-window" }): Promise<Page> {
+  async launch(options?: {
+    readonly phase?: "application-ready" | "first-window";
+    readonly onStderr?: (
+      stream: NonNullable<ReturnType<ElectronApplication["process"]>["stderr"]>,
+    ) => void;
+  }): Promise<Page> {
     if (this.#application) throw new Error("Electron scenario is already running");
     const createdScenarioProject =
       this.#needsScenarioProject &&
@@ -454,6 +459,10 @@ export class ElectronScenarioHarness {
       ...(this.#windows ? { windows: this.#windows } : {}),
     });
     this.#application = application;
+    if (options?.onStderr) {
+      const stderr = application.process().stderr;
+      if (stderr) options.onStderr(stderr);
+    }
     const page =
       options?.phase === "first-window"
         ? await waitForNodexFirstWindow(application)
@@ -503,9 +512,9 @@ export class ElectronScenarioHarness {
     return await waitForNodexWindowInitialization(page);
   }
 
-  async restart(): Promise<Page> {
+  async restart(options?: Parameters<ElectronScenarioHarness["launch"]>[0]): Promise<Page> {
     await this.stopElectron();
-    return await this.launch();
+    return await this.launch(options);
   }
 
   async stopElectron(): Promise<void> {

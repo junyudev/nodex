@@ -568,7 +568,7 @@
     "nodex(no-explicit-test-timeout)": 2
   },
   "tests/e2e/claude-desktop-tools.spec.ts": {
-    "nodex(no-explicit-test-timeout)": 12
+    "nodex(no-explicit-test-timeout)": 11
   },
   "tests/e2e/claude-thread-handoff.spec.ts": {
     "nodex(no-explicit-test-timeout)": 4
