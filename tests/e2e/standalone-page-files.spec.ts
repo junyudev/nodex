@@ -36,7 +36,6 @@ const readPageFiles = async (page: Page, pageId: string) =>
   }, pageId);
 
 test("persists a pasted image in a standalone Sidebar Page across reload", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     { label: "standalone-page-files", scenarioId: PAGE_RELOCATION_SCENARIO_ID },
     async ({ application, page, facts }) => {

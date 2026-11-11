@@ -6,7 +6,6 @@ import {
 import { createAgentSmokeDraft, invokeIpc } from "./support/agent-smoke-harness";
 
 test("native window close releases its prepared visualization guest without renderer errors", async () => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({ label: "visualization-window-close" });
   try {
     const page = await harness.launch();

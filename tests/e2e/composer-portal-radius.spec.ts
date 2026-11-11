@@ -80,7 +80,6 @@ async function readRailBorderContinuity(page: Page, artifactPath?: string) {
 }
 
 test("keeps the attached Composer rail rounded independently of the progress pill", async () => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({
     label: "composer-portal-radius",
     prepareAgentRuntime: false,
@@ -128,6 +127,7 @@ test("keeps the attached Composer rail rounded independently of the progress pil
     await expect(row).toBeVisible();
     // First-launch guidance is unrelated to the surface under review.
     const notice = page.getByRole("alert").filter({ hasText: "Global dictation is ready." });
+    // oxlint-disable-next-line nodex/no-explicit-test-timeout -- The optional first-launch notice may never appear before recording.
     await notice.waitFor({ state: "visible", timeout: 8_000 }).catch(() => undefined);
     if (await notice.isVisible()) {
       await notice.getByRole("button", { name: "Dismiss notification" }).click();

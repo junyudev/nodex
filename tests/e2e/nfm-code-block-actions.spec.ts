@@ -51,7 +51,6 @@ async function focusCodeBlockScene(
 }
 
 test("NFM Code Block language and Copy work through the packaged Electron surface", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     { label: "nfm-code-block-language-copy", scenarioId: NFM_CODE_BLOCK_ACTIONS_SCENARIO_ID },
     async ({ application, page, manifest }) => {
@@ -81,7 +80,6 @@ test("NFM Code Block language and Copy work through the packaged Electron surfac
 });
 
 test("NFM Code Block Wrap stays local while Format remains one undo step", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     { label: "nfm-code-block-wrap-format", scenarioId: NFM_CODE_BLOCK_ACTIONS_SCENARIO_ID },
     async ({ application, page, manifest }) => {

@@ -43,7 +43,6 @@ const readEditorCaret = async (editor: Locator) =>
   });
 
 test("searches file contents, filters file types and opens the exact matching caret from Command Palette", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     {
       label: "command-palette-text",

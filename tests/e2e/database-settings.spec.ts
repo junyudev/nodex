@@ -128,7 +128,6 @@ const readSelectorChrome = async (element: Locator) =>
   });
 
 test("Filter and Sort authoring stays inline, typed, draggable, and personally scoped", async () => {
-  test.setTimeout(90_000);
   await withElectronScenario(
     {
       label: "database-inline-filter-sort",

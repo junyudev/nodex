@@ -159,6 +159,31 @@ with a concrete reason; broad file or
 directory suppressions require a scoped config override and an invariant-based
 rationale here.
 
+## Test timing
+
+The warning ratchet covers `*.test.ts`, `*.test.tsx`, `*.spec.ts`, and JS/TS
+helpers in `tests/e2e/`, `tests/fixtures/`, and `src/renderer/test/`. Third-party
+and vendored Agent Runtime sources are excluded.
+
+| Rule                               | Use                                                                                                                                                                                           |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nodex/no-explicit-test-timeout`   | Inherit [shared timeouts](../config/test-timeouts.ts) for test registrations, hooks, Testing Library queries and waits, Vitest waits and polls, and Playwright waits and retrying assertions. |
+| `nodex/no-real-time-wait-in-tests` | Await a signal or observable state. Drive a test clock for timer behavior.                                                                                                                    |
+| `nodex/no-polling-loop-in-tests`   | Await a completion signal or use the runner's retrying assertions.                                                                                                                            |
+| `nodex/no-wall-clock-in-tests`     | Assert on outcomes. Keep elapsed-time budgets in stress test files and dedicated E2E `*-performance.spec.ts` or `*-benchmark.spec.ts` files.                                                  |
+| `nodex/no-test-retries`            | Keep whole-test retries in runner configuration.                                                                                                                                              |
+| `nodex/require-test-skip-reason`   | Explain skips, TODOs, and fixmes in an adjacent comment or the Playwright reason argument.                                                                                                    |
+
+Put a narrow disable immediately above the reported call and explain why
+the exception matters. For example, a short timeout can exercise a timeout
+failure or bound one attempt inside a retrying `toPass`.
+
+```ts
+// oxlint-disable-next-line nodex/no-explicit-test-timeout -- Exercise the timeout error on a condition that stays false.
+const pending = vi.waitUntil(() => false, 100);
+await expect(pending).rejects.toThrow(/timed out/i);
+```
+
 ## Category and override matrix
 
 The root policy is:

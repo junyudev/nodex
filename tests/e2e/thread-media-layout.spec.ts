@@ -11,7 +11,6 @@ import { createAgentSmokeDraft, sendAgentPrompt } from "./support/agent-smoke-ha
 const prompt = "Review the local media layout";
 
 test("renders mixed local media with valid HTML and preserves its controls through completion", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({
     label: "thread-media-layout",
     codex: "empty",

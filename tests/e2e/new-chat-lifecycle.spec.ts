@@ -341,7 +341,6 @@ for (const submission of ["keyboard", "pointer"] as const) {
 }
 
 test("an unversioned host may prove a durable paginated start without enabling optional history", async () => {
-  test.setTimeout(120_000);
   const harness = await createHarness("new-chat-unversioned-history", {
     NODEX_FAKE_CODEX_USER_AGENT: "codex-app-server/0.0.0",
   });

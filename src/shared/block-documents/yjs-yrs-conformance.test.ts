@@ -269,7 +269,7 @@ describe("Yjs/Yrs compatibility", () => {
     expect(semanticXml(roundtrip.getXmlFragment("body"))).toEqual(
       semanticXml(source.getXmlFragment("body")),
     );
-  }, 30_000);
+  });
 
   test("continues editing a rich Page in both engines after a bidirectional round trip", () => {
     const temporaryRoot = mkdtempSync(path.join(tmpdir(), "nodex-yjs-yrs-"));
@@ -305,7 +305,7 @@ describe("Yjs/Yrs compatibility", () => {
     expect(normalizedStateVector(Uint8Array.from(rustAfterThird.state_vector))).toEqual(
       normalizedStateVector(Y.encodeStateVector(yjsDocument)),
     );
-  }, 60_000);
+  });
 
   test("consumes Rust semantic title and stable Block operations as one relative update", () => {
     const temporaryRoot = mkdtempSync(path.join(tmpdir(), "nodex-semantic-operations-"));
@@ -386,7 +386,7 @@ describe("Yjs/Yrs compatibility", () => {
     expect(normalizedStateVector(Uint8Array.from(summary.stateVectorV1))).toEqual(
       normalizedStateVector(Y.encodeStateVector(consumer)),
     );
-  }, 60_000);
+  });
 
   test("consumes a Rust exact Markdown body replacement and rich title atomically", () => {
     const temporaryRoot = mkdtempSync(path.join(tmpdir(), "nodex-markdown-patch-"));
@@ -430,7 +430,7 @@ describe("Yjs/Yrs compatibility", () => {
     expect(normalizedStateVector(Uint8Array.from(summary.stateVectorV1))).toEqual(
       normalizedStateVector(Y.encodeStateVector(consumer)),
     );
-  }, 60_000);
+  });
 
   test("consumes a Rust portable subtree copy with remapped nested identities", () => {
     const temporaryRoot = mkdtempSync(path.join(tmpdir(), "nodex-subtree-copy-"));
@@ -450,7 +450,7 @@ describe("Yjs/Yrs compatibility", () => {
     expect(normalizedStateVector(Uint8Array.from(summary.stateVectorV1))).toEqual(
       normalizedStateVector(Y.encodeStateVector(consumer)),
     );
-  }, 60_000);
+  });
 
   test("round-trips every registered Block and inline shape with exact XML tags", () => {
     const temporaryRoot = mkdtempSync(path.join(tmpdir(), "nodex-yjs-yrs-matrix-"));
@@ -511,7 +511,7 @@ describe("Yjs/Yrs compatibility", () => {
     expect(normalizedStateVector(Uint8Array.from(rustAfterThird.state_vector))).toEqual(
       normalizedStateVector(Y.encodeStateVector(yjsDocument)),
     );
-  }, 60_000);
+  });
 
   test("exchanges ephemeral Awareness state in both directions", () => {
     const temporaryRoot = mkdtempSync(path.join(tmpdir(), "nodex-yjs-yrs-awareness-"));
@@ -532,7 +532,7 @@ describe("Yjs/Yrs compatibility", () => {
     expect(remoteAwareness.getStates().get(rust.client_id)).toEqual(rust.state);
     expect(remoteAwareness.getStates().size).toBe(2);
     remoteAwareness.destroy();
-  }, 60_000);
+  });
 
   test("preserves randomized UTF-16 insert delete and format properties bidirectionally", () => {
     const temporaryRoot = mkdtempSync(path.join(tmpdir(), "nodex-yjs-yrs-properties-"));
@@ -587,5 +587,5 @@ describe("Yjs/Yrs compatibility", () => {
         `Yrs-to-Yjs seed ${summary.seed}`,
       ).toEqual(oracle);
     }
-  }, 60_000);
+  });
 });

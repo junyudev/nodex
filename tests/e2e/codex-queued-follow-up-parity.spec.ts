@@ -108,7 +108,6 @@ const sendNow = async (page: Page, prompt: string): Promise<void> => {
 };
 
 test("persists an interrupted queue across restart and sends the chosen message before the rest", async () => {
-  test.setTimeout(120_000);
   const harness = await createQueueHarness("codex-queued-follow-up-restart");
 
   try {
@@ -144,7 +143,6 @@ test("persists an interrupted queue across restart and sends the chosen message 
 });
 
 test("holds the rest of the queue after a message fails until it is resumed", async () => {
-  test.setTimeout(120_000);
   const failedPrompt = "First queued follow-up";
   const laterPrompt = "Second queued follow-up";
   const harness = await createQueueHarness("codex-queued-follow-up-failure", {

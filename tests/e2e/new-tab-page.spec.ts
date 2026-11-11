@@ -6,7 +6,6 @@ import {
 } from "../../scripts/scenarios/scenarios/landing-showcase";
 
 test("replaces Project New tabs with Pages and keeps the action menu on right-click", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     {
       label: "new-tab-page",
@@ -124,7 +123,6 @@ test("replaces Project New tabs with Pages and keeps the action menu on right-cl
 });
 
 test("creates a chat's New page where the chat works and links it to the chat", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     {
       label: "new-tab-session-page",

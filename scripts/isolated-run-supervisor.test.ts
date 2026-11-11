@@ -25,6 +25,7 @@ const RUN_A = "11111111-1111-4111-8111-111111111111";
 const createdHomes: string[] = [];
 
 const runSupervisor = (input: Parameters<typeof superviseIsolatedRun>[0]) =>
+  // oxlint-disable-next-line nodex/no-manual-effect-runtime-in-tests -- The supervisor contract starts a standalone process scope and tests how it shuts down.
   Effect.runPromise(superviseIsolatedRun(input));
 
 const GENERATION: components["schemas"]["RuntimeGenerationIdentity"] = {

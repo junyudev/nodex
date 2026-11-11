@@ -46,7 +46,6 @@ async function composeWithBackspace(page: Page): Promise<void> {
 }
 
 test("Backspace inside an IME composition on a new line keeps and saves the composed text", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     { label: "nfm-ime-composition", scenarioId: BOARD_DENSE_SCENARIO_ID },
     async ({ page, seed, manifest }) => {

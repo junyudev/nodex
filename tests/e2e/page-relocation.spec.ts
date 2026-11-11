@@ -24,7 +24,6 @@ const openSourcePageMenu = async (page: Page, pageId: string): Promise<void> => 
 };
 
 test("moves a Database Page across Projects and undoes the relocation", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     {
       label: "page-relocation",
@@ -82,7 +81,6 @@ test("moves a Database Page across Projects and undoes the relocation", async ({
 });
 
 test("moves a Sidebar Page into a Database and restores its Library position", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     {
       label: "sidebar-page-relocation",
@@ -124,7 +122,6 @@ test("moves a Sidebar Page into a Database and restores its Library position", a
 });
 
 test("shows Reorder only when its startup feature is enabled", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     {
       label: "database-page-reorder-gate",

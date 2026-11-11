@@ -466,5 +466,4 @@ it.effect(
         expect((yield* online.service.ensureOpen(target))?.id).toBe(session!.id);
       }),
     ),
-  { timeout: 60_000 },
 );

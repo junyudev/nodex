@@ -23,7 +23,6 @@ const fileEvidence = (filePath: string) => {
 };
 
 test("isolates Profile settings without replacing the launcher HOME", async () => {
-  test.setTimeout(90_000);
   const executablePath = process.env.NODEX_E2E_PACKAGED_EXECUTABLE;
   const externalHome = fs.mkdtempSync(path.join(os.tmpdir(), "ndx-settings-home-"));
   const externalConfigPath = path.join(externalHome, ".nodex", "config.toml");

@@ -53,7 +53,6 @@ const measureHoverToVisible = async (trigger: Locator, expectedText: string) => 
 };
 
 test("shows skills, memory citations, and automatic review details for a completed response", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({
     label: "footer-metadata",
     prepareAgentRuntime: false,

@@ -180,6 +180,7 @@ test("completion notifications show the ended Run's reply and open its Session",
       });
     });
     const notice = page.getByRole("alert").filter({ hasText: "Global dictation is ready." });
+    // oxlint-disable-next-line nodex/no-explicit-test-timeout -- The optional first-launch notice may never appear before recording.
     await notice.waitFor({ state: "visible", timeout: 8_000 }).catch(() => undefined);
     if (await notice.isVisible())
       await notice.getByRole("button", { name: "Dismiss notification" }).click();

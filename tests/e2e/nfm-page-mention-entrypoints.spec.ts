@@ -56,7 +56,6 @@ const waitForMentionOrFailure = async (page: Page, mention: Locator): Promise<vo
 };
 
 test("opens an empty-query Page destination flow and resumes the mention session", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     {
       label: "nfm-empty-page-mention-destination",
@@ -95,7 +94,6 @@ test("opens an empty-query Page destination flow and resumes the mention session
 });
 
 test("opens Page Stage references in the invoking tab group", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     {
       label: "nfm-page-stage-reference-tab-group",
@@ -139,7 +137,6 @@ test("opens Page Stage references in the invoking tab group", async () => {
 });
 
 test("creates Page mentions atomically under current and chosen parent Pages", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     {
       label: "nfm-page-mention-entrypoints",

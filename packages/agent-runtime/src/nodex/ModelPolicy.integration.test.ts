@@ -149,7 +149,6 @@ it.live(
         expect(String(utility)).toContain("off");
       }).pipe(Effect.provide(Application.layer({ home, cwd: home, providers }, () => Effect.void)));
     }).pipe(Effect.provide(NodeServices.layer)),
-  30_000,
 );
 
 it.live(
@@ -194,5 +193,4 @@ it.live(
         ),
       );
     }).pipe(Effect.provide(NodeServices.layer)),
-  30_000,
 );

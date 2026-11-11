@@ -355,7 +355,6 @@ describe("selected Block presentation in Chromium", () => {
         editor._tiptapEditor.destroy();
       }
     },
-    20_000,
   );
 
   test("ignores a stale React NodeView selection class after text selection moves away", async () => {

@@ -18,12 +18,7 @@ const RUN_A = "11111111-1111-4111-8111-111111111111";
 const RUN_B = "22222222-2222-4222-8222-222222222222";
 
 const waitUntil = async (predicate: () => boolean, message: string): Promise<void> => {
-  const deadline = Date.now() + 10_000;
-  while (Date.now() < deadline) {
-    if (predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(message);
+  await expect.poll(predicate, { message }).toBe(true);
 };
 
 describe("isolated run Core lifecycle", () => {

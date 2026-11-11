@@ -243,4 +243,4 @@ test("App Store Connect calls survive a dropped connection", async () => {
   } finally {
     globalThis.fetch = realFetch;
   }
-}, 15_000);
+});

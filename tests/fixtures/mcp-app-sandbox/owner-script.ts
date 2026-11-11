@@ -35,7 +35,7 @@ window.addEventListener("message", (event: MessageEvent<unknown>) => {
     return;
   ports.push(...event.ports);
   for (const port of ports) {
-    port.onmessage = (message: MessageEvent<PingReply>) => {
+    port.addEventListener("message", (message: MessageEvent<PingReply>) => {
       const reply = message.data;
       if (reply.type !== "fixture-pong") return;
       const request = pending.get(reply.requestId);
@@ -43,7 +43,7 @@ window.addEventListener("message", (event: MessageEvent<unknown>) => {
       pending.delete(reply.requestId);
       clearTimeout(request.timer);
       request.resolve(reply);
-    };
+    });
     port.start();
   }
   owner.fixtureState.handshake = true;
@@ -57,6 +57,7 @@ owner.pingFixturePorts = () =>
       (port) =>
         new Promise<PingReply>((resolve, reject) => {
           const requestId = ++sequence;
+          // oxlint-disable-next-line nodex/no-real-time-wait-in-tests -- Reject a hung port request while successful requests resolve on the reply event.
           const timer = setTimeout(() => {
             pending.delete(requestId);
             reject(new Error("Native fixture port stopped responding"));

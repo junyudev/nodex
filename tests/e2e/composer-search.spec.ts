@@ -6,7 +6,6 @@ import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenario
 import { createAgentSmokeDraft } from "./support/agent-smoke-harness";
 
 test("keeps native search sessions responsive and discovers live skill changes", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({
     label: "composer-search",
     prepareAgentRuntime: false,

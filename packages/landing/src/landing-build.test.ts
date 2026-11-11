@@ -44,7 +44,7 @@ async function buildSite(root: string, outDir: string) {
   });
 }
 
-beforeAll(() => buildSite(landingRoot, outputDir), 60_000);
+beforeAll(() => buildSite(landingRoot, outputDir));
 
 afterAll(() => {
   rmSync(outputDir, { force: true, recursive: true });
@@ -92,7 +92,7 @@ test("builds independently of unrelated ancestor TypeScript projects", async () 
   } finally {
     rmSync(parent, { recursive: true, force: true });
   }
-}, 60_000);
+});
 
 test("the static build emits each public page with its canonical URL", () => {
   for (const [route, heading] of [

@@ -231,6 +231,7 @@ test("benchmarks native paginated history without running a model Turn", async (
     process.platform !== "darwin" || process.arch !== "arm64",
     "The paired evidence targets the arm64 macOS development stage",
   );
+  // oxlint-disable-next-line nodex/no-explicit-test-timeout -- The benchmark replays and measures a large native transcript in Electron.
   test.setTimeout(360_000);
   const corpusDirectory = process.env.NODEX_NATIVE_TRANSCRIPT_CORPUS_DIR;
   if (!corpusDirectory)

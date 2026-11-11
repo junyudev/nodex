@@ -1,4 +1,4 @@
-import type { ESTree } from "@oxlint/plugins";
+import type { Context, ESTree, Scope } from "@oxlint/plugins";
 
 type ExpressionWrapper =
   | ESTree.ChainExpression
@@ -50,3 +50,31 @@ export const getPropertyName = (node: unknown): string | null => {
 
 export const isIdentifier = (node: AstNode | null, name: string): boolean =>
   node?.type === "Identifier" && node.name === name;
+
+export const memberName = (node: ESTree.MemberExpression): string | null =>
+  node.computed && node.property.type !== "Literal" ? null : getPropertyName(node.property);
+
+export function bindingVariable(context: Context, node: ESTree.Node) {
+  if (node.type !== "Identifier") return null;
+  let scope: Scope | null = context.sourceCode.getScope(node);
+  while (scope) {
+    const variable = scope.set.get(node.name);
+    if (variable) return variable;
+    scope = scope.upper;
+  }
+  return null;
+}
+
+export const bindingDefinition = (context: Context, node: ESTree.Node) =>
+  bindingVariable(context, node)?.defs[0] ?? null;
+
+export function importedBinding(context: Context, node: ESTree.Node) {
+  const definition = bindingDefinition(context, node);
+  if (definition?.type !== "ImportBinding" || definition.parent?.type !== "ImportDeclaration")
+    return null;
+  return {
+    source: definition.parent.source.value,
+    name:
+      definition.node.type === "ImportSpecifier" ? getPropertyName(definition.node.imported) : "*",
+  };
+}

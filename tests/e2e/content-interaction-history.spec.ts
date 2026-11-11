@@ -11,7 +11,6 @@ import { dragBlockFromEditorWithMouse } from "./support/drag-block-with-mouse";
 import { openBoardPageFromCard } from "./support/open-board-page";
 
 test("undoes native promotion immediately and interleaves editor changes in interaction order", async () => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({ label: "content-interaction-history" });
   const modifier = process.platform === "darwin" ? "Meta" : "Control";
   try {

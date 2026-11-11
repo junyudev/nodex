@@ -43,7 +43,6 @@ const openVoice = async (page: Page): Promise<void> => {
 };
 
 test("transcribes a selected WebM into Voice history without microphone access", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   // Synthetic 440 Hz tone, generated once with:
   // ffmpeg -f lavfi -i sine=frequency=440:sample_rate=48000:duration=0.25 -ac 1 -c:a libopus -b:a 32k -f webm dictation-tone.webm
   const originalBytes = Array.from(

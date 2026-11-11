@@ -8,7 +8,6 @@ import { createUuidV7 } from "../../src/shared/uuid-v7";
 import { fileSource } from "../../src/shared/file-resources";
 
 test("opening Pages preserves their committed document heads until a content edit", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     { label: "page-open-without-edit", scenarioId: BOARD_DENSE_SCENARIO_ID },
     async ({ page, seed, manifest }) => {
@@ -92,7 +91,6 @@ test("opening Pages preserves their committed document heads until a content edi
 });
 
 test("keeps Page description editing and history live across creation and retained view remounts", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     { label: "editor-resource-lifetimes", scenarioId: BOARD_DENSE_SCENARIO_ID },
     async ({ page }) => {

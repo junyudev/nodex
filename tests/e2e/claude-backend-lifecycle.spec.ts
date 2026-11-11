@@ -198,6 +198,7 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
         exact: true,
       });
       if (await expandProject.count()) await expandProject.click({ timeout: 1_000 });
+      // oxlint-disable-next-line nodex/no-explicit-test-timeout -- A failed visibility check needs to retry the project expansion inside toPass.
       await expect(chatRow).toBeVisible({ timeout: 1_000 });
     }).toPass();
     await chatRow.click();

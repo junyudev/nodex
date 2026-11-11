@@ -22,7 +22,6 @@ const bubble = (page: Page, prompt: string) =>
   page.locator("[data-user-message-bubble='true']").filter({ hasText: prompt });
 
 test("two windows share an Agent chat's queue, Stop and Main commands, then continue after one closes", async () => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({
     label: "conversation-two-window-handoff",
     prepareAgentRuntime: false,

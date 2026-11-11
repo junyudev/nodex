@@ -25,7 +25,6 @@ const connection = (page: Page) => invoke(page, "agent-runtime:connection:read")
 
 // A launch that has nothing to resume must cost no execution process, even after a short session.
 test("relaunching a quiet Profile lists models without starting execution", async () => {
-  test.setTimeout(120_000);
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-runtime-quiet-launch-"));
   const codex = path.join(fixture, "codex");
   const body = fs

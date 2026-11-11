@@ -44,7 +44,6 @@ async function openNfmScene(
 }
 
 test("Equation and Mermaid survive the public Core-to-Electron document path", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     { label: "nfm-equation-and-mermaid", scenarioId: NFM_EQUATION_AND_MERMAID_SCENARIO_ID },
     async ({ application, page, manifest }) => {
@@ -135,7 +134,6 @@ test("Equation and Mermaid survive the public Core-to-Electron document path", a
 });
 
 test("Page Stage preserves its viewport across remount and delayed Block layout", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     { label: "page-stage-viewport", scenarioId: NFM_EQUATION_AND_MERMAID_SCENARIO_ID },
     async ({ application, page, manifest }) => {

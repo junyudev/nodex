@@ -201,7 +201,7 @@ Each runtime has its own runner; the wrong one fails, or passes, for the wrong r
 
 - Test behavior and domain contracts, not implementation. Avoid source-string checks, long `className` matching, and broad `textContent.includes(...)` unless the string is a real user-visible or accessibility contract.
 - Renderer tests are act-clean: an `act(...)` warning is a failing test. Prefer awaited Testing Library patterns. Wrap low-level events, timers, and gestures in `await act(async () => { ...; await Promise.resolve(); })`, then await the observable outcome, and release gestures in `try/finally`.
-- Let positive waits inherit the deliberately generous defaults in [test-timeouts.ts](config/test-timeouts.ts). Use an explicit short timeout only when the wait is expected to time out.
+- Let positive waits inherit [shared timeouts](config/test-timeouts.ts). Await observable outcomes and use a test clock for timing behavior. See [test timing lint](docs/LINTING.md#test-timing) for the rules and inline exceptions.
 - Renderer seams and conventions live in `docs/FRONTEND.md`; scenario consumers, fixture classes, and evidence boundaries live in `docs/development.md`.
 
 ### Real data

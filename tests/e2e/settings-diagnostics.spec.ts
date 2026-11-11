@@ -76,7 +76,6 @@ const holdReviewFrame = async (page: Page) => {
 };
 
 test("renders and toggles App server diagnostics in General settings", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const artifacts =
     process.env.NODEX_SETTINGS_DIAGNOSTICS_ARTIFACT_DIR ??
     testInfo.outputPath("settings-diagnostics-review");

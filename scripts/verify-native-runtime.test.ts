@@ -1,5 +1,5 @@
 import { writePackagedStockNodeFixture } from "./testing/packaged-stock-node-fixture";
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";

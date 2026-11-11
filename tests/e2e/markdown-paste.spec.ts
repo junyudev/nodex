@@ -19,7 +19,6 @@ const primaryShortcut = (key: string): string =>
   `${process.platform === "darwin" ? "Meta" : "Control"}+${key}`;
 
 test("the Page editor pastes plain text as line Blocks and Markdown as structured Blocks", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     { label: "markdown-paste-page", scenarioId: null, prepareAgentRuntime: false },
     async ({ application, page, profile }) => {
@@ -66,7 +65,6 @@ test("the Page editor pastes plain text as line Blocks and Markdown as structure
 });
 
 test("the chat Composer pastes rich text with every line it shows", async () => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({
     label: "markdown-paste-chat",
     prepareAgentRuntime: false,
@@ -98,7 +96,6 @@ test("the chat Composer pastes rich text with every line it shows", async () => 
 });
 
 test("the Inbox Composer pastes rich text as its Markdown and sends every line", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     { label: "markdown-paste-inbox", scenarioId: null },
     async ({ application, page }) => {

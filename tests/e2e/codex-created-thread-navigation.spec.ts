@@ -29,7 +29,6 @@ interface NativeRecord {
 }
 
 test("opens the chat an Agent created from its row, once, in the chat it started", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-created-chat-"));
   const codex = path.join(fixture, "codex");
   const body = fs

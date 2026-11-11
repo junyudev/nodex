@@ -42,9 +42,7 @@ test("the real Desktop binds plain nodex to its connected Profile and task Proje
     const send = page.getByRole("button", { name: "Send prompt", exact: true });
     await expect(async () => {
       await composer.fill("Hold the active turn for CLI context verification");
-      await expect(composer).toHaveText("Hold the active turn for CLI context verification", {
-        timeout: 1_000,
-      });
+      await expect(composer).toHaveText("Hold the active turn for CLI context verification");
       await expect(send).toBeEnabled({ timeout: 1_000 });
     }).toPass();
     await send.click();

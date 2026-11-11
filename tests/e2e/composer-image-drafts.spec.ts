@@ -13,7 +13,6 @@ const PNG = Buffer.from(
 );
 
 test("a chat draft keeps its pasted image across a reload, and it opens to view before edit", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const artifacts =
     process.env.NODEX_MESSAGE_CONTENT_ARTIFACT_DIR ?? testInfo.outputPath("composer-image-drafts");
   await mkdir(artifacts, { recursive: true });

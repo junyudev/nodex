@@ -118,4 +118,4 @@ test("initialization prepares identity without listening and the native lease fe
     await new Promise<void>((resolve) => reserved.close(() => resolve()));
     await rm(root, { recursive: true, force: true });
   }
-}, 60_000);
+});

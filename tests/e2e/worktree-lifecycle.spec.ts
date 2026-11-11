@@ -241,7 +241,6 @@ async function sendWorktreeChat(
 }
 
 test("a worktree that cannot be prepared offers Retry and Work locally, and runs locally", async () => {
-  test.setTimeout(120_000);
   const harness = await createWorktreeHarness("worktree-failure");
   let fixtureRoot: string | undefined;
   try {
@@ -296,7 +295,6 @@ test("a worktree that cannot be prepared offers Retry and Work locally, and runs
 });
 
 test("creates a new-worktree chat through the Composer and runs it there", async () => {
-  test.setTimeout(120_000);
   const harness = await createWorktreeHarness("worktree-composer");
   let fixtureRoot: string | undefined;
   try {

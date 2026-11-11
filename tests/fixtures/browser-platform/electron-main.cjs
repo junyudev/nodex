@@ -7,7 +7,7 @@ if (process.env.NODEX_BROWSER_INTEGRATION_USER_DATA) {
   app.setPath("userData", process.env.NODEX_BROWSER_INTEGRATION_USER_DATA);
 }
 
-app.whenReady().then(async () => {
+void app.whenReady().then(async () => {
   const browserSession = session.fromPartition(browserPartition);
   const shouldGrantPermission = (permission, details) =>
     details.isMainFrame === true

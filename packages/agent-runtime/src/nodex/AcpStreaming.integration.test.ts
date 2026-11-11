@@ -183,5 +183,4 @@ it.live.each(["v1", "v2"])(
         ),
       );
     }).pipe(Effect.provide(NodeServices.layer)),
-  30_000,
 );

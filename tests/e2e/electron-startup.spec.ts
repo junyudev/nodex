@@ -91,7 +91,6 @@ async function expectCanonicalStartup(harness: ElectronScenarioHarness): Promise
 }
 
 test("keeps one canonical window from branded frame through Workbench", async () => {
-  test.setTimeout(120_000);
   // The app's Dock presence is under test, so its window is a real foreground window.
   const harness = await ElectronScenarioHarness.create({
     label: "canonical-startup-window",
@@ -101,7 +100,6 @@ test("keeps one canonical window from branded frame through Workbench", async ()
 });
 
 test("keeps the packaged window identity through startup", async () => {
-  test.setTimeout(120_000);
   const executablePath = process.env.NODEX_E2E_PACKAGED_EXECUTABLE;
   test.skip(!executablePath, "NODEX_E2E_PACKAGED_EXECUTABLE is not configured");
   const harness = await ElectronScenarioHarness.create({
@@ -114,7 +112,6 @@ test("keeps the packaged window identity through startup", async () => {
 });
 
 test("publishes execution readiness for its isolated host after scrubbing the run token", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     {
       scenarioId: null,

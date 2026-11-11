@@ -27,7 +27,6 @@ interface LogEntry {
 }
 
 test("two windows keep an Agent chat going after its Codex process exits", async () => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({
     label: "conversation-agent-reconnect",
     prepareAgentRuntime: false,

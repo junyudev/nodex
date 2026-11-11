@@ -269,7 +269,6 @@ test.skipIf(process.platform === "win32")(
       await rm(root, { recursive: true, force: true });
     }
   },
-  15_000,
 );
 
 test.skipIf(process.platform === "win32").each(["exit", "timeout", "cancel"] as const)(
@@ -332,5 +331,4 @@ test.skipIf(process.platform === "win32").each(["exit", "timeout", "cancel"] as 
       await rm(root, { recursive: true, force: true });
     }
   },
-  15_000,
 );

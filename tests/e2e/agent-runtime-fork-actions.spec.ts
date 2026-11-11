@@ -156,6 +156,7 @@ for (const kind of ["claude", "opencode"] as const) {
           await search.fill("Kimi K3", { timeout: 1_000 });
           // Paid OpenCode models start off; search finds one and choosing it turns it on.
           await page.getByRole("option", { name: /Kimi K3.*OpenCode/u }).click({ timeout: 1_000 });
+          // oxlint-disable-next-line nodex/no-explicit-test-timeout -- Keep each toPass attempt short enough to reopen a picker replaced by a catalog update.
           await expect(search).toBeHidden({ timeout: 1_000 });
         }).toPass({ timeout: 30_000 });
       }

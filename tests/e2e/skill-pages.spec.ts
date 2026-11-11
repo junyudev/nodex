@@ -12,7 +12,6 @@ import {
 import { invokeIpc } from "./support/editor-scenario";
 
 test("opens and edits skills in their Project folders", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     {
       label: SKILLS_PAGES_SCENARIO_ID,

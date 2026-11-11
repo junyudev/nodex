@@ -207,7 +207,6 @@ const installStreamService = async () => {
 };
 
 test("streams, cancels and inserts dictation regardless of the remote streaming gate", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const launcher = testInfo.outputPath("electron-fake-media.sh");
   await mkdir(path.dirname(launcher), { recursive: true });
   const executable = createRequire(path.join(process.cwd(), "package.json"))("electron") as string;

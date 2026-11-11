@@ -163,7 +163,7 @@ describe("Nodex per-Turn CLI connection", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
   test("names the chat whose Agent attached a Page File through the CLI", async () => {
     const root = await mkdtemp(join(tmpdir(), "nodex attribution ' "));
     try {
@@ -250,7 +250,7 @@ describe("Nodex per-Turn CLI connection", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   test("withholds the connection outside verified local execution and when artifacts are missing", async () => {
     for (const [override, reason] of [

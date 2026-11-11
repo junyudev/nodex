@@ -1,6 +1,12 @@
-import { defineRule, type Context, type ESTree, type Scope } from "@oxlint/plugins";
+import { defineRule, type Context, type ESTree } from "@oxlint/plugins";
 import { dirname, resolve } from "node:path";
-import { getPropertyName, unwrapExpression } from "../utils.ts";
+import {
+  bindingVariable,
+  getPropertyName,
+  importedBinding,
+  memberName,
+  unwrapExpression,
+} from "../utils.ts";
 
 const TEST_FILE_PATTERN = /\.(?:test|spec|test-support)\.[cm]?[jt]sx?$/u;
 const ACT_MODULES = new Set([
@@ -18,38 +24,6 @@ const SHARED_RENDER_FACTORIES = new Map([
   ["/src/renderer/test/thread-maitai", "renderWithMaitai"],
   ["/src/renderer/test/dom", "render"],
 ]);
-
-const memberName = (node: ESTree.MemberExpression): string | null =>
-  node.computed && node.property.type !== "Literal" ? null : getPropertyName(node.property);
-
-const bindingVariable = (context: Context, node: ESTree.Node) => {
-  if (node.type !== "Identifier") return null;
-  let scope: Scope | null = context.sourceCode.getScope(node);
-  while (scope) {
-    const variable = scope.set.get(node.name);
-    if (!variable) {
-      scope = scope.upper;
-      continue;
-    }
-    return variable;
-  }
-  return null;
-};
-
-const bindingDefinition = (context: Context, node: ESTree.Node) =>
-  bindingVariable(context, node)?.defs[0] ?? null;
-
-/** Resolve the actual import so local functions and shadowed act parameters stay legal. */
-const importedBinding = (context: Context, node: ESTree.Node) => {
-  const definition = bindingDefinition(context, node);
-  if (definition?.type !== "ImportBinding" || definition.parent?.type !== "ImportDeclaration")
-    return null;
-  return {
-    source: definition.parent.source.value,
-    name:
-      definition.node.type === "ImportSpecifier" ? getPropertyName(definition.node.imported) : "*",
-  };
-};
 
 const importedOperation = (context: Context, node: ESTree.Node) => {
   const expression = unwrapExpression(node);

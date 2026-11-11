@@ -90,7 +90,6 @@ const invoke = async <Result>(page: Page, channel: string, ...args: unknown[]): 
   )) as Result;
 
 test("runs a chat on an ACP agent and continues its protocol session after restart", async () => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({ label: "acp-backend-lifecycle" });
   const observationPath = path.join(harness.profile.runRoot, "scripted-acp-observations.json");
   const secondObservationPath = path.join(
@@ -324,7 +323,6 @@ test("runs a chat on an ACP agent and continues its protocol session after resta
 });
 
 test("ACP clock Automations preserve their instance through new chats, Page-linked Heartbeat and disabled admission", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     { label: "acp-automation", scenarioId: "agent/cli-workflow" },
     async ({ page, profile, manifest }) => {

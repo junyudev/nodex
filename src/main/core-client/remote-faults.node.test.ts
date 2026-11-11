@@ -236,7 +236,7 @@ test("cancelling the first renewal waiter cannot cancel another Member request s
       await proxy.close();
     }
   });
-}, 60_000);
+});
 
 test("lost Work, Inbox and question responses retain Member receipts and exactly one launch or delivery", async () => {
   await withCoreScenario({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }, async (scenario) => {
@@ -680,7 +680,7 @@ test("a black-holed pinned TLS handshake returns a typed timeout and releases it
       await proxy.close();
     }
   });
-}, 30_000);
+});
 
 test("shared HTTPS reads keep surviving callers and release the socket after the last caller cancels", async () => {
   await withCoreScenario({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }, async (scenario) => {
@@ -756,4 +756,4 @@ test("shared HTTPS reads keep surviving callers and release the socket after the
       await proxy.close();
     }
   });
-}, 30_000);
+});

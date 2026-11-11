@@ -30,12 +30,7 @@ const waitUntil = async (
   predicate: () => boolean | Promise<boolean>,
   message: string,
 ): Promise<void> => {
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    if (await predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(message);
+  await expect.poll(predicate, { message }).toBe(true);
 };
 
 const processExists = (pid: number): boolean => {

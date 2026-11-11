@@ -273,7 +273,6 @@ test("small upward wheels retain the reading position through tool resize, compl
 });
 
 test("answered questions remain before their replies and later Markdown after Scene restore", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const fixture = await createScrollHarness(true);
   const { harness } = fixture;
   const artifacts = process.env.NODEX_THREAD_SCROLL_ARTIFACT_DIR;

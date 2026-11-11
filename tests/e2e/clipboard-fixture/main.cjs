@@ -6,7 +6,7 @@ app.setPath("userData", process.env.NODEX_CLIPBOARD_TEST_HOME);
 app.clipboardBridge = require(
   path.join(process.cwd(), ".generated", "clipboard-runtime", process.arch, "nodex-clipboard.node"),
 );
-app.whenReady().then(() => {
+void app.whenReady().then(() => {
   const window = new BrowserWindow({
     width: 640,
     height: 400,

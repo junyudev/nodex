@@ -25,7 +25,6 @@ const silentWave = () => {
 };
 
 test("reads message media through its native source and preserves it when streaming completes", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({
     label: "conversation-media-native-source",
     codex: "empty",

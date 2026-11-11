@@ -315,7 +315,6 @@ for (const { rendererCpuRate, unversioned } of [
 }
 
 test("runs a real shell tool through the scripted model boundary", async () => {
-  test.setTimeout(120_000);
   const token = randomUUID();
   const promptMarker = `SCRIPTED_FILE_PROMPT_${token}`;
   const finalMarker = `SCRIPTED_FILE_OK_${token}`;
@@ -1461,12 +1460,10 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
 };
 
 test("opens a loopback page through the real in-app Browser runtime", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   await runScriptedBrowserTurn(testInfo);
 });
 
 test("opens the real in-app Browser without contacting another desktop host's access endpoint", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   // macOS Unix-domain socket paths must stay below roughly 104 bytes.
   const socketDirectory = fs.mkdtempSync("/tmp/nodex-access-");
   const socketPath = path.join(socketDirectory, "access.sock");
@@ -1540,7 +1537,6 @@ NODE_REPL_TRUSTED_SERVICES = ${JSON.stringify(JSON.stringify({ browser: path.joi
 });
 
 test("keeps a real collaboration subagent Active until completion, then converges to Done", async () => {
-  test.setTimeout(120_000);
   const token = randomUUID();
   const promptMarker = `SCRIPTED_SUBAGENT_PROMPT_${token}`;
   const childPromptMarker = `SCRIPTED_SUBAGENT_CHILD_${token}`;

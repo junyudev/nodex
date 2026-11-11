@@ -50,7 +50,6 @@ async function startQuestionScenario(harness: ElectronScenarioHarness) {
 }
 
 test("answers optional questions while the Agent continues and keeps the ordinary Composer usable", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const harness = await createQuestionHarness();
   try {
     const page = await startQuestionScenario(harness);
@@ -153,7 +152,6 @@ test("answers optional questions while the Agent continues and keeps the ordinar
 });
 
 test("restores an optional answer draft after Stop and application restart", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const harness = await createQuestionHarness();
   try {
     let page = await startQuestionScenario(harness);
@@ -222,7 +220,6 @@ test("keeps unanswered questions visible after a final reply and panel dismissal
 });
 
 test("preserves private questions and custom-answer restrictions through Agent execution", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const harness = await createQuestionHarness({
     NODEX_FAKE_CODEX_ASYNC_QUESTIONS: "0",
     NODEX_FAKE_CODEX_SYNC_QUESTIONS: "1",

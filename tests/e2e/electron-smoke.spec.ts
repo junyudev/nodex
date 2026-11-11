@@ -839,7 +839,6 @@ test.describe("parallel functional Electron smoke", () => {
   test.describe.configure({ mode: process.env.CI ? "parallel" : "default" });
 
   test("preserves a structural clipboard capability through native paste", async () => {
-    test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "structural-clipboard-paste" });
     const digest = "a".repeat(64);
     try {
@@ -1891,7 +1890,6 @@ test.describe("parallel functional Electron smoke", () => {
   });
 
   test("New Chat reuses its default draft and opens a pre-thread Terminal", async () => {
-    test.setTimeout(120_000);
     // This types at the first prompt, so the account's startup files must not ask anything first.
     const startupDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-terminal-startup-"));
     const harness = await ElectronScenarioHarness.create({
@@ -1966,7 +1964,6 @@ test.describe("parallel functional Electron smoke", () => {
   });
 
   test("creates and draws in an inline Canvas without taking over the Page", async () => {
-    test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "canvas" });
     const workspace = harness.profile.projectsDirectory;
     try {
@@ -2120,7 +2117,6 @@ test.describe("parallel functional Electron smoke", () => {
   });
 
   test("converges a Move to operation in the live standalone Pages projection", async () => {
-    test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "move-convergence" });
     const workspace = harness.profile.projectsDirectory;
     try {
@@ -2201,7 +2197,6 @@ test.describe("parallel functional Electron smoke", () => {
   });
 
   test("creates one stable Board Page and edits its grouping Property @create-modal-smoke @property-menu-smoke", async () => {
-    test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "create-modal" });
     const workspace = harness.profile.projectsDirectory;
     try {
@@ -2439,7 +2434,6 @@ test.describe("parallel functional Electron smoke", () => {
   });
 
   test("converges a Block transfer into the live Board Page projection", async () => {
-    test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "board-convergence" });
     const workspace = harness.profile.projectsDirectory;
     try {
@@ -2527,7 +2521,6 @@ test.describe("parallel functional Electron smoke", () => {
   });
 
   test("keeps the Page editor mounted while its Document commits", async () => {
-    test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "page-edit" });
     const workspace = harness.profile.projectsDirectory;
     try {
@@ -2650,7 +2643,6 @@ test.describe("parallel functional Electron smoke", () => {
   });
 
   test("keeps semantic children and Code Tab/Shift-Tab behavior stable across restart @block-children-smoke", async () => {
-    test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "block-children" });
     const workspace = harness.profile.projectsDirectory;
     try {
@@ -2784,7 +2776,6 @@ test.describe("parallel functional Electron smoke", () => {
   });
 
   test("moves selected Blocks to a DB status through the picker @move-picker-smoke", async () => {
-    test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "move-picker" });
     const workspace = harness.profile.projectsDirectory;
     try {
@@ -2874,7 +2865,6 @@ test.describe("parallel functional Electron smoke", () => {
   });
 
   test("reorders an ordinary editor subtree across a Subpage with native DnD @editor-dnd-smoke", async () => {
-    test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "editor-subtree-dnd" });
     const workspace = harness.profile.projectsDirectory;
     try {
@@ -2965,7 +2955,6 @@ test.describe("parallel functional Electron smoke", () => {
   });
 
   test("moves an editor subtree into a collapsed toggle with native DnD @editor-dnd-smoke", async () => {
-    test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "editor-toggle-dnd" });
     const workspace = harness.profile.projectsDirectory;
     try {
@@ -3069,7 +3058,6 @@ test.describe("parallel functional Electron smoke", () => {
   });
 
   test("projects an accepted native Block to Board move by the next frame @instant-dnd", async ({}, testInfo) => {
-    test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "instant-native-dnd" });
     const workspace = harness.profile.projectsDirectory;
     try {
@@ -3305,7 +3293,6 @@ test.describe("parallel functional Electron smoke", () => {
   // the direct typed transfer boundary because they test transaction convergence,
   // not the handle-to-dragover pipeline exercised here.
   test("moves a Block into Board and List views with native DnD @dnd-smoke", async () => {
-    test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "native-dnd" });
     const workspace = harness.profile.projectsDirectory;
     try {
@@ -3565,7 +3552,6 @@ test.describe("parallel functional Electron smoke", () => {
   });
 
   test("promotes an image-bearing Block into Board without cloning its File @page-file-placement", async () => {
-    test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "page-file-placement" });
     const workspace = harness.profile.projectsDirectory;
     try {
@@ -3706,7 +3692,6 @@ test.describe("parallel functional Electron smoke", () => {
   });
 
   test("cuts and pastes a clicked image Block across Windows at sibling depth with stable File identity @page-file-placement", async () => {
-    test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "page-file-exclusive-move" });
     const workspace = harness.profile.projectsDirectory;
     try {
@@ -3980,7 +3965,6 @@ test.describe("parallel functional Electron smoke", () => {
   });
 
   test("opens and pointer-reorders a nested List subtree without changing its internal parent @list-dnd-smoke", async () => {
-    test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "list-dnd" });
     const workspace = harness.profile.projectsDirectory;
     try {

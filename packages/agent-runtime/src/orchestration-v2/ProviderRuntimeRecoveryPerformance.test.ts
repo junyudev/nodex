@@ -484,14 +484,11 @@ const formatTable = (rows: ReadonlyArray<Measurement>) => {
     .join("\n");
 };
 
-it.live(
-  "restart recovery records one continuation per active thread and is idempotent",
-  () =>
-    Effect.gen(function* () {
-      const row = yield* measure({ settled: 500, active: 20 });
-      yield* Console.log(`provider runtime recovery (ms)\n${formatTable([row])}`);
-    }),
-  60_000,
+it.live("restart recovery records one continuation per active thread and is idempotent", () =>
+  Effect.gen(function* () {
+    const row = yield* measure({ settled: 500, active: 20 });
+    yield* Console.log(`provider runtime recovery (ms)\n${formatTable([row])}`);
+  }),
 );
 
 it.live.skipIf(process.env.NODEX_BENCH_RECOVERY !== "1")(

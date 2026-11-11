@@ -11,7 +11,6 @@ import { openNewChatDraft } from "./support/new-chat-draft";
 import { invokeIpc } from "./support/editor-scenario";
 
 test("refocusing the open chat clears its unread dot without changing chats", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-thread-read-state-"));
   const codex = path.join(fixture, "codex");
   const body = fs

@@ -208,5 +208,4 @@ it.live.skipIf(process.platform === "win32")(
       expect(methods.filter((method) => method === "session/prompt")).toHaveLength(1);
       expect(methods).not.toContain("session/new");
     }).pipe(Effect.provide(NodeServices.layer)),
-  30_000,
 );

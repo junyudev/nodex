@@ -9,7 +9,6 @@ import {
 import { dictationDiagnosticsFixture } from "../fixtures/dictation-diagnostics";
 
 test("shows the persisted dictation route and performance evidence in Voice settings", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({ label: "dictation-performance" });
   try {
     const launchWithPolicy = async () => {

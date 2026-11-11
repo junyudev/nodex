@@ -109,7 +109,6 @@ test("keeps native and local state while Nodex login refreshes, survives restart
 });
 
 test("rejects canceled and wrong-state callbacks and retires a revoked Nodex grant", async () => {
-  test.setTimeout(120_000);
   const oauth = await startNodexOAuthHttpFixture();
   const harness = await ElectronScenarioHarness.create({
     label: "nodex-account-callbacks",
@@ -197,6 +196,7 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
       await mkdir(artifacts, { recursive: true });
       await page.getByRole("button", { name: "Back to app", exact: true }).click();
       const setupNotice = page.getByRole("alert").filter({ hasText: "Global dictation is ready." });
+      // oxlint-disable-next-line nodex/no-explicit-test-timeout -- The optional first-launch notice may never appear before recording.
       await setupNotice.waitFor({ state: "visible", timeout: 8_000 }).catch(() => undefined);
       if (await setupNotice.isVisible())
         await setupNotice.getByRole("button", { name: "Dismiss notification" }).click();

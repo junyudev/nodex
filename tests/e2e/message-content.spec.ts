@@ -14,7 +14,6 @@ const SCREENSHOT_PNG = new Uint8Array(
 );
 
 test("an Inbox message shows its Markdown and the images in its Page", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const artifacts =
     process.env.NODEX_MESSAGE_CONTENT_ARTIFACT_DIR ?? testInfo.outputPath("message-content-review");
   await mkdir(artifacts, { recursive: true });
@@ -78,7 +77,6 @@ test("an Inbox message shows its Markdown and the images in its Page", async ({}
 });
 
 test("the Inbox composer sends pasted and picked images ahead of the text", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const artifacts =
     process.env.NODEX_MESSAGE_CONTENT_ARTIFACT_DIR ?? testInfo.outputPath("message-content-review");
   await mkdir(artifacts, { recursive: true });

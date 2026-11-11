@@ -163,5 +163,4 @@ it.live.each(["none", "config"] as const)(
         ),
       );
     }).pipe(Effect.provide(NodeServices.layer)),
-  30_000,
 );

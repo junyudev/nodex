@@ -14,7 +14,6 @@ const primaryShortcut = (key: string): string =>
   `${process.platform === "darwin" ? "Meta" : "Control"}+${key}`;
 
 test("finds old chats across the complete catalog with CJK substrings and typos, then opens the Session", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     {
       label: "chat-search",

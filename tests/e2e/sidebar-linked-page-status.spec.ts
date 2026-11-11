@@ -123,9 +123,7 @@ test("shows the earliest linked Page's Status, opens the Page, and follows live 
         await page.mouse.move(bounds.x + bounds.width / 2 + 4, bounds.y + bounds.height / 2, {
           steps: 3,
         });
-        await expect(doingRow).toHaveAttribute("data-hover-card-state", "open", {
-          timeout: 2_000,
-        });
+        await expect(doingRow).toHaveAttribute("data-hover-card-state", "open");
         await expect(hoverCard).toBeVisible({ timeout: 2_000 });
       }).toPass();
       const linkedPage = hoverCard.locator(

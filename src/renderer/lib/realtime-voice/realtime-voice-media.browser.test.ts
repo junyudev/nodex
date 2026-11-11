@@ -237,4 +237,4 @@ test("carries synthetic buffered audio and string initialization over a local We
     activate.remove();
     await devtools.send("Browser.resetPermissions", { browserContextId });
   }
-}, 25_000);
+});

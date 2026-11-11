@@ -211,5 +211,4 @@ it.live.each([
         }),
       );
     }).pipe(Effect.provide(NodeServices.layer)),
-  30_000,
 );

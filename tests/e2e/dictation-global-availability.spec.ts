@@ -40,7 +40,6 @@ const openVoice = async (page: Page): Promise<void> => {
 };
 
 test("keeps Voice configuration available when dictation capture is disabled", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({ label: "dictation-global-availability" });
   const artifactDirectory =
     process.env.NODEX_DICTATION_GLOBAL_UI_ARTIFACT_DIR ?? testInfo.outputPath("ui-review");

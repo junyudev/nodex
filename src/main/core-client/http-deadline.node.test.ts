@@ -83,4 +83,4 @@ test("an absolute HTTP deadline bounds both a black-holed response and waiting f
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
-}, 5_000);
+});

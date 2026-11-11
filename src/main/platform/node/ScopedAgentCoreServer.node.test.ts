@@ -140,4 +140,4 @@ test("a scoped Agent CLI reads content without Core paths and cannot use Host ad
       await server.close();
     }
   });
-}, 60_000);
+});

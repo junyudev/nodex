@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import {
   materializePortableCanvasScene,
   type CanvasSceneMutationCommandResult,
@@ -200,14 +200,6 @@ const makeProvider = (input: {
   });
 };
 
-const waitForCondition = async (condition: () => boolean): Promise<void> => {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (condition()) return;
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  }
-  throw new Error("Condition was not met");
-};
-
 describe("CanvasSceneProvider", () => {
   test("rejects an outbox bound to another Library", () => {
     expect(() =>
@@ -322,7 +314,7 @@ describe("CanvasSceneProvider", () => {
       generation: 1,
       headSeq: 0,
     });
-    await waitForCondition(() => adapter.calls.filter((call) => call === "sync").length === 2);
+    await vi.waitUntil(() => adapter.calls.filter((call) => call === "sync").length === 2);
 
     expect(presented).toHaveLength(1);
     expect(provider.getStatus().phase).toBe("ready");
@@ -441,11 +433,11 @@ describe("CanvasSceneProvider", () => {
       elementCandidates: [element(2)],
     });
     await submission.durable;
-    await waitForCondition(() => retry.callbacks.length === 1);
+    await vi.waitUntil(() => retry.callbacks.length === 1);
     expect(retry.delays).toEqual([150]);
 
     retry.callbacks.shift()?.();
-    await waitForCondition(() => retry.callbacks.length === 1);
+    await vi.waitUntil(() => retry.callbacks.length === 1);
     expect(retry.delays).toEqual([150, 300]);
 
     adapter.applyError = null;
@@ -472,7 +464,7 @@ describe("CanvasSceneProvider", () => {
     });
     await rejected.durable;
     await expect(rejected.committed).rejects.toThrow("cannot be redefined");
-    await waitForCondition(() => provider.getStatus().phase === "ready");
+    await vi.waitUntil(() => provider.getStatus().phase === "ready");
 
     expect(await outbox.list(routingContext, "document-1")).toEqual([]);
     expect(await outbox.listQuarantined(routingContext, "document-1")).toEqual([
@@ -524,7 +516,7 @@ describe("CanvasSceneProvider", () => {
       clientSessionId: "window-2",
     });
     await second.connect();
-    await waitForCondition(() => secondAdapter.applied.length === 1);
+    await vi.waitUntil(() => secondAdapter.applied.length === 1);
 
     expect(secondAdapter.applied[0]?.clientSessionId).toBe("window-2");
     expect(secondAdapter.applied[0]?.mutationId).toBe(firstAdapter.applied[0]?.mutationId);
@@ -573,7 +565,7 @@ describe("CanvasSceneProvider", () => {
     const first = provider.enqueue({ elementCandidates: [element(2)] });
     await first.durable;
     void first.committed.catch(() => undefined);
-    await waitForCondition(() => retry.callbacks.length === 1);
+    await vi.waitUntil(() => retry.callbacks.length === 1);
 
     const second = provider.enqueue({
       elementCandidates: [
@@ -676,7 +668,7 @@ describe("CanvasSceneProvider", () => {
         scene: scene(1),
       },
     });
-    await waitForCondition(() => provider.getStatus().phase === "ready");
+    await vi.waitUntil(() => provider.getStatus().phase === "ready");
     expect(provider.getStatus().headSeq).toBe(2);
     expect(provider.getScene()?.elements[0]?.version).toBe(3);
     adapter.syncImplementation = null;
@@ -710,7 +702,7 @@ describe("CanvasSceneProvider", () => {
     await provider.connect();
     const submitted = provider.submit({ elementCandidates: [element(2)] });
     provider.flush().catch(() => undefined);
-    await waitForCondition(() => retry.callbacks.length === 1);
+    await vi.waitUntil(() => retry.callbacks.length === 1);
     expect(await outbox.list(routingContext, "document-1")).toHaveLength(1);
     retry.callbacks.shift()?.();
     await submitted;

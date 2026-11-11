@@ -263,7 +263,7 @@ test("clones online execution while its owner keeps writing, without reading pro
       );
     },
   );
-}, 60_000);
+});
 
 test("clones content when the source has never opened an execution store", async ({ signal }) => {
   await withCoreScenario(

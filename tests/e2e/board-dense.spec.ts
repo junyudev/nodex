@@ -325,7 +325,6 @@ const dragDatabasePageToEditorWithMouse = async ({
 };
 
 test("moves Board cards and List rows into NFM as real Page blocks", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     {
       label: "database-view-page-to-editor",
@@ -396,7 +395,6 @@ test("moves Board cards and List rows into NFM as real Page blocks", async () =>
 });
 
 test("round-trips a Board Page through a Subpage without stale presentation", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     {
       label: "database-view-page-to-editor",
@@ -596,7 +594,6 @@ test("round-trips a Board Page through a Subpage without stale presentation", as
 });
 
 test("keeps the canonical Board while grouping and dragging by Priority", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     {
       label: "board-dense-priority-grouping",
@@ -757,7 +754,6 @@ test("keeps the canonical Board while grouping and dragging by Priority", async 
 });
 
 test("opens an unopened Page with Enter from Command Palette", async ({}, testInfo) => {
-  test.setTimeout(60_000);
   await withElectronScenario(
     {
       label: "board-dense-command-palette-page",
@@ -888,7 +884,6 @@ test("creates a new collaborative Page Block with Enter", async () => {
 });
 
 test("materializes and opens the authoritative board/dense environment", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     {
       label: "board-dense-ui",

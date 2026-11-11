@@ -97,7 +97,6 @@ it.live(
         Effect.ensuring(Effect.sync(() => releaseDownload.resolve())),
       );
     }).pipe(Effect.provide(NodeServices.layer)),
-  20_000,
 );
 
 it.live("refuses uninstall while even a disabled saved instance owns the installation", () =>
@@ -378,7 +377,6 @@ it.live(
         expect(yield* methods()).toEqual(beforeDisabled);
       }).pipe(Effect.provide(Application.layer({ home, cwd, providers }, () => Effect.void)));
     }).pipe(Effect.provide(NodeServices.layer)),
-  30_000,
 );
 
 it.live.each([true, false])(
@@ -532,5 +530,4 @@ it.live.each([true, false])(
         expect((yield* call("acp.activity", {})).activeAuthentication).toBe(0);
       }).pipe(Effect.provide(Application.layer({ home, cwd: home, providers }, () => Effect.void)));
     }).pipe(Effect.provide(NodeServices.layer)),
-  20_000,
 );

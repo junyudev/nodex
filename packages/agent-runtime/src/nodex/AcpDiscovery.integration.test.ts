@@ -295,5 +295,4 @@ it.live(
         models: [{ slug: "default", name: "Default" }],
       });
     }).pipe(Effect.provide(NodeServices.layer)),
-  40_000,
 );

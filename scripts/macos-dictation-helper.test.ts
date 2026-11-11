@@ -14,7 +14,7 @@ beforeAll(() => {
     stdio: "pipe",
     timeout: 55_000,
   });
-}, 60_000);
+});
 
 test.skipIf(!macOS)("replies to newline commands while its stdin pipe remains open", async () => {
   const child = spawn(helper, [], { stdio: ["pipe", "pipe", "pipe"] });

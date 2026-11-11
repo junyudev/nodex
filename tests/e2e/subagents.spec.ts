@@ -120,7 +120,6 @@ const expandSection = async (section: Locator): Promise<void> => {
 };
 
 test("shows an Agent chat's subagents and reads the selected child without changing execution", async () => {
-  test.setTimeout(120_000);
   const harness = await createSubagentHarness("subagent-overview-and-selected-child");
   try {
     const page = await startSubagentScenario(harness);
@@ -178,7 +177,6 @@ test("shows an Agent chat's subagents and reads the selected child without chang
 });
 
 test("shows a child's native Fast tier independently of the parent and restores it after restart", async () => {
-  test.setTimeout(120_000);
   const artifacts = process.env.NODEX_SUBAGENT_FAST_TIER_ARTIFACT_DIR;
   if (artifacts) fs.mkdirSync(artifacts, { recursive: true });
   const harness = await createSubagentHarness("subagent-fast-tier", {
@@ -242,7 +240,6 @@ test("shows a child's native Fast tier independently of the parent and restores 
 });
 
 test("omits an empty Done section and remains usable at narrow width", async () => {
-  test.setTimeout(120_000);
   const harness = await createSubagentHarness("subagent-zero-done-narrow", {
     NODEX_FAKE_SUBAGENT_DONE_COUNT: "0",
     NODEX_FAKE_SUBAGENT_SCOUT_ACTIVE: "1",
@@ -277,7 +274,6 @@ test("omits an empty Done section and remains usable at narrow width", async () 
 });
 
 test("stopping the root stops each active child once and settles every subagent as Done", async () => {
-  test.setTimeout(120_000);
   const harness = await createSubagentHarness("subagent-root-stop", {
     NODEX_FAKE_SUBAGENT_SCOUT_ACTIVE: "1",
   });
@@ -388,6 +384,7 @@ test("keeps delegated work compact while hover and direct navigation expose each
     if (artifacts) {
       // Finish first-launch guidance before recording the feature under review.
       const setupNotice = page.getByRole("alert").filter({ hasText: "Global dictation is ready." });
+      // oxlint-disable-next-line nodex/no-explicit-test-timeout -- The optional first-launch notice may never appear before recording.
       await setupNotice.waitFor({ state: "visible", timeout: 8_000 }).catch(() => undefined);
       if (await setupNotice.isVisible()) {
         await setupNotice.getByRole("button", { name: "Dismiss notification" }).click();

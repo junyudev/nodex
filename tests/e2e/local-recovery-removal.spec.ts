@@ -9,7 +9,6 @@ import { DOCUMENT_SYNC_RECOVERY_SCENARIO_ID } from "../../scripts/scenarios/scen
 import { openBoardPageFromCard } from "./support/open-board-page";
 
 test("unverified retained edits can be removed without changing the source Page", async () => {
-  test.setTimeout(120_000);
   await withElectronScenario(
     { label: "local-recovery-removal", scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID },
     async ({ application, page, manifest, seed }) => {

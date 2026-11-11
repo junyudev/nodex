@@ -24,7 +24,6 @@ const nativeThreadReadRequest = (
 });
 
 test("delivers large native responses and raw notifications through one preload ACK receiver", async () => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({
     label: "native-response-delivery",
     prepareAgentRuntime: false,
@@ -183,7 +182,6 @@ test("delivers large native responses and raw notifications through one preload 
 });
 
 test("does not broadcast a destroyed coalesced leader when a live waiter receives the shared response", async () => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({
     label: "native-coalesced-destroyed-leader",
     prepareAgentRuntime: false,
@@ -274,7 +272,6 @@ test("does not broadcast a destroyed coalesced leader when a live waiter receive
 });
 
 test("uses the exact request-id prefixes when routing destroyed read responses", async () => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({
     label: "native-destroyed-read-prefix-routing",
     prepareAgentRuntime: false,

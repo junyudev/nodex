@@ -24,7 +24,7 @@ switch (behavior) {
   case "color": {
     const { NO_COLOR, COLORTERM, TERM } = process.env;
     const colors = NO_COLOR ? "disabled" :
-      /^(truecolor|24bit)$/i.test(COLORTERM ?? "") || /256color$/.test(TERM ?? "") ? "enabled" : "disabled";
+      /^(truecolor|24bit)$/i.test(COLORTERM ?? "") || TERM?.endsWith("256color") ? "enabled" : "disabled";
     write(`\r\ncolors=${colors} ${esc}[34;42mINDEXED${esc}[0m ${esc}[38;2;17;123;231;48;2;80;18;40mTRUECOLOR${esc}[0m\r\n`);
     break;
   }

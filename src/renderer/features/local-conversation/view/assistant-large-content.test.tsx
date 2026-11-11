@@ -377,9 +377,9 @@ describe("large assistant rich content", () => {
     }
   });
 
+  // oxlint-disable-next-line nodex/no-explicit-test-timeout -- The pressure fixture renders and marks 5,001 lines.
   test.each(["inlineMarkdown", "realtimeAssistant"] as const)(
     "keeps %s keyed content searchable beyond its former budget",
-    // Keep the full pressure fixture; rendering and marking 5,001 lines needs its own budget.
     { timeout: 90_000 },
     async (kind) => {
       const content = (kind === "inlineMarkdown" ? pressures[0].body : pressures[1].body) + tail;

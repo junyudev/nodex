@@ -5,7 +5,6 @@ import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenario
 import { openNewChatDraft } from "./support/new-chat-draft";
 
 test("shows completed lifecycle hooks only through accessible message action tooltips", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({
     label: "hook-presentation",
     prepareAgentRuntime: false,
@@ -69,7 +68,6 @@ test("shows completed lifecycle hooks only through accessible message action too
 });
 
 test("explains a blocked prompt and opens its project hook settings", async ({}, testInfo) => {
-  test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({
     label: "blocked-hook-presentation",
     prepareAgentRuntime: false,
