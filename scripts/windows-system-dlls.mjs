@@ -30,6 +30,7 @@ const systemDlls = new Set([
   "imm32.dll",
   "iphlpapi.dll",
   "kernel32.dll",
+  "ktmw32.dll",
   "mf.dll",
   "mfplat.dll",
   "mfreadwrite.dll",

@@ -51,6 +51,41 @@ fn token_sid(
         || unsafe { GetCurrentProcess() },
         |handle| handle.as_raw_handle(),
     );
+    let buffer = token_info(process, information)?;
+    // SAFETY: the successful query initialized the requested token structure in aligned storage.
+    let sid = if information == TokenUser {
+        unsafe { (*(buffer.as_ptr().cast::<TOKEN_USER>())).User.Sid }
+    } else {
+        unsafe {
+            (*(buffer
+                .as_ptr()
+                .cast::<windows_sys::Win32::Security::TOKEN_OWNER>()))
+            .Owner
+        }
+    };
+    sid_string(sid)
+}
+
+pub(crate) fn logon_sid(process: HANDLE) -> io::Result<String> {
+    use windows_sys::Win32::Security::{TOKEN_GROUPS, TokenLogonSid};
+    let buffer = token_info(process, TokenLogonSid)?;
+    let groups = buffer.as_ptr().cast::<TOKEN_GROUPS>();
+    // TokenLogonSid returns exactly the group that identifies the logon session.
+    if unsafe { (*groups).GroupCount } != 1 {
+        return Err(io::Error::other("process has no unique logon SID"));
+    }
+    let group = unsafe { (*groups).Groups[0] };
+    if group.Attributes & 0xc000_0000 != 0xc000_0000 {
+        return Err(io::Error::other("token group is not a logon SID"));
+    }
+    sid_string(group.Sid)
+}
+
+fn token_info(
+    process: HANDLE,
+    information: windows_sys::Win32::Security::TOKEN_INFORMATION_CLASS,
+) -> io::Result<Vec<usize>> {
+    use std::os::windows::io::AsRawHandle;
     let mut token = null_mut();
     if unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut token) } == 0 {
         return Err(io::Error::last_os_error());
@@ -79,18 +114,7 @@ fn token_sid(
     {
         return Err(io::Error::last_os_error());
     }
-    // SAFETY: the successful query initialized the requested token structure in aligned storage.
-    let sid = if information == TokenUser {
-        unsafe { (*(buffer.as_ptr().cast::<TOKEN_USER>())).User.Sid }
-    } else {
-        unsafe {
-            (*(buffer
-                .as_ptr()
-                .cast::<windows_sys::Win32::Security::TOKEN_OWNER>()))
-            .Owner
-        }
-    };
-    sid_string(sid)
+    Ok(buffer)
 }
 
 pub(crate) fn sid_string(sid: *mut c_void) -> io::Result<String> {
@@ -128,7 +152,16 @@ impl PrivateSecurity {
         // FILE_WRITE_ATTRIBUTES is required to atomically replace a sealed file.
         // It does not grant data writes, appends, child creation, or deletion.
         let access = if read_only { "0x001201a9" } else { "FA" };
-        let sddl = wide(format!("O:{sid}D:P(A;OICI;{access};;;{sid})"))?;
+        Self::from_sddl(&format!("O:{sid}D:P(A;OICI;{access};;;{sid})"))
+    }
+    pub(crate) fn logon_pipe() -> io::Result<Self> {
+        let sid = logon_sid(unsafe { GetCurrentProcess() })?;
+        // Suppress implicit owner rights for the same account in another logon.
+        // The only allow ACE belongs to the actual logon SID.
+        Self::from_sddl(&format!("D:P(D;;WD;;;OW)(A;;FRFW;;;{sid})"))
+    }
+    pub(crate) fn from_sddl(sddl: &str) -> io::Result<Self> {
+        let sddl = wide(sddl)?;
         let mut descriptor = null_mut();
         if unsafe {
             ConvertStringSecurityDescriptorToSecurityDescriptorW(

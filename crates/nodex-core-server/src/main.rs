@@ -123,6 +123,17 @@ fn main() {
         }
         return;
     }
+    #[cfg(windows)]
+    if env::args().nth(1).as_deref() == Some("--desktop-tools-native") {
+        if env::args().count() != 2 {
+            std::process::exit(2);
+        }
+        if let Err(error) = nodex_platform::desktop_tools::run_stdio() {
+            eprintln!("Desktop Tools platform command failed: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if env::args().nth(1).as_deref() == Some("--private-filesystem") {
         if env::args().count() != 2 {
             eprintln!("usage: nodex-core --private-filesystem < bounded-request.json");

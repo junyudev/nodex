@@ -51,6 +51,43 @@ fn instance(endpoint: &str, first: bool) -> io::Result<NamedPipeServer> {
             )
     }
 }
+/// A Desktop Tools endpoint is private to one Windows logon session.
+pub(crate) fn desktop_instance(endpoint: &str, first: bool) -> io::Result<NamedPipeServer> {
+    let security = PrivateSecurity::logon_pipe()?;
+    let mut attributes = security.attributes();
+    // SAFETY: Tokio consumes the attributes during synchronous pipe creation.
+    unsafe {
+        ServerOptions::new()
+            .first_pipe_instance(first)
+            .reject_remote_clients(true)
+            .max_instances(9)
+            .in_buffer_size(65536)
+            .out_buffer_size(65536)
+            .create_with_security_attributes_raw(endpoint, (&raw mut attributes).cast())
+    }
+}
+
+pub(crate) fn pipe_peer_pid(
+    handle: std::os::windows::io::RawHandle,
+    server: bool,
+) -> io::Result<u32> {
+    let mut pid = 0;
+    let status = unsafe {
+        if server {
+            GetNamedPipeServerProcessId(handle, &mut pid)
+        } else {
+            GetNamedPipeClientProcessId(handle, &mut pid)
+        }
+    };
+    if status == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if pid == 0 {
+        return Err(io::Error::other("pipe peer has no PID"));
+    }
+    Ok(pid)
+}
+
 impl Listener for LocalListener {
     type Io = Connection;
     type Addr = String;
@@ -87,10 +124,9 @@ impl Listener for LocalListener {
     }
 }
 fn peer(stream: &NamedPipeServer) -> PeerIdentity {
-    let mut pid = 0;
-    if unsafe { GetNamedPipeClientProcessId(stream.as_raw_handle(), &mut pid) } == 0 || pid == 0 {
+    let Ok(pid) = pipe_peer_pid(stream.as_raw_handle(), false) else {
         return PeerIdentity::unavailable();
-    }
+    };
     PeerIdentity {
         user: process_sid(Some(pid)).ok(),
         process: crate::process::ProcessInstance::of(pid).ok(),
