@@ -2006,7 +2006,9 @@ export type AppUpdateStatusKind =
 export interface AppUpdateStatus {
   status: AppUpdateStatusKind;
   supported: boolean;
+  /** Installed version label, including the build ordinal when available. */
   currentVersion: string;
+  /** Update version label, including the build ordinal on Nightly. */
   availableVersion: string | null;
   releaseName: string | null;
   releaseDate: string | null;
@@ -2017,7 +2019,6 @@ export interface AppUpdateStatus {
   checkedAt: string | null;
   message: string | null;
   channel: AppUpdateChannel;
-  buildDefaultChannel: AppUpdateChannel;
   channelChangeAllowed: boolean;
 }
 

@@ -1,3 +1,4 @@
+import { formatAppVersion } from "../../shared/app-version";
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
 import { CoreStartupError } from "../core-client/core-launcher";
@@ -148,7 +149,12 @@ const summaryFor = (phase: MainApplicationPhase, causes: readonly MainFatalCause
 export const makeMainFatalIncident = (
   exit: Extract<MainExit, { readonly _tag: "Failure" }>,
   cleanup: CleanupReport,
-  context: { readonly id: string; readonly occurredAt: string; readonly appVersion: string },
+  context: {
+    readonly id: string;
+    readonly occurredAt: string;
+    readonly appVersion: string;
+    readonly appBuildVersion?: string | undefined;
+  },
 ): MainFatalIncident => {
   const causes: MainFatalCause[] = [];
   const seen = new WeakSet<object>();
@@ -193,8 +199,12 @@ export const makeMainFatalIncident = (
   visit(exit.cause, "failure", null);
   return {
     version: 1,
-    ...context,
-    appVersion: identifier(context.appVersion, "unknown"),
+    id: context.id,
+    occurredAt: context.occurredAt,
+    appVersion: formatAppVersion(
+      identifier(context.appVersion, "unknown"),
+      context.appBuildVersion,
+    ),
     phase: exit.phase,
     summary: summaryFor(exit.phase, causes),
     causes,

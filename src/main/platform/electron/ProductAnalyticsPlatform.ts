@@ -13,6 +13,7 @@ import {
   make,
   ProductAnalytics,
 } from "../../product-analytics/ProductAnalytics";
+import { PRODUCT_ANALYTICS_STATE_FILE } from "../../product-analytics/product-analytics-state";
 import { ApplicationSettings } from "../../settings/ApplicationSettings";
 import { STATSIG_LOG_EVENT_URL } from "../../../shared/product-analytics/statsig";
 import { ElectronNet, live as electronNetLive } from "./ElectronNet";
@@ -39,17 +40,19 @@ export const live = Layer.effect(
     const telemetry = snapshot.value.telemetry;
     if (!config.isPackaged && !telemetry.active) return inertProductAnalytics;
 
-    const appVersion = app.getVersion();
+    const channel = config.isPackaged
+      ? settings.snapshot().pipe(
+          Effect.map(({ appUpdate }) => appUpdate.channel),
+          Effect.orElseSucceed(() => snapshot.value.appUpdate.channel),
+        )
+      : Effect.succeed("development" as const);
     const endpoint = config.environment.NODEX_TELEMETRY_ENDPOINT ?? STATSIG_LOG_EVENT_URL;
     return yield* make({
-      statePath: path.join(config.nodexHome, "product-analytics", "state.json"),
+      statePath: path.join(config.nodexHome, PRODUCT_ANALYTICS_STATE_FILE),
+      appBuildVersion: config.appBuildVersion,
+      channel,
       context: {
-        appVersion,
-        channel: !config.isPackaged
-          ? "development"
-          : appVersion.includes("-nightly")
-            ? "nightly"
-            : "stable",
+        appVersion: config.appVersion,
         tier: config.isPackaged ? "production" : "development",
         os: config.platform,
         arch: process.arch,

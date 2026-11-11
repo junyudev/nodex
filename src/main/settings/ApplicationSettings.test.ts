@@ -1,3 +1,13 @@
+import { randomUUID } from "node:crypto";
+import {
+  encodeState,
+  initialState,
+  PRODUCT_ANALYTICS_STATE_FILE,
+} from "../product-analytics/product-analytics-state";
+import {
+  getAppUpdateSettings,
+  preserveLegacyNightlyChannel,
+} from "./application-settings-persistence";
 import { assert, it } from "@effect/vitest";
 import {
   mkdirSync,
@@ -36,6 +46,50 @@ function fixture(source?: string | Uint8Array) {
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+describe("update channel continuity", () => {
+  const previousNightly = "0.5.5-nightly.20261110.2523";
+
+  const migrationFixture = (previousVersion: string | null, settings?: string) => {
+    const { root, settingsPath } = fixture(settings);
+    const statePath = path.join(root, PRODUCT_ANALYTICS_STATE_FILE);
+    mkdirSync(path.dirname(statePath));
+    writeFileSync(
+      statePath,
+      encodeState({ ...initialState(randomUUID()), lastLaunchVersion: previousVersion }),
+    );
+    return { root, statePath, source: { environment: {}, settingsPath, isPackaged: true } };
+  };
+
+  it("persists Nightly with the previous Nightly launch and keeps the automatic-check choice", () => {
+    const { root, source, statePath } = migrationFixture(
+      previousNightly,
+      "[server]\napp_updates_auto_check_enabled = false\n",
+    );
+    assert.strictEqual(getAppUpdateSettings(source).channel, "stable");
+    preserveLegacyNightlyChannel(source, root, "0.5.5");
+    rmSync(statePath);
+    assert.deepEqual(getAppUpdateSettings(source), {
+      automaticChecksEnabled: false,
+      channel: "nightly",
+    });
+  });
+
+  it("keeps an explicit Stable preference even after a legacy Nightly launch", () => {
+    const settings = '[server]\napp_updates_channel = "stable"\n';
+    const { root, source } = migrationFixture(previousNightly, settings);
+    preserveLegacyNightlyChannel(source, root, "0.5.5");
+    assert.strictEqual(readFileSync(source.settingsPath, "utf8"), settings);
+  });
+
+  it("defaults to Stable when the previous launch is unknown or was Stable", () => {
+    for (const previousVersion of [null, "0.5.4"]) {
+      const { root, source } = migrationFixture(previousVersion);
+      preserveLegacyNightlyChannel(source, root, "0.5.5");
+      assert.strictEqual(getAppUpdateSettings(source).channel, "stable");
+    }
+  });
 });
 
 describe("ApplicationSettings", () => {

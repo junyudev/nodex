@@ -19,7 +19,6 @@ import { reduceAppUpdateStatus } from "./AppUpdatePolicy";
 import { AppUpdateRuntime, layer } from "./AppUpdateRuntime";
 
 class FakeUpdaterPlatform implements AppUpdaterPlatform {
-  readonly buildDefaultChannel = "stable" as const;
   readonly checkKinds: AppUpdaterCheckKind[] = [];
   acquireCount = 0;
   failAcquire = false;
@@ -74,6 +73,7 @@ const waitUntil = (label: string, predicate: () => boolean): Effect.Effect<void>
 const buildHarness = (input: {
   readonly inApplicationsFolder?: boolean;
   readonly isPackaged?: boolean;
+  readonly appBuildVersion?: string;
   readonly platform?: NodeJS.Platform;
   readonly updater?: FakeUpdaterPlatform | null;
 }) =>
@@ -132,6 +132,7 @@ const buildHarness = (input: {
             Layer.succeed(ApplicationSettings, settings),
             mainConfigLayer({
               appVersion: "0.2.1",
+              ...(input.appBuildVersion ? { appBuildVersion: input.appBuildVersion } : {}),
               isPackaged: input.isPackaged ?? true,
               platform: input.platform ?? "darwin",
             }),
@@ -254,7 +255,7 @@ it.effect("tracks download progress and installs only after readiness", () =>
     const harness = yield* buildHarness({});
     yield* harness.runtime.check;
     harness.updater?.emit({
-      buildVersion: "202",
+      buildVersion: "1.2.2",
       releaseDate: "2026-08-02T00:00:00.000Z",
       releaseName: "Nodex 0.2.2",
       releaseNotes: "Bug fixes",
@@ -273,12 +274,36 @@ it.effect("tracks download progress and installs only after readiness", () =>
     });
     assert.isFalse(yield* harness.runtime.install);
 
-    harness.updater?.emit({ buildVersion: "202", type: "update-ready", version: "0.2.2" });
+    harness.updater?.emit({ buildVersion: "1.2.2", type: "update-ready", version: "0.2.2" });
     yield* waitUntil("download ready", () =>
       harness.broadcasts.some((status) => status.status === "downloaded"),
     );
     assert.isTrue(yield* harness.runtime.install);
     assert.strictEqual(harness.updater?.installCount, 1);
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
+
+it.effect("distinguishes Nightly builds that have the same display version", () =>
+  Effect.gen(function* () {
+    const harness = yield* buildHarness({ appBuildVersion: "1.25.23" });
+    const stable = yield* harness.runtime.currentStatus;
+    assert.strictEqual(stable.currentVersion, "0.2.1 (2523)");
+    const found = { buildVersion: "1.25.24", type: "update-found", version: "0.2.1" } as const;
+    const checkedAt = "2026-11-11T00:00:00.000Z";
+    assert.strictEqual(reduceAppUpdateStatus(stable, found, checkedAt).availableVersion, "0.2.1");
+
+    yield* harness.runtime.updateSettings({ channel: "nightly" });
+    harness.updater?.emit(found);
+    // Sparkle can report readiness without repeating the appcast item identity.
+    harness.updater?.emit({ type: "update-ready", buildVersion: "", version: "" });
+    yield* waitUntil("download ready", () =>
+      harness.broadcasts.some((status) => status.status === "downloaded"),
+    );
+    assert.deepInclude(yield* harness.runtime.currentStatus, {
+      availableVersion: "0.2.1 (2524)",
+      message: "Version 0.2.1 (2524) is ready. Restart Nodex to install it.",
+    });
     yield* Scope.close(harness.scope, Exit.void);
   }),
 );
@@ -289,7 +314,7 @@ it.effect("keeps a ready update stable against late progress", () =>
     const initial = yield* harness.runtime.currentStatus;
     const ready = reduceAppUpdateStatus(
       initial,
-      { buildVersion: "202", type: "update-ready", version: "0.2.2" },
+      { buildVersion: "1.2.2", type: "update-ready", version: "0.2.2" },
       "2026-08-02T00:00:00.000Z",
     );
     assert.strictEqual(

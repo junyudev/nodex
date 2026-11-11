@@ -1,13 +1,12 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { app, BrowserWindow } from "electron";
 import { electronUpdateFetch } from "./electron-update-fetch";
 import type { AppUpdateChannel, AppUpdaterPlatform, AppUpdaterEvent } from "./app-updater";
 import {
-  parseWindowsAppUpdateConfig,
+  readWindowsAppUpdateConfig,
   type WindowsAppUpdateConfig,
 } from "./windows-app-update-config";
 import {
@@ -40,9 +39,8 @@ export function createWindowsAppUpdaterPlatform(
   directory: string,
   ports: WindowsUpdaterPorts,
 ): AppUpdaterPlatform | null {
-  if (config.buildChannel === "disabled") return null;
+  if (config.updates === "disabled") return null;
   return {
-    buildDefaultChannel: config.buildChannel,
     acquire(initialChannel, onEvent) {
       let channel = initialChannel;
       let released = false;
@@ -183,12 +181,10 @@ export function createPackagedWindowsAppUpdaterPlatform(options: {
   readonly architecture: "x64" | "arm64";
   readonly directory: string;
 }): AppUpdaterPlatform | null {
-  const config = parseWindowsAppUpdateConfig(
-    JSON.parse(readFileSync(join(options.resourcesPath, "native", "app-update.json"), "utf8")),
-  );
+  const config = readWindowsAppUpdateConfig(options.resourcesPath);
   if (config.architecture !== options.architecture)
     throw new Error("Packaged Windows update architecture does not match Electron.");
-  if (config.buildChannel === "disabled") return null;
+  if (config.updates === "disabled") return null;
   return createWindowsAppUpdaterPlatform(config, options.directory, {
     fetch: electronUpdateFetch,
     currentVersion: app.getVersion(),

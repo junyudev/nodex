@@ -43,7 +43,7 @@ const item: WindowsUpdateItem = {
 const config = (architecture: "x64" | "arm64" = "x64") => ({
   schemaVersion: 1,
   architecture,
-  buildChannel: "stable",
+  updates: "enabled",
   buildVersion: "1.1.1",
   feedUrls: windowsUpdateFeedUrls(architecture),
   publicKey: APP_UPDATE_PUBLIC_KEY,
@@ -69,7 +69,7 @@ describe("packaged Windows update trust", () => {
   test.each(["x64", "arm64"] as const)("accepts the pinned %s feeds", (architecture) => {
     expect(parseWindowsAppUpdateConfig(config(architecture))).toMatchObject({
       architecture,
-      buildChannel: "stable",
+      updates: "enabled",
     });
   });
   test("rejects a substituted key, architecture, schema, build and feed", () => {
@@ -80,16 +80,18 @@ describe("packaged Windows update trust", () => {
       { buildVersion: "1.1" },
       { feedUrls: { ...windowsUpdateFeedUrls("x64"), stable: "http://example.com" } },
       { unexpected: true },
+      { buildChannel: "nightly" },
+      { updates: "nightly" },
+      { feedUrls: null },
     ]) {
       expect(() => parseWindowsAppUpdateConfig({ ...config(), ...invalid })).toThrow();
     }
   });
   test("disabled packages have no feeds and acquire no network or installer capability", () => {
     expect(
-      parseWindowsAppUpdateConfig({ ...config(), buildChannel: "disabled", feedUrls: null })
-        .buildChannel,
+      parseWindowsAppUpdateConfig({ ...config(), updates: "disabled", feedUrls: null }).updates,
     ).toBe("disabled");
-    expect(() => parseWindowsAppUpdateConfig({ ...config(), buildChannel: "disabled" })).toThrow();
+    expect(() => parseWindowsAppUpdateConfig({ ...config(), updates: "disabled" })).toThrow();
   });
   test("packaged entry point enforces key and Electron architecture before acquisition", async () => {
     const root = directory();
@@ -115,7 +117,7 @@ describe("packaged Windows update trust", () => {
     ).toThrow("architecture");
     await writeFile(
       join(root, "native", "app-update.json"),
-      JSON.stringify({ ...config(), buildChannel: "disabled", feedUrls: null }),
+      JSON.stringify({ ...config(), updates: "disabled", feedUrls: null }),
     );
     expect(
       createPackagedWindowsAppUpdaterPlatform({

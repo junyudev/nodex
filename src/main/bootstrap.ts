@@ -1,5 +1,7 @@
 import markdownWasmPath from "../shared/generated/nodex-markdown-wasm/nodex_markdown_bg.wasm?asset";
 import { app, BrowserWindow, dialog } from "electron";
+import { appBuildOrdinal } from "../shared/app-version";
+import { readPackagedAppBuildVersion } from "./packaged-app-build-version";
 import { mkdirSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import type * as Cause from "effect/Cause";
@@ -79,10 +81,24 @@ function logBootstrap(
   bootstrapLogger[level](message, fields);
 }
 
+const appVersion = app.getVersion();
+const appBuildVersion = readBuildVersion();
+
+function readBuildVersion(): string | undefined {
+  if (!app.isPackaged) return undefined;
+  try {
+    return readPackagedAppBuildVersion(process.platform, process.resourcesPath);
+  } catch (error) {
+    logBootstrap("warn", "Could not read the packaged app build version", { error });
+    return undefined;
+  }
+}
+
 function initializeBootstrapDiagnostics(): Promise<boolean> {
   try {
     return initializeMainSentry({
-      appVersion: app.getVersion(),
+      appVersion,
+      appBuildVersion,
       arch: process.arch,
       isPackaged: app.isPackaged,
       platform: process.platform,
@@ -220,10 +236,15 @@ async function handleApplicationFailure(
 }
 
 function launchMainApplication(): void {
+  const ordinal = appBuildOrdinal(appBuildVersion);
+  if (process.platform === "darwin" && ordinal !== null) {
+    app.setAboutPanelOptions({ applicationVersion: appVersion, version: String(ordinal) });
+  }
   const startupEvents = runtimeQueue.takePendingEvents();
   const foundation = MainFoundationLive.make({
     assistantStreamingDebug: bootstrapConfig.environment.NODEX_ASSISTANT_STREAMING_DEBUG === "1",
-    appVersion: app.getVersion(),
+    appVersion,
+    ...(appBuildVersion === undefined ? {} : { appBuildVersion }),
     arch: process.arch,
     argv: [...process.argv],
     composerAppshotHelperPath:

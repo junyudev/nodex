@@ -64,13 +64,10 @@ describe("Windows desktop policy", () => {
     expect(shouldQuitWithoutWindows("darwin", true)).toBe(false);
     expect(shouldQuitWithoutWindows("linux", false)).toBe(true);
   });
-  test("packaged channel GUIDs remain distinct and development has no persistent GUID", () => {
-    const ids = ["stable", "nightly", "disabled"].map((channel) =>
-      windowsTrayGuid(true, channel as "stable" | "nightly" | "disabled"),
-    );
-    expect(new Set(ids).size).toBe(3);
-    expect(ids.every((id) => /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/u.test(id!))).toBe(true);
-    expect(windowsTrayGuid(false, "stable")).toBeUndefined();
+  test("preserves the packaged GUIDs for enabled and disabled updates", () => {
+    expect(windowsTrayGuid(true, "enabled")).toBe("e2ce4e99-33a1-40a6-bf07-76b2ca126cef");
+    expect(windowsTrayGuid(true, "disabled")).toBe("4c366c1d-c046-4cd9-808c-1a3df9cef174");
+    expect(windowsTrayGuid(false, "enabled")).toBeUndefined();
   });
   test("chat labels truncate by Unicode codepoints without splitting surrogate pairs", () => {
     expect(trayChatLabel("🙂".repeat(35))).toBe("🙂".repeat(35));

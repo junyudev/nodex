@@ -94,6 +94,7 @@ export const layer: Layer.Layer<
               id: runId,
               occurredAt: DateTime.formatIso(yield* DateTime.now),
               appVersion: config.appVersion,
+              appBuildVersion: config.appBuildVersion,
             });
             // Backend logs also feed Sentry breadcrumbs, including with file logging off.
             backend.error("Main application failed", { incident });

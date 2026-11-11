@@ -1,5 +1,6 @@
 import { DOMParser, type Element } from "@xmldom/xmldom";
-import { APP_UPDATE_BUILD_VERSION_PATTERN, compareAppBuildVersions } from "./app-update-trust";
+import { APP_UPDATE_BUILD_VERSION_PATTERN } from "../shared/app-version";
+import { compareAppBuildVersions } from "./app-update-trust";
 
 export const MAX_APPCAST_BYTES = 1024 * 1024;
 export const MAX_INSTALLER_BYTES = 1024 * 1024 * 1024;

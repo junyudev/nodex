@@ -13,7 +13,7 @@ const SPARKLE_VERSION = "2.9.4";
 
 interface SparkleRuntimeConfig {
   readonly architecture: RuntimeArchitecture;
-  readonly buildChannel: "disabled" | AppUpdateChannel;
+  readonly updates: "disabled" | "enabled";
   readonly feedUrls: null | Readonly<Record<AppUpdateChannel, string>>;
   readonly publicKey: string;
   readonly sparkleVersion: string;
@@ -41,7 +41,7 @@ export function parseSparkleRuntimeConfig(value: unknown): SparkleRuntimeConfig 
   assertExactKeys(value, [
     "architecture",
     "artifacts",
-    "buildChannel",
+    "updates",
     "feedUrls",
     "minimumMacOS",
     "publicKey",
@@ -52,25 +52,24 @@ export function parseSparkleRuntimeConfig(value: unknown): SparkleRuntimeConfig 
   if (value.schemaVersion !== 3 || value.architecture !== "arm64") {
     throw new Error("Packaged Sparkle runtime manifest version or architecture is invalid.");
   }
-  if (
-    value.buildChannel !== "disabled" &&
-    value.buildChannel !== "stable" &&
-    value.buildChannel !== "nightly"
-  ) {
-    throw new Error("Packaged Sparkle update channel is invalid.");
+  if (value.updates !== "disabled" && value.updates !== "enabled") {
+    throw new Error("Packaged Sparkle update availability is invalid.");
   }
   const expectedFeeds = {
     stable: `https://nodex.jyu.app/updates/stable/${value.architecture}/appcast.xml`,
     nightly: `https://nodex.jyu.app/updates/nightly/${value.architecture}/appcast.xml`,
   };
   if (
-    (value.buildChannel === "disabled" && value.feedUrls !== null) ||
-    (value.buildChannel !== "disabled" &&
+    (value.updates === "disabled" && value.feedUrls !== null) ||
+    (value.updates !== "disabled" &&
       (!isRecord(value.feedUrls) ||
+        Object.keys(value.feedUrls).length !== 2 ||
         value.feedUrls.stable !== expectedFeeds.stable ||
         value.feedUrls.nightly !== expectedFeeds.nightly))
   ) {
-    throw new Error("Packaged Sparkle feed does not match its architecture and channel.");
+    throw new Error(
+      "Packaged Sparkle feeds do not match its architecture and update availability.",
+    );
   }
   if (
     value.minimumMacOS !== "15.0" ||
@@ -83,7 +82,7 @@ export function parseSparkleRuntimeConfig(value: unknown): SparkleRuntimeConfig 
   }
   return {
     architecture: value.architecture,
-    buildChannel: value.buildChannel,
+    updates: value.updates,
     feedUrls: value.feedUrls as SparkleRuntimeConfig["feedUrls"],
     publicKey: value.publicKey,
     sparkleVersion: value.sparkleVersion,
@@ -102,9 +101,8 @@ export function createPackagedMacAppUpdaterPlatform(
   if (config.architecture !== options.architecture) {
     throw new Error("Packaged Sparkle architecture does not match Electron.");
   }
-  if (config.buildChannel === "disabled") return null;
+  if (config.updates === "disabled") return null;
   return {
-    buildDefaultChannel: config.buildChannel,
     acquire: (channel, onEvent) => {
       const feedUrl = config.feedUrls?.[channel];
       if (!feedUrl) throw new Error("Update channel is unavailable in this build.");

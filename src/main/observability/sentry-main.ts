@@ -1,3 +1,4 @@
+import { formatAppVersion } from "../../shared/app-version";
 import type { DiagnosticsSettings } from "../../shared/types";
 import type { CodexRequestTraceContext } from "../../shared/codex-request-lifecycle";
 import { scrubSentryBreadcrumb, scrubSentryData } from "../../shared/diagnostics/sentry-scrub";
@@ -30,6 +31,7 @@ export interface MainTraceSpanOptions {
 
 export interface InitializeMainSentryInput {
   appVersion: string;
+  appBuildVersion?: string | undefined;
   arch: string;
   isPackaged: boolean;
   platform: NodeJS.Platform;
@@ -118,6 +120,7 @@ export async function initializeMainSentry(input: InitializeMainSentryInput): Pr
   adapter.setTag("platform", input.platform);
   adapter.setTag("arch", input.arch);
   adapter.setTag("packaged", input.isPackaged ? "true" : "false");
+  adapter.setTag("app_version", formatAppVersion(input.appVersion, input.appBuildVersion));
   activeAdapter = adapter;
 
   const subscribe = input.subscribeToLogs ?? subscribeToBackendLogs;

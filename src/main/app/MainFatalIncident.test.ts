@@ -10,6 +10,7 @@ const context = {
   id: "5fa076e8-3e7a-4cdb-abfc-632bf74fd45d",
   occurredAt: "2026-10-28T06:00:00.000Z",
   appVersion: "0.4.0",
+  appBuildVersion: "1.25.23",
 };
 const exitFor = (cause: Cause.Cause<MainApplicationError>): MainExit & { _tag: "Failure" } => ({
   _tag: "Failure",
@@ -48,6 +49,7 @@ test("retains nested failure meaning and code coordinates without copying conten
     context,
   );
   expect(failure.message).toContain("core");
+  expect(incident.appVersion).toBe("0.4.0 (2523)");
   expect(incident.causes.map(({ parent, name }) => ({ parent, name }))).toEqual([
     { parent: null, name: "MainApplicationError" },
     { parent: 0, name: "CoreRuntimeError" },

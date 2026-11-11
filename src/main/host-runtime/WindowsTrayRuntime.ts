@@ -156,18 +156,14 @@ export const live = (
         );
       const tray = windows
         ? yield* Effect.gen(function* () {
-            const channel = config.isPackaged
+            const updates = config.isPackaged
               ? yield* fs
                   .readFileString(join(config.resourcesPath, "native", "app-update.json"))
-                  .pipe(
-                    Effect.map(
-                      (text) => parseWindowsAppUpdateConfig(JSON.parse(text)).buildChannel,
-                    ),
-                  )
+                  .pipe(Effect.map((text) => parseWindowsAppUpdateConfig(JSON.parse(text)).updates))
               : "disabled";
             return yield* Effect.acquireRelease(
               Effect.sync(() =>
-                port.create(iconPath(), windowsTrayGuid(config.isPackaged, channel)),
+                port.create(iconPath(), windowsTrayGuid(config.isPackaged, updates)),
               ),
               (icon) => Effect.sync(icon.destroy),
             );

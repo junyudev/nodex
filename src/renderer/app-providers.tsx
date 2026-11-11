@@ -45,7 +45,6 @@ const INITIAL_APP_UPDATE_STATUS: AppUpdateStatus = {
   totalBytes: null,
   transferredBytes: null,
   channel: "stable",
-  buildDefaultChannel: "stable",
   channelChangeAllowed: false,
 };
 

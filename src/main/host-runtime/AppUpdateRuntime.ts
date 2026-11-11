@@ -1,3 +1,4 @@
+import { formatAppVersion } from "../../shared/app-version";
 import { hostCapabilities } from "../../shared/host-capabilities";
 import { join, resolve } from "node:path";
 import { createPackagedWindowsAppUpdaterPlatform } from "../windows-app-updater";
@@ -105,14 +106,12 @@ export const layer = (
           return null;
         }
       });
-      const buildDefaultChannel = updaterPlatform?.buildDefaultChannel ?? "stable";
-      const settings = (yield* applicationSettings.snapshot(buildDefaultChannel).pipe(Effect.orDie))
-        .appUpdate;
+      const settings = (yield* applicationSettings.snapshot().pipe(Effect.orDie)).appUpdate;
+      const currentVersion = formatAppVersion(config.appVersion, config.appBuildVersion);
       const state = yield* Ref.make<AppUpdateRuntimeState>(
         initialAppUpdateState({
-          buildDefaultChannel,
           architecture: config.arch,
-          currentVersion: config.appVersion,
+          currentVersion,
           isInApplicationsFolder,
           isPackaged: config.isPackaged,
           platform: config.platform as NodeJS.Platform,
@@ -207,7 +206,7 @@ export const layer = (
         }
         yield* Effect.sync(() => {
           logger.info("App updater initialized", {
-            currentVersion: config.appVersion,
+            currentVersion,
             platform: config.platform,
           });
         });
@@ -229,7 +228,7 @@ export const layer = (
         }
         yield* Effect.sync(() => {
           logger.info("Checking for app updates", {
-            currentVersion: config.appVersion,
+            currentVersion,
             reason,
           });
         });
@@ -318,7 +317,7 @@ export const layer = (
               yield* fromUpdater("set-update-channel", () => updater.setChannel(next.channel));
             }
             const persisted = yield* applicationSettings
-              .update({ type: "update-app-update", input }, { buildDefaultChannel })
+              .update({ type: "update-app-update", input })
               .pipe(
                 Effect.map((snapshot) => snapshot.appUpdate),
                 Effect.mapError(

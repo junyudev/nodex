@@ -10,7 +10,7 @@ import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import type { TelemetrySettings } from "../../shared/types";
+import type { AppUpdateChannel, TelemetrySettings } from "../../shared/types";
 import { inertProductAnalytics, make, type ProductAnalyticsShape } from "./ProductAnalytics";
 import { decodeState, type StatsigRequest } from "./product-analytics-state";
 
@@ -41,6 +41,7 @@ const harness = (input: {
     const owner = yield* Effect.scope;
     const directory = yield* fs.makeTempDirectoryScoped();
     const statePath = path.join(directory, "product-analytics", "state.json");
+    const channel = yield* Ref.make<AppUpdateChannel>("stable");
     const requests = yield* Ref.make<readonly StatsigRequest[]>([]);
     const changes = yield* PubSub.unbounded<TelemetrySettings>();
     let refusedReplacements = 0;
@@ -66,9 +67,9 @@ const harness = (input: {
         const session = yield* Scope.fork(owner);
         const analytics = yield* make({
           statePath,
+          channel: Ref.get(channel),
           context: {
             appVersion: "1.0.0",
-            channel: "stable",
             tier: "production",
             os: "darwin",
             arch: "arm64",
@@ -106,6 +107,7 @@ const harness = (input: {
       ...(yield* launch()),
       launch,
       changes,
+      channel,
       requests,
       sentNames,
       stored,
@@ -121,6 +123,25 @@ const inertActivity = inertProductAnalytics.activity;
 
 const provided = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(Effect.scoped, Effect.provide(NodeServices.layer));
+
+it.effect("reports the effective update channel after it changes", () =>
+  provided(
+    Effect.gen(function* () {
+      const { analytics, channel, quit, requests } = yield* harness({});
+      assert.strictEqual((yield* analytics.activity).context.channel, "stable");
+
+      yield* Ref.set(channel, "nightly");
+      assert.strictEqual((yield* analytics.activity).context.channel, "nightly");
+      yield* analytics.noticeAcknowledged;
+      yield* quit;
+
+      const [request] = yield* Ref.get(requests);
+      assert.isDefined(request);
+      const body = JSON.parse(request!.body) as { user: { custom: { channel: string } } };
+      assert.strictEqual(body.user.custom.channel, "nightly");
+    }),
+  ),
+);
 
 it.effect("sends nothing until the notice has been on screen for the grace period", () =>
   provided(
@@ -267,6 +288,7 @@ it.effect("counts one active day per UTC day, and only with a focused window", (
               activity.pending.filter((entry) => entry.event.name === "app_active").length,
           ),
         );
+      yield* TestClock.setTime(Date.parse("2026-11-10T23:58:45Z"));
       const unfocused = yield* harness({ focused: false });
       yield* advance(TICK_MS);
       assert.strictEqual(yield* activeDays(unfocused.analytics), 0);
@@ -274,11 +296,9 @@ it.effect("counts one active day per UTC day, and only with a focused window", (
       const focused = yield* harness({ focused: true });
       yield* advance(TICK_MS);
       assert.strictEqual(yield* activeDays(focused.analytics), 1);
-      yield* advance(10 * MINUTE);
+      yield* advance(2 * TICK_MS);
       assert.strictEqual(yield* activeDays(focused.analytics), 1);
-      yield* TestClock.adjust("24 hours");
-      yield* settle;
-      yield* advance(TICK_MS);
+      yield* advance(2 * TICK_MS);
       assert.strictEqual(yield* activeDays(focused.analytics), 2);
     }),
   ),
