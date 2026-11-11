@@ -223,7 +223,11 @@ export function agentRuntimeBuildIdentity(input: AgentRuntimeBuildIdentity): str
     "pnpm-workspace.yaml",
     ".npmrc",
     "config/node-build-optimization.ts",
-    ...readdirSync(root).filter((name) => /^tsconfig(?:\..+)?\.json$/u.test(name)),
+    ...["", "config"].flatMap((directory) =>
+      readdirSync(join(root, directory))
+        .filter((name) => /^tsconfig(?:\..+)?\.json$/u.test(name))
+        .map((name) => join(directory, name)),
+    ),
   ];
   return digest(
     JSON.stringify({

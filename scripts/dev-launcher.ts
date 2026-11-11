@@ -422,6 +422,8 @@ export const createDevLaunchPlan = (input: {
         "exec",
         "electron-vite",
         "dev",
+        "--config",
+        "config/electron.vite.config.ts",
         "--logLevel",
         "warn",
         "--remoteDebuggingPort",

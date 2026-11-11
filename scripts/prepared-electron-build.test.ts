@@ -129,17 +129,17 @@ const makeFixture = (): {
     "Cargo.lock",
     "Cargo.toml",
     "LICENSE",
-    "electron-builder.yml",
-    "electron.vite.config.ts",
+    "config/electron-builder.yml",
+    "config/electron.vite.config.ts",
     "package.json",
     "pnpm-lock.yaml",
     "pnpm-workspace.yaml",
     "rust-toolchain.toml",
     "tsconfig.base.json",
-    "tsconfig.effect.json",
+    "config/tsconfig.effect.json",
     "tsconfig.json",
-    "tsconfig.node.json",
-    "tsconfig.web.json",
+    "config/tsconfig.node.json",
+    "config/tsconfig.web.json",
     "out/main/bootstrap.js",
     "out/main/app-tools/server.mjs",
     "out/agent-runtime/entry.mjs",
@@ -274,7 +274,10 @@ describe("prepared Electron build", () => {
     expect(() => verifyPreparedElectronBuild(fixture)).toThrow("inputs are stale");
 
     recordPreparedElectronBuild(fixture);
-    fs.appendFileSync(path.join(fixture.repositoryRoot, "electron-builder.yml"), "changed: true\n");
+    fs.appendFileSync(
+      path.join(fixture.repositoryRoot, "config/electron-builder.yml"),
+      "changed: true\n",
+    );
     expect(() => verifyPreparedElectronBuild(fixture)).toThrow("inputs are stale");
 
     recordPreparedElectronBuild(fixture);
@@ -284,7 +287,7 @@ describe("prepared Electron build", () => {
 
   test.each([
     "tsconfig.base.json",
-    "tsconfig.effect.json",
+    "config/tsconfig.effect.json",
     "third_party/blocknote/tsconfig.base.json",
     "third_party/blocknote/vite-shared.ts",
   ])("invalidates prepared outputs when inherited configuration %s changes", (configuration) => {

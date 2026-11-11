@@ -367,6 +367,8 @@ export function createFreshLocalMacPackagePlan(
         arguments: [
           "exec",
           "electron-builder",
+          "--config",
+          "config/electron-builder.yml",
           "--mac",
           "dir",
           `--${targetArch}`,

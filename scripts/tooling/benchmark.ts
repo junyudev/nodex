@@ -85,7 +85,7 @@ export function benchmarkCommand(options: BenchmarkOptions): readonly string[] {
         "test",
         "run",
         "--config",
-        "vitest.renderer.config.ts",
+        "config/vitest.renderer.config.ts",
         ...(options.workers ? ["--maxWorkers", String(options.workers)] : []),
         ...rendererCohort,
       ];

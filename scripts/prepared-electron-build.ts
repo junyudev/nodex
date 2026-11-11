@@ -61,17 +61,12 @@ const REQUIRED_INPUT_PATHS = [
   "Cargo.lock",
   "Cargo.toml",
   "LICENSE",
-  "electron-builder.yml",
-  "electron.vite.config.ts",
   "package.json",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
   "rust-toolchain.toml",
   "tsconfig.base.json",
-  "tsconfig.effect.json",
   "tsconfig.json",
-  "tsconfig.node.json",
-  "tsconfig.web.json",
 ] as const;
 
 const PREREQUISITE_SOURCE_PATHS = [
@@ -540,9 +535,20 @@ function runProductionBuild(): void {
   }
   const beforeBuild = currentInputDigest(repositoryRoot);
   const agentSkills = currentAgentSkills(repositoryRoot);
-  runVitePlus(["exec", "electron-vite", "build", "--logLevel", "warn"], {
-    cwd: repositoryRoot,
-  });
+  runVitePlus(
+    [
+      "exec",
+      "electron-vite",
+      "build",
+      "--config",
+      "config/electron.vite.config.ts",
+      "--logLevel",
+      "warn",
+    ],
+    {
+      cwd: repositoryRoot,
+    },
+  );
   // SSH hosts cannot load Electron's split Main chunks or its local
   // node_modules tree. Ship one content-addressable, dependency-contained Node
   // worker that can be copied to a trusted remote login over stdin.

@@ -1,23 +1,23 @@
-import { vitestTimeouts } from "./config/test-timeouts";
-import { resolveVitestTestTier } from "./config/vitest-test-tier";
-import { TEST_ENVIRONMENT } from "./config/test-environment";
+import { vitestTimeouts } from "./test-timeouts";
+import { resolveVitestTestTier } from "./vitest-test-tier";
+import { TEST_ENVIRONMENT } from "./test-environment";
 import { availableParallelism, totalmem } from "node:os";
-import { testObservation } from "./config/vitest-observation";
+import { testObservation } from "./vitest-observation";
 import { defineConfig } from "vite-plus";
 import {
   createRendererVitePlugins,
   rendererViteCss,
   rendererViteResolve,
   rendererViteWorker,
-} from "./config/renderer-vite-shared";
-import { filesForSuite } from "./config/test-suites";
-import { rendererWorkerCount } from "./config/renderer-worker-count";
+} from "./renderer-vite-shared";
+import { filesForSuite } from "./test-suites";
+import { rendererWorkerCount } from "./renderer-worker-count";
 
 const testFiles = filesForSuite("renderer", resolveVitestTestTier());
 
 export default defineConfig(async () => ({
   // Generated JavaScript still belongs to this renderer, even in nested worktrees.
-  tsconfig: "./tsconfig.web.json",
+  tsconfig: "./config/tsconfig.web.json",
   plugins: await createRendererVitePlugins(),
   resolve: rendererViteResolve,
   css: rendererViteCss,

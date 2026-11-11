@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../.cache/typescript/tooling.tsbuildinfo"
+  },
+  "include": [
+    "./**/*.ts",
+    "./**/*.mts",
+    "./**/*.cts",
+    "../scripts/tooling/**/*",
+    "../scripts/testing/**/*",
+    "../scripts/**/*.test.*",
+    "../packages/agent-runtime/vite.config.ts",
+    "../src/renderer/*.d.ts"
+  ],
+  "exclude": [
+    "../scripts/fixtures/tooling/**",
+    "../scripts/fixtures/effect-boundaries/**",
+    "../scripts/fixtures/renderer-command-boundaries/**"
+  ]
+}

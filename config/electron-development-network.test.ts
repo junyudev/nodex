@@ -3,7 +3,7 @@ import { createServer as createTcpServer, Server } from "node:net";
 import { createServer } from "vite";
 import WebSocket from "ws";
 import { expect, test, vi } from "vite-plus/test";
-import electronConfig from "../electron.vite.config";
+import electronConfig from "./electron.vite.config";
 
 test("renderer startup, port probes and HMR listen only on loopback", async () => {
   const reservation = createTcpServer();

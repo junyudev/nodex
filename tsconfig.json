@@ -3,13 +3,13 @@
   "files": [],
   "references": [
     {
-      "path": "./tsconfig.node.json"
+      "path": "./config/tsconfig.node.json"
     },
     {
-      "path": "./tsconfig.web.json"
+      "path": "./config/tsconfig.web.json"
     },
     {
-      "path": "./tsconfig.e2e.json"
+      "path": "./config/tsconfig.e2e.json"
     },
     {
       "path": "./packages/landing/tsconfig.json"
@@ -24,7 +24,7 @@
       "path": "./packages/push-relay/tsconfig.json"
     },
     {
-      "path": "./tsconfig.tooling.json"
+      "path": "./config/tsconfig.tooling.json"
     },
     {
       "path": "./packages/agent-runtime/tsconfig.json"

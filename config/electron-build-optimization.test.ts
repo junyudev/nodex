@@ -6,7 +6,7 @@ import { runInNewContext } from "node:vm";
 import { PreloadConfigFactory } from "electron-vite";
 import { build, type ConfigEnv, type Rollup } from "vite";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vite-plus/test";
-import electronConfig from "../electron.vite.config";
+import electronConfig from "./electron.vite.config";
 
 const fixtureSource = `export class RuntimeFailure extends Error {}
 export function failRuntime() {

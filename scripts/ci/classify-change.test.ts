@@ -45,7 +45,7 @@ describe("CI change classification", () => {
       ".github/actions/run-stress-tests/helper.ts",
       ".github/actions/setup-playwright/helper.mts",
       ".github/actions/setup-rust-ci/helper.cts",
-      "tsconfig.node.json",
+      "config/tsconfig.node.json",
       "packages/landing/tsconfig.json",
     ]) {
       expect(classifyChangedPaths([path]).staticGroups, path).toContain("source-ownership");
@@ -102,11 +102,11 @@ describe("CI change classification", () => {
 
   test("promotes config and deleted-path changes to deterministic full suites", () => {
     for (const [paths, options] of [
-      [["vitest.renderer.config.ts"], {}],
+      [["config/vitest.renderer.config.ts"], {}],
       [["src/renderer/lib/removed.ts"], { forceFullTests: true }],
     ] as const) {
       expect(classifyChangedPaths(paths, options)).toMatchObject({
-        appTestSuites: paths[0]?.startsWith("vitest.renderer")
+        appTestSuites: paths[0]?.startsWith("config/vitest.renderer")
           ? ["renderer"]
           : ["unit", "renderer", "browser"],
         relatedPaths: [],
@@ -236,7 +236,7 @@ describe("CI change classification", () => {
   });
 
   test("keeps Electron E2E outside PR and Main test selection", () => {
-    for (const path of ["playwright.e2e.config.ts", "tests/e2e/electron-smoke.spec.ts"]) {
+    for (const path of ["config/playwright.e2e.config.ts", "tests/e2e/electron-smoke.spec.ts"]) {
       expect(classifyChangedPaths([path]), path).toMatchObject({
         allGates: false,
         appTestSuites: [],

@@ -16,7 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import rootConfiguration from "../../vite.config";
-import effectConfiguration from "../../tsconfig.effect.json";
+import effectConfiguration from "../../config/tsconfig.effect.json";
 
 const root = path.resolve(import.meta.dirname, "../..");
 

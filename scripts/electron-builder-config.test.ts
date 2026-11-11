@@ -36,7 +36,7 @@ function readStringPlistValue(filePath: string, key: string): string {
 
 describe("electron-builder runtime resources", () => {
   test("mounts the exact Agent runtime and Skill artifacts at Resources", () => {
-    const configPath = path.resolve("electron-builder.yml");
+    const configPath = path.resolve("config/electron-builder.yml");
     const config = load(fs.readFileSync(configPath, "utf8")) as ElectronBuilderConfig;
 
     expect(config.afterPack).toBe("scripts/restore-packaged-runtime-closure.mjs");
@@ -95,7 +95,7 @@ describe("electron-builder runtime resources", () => {
 
   test("installs Windows per user without adding an elevation runtime", () => {
     const config = load(
-      fs.readFileSync(path.resolve("electron-builder.yml"), "utf8"),
+      fs.readFileSync(path.resolve("config/electron-builder.yml"), "utf8"),
     ) as ElectronBuilderConfig;
     expect(config.appId).toBe("app.jyu.nodex");
     expect(config.win).toMatchObject({
@@ -119,7 +119,7 @@ describe("electron-builder runtime resources", () => {
   });
 
   test("grants microphone capture only to the hardened top-level app", () => {
-    const configPath = path.resolve("electron-builder.yml");
+    const configPath = path.resolve("config/electron-builder.yml");
     const config = load(fs.readFileSync(configPath, "utf8")) as ElectronBuilderConfig;
     const mainEntitlementsPath = config.mac?.entitlements;
     const inheritedEntitlementsPath = config.mac?.entitlementsInherit;

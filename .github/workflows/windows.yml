@@ -22,7 +22,6 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
-      - "electron-builder.yml"
       - ".github/workflows/windows.yml"
       - ".github/workflows/_windows-distribution.yml"
       - ".github/actions/**"

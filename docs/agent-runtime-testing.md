@@ -37,7 +37,7 @@ reconnect before falling back to another transport.
 The scripted server has a focused contract suite:
 
 ```bash
-vp test run --config vitest.node.config.ts scripts/scenarios/runtime/scripted-model-server.test.ts
+vp test run --config config/vitest.node.config.ts scripts/scenarios/runtime/scripted-model-server.test.ts
 ```
 
 That suite owns HTTP, server-sent event, Responses WebSocket, compression,

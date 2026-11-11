@@ -198,7 +198,7 @@ Changes to SecureStore's native storage format must keep this lookup aligned.
 From the repository root, run the CryptoKit interoperability test and generated-project checks:
 
 ```sh
-vp test run --config vitest.node.config.ts packages/mobile/src/native-tests
+vp test run --config config/vitest.node.config.ts packages/mobile/src/native-tests
 ```
 
 The decrypt test compiles `notification-service/PushDecryption.swift` and `tests/main.swift`

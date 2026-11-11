@@ -41,19 +41,28 @@ const isDocumentationPath = (path: string): boolean =>
 const isLandingPath = (path: string): boolean =>
   path.startsWith("packages/landing/") || path === ".github/workflows/deploy-landing-site.yml";
 
+const ELECTRON_BUILDER_CONFIG = "config/electron-builder.yml";
+const ELECTRON_VITE_CONFIG = "config/electron.vite.config.ts";
+
+const isElectronE2eConfigPath = (path: string): boolean => path.startsWith("config/playwright.");
+
+/** Shared test and build configuration; packaging and Electron E2E configuration select their own gates. */
+const isSharedConfigPath = (path: string): boolean =>
+  path.startsWith("config/") && !isElectronE2eConfigPath(path) && path !== ELECTRON_BUILDER_CONFIG;
+
 const isRendererPath = (path: string): boolean =>
   path.startsWith("src/renderer/") ||
   path.startsWith("src/shared/") ||
   path.startsWith("config/renderer-") ||
-  path.startsWith("vitest.renderer") ||
-  path.startsWith("vitest.browser");
+  path.startsWith("config/vitest.renderer") ||
+  path.startsWith("config/vitest.browser");
 
 const isElectronMainPath = (path: string): boolean =>
   path.startsWith("src/main/") ||
   path.startsWith("src/host/") ||
   path.startsWith("src/preload/") ||
-  path === "electron.vite.config.ts" ||
-  path === "electron-builder.yml" ||
+  path === ELECTRON_VITE_CONFIG ||
+  path === ELECTRON_BUILDER_CONFIG ||
   path.startsWith("scripts/scenarios/");
 
 const isRustPath = (path: string): boolean =>
@@ -90,12 +99,13 @@ const isKnownAppPath = (path: string): boolean =>
   path.startsWith("resources/") ||
   path.startsWith("crates/") ||
   path.startsWith(".config/") ||
-  path.startsWith("playwright") ||
+  isElectronE2eConfigPath(path) ||
   path.startsWith("tests/e2e/") ||
-  path.startsWith("vitest") ||
+  path.startsWith("config/vitest.") ||
   path.startsWith("tsconfig") ||
-  path === "electron.vite.config.ts" ||
-  path === "electron-builder.yml" ||
+  path.startsWith("config/tsconfig.") ||
+  path === ELECTRON_VITE_CONFIG ||
+  path === ELECTRON_BUILDER_CONFIG ||
   path === "pnpm-workspace.yaml";
 
 const isGitHubPath = (path: string): boolean => path.startsWith(".github/");
@@ -137,16 +147,14 @@ const requiresFullTests = (paths: readonly string[]): boolean =>
       path === "package.json" ||
       path === "pnpm-lock.yaml" ||
       path === "pnpm-workspace.yaml" ||
-      path === "electron.vite.config.ts" ||
-      path.startsWith("config/") ||
+      isSharedConfigPath(path) ||
       path.startsWith("scripts/ci/") ||
       path.startsWith("scripts/testing/") ||
       path === "scripts/tooling/process.ts" ||
       isNativeTestInput(path) ||
       path === "src/renderer/test/setup.ts" ||
       path === "src/renderer/test/setup-browser.ts" ||
-      path.startsWith("tsconfig") ||
-      path.startsWith("vitest"),
+      path.startsWith("tsconfig"),
   );
 
 const testSuitesForPaths = (paths: readonly string[]): readonly AppTestSuite[] => {
@@ -209,11 +217,11 @@ const testSuitesForPaths = (paths: readonly string[]): readonly AppTestSuite[] =
       add("unit", "renderer", "browser");
       continue;
     }
-    if (path === "electron.vite.config.ts" || path === "electron-builder.yml") {
+    if (path === ELECTRON_VITE_CONFIG || path === ELECTRON_BUILDER_CONFIG) {
       add("main", "integration");
       continue;
     }
-    if (path.startsWith("vitest.")) {
+    if (path.startsWith("config/vitest.")) {
       add(...APP_TEST_SUITES.filter((suite) => suiteConfig(suite) === path));
       continue;
     }
@@ -233,11 +241,11 @@ const testSuitesForPaths = (paths: readonly string[]): readonly AppTestSuite[] =
       add("unit", "renderer", "browser");
       continue;
     }
-    if (path.startsWith("tsconfig")) {
+    if (path.startsWith("tsconfig") || path.startsWith("config/tsconfig.")) {
       add(...APP_TEST_SUITES);
       continue;
     }
-    if (path.startsWith("config/") || path.startsWith("scripts/")) {
+    if (isSharedConfigPath(path) || path.startsWith("scripts/")) {
       add("unit");
     }
   }
@@ -361,8 +369,7 @@ const sourcePlan = (
   if (
     paths.some(
       (path) =>
-        path.startsWith("config/") ||
-        path.startsWith("vitest.") ||
+        isSharedConfigPath(path) ||
         path.startsWith("scripts/testing/") ||
         /\.(?:test|integration)\.[cm]?[jt]sx?$/u.test(path),
     )

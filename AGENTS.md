@@ -98,6 +98,7 @@ that version's exact upstream tag only when its tests are needed to resolve deep
   cross named typed query, control, or command Adapters. Use `src/renderer/lib/api.ts` only as a
   narrow shared facade, never as a general invocation route.
 - Preserve project scoping for stateful UI and server operations.
+- Keep the repository root lean. Tool configuration lives in `config/` and is passed to its tool explicitly; add a root file only when a tool cannot be pointed elsewhere.
 
 ## Architectural Preference
 
@@ -181,10 +182,10 @@ In the handoff, say what you ran and how it went, and what you skipped and why. 
 
 Each runtime has its own runner; the wrong one fails, or passes, for the wrong reasons.
 
-- Node and shared tests outside native Core/bridge contracts: `vp test run --config vitest.node.config.ts <path>`
+- Node and shared tests outside native Core/bridge contracts: `vp test run --config config/vitest.node.config.ts <path>`
 - Main `.node.test.ts` files and shared Yjs/Yrs bridge tests: `vp run test:core-client <path>`
-- Renderer/jsdom: `vp test run --config vitest.renderer.config.ts <path>`; Chromium (`*.browser.test.tsx`): `vp test run --config vitest.browser.config.ts <path>`
-- Main/store: `vp run test:main <path>`; Electron integration: `vp run test:integration <path>`. Their native addons are built for Electron's ABI, so never run `vitest.main.config.ts` or `vitest.integration.config.ts` directly with host Node.
+- Renderer/jsdom: `vp test run --config config/vitest.renderer.config.ts <path>`; Chromium (`*.browser.test.tsx`): `vp test run --config config/vitest.browser.config.ts <path>`
+- Main/store: `vp run test:main <path>`; Electron integration: `vp run test:integration <path>`. Their native addons are built for Electron's ABI, so never run `config/vitest.main.config.ts` or `config/vitest.integration.config.ts` directly with host Node.
 - Electron E2E: `vp run test:e2e tests/e2e/<spec>.spec.ts`. A standalone `--` before the file makes Playwright collect the whole suite; a focused run's banner reads `Running 1 test`.
 - Semantic gate: `vp run typecheck`, the same task as `lint` and `check:semantic` with a shared cache, covers types and lint; `vp run --no-cache check:semantic` forces real analysis.
 - Broader: `vp run build` for build configuration, entrypoints, packaging, or startup failures; `vp run test` when targeted suites cannot bound a change's impact; `vp run test:all` for a release gate.

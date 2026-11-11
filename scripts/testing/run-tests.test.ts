@@ -51,7 +51,7 @@ describe("test execution", () => {
       args: [],
     });
     expect(() => parseTestSelection(["main", "--", "file.ts"])).toThrow("without a standalone");
-    expect(() => parseTestSelection(["main", "--config=vitest.node.config.ts"])).toThrow(
+    expect(() => parseTestSelection(["main", "--config=config/vitest.node.config.ts"])).toThrow(
       "owns its config",
     );
   });
@@ -82,13 +82,13 @@ describe("test execution", () => {
     expect(exit).toBe(0);
     expect(events).toEqual([
       "prepare",
-      "vitest.node.config.ts",
-      "vitest.effect-codex.config.ts",
+      "config/vitest.node.config.ts",
+      "config/vitest.effect-codex.config.ts",
       "packages/agent-runtime/vite.config.ts",
-      "vitest.core-client.config.ts",
-      "vitest.main.config.ts",
-      "vitest.renderer.config.ts",
-      "vitest.integration.config.ts",
+      "config/vitest.core-client.config.ts",
+      "config/vitest.main.config.ts",
+      "config/vitest.renderer.config.ts",
+      "config/vitest.integration.config.ts",
     ]);
   });
   test("prepares only bridge for an actually discovered bridge selection", async () => {
@@ -236,7 +236,7 @@ test("declares the locked Agent runtime for a discovered real-history pressure g
       return { executables: {} };
     },
     execute: async (command) => {
-      expect(command.args.at(-1)).toBe("vitest.main.config.ts");
+      expect(command.args.at(-1)).toBe("config/vitest.main.config.ts");
       events.push("test");
       return result();
     },
@@ -280,7 +280,7 @@ describe("Browser process environment", () => {
       });
       expect(exit).toBe(0);
       expect(command?.command).toBe(process.execPath);
-      expect(command?.args.at(-1)).toBe("vitest.browser.config.ts");
+      expect(command?.args.at(-1)).toBe("config/vitest.browser.config.ts");
       expect(command?.env).toEqual({
         ...environment,
         NODEX_TEST_TIER: tier,

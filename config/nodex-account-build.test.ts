@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { runInNewContext } from "node:vm";
 import { build } from "vite";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import electronConfig from "../electron.vite.config";
+import electronConfig from "./electron.vite.config";
 import type { resolveNodexAccountConfiguration } from "../src/main/nodex-account/configuration";
 import { resolveNodexAccountBuildConfiguration } from "./nodex-account-build";
 

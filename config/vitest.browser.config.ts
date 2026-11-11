@@ -1,10 +1,7 @@
-import { vitestTimeouts } from "./config/test-timeouts";
-import { resolveVitestTestTier } from "./config/vitest-test-tier";
-import { testObservation } from "./config/vitest-observation";
-import {
-  browserServerDiagnostics,
-  ciPlaywrightProvider,
-} from "./config/vitest-browser-diagnostics";
+import { vitestTimeouts } from "./test-timeouts";
+import { resolveVitestTestTier } from "./vitest-test-tier";
+import { testObservation } from "./vitest-observation";
+import { browserServerDiagnostics, ciPlaywrightProvider } from "./vitest-browser-diagnostics";
 import { defineConfig } from "vite-plus";
 import {
   createRendererVitePlugins,
@@ -12,9 +9,9 @@ import {
   rendererViteOptimizeDeps,
   rendererViteResolve,
   rendererViteWorker,
-} from "./config/renderer-vite-shared";
-import { filesForSuite } from "./config/test-suites";
-import { createTypographyBootstrapHtmlPlugin } from "./config/typography-bootstrap";
+} from "./renderer-vite-shared";
+import { filesForSuite } from "./test-suites";
+import { createTypographyBootstrapHtmlPlugin } from "./typography-bootstrap";
 
 const testFiles = filesForSuite("browser", resolveVitestTestTier());
 

@@ -846,7 +846,7 @@ run option must precede the task name.
 Effect diagnostics embedded by tsc-rs; review both diagnostic generations when
 upgrading either tool.
 `effect-tsgo patch` prepares the TypeScript editor runtime; it does not add a
-second compiler or an Effect pass to Oxlint. `tsconfig.effect.json` owns the
+second compiler or an Effect pass to Oxlint. `config/tsconfig.effect.json` owns the
 Effect rule severities, control-plane scope, and platform exceptions for both
 the compiler and the editor.
 `correctness`, `suspicious`, and `perf` retain warning severity. The semantic gate
@@ -1014,7 +1014,7 @@ The test commands follow production boundaries:
   Each invocation rebuilds its optimized dependency graph before testing; a
   cache populated by a focused run must not trigger reloads during a later
   full run. Keep lazily loaded runtimes that cause late dependency discovery
-  in `vitest.browser.config.ts`'s `optimizeDeps.include`. Enable browser failure
+  in `config/vitest.browser.config.ts`'s `optimizeDeps.include`. Enable browser failure
   traces with `NODEX_BROWSER_TRACE=1` locally or rerun a GitHub job with debug
   logging enabled. Traces are retained under `.vitest-attachments/browser-traces/`
   and uploaded by CI. Normal runs avoid trace overhead; CI always records
@@ -1183,7 +1183,7 @@ composition, or more than once for one key press. Since 1.42.7, ProseMirror
 reports a deletion inside marked text as Backspace, and any key handler that
 dispatches then redraws the composing text and cuts off the input method. Drop
 the patch only for a release that contains the fix, and only after
-`vp test run --config vitest.browser.config.ts src/renderer/components/board/editor/nfm-ime-composition.browser.test.ts`
+`vp test run --config config/vitest.browser.config.ts src/renderer/components/board/editor/nfm-ime-composition.browser.test.ts`
 passes against that release.
 
 ### Block drag-and-drop smoke
@@ -1195,7 +1195,7 @@ it after building the development Core and Electron bundle:
 ```bash
 vp run core:build:dev
 vp run build
-vp exec playwright test --config playwright.e2e.config.ts --grep "@dnd-smoke"
+vp exec playwright test --config config/playwright.e2e.config.ts --grep "@dnd-smoke"
 ```
 
 Its `dragBlockToBoardWithMouse` helper remains in
@@ -1222,7 +1222,7 @@ delivery. After changing either the helper or DnD runtime, require ten clean
 isolated runs without gesture retries:
 
 ```bash
-vp exec playwright test --config playwright.e2e.config.ts \
+vp exec playwright test --config config/playwright.e2e.config.ts \
   --grep "@dnd-smoke" --repeat-each=10
 ```
 
@@ -1268,13 +1268,13 @@ Use the matching runtime when running one test file:
 
 ```bash
 # Pure Node/shared logic
-vp test run --config vitest.node.config.ts <test-file>
+vp test run --config config/vitest.node.config.ts <test-file>
 
 # Core client and adapter behavior
 vp run test:core-client <test-file>
 
 # Renderer/jsdom behavior
-vp test run --config vitest.renderer.config.ts <test-file>
+vp test run --config config/vitest.renderer.config.ts <test-file>
 
 # Electron main process, local store, and native addons
 vp run test:main <test-file>
@@ -1286,7 +1286,7 @@ vp run test:integration <test-file>
 NODEX_TEST_TIER=stress vp run test:renderer <stress-test-file>
 ```
 
-Do not run `vitest.main.config.ts` or `vitest.integration.config.ts` directly.
+Do not run `config/vitest.main.config.ts` or `config/vitest.integration.config.ts` directly.
 Those configs fail fast outside Electron so that host Node cannot reach an
 Electron-built native addon.
 

@@ -114,7 +114,7 @@ with invalid sources in isolated temporary worktrees, rejects the same invalid
 syntax in owned source, and removes the exclusions to confirm both tools reach
 the counterexamples.
 
-`tsconfig.tooling.json` owns configuration modules, Vitest and Playwright configuration,
+`config/tsconfig.tooling.json` owns configuration modules, Vitest and Playwright configuration,
 benchmark and test runners, and every owned script test. Production script entrypoints
 belong to the Node project, including `.mts` and `.cts`. JavaScript entrypoints
 retain their runtime contracts; successful Vitest transformation does not replace
@@ -254,7 +254,7 @@ isolated exception and state why.
 | `react/only-export-components`                                                                                                                                                                                                                                               | Workbench Fast Refresh boundaries                     | Keep component exports separate from non-component values, or move shared values to an owning helper module.                                                                                                                                                                                                                                                                                          |
 | `better-tailwindcss/no-conflicting-classes`, `better-tailwindcss/no-unknown-classes`                                                                                                                                                                                         | Opt-in Tailwind repair command                        | Resolve conflicting utilities or use the documented app-owned class namespace. The plugin remains opt-in because its complete analysis is materially heavier.                                                                                                                                                                                                                                         |
 
-`tsconfig.effect.json` scopes the Effect recommended and native diagnostics to
+`config/tsconfig.effect.json` scopes the Effect recommended and native diagnostics to
 all Main modules, the companion package, and explicit process entries. Generated
 companion contracts retain their exclusion. Rules outside that scope
 are disabled explicitly; renderer and shared contracts retain their own
@@ -303,5 +303,5 @@ After upgrading Vite+, Oxlint, tsc-rs, TypeScript, or `@effect/tsgo`:
    requires the explicit new-rule review described above.
 6. Review the Effect editor and compiler diagnostic generations separately:
    `@effect/tsgo` upgrades the editor runtime, while tsc-rs embeds its own port.
-   Review new upstream rules against `tsconfig.effect.json`; preserve the explicit
+   Review new upstream rules against `config/tsconfig.effect.json`; preserve the explicit
    outside-scope defaults and the platform exceptions.

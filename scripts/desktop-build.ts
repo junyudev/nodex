@@ -127,6 +127,8 @@ async function main(): Promise<void> {
       [
         "exec",
         "electron-builder",
+        "--config",
+        "config/electron-builder.yml",
         target.platform === "win32" ? "--win" : "--mac",
         target.platform === "win32" ? "nsis" : "dmg",
         `--${target.arch}`,

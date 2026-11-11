@@ -1,18 +1,18 @@
-import { vitestTimeouts } from "./config/test-timeouts";
-import { resolveVitestTestTier } from "./config/vitest-test-tier";
-import { TEST_ENVIRONMENT } from "./config/test-environment";
-import { testObservation } from "./config/vitest-observation";
+import { vitestTimeouts } from "./test-timeouts";
+import { resolveVitestTestTier } from "./vitest-test-tier";
+import { TEST_ENVIRONMENT } from "./test-environment";
+import { testObservation } from "./vitest-observation";
 import { defineConfig } from "vite-plus";
-import { rendererViteResolve } from "./config/renderer-vite-shared";
-import { filesForSuite } from "./config/test-suites";
+import { rendererViteResolve } from "./renderer-vite-shared";
+import { filesForSuite } from "./test-suites";
 
-const testFiles = filesForSuite("core-client", resolveVitestTestTier());
+const testFiles = filesForSuite("unit", resolveVitestTestTier());
 
 export default defineConfig({
   resolve: rendererViteResolve,
   test: {
     setupFiles: ["./config/setup-markdown.ts", "./config/setup-test-timeouts.ts"],
-    ...testObservation("core-client"),
+    ...testObservation("unit"),
     env: TEST_ENVIRONMENT,
     environment: "node",
     include: testFiles.include,

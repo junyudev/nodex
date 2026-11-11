@@ -6,7 +6,7 @@
     "dev": "astro dev --host 127.0.0.1",
     "build": "astro build",
     "preview": "astro preview --host 127.0.0.1",
-    "test": "cd ../.. && vp test run --config vitest.node.config.ts packages/landing/src",
+    "test": "cd ../.. && vp test run --config config/vitest.node.config.ts packages/landing/src",
     "typecheck": "tsc-rs --project tsconfig.json --noEmit"
   },
   "dependencies": {

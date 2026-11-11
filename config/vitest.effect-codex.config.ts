@@ -1,8 +1,8 @@
-import { vitestTimeouts } from "./config/test-timeouts";
-import { resolveVitestTestTier } from "./config/vitest-test-tier";
-import { TEST_ENVIRONMENT } from "./config/test-environment";
-import { filesForSuite } from "./config/test-suites";
-import { testObservation } from "./config/vitest-observation";
+import { vitestTimeouts } from "./test-timeouts";
+import { resolveVitestTestTier } from "./vitest-test-tier";
+import { TEST_ENVIRONMENT } from "./test-environment";
+import { filesForSuite } from "./test-suites";
+import { testObservation } from "./vitest-observation";
 import { defineConfig } from "vite-plus";
 
 const testFiles = filesForSuite("effect-codex", resolveVitestTestTier());

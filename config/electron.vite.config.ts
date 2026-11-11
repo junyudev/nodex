@@ -1,23 +1,22 @@
 import { resolve } from "path";
 import { defineConfig, type UserConfig } from "electron-vite";
 import type { BuildEnvironmentOptions, Plugin, Rollup } from "vite";
-import { createExcalidrawFontAssetPlugins } from "./config/excalidraw-font-assets";
-import { createStartupShellHtmlPlugin } from "./config/startup-shell-html";
-import { createTypographyBootstrapHtmlPlugin } from "./config/typography-bootstrap";
-import { resolveNodexAccountBuildConfiguration } from "./config/nodex-account-build";
-import {
-  resolveRendererChunkFileName,
-  resolveRendererManualChunk,
-} from "./config/renderer-manual-chunks";
+import { createExcalidrawFontAssetPlugins } from "./excalidraw-font-assets";
+import { createStartupShellHtmlPlugin } from "./startup-shell-html";
+import { createTypographyBootstrapHtmlPlugin } from "./typography-bootstrap";
+import { resolveNodexAccountBuildConfiguration } from "./nodex-account-build";
+import { resolveRendererChunkFileName, resolveRendererManualChunk } from "./renderer-manual-chunks";
 import {
   createRendererVitePlugins,
   rendererViteCss,
   rendererViteOptimizeDeps,
   rendererViteResolve,
   rendererViteWorker,
-} from "./config/renderer-vite-shared";
-import { buildTopLevelRendererCsp } from "./src/shared/app-renderer-policy";
-import { createSentryPlugins, shouldEmitSentrySourceMaps } from "./config/sentry-build";
+} from "./renderer-vite-shared";
+import { buildTopLevelRendererCsp } from "../src/shared/app-renderer-policy";
+import { createSentryPlugins, shouldEmitSentrySourceMaps } from "./sentry-build";
+
+const repositoryRoot = resolve(__dirname, "..");
 
 function enforceSelfContainedSandboxedPreloads(): Plugin {
   return {
@@ -119,10 +118,10 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
         ...buildOptimization,
         rollupOptions: {
           input: {
-            bootstrap: resolve(__dirname, "src/main/bootstrap.ts"),
-            serve: resolve(__dirname, "src/host/serve-entry.ts"),
-            "git-worker": resolve(__dirname, "src/main/git-worker/entry.ts"),
-            "worktree-worker": resolve(__dirname, "src/main/worktree-worker/entry.ts"),
+            bootstrap: resolve(repositoryRoot, "src/main/bootstrap.ts"),
+            serve: resolve(repositoryRoot, "src/host/serve-entry.ts"),
+            "git-worker": resolve(repositoryRoot, "src/main/git-worker/entry.ts"),
+            "worktree-worker": resolve(repositoryRoot, "src/main/worktree-worker/entry.ts"),
           },
           onwarn(warning, defaultHandler) {
             if (isKnownYProsemirrorAwarenessTypeImportWarning(warning)) return;
@@ -145,11 +144,14 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
         ...buildOptimization,
         rollupOptions: {
           input: {
-            "avatar-overlay": resolve(__dirname, "src/preload/avatar-overlay.ts"),
-            "browser-guest": resolve(__dirname, "src/preload/browser-guest.ts"),
-            "global-dictation": resolve(__dirname, "src/preload/global-dictation.ts"),
-            index: resolve(__dirname, "src/preload/index.ts"),
-            "mcp-app-sandbox-guest": resolve(__dirname, "src/preload/mcp-app-sandbox-guest.ts"),
+            "avatar-overlay": resolve(repositoryRoot, "src/preload/avatar-overlay.ts"),
+            "browser-guest": resolve(repositoryRoot, "src/preload/browser-guest.ts"),
+            "global-dictation": resolve(repositoryRoot, "src/preload/global-dictation.ts"),
+            index: resolve(repositoryRoot, "src/preload/index.ts"),
+            "mcp-app-sandbox-guest": resolve(
+              repositoryRoot,
+              "src/preload/mcp-app-sandbox-guest.ts",
+            ),
           },
           output: { keepNames: productionBuild },
         },
@@ -170,12 +172,12 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
           }),
         },
       },
-      root: resolve(__dirname, "src/renderer"),
+      root: resolve(repositoryRoot, "src/renderer"),
       build: {
         ...buildOptimization,
         rollupOptions: {
           input: {
-            index: resolve(__dirname, "src/renderer/index.html"),
+            index: resolve(repositoryRoot, "src/renderer/index.html"),
           },
           output: {
             keepNames: productionBuild,

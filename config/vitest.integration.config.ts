@@ -1,10 +1,10 @@
-import { vitestTimeouts } from "./config/test-timeouts";
-import { resolveVitestTestTier } from "./config/vitest-test-tier";
-import { TEST_ENVIRONMENT } from "./config/test-environment";
-import { testObservation } from "./config/vitest-observation";
+import { vitestTimeouts } from "./test-timeouts";
+import { resolveVitestTestTier } from "./vitest-test-tier";
+import { TEST_ENVIRONMENT } from "./test-environment";
+import { testObservation } from "./vitest-observation";
 import { defineConfig } from "vite-plus";
-import { assertElectronTestRuntime } from "./config/electron-test-runtime";
-import { filesForSuite } from "./config/test-suites";
+import { assertElectronTestRuntime } from "./electron-test-runtime";
+import { filesForSuite } from "./test-suites";
 
 assertElectronTestRuntime("integration");
 

@@ -9,7 +9,7 @@ of authority. The SDK handles MCP framing and protocol validation.
 Run the focused transport tests from the repository root:
 
 ```sh
-vp test run --config vitest.node.config.ts packages/nodex-app-tools-mcp/src/server.test.ts
+vp test run --config config/vitest.node.config.ts packages/nodex-app-tools-mcp/src/server.test.ts
 ```
 
 Run the pinned app-server experiment against a fresh disposable directory:

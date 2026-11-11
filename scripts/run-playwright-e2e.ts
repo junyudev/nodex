@@ -35,21 +35,21 @@ export const NIGHTLY_E2E_SPECS = [
 const modes = {
   default: {
     scriptName: "test:e2e",
-    config: "playwright.e2e.config.ts",
+    config: "config/playwright.e2e.config.ts",
     fixedArguments: [],
     environment: {},
     exclusive: false,
   },
   nightly: {
     scriptName: "test:e2e:nightly",
-    config: "playwright.e2e.config.ts",
+    config: "config/playwright.e2e.config.ts",
     fixedArguments: [...NIGHTLY_E2E_SPECS, "--workers=1"],
     environment: { NODEX_E2E_INCLUDE_PERFORMANCE: "0" },
     exclusive: false,
   },
   performance: {
     scriptName: "test:e2e:performance",
-    config: "playwright.e2e.config.ts",
+    config: "config/playwright.e2e.config.ts",
     fixedArguments: ["--grep", PERFORMANCE_GREP],
     environment: { NODEX_E2E_INCLUDE_PERFORMANCE: "1" },
     // Latency budgets are only meaningful when nothing else competes for the computer.

@@ -264,6 +264,8 @@ export async function buildMacDistribution(options: {
     [
       "exec",
       "electron-builder",
+      "--config",
+      "config/electron-builder.yml",
       "--mac",
       "dmg",
       `--${options.architecture}`,

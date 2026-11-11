@@ -142,7 +142,7 @@ Finish with the standard validation commands:
 
 ```bash
 vp install
-vp test run --config vitest.renderer.config.ts \
+vp test run --config config/vitest.renderer.config.ts \
   third_party/blocknote/packages/core/src/api/getBlocksChangedByTransaction.test.ts \
   third_party/blocknote/packages/core/src/schema/schema.test.ts \
   third_party/blocknote/packages/core/src/extensions/Versioning/Versioning.test.ts \
@@ -152,7 +152,7 @@ vp test run --config vitest.renderer.config.ts \
   third_party/blocknote/packages/react/src/components/SuggestionMenu/SuggestionMenuFreshness.test.tsx \
   src/renderer/components/board/editor/nfm-side-menu.test.tsx \
   src/renderer/components/board/editor/nfm-slash-menu.test.tsx
-vp test run --config vitest.node.config.ts \
+vp test run --config config/vitest.node.config.ts \
   src/shared/block-documents/headless-blocknote-schema.test.ts \
   src/renderer/lib/nfm/blocknote-adapter.node.test.ts
 vp run typecheck

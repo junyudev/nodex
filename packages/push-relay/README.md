@@ -111,7 +111,7 @@ From the repository root:
 
 ```sh
 vp install --frozen-lockfile
-vp test run --config vitest.node.config.ts packages/push-relay/src/relay.test.ts
+vp test run --config config/vitest.node.config.ts packages/push-relay/src/relay.test.ts
 vp run typecheck
 vp run fmt:check
 vp run verify:static

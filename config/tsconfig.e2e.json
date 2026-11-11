@@ -1,12 +1,12 @@
 {
-  "extends": "./tsconfig.base.json",
+  "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "target": "ES2022",
     "module": "ES2022",
     "moduleResolution": "bundler",
     "strict": true,
     "incremental": true,
-    "tsBuildInfoFile": ".cache/typescript/e2e.tsbuildinfo",
+    "tsBuildInfoFile": "../.cache/typescript/e2e.tsbuildinfo",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
@@ -15,10 +15,10 @@
     "types": ["node"]
   },
   "include": [
-    "tests/**/*.ts",
-    "tests/**/*.tsx",
-    "tests/**/*.mts",
-    "tests/**/*.cts",
-    "src/renderer/**/*.d.ts"
+    "../tests/**/*.ts",
+    "../tests/**/*.tsx",
+    "../tests/**/*.mts",
+    "../tests/**/*.cts",
+    "../src/renderer/**/*.d.ts"
   ]
 }

@@ -126,7 +126,7 @@ const runPaidAgentSmoke = (arguments_: readonly string[]): void => {
       "playwright",
       "test",
       "--config",
-      "playwright.paid-agent-smoke.config.ts",
+      "config/playwright.paid-agent-smoke.config.ts",
       "--grep",
       definition.grep,
       "--output",

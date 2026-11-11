@@ -17,7 +17,7 @@ test("runs exactly the selected cohort with the requested worker budget", () => 
     "test",
     "run",
     "--config",
-    "vitest.renderer.config.ts",
+    "config/vitest.renderer.config.ts",
     "--maxWorkers",
     "2",
     ...rendererCohort,

@@ -68,6 +68,8 @@ describe.skipIf(process.platform === "win32")("local macOS app installer", () =>
       [
         "exec",
         "electron-builder",
+        "--config",
+        "config/electron-builder.yml",
         "--mac",
         "dir",
         "--arm64",

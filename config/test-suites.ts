@@ -69,7 +69,7 @@ interface TestSuite {
 /** Runtime, discovery and prerequisites change together; consumers never copy globs. */
 const suites: Readonly<Record<SuiteId, TestSuite>> = {
   unit: {
-    config: "vitest.node.config.ts",
+    config: "config/vitest.node.config.ts",
     runtime: "host-node",
     include: [
       "config/**/*.test.ts",
@@ -102,7 +102,7 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
     native: ["agent-runtime"],
   },
   "effect-codex": {
-    config: "vitest.effect-codex.config.ts",
+    config: "config/vitest.effect-codex.config.ts",
     runtime: "host-node",
     include: ["packages/effect-codex-app-server/src/**/*.test.ts"],
     exclude: [],
@@ -126,7 +126,7 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
     native: [],
   },
   "core-client": {
-    config: "vitest.core-client.config.ts",
+    config: "config/vitest.core-client.config.ts",
     runtime: "host-node",
     include: ["src/main/**/*.node.test.ts", "src/host/**/*.node.test.ts", YJS_YRS_TEST],
     exclude: [],
@@ -134,7 +134,7 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
     native: ["core-server", "yjs-yrs-bridge", "cli"],
   },
   main: {
-    config: "vitest.main.config.ts",
+    config: "config/vitest.main.config.ts",
     runtime: "electron-node",
     include: ["src/main/**/*.test.ts", "src/host/**/*.test.ts"],
     exclude: [
@@ -147,7 +147,7 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
     native: ["core-server"],
   },
   renderer: {
-    config: "vitest.renderer.config.ts",
+    config: "config/vitest.renderer.config.ts",
     runtime: "jsdom",
     include: [
       "src/renderer/**/*.test.tsx",
@@ -164,7 +164,7 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
     native: [],
   },
   integration: {
-    config: "vitest.integration.config.ts",
+    config: "config/vitest.integration.config.ts",
     runtime: "electron-node",
     include: [
       "src/main/**/*.integration.ts",
@@ -180,7 +180,7 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
     native: ["core-server"],
   },
   browser: {
-    config: "vitest.browser.config.ts",
+    config: "config/vitest.browser.config.ts",
     runtime: "chromium",
     include: [
       "src/renderer/**/*.browser.test.{ts,tsx}",

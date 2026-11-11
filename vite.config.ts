@@ -44,7 +44,7 @@ const rawMarkdownReferencePaths = [
 ];
 
 // JavaScript entrypoints use runtime contracts. Tooling test exceptions below
-// have an explicit type owner in tsconfig.tooling.json.
+// have an explicit type owner in config/tsconfig.tooling.json.
 const nonProjectSources = [
   "**/*.cjs",
   "**/*.js",
@@ -169,7 +169,7 @@ export default defineConfig({
       "!scripts/ci/**/*.test.ts",
     ],
     jsPlugins: [
-      "./oxlint-plugin-nodex/index.ts",
+      "./config/oxlint-plugin-nodex/index.ts",
       { name: "@tanstack/query", specifier: "@nodex/query-lint-runtime" },
       ...(betterTailwindEnabled
         ? [{ name: "better-tailwindcss", specifier: "eslint-plugin-better-tailwindcss" }]

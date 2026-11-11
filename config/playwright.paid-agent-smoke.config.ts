@@ -4,7 +4,7 @@ import { baseElectronE2eConfig } from "./playwright.e2e.config";
 import {
   PAID_AGENT_SMOKE_DEFINITIONS,
   requirePaidAgentSmokeCase,
-} from "./scripts/paid-agent-smoke-contract";
+} from "../scripts/paid-agent-smoke-contract";
 
 if (process.env.CI) {
   throw new Error("Paid Agent smoke is local-only and must never run in CI.");
