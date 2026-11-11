@@ -978,6 +978,24 @@ fn verify_direct_body_and_title_edits(home: &Path) {
         initial["validators"]["body_etag"]
     );
     let title_etag = observation[0]["title_etag"].as_str().unwrap();
+    let swapped = run(
+        home,
+        &[
+            "page",
+            "rename",
+            "Renamed Page",
+            page,
+            "--if-match",
+            title_etag,
+        ],
+    );
+    assert_eq!(swapped["error"]["code"], "SCOPE_NOT_FOUND");
+    assert!(
+        swapped["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("arguments look swapped")
+    );
     success(
         home,
         &[

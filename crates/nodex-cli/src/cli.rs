@@ -697,7 +697,7 @@ pub struct PageReplaceArgs {
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
-#[command(group(clap::ArgGroup::new("title_input").required(true).multiple(false).args(["title", "file"])))]
+#[command(override_usage = "nodex page rename <PAGE> <TITLE|--file FILE> --if-match <ETAG> [OPTIONS]", group(clap::ArgGroup::new("title_input").required(true).multiple(false).args(["title", "file"])))]
 pub struct PageRenameArgs {
     /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
