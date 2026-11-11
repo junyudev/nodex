@@ -74,6 +74,14 @@ asks the user to close Nodex and retry. No process-name-wide or descendant-tree
 termination is used. A sibling directory with the same prefix is outside the
 installation; filesystem aliases resolve to the installation's physical path.
 
+After process shutdown and before removing files, installer maintenance follows
+the current user's Chrome and Edge native-messaging defaults to their Profile
+receipts. It restores a default only when the receipt names this installation
+and the value still matches inside the native registry transaction. The same
+step runs on install-over, including a change in the closure location or removal
+of Desktop Tools. Profile files are retained. A Profile can register again when
+the new Desktop opens, subject to the normal ownership check and takeover consent.
+
 Silent maintenance retains its latest stage and timed maintenance diagnostics in
 `%LOCALAPPDATA%\Nodex\installer-maintenance.log`, outside the Profile and installed
 payload. It records shutdown errors, the maintenance-uninstaller refresh, nested
@@ -103,17 +111,29 @@ add a per-architecture Browser Use and Computer Use closure outside ASAR.
 The Windows package omits macOS bridges and helpers, Sparkle, native PiP, and the
 Python workspace runtime.
 
-The Desktop Tool lock pins the x64 and arm64 archives independently. Before
-publication, pass the matching local archive to `materialize-browser-runtime.ts`
-with `--target-platform win32 --target-arch <arch>`, then supply that source
-to Agent runtime staging. Staging verifies the manifest and every file's bytes
-and preserves vendor signatures. Release provenance records the selected
-closure's manifest and archive digests when it is packaged.
+The Desktop Tool lock pins each Windows archive independently. Windows staging
+downloads a published asset and stages its exact closure. An unpublished
+candidate (`url: null`) leaves the entire closure out, even if a previous build
+staged it. The installer still works and Desktop Tools report unavailable. CI
+reports `skipped: candidate assets` for that CPU. A failed published download or
+an incomplete closure fails the build. For local candidate inspection,
+`materialize-browser-runtime.ts --target-platform win32 --target-arch <arch>`
+accepts `--archive` or a digest-addressed `--cache`.
 
-On each matching Windows worker, verify the embedded Authenticode signatures
-and publisher chains, check the closure's ownership and reparse-point policy,
-and probe CLI and Node versions, the Node-API addon loads, and the exact primary
-app-server pair. Main requires the native verifier before exposing the closure.
+Electron-builder copies the matching stage to `resources/browser-runtime`
+outside ASAR. Nodex keeps the locked vendor PEs byte-for-byte and preserves
+their embedded signatures. Resource editing applies to the Nodex executable.
+After-pack and installed verification check the exact manifest allowlist,
+sizes, hashes, PE machines, and import closure. Distribution provenance records
+the selected archive and manifest digests. The installed native probe checks
+NTFS ownership and reparse points, publisher and issuer policy, the exact
+primary app-server pair, and a real REPL MCP session through the job launcher.
+
+The closure excludes the upstream MSIX container and package registration,
+aliases, updater, foreign-CPU fallback prebuilds, and unrelated app assets.
+Computer Use keeps each signed, app-local DLL beside the helper that imports
+it, including the Swift helper's retail CRT. The build worker never adds or
+substitutes DLLs in the sealed Desktop Tool tree.
 
 Codex archive hashes, file inventories, entrypoint hashes and canonical runtime
 metadata digests are pinned separately for both Windows CPUs. Node's executable
@@ -184,10 +204,10 @@ Direct2D and `d3dcompiler_47.dll`, and [Windows ICU](https://learn.microsoft.com
 recursively for both CPUs in unit tests, including its nested OpenConsole helper.
 The installed native Claude SDK is also checked before packaging; its `WSOCK32.dll`
 delay import uses the inbox [Winsock compatibility layer](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsaisblocking).
-The only non-DLL host binding is node-gyp's `node.exe`
-delay import in `.node` addons: its delay-load hook binds the already-loaded
-Node/Electron process. Callers must supply and verify the matching-CPU host;
-this does not excuse ordinary imports or DLL dependencies.
+Node-gyp's `node.exe` delay import in `.node` addons binds the already-loaded
+matching-CPU Node/Electron host. The locked Desktop Tool `native/windows-account.node`
+also has a reviewed Electron delay-load host binding for `chrome.dll`.
+Ordinary DLL imports still require the normal dependency closure.
 
 For third-party binaries, `scripts/windows-vc-runtime.mjs` locates Visual Studio
 with `vswhere`, selects the newest retail `VC/Redist/MSVC/<version>/<arch>/Microsoft.VC*.CRT`,

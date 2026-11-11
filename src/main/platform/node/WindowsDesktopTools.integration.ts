@@ -6,22 +6,22 @@ import {
 import { existsSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { makeWindowsBrowserPeerAuthorizer } from "../../browser-use/browser-use-peer-authorizer";
-import { resolveCodexRuntime } from "../../codex/codex-runtime";
-import { BrowserUseThreadConfigBuilder } from "../../codex/browser-use-thread-config";
-import {
-  nodeReplServerDefinition,
-  windowsDesktopToolCodexHome,
-} from "../../codex/desktop-tool-environment";
+import { nodeReplServerDefinition } from "../../codex/desktop-tool-environment";
 import { makeWindowsBrowserRuntimeVerifier } from "./WindowsBrowserRuntimeVerifier";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import * as Effect from "effect/Effect";
 import { expect, test } from "vitest";
+import {
+  probeWindowsDesktopTools,
+  windowsDesktopToolConformanceCandidate,
+} from "../../../../scripts/testing/windows-desktop-tools.test-support";
 import { requiredNativeExecutable } from "../../../../scripts/testing/native-artifacts";
+import { makePrivatePaths } from "./private-filesystem";
 import {
   WindowsDesktopTools,
   windowsDesktopToolsLayer,
@@ -368,65 +368,42 @@ const projectRoot = resolve(".");
 const stagedRuntime = join(projectRoot, ".generated", "codex-runtime");
 test.skipIf(
   process.platform !== "win32" ||
-    !existsSync(
-      join(
-        stagedRuntime,
-        "agent-runtime",
-        BROWSER_RUNTIME_BUNDLE_DIRECTORY,
-        BROWSER_RUNTIME_MANIFEST_FILENAME,
-      ),
-    ),
+    (process.env.NODEX_REQUIRE_STAGED_DESKTOP_TOOLS !== "1" &&
+      !existsSync(
+        join(
+          stagedRuntime,
+          "agent-runtime",
+          BROWSER_RUNTIME_BUNDLE_DIRECTORY,
+          BROWSER_RUNTIME_MANIFEST_FILENAME,
+        ),
+      )),
 )(
   "initializes the staged vendor Windows REPL over MCP stdio",
   async () => {
-    const verifier = await run((native) =>
-      Effect.succeed(makeWindowsBrowserRuntimeVerifier(native, stagedRuntime, Effect.runPromise)),
-    );
-    const { browserRuntime } = await resolveCodexRuntime({
-      platform: process.platform,
-      architecture: process.arch,
-      projectRootPath: projectRoot,
-      isPackaged: false,
-      windowsBrowserRuntimeVerifier: verifier,
-    });
-    if (browserRuntime.status !== "available") throw new Error(browserRuntime.message);
-    const home = await mkdtemp(join(tmpdir(), "nodex-staged-repl-"));
+    const home = await mkdtemp(join(tmpdir(), "nodex-staged-runtime-"));
     try {
-      await mkdir(windowsDesktopToolCodexHome(home), { recursive: true });
-      const result = new BrowserUseThreadConfigBuilder({
-        browserRuntime,
-        codexHome: home,
-        runtimeStateHome: home,
-        windows: { jobLauncher: launcher(), environment: process.env },
-      }).buildResult();
-      if (result.status !== "available") throw new Error(result.message);
-      const server = result.config["mcp_servers.node_repl"] as { command: string; args: string[] };
-      const child = spawn(server.command, server.args, { env: {}, windowsHide: true });
-      try {
-        const output = createInterface({ input: child.stdout });
-        const response = once(output, "line");
-        child.stdin.write(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            method: "initialize",
-            params: {
-              protocolVersion: "2024-11-05",
-              clientInfo: { name: "Nodex native test", version: "1" },
-              capabilities: {},
-            },
-          }) + "\n",
-        );
-        expect(JSON.parse((await response)[0])).toMatchObject({
-          id: 1,
-          result: { serverInfo: { name: expect.any(String) } },
-        });
-      } finally {
-        await closeChild(child);
-      }
+      // The Actions checkout inherits a shared ACL. Copy the staged bytes under
+      // an inheritable private ACL before running the production verifier.
+      await makePrivatePaths(
+        [{ path: home, directory: true }],
+        requiredNativeExecutable("core-server"),
+      );
+      const runtime = join(home, ".generated", "codex-runtime");
+      await cp(stagedRuntime, runtime, { recursive: true });
+      expect(
+        await probeWindowsDesktopTools({
+          location: { isPackaged: false, projectRootPath: home },
+          boundary: runtime,
+          launcher: launcher(),
+          conformanceCandidatePair: windowsDesktopToolConformanceCandidate(
+            projectRoot,
+            process.arch,
+          ),
+        }),
+      ).toMatchObject({ status: "passed" });
     } finally {
       await rm(home, { recursive: true, force: true });
     }
   },
-  180_000,
+  210_000,
 );

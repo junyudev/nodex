@@ -13,7 +13,10 @@ import {
   parseBundledAgentRuntimeMetadata,
   type BundledAgentRuntimeMetadata,
 } from "../../shared/codex-runtime-metadata";
-import { projectBundledAppServerRuntimeIdentity } from "../../shared/browser-app-server-compatibility";
+import {
+  projectBundledAppServerRuntimeIdentity,
+  type TestedBrowserAppServerPair,
+} from "../../shared/browser-app-server-compatibility";
 import {
   resolveBrowserRuntimeBundle,
   type BrowserRuntimeAvailability,
@@ -104,6 +107,8 @@ interface DeferredWindowsBrowserRuntime {
 }
 
 type ResolveCodexRuntimeOptions = {
+  /** Explicit pair for the live conformance probe. Normal application resolution uses the catalog. */
+  conformanceCandidatePair?: TestedBrowserAppServerPair;
   deferWindowsBrowserRuntime?: DeferredWindowsBrowserRuntime;
   platform?: string;
   architecture?: string;
@@ -116,6 +121,7 @@ type ResolveCodexRuntimeOptions = {
 };
 
 async function resolveRuntimeFromRoot(input: {
+  conformanceCandidatePair?: TestedBrowserAppServerPair;
   deferWindowsBrowserRuntime?: DeferredWindowsBrowserRuntime;
   platform?: string;
   architecture?: string;
@@ -155,6 +161,7 @@ async function resolveRuntimeFromRoot(input: {
       runtimeRoot: input.runtimeRoot,
       targetArch: metadata.targetArch as NodeJS.Architecture,
       targetPlatform: metadata.targetPlatform as NodeJS.Platform,
+      testedPairs: input.conformanceCandidatePair ? [input.conformanceCandidatePair] : undefined,
     });
   const deferred =
     metadata.targetPlatform === "win32" ? input.deferWindowsBrowserRuntime : undefined;
@@ -244,6 +251,7 @@ export async function resolveCodexRuntime(
     }
 
     return resolveRuntimeFromRoot({
+      conformanceCandidatePair: options.conformanceCandidatePair,
       platform: options.platform,
       architecture: options.architecture,
       browserRuntimePlatformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
@@ -264,6 +272,7 @@ export async function resolveCodexRuntime(
   }
 
   return resolveRuntimeFromRoot({
+    conformanceCandidatePair: options.conformanceCandidatePair,
     platform: options.platform,
     architecture: options.architecture,
     browserRuntimePlatformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,

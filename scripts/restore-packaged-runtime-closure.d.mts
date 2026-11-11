@@ -4,6 +4,7 @@ export interface RestorePackagedBrowserRuntimeClosureOptions {
   readonly packagedBrowserRoot: string;
   readonly sourceBrowserRoot: string;
   readonly windowsArch?: "x64" | "arm64";
+  readonly expectedManifestSha256?: string;
   readonly restore?: boolean;
 }
 

@@ -79,6 +79,7 @@ extraResources:
     to: .
     filter:
       - "**/*"
+      - "!browser-runtime{,/**/*}"
 extraMetadata:
   main: out/main/bootstrap.js
 protocols:
@@ -89,6 +90,10 @@ protocols:
 # --- macOS ---
 mac:
   extraResources:
+    - from: .generated/codex-runtime/agent-runtime/browser-runtime
+      to: browser-runtime
+      filter:
+        - "**/*"
     - from: .generated/workspace-runtime/${arch}
       to: workspace-runtime
       filter:
@@ -189,6 +194,10 @@ win:
       arch: [x64, arm64]
   artifactName: "${productName}-${version}-win-${arch}-setup.${ext}"
   extraResources:
+    - from: .generated/codex-runtime/agent-runtime/browser-runtime
+      to: browser-runtime
+      filter:
+        - "**/*"
     - from: resources/windows
       to: windows
       filter:

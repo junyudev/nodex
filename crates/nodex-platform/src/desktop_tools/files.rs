@@ -213,12 +213,16 @@ pub struct PathSecurity {
 /// for every principal and potentially callback/object-specific policy.
 pub fn inspect_path(path: &Path) -> io::Result<PathSecurity> {
     let (chain, reparse_point) = open_ntfs(path, READ_CONTROL | FILE_READ_ATTRIBUTES)?;
+    inspect_open_path(chain.last().expect("checked path"), reparse_point)
+}
+
+pub(super) fn inspect_open_path(file: &File, reparse_point: bool) -> io::Result<PathSecurity> {
     let mut owner = null_mut();
     let mut acl = null_mut();
     let mut descriptor = null_mut();
     let status = unsafe {
         GetSecurityInfo(
-            chain.last().expect("checked path").as_raw_handle(),
+            file.as_raw_handle(),
             SE_FILE_OBJECT,
             OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
             &mut owner,

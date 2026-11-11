@@ -43,8 +43,17 @@ describe("electron-builder runtime resources", () => {
     expect(config.extraResources).toContainEqual({
       from: ".generated/codex-runtime/agent-runtime",
       to: ".",
-      filter: ["**/*"],
+      filter: ["**/*", "!browser-runtime{,/**/*}"],
     });
+    // Desktop Tools ship per platform: each installer carries only its own target's closure.
+    const desktopTools = {
+      from: ".generated/codex-runtime/agent-runtime/browser-runtime",
+      to: "browser-runtime",
+      filter: ["**/*"],
+    };
+    expect(config.mac?.extraResources).toContainEqual(desktopTools);
+    expect(config.win?.extraResources).toContainEqual(desktopTools);
+    expect(config.linux?.extraResources ?? []).not.toContainEqual(desktopTools);
     expect(config.extraResources).toContainEqual({
       from: ".generated/official-agent-skills",
       to: "agent-skills",

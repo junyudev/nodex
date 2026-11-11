@@ -11,7 +11,10 @@ pub use files::inspect_path;
 pub use job_stdio::run_job;
 pub use pipes::{PipeConnection, PipeListener, connect_pipe, enumerate_pipes};
 pub use processes::{ProcessIdentity, descendants, process_identity, terminate_subtree};
-pub use registry::{HostKey, read_registration, restore_registration, write_registration};
+pub use registry::{
+    HostKey, read_registration, restore_installation_registrations, restore_registration,
+    write_registration,
+};
 
 use files::invalid;
 use pipes::{MAX_CHUNK, MAX_CONNECTIONS};
