@@ -3,8 +3,6 @@ import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   parseClaudeModelLineup,
 } from "../../provider/ClaudeModelCatalog.ts";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 // @effect-diagnostics nodeBuiltinImport:off -- workflow fixtures use files and the fake Claude CLI uses Node streams
 import * as NodeEvents from "node:events";
@@ -603,27 +601,6 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
       );
     },
   );
-
-  it("names the REPL's standing grant for the person reading the card", () => {
-    const { options } = ClaudeAdapterV2.claudeApprovalPresentation({
-      permissionMode: "acceptEdits",
-      prompt: "nodeRepl.write('hi')",
-      callbackOptions: {
-        suggestions: [
-          {
-            type: "addRules",
-            rules: [{ toolName: "mcp__node_repl__js" }],
-            behavior: "allow",
-            destination: "session",
-          },
-        ],
-      },
-    });
-    assert.strictEqual(
-      options?.find((option) => option.decision === "acceptForSession")?.label,
-      "Allow JavaScript for this chat",
-    );
-  });
 
   it.effect("cancels an approval when its native callback is aborted", () =>
     Effect.gen(function* () {
@@ -2901,330 +2878,94 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
-  const makeDesktopHarness = Effect.fnUntraced(function* (
-    options: {
-      readonly available?: boolean;
-      readonly broken?: boolean;
-    } = {},
-  ) {
-    const phases: string[] = [];
-    const ended = yield* Queue.unbounded<void>();
-    const cwd = process.cwd();
-    const harness = yield* makeWakeHarnessWithOptions({
-      freshQueueOnReopen: true,
-      onOffer: () => phases.push("prompt"),
-    }).pipe(
-      Effect.provideService(ExecutionHost.ExecutionHost, {
-        prepareTurn: () => Effect.succeed({}),
-        prepareThread: () =>
-          Effect.succeed(
-            options.available === false
-              ? {}
-              : {
-                  desktopTools: {
-                    server: {
-                      command: process.execPath,
-                      args: [
-                        options.broken
-                          ? "/missing-desktop-runtime.mjs"
-                          : NodePath.join(import.meta.dirname, "fixtures/desktop-tools.mjs"),
-                      ],
-                      env: {},
-                    },
-                    pluginRoots: ["/plugins/browser"],
-                  },
-                },
-          ),
-        observeNativeTurn: ({ phase }) =>
-          Effect.sync(() => {
-            phases.push(phase);
-          }).pipe(Effect.andThen(phase === "ended" ? Queue.offer(ended, undefined) : Effect.void)),
-      }),
-    );
-    const input = (
-      ordinal: number,
-      runtimeMode: "full-access" | "approval-required" = "full-access",
-      modelSelection: ModelSelection = CLAUDE_TEST_MODEL_SELECTION,
-    ) => {
-      const turn = makeClaudeTestTurnInput({
+  it.effect("adds and removes Desktop Tools between prompted Turns", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarnessWithOptions({ freshQueueOnReopen: true });
+      const sessions = yield* McpProviderSessions.McpProviderSessions;
+      const session = {
+        environmentId: EnvironmentId.make("desktop-environment"),
         threadId: harness.threadId,
-        providerThread: harness.providerThread,
-        now: DateTime.makeUnsafe("2026-11-06T00:00:00Z"),
-        attemptId: RunAttemptId.make(`desktop-${ordinal}`),
-        providerTurnOrdinal: ordinal,
-        text: "Use desktop tools",
-        attachments: [],
-        modelSelection,
-        runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
-          runtimeMode,
-          interactionMode: "default",
-          cwd,
-        }),
-      });
-      return {
-        ...turn,
-        hostExecutionIdentity: {
-          projectId: turn.appThread.projectId,
-          threadId: turn.threadId,
-          runId: turn.runId,
-          attemptId: turn.attemptId,
-          providerInstanceId: turn.modelSelection.instanceId,
-          providerSessionId: turn.providerThread.providerSessionId!,
-          providerThreadId: turn.providerThread.id,
-          nativeGeneration: 1,
-          nativeThreadRef: turn.providerThread.nativeThreadRef,
-          cwd,
-        },
+        providerSessionId: "desktop-mcp",
+        providerInstanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+        endpoint: "http://127.0.0.1:43123/mcp",
+        authorizationHeader: "Bearer fixture-only",
+        browserToolsAvailable: true,
+        registeredToolNames: ["read_page"],
       };
-    };
-    const connect = Effect.fnUntraced(function* () {
-      const config = harness.getOpenedOptions()?.mcpServers?.node_repl;
-      assert.equal(config?.type, "sdk");
-      if (config?.type !== "sdk") return yield* Effect.die("Missing SDK server");
-      const [local, remote] = InMemoryTransport.createLinkedPair();
-      yield* Effect.promise(() => config.instance.connect(remote));
-      const client = new Client({ name: "adapter-test", version: "1" });
-      yield* Effect.promise(() => client.connect(local));
-      yield* Effect.addFinalizer(() => Effect.promise(() => client.close()));
-      return client;
-    });
-    const finish = (ordinal: number) =>
-      Queue.offer(
-        harness.processQueues.at(-1)!,
-        makeResultFrame({ uuid: `desktop-result-${ordinal}`, result: "Done" }),
-      ).pipe(
-        Effect.andThen(Queue.take(harness.terminalReceipts)),
-        Effect.tap(() => (options.available === false ? Effect.void : Queue.take(ended))),
-      );
-    return { ...harness, phases, input, connect, finish, ended };
-  });
-
-  it.live.each(["completed", "failed", "interrupted"] as const)(
-    "observes desktop Turn %s exactly once, starting before the prompt",
-    (status) =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const harness = yield* makeDesktopHarness();
-          const input = harness.input(1);
-          yield* harness.runtime.startTurn(input);
-          const desktopOnly = ClaudeAdapterV2.makeClaudeQueryOptions({
-            modelSelection: CLAUDE_TEST_MODEL_SELECTION,
-            nativeThreadId: "desktop-only",
-            cwd: null,
-            resume: false,
-            mcpServers: harness.getOpenedOptions()?.mcpServers ?? {},
-            hostOrchestrationInstructions: "DESKTOP_ORCHESTRATION_INSTRUCTIONS",
-          });
-          assert.notInclude(
-            JSON.stringify(desktopOnly.systemPrompt),
-            "DESKTOP_ORCHESTRATION_INSTRUCTIONS",
-          );
-          assert.deepEqual(harness.phases, ["started", "prompt"]);
-          if (status === "interrupted") {
-            const allocator = yield* IdAllocator.IdAllocatorV2;
-            yield* harness.runtime.interruptTurn({
-              providerThread: harness.providerThread,
-              providerTurnId: allocator.derive.providerTurn({
-                driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
-                nativeTurnId: `turn:${input.attemptId}`,
-              }),
-            });
-          } else {
-            yield* Queue.offer(
-              harness.sdkMessages,
-              makeResultFrame({
-                uuid: "desktop-terminal",
-                result: "Done",
-                isError: status === "failed",
-                subtype: status === "failed" ? "error_during_execution" : "success",
-                terminalReason: status === "failed" ? "api_error" : "completed",
-                ...(status === "failed" ? { errors: ["fixture failure"] } : {}),
-              }),
-            );
-          }
-          const terminal = yield* Queue.take(harness.terminalReceipts);
-          assert.equal(terminal.status, status);
-          yield* Queue.take(harness.ended);
-          assert.deepEqual(harness.phases, ["started", "prompt", "ended"]);
-          yield* Queue.offer(
-            harness.sdkMessages,
-            makeResultFrame({ uuid: "duplicate-desktop-terminal", result: "Done" }),
-          );
-          yield* Effect.yieldNow;
-          assert.deepEqual(harness.phases, ["started", "prompt", "ended"]);
-        }).pipe(
-          Effect.provide(
-            Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
-          ),
-        ),
-      ),
-  );
-
-  it.live.each([{ available: false }, { broken: true }])(
-    "completes without Desktop Tools: %j",
-    (options) =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const harness = yield* makeDesktopHarness(options);
-          yield* harness.runtime.startTurn(harness.input(1));
-          assert.isUndefined(harness.getOpenedOptions()?.mcpServers?.node_repl);
-          assert.isUndefined(harness.getOpenedOptions()?.plugins);
-          assert.equal((yield* harness.finish(1)).status, "completed");
-        }).pipe(
-          Effect.provide(
-            Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
-          ),
-        ),
-      ),
-  );
-
-  it.live(
-    "registers plugins without MCP discovery and preserves the bridge across a CLI launch change",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const harness = yield* makeDesktopHarness();
-          const sessions = yield* McpProviderSessions.McpProviderSessions;
-          yield* sessions.set({
-            environmentId: EnvironmentId.make("desktop-environment"),
+      const desktopTools = {
+        endpoint: "http://127.0.0.1:43123/mcp/node_repl",
+        pluginRoots: ["/plugins/browser"],
+        skills: [],
+      };
+      const start = (ordinal: number) =>
+        harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
             threadId: harness.threadId,
-            providerSessionId: "desktop-mcp",
-            providerInstanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
-            endpoint: "http://127.0.0.1:43123/mcp",
-            authorizationHeader: "Bearer fixture-only",
-            browserToolsAvailable: true,
-          });
-          yield* harness.runtime.startTurn({
-            ...harness.input(1),
-            hostOrchestrationInstructions: "DESKTOP_ORCHESTRATION_INSTRUCTIONS",
-          });
-          assert.equal(harness.getOpenedOptions()?.mcpServers?.nodex_app?.type, "http");
-          assert.include(
-            JSON.stringify(harness.getOpenedOptions()?.systemPrompt),
-            "DESKTOP_ORCHESTRATION_INSTRUCTIONS",
-          );
-          assert.deepEqual(harness.getOpenedOptions()?.plugins, [
-            { type: "local", path: "/plugins/browser", skipMcpDiscovery: true },
-          ]);
-          const first = yield* harness.connect();
-          const before = yield* Effect.promise(() => first.callTool({ name: "js", arguments: {} }));
-          yield* harness.finish(1);
-          yield* Effect.promise(() => first.close());
-          yield* harness.runtime.startTurn(
-            harness.input(2, "full-access", CLAUDE_TEST_RELAUNCH_SELECTION),
-          );
-          const second = yield* harness.connect();
-          const after = yield* Effect.promise(() => second.callTool({ name: "js", arguments: {} }));
-          assert.deepEqual(after.structuredContent, before.structuredContent);
-          assert.equal((yield* harness.finish(2)).status, "completed");
-          yield* Effect.promise(() => second.close());
-          const forkInput = harness.input(3);
-          yield* harness.runtime.startTurn({
-            ...forkInput,
-            providerThread: {
-              ...forkInput.providerThread,
-              nativeThreadRef: {
-                driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
-                nativeId: "desktop-fork-native-thread",
-                strength: "strong",
-              },
-            },
-          });
-          const fork = yield* harness.connect();
-          const forkResult = yield* Effect.promise(() =>
-            fork.callTool({ name: "js", arguments: {} }),
-          );
-          assert.notDeepEqual(forkResult.structuredContent, before.structuredContent);
-          assert.equal((yield* harness.finish(3)).status, "completed");
-        }).pipe(
-          Effect.provide(
-            Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
-          ),
-        ),
-      ),
-  );
-
-  it.live.each([
-    { name: "empty form", mode: "full-access", properties: {}, metadata: {}, expected: "accept" },
-    {
-      name: "nonempty form",
-      mode: "full-access",
-      properties: { answer: { type: "string" } },
-      metadata: {},
-      expected: "decline",
-    },
-    {
-      name: "strict review",
-      mode: "full-access",
-      properties: {},
-      metadata: { codex_strict_auto_review: true },
-      expected: "decline",
-    },
-    {
-      name: "chat grant",
-      mode: "approval-required",
-      properties: {},
-      metadata: { persist: ["session"] },
-      expected: "accept",
-    },
-    {
-      name: "inactive Turn",
-      mode: "approval-required",
-      properties: {},
-      metadata: {},
-      expected: "decline",
-      inactive: true,
-    },
-  ] as const)("answers desktop elicitation: $name", (scenario) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const harness = yield* makeDesktopHarness();
-        yield* harness.runtime.startTurn(harness.input(1, scenario.mode));
-        const client = yield* harness.connect();
-        if ("inactive" in scenario) yield* harness.finish(1);
-        const elicitation = {
-          mode: "form",
-          message: "Allow Browser access?",
-          requestedSchema: { type: "object", properties: scenario.properties },
-          _meta: { codex_approval_kind: "mcp_tool_call", ...scenario.metadata },
-        };
-        const call = yield* Effect.promise(() =>
-          client.callTool({ name: "js", arguments: { elicitation } }),
-        ).pipe(Effect.forkScoped);
-        if (scenario.name === "chat grant") {
-          const approval = (yield* Queue.take(harness.approvalReceipts)).turnItem;
-          assert.equal(approval.type, "approval_request");
-          if (approval.type !== "approval_request") return;
-          assert.deepEqual(approval.options, [
-            { decision: "accept", label: "Approve once" },
-            { decision: "acceptForSession", label: "Allow for this chat" },
-            { decision: "decline", label: "Decline" },
-            { decision: "cancel", label: "Cancel" },
-          ]);
-          const request = harness.events.findLast(
-            (event) => event.type === "runtime_request.updated",
-          );
-          assert.equal(request?.type, "runtime_request.updated");
-          if (request?.type !== "runtime_request.updated") return;
-          yield* harness.runtime.respondToRuntimeRequest({
-            requestId: request.runtimeRequest.id,
-            decision: "acceptForSession",
-          });
-        }
-        const result = yield* Fiber.join(call);
-        assert.deepEqual(
-          result.structuredContent,
-          scenario.name === "chat grant"
-            ? { action: "accept", content: {}, _meta: { persist: "session" } }
-            : scenario.expected === "accept"
-              ? { action: "accept", content: {} }
-              : { action: "decline" },
+            providerThread: harness.providerThread,
+            now: DateTime.makeUnsafe("2026-11-06T00:00:00Z"),
+            attemptId: RunAttemptId.make(`desktop-${ordinal}`),
+            providerTurnOrdinal: ordinal,
+            text: "Continue.",
+            attachments: [],
+          }),
         );
-        if (!("inactive" in scenario)) yield* harness.finish(1);
-      }).pipe(
-        Effect.provide(
-          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
-        ),
+      const finish = (ordinal: number) =>
+        Queue.offer(
+          harness.processQueues.at(-1)!,
+          makeResultFrame({ uuid: `desktop-result-${ordinal}`, result: "Done" }),
+        ).pipe(Effect.andThen(Queue.take(harness.terminalReceipts)));
+      const assertAppOnly = () => {
+        const options = harness.getOpenedOptions();
+        assert.deepEqual(Object.keys(options?.mcpServers ?? {}), ["nodex_app"]);
+        assert.include(options?.allowedTools ?? [], "mcp__nodex_app__read_page");
+        assert.notInclude(options?.allowedTools ?? [], "mcp__node_repl__*");
+        assert.isUndefined(options?.plugins);
+      };
+
+      yield* sessions.set(session);
+      yield* start(1);
+      assertAppOnly();
+      assert.equal((yield* finish(1)).status, "completed");
+
+      yield* sessions.set({ ...session, desktopTools });
+      yield* start(2);
+      const options = harness.getOpenedOptions();
+      assert.equal(harness.processQueues.length, 2);
+      assert.deepEqual(options?.mcpServers, {
+        nodex_app: {
+          type: "http",
+          url: session.endpoint,
+          headers: { Authorization: session.authorizationHeader },
+          timeout: 65 * 60_000,
+        },
+        node_repl: {
+          type: "http",
+          url: desktopTools.endpoint,
+          headers: { Authorization: session.authorizationHeader },
+          timeout: 65 * 60_000,
+        },
+      });
+      assert.includeMembers(options?.allowedTools ?? [], [
+        "mcp__nodex_app__read_page",
+        "mcp__node_repl__*",
+      ]);
+      assert.deepEqual(options?.plugins, [
+        { type: "local", path: "/plugins/browser", skipMcpDiscovery: true },
+      ]);
+      assert.equal((yield* finish(2)).status, "completed");
+
+      yield* start(3);
+      assert.equal(harness.processQueues.length, 2);
+      assert.equal((yield* finish(3)).status, "completed");
+
+      yield* sessions.set(session);
+      yield* start(4);
+      assert.equal(harness.processQueues.length, 3);
+      assertAppOnly();
+      assert.equal((yield* finish(4)).status, "completed");
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
       ),
     ),
   );

@@ -10,12 +10,6 @@ import { providerPromptForInteraction } from "@nodex/provider-core/server/orches
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
 import { claudeMcpToolCall } from "./ClaudeMcpToolCall.ts";
 import {
-  makeClaudeDesktopToolBridge,
-  type ClaudeDesktopToolBridge,
-  type ClaudeDesktopToolElicitation,
-  type ClaudeDesktopToolElicitationResult,
-} from "./ClaudeDesktopToolBridge.ts";
-import {
   dynamicToolTitle,
   formatReadToolLabel,
   formatSearchToolLabel,
@@ -38,12 +32,6 @@ import {
   type StructuredHunk,
 } from "@nodex/runtime-shared/fileChanges";
 import { normalizeClaudeTurnTokenUsage } from "../../provider/ClaudeTurnTokenUsage.ts";
-import {
-  codexMcpApprovalOptions,
-  codexMcpApprovalResponse,
-  codexMcpElicitationPolicy,
-  isCodexMcpPermissionRequest,
-} from "../../provider/CodexMcpElicitation.ts";
 import { loadClaudeAgentSdk } from "../../provider/ClaudeAgentSdk.ts";
 import {
   queryClaudeAppliedSettings,
@@ -169,7 +157,6 @@ import {
   shouldPersistProviderEvent,
 } from "../../provider/EventNdjsonLogger.ts";
 import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
-import type * as CodexSchema from "effect-codex-app-server/schema";
 import * as ProviderEventLoggers from "@nodex/provider-core/server/ProviderEventLoggers";
 import {
   claudeRateLimitEventToUpdate,
@@ -1387,21 +1374,6 @@ export function makeClaudeQueryOptions(input: {
 const CLAUDE_NODEX_APP_TOOL_PREFIX = `mcp__${NODEX_APP_MCP_SERVER}__`;
 /** The Desktop Tool runtime's server name; its skills address `mcp__node_repl__js`. */
 const CLAUDE_DESKTOP_TOOL_MCP_SERVER = "node_repl";
-const CLAUDE_DESKTOP_TOOL_JS = `mcp__${CLAUDE_DESKTOP_TOOL_MCP_SERVER}__js`;
-
-/** A REPL elicitation in the shape the shared consent rules read; MCP's `_meta` is plain JSON. */
-function claudeDesktopToolElicitationPayload(
-  params: ClaudeDesktopToolElicitation,
-  turn: { readonly threadId: string; readonly turnId: string | null },
-): CodexSchema.McpServerElicitationRequestParams {
-  return {
-    ...params,
-    mode: params.mode ?? "form",
-    _meta: params._meta ?? null,
-    serverName: CLAUDE_DESKTOP_TOOL_MCP_SERVER,
-    ...turn,
-  } as CodexSchema.McpServerElicitationRequestParams;
-}
 const CLAUDE_NODEX_APP_TOOL_MATCHER = `${CLAUDE_NODEX_APP_TOOL_PREFIX}.*`;
 
 // Claude Code aborts an HTTP MCP call after 60 s ("The operation timed out.")
@@ -1416,6 +1388,7 @@ export function claudeMcpQueryOverrides(input: {
 }): {
   readonly allowedTools?: ReadonlyArray<string>;
   readonly mcpServers?: ClaudeQueryOptions["mcpServers"];
+  readonly plugins?: ClaudeQueryOptions["plugins"];
 } {
   const session = input.mcpSession;
   if (session === undefined) {
@@ -1424,8 +1397,9 @@ export function claudeMcpQueryOverrides(input: {
   const registeredTools = (session.registeredToolNames ?? []).map(
     (name) => `${CLAUDE_NODEX_APP_TOOL_PREFIX}${name}`,
   );
+  const desktop = session.desktopTools;
   const allowedTools =
-    input.allowedTools === undefined && registeredTools.length === 0
+    input.allowedTools === undefined && registeredTools.length === 0 && desktop === undefined
       ? undefined
       : Array.from(
           new Set([
@@ -1433,20 +1407,33 @@ export function claudeMcpQueryOverrides(input: {
               (tool) => tool !== `${CLAUDE_NODEX_APP_TOOL_PREFIX}*`,
             ),
             ...registeredTools,
+            // The Runtime authorizes Desktop Tool calls and presents approvals itself.
+            ...(desktop === undefined ? [] : [`mcp__${CLAUDE_DESKTOP_TOOL_MCP_SERVER}__*`]),
           ]),
         );
+  const httpServer = (url: string) => ({
+    type: "http" as const,
+    url,
+    headers: { Authorization: session.authorizationHeader },
+    timeout: CLAUDE_NODEX_APP_TOOL_TIMEOUT_MS,
+  });
   return {
     ...(allowedTools === undefined ? {} : { allowedTools }),
     mcpServers: {
-      [NODEX_APP_MCP_SERVER]: {
-        type: "http",
-        url: session.endpoint,
-        headers: {
-          Authorization: session.authorizationHeader,
-        },
-        timeout: CLAUDE_NODEX_APP_TOOL_TIMEOUT_MS,
-      },
+      [NODEX_APP_MCP_SERVER]: httpServer(session.endpoint),
+      ...(desktop === undefined
+        ? {}
+        : { [CLAUDE_DESKTOP_TOOL_MCP_SERVER]: httpServer(desktop.endpoint) }),
     },
+    ...(desktop === undefined
+      ? {}
+      : {
+          plugins: desktop.pluginRoots.map((path) => ({
+            type: "local" as const,
+            path,
+            skipMcpDiscovery: true,
+          })),
+        }),
   };
 }
 
@@ -2044,10 +2031,7 @@ function claudeRuntimeQueryPolicyKey(policy: ClaudeRuntimeQueryPolicy): string {
 // share a policy key can still differ in MCP pre-approvals.
 export function claudeEffectiveQueryPolicyKey(
   queryPolicy: ClaudeRuntimeQueryPolicy,
-  mcpOverrides: {
-    readonly allowedTools?: ReadonlyArray<string>;
-    readonly mcpServers?: ClaudeQueryOptions["mcpServers"];
-  },
+  mcpOverrides: ReturnType<typeof claudeMcpQueryOverrides>,
 ): string {
   return JSON.stringify({
     runtimePolicy: claudeRuntimeQueryPolicyKey({
@@ -2057,6 +2041,7 @@ export function claudeEffectiveQueryPolicyKey(
         : { allowedTools: mcpOverrides.allowedTools }),
     }),
     mcpServers: mcpOverrides.mcpServers,
+    plugins: mcpOverrides.plugins,
   });
 }
 
@@ -3555,11 +3540,7 @@ export function claudeApprovalPresentation(input: {
       suggestion.behavior === "allow"
     )
       return suggestion.rules.map((rule) =>
-        rule.toolName === CLAUDE_DESKTOP_TOOL_JS
-          ? "JavaScript"
-          : rule.ruleContent
-            ? `${rule.toolName}(${rule.ruleContent})`
-            : rule.toolName,
+        rule.ruleContent ? `${rule.toolName}(${rule.ruleContent})` : rule.toolName,
       );
     if (suggestion.type === "addDirectories") return suggestion.directories;
     return [];
@@ -4074,10 +4055,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         });
         const executionHost = yield* ExecutionHost.ExecutionHost;
         const nativeCallTokens = new Map<string, string>();
-        const desktopTools = yield* Ref.make<{
-          readonly key: string;
-          readonly bridge: ClaudeDesktopToolBridge;
-        } | null>(null);
         const activeTurn = yield* Ref.make<ActiveClaudeTurnContext | null>(null);
         const terminalTurnEvidence = new Map<
           ActiveClaudeTurnContext["providerTurnId"],
@@ -6521,21 +6498,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           subagentToolCalls.clear();
         });
 
-        /** The host's Desktop Tools follow root Turns by the identity their calls carry. */
-        const observeDesktopTurn = Effect.fnUntraced(function* (
-          context: ActiveClaudeTurnContext,
-          phase: "started" | "ended",
-        ) {
-          if ((yield* Ref.get(desktopTools)) === null) return;
-          const identity = context.input.hostExecutionIdentity;
-          if (identity === undefined || executionHost.observeNativeTurn === undefined) return;
-          yield* executionHost.observeNativeTurn({
-            identity,
-            nativeTurnId: context.nativeTurnId,
-            phase,
-          });
-        });
-
         const finalizeActiveTurn = Effect.fnUntraced(function* (input: {
           readonly context: ActiveClaudeTurnContext;
           readonly status: Extract<
@@ -6838,15 +6800,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           yield* Ref.update(activeTurn, (current) =>
             current?.providerTurnId === input.context.providerTurnId ? null : current,
           );
-          const desktop = yield* Ref.get(desktopTools);
-          if (desktop !== null) {
-            yield* desktop.bridge.turnEnded({
-              sessionId: input.context.nativeThreadId,
-              turnId: input.context.nativeTurnId,
-              hookEventName: input.status === "completed" ? "Stop" : "Interrupt",
-            });
-          }
-          yield* observeDesktopTurn(input.context, "ended");
           if (input.status === "completed") {
             settledTurnByNativeThread.set(input.context.nativeThreadId, input.context);
           } else {
@@ -9064,10 +9017,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
 
           const requestKind = classifyClaudeNativeTool(toolName).requestKind;
           // The user approves the command itself; Claude's title and description only summarize it.
-          const command = inputRecordValue(
-            nativeToolInput,
-            toolName === CLAUDE_DESKTOP_TOOL_JS ? "code" : "command",
-          );
+          const command = inputRecordValue(nativeToolInput, "command");
           const prompt =
             (typeof command === "string" && command.trim() !== "" ? command : undefined) ??
             `${toolName}: ${jsonStringifyForTool(toolInput)}`;
@@ -9551,8 +9501,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           return { file, hooks: [{ matcher: "Bash", hooks: [hook] }] };
         });
 
-        // The environment the workspace's setup prepared reaches every command the session
-        // runs, and the host's Desktop Tools join it; a host that cannot say leaves neither.
+        // The environment the workspace's setup prepared reaches every command the session runs.
         const prepareThread = (turnInput: ProviderAdapter.ProviderAdapterV2TurnInput) =>
           executionHost.prepareThread === undefined
             ? Effect.succeed<ExecutionHost.HostThreadPreparation>({})
@@ -9571,99 +9520,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     }).pipe(Effect.as<ExecutionHost.HostThreadPreparation>({})),
                   ),
                 );
-
-        const onDesktopToolElicitation = Effect.fnUntraced(function* (
-          params: ClaudeDesktopToolElicitation,
-          options: { readonly signal: AbortSignal },
-        ) {
-          if (options.signal.aborted) return { action: "cancel" as const };
-          const live = yield* Ref.get(queryContext);
-          const context = yield* Ref.get(activeTurn);
-          const payload = claudeDesktopToolElicitationPayload(params, {
-            threadId: live?.nativeThreadId ?? "",
-            turnId: context?.nativeTurnId ?? null,
-          });
-          const policy = codexMcpElicitationPolicy(payload, {
-            fullAccess: live?.permissionMode === "bypassPermissions",
-          });
-          if (policy === "accept") return { action: "accept" as const, content: {} };
-          if (policy === "decline" || context === null || !isCodexMcpPermissionRequest(payload)) {
-            yield* Effect.logWarning("Declined a Desktop Tool request nobody can answer.", {
-              policy,
-              activeTurn: context !== null,
-            });
-            return { action: "decline" as const };
-          }
-          const connector = field(payload._meta, "connector_name");
-          const resolved = yield* askMcpElicitation({
-            context,
-            // The REPL numbers its requests per process, so these carry their own identity.
-            nativeRequestId: `mcp-elicitation:${yield* crypto.randomUUIDv4()}`,
-            prompt: payload.message,
-            appName: typeof connector === "string" ? connector : payload.serverName,
-            options: codexMcpApprovalOptions(payload),
-            signal: options.signal,
-          });
-          return codexMcpApprovalResponse(payload, resolved) as ClaudeDesktopToolElicitationResult;
-        });
-
-        /**
-         * The REPL belongs to the conversation and outlives its Claude processes, so a Stop or a
-         * replaced query keeps its memory. A call made between Turns, by a background agent,
-         * counts toward the most recent one: the Browser follows that conversation's last Turn.
-         */
-        const connectDesktopTools = Effect.fnUntraced(
-          function* (
-            turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
-            nativeThreadId: string,
-            tools: ExecutionHost.HostDesktopTools | undefined,
-          ) {
-            const cwd = turnInput.runtimePolicy.cwd ?? undefined;
-            const key = JSON.stringify([nativeThreadId, cwd, tools?.server]);
-            const current = yield* Ref.get(desktopTools);
-            if (current !== null && current.key !== key) {
-              yield* current.bridge.close;
-              yield* Ref.set(desktopTools, null);
-            }
-            if (tools === undefined) return undefined;
-            const bridge =
-              current?.key === key
-                ? current.bridge
-                : yield* makeClaudeDesktopToolBridge({
-                    server: tools.server,
-                    // The launcher scopes what reaches the REPL; it starts from the app's own
-                    // environment because a provider's account home is not the user's.
-                    environment: process.env,
-                    cwd,
-                    currentTurn: () => {
-                      const turn =
-                        Ref.getUnsafe(activeTurn) ?? Ref.getUnsafe(queryContext)?.lastTurn;
-                      return turn
-                        ? { sessionId: turn.nativeThreadId, turnId: turn.nativeTurnId }
-                        : undefined;
-                    },
-                    elicit: (params, options) =>
-                      runPromise(onDesktopToolElicitation(params, options)),
-                  }).pipe(Scope.provide(sessionScope));
-            yield* Ref.set(desktopTools, { key, bridge });
-            return {
-              mcpServer: yield* bridge.mcpServer,
-              plugins: tools.pluginRoots.map((path) => ({
-                type: "local" as const,
-                path,
-                skipMcpDiscovery: true,
-              })),
-            };
-          },
-          (effect) =>
-            effect.pipe(
-              Effect.catch((cause) =>
-                Effect.logWarning("orchestration-v2.claude-desktop-tools-unavailable", {
-                  cause,
-                }).pipe(Effect.as(undefined)),
-              ),
-            ),
-        );
 
         // Model, effort, Fast and Ultracode change on the running process, so a
         // new choice never ends the background agents, shells and workflows it
@@ -9842,11 +9698,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           const shouldResume =
             resumeSessionAt !== undefined || openedWithResume || hasPersistedProviderTurn;
           const preparedThread = yield* prepareThread(turnInput);
-          const connectedDesktopTools = yield* connectDesktopTools(
-            turnInput,
-            nativeThreadId,
-            preparedThread.desktopTools,
-          );
           const environment = ExecutionHost.withWorkspaceEnvironment(
             adapterOptions.environment,
             preparedThread.environment,
@@ -9896,22 +9747,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                         .join(process.platform === "win32" ? ";" : ":"),
                     },
               tools: queryPolicy.tools ?? CLAUDE_CODE_PRESET_TOOLS,
-              ...(mcpOverrides.allowedTools === undefined
-                ? {}
-                : { allowedTools: mcpOverrides.allowedTools }),
-              ...(mcpOverrides.mcpServers === undefined && connectedDesktopTools === undefined
-                ? {}
-                : {
-                    mcpServers: {
-                      ...mcpOverrides.mcpServers,
-                      ...(connectedDesktopTools === undefined
-                        ? {}
-                        : { [CLAUDE_DESKTOP_TOOL_MCP_SERVER]: connectedDesktopTools.mcpServer }),
-                    },
-                  }),
-              ...(connectedDesktopTools === undefined
-                ? {}
-                : { plugins: connectedDesktopTools.plugins }),
+              ...mcpOverrides,
               permissionMode: queryPolicy.permissionMode,
               ...(queryPolicy.allowDangerouslySkipPermissions === undefined
                 ? {}
@@ -10183,7 +10019,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             const attachTurn = Effect.gen(function* () {
               querySession.lastTurn = context;
               yield* Ref.set(activeTurn, context);
-              yield* observeDesktopTurn(context, "started");
               yield* emitProviderEvent({
                 type: "provider_turn.updated",
                 driver: CLAUDE_PROVIDER,
