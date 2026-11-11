@@ -488,7 +488,7 @@ fn skill_mention_migration_preserves_the_predecessors_literal_directives() {
     connection.pragma_update(None, "user_version", 207).unwrap();
     connection
         .execute(
-            "DELETE FROM core_store_migration_history WHERE target_revision=208",
+            "DELETE FROM core_store_migration_history WHERE target_revision>207",
             [],
         )
         .unwrap();

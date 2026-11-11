@@ -188,7 +188,7 @@ fn initial_property_definitions(
     if includes_task_parent {
         definitions.push((
             super::property_semantics::TASK_PARENT_PROPERTY_ID,
-            "Parent",
+            "Part of",
             "relation",
             json!({}),
         ));

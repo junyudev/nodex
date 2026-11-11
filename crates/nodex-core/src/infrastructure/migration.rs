@@ -456,6 +456,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 208,
         apply: migrate_markdown_serialization,
     },
+    MigrationStep {
+        from_revision: 208,
+        to_revision: 209,
+        apply: migrate_v208_to_v209,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2680,6 +2685,40 @@ fn migrate_markdown_serialization(
     Ok(())
 }
 
+fn migrate_v208_to_v209(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    let now = timestamp_from_unix_ms(context.completed_at_unix_ms)?;
+    let renamed = connection.execute(
+        "UPDATE data_sources SET schema_revision = schema_revision + 1, updated_at = ?1 \
+         WHERE id IN (SELECT data_source_id FROM data_source_properties \
+                      WHERE id = 'task_parent' AND name = 'Parent')",
+        [&now],
+    )?;
+    if renamed != 0 {
+        connection.execute(
+            "UPDATE data_source_properties \
+             SET name = 'Part of', schema_revision = schema_revision + 1, updated_at = ?1 \
+             WHERE id = 'task_parent' AND name = 'Parent'",
+            [&now],
+        )?;
+        // The Source update marks its Pages' Turns dirty. Reconcile within the
+        // migration so that startup leaves no work for the next user commit.
+        crate::workspace::page_turn::initialize(connection, "migration:v209", &now)?;
+        // Retained delivery packets can still describe the old schema.
+        super::local_commit::reset_delivery_window(connection)?;
+    }
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            json!({"renamed_task_parent_properties": renamed, "projection_delivery_reset": renamed != 0}).to_string()],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v206_to_v207(
     connection: &Connection,
     context: &MigrationContext,
@@ -4328,6 +4367,71 @@ mod tests {
     }
 
     const ONE_SPACE: &str = "INSERT INTO profiles(id,created_at,updated_at) VALUES('own','2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z'); INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES('own-space','own','2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z');";
+
+    #[test]
+    fn v208_task_parent_migration_renames_only_the_old_default() {
+        let profile = tempdir().unwrap();
+        let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
+        prepare_profile_store(&mut connection, profile.path()).unwrap();
+        connection.execute_batch(ONE_SPACE).unwrap();
+        let now = "2026-11-01T00:00:00.000Z";
+        for (source, database, view, name) in [
+            ("default", "database:default", "view:default", "Parent"),
+            ("custom", "database:custom", "view:custom", "parent"),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO blocks(id,library_id,type,lifecycle,created_at,updated_at) \
+                     VALUES (?1,'own-space','database','active',?2,?2)",
+                    params![database, now],
+                )
+                .unwrap();
+            crate::database::create_database_authority_records(
+                &connection,
+                "own-space",
+                database,
+                source,
+                view,
+                "Work",
+                now,
+            )
+            .unwrap();
+            connection
+                .execute(
+                    "UPDATE data_source_properties SET name = ?1, schema_revision = 4 \
+                     WHERE id = 'task_parent' AND data_source_id = ?2",
+                    params![name, source],
+                )
+                .unwrap();
+        }
+        connection.pragma_update(None, "user_version", 208).unwrap();
+        validate_schema_identity(&connection, 208).unwrap();
+
+        let prepared = prepare_profile_store(&mut connection, profile.path()).unwrap();
+        assert_eq!(prepared.migrated_from_version, Some(208));
+        assert_eq!(prepared.schema_version, CURRENT_STORE_REVISION);
+
+        let definition = |source| {
+            connection
+                .query_row(
+                    "SELECT property.name, property.schema_revision, source.schema_revision \
+                     FROM data_source_properties property \
+                     JOIN data_sources source ON source.id = property.data_source_id \
+                     WHERE property.id = 'task_parent' AND source.id = ?1",
+                    [source],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, i64>(2)?,
+                        ))
+                    },
+                )
+                .unwrap()
+        };
+        assert_eq!(definition("default"), ("Part of".into(), 5, 2));
+        assert_eq!(definition("custom"), ("parent".into(), 4, 1));
+    }
 
     #[test]
     fn team_migration_preserves_identity_backs_up_and_reopens_once() {

@@ -641,8 +641,9 @@ stage, survives moves within them, and clears on reopening. Only Done is accepte
 work and satisfies Prerequisites; Canceled never does.
 
 The standard **Task Parent** is a non-owning cardinality-one self-Relation on a
-Data Source Page. Its children have one shared manual order independent of any
-View's personal sorting or presentation.
+Data Source Page. Its default Property name is **Part of**. Its children have
+one shared manual order independent of any View's personal sorting or
+presentation.
 
 The standard **Waits for** is a non-owning many-valued Page Relation naming a
 Page's Prerequisites, including Pages in other Projects. Each edge retains its

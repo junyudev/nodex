@@ -93,11 +93,11 @@ describe("RelationPropertyEditor", () => {
     expect(view.getByText("1 unavailable")).toBeTruthy();
   });
 
-  test("replaces a cardinality-one Parent and excludes the source Page", async () => {
+  test("replaces the Task Parent and excludes the source Page", async () => {
     const onReplace = vi.fn();
     const view = render(
       <RelationPropertyEditor
-        label="Parent"
+        label="Part of"
         value={null}
         candidates={[
           { pageId: "page:child", title: "Current task" },
@@ -114,7 +114,7 @@ describe("RelationPropertyEditor", () => {
     );
 
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Parent relation" }));
+      fireEvent.click(view.getByRole("button", { name: "Edit Part of relation" }));
       await Promise.resolve();
     });
     expect(view.queryByRole("option", { name: "Current task" })).toBeNull();

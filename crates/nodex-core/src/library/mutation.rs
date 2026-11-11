@@ -4719,7 +4719,9 @@ mod tests {
                            AND operation_id = 'operation:create-database'), \
                        (SELECT count(*) FROM change_log \
                          WHERE operation_id = 'operation:create-database' \
-                           AND kind = 'library.changed') \
+                           AND kind = 'library.changed'), \
+                       (SELECT name FROM data_source_properties \
+                         WHERE data_source_id = source.id AND id = 'task_parent') \
                      FROM database_containers container \
                      JOIN data_sources source ON source.home_database_block_id = container.block_id \
                      JOIN database_views view ON view.database_block_id = container.block_id \
@@ -4735,6 +4737,7 @@ mod tests {
                             row.get::<_, i64>(5)?,
                             row.get::<_, i64>(6)?,
                             row.get::<_, i64>(7)?,
+                            row.get::<_, String>(8)?,
                         ))
                     },
                 )?;
@@ -4749,6 +4752,7 @@ mod tests {
                         9,
                         1,
                         1,
+                        "Part of".to_owned(),
                     )
                 );
                 Ok(())

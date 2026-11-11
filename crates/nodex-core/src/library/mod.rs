@@ -1907,7 +1907,7 @@ mod tests {
                         "INSERT INTO data_source_properties( \
                            data_source_id, id, name, value_type, config_json, rank_key, \
                            lifecycle, schema_revision, created_at, updated_at \
-                         ) VALUES (?1, 'task_parent', 'Parent', 'relation', '{}', \
+                         ) VALUES (?1, 'task_parent', 'Part of', 'relation', '{}', \
                            'c', 'active', 1, ?2, ?2)",
                         params![SOURCE, NOW],
                     )?;
