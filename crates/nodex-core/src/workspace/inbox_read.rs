@@ -20,8 +20,8 @@ use nodex_core_contracts::inbox::{
     ProjectWorkspaceInboxContextProposal, ProjectWorkspaceInboxContextSession,
     ProjectWorkspaceInboxCounts, ProjectWorkspaceInboxDispatchAction,
     ProjectWorkspaceInboxDispatchContext, ProjectWorkspaceInboxDispatchWork,
-    ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxImportantMessage,
-    ProjectWorkspaceInboxItem, ProjectWorkspaceInboxLocation, ProjectWorkspaceInboxMessageEdit,
+    ProjectWorkspaceInboxImportantMessage, ProjectWorkspaceInboxItem,
+    ProjectWorkspaceInboxLocation, ProjectWorkspaceInboxMessageEdit,
     ProjectWorkspaceInboxPageBasis, ProjectWorkspaceInboxPageStatus,
     ProjectWorkspaceInboxProjectCount, ProjectWorkspaceInboxProposal,
     ProjectWorkspaceInboxProposalOrigin, ProjectWorkspaceInboxProposalState,
@@ -71,6 +71,13 @@ fn scope_of(project_id: Option<String>) -> ProjectWorkspaceInboxScope {
     }
 }
 
+// Reads share a clock instant and only join the current episode's deferral.
+const DEFERRAL_JOIN: &str = "LEFT JOIN inbox_deferrals deferral
+  ON rows.in_inbox=1 AND deferral.page_id=rows.page_id AND deferral.member_id=rows.member_id AND deferral.episode=rows.episode";
+// Stored stream times have millisecond precision. Pad the fraction for a lossless keyset
+// comparison with a deferral, which can name a sub-millisecond instant.
+const STREAM_TIME: &str = "(substr(rows.sort_at,1,length(rows.sort_at)-1)
+  || substr('000000000',1,30-length(rows.sort_at)) || 'Z')";
 pub(super) fn read_summary(
     connection: &Connection,
     context: &BoundModuleContext,
@@ -81,14 +88,40 @@ pub(super) fn read_summary(
     let project_id = scope_project(scope)?;
     let all = matches!(scope, ProjectWorkspaceInboxScope::All);
     let home = scope_home(connection, library_id, project_id)?;
-    let (entries, actionable): (i64,i64) = connection.query_row(
-        "SELECT count(*),COALESCE(sum(actionable),0) FROM inbox_member_rows WHERE member_id=?4 AND library_id=?1 AND (?3 OR project_id IS ?2)",
-        params![library_id,project_id,all, &member], |r| Ok((r.get(0)?,r.get(1)?)))?;
-    let (decision,pending,important_count):(i64,i64,i64)=connection.query_row(
-        "SELECT COALESCE(sum(entry.state='open' AND proposal.state='open'),0), COALESCE(sum(entry.state='open' AND entry.suggestion_state IN ('waiting','pending') AND entry.source_kind<>'automation'),0), COALESCE(sum(entry.important=1 AND rows.actionable=1),0) FROM inbox_member_rows rows JOIN inbox_entries entry ON entry.page_id=rows.page_id LEFT JOIN inbox_proposals proposal ON proposal.proposal_id=entry.current_proposal_id WHERE rows.member_id=?4 AND rows.library_id=?1 AND (?3 OR rows.project_id IS ?2)", params![library_id,project_id,all, &member],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?)))?;
-    let important=connection.prepare("SELECT rows.page_id,COALESCE(materialization.title,''),rows.sort_at FROM inbox_member_rows rows JOIN inbox_entries entry ON entry.page_id=rows.page_id JOIN pages page ON page.block_id=rows.page_id LEFT JOIN document_materializations materialization ON materialization.document_id=page.document_id WHERE rows.member_id=?5 AND rows.library_id=?1 AND (?3 OR rows.project_id IS ?2) AND rows.actionable=1 AND entry.important=1 ORDER BY rows.sort_at,rows.row_id LIMIT ?4")?.query_map(params![library_id,project_id,all,MAX_SUMMARY_IMPORTANT, &member],|r|Ok(ProjectWorkspaceInboxImportantMessage{page_id:r.get(0)?,title:r.get(1)?,submitted_at:r.get(2)?}))?.collect::<rusqlite::Result<Vec<_>>>()?;
-    let dispatching:i64=connection.query_row("SELECT count(DISTINCT proposal.proposal_id) FROM inbox_proposals proposal JOIN inbox_proposal_pages link ON link.proposal_id=proposal.proposal_id JOIN inbox_entries entry ON entry.page_id=link.page_id WHERE proposal.library_id=?1 AND (entry.source_kind<>'automation' OR entry.author_member_id=?4) AND proposal.state='dispatching' AND COALESCE(proposal.failure_kind,'')<>'unknown' AND (?3 OR entry.scope_project_id IS ?2)",params![library_id,project_id,all,&member],|r|r.get(0))?;
+    let now = super::inbox::later::now(connection)?;
+    let (entries, actionable, decision, pending, important_count, later_count) =
+        connection.query_row(&format!(
+            "WITH scoped AS (
+               SELECT rows.*, COALESCE(rows.in_inbox=1 AND deferral.until_at>?5,0) AS deferred
+               FROM inbox_member_rows rows {DEFERRAL_JOIN}
+               WHERE rows.member_id=?4 AND rows.library_id=?1 AND (?3 OR rows.project_id IS ?2)
+             )
+             SELECT COALESCE(sum(in_inbox AND NOT deferred),0), COALESCE(sum(actionable AND NOT deferred),0),
+               COALESCE(sum(scoped.in_inbox AND proposal.state='open' AND NOT deferred),0),
+               COALESCE(sum(scoped.in_inbox AND entry.suggestion_state IN ('waiting','pending')
+                  AND entry.source_kind<>'automation' AND NOT deferred),0),
+               COALESCE(sum(entry.important=1 AND scoped.actionable=1 AND NOT deferred),0),
+               COALESCE(sum(deferred),0)
+             FROM scoped LEFT JOIN inbox_entries entry ON scoped.row_kind='intake' AND entry.page_id=scoped.page_id
+             LEFT JOIN inbox_proposals proposal ON proposal.proposal_id=entry.current_proposal_id"
+        ), params![library_id,project_id,all,&member,&now], |r|
+            Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?)))?;
+    let important = connection.prepare(&format!(
+        "SELECT rows.page_id,COALESCE(materialization.title,''),MAX({STREAM_TIME},COALESCE(deferral.until_at,''))
+         FROM inbox_member_rows rows {DEFERRAL_JOIN}
+         JOIN inbox_entries entry ON rows.row_kind='intake' AND entry.page_id=rows.page_id
+         JOIN pages page ON page.block_id=rows.page_id
+         LEFT JOIN document_materializations materialization ON materialization.document_id=page.document_id
+         WHERE rows.member_id=?5 AND rows.library_id=?1 AND (?3 OR rows.project_id IS ?2)
+           AND rows.actionable=1 AND entry.important=1 AND (deferral.until_at IS NULL OR deferral.until_at<=?6)
+         ORDER BY 3,rows.row_id LIMIT ?4"
+    ))?.query_map(params![library_id,project_id,all,MAX_SUMMARY_IMPORTANT,&member,&now],|r|
+        Ok(ProjectWorkspaceInboxImportantMessage{page_id:r.get(0)?,title:r.get(1)?,submitted_at:r.get(2)?})
+    )?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let dispatching:i64=connection.query_row("SELECT count(DISTINCT proposal.proposal_id) FROM inbox_proposals proposal JOIN inbox_proposal_pages link ON link.proposal_id=proposal.proposal_id JOIN inbox_intake intake ON intake.page_id=link.page_id JOIN inbox_member_rows row ON row.page_id=intake.page_id AND row.row_kind='intake' AND row.member_id=?4 WHERE proposal.library_id=?1 AND proposal.state='dispatching' AND COALESCE(proposal.failure_kind,'')<>'unknown' AND (?3 OR intake.project_id IS ?2)",params![library_id,project_id,all,&member],|r|r.get(0))?;
     Ok(ProjectWorkspaceInboxSummary {
+        notes_page_id: super::inbox::notes::notes_page(connection, library_id, project_id)?,
+        later_count: count(later_count)?,
         database_id: home.as_ref().map(|h| h.database_id.clone()),
         view_id: home.map(|h| h.view_id),
         entry_count: count(entries)?,
@@ -101,15 +134,6 @@ pub(super) fn read_summary(
     })
 }
 
-/// A message stays in its Inbox until the user handles it. A confirmed chat dispatch,
-/// filing it into a Project, Keep, and Done all handle it; a failed dispatch brings it
-/// back. Where the Page lives does not matter. Never NULL.
-pub(super) const IN_INBOX: &str = "(entry.state = 'open' \
-    AND NOT (COALESCE(proposal.state, '') = 'dispatching' AND COALESCE(proposal.failure_kind,'') <> 'unknown') \
-    AND NOT (COALESCE(proposal.state, '') = 'completed' \
-      AND COALESCE(json_extract(proposal.action_json, '$.type'), '') \
-        IN ('new_chat', 'send_to_chat', 'execute_decision')))";
-
 /// Messages still waiting in the Library Inbox and in each active Project's Inbox.
 pub(super) fn read_counts(
     connection: &Connection,
@@ -117,7 +141,7 @@ pub(super) fn read_counts(
     library_id: &str,
 ) -> Result<ProjectWorkspaceInboxCounts, StoreError> {
     let member = crate::infrastructure::actors::requesting_member(connection, context)?;
-    let rows=connection.prepare("SELECT project_id,sum(actionable) AS waiting FROM inbox_member_rows WHERE member_id=?3 AND library_id=?1 GROUP BY project_id HAVING waiting>0 ORDER BY project_id LIMIT ?2")?.query_map(params![library_id,MAX_COUNTED_PROJECTS+1, &member],|r|Ok((r.get::<_,Option<String>>(0)?,r.get::<_,i64>(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let rows=connection.prepare(&format!("SELECT project_id,count(*) AS waiting FROM inbox_member_rows rows {DEFERRAL_JOIN} WHERE rows.member_id=?3 AND library_id=?1 AND actionable=1 AND (deferral.until_at IS NULL OR deferral.until_at<=?4) GROUP BY project_id ORDER BY project_id LIMIT ?2"))?.query_map(params![library_id,MAX_COUNTED_PROJECTS+1,&member,super::inbox::later::now(connection)?],|r|Ok((r.get::<_,Option<String>>(0)?,r.get::<_,i64>(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
     let mut counts = ProjectWorkspaceInboxCounts {
         library_count: 0,
         projects: Vec::new(),
@@ -186,7 +210,7 @@ pub(super) fn read_window(
     let project_id = scope_project(scope)?;
     let normalized = normalize_request(request)?;
     let fingerprint =
-        cursor::query_fingerprint(&("workspace_inbox_window_v5", &member, scope, filter))?;
+        cursor::query_fingerprint(&("workspace_inbox_window_v7", &member, scope, filter))?;
     let subject = CollectionCursorSubject {
         kind: "workspace_inbox_rows",
         library_id,
@@ -211,7 +235,48 @@ pub(super) fn read_window(
         })
         .transpose()?;
     let (after_at, after_id) = after.map_or((None, None), |(at, id)| (Some(at), Some(id)));
-    let rows=connection.prepare("SELECT row_kind,page_id,sort_at,row_id FROM inbox_member_rows WHERE member_id=?8 AND library_id=?1 AND (?3 OR project_id IS ?2) AND in_inbox=?4 AND (?5 IS NULL OR (sort_at,row_id)<(?5,?6)) ORDER BY sort_at DESC,row_id DESC LIMIT ?7")?.query_map(params![library_id,project_id,matches!(scope,ProjectWorkspaceInboxScope::All),matches!(filter,ProjectWorkspaceInboxWindowFilter::Inbox),after_at,after_id,(normalized.first+1) as i64, &member],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,String>(3)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let sql = if filter == ProjectWorkspaceInboxWindowFilter::Later {
+        format!(
+            "SELECT rows.row_kind,rows.page_id,deferral.until_at,rows.row_id
+          FROM inbox_member_rows rows {DEFERRAL_JOIN}
+          WHERE rows.member_id=?8 AND rows.library_id=?1 AND (?3 OR rows.project_id IS ?2)
+            AND rows.in_inbox=?4 AND deferral.until_at>?9
+            AND (?5 IS NULL OR (deferral.until_at,rows.row_id)>(?5,?6))
+          ORDER BY deferral.until_at,rows.row_id LIMIT ?7"
+        )
+    } else {
+        format!("WITH stream AS (
+          SELECT rows.row_kind,rows.page_id,MAX({STREAM_TIME},COALESCE(deferral.until_at,'')) AS sort_at,rows.row_id
+          FROM inbox_member_rows rows {DEFERRAL_JOIN}
+          WHERE rows.member_id=?8 AND rows.library_id=?1 AND (?3 OR rows.project_id IS ?2)
+            AND rows.in_inbox=?4 AND (?4 OR rows.row_kind='intake') AND (deferral.until_at IS NULL OR deferral.until_at<=?9)
+        ) SELECT row_kind,page_id,sort_at,row_id FROM stream
+          WHERE (?5 IS NULL OR (sort_at,row_id)<(?5,?6)) ORDER BY sort_at DESC,row_id DESC LIMIT ?7")
+    };
+    let rows = connection
+        .prepare(&sql)?
+        .query_map(
+            params![
+                library_id,
+                project_id,
+                matches!(scope, ProjectWorkspaceInboxScope::All),
+                filter != ProjectWorkspaceInboxWindowFilter::Processed,
+                after_at,
+                after_id,
+                (normalized.first + 1) as i64,
+                &member,
+                super::inbox::later::now(connection)?
+            ],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                ))
+            },
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
     let mut candidates = Vec::with_capacity(rows.len());
     let mut cache = InboxReadCache::default();
     for (kind, page, at, id) in rows {
@@ -236,7 +301,7 @@ pub(super) fn read_window(
                 ],
                 stable_id: id,
             },
-            item: project_member_chat(connection, &member, item)?,
+            item: project_member_item(connection, &member, item)?,
         });
     }
     assemble(
@@ -271,11 +336,9 @@ struct EntryRow {
     source_dispatch_id: Option<String>,
     provisional_title: Option<String>,
     kind: Option<String>,
-    state: String,
     suggestion_state: String,
     suggestion_error: Option<String>,
     current_proposal_id: Option<String>,
-    scope_project_id: Option<String>,
     revision: i64,
     parent_kind: String,
     parent_id: String,
@@ -297,7 +360,7 @@ fn read_entry(
         .query_row(
             "SELECT entry.seq, entry.submitted_at, entry.source_kind, entry.source_session_id, \
                entry.source_thread_id, entry.source_project_id, entry.source_label, entry.kind, \
-               entry.state, entry.suggestion_state, entry.suggestion_error, \
+               NULL, entry.suggestion_state, entry.suggestion_error, \
                entry.current_proposal_id, entry.revision, page.parent_kind, page.parent_id, \
                COALESCE(materialization.title, ''), CASE WHEN octet_length(materialization.markdown) <= ?2 \
                  THEN materialization.markdown ELSE NULL END, \
@@ -348,11 +411,9 @@ fn read_entry(
                     source_label: row.get(6)?,
                     provisional_title: row.get(20)?,
                     kind: row.get(7)?,
-                    state: row.get(8)?,
                     suggestion_state: row.get(9)?,
                     suggestion_error: row.get(10)?,
                     current_proposal_id: row.get(11)?,
-                    scope_project_id: row.get(23)?,
                     revision: row.get(12)?,
                     parent_kind: row.get(13)?,
                     parent_id: row.get(14)?,
@@ -555,7 +616,7 @@ pub(super) fn read_single_entry(
     }
     if let Some(kind) = row_kind.filter(|kind| kind != "intake") {
         return super::inbox_projection::item(connection, library, id, &kind)
-            .and_then(|item| project_member_chat(connection, &member, item))
+            .and_then(|item| project_member_item(connection, &member, item))
             .map(Some);
     }
     let project=connection.query_row("SELECT entry.scope_project_id FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.page_id=?1 AND entry.library_id=?2",params![id,library],|r|r.get::<_,Option<String>>(0)).optional()?;
@@ -573,7 +634,7 @@ pub(super) fn read_single_entry(
         id,
         &mut InboxReadCache::default(),
     )
-    .and_then(|(item, _)| project_member_chat(connection, &member, item).map(Some))
+    .and_then(|(item, _)| project_member_item(connection, &member, item).map(Some))
 }
 
 /// The messages an Activity window's message facts are about, as each stands now and as the
@@ -598,17 +659,20 @@ pub(super) fn read_message_items<'a>(
         let (item, _) = read_item(connection, library, home.as_ref(), page_id, &mut cache)?;
         items.insert(
             page_id.to_owned(),
-            project_member_chat(connection, member, item)?,
+            project_member_item(connection, member, item)?,
         );
     }
     Ok(items)
 }
 
-fn project_member_chat(
+fn project_member_item(
     connection: &Connection,
     member: &str,
     mut item: ProjectWorkspaceInboxItem,
 ) -> Result<ProjectWorkspaceInboxItem, StoreError> {
+    if matches!(item.row_kind, InboxRowKind::Intake | InboxRowKind::Turn) {
+        item.later = super::inbox::later::record(connection, &item.page_id, member)?;
+    }
     let project = |chat: &mut ProjectWorkspaceInboxChat| -> Result<(), StoreError> {
         chat.unread=connection.query_row("SELECT EXISTS(SELECT 1 FROM member_session_unread WHERE member_id=?1 AND session_id=?2)",params![member,chat.session_id],|r|r.get(0))?;
         Ok(())
@@ -648,24 +712,14 @@ fn read_item(
         .map(|proposal_id| cache.proposal(connection, library_id, proposal_id))
         .transpose()?
         .flatten();
-    let outcome: Option<String> = connection.query_row(
-        "SELECT outcome FROM inbox_entries WHERE page_id=?1",
-        [page_id],
-        |r| r.get(0),
-    )?;
     Ok((
         ProjectWorkspaceInboxItem {
+            later: None,
             problem: None,
             basis: cache.basis(connection, page_id)?,
             handback: super::inbox::handback::context(connection, library_id, page_id)?,
             row_kind: InboxRowKind::Intake,
             turn: None,
-            outcome: outcome
-                .map(|value| {
-                    serde_json::from_value(serde_json::Value::String(value))
-                        .map_err(|_| corrupt("Invalid Inbox outcome"))
-                })
-                .transpose()?,
             page_id: page_id.to_owned(),
             page_key: crate::database::current_page_key_for_page(connection, library_id, page_id)?,
             page_status: row.page_status.clone(),
@@ -682,10 +736,15 @@ fn read_item(
                 [page_id],
                 |row| row.get::<_, bool>(0),
             )?,
-            state: parse_state(&row.state)?,
+            waiting: connection.query_row(
+                "SELECT COALESCE((SELECT in_inbox FROM inbox_rows WHERE row_kind='intake' AND page_id=?1),0)",
+                [page_id], |r| r.get(0),
+            )?,
             suggestion_state: parse_suggestion_state(&row.suggestion_state)?,
             suggestion_error: row.suggestion_error.clone(),
-            scope: scope_of(row.scope_project_id.clone()),
+            scope: scope_of(connection.query_row(
+                "SELECT project_id FROM inbox_intake WHERE page_id=?1", [page_id], |r| r.get(0),
+            )?),
             location,
             proposal,
             automation_decision: crate::automation::firing::item(connection, page_id)?,
@@ -736,7 +795,7 @@ pub(super) fn automatic_dispatches(
     limit: u32,
 ) -> Result<Vec<ProjectWorkspaceInboxProposal>, StoreError> {
     super::inbox::require_host(context)?;
-    let ids=connection.prepare("SELECT proposal_id FROM inbox_proposals WHERE library_id=?1 AND auto_confirm_pending=1 AND state='open' AND explicit_request=1 AND origin='agent' AND json_extract(action_json,'$.type') IN ('new_chat','send_to_chat') AND NOT EXISTS(SELECT 1 FROM inbox_proposal_pages member JOIN inbox_entries entry ON entry.page_id=member.page_id WHERE member.proposal_id=inbox_proposals.proposal_id AND ((json_extract(entry.actor_json,'$.type')<>'member' OR entry.author_member_id IS NULL OR NOT EXISTS(SELECT 1 FROM member_inbox_preferences consent WHERE consent.member_id=entry.author_member_id AND consent.start_my_requests=1)) OR EXISTS(SELECT 1 FROM chat_message_handback_pages returned WHERE returned.page_id=entry.page_id) OR entry.state<>'open' OR entry.current_proposal_id IS NOT inbox_proposals.proposal_id)) ORDER BY created_at,proposal_id LIMIT ?2")?.query_map(params![library,i64::from(limit.clamp(1,100))],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let ids=connection.prepare("SELECT proposal_id FROM inbox_proposals WHERE library_id=?1 AND auto_confirm_pending=1 AND state='open' AND explicit_request=1 AND origin='agent' AND json_extract(action_json,'$.type') IN ('new_chat','send_to_chat') AND NOT EXISTS(SELECT 1 FROM inbox_proposal_pages member JOIN inbox_entries entry ON entry.page_id=member.page_id WHERE member.proposal_id=inbox_proposals.proposal_id AND ((json_extract(entry.actor_json,'$.type')<>'member' OR entry.author_member_id IS NULL OR NOT EXISTS(SELECT 1 FROM member_inbox_preferences consent WHERE consent.member_id=entry.author_member_id AND consent.start_my_requests=1)) OR EXISTS(SELECT 1 FROM chat_message_handback_pages returned WHERE returned.page_id=entry.page_id) OR NOT EXISTS(SELECT 1 FROM inbox_member_rows row JOIN page_turn_episodes episode ON episode.page_id=row.page_id WHERE row.page_id=entry.page_id AND row.member_id=entry.author_member_id AND json_extract(episode.signature,'$[1]')='triage') OR entry.current_proposal_id IS NOT inbox_proposals.proposal_id)) ORDER BY created_at,proposal_id LIMIT ?2")?.query_map(params![library,i64::from(limit.clamp(1,100))],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
     let mut cache = InboxReadCache::default();
     ids.into_iter()
         .map(|id| read_proposal(connection, library, &id, &mut cache))
@@ -1031,9 +1090,9 @@ pub(super) fn read_pending_suggestions(
     let page_ids = connection
         .prepare(
             "WITH waiting AS (\
-               SELECT entry.page_id, entry.seq, entry.scope_project_id FROM inbox_entries entry \
+               SELECT entry.page_id, entry.seq, intake.project_id AS scope_project_id FROM inbox_entries entry JOIN inbox_intake intake ON intake.page_id=entry.page_id \
                JOIN blocks block ON block.id = entry.page_id AND block.lifecycle = 'active' \
-               WHERE entry.library_id = ?1 AND entry.state = 'open' \
+               WHERE entry.library_id = ?1 AND EXISTS(SELECT 1 FROM inbox_intake intake WHERE intake.page_id=entry.page_id AND intake.triage) \
                  AND entry.suggestion_state IN ('waiting','pending') AND entry.source_kind NOT IN ('automation','nodex')), \
              oldest AS (SELECT scope_project_id FROM waiting ORDER BY seq LIMIT 1) \
              SELECT waiting.page_id FROM waiting, oldest \
@@ -1091,7 +1150,11 @@ pub(crate) fn frozen_input_for_content(
         source: source(connection, page_id, &row)?,
         kind: parse_kind(row.kind.as_deref())?,
         submitted_at: row.submitted_at.clone(),
-        scope: scope_of(row.scope_project_id.clone()),
+        scope: scope_of(connection.query_row(
+            "SELECT project_id FROM inbox_intake WHERE page_id=?1",
+            [page_id],
+            |r| r.get(0),
+        )?),
         basis: ProjectWorkspaceInboxPageBasis {
             page_id: page_id.to_owned(),
             content_hash: content.fingerprint(),
@@ -1181,7 +1244,7 @@ fn member_can_review_intake(
     page: &str,
 ) -> Result<bool, StoreError> {
     Ok(connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM inbox_member_rows member_row WHERE member_row.member_id=?1 AND member_row.library_id=?2 AND member_row.page_id=?3 AND member_row.row_kind='intake') AND NOT EXISTS(SELECT 1 FROM inbox_member_rows member_row WHERE member_row.member_id=?1 AND member_row.library_id=?2 AND member_row.page_id=?3 AND member_row.row_kind<>'intake')",
+        "SELECT EXISTS(SELECT 1 FROM inbox_member_rows member_row WHERE member_row.member_id=?1 AND member_row.library_id=?2 AND member_row.page_id=?3 AND member_row.row_kind='intake' AND member_row.in_inbox=1)",
         params![member, library, page],
         |row| row.get(0),
     )?)
@@ -1380,6 +1443,7 @@ pub(super) fn dispatch_context_for_inputs(
     // A returned message names the chat that returned it; whether to route it there again is
     // Nodex's judgement on the person's word, so that chat stays a destination.
     Ok(ProjectWorkspaceInboxDispatchContext {
+        notes_outline: super::inbox::notes::outline(connection, library_id, project_id)?,
         scope,
         entries,
         projects,
@@ -1541,15 +1605,6 @@ pub(super) fn read_dispatch_outbox(
         work.push(item);
     }
     Ok(work)
-}
-
-fn parse_state(value: &str) -> Result<ProjectWorkspaceInboxEntryState, StoreError> {
-    match value {
-        "open" => Ok(ProjectWorkspaceInboxEntryState::Open),
-        "kept" => Ok(ProjectWorkspaceInboxEntryState::Kept),
-        "done" => Ok(ProjectWorkspaceInboxEntryState::Done),
-        _ => Err(corrupt("Stored Inbox entry state is invalid")),
-    }
 }
 
 fn parse_suggestion_state(value: &str) -> Result<ProjectWorkspaceInboxSuggestionState, StoreError> {

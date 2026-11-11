@@ -499,3 +499,13 @@ Member who set the reminder receives it on their phones while they are away; see
 
 Handback updates intake and its badge without creating a desktop notification of
 its own. Turn notifications continue to depend on current Member episodes.
+
+## Inbox returns
+
+When a deferral expires, its message or Turn returns if the same episode still
+needs the Member. Core
+records a notification intent for that Member. The notification uses the Page's title and
+says `Back in your Inbox`. Desktop applies the Member's notification preferences and
+opens the Inbox at the message on activation. The Member's phones can receive the same
+reminder through push. A Page in Done or Canceled, or a message that has been handled,
+erased or archived, produces no reminder. Returning a message by hand is quiet.

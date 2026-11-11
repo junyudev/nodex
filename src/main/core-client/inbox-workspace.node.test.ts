@@ -97,13 +97,13 @@ describe("Inbox over the real Core transport", () => {
       });
       if (summary.value.kind !== "inbox_summary") throw new Error("Wrong summary variant");
       expect(inboxSummaryFromCore(summary.value.summary, summary.store_epoch)).toMatchObject({
-        entryCount: 1,
+        entryCount: 0,
         dispatchingCount: 0,
         pendingSuggestionCount: 0,
       });
       const dispatched = await client.workspaceRead({
         kind: "inbox_window",
-        scope: { kind: "library" },
+        scope: { kind: "project", project_id: projectId },
         filter: "processed",
         window: { after: null, first: 20 },
       });

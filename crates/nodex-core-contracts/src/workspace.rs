@@ -6,13 +6,13 @@ use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::inbox::{
     ProjectWorkspaceInboxCounts, ProjectWorkspaceInboxDispatchAction,
     ProjectWorkspaceInboxDispatchContext, ProjectWorkspaceInboxDispatchWork,
-    ProjectWorkspaceInboxEntryKind, ProjectWorkspaceInboxEntryState,
-    ProjectWorkspaceInboxExecutionSelection, ProjectWorkspaceInboxFailureKind,
-    ProjectWorkspaceInboxItem, ProjectWorkspaceInboxMessageEdit, ProjectWorkspaceInboxPageBasis,
-    ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSuggestedDispatch,
-    ProjectWorkspaceInboxSuggestionInput, ProjectWorkspaceInboxSuggestionMode,
-    ProjectWorkspaceInboxSuggestionRequest, ProjectWorkspaceInboxSuggestionTitle,
-    ProjectWorkspaceInboxSummary, ProjectWorkspaceInboxWindowFilter,
+    ProjectWorkspaceInboxEntryKind, ProjectWorkspaceInboxExecutionSelection,
+    ProjectWorkspaceInboxFailureKind, ProjectWorkspaceInboxItem, ProjectWorkspaceInboxMessageEdit,
+    ProjectWorkspaceInboxPageBasis, ProjectWorkspaceInboxScope,
+    ProjectWorkspaceInboxSuggestedDispatch, ProjectWorkspaceInboxSuggestionInput,
+    ProjectWorkspaceInboxSuggestionMode, ProjectWorkspaceInboxSuggestionRequest,
+    ProjectWorkspaceInboxSuggestionTitle, ProjectWorkspaceInboxSummary,
+    ProjectWorkspaceInboxWindowFilter,
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
@@ -346,6 +346,10 @@ pub enum ProjectWorkspaceRead {
         run_id: String,
     },
     InboxTurnNotifications,
+    NextInboxLater,
+    InboxLaterNotifications {
+        for_push: bool,
+    },
     /// Every Member's current notifying Page Turns, claimed by a desktop or not, for the local
     /// Host's phone notifications.
     CurrentTurnNotifications,
@@ -634,6 +638,12 @@ pub enum ProjectWorkspaceReadValue {
     },
     ChatMessageInbound {
         inbound: Option<crate::inbox::ChatMessageInbound>,
+    },
+    NextInboxLater {
+        remind_at: Option<String>,
+    },
+    InboxLaterNotifications {
+        intents: Vec<crate::inbox::InboxLaterNotification>,
     },
     InboxTurnNotifications {
         intents: Vec<crate::inbox::InboxTurnNotification>,
@@ -2678,9 +2688,25 @@ pub enum ProjectWorkspaceIntent {
     KeepInboxEntries {
         page_ids: Vec<String>,
     },
-    SetInboxEntryState {
+    SetInboxLater {
         page_ids: Vec<String>,
-        state: ProjectWorkspaceInboxEntryState,
+        until: String,
+    },
+    ClearInboxLater {
+        page_ids: Vec<String>,
+    },
+    PublishDueInboxLater {
+        wake_at: String,
+    },
+    ClaimInboxLaterNotification {
+        id: String,
+        for_push: bool,
+    },
+    MarkInboxMessagesDone {
+        page_ids: Vec<String>,
+    },
+    ReturnInboxMessages {
+        page_ids: Vec<String>,
     },
     SetInboxEntryKind {
         page_id: String,
@@ -3220,6 +3246,7 @@ pub struct PageTurn {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TurnActor {
+    Members,
     Member {
         member_id: String,
     },
@@ -3238,6 +3265,8 @@ pub enum TurnActor {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TurnReason {
+    Triage,
+    DeliveryRecovery,
     Paused,
     Working,
     Queued,

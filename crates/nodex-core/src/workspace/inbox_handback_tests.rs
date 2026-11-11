@@ -443,10 +443,19 @@ fn handback_refuses_a_delivery_after_the_person_has_rerouted_its_message() {
     );
     apply_host(
         &w.module,
-        "person-reopens",
-        ProjectWorkspaceIntent::SetInboxEntryState {
+        "unlink-first",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: "first".into(),
+            intent: ProjectSessionIntent::UnlinkPage {
+                page_id: "page:task".into(),
+            },
+        },
+    );
+    apply_host(
+        &w.module,
+        "return-first",
+        ProjectWorkspaceIntent::ReturnInboxMessages {
             page_ids: vec!["page:task".into()],
-            state: ProjectWorkspaceInboxEntryState::Open,
         },
     );
     dispatch(
@@ -702,10 +711,7 @@ fn handback_refuses_a_group_when_one_original_message_was_erased() {
 
 #[test]
 fn handback_does_not_reopen_a_message_the_person_closed() {
-    for state in [
-        ProjectWorkspaceInboxEntryState::Done,
-        ProjectWorkspaceInboxEntryState::Kept,
-    ] {
+    for stage in ["done", "canceled"] {
         let w = seeded_workspace();
         managed(&w, "worker");
         send(&w.module, "closed", "Check this request.");
@@ -729,14 +735,7 @@ fn handback_does_not_reopen_a_message_the_person_closed() {
             work.final_text.as_deref().unwrap(),
             0,
         );
-        apply_host(
-            &w.module,
-            "person-closes",
-            ProjectWorkspaceIntent::SetInboxEntryState {
-                page_ids: vec!["page:closed".into()],
-                state,
-            },
-        );
+        super::set_status_by_hand(&w, "page:closed", stage);
         assert_eq!(
             apply_host_error(
                 &w.module,

@@ -19,7 +19,7 @@ mod execution_holds_tests;
 mod host_chat;
 pub use host_chat::HostChatAction;
 mod host_response;
-mod inbox;
+pub(crate) mod inbox;
 pub(crate) use inbox::scheduled::{
     PreparedRunPages, bind_automation_run_pages, prepare_automation_run_pages,
     run_held_automation_now,
@@ -46,8 +46,7 @@ mod inbox_read;
 mod inbox_serialization;
 #[cfg(test)]
 pub(crate) use inbox_read::{
-    FrozenSuggestionInput, frozen_input_for_content,
-    message_basis as inbox_message_basis_for_migration,
+    FrozenSuggestionInput, message_basis as inbox_message_basis_for_migration,
 };
 pub(crate) use inbox_serialization::{
     rebuild_inbox_markdown_serialization, validate_inbox_markdown_serialization,

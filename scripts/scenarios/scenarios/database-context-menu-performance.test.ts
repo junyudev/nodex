@@ -240,9 +240,17 @@ class PerformanceSeedPort implements ScenarioSeedPort {
     throw new Error("Inbox seeding is not part of this scenario");
   }
 
+  async readInboxNotesPage(): Promise<never> {
+    throw new Error("This scenario has no Inbox");
+  }
+
   async readInbox(): Promise<never> {
     throw new Error("Inbox inspection is not part of this scenario");
   }
+  async setInboxLater(): Promise<never> {
+    throw new Error("Inbox Later is not used in this scenario");
+  }
+
   async readHandledMessages(): Promise<never> {
     throw new Error("Inbox inspection is not part of this scenario");
   }

@@ -602,6 +602,13 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     requireSuccess(await this.#invoke("inbox:keep", { pageIds }), "Keep Inbox messages");
   }
 
+  async setInboxLater(pageIds: readonly string[], until: string): Promise<void> {
+    requireSuccess(
+      await this.#invoke("inbox:later", { pageIds, until }),
+      "Set Inbox messages aside",
+    );
+  }
+
   async recordInboxSuggestionFailure(): Promise<void> {
     throw new Error("Inbox suggestion failures are seeded only through Core");
   }
@@ -630,8 +637,15 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     return (await this.#invoke("automations:list")).items;
   }
 
-  async readInbox(scope: InboxScope = LIBRARY_INBOX): Promise<InboxWindow> {
-    return await this.#invoke("inbox:window", { scope, first: 200 });
+  async readInboxNotesPage(scope: InboxScope) {
+    return (await this.#invoke("inbox:summary", { scope })).notesPageId;
+  }
+
+  async readInbox(
+    scope: InboxScope = LIBRARY_INBOX,
+    filter: "inbox" | "later" = "inbox",
+  ): Promise<InboxWindow> {
+    return await this.#invoke("inbox:window", { scope, filter, first: 200 });
   }
 
   async readHandledMessages(scope: InboxScope = LIBRARY_INBOX) {

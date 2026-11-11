@@ -155,6 +155,7 @@ pub(super) fn inbox_item(
         });
     let at:String=connection.query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ',opened_at_ms/1000.0,'unixepoch') FROM problems WHERE id=?1",[page],|r|r.get(0))?;
     Ok(ProjectWorkspaceInboxItem {
+        later: None,
         problem: Some(problem.clone()),
         handback: None,
         row_kind: InboxRowKind::Problem,
@@ -171,7 +172,7 @@ pub(super) fn inbox_item(
         reply_to_page_id: None,
         kind: None,
         important: false,
-        state: ProjectWorkspaceInboxEntryState::Open,
+        waiting: false,
         suggestion_state: ProjectWorkspaceInboxSuggestionState::None,
         suggestion_error: None,
         scope,
@@ -183,6 +184,5 @@ pub(super) fn inbox_item(
             page_id: page.into(),
             content_hash: "0".repeat(64),
         },
-        outcome: None,
     })
 }

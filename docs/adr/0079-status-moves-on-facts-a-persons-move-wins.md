@@ -5,6 +5,8 @@
 - Owners: Nodex maintainers
 - Supersedes: ADR 0078's “Agent work never moves Status” and report-based prerequisite satisfaction
 
+Refined by [ADR 0085](0085-the-inbox-is-pages-whose-move-is-yours.md) for intake Status and Inbox membership.
+
 ## Context
 
 A Page needs one stage for where its work stands. Keeping Status unchanged after a chat reports

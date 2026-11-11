@@ -10160,6 +10160,7 @@
             "items": {
               "type": "object",
               "required": [
+                "later",
                 "basis",
                 "row_kind",
                 "page_id",
@@ -10170,7 +10171,7 @@
                 "submitted_at",
                 "source",
                 "important",
-                "state",
+                "waiting",
                 "suggestion_state",
                 "scope",
                 "location",
@@ -10226,18 +10227,18 @@
                     }
                   ]
                 },
-                "location": {
-                  "$ref": "#/components/schemas/ProjectWorkspaceInboxLocation"
-                },
-                "outcome": {
+                "later": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/ProjectWorkspaceInboxOutcome"
+                      "$ref": "#/components/schemas/InboxLater"
                     },
                     {
                       "type": "null"
                     }
                   ]
+                },
+                "location": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceInboxLocation"
                 },
                 "page_id": {
                   "type": "string"
@@ -10297,9 +10298,6 @@
                 "source": {
                   "$ref": "#/components/schemas/ProjectWorkspaceInboxSource"
                 },
-                "state": {
-                  "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryState"
-                },
                 "submitted_at": {
                   "type": "string"
                 },
@@ -10324,6 +10322,9 @@
                       "type": "null"
                     }
                   ]
+                },
+                "waiting": {
+                  "type": "boolean"
                 }
               }
             }
@@ -12239,6 +12240,20 @@
                 "type": "string",
                 "enum": [
                   "reconnect_document_subscription"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "inbox_remind_at_passed"
                 ]
               }
             }
@@ -20882,6 +20897,70 @@
             "type": "string"
           },
           "returned_at": {
+            "type": "string"
+          }
+        }
+      },
+      "InboxLater": {
+        "type": "object",
+        "required": [
+          "set_at",
+          "until"
+        ],
+        "properties": {
+          "set_at": {
+            "type": "string"
+          },
+          "until": {
+            "type": "string"
+          }
+        }
+      },
+      "InboxLaterNotification": {
+        "type": "object",
+        "required": [
+          "id",
+          "member_id",
+          "page_id",
+          "returned_at",
+          "title"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "member_id": {
+            "type": "string"
+          },
+          "page_id": {
+            "type": "string"
+          },
+          "returned_at": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "InboxNotesOutlineItem": {
+        "type": "object",
+        "description": "Bounded routing context for the suggestion Agent. It intentionally carries\nno transcripts or Page bodies other than the entries being considered. For a\nProject's Inbox, Projects and chats are narrowed to that Project.",
+        "required": [
+          "page_id",
+          "title",
+          "depth"
+        ],
+        "properties": {
+          "depth": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "page_id": {
+            "type": "string"
+          },
+          "title": {
             "type": "string"
           }
         }
@@ -37270,14 +37349,14 @@
                 "type": "object",
                 "required": [
                   "page_ids",
-                  "state",
+                  "until",
                   "kind"
                 ],
                 "properties": {
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "set_inbox_entry_state"
+                      "set_inbox_later"
                     ]
                   },
                   "page_ids": {
@@ -37286,8 +37365,111 @@
                       "type": "string"
                     }
                   },
-                  "state": {
-                    "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryState"
+                  "until": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "page_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "clear_inbox_later"
+                    ]
+                  },
+                  "page_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "wake_at",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "publish_due_inbox_later"
+                    ]
+                  },
+                  "wake_at": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "id",
+                  "for_push",
+                  "kind"
+                ],
+                "properties": {
+                  "for_push": {
+                    "type": "boolean"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "claim_inbox_later_notification"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "page_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "mark_inbox_messages_done"
+                    ]
+                  },
+                  "page_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "page_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "return_inbox_messages"
+                    ]
+                  },
+                  "page_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 }
               },
@@ -43198,6 +43380,38 @@
               },
               {
                 "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "next_inbox_later"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "for_push",
+                  "kind"
+                ],
+                "properties": {
+                  "for_push": {
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "inbox_later_notifications"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "description": "Every Member's current notifying Page Turns, claimed by a desktop or not, for the local\nHost's phone notifications.",
                 "required": [
                   "kind"
@@ -45289,6 +45503,24 @@
           },
           {
             "type": "object",
+            "required": [
+              "id",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "inbox_later_owner"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "A Page Turn belongs to the Member whose move it is, while that episode is current.",
             "required": [
               "page_id",
@@ -46817,7 +47049,7 @@
           },
           {
             "type": "object",
-            "description": "Keep the entries open as notes, todos, or questions.",
+            "description": "Hold the work in Todo.",
             "required": [
               "type"
             ],
@@ -46826,6 +47058,45 @@
                 "type": "string",
                 "enum": [
                   "keep"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "File a note under the Inbox's Notes page or one of its sections.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "parent_page_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "save_to_notes"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "remind_at",
+              "type"
+            ],
+            "properties": {
+              "remind_at": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "later"
                 ]
               }
             }
@@ -46969,8 +47240,8 @@
       },
       "ProjectWorkspaceInboxDispatchContext": {
         "type": "object",
-        "description": "Bounded routing context for the suggestion Agent. It intentionally carries\nno transcripts or Page bodies other than the entries being considered. For a\nProject's Inbox, Projects and chats are narrowed to that Project.",
         "required": [
+          "notes_outline",
           "scope",
           "entries",
           "projects",
@@ -46982,6 +47253,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProjectWorkspaceInboxSuggestionInput"
+            }
+          },
+          "notes_outline": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxNotesOutlineItem"
             }
           },
           "open_proposals": {
@@ -47163,15 +47440,6 @@
           "question"
         ]
       },
-      "ProjectWorkspaceInboxEntryState": {
-        "type": "string",
-        "description": "Triage state chosen by the user. Execution state lives on proposals.",
-        "enum": [
-          "open",
-          "kept",
-          "done"
-        ]
-      },
       "ProjectWorkspaceInboxExecutionSelection": {
         "type": "object",
         "required": [
@@ -47227,6 +47495,7 @@
       "ProjectWorkspaceInboxItem": {
         "type": "object",
         "required": [
+          "later",
           "basis",
           "row_kind",
           "page_id",
@@ -47237,7 +47506,7 @@
           "submitted_at",
           "source",
           "important",
-          "state",
+          "waiting",
           "suggestion_state",
           "scope",
           "location",
@@ -47293,18 +47562,18 @@
               }
             ]
           },
-          "location": {
-            "$ref": "#/components/schemas/ProjectWorkspaceInboxLocation"
-          },
-          "outcome": {
+          "later": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceInboxOutcome"
+                "$ref": "#/components/schemas/InboxLater"
               },
               {
                 "type": "null"
               }
             ]
+          },
+          "location": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxLocation"
           },
           "page_id": {
             "type": "string"
@@ -47364,9 +47633,6 @@
           "source": {
             "$ref": "#/components/schemas/ProjectWorkspaceInboxSource"
           },
-          "state": {
-            "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryState"
-          },
           "submitted_at": {
             "type": "string"
           },
@@ -47391,6 +47657,9 @@
                 "type": "null"
               }
             ]
+          },
+          "waiting": {
+            "type": "boolean"
           }
         }
       },
@@ -47549,16 +47818,6 @@
           }
         },
         "additionalProperties": false
-      },
-      "ProjectWorkspaceInboxOutcome": {
-        "type": "string",
-        "description": "Product decision, independent of the Page's current location.",
-        "enum": [
-          "kept",
-          "done",
-          "moved",
-          "chat"
-        ]
       },
       "ProjectWorkspaceInboxPageBasis": {
         "type": "object",
@@ -48222,6 +48481,7 @@
       },
       "ProjectWorkspaceInboxSuggestionState": {
         "type": "string",
+        "description": "Triage state chosen by the user. Execution state lives on proposals.",
         "enum": [
           "none",
           "waiting",
@@ -48250,6 +48510,7 @@
         "required": [
           "entry_count",
           "inbox_count",
+          "later_count",
           "needs_decision_count",
           "pending_suggestion_count",
           "dispatching_count",
@@ -48293,10 +48554,21 @@
             "description": "Messages still in the Inbox; the user's goal is to bring this to zero.",
             "minimum": 0
           },
+          "later_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
           "needs_decision_count": {
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "notes_page_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "pending_suggestion_count": {
             "type": "integer",
@@ -48315,7 +48587,8 @@
         "type": "string",
         "enum": [
           "inbox",
-          "processed"
+          "processed",
+          "later"
         ]
       },
       "ProjectWorkspaceIntent": {
@@ -51557,14 +51830,14 @@
             "type": "object",
             "required": [
               "page_ids",
-              "state",
+              "until",
               "kind"
             ],
             "properties": {
               "kind": {
                 "type": "string",
                 "enum": [
-                  "set_inbox_entry_state"
+                  "set_inbox_later"
                 ]
               },
               "page_ids": {
@@ -51573,8 +51846,111 @@
                   "type": "string"
                 }
               },
-              "state": {
-                "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryState"
+              "until": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "page_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "clear_inbox_later"
+                ]
+              },
+              "page_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "wake_at",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "publish_due_inbox_later"
+                ]
+              },
+              "wake_at": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "for_push",
+              "kind"
+            ],
+            "properties": {
+              "for_push": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "claim_inbox_later_notification"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "page_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "mark_inbox_messages_done"
+                ]
+              },
+              "page_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "page_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "return_inbox_messages"
+                ]
+              },
+              "page_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -62663,6 +63039,47 @@
                       {
                         "type": "object",
                         "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "next_inbox_later"
+                            ]
+                          },
+                          "remind_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "intents",
+                          "kind"
+                        ],
+                        "properties": {
+                          "intents": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/InboxLaterNotification"
+                            }
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "inbox_later_notifications"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
                           "intents",
                           "kind"
                         ],
@@ -65821,6 +66238,20 @@
           {
             "type": "object",
             "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "members"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "member_id",
               "kind"
             ],
@@ -65917,6 +66348,8 @@
       "TurnReason": {
         "type": "string",
         "enum": [
+          "triage",
+          "delivery_recovery",
           "paused",
           "working",
           "queued",

@@ -59,6 +59,10 @@ describe("dev launcher", () => {
       expect(ordinary.environment.NODEX_DEV_AGENT_RUNTIME_NODE_EXECUTABLE).toBeUndefined();
     }
   });
+  test("resolves the Inbox triage seed alias", () => {
+    expect(parseDevLauncherArguments(["--seed", "inbox-triage"]).seed).toBe("inbox/triage");
+  });
+
   test("parses the public command contract without requiring a separator", () => {
     expect(
       parseDevLauncherArguments([

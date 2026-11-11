@@ -2792,6 +2792,19 @@ fn set_value(
     )?;
     let value = normalize_value(&property, input_value)?;
     let revision = existing_revision + 1;
+    let previous_stage: Option<String> = if address.property_id == "status" {
+        connection
+            .query_row(
+                "SELECT json_extract(value_json,'$') FROM data_source_property_values
+             WHERE data_source_id=?1 AND membership_id=?2 AND property_id='status'",
+                params![address.data_source_id, membership],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten()
+    } else {
+        None
+    };
     if address.property_id == "status" {
         effects.status_edit_page_ids.insert(address.page_id.clone());
     }
@@ -2812,6 +2825,15 @@ fn set_value(
             now,
         ],
     )?;
+    if address.property_id == "status" {
+        crate::workspace::inbox::status_changed(
+            connection,
+            &address.page_id,
+            previous_stage.as_deref(),
+            value.as_str(),
+            now,
+        )?;
+    }
     update_membership_completion_timestamp(
         connection,
         &membership,
@@ -4054,6 +4076,7 @@ fn place_page_in_data_source(
         &membership_id,
         &destination.data_source_id,
         now,
+        false,
         None,
     )?;
     if let Some(source_membership) = source_membership
@@ -4669,7 +4692,6 @@ fn transfer_page(
         .as_ref()
         .map(|membership| require_source(connection, library_id, &membership.data_source_id))
         .transpose()?;
-    if let Some(_source) = &previous_source {}
     if let Some(membership) = &active_membership {
         let relation_outcomes = super::relation::remove_membership_task_parent_edges(
             connection,
@@ -4823,12 +4845,19 @@ fn transfer_page(
                 page_id,
                 now,
             )?;
+            let carry_intake_status = active_membership.is_some()
+                && connection.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM inbox_entries WHERE page_id=?1)",
+                    [page_id],
+                    |row| row.get::<_, bool>(0),
+                )?;
             ensure_transferred_built_in_values(
                 connection,
                 active_membership.as_ref(),
                 &membership_id,
                 data_source_id,
                 now,
+                carry_intake_status,
                 Some(effects),
             )?;
             synchronize_membership_completion_timestamp(
@@ -4890,6 +4919,7 @@ fn ensure_transferred_built_in_values(
     target_membership_id: &str,
     target_data_source_id: &str,
     now: &str,
+    carry_intake_status: bool,
     mut effects: Option<&mut MutationEffects>,
 ) -> Result<(), StoreError> {
     let properties = connection
@@ -4927,14 +4957,17 @@ fn ensure_transferred_built_in_values(
                 |_| Ok(()),
             )
             .optional()?;
-        if existing.is_some() {
+        if existing.is_some() && !(carry_intake_status && target_property.id == "status") {
             continue;
         }
         let value = transfer_value(connection, source_membership, &target_property)?;
-        connection.execute(
+        let revision = connection.query_row(
             "INSERT INTO data_source_property_values(\
                data_source_id, membership_id, property_id, value_type, value_json, revision, updated_at\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6)
+             ON CONFLICT(data_source_id, membership_id, property_id) DO UPDATE SET
+               value_json=excluded.value_json, revision=revision+1, updated_at=excluded.updated_at
+             WHERE value_json<>excluded.value_json RETURNING revision",
             params![
                 target_data_source_id,
                 target_membership_id,
@@ -4943,14 +4976,15 @@ fn ensure_transferred_built_in_values(
                 serde_json::to_string(&value).map_err(|_| internal("Transferred value"))?,
                 now,
             ],
-        )?;
-        if let Some(effects) = effects.as_deref_mut() {
+            |row| row.get::<_, i64>(0),
+        ).optional()?;
+        if let (Some(effects), Some(revision)) = (effects.as_deref_mut(), revision) {
             effects.revisions.insert(
                 format!(
                     "value:{target_data_source_id}:{target_membership_id}:{}",
                     target_property.id
                 ),
-                1,
+                revision,
             );
         }
     }

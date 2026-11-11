@@ -99,11 +99,10 @@ fn plant_inbox_snapshot(connection: &Connection) -> (String, String, String) {
             },
         ],
     };
-    prepare_current_inbox_capture_columns(connection).unwrap();
-    let mut frozen =
-        crate::workspace::frozen_input_for_content(connection, &library, &page, content, 0)
-            .unwrap();
-    finish_current_inbox_capture_columns(connection).unwrap();
+    let mut frozen: crate::workspace::FrozenSuggestionInput = serde_json::from_value(
+        v194_inbox_frozen_input(connection, &library, &page, content, 0).unwrap(),
+    )
+    .unwrap();
     // The old Agent body is an equivalent exact spelling, independent of the live Page.
     let expected_body = frozen.input.body.clone();
     frozen.input.body = frozen.input.body.replacen("Hello,", r"Hello\,", 1);
@@ -148,8 +147,6 @@ fn unaffected(connection: &Connection) -> BTreeMap<String, Vec<Vec<rusqlite::typ
             // The link's original fields are unchanged; report columns first appear in v203.
             let columns = if name == "project_session_pages" {
                 "session_id,page_id,linked_at"
-            } else if name == "inbox_entries" {
-                "page_id,library_id,seq,submitted_at,source_kind,source_session_id,source_thread_id,source_turn_id,source_project_id,source_label,provisional_title,kind,kind_set_by_user,state,suggestion_state,suggestion_error,current_proposal_id,revision,updated_at,source_budget_key,scope_project_id,outcome,suggestion_request_id,important,source_automation_id,source_dispatch_id"
             } else {
                 "*"
             };

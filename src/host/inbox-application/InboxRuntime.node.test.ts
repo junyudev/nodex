@@ -163,6 +163,7 @@ const context = (): CoreInboxDispatchContext => ({
     },
   ],
   open_proposals: [],
+  notes_outline: [],
 });
 const applicationError = () =>
   new AgentRuntimeApplicationError({ operation: "launch", message: "Reply lost" });

@@ -67,6 +67,7 @@ export const routingRequest = (id = "one"): CoreInboxSuggestionRequest => ({
     projects: [],
     sessions: [],
     open_proposals: [],
+    notes_outline: [],
   },
 });
 export const keepOutput = (request: CoreInboxSuggestionRequest) => ({

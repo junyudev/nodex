@@ -1,18 +1,17 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { InboxSuggestedSkillsSchema } from "../schemas/inbox";
+import { InboxRemindAtSchema, InboxSuggestedSkillsSchema } from "../schemas/inbox";
 import { MAX_INBOX_ADDITION_CHARS, MAX_INBOX_ADDITIONS } from "../inbox";
 import { toolInputSchema } from "./tool-input-schema";
 const MAX_PROMPT_CHARS = 2000;
 const MAX_SUMMARY_CHARS = 200;
 const MAX_RATIONALE_CHARS = 600;
 const MAX_TITLE_CHARS = 80;
-const RawSuggestion = z
+const SuggestionFields = z
   .object({
     explicit_request: z.boolean(),
     page_ids: z.array(z.string()).min(1).max(16),
     kind: z.enum(["note", "todo", "question"]),
-    action: z.enum(["keep", "new_chat", "send_to_chat", "move_to_project", "plan"]),
     steps: z
       .array(
         z.strictObject({
@@ -70,6 +69,16 @@ const RawSuggestion = z
     rationale: z.string().max(MAX_RATIONALE_CHARS).nullable(),
   })
   .strict();
+const RawSuggestion = z.discriminatedUnion("action", [
+  SuggestionFields.extend({
+    action: z.enum(["keep", "new_chat", "send_to_chat", "move_to_project", "plan"]),
+  }),
+  SuggestionFields.extend({
+    action: z.literal("save_to_notes"),
+    parent_page_id: z.string().min(1).max(512).nullable(),
+  }),
+  SuggestionFields.extend({ action: z.literal("later"), remind_at: InboxRemindAtSchema }),
+]);
 export const InboxSuggestionOutput = z
   .object({
     request_id: z.string().min(1),

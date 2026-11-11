@@ -28,6 +28,8 @@ const action = {
 } as const;
 const item: CoreInboxItem = {
   row_kind: "intake",
+  waiting: true,
+  later: null,
   page_id: "held-page",
   page_key: "IN-3",
   title: "Review dependencies",
@@ -44,7 +46,6 @@ const item: CoreInboxItem = {
   },
   kind: "todo",
   important: false,
-  state: "open",
   suggestion_state: "settled",
   suggestion_error: null,
   scope: { kind: "library" },

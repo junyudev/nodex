@@ -1164,16 +1164,28 @@ export interface IpcApi
     args: [input: import("./inbox").InboxDispatchInput];
     result: CoreLocalCommitResult<import("./inbox").InboxDecisionResult>;
   };
-  "inbox:keep": {
+  "inbox:later": {
+    args: [input: import("./inbox").InboxSetLaterInput];
+    result: CoreLocalCommitResult<void>;
+  };
+  "inbox:clear-later": {
     args: [input: import("./inbox").InboxPageIdsInput];
     result: CoreLocalCommitResult<void>;
+  };
+  "inbox:keep": {
+    args: [input: import("./inbox").InboxPageIdsInput];
+    result: CoreLocalCommitResult<import("./inbox").InboxDecisionResult>;
   };
   "inbox:delete": {
     args: [input: import("./inbox").InboxPageIdsInput];
     result: CoreLocalCommitResult<void>;
   };
-  "inbox:set-state": {
-    args: [input: import("./inbox").InboxSetStateInput];
+  "inbox:mark-done": {
+    args: [input: import("./inbox").InboxPageIdsInput];
+    result: CoreLocalCommitResult<import("./inbox").InboxDecisionResult>;
+  };
+  "inbox:return": {
+    args: [input: import("./inbox").InboxPageIdsInput];
     result: CoreLocalCommitResult<void>;
   };
   "inbox:set-kind": {

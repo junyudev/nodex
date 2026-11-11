@@ -433,6 +433,11 @@ pub(super) fn apply(
                         &request_hash, intent.clone(), &assets_root),
                 ProjectWorkspaceIntent::HoldAutomationDecision {lease_id,page_id,document_id,title} => super::inbox::hold_automation_decision(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, lease_id, page_id, document_id, title),
                 ProjectWorkspaceIntent::RefreshAutomationDecision {dispatch_id} => super::inbox::refresh_automation_decision(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, dispatch_id),
+                intent @ (ProjectWorkspaceIntent::SetInboxLater { .. } | ProjectWorkspaceIntent::ClearInboxLater { .. } | ProjectWorkspaceIntent::PublishDueInboxLater { .. }
+                    | ProjectWorkspaceIntent::ClaimInboxLaterNotification { .. }) => super::inbox::later::apply(
+                        transaction, &library_id, &context, &store_epoch, &request.operation_id,
+                        &request_hash, intent,
+                    ),
                 ProjectWorkspaceIntent::KeepInboxEntries { page_ids } => super::inbox::keep_entries(
                     transaction,
                     &library_id,
@@ -453,8 +458,8 @@ pub(super) fn apply(
                         page_ids,
                     )
                 }
-                ProjectWorkspaceIntent::SetInboxEntryState { page_ids, state } => {
-                    super::inbox::set_state(
+                intent @ (ProjectWorkspaceIntent::MarkInboxMessagesDone { page_ids } | ProjectWorkspaceIntent::ReturnInboxMessages { page_ids }) => {
+                    super::inbox::resolve_messages(
                         transaction,
                         &library_id,
                         &context,
@@ -462,7 +467,8 @@ pub(super) fn apply(
                         &request.operation_id,
                         &request_hash,
                         page_ids,
-                        *state,
+                        matches!(intent, ProjectWorkspaceIntent::ReturnInboxMessages { .. }),
+                        &assets_root,
                     )
                 }
                 ProjectWorkspaceIntent::SetInboxEntryKind {

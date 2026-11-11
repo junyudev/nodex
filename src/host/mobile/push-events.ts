@@ -19,6 +19,7 @@ import {
   sessionSpeaksThroughNodex,
   turnSpeaksThroughNodex,
 } from "../coordinator/notification-session";
+import { claimInboxLaterNotification, type InboxLaterNotification } from "../NotificationIntents";
 import { UserPresence, anyReturned, reportedAttendanceSince } from "../UserPresence";
 import type { PushMessage, PushRecipient, PushTargets } from "./push-delivery";
 import { snapshotTurnItems } from "./transcript-projection";
@@ -191,6 +192,7 @@ export const makeMobilePushEvents = Effect.gen(function* () {
           since: number,
           recipients: readonly PushRecipient[],
           message: Effect.Effect<PushMessage | null, unknown>,
+          settle?: Effect.Effect<boolean>,
         ) => {
           entries.set(key, entry);
           return FiberMap.run(
@@ -203,6 +205,7 @@ export const makeMobilePushEvents = Effect.gen(function* () {
                 presence.attendanceSince(since),
                 reportedAttendanceSince(targets.presence(entry.memberId), since),
               ]);
+              if (settle && !(yield* settle)) return;
               if (attendance === "returned") return;
               yield* Queue.offer(output, { recipients, message: ready });
             }).pipe(
@@ -319,6 +322,51 @@ export const makeMobilePushEvents = Effect.gen(function* () {
           Effect.catchCause(() => Effect.logWarning("Page Turns could not be read for phones")),
         );
 
+        const followLater = Effect.gen(function* () {
+          const snapshot = yield* core.workspace.read(
+            { kind: "inbox_later_notifications", for_push: true },
+            undefined,
+            null,
+          );
+          if (snapshot.value.kind !== "inbox_later_notifications") return;
+          for (const intent of snapshot.value.intents) yield* tellLater(intent);
+        }).pipe(
+          Effect.catchCause(() =>
+            Effect.logWarning("Inbox reminders could not be read for phones"),
+          ),
+        );
+
+        const tellLater = Effect.fnUntraced(function* (intent: InboxLaterNotification) {
+          const key = `later:${intent.id}`;
+          if (entries.has(key)) return;
+          const settle = claimInboxLaterNotification(core, intent, true);
+          const recipients = yield* targets.recipients(null, {
+            kind: "inbox_later_owner",
+            id: intent.id,
+          });
+          if (!recipients.length) {
+            yield* settle;
+            return;
+          }
+          yield* wait(
+            key,
+            {
+              conversationId: `page:${intent.page_id}`,
+              memberId: intent.member_id,
+              kind: "needs_you",
+            },
+            Date.parse(intent.returned_at),
+            recipients,
+            Effect.succeed({
+              kind: "needs_you",
+              pageId: intent.page_id,
+              title: intent.title,
+              body: "Back in your Inbox",
+            }),
+            settle,
+          );
+        });
+
         /** Withdraws what still waits in a chat: for one Member or everyone, or only requests. */
         const withdraw = (
           conversationId: string,
@@ -336,12 +384,13 @@ export const makeMobilePushEvents = Effect.gen(function* () {
           );
 
         yield* followTurns;
+        yield* followLater;
         yield* Stream.merge(
           hub.events,
           turnChanges.pipe(Stream.map(() => ({ kind: "turnsChanged" as const }))),
         ).pipe(
           Stream.runForEach((event) => {
-            if (event.kind === "turnsChanged") return followTurns;
+            if (event.kind === "turnsChanged") return Effect.andThen(followTurns, followLater);
             if (event.kind === "conversationSeen")
               return withdraw(
                 event.value,

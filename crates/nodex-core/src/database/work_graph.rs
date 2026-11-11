@@ -337,6 +337,7 @@ fn ready_work_filtered(
       WHERE project.library_id = ?1 AND project.lifecycle = 'active' AND database.lifecycle = 'active' AND source.lifecycle = 'active' AND block.lifecycle = 'active' \
         AND (?2 IS NULL OR project.id = ?2) AND (?4 IS NULL OR page.block_id = ?4) AND (?5 IS NULL OR page.block_id > ?5) AND json_extract(current_status.value_json, '$') IN ('triage', 'plan') \
         AND NOT EXISTS (SELECT 1 FROM page_active_chats active WHERE active.page_id = page.block_id) \
+        AND NOT EXISTS (SELECT 1 FROM inbox_intake intake WHERE intake.page_id=page.block_id AND (intake.triage OR intake.recovery)) \
         AND NOT EXISTS (SELECT 1 FROM data_source_relation_edges edge \
           JOIN data_source_properties property ON property.data_source_id = edge.source_data_source_id AND property.id = 'blocked_by' AND property.lifecycle = 'active' \
           {TARGET_JOINS} WHERE edge.source_data_source_id = source.id AND edge.source_membership_id = membership.id \

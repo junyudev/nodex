@@ -1132,6 +1132,10 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     await runScenarioInbox(this.#runtime, (inbox) => inbox.keep({ pageIds }));
   }
 
+  async setInboxLater(pageIds: readonly string[], until: string): Promise<void> {
+    await runScenarioInbox(this.#runtime, (inbox) => inbox.setLater({ pageIds, until }));
+  }
+
   async recordInboxSuggestionFailure(pageIds: readonly string[], message: string): Promise<void> {
     await runScenarioInbox(this.#runtime, (inbox) =>
       inbox.recordSuggestionFailure(pageIds, message),
@@ -1149,9 +1153,18 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     );
   }
 
-  async readInbox(scope: InboxScope = LIBRARY_INBOX): Promise<InboxWindow> {
+  async readInboxNotesPage(scope: InboxScope) {
     return await runScenarioInbox(this.#runtime, (inbox) =>
-      inbox.window({ scope, filter: "inbox", first: 200 }),
+      inbox.summary({ scope }).pipe(Effect.map((summary) => summary.notesPageId)),
+    );
+  }
+
+  async readInbox(
+    scope: InboxScope = LIBRARY_INBOX,
+    filter: "inbox" | "later" = "inbox",
+  ): Promise<InboxWindow> {
+    return await runScenarioInbox(this.#runtime, (inbox) =>
+      inbox.window({ scope, filter, first: 200 }),
     );
   }
 
@@ -1229,9 +1242,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
   }
 
   async skipAutomationDecision(pageId: string): Promise<void> {
-    await runScenarioInbox(this.#runtime, (inbox) =>
-      inbox.setState({ pageIds: [pageId], state: "done" }),
-    );
+    await runScenarioInbox(this.#runtime, (inbox) => inbox.markDone({ pageIds: [pageId] }));
   }
 
   async readAutomations() {

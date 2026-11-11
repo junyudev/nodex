@@ -96,13 +96,13 @@ test("preserves capture and filing decisions while Project counts share the acti
         await page.screenshot({ path: path.join(artifacts, "decided-in-place.png") });
         await expect(page.getByTestId("inbox-message")).toHaveCount(0);
         const activity = await invokeIpc(page, "inbox:activity", {
-          scope: { kind: "library" },
+          scope: { kind: "all" },
           filter: "messages",
         });
         claim(
           "One decision records both captures as moved, once each",
-          ["moved", "moved"],
-          activity.rows.map((row) => row.message?.outcome),
+          ["filed", "filed"],
+          activity.rows.map((row) => (row.evidence as { disposition?: string }).disposition),
         );
         // Filing belongs to the original Inbox; the target Project must not get a second capture.
         claim(

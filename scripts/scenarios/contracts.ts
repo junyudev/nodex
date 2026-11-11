@@ -313,11 +313,13 @@ export interface ScenarioSeedPort {
   proposeInboxDispatch(input: ScenarioInboxProposalSeed): Promise<void>;
   dispatchInboxEntries(input: ScenarioInboxDispatchSeed): Promise<void>;
   keepInboxEntries(pageIds: readonly string[]): Promise<void>;
+  setInboxLater(pageIds: readonly string[], until: string): Promise<void>;
   recordInboxSuggestionFailure(pageIds: readonly string[], message: string): Promise<void>;
   /** Marks a confirmed chat dispatch delivered without launching a runtime. Core seeding only. */
   completeInboxDispatch(proposalId: string, threadId: string | null): Promise<void>;
   /** What still needs the user in one Inbox, newest first. */
-  readInbox(scope?: InboxScope): Promise<InboxWindow>;
+  readInboxNotesPage(scope: InboxScope): Promise<string | null>;
+  readInbox(scope?: InboxScope, filter?: "inbox" | "later"): Promise<InboxWindow>;
   /** One Inbox's handled messages as Activity holds them: by their newest decision, once each. */
   readHandledMessages(scope?: InboxScope): Promise<readonly InboxItem[]>;
   /** Automation transitions use Core and the Inbox application without starting Agents. */

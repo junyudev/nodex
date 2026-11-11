@@ -91,7 +91,9 @@ export const live: Layer.Layer<
     yield* query("inbox:activity", (_, input) => inbox.activity(input));
     yield* command("inbox:retry-problem", (_, input) => committed(inbox.retryProblem(input)));
     // A window reads only what still needs the user; handled messages are Activity's.
-    yield* query("inbox:window", (_, input) => inbox.window({ ...input, filter: "inbox" }));
+    yield* query("inbox:window", (_, input) =>
+      inbox.window({ ...input, filter: input.filter ?? "inbox" }),
+    );
     yield* query("inbox:skill-availability", (_, input) => inbox.skillAvailability(input));
     yield* query("inbox:prepare-confirmation", (_, input) => inbox.prepareConfirmation(input));
     yield* query("inbox:chat-targets", (_, input) => inbox.chatTargets(input));
@@ -99,9 +101,12 @@ export const live: Layer.Layer<
     yield* command("inbox:edit", (_, input) => committed(inbox.edit(input)));
     yield* command("inbox:confirm", (_, input) => committed(inbox.confirm(input)));
     yield* command("inbox:dispatch", (_, input) => committed(inbox.dispatch(input)));
+    yield* command("inbox:later", (_, input) => committed(inbox.setLater(input)));
+    yield* command("inbox:clear-later", (_, input) => committed(inbox.clearLater(input)));
     yield* command("inbox:keep", (_, input) => committed(inbox.keep(input)));
     yield* command("inbox:delete", (_, input) => committed(inbox.delete(input)));
-    yield* command("inbox:set-state", (_, input) => committed(inbox.setState(input)));
+    yield* command("inbox:mark-done", (_, input) => committed(inbox.markDone(input)));
+    yield* command("inbox:return", (_, input) => committed(inbox.returnMessages(input)));
     yield* command("inbox:set-kind", (_, input) => committed(inbox.setKind(input)));
     yield* command("inbox:set-important", (_, input) => committed(inbox.setImportant(input)));
     yield* command("inbox:request-suggestion", (_, input) =>

@@ -221,7 +221,16 @@ pub(super) fn confirm(
         "UPDATE inbox_proposals SET summary=?2 WHERE proposal_id=?1",
         params![proposal_id, format!("Planned {} cards", steps.len())],
     )?;
-    set_entries_state(connection, library_id, members, "done", now)?;
+    move_message_status(
+        connection,
+        library_id,
+        context,
+        operation_id,
+        members,
+        "done",
+        true,
+        &mut effects,
+    )?;
     for page in members {
         connection.execute("UPDATE inbox_entries SET suggestion_state='settled',suggestion_request_id=NULL,suggestion_error=NULL WHERE page_id=?1",[page])?;
     }

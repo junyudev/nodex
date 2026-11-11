@@ -120,6 +120,21 @@ fn intake(w: &TestWorkspace, github: bool) -> ProjectWorkspaceInboxItem {
                 ),
             )
             .unwrap();
+        // The local Member handles the Page after the author hands ownership over.
+        w.kernel
+            .writer()
+            .call(|c| {
+                c.execute(
+                    "UPDATE block_properties SET value_json=json_set(value_json,'$.owner',
+                (SELECT member_id FROM local_profile_members WHERE library_id='library-1'))
+                WHERE block_id=?1 AND property_key='work'",
+                    [PAGE],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        // A regular commit seals the changed Turn before projecting the Inbox window.
+        board(w);
     }
     let ProjectWorkspaceReadValue::InboxWindow { items } = read(
         &w.module,
@@ -244,6 +259,34 @@ fn prepare(w: &TestWorkspace, page: &str) {
             worktree_path: "/worktree".into(),
         },
     );
+    // Leave the previous chat and its follow as context, then route the Page again.
+    apply(
+        &w.module,
+        "unlink-previous-chat",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: "chat".into(),
+            intent: ProjectSessionIntent::UnlinkPage {
+                page_id: page.into(),
+            },
+        },
+    );
+    apply(
+        &w.module,
+        "return-previous-work",
+        ProjectWorkspaceIntent::ReturnInboxMessages {
+            page_ids: vec![page.into()],
+        },
+    );
+    apply(
+        &w.module,
+        "related-chat",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: "chat".into(),
+            intent: ProjectSessionIntent::LinkPage {
+                page_id: page.into(),
+            },
+        },
+    );
     let mut assignment = work(w, page);
     assignment["assignee"] =
         json!({"kind":"agent","instance_id":"claude","model":"assigned-model","effort":"high"});
@@ -355,7 +398,12 @@ fn assert_relocation(existing: bool) {
             serde_json::from_str::<serde_json::Value>(&commit_actor).unwrap(),
             expected_actor
         );
-        assert_eq!(handled.scope, ProjectWorkspaceInboxScope::Library);
+        assert_eq!(
+            handled.scope,
+            ProjectWorkspaceInboxScope::Project {
+                project_id: "project:work".into()
+            }
+        );
         assert_eq!(handled.body, original.body);
         assert!(
             matches!(handled.location, ProjectWorkspaceInboxLocation::Database { project_id: Some(ref id), .. } if id == "project:work")
@@ -375,7 +423,9 @@ fn assert_relocation(existing: bool) {
         let ProjectWorkspaceReadValue::InboxWindow { items } = read(
             &w.module,
             ProjectWorkspaceRead::InboxWindow {
-                scope: ProjectWorkspaceInboxScope::Library,
+                scope: ProjectWorkspaceInboxScope::Project {
+                    project_id: "project:work".into(),
+                },
                 filter: ProjectWorkspaceInboxWindowFilter::Processed,
                 window: nodex_core_contracts::collection::CollectionWindowRequest {
                     after: None,
@@ -697,7 +747,7 @@ fn github_plan_steps_are_project_cards_with_origin_follows_and_intake_history() 
         assert!(!key.starts_with("IN-"));
     }
     let handled = read_item(&w, &original.page_id);
-    assert_eq!(handled.state, ProjectWorkspaceInboxEntryState::Done);
+    assert!(!handled.waiting);
     assert_eq!(handled.source, original.source);
     assert_eq!(handled.scope, ProjectWorkspaceInboxScope::Library);
     assert_eq!(handled.proposal.unwrap().created_page_ids, ids);

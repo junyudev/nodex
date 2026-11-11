@@ -250,7 +250,7 @@ pub(in crate::workspace) fn apply(
                 if let Some(existing)=connection.query_row("SELECT answer.page_id FROM inbox_answers answer JOIN pages page ON page.block_id=answer.page_id JOIN document_materializations materialization ON materialization.document_id=page.document_id WHERE answer.question_page_id=?1 AND materialization.markdown=?2",params![question_page_id,message_page(body,None)?.body_markdown],|r|r.get::<_,String>(0)).optional()?{
                     let mut effects=simple_effects("inbox_write_replay",&now);effects.page_ids.push(existing);return Ok(effects)
                 }
-                let project:Option<String>=connection.query_row("SELECT scope_project_id FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.page_id=?1 AND entry.library_id=?2 AND entry.state='open' AND (entry.kind IS NULL OR entry.kind='question') AND EXISTS(SELECT 1 FROM inbox_rows row WHERE row.page_id=entry.page_id AND row.row_kind='intake' AND row.in_inbox=1)",params![question_page_id,library],|r|r.get(0)).optional()?.ok_or_else(||conflict("The Inbox question is no longer waiting for an answer"))?;
+                let project:Option<String>=connection.query_row("SELECT intake.project_id FROM inbox_entries entry JOIN inbox_intake intake ON intake.page_id=entry.page_id WHERE entry.page_id=?1 AND entry.library_id=?2 AND intake.triage AND (entry.kind IS NULL OR entry.kind='question') AND EXISTS(SELECT 1 FROM inbox_rows row WHERE row.page_id=entry.page_id AND row.row_kind='intake' AND row.in_inbox=1)",params![question_page_id,library],|r|r.get(0)).optional()?.ok_or_else(||conflict("The Inbox question is no longer waiting for an answer"))?;
                 let source = EntrySource {
                     kind: "answer",
                     session_id: Some(caller.clone()),
@@ -271,12 +271,25 @@ pub(in crate::workspace) fn apply(
                     project.as_deref(),
                     &now,
                 )?;
-                set_entries_state(
+                move_message_status(
                     connection,
                     library,
+                    context,
+                    operation,
                     std::slice::from_ref(question_page_id),
                     "done",
-                    &now,
+                    false,
+                    &mut effects,
+                )?;
+                move_message_status(
+                    connection,
+                    library,
+                    context,
+                    operation,
+                    &[page_id.clone()],
+                    "done",
+                    false,
+                    &mut effects,
                 )?;
                 effects.operation_kind = "inbox_write";
                 effects.page_ids.insert(0, page_id.clone());

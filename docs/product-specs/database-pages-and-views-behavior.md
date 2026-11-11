@@ -1090,3 +1090,11 @@ Page editor specifications linked from [the index](index.md).
 Schedule, recurrence, occurrences, and reminders are Page behavior, not
 Database layouts. The complete contract is in
 [Calendar and Reminders Behavior](calendar-and-reminders-behavior.md).
+
+### Intake Pages
+
+An intake Page in Triage with no active chat or delivery waits for its Owner’s
+decision. The Status row reads `Needs your decision` for the Owner and
+`Waiting for Alice’s decision` for others. A Status edit that leaves Triage
+handles the message and records the decision in Activity. A location-only move
+keeps Status and moves any waiting decision to the Page’s current Project.

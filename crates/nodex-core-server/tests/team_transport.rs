@@ -985,6 +985,13 @@ fn remote_attention_belongs_to_the_requesting_member() {
             .iter()
             .any(|item| item["page_id"] == capture)
     );
+    assert!(
+        second_read(shared.clone())["items"]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["page_id"] == capture)
+    );
     let owner_inbox = serde_json::to_value(
         core.local
             .workspace_read(None, serde_json::from_value(shared).unwrap())
@@ -992,7 +999,7 @@ fn remote_attention_belongs_to_the_requesting_member() {
     )
     .unwrap();
     assert!(
-        owner_inbox["payload"]["value"]["items"]["items"]
+        !owner_inbox["payload"]["value"]["items"]["items"]
             .as_array()
             .unwrap()
             .iter()

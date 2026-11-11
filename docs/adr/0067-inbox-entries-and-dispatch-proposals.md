@@ -4,6 +4,8 @@ Status: Accepted
 Date: 2026-10-11
 Refined by: Library Inbox Database navigation in [ADR 0072](0072-inbox-page-peek-and-primary-inbox-database.md); read-only utilities in [ADR 0074](0074-content-access-and-native-execution-permissions.md)
 
+Superseded in part by [ADR 0085](0085-the-inbox-is-pages-whose-move-is-yours.md) for intake Status and Inbox membership.
+
 ## Context
 
 Users often have a thought, a todo, or a question while agents are working. They

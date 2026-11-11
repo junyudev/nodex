@@ -46,9 +46,9 @@ const suggestion: InboxProposal = {
 
 const inboxItem = (scope: InboxScope): InboxItem => ({
   rowKind: "intake",
+  later: null,
   turn: null,
   replyToPageId: null,
-  outcome: null,
   pageId: "page",
   pageKey: "P-1",
   pageStatus: null,
@@ -60,7 +60,7 @@ const inboxItem = (scope: InboxScope): InboxItem => ({
   source: { kind: "user" },
   kind: "question",
   important: true,
-  state: "open",
+  waiting: true,
   suggestionState: "settled",
   suggestionError: null,
   scope,
@@ -71,7 +71,7 @@ const inboxItem = (scope: InboxScope): InboxItem => ({
   proposal: suggestion,
 });
 
-test("Inbox projections expose the decision without revealing its internal classification", () => {
+test("Inbox projections expose the decision and the kind the phone leads its holds with", () => {
   const scope = { kind: "project" as const, projectId: "project" };
   const message = projectInboxEntry(inboxItem(scope));
   expect(message).toMatchObject({
@@ -83,7 +83,7 @@ test("Inbox projections expose the decision without revealing its internal class
       action: { type: "move_to_project", projectId: "project", projectName: "Project" },
     },
   });
-  expect(message).not.toHaveProperty("kind");
+  expect(message).toMatchObject({ kind: "question" });
 });
 
 test("a chat suggestion reaches the phone whole", () => {

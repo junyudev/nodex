@@ -400,11 +400,21 @@ pub enum PhonePushAudience {
         request: crate::workspace::SessionExecutionRequestKind,
     },
     /// A Run's outcome belongs to the Member who requested it.
-    RunRequester { run_id: String },
+    RunRequester {
+        run_id: String,
+    },
     /// A chat reminder belongs to the Member who set it, as Core's reminder delivery names them.
-    ReminderOwner { member_id: String },
+    ReminderOwner {
+        member_id: String,
+    },
+    InboxLaterOwner {
+        id: String,
+    },
     /// A Page Turn belongs to the Member whose move it is, while that episode is current.
-    TurnOwner { page_id: String, episode: String },
+    TurnOwner {
+        page_id: String,
+        episode: String,
+    },
 }
 #[derive(Clone, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]

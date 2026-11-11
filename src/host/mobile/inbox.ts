@@ -46,8 +46,12 @@ const projectAction = (
   item: InboxItem,
 ): InboxProposalAction => {
   switch (action.type) {
+    case "later":
+      return { type: "later", remindAt: action.remindAt };
     case "keep":
       return { type: "keep" };
+    case "save_to_notes":
+      return { type: "save_to_notes", parentPageId: action.parentPageId };
     case "new_chat":
       return {
         type: action.type,
@@ -155,6 +159,7 @@ export const projectInboxEntry = (item: InboxItem): InboxEntry => {
     return {
       ...base,
       rowKind: "turn",
+      later: item.later ? { ...item.later } : null,
       turn: {
         episode: turn.turn.episode,
         reason: turn.turn.reason ?? null,
@@ -176,9 +181,11 @@ export const projectInboxEntry = (item: InboxItem): InboxEntry => {
   return {
     ...base,
     rowKind: "intake",
+    later: item.later ? { ...item.later } : null,
     important: item.important,
-    state: item.state,
-    outcome: item.outcome,
+    waiting: item.waiting,
+    kind: item.kind ?? item.proposal?.kind ?? null,
+    status: item.pageStatus?.id ?? null,
     suggestion: { state: item.suggestionState, error: item.suggestionError },
     proposal: item.proposal
       ? {
@@ -204,8 +211,13 @@ const reject = (error: InboxApplicationError) => {
   const cause = Schema.is(CoreRuntimeError)(error.cause) ? error.cause.cause : error.cause;
   if (error.mayHaveCommitted)
     return unavailable("The change may already be saved. Retry to check it.");
-  if (cause instanceof CoreModuleResponseError)
-    return rpcError("rejected", cause.coreError.message, cause.coreError.retryable);
+  if (cause instanceof CoreModuleResponseError) {
+    const code =
+      cause.coreError.recovery.kind === "inbox_remind_at_passed"
+        ? "inbox_remind_at_passed"
+        : "rejected";
+    return rpcError(code, cause.coreError.message, cause.coreError.retryable);
+  }
   if (error.operation === "request-suggestion" && error.cause === null)
     return rpcError("rejected", error.message);
   return unavailable("The Inbox is temporarily unavailable.");
@@ -314,7 +326,12 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
             JSON.stringify([
               input.entryId,
               decision.type === "accept"
-                ? [decision.proposalId, decision.revision, decision.keptSkillNames?.toSorted()]
+                ? [
+                    decision.proposalId,
+                    decision.revision,
+                    decision.keptSkillNames?.toSorted(),
+                    decision.remindAt,
+                  ]
                 : [
                     decision.projectId,
                     decision.prompt,
@@ -352,6 +369,8 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
                   "This message changed. Review the suggestion on your desktop.",
                 ),
               );
+            if (decision.remindAt && proposal.action.type !== "later")
+              return yield* Effect.fail(invalid("Only a Later suggestion has a return time."));
             const proposedSkills = inboxActionSkills(proposal.action);
             const kept = decision.keptSkillNames;
             if (
@@ -368,6 +387,9 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
                 expectedRevision: decision.revision,
                 storeEpoch,
                 basis: proposal.basis,
+                ...(decision.remindAt
+                  ? { action: { type: "later", remindAt: decision.remindAt } }
+                  : {}),
                 ...(kept
                   ? {
                       droppedSkillNames: proposedSkills
@@ -478,7 +500,12 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
         yield* inbox.retryProblem({ operationId, problemId: decision.problemId }).pipe(refused);
         return { undoToken: null, sessionId: null };
       }
-      if (row?.rowKind !== "intake" && !(row === null && decision.type === "delete"))
+      const later = decision.type === "later" || decision.type === "clear_later";
+      if (
+        row?.rowKind !== "intake" &&
+        !(row?.rowKind === "turn" && later) &&
+        !(row === null && decision.type === "delete")
+      )
         return yield* Effect.fail(
           rpcError("rejected", "This decision is only available for intake."),
         );
@@ -487,14 +514,37 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
         case "accept":
         case "start_chat":
           return yield* confirm(input, operationId);
-        case "keep":
-          yield* inbox.keep({ pageIds }, operationId).pipe(refused);
+        case "later":
+          yield* inbox.setLater({ pageIds, until: decision.until }, operationId).pipe(refused);
           break;
-        case "done":
-        case "reopen":
-          yield* inbox
-            .setState({ pageIds, state: decision.type === "done" ? "done" : "open" }, operationId)
+        case "clear_later":
+          yield* inbox.clearLater({ pageIds }, operationId).pipe(refused);
+          break;
+        case "save_to_notes": {
+          if (!row) return yield* Effect.fail(missing("The message is unavailable."));
+          const result = yield* inbox
+            .dispatch({
+              storeEpoch: authority.identity.storeEpoch,
+              operationId,
+              proposalId: platform.stableId("mobile-notes-proposal", operationId),
+              sessionId: platform.stableId("mobile-notes-session", operationId),
+              pageIds,
+              basis: [row.basis],
+              action: { type: "save_to_notes", parentPageId: null },
+            })
             .pipe(refused);
+          return { undoToken: result.value.undoToken, sessionId: null };
+        }
+        case "keep": {
+          const result = yield* inbox.keep({ pageIds }, operationId).pipe(refused);
+          return { undoToken: result.value.undoToken, sessionId: null };
+        }
+        case "done": {
+          const result = yield* inbox.markDone({ pageIds }, operationId).pipe(refused);
+          return { undoToken: result.value.undoToken, sessionId: null };
+        }
+        case "return":
+          yield* inbox.returnMessages({ pageIds }, operationId).pipe(refused);
           break;
         case "delete":
           yield* inbox.delete({ pageIds }, operationId).pipe(refused);
@@ -526,20 +576,16 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
     });
   return {
     "inbox.window": ({ scope, filter, after, first }) =>
-      inbox
-        .window({
-          scope,
-          filter,
-          after,
-          first,
-        })
-        .pipe(
-          Effect.mapError(reject),
-          Effect.map((result) => ({
-            items: result.items.map(projectInboxEntry),
-            nextCursor: result.nextCursor,
-          })),
-        ),
+      Effect.all([inbox.window({ scope, filter, after, first }), inbox.summary({ scope })], {
+        concurrency: 2,
+      }).pipe(
+        Effect.mapError(reject),
+        Effect.map(([result, summary]) => ({
+          items: result.items.map(projectInboxEntry),
+          nextCursor: result.nextCursor,
+          laterCount: summary.laterCount,
+        })),
+      ),
     "inbox.message": ({ entryId: pageId }) =>
       inbox.message(pageId).pipe(
         Effect.mapError(readFailure),

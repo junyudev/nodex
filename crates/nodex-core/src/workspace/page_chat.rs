@@ -100,9 +100,6 @@ pub(super) fn set_active_chats(
         // An ordinary link starts its first work attempt here. Re-selecting an existing
         // attempt must retain its original fence against old Runs reporting later.
         connection.execute("UPDATE project_session_pages SET status_fence=(SELECT status_person_revision FROM pages WHERE block_id=?1) WHERE page_id=?1 AND session_id=?2 AND status_fence IS NULL",params![page,session])?;
-        // Inbox handling after this handoff belongs to the same attempt, including
-        // handling that arrives after its active chat has been archived.
-        connection.execute("UPDATE inbox_entries SET status_fence=(SELECT status_fence FROM project_session_pages WHERE page_id=?1 AND session_id=?2) WHERE page_id=?1",params![page,session])?;
         connection.execute("INSERT INTO page_active_chats(page_id,session_id,revision,set_at) VALUES(?1,?2,1,?3) ON CONFLICT(page_id) DO UPDATE SET session_id=excluded.session_id,revision=page_active_chats.revision+1,set_at=excluded.set_at",params![page,session,now])?;
         super::thread_follows::route_unresolved(connection, page, session)?;
     }

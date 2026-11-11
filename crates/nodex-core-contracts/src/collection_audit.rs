@@ -92,6 +92,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::InboxAutomaticDispatches { .. }
         | ProjectWorkspaceRead::InboxDispatchContext { .. }
         | ProjectWorkspaceRead::InboxDispatchOutbox { .. }
+        | ProjectWorkspaceRead::InboxLaterNotifications { .. }
         | ProjectWorkspaceRead::InboxCounts => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::NativeSessionBindings { .. }
         | ProjectWorkspaceRead::ProjectActivitySummaries { .. }
@@ -99,7 +100,8 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::SessionSidebarPlacements { .. }
         | ProjectWorkspaceRead::PageChatActivitySummaries { .. } => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::ManagedWorktreeLifecycleSnapshot => ReadBudgetPolicy::FixedDomain,
-        ProjectWorkspaceRead::NextSessionReminder
+        ProjectWorkspaceRead::NextInboxLater
+        | ProjectWorkspaceRead::NextSessionReminder
         | ProjectWorkspaceRead::UnreadChatCount
         | ProjectWorkspaceRead::ProjectBootstrap
         | ProjectWorkspaceRead::Project { .. }

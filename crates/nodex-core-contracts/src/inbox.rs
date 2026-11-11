@@ -47,14 +47,6 @@ pub enum ProjectWorkspaceInboxEntryKind {
 /// Triage state chosen by the user. Execution state lives on proposals.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum ProjectWorkspaceInboxEntryState {
-    Open,
-    Kept,
-    Done,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
 pub enum ProjectWorkspaceInboxSuggestionState {
     /// No suggestion is requested.
     None,
@@ -129,8 +121,15 @@ pub enum ProjectWorkspaceInboxDispatchAction {
         summary: String,
         steps: Vec<InboxPlanStep>,
     },
-    /// Keep the entries open as notes, todos, or questions.
+    /// Hold the work in Todo.
     Keep,
+    /// File a note under the Inbox's Notes page or one of its sections.
+    SaveToNotes {
+        parent_page_id: Option<String>,
+    },
+    Later {
+        remind_at: String,
+    },
     /// Start a new chat in one active Project, or a projectless chat.
     NewChat {
         project_id: Option<String>,
@@ -156,7 +155,9 @@ pub enum ProjectWorkspaceInboxDispatchAction {
     },
     /// File the entries into one active Project: their Pages move into its primary
     /// Database and the entries are kept, without reopening there.
-    MoveToProject { project_id: String },
+    MoveToProject {
+        project_id: String,
+    },
     /// Admit one waiting decision using its frozen action, target and authority.
     /// The message supplies the reviewed instructions for this execution.
     ExecuteDecision {
@@ -354,6 +355,8 @@ pub enum ProjectWorkspaceInboxWindowFilter {
     Inbox,
     /// Messages the user has handled: dispatched, filed, kept, or done.
     Processed,
+    /// Intake deferred by the requesting Member until a future time.
+    Later,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -413,9 +416,25 @@ pub struct ProjectWorkspaceInboxPageStatus {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxLater {
+    pub set_at: String,
+    pub until: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxLaterNotification {
+    pub id: String,
+    pub member_id: String,
+    pub page_id: String,
+    pub returned_at: String,
+    pub title: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxItem {
+    #[schema(required = true)]
+    pub later: Option<InboxLater>,
     pub basis: ProjectWorkspaceInboxPageBasis,
-    pub outcome: Option<ProjectWorkspaceInboxOutcome>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub handback: Option<InboxHandback>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -439,7 +458,7 @@ pub struct ProjectWorkspaceInboxItem {
     pub kind: Option<ProjectWorkspaceInboxEntryKind>,
     /// The user marked the message important, so it stays in view while it waits.
     pub important: bool,
-    pub state: ProjectWorkspaceInboxEntryState,
+    pub waiting: bool,
     pub suggestion_state: ProjectWorkspaceInboxSuggestionState,
     pub suggestion_error: Option<String>,
     pub scope: ProjectWorkspaceInboxScope,
@@ -466,10 +485,12 @@ pub struct ProjectWorkspaceInboxMessageEdit {
 pub struct ProjectWorkspaceInboxSummary {
     /// The Database new messages of this Inbox become Pages in, once it exists.
     pub database_id: Option<String>,
+    pub notes_page_id: Option<String>,
     pub view_id: Option<String>,
     pub entry_count: u32,
     /// Messages still in the Inbox; the user's goal is to bring this to zero.
     pub inbox_count: u32,
+    pub later_count: u32,
     pub needs_decision_count: u32,
     pub pending_suggestion_count: u32,
     pub dispatching_count: u32,
@@ -565,7 +586,15 @@ pub struct ProjectWorkspaceInboxContextProposal {
 /// no transcripts or Page bodies other than the entries being considered. For a
 /// Project's Inbox, Projects and chats are narrowed to that Project.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxNotesOutlineItem {
+    pub page_id: String,
+    pub title: String,
+    pub depth: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxDispatchContext {
+    pub notes_outline: Vec<InboxNotesOutlineItem>,
     pub scope: ProjectWorkspaceInboxScope,
     pub entries: Vec<ProjectWorkspaceInboxSuggestionInput>,
     pub projects: Vec<ProjectWorkspaceInboxContextProject>,
@@ -606,16 +635,6 @@ pub struct ProjectWorkspaceInboxDispatchWork {
 }
 
 pub type ProjectWorkspaceInboxWindow = CollectionWindow<ProjectWorkspaceInboxItem>;
-
-/// Product decision, independent of the Page's current location.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ProjectWorkspaceInboxOutcome {
-    Kept,
-    Done,
-    Moved,
-    Chat,
-}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

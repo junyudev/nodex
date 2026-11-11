@@ -434,6 +434,17 @@ fn resolve_destination(
             } else {
                 None
             };
+            let intake_stage: Option<String> = match moving_page_id {
+                Some(page) if group.is_none() && group_property_id == Some("status") => connection
+                    .query_row(
+                        "SELECT stage FROM inbox_intake WHERE page_id=?1",
+                        [page],
+                        |r| r.get::<_, Option<String>>(0),
+                    )
+                    .optional()?
+                    .flatten(),
+                _ => None,
+            };
             let group_key = match group {
                 Some(DatabaseGroupScope::Path {
                     group_key,
@@ -450,6 +461,7 @@ fn resolve_destination(
                     group_key.clone()
                 }
                 None => existing_group_key
+                    .or(intake_stage)
                     .or_else(|| (group_property_id == Some("status")).then(|| "triage".to_owned())),
             };
             let ids = connection

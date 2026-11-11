@@ -345,6 +345,7 @@ const fixture = (value: RoutingCase) => {
           },
         ],
     open_proposals: [],
+    notes_outline: [],
   };
   const request = {
     requestId: `eval:${value.id}`,

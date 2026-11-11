@@ -1,3 +1,4 @@
+import { hostLocalCommit } from "../../host/host-local-commit";
 import { live as spaceAdministration } from "./SpaceAdministrationIpc";
 import { live as memberAttention } from "./RemoteMemberAttentionIpc";
 import { live as turnNotifications } from "../host-runtime/NodexEntryNotifications";
@@ -65,7 +66,7 @@ import {
   InboxWindowInputSchema,
   InboxEditInputSchema,
   InboxPageIdsInputSchema,
-  InboxSetStateInputSchema,
+  InboxSetLaterInputSchema,
   InboxSetKindInputSchema,
   InboxSetImportantInputSchema,
   InboxUndoInputSchema,
@@ -140,12 +141,21 @@ const readModels = Layer.effectDiscard(
       intent: ProjectWorkspaceApplyInput["intent"],
       operationId = createOperationId("inbox.person"),
     ) =>
-      core.workspace.apply({ operationId, intent }, undefined, null).pipe(
-        Effect.map((apply) => ({
-          ok: true as const,
-          value: undefined,
-          localCommit: rendererLocalCommitApply(apply),
-        })),
+      hostLocalCommit(
+        core.workspace
+          .apply({ operationId, intent }, undefined, null)
+          .pipe(Effect.map((apply) => ({ value: undefined, apply }))),
+      );
+    const decide = (intent: ProjectWorkspaceApplyInput["intent"]) =>
+      hostLocalCommit(
+        core.workspace
+          .apply({ operationId: createOperationId("inbox.person"), intent }, undefined, null)
+          .pipe(
+            Effect.map((apply) => ({
+              value: { undoToken: apply.outcome.inbox_undo_token ?? null, createdPageIds: [] },
+              apply,
+            })),
+          ),
       );
     yield* ipc.handleLocalCommitCommand("inbox:edit", (_, input) => {
       const parsed = InboxEditInputSchema.parse(input);
@@ -157,21 +167,33 @@ const readModels = Layer.effectDiscard(
         body: parsed.body,
       });
     });
+    yield* ipc.handleLocalCommitCommand("inbox:later", (_, input) => {
+      const parsed = InboxSetLaterInputSchema.parse(input);
+      return mutate({
+        kind: "set_inbox_later",
+        page_ids: parsed.pageIds,
+        until: parsed.until,
+      });
+    });
+    yield* ipc.handleLocalCommitCommand("inbox:clear-later", (_, input) => {
+      const parsed = InboxPageIdsInputSchema.parse(input);
+      return mutate({ kind: "clear_inbox_later", page_ids: parsed.pageIds });
+    });
     yield* ipc.handleLocalCommitCommand("inbox:keep", (_, input) => {
       const parsed = InboxPageIdsInputSchema.parse(input);
-      return mutate({ kind: "keep_inbox_entries", page_ids: parsed.pageIds });
+      return decide({ kind: "keep_inbox_entries", page_ids: parsed.pageIds });
     });
     yield* ipc.handleLocalCommitCommand("inbox:delete", (_, input) => {
       const parsed = InboxPageIdsInputSchema.parse(input);
       return mutate({ kind: "delete_inbox_messages", page_ids: parsed.pageIds });
     });
-    yield* ipc.handleLocalCommitCommand("inbox:set-state", (_, input) => {
-      const parsed = InboxSetStateInputSchema.parse(input);
-      return mutate({
-        kind: "set_inbox_entry_state",
-        page_ids: parsed.pageIds,
-        state: parsed.state,
-      });
+    yield* ipc.handleLocalCommitCommand("inbox:mark-done", (_, input) => {
+      const { pageIds } = InboxPageIdsInputSchema.parse(input);
+      return decide({ kind: "mark_inbox_messages_done", page_ids: pageIds });
+    });
+    yield* ipc.handleLocalCommitCommand("inbox:return", (_, input) => {
+      const { pageIds } = InboxPageIdsInputSchema.parse(input);
+      return mutate({ kind: "return_inbox_messages", page_ids: pageIds });
     });
     yield* ipc.handleLocalCommitCommand("inbox:set-kind", (_, input) => {
       const parsed = InboxSetKindInputSchema.parse(input);
@@ -305,7 +327,7 @@ const readModels = Layer.effectDiscard(
     );
     yield* ipc.handleQuery("inbox:window", (_, input) =>
       Effect.gen(function* () {
-        const parsed = InboxWindowInputSchema.parse({ ...input, filter: "inbox" });
+        const parsed = InboxWindowInputSchema.parse({ ...input, filter: input.filter ?? "inbox" });
         const snapshot = yield* core.workspace.read(
           {
             kind: "inbox_window",

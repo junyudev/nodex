@@ -42,6 +42,7 @@ import {
 import { superviseIsolatedRun, type SupervisedCommandPlan } from "./isolated-run-supervisor";
 import type { IsolatedRunFailure } from "./isolated-run/IsolatedRun";
 import { getScenario } from "./scenarios/registry";
+import { INBOX_TRIAGE_SCENARIO_ID } from "./scenarios/scenarios/inbox-triage";
 import { materializeDevelopmentSeed } from "./scenarios/harness/development-seed";
 import { CROSS_PROVIDER_SCENARIO_ID } from "./scenarios/scenarios/agent-cross-provider-delegation";
 import { assertSeededSourceFolder } from "./scenarios/seed/source-folder";
@@ -173,7 +174,7 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
     }
     if (argument === "--seed") {
       const value = readOptionValue(args, index, argument);
-      seed = setOnce(argument, seed, value);
+      seed = setOnce(argument, seed, value === "inbox-triage" ? INBOX_TRIAGE_SCENARIO_ID : value);
       index += 1;
       continue;
     }

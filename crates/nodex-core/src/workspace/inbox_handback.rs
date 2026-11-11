@@ -330,7 +330,7 @@ fn hand_back(
             ));
         }
 
-        let valid=connection.query_row("SELECT EXISTS(SELECT 1 FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.page_id=?1 AND entry.state='open' AND entry.current_proposal_id IS ?2 AND NOT EXISTS(SELECT 1 FROM inbox_answers WHERE question_page_id=entry.page_id))",params![id,proposal],|r|r.get::<_,bool>(0))?;
+        let valid=connection.query_row("SELECT EXISTS(SELECT 1 FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.page_id=?1 AND EXISTS(SELECT 1 FROM inbox_intake intake WHERE intake.page_id=entry.page_id AND intake.stage IN ('triage','doing','plan')) AND EXISTS(SELECT 1 FROM page_active_chats active WHERE active.page_id=entry.page_id AND active.session_id=?3) AND entry.current_proposal_id IS ?2 AND NOT EXISTS(SELECT 1 FROM inbox_answers WHERE question_page_id=entry.page_id))",params![id,proposal,session],|r|r.get::<_,bool>(0))?;
         if !valid || super::super::inbox_read::message_basis(connection, id)?.content_hash != *hash
         {
             return Err(conflict(
@@ -420,8 +420,12 @@ fn hand_back(
         pages.iter().map(|(page, _, _)| page.clone()).collect()
     };
     for id in &ids {
+        connection.execute(
+            "DELETE FROM page_active_chats WHERE page_id=?1 AND session_id=?2",
+            params![id, session],
+        )?;
         connection.execute("UPDATE inbox_suggestion_requests SET state='superseded',generation=generation+1,correction=NULL WHERE state='pending' AND request_id IN (SELECT request_id FROM inbox_suggestion_request_pages WHERE page_id=?1)",[id])?;
-        connection.execute("UPDATE inbox_entries SET state='open',outcome=NULL,current_proposal_id=NULL,suggestion_state='waiting',suggestion_error=NULL,suggestion_request_id=NULL,revision=revision+1,submitted_at=?2,updated_at=?2 WHERE page_id=?1",params![id,now])?;
+        connection.execute("UPDATE inbox_entries SET current_proposal_id=NULL,suggestion_state='waiting',suggestion_error=NULL,suggestion_request_id=NULL,revision=revision+1,submitted_at=?2,updated_at=?2 WHERE page_id=?1",params![id,now])?;
         connection.execute(
             "INSERT INTO chat_message_handback_pages VALUES(?1,?2)",
             params![receipt, id],
@@ -436,6 +440,16 @@ fn hand_back(
             connection.execute("UPDATE inbox_proposals SET state='completed',failure_kind=NULL,failure_message=NULL,revision=revision+1,updated_at=?2 WHERE proposal_id=?1 AND state='dispatching'",params![proposal,now])?;
         }
     }
+    move_message_status(
+        connection,
+        library,
+        context,
+        operation,
+        &ids,
+        "triage",
+        false,
+        &mut effects,
+    )?;
     effects.operation_kind = "inbox_write";
     effects.page_ids = ids;
     effects.session_ids.push(session.clone());

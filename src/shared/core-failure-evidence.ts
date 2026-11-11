@@ -42,6 +42,7 @@ const recoveryKinds = {
   none: true,
   recovery_package: true,
   reconnect_document_subscription: true,
+  inbox_remind_at_passed: true,
   document_recovery_artifact: true,
   current_store_epoch: true,
   current_revision: true,
@@ -118,6 +119,7 @@ const parseRecovery = (value: unknown): CoreRecovery => {
     case "renew_remote_session":
     case "none":
     case "reconnect_document_subscription":
+    case "inbox_remind_at_passed":
       return { kind: value.kind };
     case "recovery_package": {
       const failure = value.failure;

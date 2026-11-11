@@ -102,9 +102,9 @@ describe("nodex-coordinator over the real Core transport", () => {
         expect(answer?.rowKind).toBe("answer");
         expect(answer?.replyToPageId).toBe(manifest.pageIdsByKey.question);
         const history = await seed.readHandledMessages();
-        expect(history.find((item) => item.pageId === manifest.pageIdsByKey.question)?.state).toBe(
-          "done",
-        );
+        expect(
+          history.find((item) => item.pageId === manifest.pageIdsByKey.question)?.pageStatus?.id,
+        ).toBe("done");
         expect(
           history.find((item) => item.pageId === manifest.pageIdsByKey.startedRequest)?.proposal,
         ).toMatchObject({ confirmedBy: "nodex", state: "completed", explicitRequest: true });

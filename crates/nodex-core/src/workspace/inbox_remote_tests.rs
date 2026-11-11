@@ -674,6 +674,22 @@ fn a_member_starts_a_chat_from_the_inbox_and_the_host_keeps_delivery() {
         },
     )
     .unwrap();
+    let ProjectWorkspaceReadValue::InboxEntry { item: Some(entry) } = w
+        .module
+        .read(
+            &bob,
+            ModuleReadRequest {
+                contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                read: ProjectWorkspaceRead::InboxEntry {
+                    page_id: "page:bob-idea".into(),
+                },
+            },
+        )
+        .unwrap()
+        .value
+    else {
+        panic!("Bob's intake")
+    };
     let start = |person: &BoundModuleContext, operation: &str, id: &str| {
         apply_member(
             &w,
@@ -681,7 +697,7 @@ fn a_member_starts_a_chat_from_the_inbox_and_the_host_keeps_delivery() {
             operation,
             ProjectWorkspaceIntent::DispatchInboxEntries {
                 expected_store_epoch: "epoch-1".into(),
-                basis: pages_basis(&w.module, vec!["page:bob-idea".into()]),
+                basis: vec![entry.basis.clone()],
                 execution_selection: Some(selection()),
                 proposal_id: format!("proposal:{id}"),
                 page_ids: vec!["page:bob-idea".into()],

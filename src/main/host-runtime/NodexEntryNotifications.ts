@@ -50,8 +50,56 @@ export const presentation = Layer.effect(
     const notifications = yield* DesktopNotificationRuntime;
     const windows = yield* WindowRuntime;
     const clients = yield* RendererClientRuntime;
+    const show = (payload: DesktopNotificationPayload, pageId: string, turnEpisode?: string) => {
+      const target = windows.getLastFocused();
+      if (!target || target.isDestroyed()) return;
+      const clientId = clients.getClientIdForWebContentsId(target.webContents.id);
+      if (!clientId) return;
+      notifications.show(payload, target.webContents, (action) => {
+        if (action.actionType !== "open" || target.isDestroyed()) return;
+        if (target.isMinimized()) target.restore();
+        target.show();
+        target.focus();
+        clients.sendToClient(clientId, "desktop-notification:action", {
+          ...action,
+          spaceId,
+          hostId: "local",
+          conversationId: null,
+          navigationPath: null,
+          activateTabId: null,
+          requestId: null,
+          inboxEntry: { pageId, ...(turnEpisode ? { turnEpisode } : {}), scope: { kind: "all" } },
+        });
+      });
+    };
     return {
-      available: Effect.succeed(true),
+      publishLater: (intent) =>
+        Effect.gen(function* () {
+          const { notifications: preferences } = yield* settings.snapshot().pipe(Effect.orDie);
+          const payload = turnNotification(
+            {
+              spaceId,
+              memberId: intent.member_id,
+              pageId: intent.page_id,
+              episode: intent.id,
+              title: intent.title,
+              body: "Back in your Inbox",
+              blocking: false,
+            },
+            preferences.turnMode,
+            preferences.questionsEnabled,
+            presentation.hasForegroundClient(),
+          );
+          if (payload) yield* Effect.sync(() => show(payload, intent.page_id));
+        }),
+      available: Effect.sync(() => {
+        const target = windows.getLastFocused();
+        return Boolean(
+          target &&
+          !target.isDestroyed() &&
+          clients.getClientIdForWebContentsId(target.webContents.id),
+        );
+      }),
       publish: (intent, row) =>
         Effect.gen(function* () {
           const preferences = (yield* settings.snapshot().pipe(Effect.orDie)).notifications;
@@ -72,33 +120,7 @@ export const presentation = Layer.effect(
               ? presentation.isPresentedInForeground(row.turn.active_chat?.thread_id ?? "")
               : presentation.hasForegroundClient(),
           );
-          const target = windows.getLastFocused();
-          if (!payload || !target || target.isDestroyed()) return;
-          const clientId = clients.getClientIdForWebContentsId(target.webContents.id);
-          if (!clientId) return;
-          yield* Effect.sync(() =>
-            notifications.show(payload, target.webContents, (action) => {
-              if (action.actionType !== "open" || target.isDestroyed()) return;
-              if (target.isMinimized()) target.restore();
-              target.show();
-              target.focus();
-              // The Inbox entry navigation owner falls back to the Page when the row has left.
-              clients.sendToClient(clientId, "desktop-notification:action", {
-                ...action,
-                spaceId,
-                hostId: "local",
-                conversationId: null,
-                navigationPath: null,
-                activateTabId: null,
-                requestId: null,
-                inboxEntry: {
-                  pageId: intent.page_id,
-                  turnEpisode: intent.episode,
-                  scope: { kind: "all" },
-                },
-              });
-            }),
-          );
+          if (payload) yield* Effect.sync(() => show(payload, intent.page_id, intent.episode));
         }),
     };
   }),

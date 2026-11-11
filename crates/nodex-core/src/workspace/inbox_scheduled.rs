@@ -324,10 +324,6 @@ pub(super) fn reopen(
             ));
         }
         connection.execute("UPDATE automation_decisions SET status='held',waiting_in_inbox=1,failure_message=NULL,updated_at_ms=CAST(unixepoch(?2,'subsec')*1000 AS INTEGER) WHERE page_id=?1",params![page,now])?;
-        connection.execute(
-            "UPDATE inbox_entries SET outcome=NULL WHERE page_id=?1",
-            [page],
-        )?;
         let basis = current_basis(connection, std::slice::from_ref(page))?;
         insert_proposal(
             connection,
@@ -641,7 +637,6 @@ pub(crate) fn run_held_automation_now(
         return Err(conflict("This Automation decision is no longer waiting"));
     }
     require_basis(connection, &proposal.page_ids, &proposal.basis)?;
-    let statuses = ImpliedStatuses::read(connection, &proposal.page_ids)?;
     let mut effects = apply_confirmation(
         connection,
         context,
@@ -655,11 +650,13 @@ pub(crate) fn run_held_automation_now(
         },
         scope.committed_at(),
     )?;
-    statuses.follow(
+    move_message_status(
         connection,
         &context.library_id.0,
         context,
         operation,
+        &proposal.page_ids,
+        "doing",
         false,
         &mut effects,
     )?;

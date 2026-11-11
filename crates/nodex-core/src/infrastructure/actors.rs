@@ -371,7 +371,10 @@ pub(crate) fn workspace(
         | W::CreateEventBatch { .. }
         | W::DiscardEventBatch { .. }
         | W::SettleEventBatch { .. } => Some(ServiceKind::InboxRouting),
-        W::ClaimTurnNotification { .. } => Some(ServiceKind::Notifications),
+        W::ClaimTurnNotification { .. } | W::ClaimInboxLaterNotification { .. } => {
+            Some(ServiceKind::Notifications)
+        }
+        W::PublishDueInboxLater { .. } => Some(ServiceKind::Scheduler),
         W::StartPageWork {
             expected_readiness_epoch: Some(_),
             ..

@@ -2,9 +2,8 @@
 //!
 //! Every Inbox message is an ordinary Page. The Library Inbox keeps its Pages in the
 //! Library's Inbox Database; a Project's Inbox keeps them in the Project's own
-//! Database. Which Inbox owns a message's decision is fixed at capture and recorded
-//! on the entry, never derived from where the Page lives now. The Workspace owns the
-//! entry provenance, triage state, and dispatch proposals beside it. A proposal is advice: only `ConfirmInboxDispatch` or
+//! Database. Capture scope is provenance. Status and the current Turn decide whether
+//! the message waits. Workspace owns provenance and dispatch proposals beside it. A proposal is advice: only `ConfirmInboxDispatch` or
 //! `DispatchInboxEntries` can turn it into dispatch work, and confirmed chat
 //! work is delivered by the Desktop Host through the dispatch outbox.
 
@@ -14,8 +13,12 @@ pub(super) mod event_automation;
 pub(super) mod github;
 #[path = "inbox_handback.rs"]
 pub(super) mod handback;
+#[path = "inbox_later.rs"]
+pub(super) mod later;
 #[path = "inbox_nodex.rs"]
 pub(super) mod nodex;
+#[path = "inbox_notes.rs"]
+pub(super) mod notes;
 #[path = "inbox_plan.rs"]
 pub(super) mod plan;
 #[path = "inbox_reliable.rs"]
@@ -33,8 +36,8 @@ use std::collections::BTreeSet;
 use nodex_core_contracts::agent::AgentTurnProvenance;
 use nodex_core_contracts::inbox::{
     ProjectWorkspaceInboxChatAgent, ProjectWorkspaceInboxDispatchAction,
-    ProjectWorkspaceInboxEntryKind, ProjectWorkspaceInboxEntryState,
-    ProjectWorkspaceInboxPageBasis, ProjectWorkspaceInboxProposalOrigin,
+    ProjectWorkspaceInboxEntryKind, ProjectWorkspaceInboxPageBasis,
+    ProjectWorkspaceInboxProposalOrigin,
 };
 use nodex_core_contracts::workspace::ProjectWorkspaceAgentRuntimeTurnKind;
 use nodex_core_contracts::{AdapterKind, BoundModuleContext};
@@ -900,6 +903,11 @@ fn capture_message_in_scope(
             params![page_id, author],
         )?;
     } else {
+        if let Some(owner) = author.as_deref() {
+            crate::library::members::initialize_automation_owner(
+                connection, library_id, page_id, owner, now,
+            )?;
+        }
         connection.execute(
             "UPDATE inbox_entries SET author_member_id=?2,actor_json=?3 WHERE page_id=?1",
             params![
@@ -993,124 +1001,248 @@ pub(in crate::workspace) fn simple_effects(
 // Workflow status
 // ---------------------------------------------------------------------------
 
-/// The workflow status a message's handling implies for its Page: Triage while it waits,
-/// In Progress once handed to a chat, Todo when kept or filed, Done when done.
-fn implied_status(connection: &Connection, page_id: &str) -> Result<String, StoreError> {
-    Ok(connection.query_row(
-        "SELECT CASE entry.state WHEN 'done' THEN 'done' WHEN 'kept' THEN 'plan' \
-           ELSE CASE WHEN COALESCE(proposal.state, '') IN ('dispatching', 'completed', 'failed') \
-             AND COALESCE(json_extract(proposal.action_json, '$.type'), '') \
-               IN ('new_chat', 'send_to_chat', 'execute_decision') \
-           THEN 'doing' ELSE 'triage' END END \
-         FROM inbox_entries entry \
-         LEFT JOIN inbox_proposals proposal ON proposal.proposal_id = entry.current_proposal_id \
-         WHERE entry.page_id = ?1",
-        [page_id],
-        |row| row.get(0),
-    )?)
+/// Inbox decisions edit the Page's workflow Status in the same commit as their other facts.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn move_message_status(
+    connection: &Connection,
+    library: &str,
+    context: &BoundModuleContext,
+    operation: &str,
+    pages: &[String],
+    to: &str,
+    person_edit: bool,
+    effects: &mut WorkspaceMutationEffects,
+) -> Result<(), StoreError> {
+    if person_edit {
+        use nodex_core_contracts::database::{
+            DatabaseIntent, DatabasePagePropertyAddress, DatabasePropertyValueEdit,
+            DatabasePropertyValueInput, DatabasePropertyValueMutation,
+        };
+        let mut edits = Vec::with_capacity(pages.len());
+        for page in pages {
+            let row: Option<(String, Option<String>, i64)> = connection.query_row(
+                "SELECT membership.data_source_id,json_extract(status.value_json,'$'),COALESCE(status.revision,0)
+                 FROM pages page JOIN data_source_page_memberships membership ON membership.page_block_id=page.block_id
+                   AND page.parent_kind='data_source' AND membership.data_source_id=page.parent_id AND membership.removed_at IS NULL
+                 LEFT JOIN data_source_property_values status ON status.data_source_id=membership.data_source_id
+                   AND status.membership_id=membership.id AND status.property_id='status'
+                 WHERE page.block_id=?1", [page], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
+            ).optional()?;
+            let Some((data_source_id, stage, revision)) = row else {
+                return Err(conflict("This Page has no active workflow Status"));
+            };
+            if stage.as_deref() != Some(to) {
+                edits.push(DatabasePropertyValueMutation {
+                    expected_membership_revision: None,
+                    address: DatabasePagePropertyAddress {
+                        data_source_id,
+                        page_id: page.clone(),
+                        property_id: "status".into(),
+                    },
+                    edit: DatabasePropertyValueEdit::Replace {
+                        expected_value_revision: revision,
+                        value: DatabasePropertyValueInput::Select {
+                            option_id: to.into(),
+                        },
+                    },
+                });
+            }
+        }
+        if !edits.is_empty() {
+            let receipt = crate::database::apply_intents_as_collaborator(
+                connection,
+                library,
+                context,
+                operation,
+                &[DatabaseIntent::EditPropertyValues { edits }],
+                &effects.committed_at,
+            )?;
+            effects.absorb_database(receipt);
+        }
+        return Ok(());
+    }
+    let fences = pages
+        .iter()
+        .map(|page| crate::database::status_person_revision(connection, page))
+        .collect::<Result<Vec<_>, _>>()?;
+    let predecessors = if to == "doing" {
+        &["triage", "plan"][..]
+    } else {
+        &["triage", "plan", "doing", "review", "done", "canceled"][..]
+    };
+    let steps = pages
+        .iter()
+        .zip(fences)
+        .map(|(page, person_revision)| WorkflowStatusStep {
+            page_id: page,
+            predecessors,
+            to,
+            person_revision,
+        })
+        .collect::<Vec<_>>();
+    let Some(receipt) = follow_workflow_status(
+        connection,
+        library,
+        context,
+        operation,
+        &steps,
+        &effects.committed_at,
+    )?
+    else {
+        return Ok(());
+    };
+    effects.absorb_database(receipt);
+    Ok(())
 }
 
-/// What each message's handling implied before a decision, so the decision can move the
-/// messages' Pages along with it.
-pub(super) struct ImpliedStatuses(Vec<(String, String, i64)>);
+/// An Automation occurrence absorbed into another one no longer waits for routing.
+pub(crate) fn close_absorbed_decision(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    operation: &str,
+    page: String,
+    now: &str,
+) -> Result<(), StoreError> {
+    move_message_status(
+        connection,
+        &context.library_id.0,
+        context,
+        operation,
+        &[page],
+        "done",
+        false,
+        &mut simple_effects("inbox_write", now),
+    )
+}
 
-impl ImpliedStatuses {
-    pub(super) fn read(connection: &Connection, page_ids: &[String]) -> Result<Self, StoreError> {
-        page_ids
-            .iter()
-            .map(|page_id| {
-                Ok((
-                    page_id.clone(),
-                    implied_status(connection, page_id)?,
-                    connection.query_row(
-                        "SELECT status_fence FROM inbox_entries WHERE page_id=?1",
-                        [page_id],
-                        |r| r.get(0),
-                    )?,
-                ))
-            })
-            .collect::<Result<_, StoreError>>()
-            .map(Self)
+fn record_routing_fact(
+    connection: &Connection,
+    page: &str,
+    disposition: &str,
+    now: &str,
+) -> Result<(), StoreError> {
+    connection.execute(
+        "INSERT INTO intake_dispositions(library_id,page_id,project_id,disposition,at)
+        SELECT library_id,page_id,project_id,?2,?3 FROM activity_page_scopes WHERE page_id=?1",
+        params![page, disposition, now],
+    )?;
+    Ok(())
+}
+
+/// A change to the Status Property routes intake from any surface. The source of
+/// the decision is the enclosing LocalCommit, just as it is for Inbox commands.
+pub(crate) fn status_changed(
+    connection: &Connection,
+    page: &str,
+    from: Option<&str>,
+    to: Option<&str>,
+    now: &str,
+) -> Result<(), StoreError> {
+    if from == to || (from != Some("triage") && to != Some("triage")) {
+        return Ok(());
     }
-
-    /// Moves each Page's status to what its message's handling implies now. A Page whose
-    /// status someone set since keeps it; the Board stays theirs.
-    pub(super) fn follow(
-        self,
-        connection: &Connection,
-        library_id: &str,
-        context: &BoundModuleContext,
-        operation_id: &str,
-        handoff: bool,
-        effects: &mut WorkspaceMutationEffects,
-    ) -> Result<(), StoreError> {
-        let after = self
-            .0
-            .iter()
-            .map(|(page_id, _, _)| implied_status(connection, page_id))
-            .collect::<Result<Vec<_>, _>>()?;
-        // A chat handoff starts work from either early stage at its own attempt fence.
-        // Other Inbox handling continues to follow the message's original person fence.
-        let starts = self.0.iter().zip(&after).map(|((page,_,_),to)| {
-            if !handoff || to != "doing" {return Ok(None);}
-            Ok(connection.query_row("SELECT link.status_fence FROM page_active_chats active JOIN project_session_pages link ON link.page_id=active.page_id AND link.session_id=active.session_id WHERE active.page_id=?1",[page],|r|r.get::<_,Option<i64>>(0)).optional()?.flatten())
-        }).collect::<Result<Vec<_>,StoreError>>()?;
-        let predecessors = self
-            .0
-            .iter()
-            .zip(&starts)
-            .map(|((_, from, _), start)| {
-                if start.is_some() {
-                    vec!["triage", "plan"]
-                } else {
-                    vec![from.as_str()]
-                }
-            })
-            .collect::<Vec<_>>();
-        let steps = self
-            .0
-            .iter()
-            .zip(&after)
-            .zip(&predecessors)
-            .zip(&starts)
-            .map(
-                |((((page_id, _, revision), to), predecessors), start)| WorkflowStatusStep {
-                    page_id,
-                    predecessors,
-                    to,
-                    person_revision: start.unwrap_or(*revision),
-                },
-            )
-            .collect::<Vec<_>>();
-        let Some(receipt) = follow_workflow_status(
+    let entry: Option<String> = connection
+        .query_row(
+            "SELECT source_kind FROM inbox_entries WHERE page_id=?1",
+            [page],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let Some(_) = entry else {
+        return Ok(());
+    };
+    let recorded: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM intake_dispositions WHERE page_id=?1
+          AND commit_seq=(SELECT max(commit_seq) FROM local_commits WHERE finalized=0))",
+        [page],
+        |r| r.get(0),
+    )?;
+    if from == Some("triage") {
+        reliable::supersede_requests(connection, &[page.to_owned()], now)?;
+        supersede_open_proposals(connection, &[page.to_owned()], "superseded", now)?;
+        scheduled::consume(
             connection,
-            library_id,
-            context,
-            &format!("{operation_id}:inbox-status"),
-            &steps,
-            &effects.committed_at,
-        )?
-        else {
-            return Ok(());
-        };
-        let absorb = |into: &mut Vec<String>, ids: &[String]| {
-            for id in ids {
-                if !into.contains(id) {
-                    into.push(id.clone());
-                }
+            &[page.to_owned()],
+            if to == Some("done") {
+                "skipped"
+            } else {
+                "withdrawn"
+            },
+            now,
+        )?;
+        if !recorded {
+            let chat =
+                super::page_chat::active_chat(connection, page)?.filter(|_| to == Some("doing"));
+            if chat.is_some() {
+                // The work launch owns its start fact. Handed-off Pages already have a dispatch fact.
+                return Ok(());
             }
-        };
-        absorb(&mut effects.page_ids, &receipt.affected_page_ids);
-        absorb(&mut effects.database_ids, &receipt.affected_database_ids);
-        absorb(
-            &mut effects.data_source_ids,
-            &receipt.affected_data_source_ids,
-        );
-        absorb(&mut effects.view_ids, &receipt.affected_view_ids);
-        absorb(&mut effects.block_ids, &receipt.affected_page_ids);
-        absorb(&mut effects.block_ids, &receipt.affected_database_ids);
-        Ok(())
+            record_routing_fact(
+                connection,
+                page,
+                if matches!(to, Some("done" | "canceled")) {
+                    "done"
+                } else {
+                    "kept"
+                },
+                now,
+            )?;
+        }
+    } else if !recorded {
+        let handback = connection.query_row("SELECT EXISTS(SELECT 1 FROM chat_message_handback_pages page
+            JOIN chat_message_handbacks receipt USING(receipt_id)
+            WHERE page.page_id=?1 AND receipt.created_seq=(SELECT max(commit_seq) FROM local_commits WHERE finalized=0))",
+            [page], |r| r.get::<_, bool>(0))?;
+        if !handback {
+            record_routing_fact(connection, page, "open", now)?;
+        }
     }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn keep_message_status(
+    connection: &Connection,
+    library: &str,
+    context: &BoundModuleContext,
+    operation: &str,
+    pages: &[String],
+    effects: &mut WorkspaceMutationEffects,
+) -> Result<(), StoreError> {
+    let now = effects.committed_at.clone();
+    for page in pages {
+        if crate::automation::firing::item(connection, page)?.is_some() {
+            return Err(conflict(
+                "An Automation decision can run, be skipped, or be handed elsewhere",
+            ));
+        }
+        if connection.execute(
+            "UPDATE inbox_entries SET current_proposal_id=NULL,revision=revision+1,updated_at=?2
+             WHERE page_id=?1 AND EXISTS(SELECT 1 FROM inbox_intake WHERE page_id=?1 AND recovery)",
+            params![page, now],
+        )? > 0
+        {
+            connection.execute("DELETE FROM page_active_chats WHERE page_id=?1", [page])?;
+        }
+        let recorded: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM intake_dispositions WHERE page_id=?1 AND disposition='kept' AND commit_seq=(SELECT max(commit_seq) FROM local_commits WHERE finalized=0))",
+            [page], |r| r.get(0),
+        )?;
+        if !recorded {
+            record_routing_fact(connection, page, "kept", &now)?;
+        }
+        move_message_status(
+            connection,
+            library,
+            context,
+            operation,
+            std::slice::from_ref(page),
+            "plan",
+            true,
+            effects,
+        )?;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1233,7 +1365,7 @@ fn insert_proposal(
     // proposal, while any separate request they already own continues normally.
     let members = serde_json::to_string(proposal.page_ids)
         .map_err(|_| internal("Inbox members cannot be encoded"))?;
-    connection.execute("UPDATE inbox_entries SET current_proposal_id=NULL,suggestion_state=CASE WHEN suggestion_state='settled' THEN 'none' ELSE suggestion_state END,revision=revision+1,updated_at=?2 WHERE state='open' AND page_id NOT IN (SELECT value FROM json_each(?1)) AND current_proposal_id IN (SELECT previous.proposal_id FROM inbox_proposals previous JOIN inbox_proposal_pages member USING(proposal_id) WHERE previous.state='open' AND member.page_id IN (SELECT value FROM json_each(?1)))",params![members,now])?;
+    connection.execute("UPDATE inbox_entries SET current_proposal_id=NULL,suggestion_state=CASE WHEN suggestion_state='settled' THEN 'none' ELSE suggestion_state END,revision=revision+1,updated_at=?2 WHERE page_id NOT IN (SELECT value FROM json_each(?1)) AND current_proposal_id IN (SELECT previous.proposal_id FROM inbox_proposals previous JOIN inbox_proposal_pages member USING(proposal_id) WHERE previous.state='open' AND member.page_id IN (SELECT value FROM json_each(?1)))",params![members,now])?;
     supersede_open_proposals(connection, proposal.page_ids, "superseded", now)?;
     connection.execute(
         "INSERT INTO inbox_proposals(\
@@ -1317,6 +1449,48 @@ fn supersede_open_proposals(
     Ok(())
 }
 
+/// A failed delivery abandoned by a person releases the other messages in that
+/// attempt. A newer Status choice or another chat keeps its authority.
+fn release_failed_delivery(
+    connection: &Connection,
+    library: &str,
+    context: &BoundModuleContext,
+    operation: &str,
+    pages: &[String],
+    now: &str,
+) -> Result<Option<nodex_core_contracts::database::DatabaseReceipt>, StoreError> {
+    let selected = serde_json::to_string(pages).map_err(|_| internal("Inbox members"))?;
+    let bindings = connection.prepare(
+        "SELECT active.page_id,active.session_id,link.status_fence
+         FROM inbox_proposals proposal JOIN inbox_entries entry ON entry.current_proposal_id=proposal.proposal_id
+         JOIN page_active_chats active ON active.page_id=entry.page_id AND active.session_id=proposal.dispatch_session_id
+         JOIN project_session_pages link ON link.page_id=active.page_id AND link.session_id=active.session_id
+         WHERE (proposal.state='failed' OR (proposal.state='dispatching' AND proposal.failure_kind='unknown'))
+           AND proposal.proposal_id IN (
+           SELECT current_proposal_id FROM inbox_entries WHERE page_id IN (SELECT value FROM json_each(?1)))",
+    )?.query_map([selected], |r| Ok((r.get::<_, String>(0)?,r.get::<_, String>(1)?,r.get::<_, Option<i64>>(2)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for (page, session, _) in &bindings {
+        connection.execute(
+            "DELETE FROM page_active_chats WHERE page_id=?1 AND session_id=?2",
+            params![page, session],
+        )?;
+    }
+    let steps = bindings
+        .iter()
+        .filter_map(|(page, _, fence)| {
+            let person_revision = (*fence)?;
+            (!pages.contains(page)).then_some(WorkflowStatusStep {
+                page_id: page,
+                predecessors: &["doing"],
+                to: "triage",
+                person_revision,
+            })
+        })
+        .collect::<Vec<_>>();
+    follow_workflow_status(connection, library, context, operation, &steps, now)
+}
+
 /// Replacing any member retires the entire failed delivery, including its frozen payload.
 fn supersede_failed_proposals(
     connection: &Connection,
@@ -1336,10 +1510,10 @@ fn supersede_failed_proposals(
         .collect::<rusqlite::Result<Vec<_>>>()?;
     for proposal_id in proposals {
         connection.execute(
-            "UPDATE inbox_entries SET current_proposal_id=NULL,outcome=NULL, \
+            "UPDATE inbox_entries SET current_proposal_id=NULL, \
                suggestion_state='none',suggestion_request_id=NULL,suggestion_error=NULL, \
                revision=revision+1,updated_at=?2 \
-             WHERE current_proposal_id=?1 AND state='open'",
+             WHERE current_proposal_id=?1",
             params![proposal_id, now],
         )?;
         connection.execute(
@@ -1363,7 +1537,9 @@ fn user_summary(action: &ProjectWorkspaceInboxDispatchAction) -> String {
         ProjectWorkspaceInboxDispatchAction::ExecuteDecision { .. } => {
             "Execute decision".to_owned()
         }
-        ProjectWorkspaceInboxDispatchAction::Keep => "Keep as a note".to_owned(),
+        ProjectWorkspaceInboxDispatchAction::Keep => "Add to Todo".to_owned(),
+        ProjectWorkspaceInboxDispatchAction::SaveToNotes { .. } => "Save to Notes".to_owned(),
+        ProjectWorkspaceInboxDispatchAction::Later { .. } => "Set aside".to_owned(),
         ProjectWorkspaceInboxDispatchAction::NewChat { .. } => "Start a new chat".to_owned(),
         ProjectWorkspaceInboxDispatchAction::SendToChat { .. } => {
             "Send to an existing chat".to_owned()
@@ -1442,14 +1618,19 @@ fn apply_confirmation(
                 now,
             )?;
             finish_proposal(connection, proposal_id, &encoded_action, now)?;
-            connection.execute("UPDATE inbox_entries SET outcome='chat',revision=revision+1,updated_at=?2 WHERE page_id=?1",params![page_ids[0],now])?;
             let mut effects = simple_effects("inbox_confirm_scheduled", now);
             effects.page_ids = page_ids.to_vec();
             Ok(effects)
         }
+        ProjectWorkspaceInboxDispatchAction::Later { .. } => {
+            Err(internal("Later must be confirmed as a Member deferral"))
+        }
+        ProjectWorkspaceInboxDispatchAction::SaveToNotes { .. } => {
+            finish_proposal(connection, proposal_id, &encoded_action, now)?;
+            Ok(simple_effects("inbox_save_to_notes", now))
+        }
         ProjectWorkspaceInboxDispatchAction::Keep => {
             finish_proposal(connection, proposal_id, &encoded_action, now)?;
-            set_entries_state(connection, library_id, page_ids, "kept", now)?;
             Ok(simple_effects("inbox_confirm_keep", now))
         }
         ProjectWorkspaceInboxDispatchAction::MoveToProject { project_id } => {
@@ -1471,7 +1652,6 @@ fn apply_confirmation(
             finish_proposal(connection, proposal_id, &encoded_action, now)?;
             // Filing is the decision: the message stays handled in its own Inbox and does
             // not open again in the Project it was filed into.
-            set_entries_state(connection, library_id, page_ids, "kept", now)?;
             Ok(simple_effects("inbox_confirm_move", now))
         }
         ProjectWorkspaceInboxDispatchAction::NewChat { project_id, .. } => {
@@ -1644,18 +1824,39 @@ pub(super) fn keep_entries(
         request_hash,
         &now,
         |_| {
-            let before = ImpliedStatuses::read(connection, &page_ids)?;
-            supersede_open_proposals(connection, &page_ids, "dismissed", &now)?;
-            set_entries_state(connection, library_id, &page_ids, "kept", &now)?;
+            require_decision_authority(context)?;
+            require_member_waiting(connection, library_id, context, &page_ids)?;
+            let previous = reliable::decision_basis(connection, &page_ids)?;
             let mut effects = simple_effects("inbox_keep_entries", &now);
             effects.page_ids = page_ids.clone();
-            before.follow(
+            if let Some(receipt) = release_failed_delivery(
                 connection,
                 library_id,
                 context,
                 operation_id,
-                false,
+                &page_ids,
+                &now,
+            )? {
+                effects.absorb_database(receipt);
+            }
+            supersede_failed_proposals(connection, &page_ids, &now)?;
+            keep_message_status(
+                connection,
+                library_id,
+                context,
+                operation_id,
+                &page_ids,
                 &mut effects,
+            )?;
+            supersede_open_proposals(connection, &page_ids, "superseded", &now)?;
+            reliable::save_decision_undo(
+                connection,
+                context,
+                library_id,
+                store_epoch,
+                operation_id,
+                previous,
+                vec![],
             )?;
             Ok(effects)
         },
@@ -1764,20 +1965,20 @@ fn forget_proposals(
 ) -> Result<(), StoreError> {
     let page_ids_json = serde_json::to_string(page_ids)
         .map_err(|_| internal("Inbox message identities cannot be encoded"))?;
-    connection.execute("UPDATE inbox_entries SET suggestion_request_id=NULL,suggestion_state=CASE WHEN state='open' THEN 'none' ELSE suggestion_state END WHERE suggestion_request_id IN (SELECT request_id FROM inbox_suggestion_request_pages WHERE page_id IN (SELECT value FROM json_each(?1)))",[&page_ids_json])?;
+    connection.execute("UPDATE inbox_entries SET suggestion_request_id=NULL,suggestion_state='none' WHERE suggestion_request_id IN (SELECT request_id FROM inbox_suggestion_request_pages WHERE page_id IN (SELECT value FROM json_each(?1)))",[&page_ids_json])?;
     connection.execute("DELETE FROM inbox_suggestion_requests WHERE request_id IN (SELECT request_id FROM inbox_suggestion_request_pages WHERE page_id IN (SELECT value FROM json_each(?1)))",[&page_ids_json])?;
     let proposals = connection
         .prepare(
-            "SELECT DISTINCT proposal.proposal_id, proposal.state \
+            "SELECT DISTINCT proposal.proposal_id, proposal.state, json_extract(proposal.action_json, '$.type') \
              FROM inbox_proposal_pages link \
              JOIN inbox_proposals proposal ON proposal.proposal_id = link.proposal_id \
              WHERE link.page_id IN (SELECT value FROM json_each(?1))",
         )?
         .query_map([&page_ids_json], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    for (proposal_id, state) in proposals {
+    for (proposal_id, state, action) in proposals {
         let remaining = proposal_page_ids(connection, &proposal_id)?
             .into_iter()
             .filter(|page| !page_ids.contains(page))
@@ -1788,13 +1989,12 @@ fn forget_proposals(
             connection.execute("UPDATE inbox_proposals SET action_json=json_set(action_json,'$.prompt','Review the remaining Inbox messages'),summary='Delivery needs review',rationale=NULL,produced_by=NULL,kind=NULL,basis_json=?2,failure_kind='unknown',failure_message='A message was deleted before delivery was confirmed',revision=revision+1,updated_at=?3 WHERE proposal_id=?1",params![proposal_id,serde_json::to_string(&current_basis(connection,&remaining)?).map_err(|_| internal("Inbox basis cannot be encoded"))?,now])?;
             connection.execute("UPDATE inbox_handoffs SET final_text='',execution_selection_json=NULL WHERE proposal_id=?1",[&proposal_id])?;
             connection.execute("DELETE FROM inbox_proposal_pages WHERE proposal_id=?1 AND page_id IN (SELECT value FROM json_each(?2))",params![proposal_id,page_ids_json])?;
-            connection.execute("UPDATE inbox_entries SET state='open',outcome=NULL,suggestion_state='settled',suggestion_request_id=NULL,suggestion_error=NULL,revision=revision+1,updated_at=?2 WHERE current_proposal_id=?1 AND page_id NOT IN (SELECT value FROM json_each(?3))",params![proposal_id,now,page_ids_json])?;
+            connection.execute("UPDATE inbox_entries SET suggestion_state='settled',suggestion_request_id=NULL,suggestion_error=NULL,revision=revision+1,updated_at=?2 WHERE current_proposal_id=?1 AND page_id NOT IN (SELECT value FROM json_each(?3))",params![proposal_id,now,page_ids_json])?;
             continue;
         }
-        let handled = state == "completed";
+        let handled = state == "completed" && action != "later";
         connection.execute(
             "UPDATE inbox_entries SET current_proposal_id = NULL, \
-               state = CASE WHEN ?2 THEN 'done' ELSE state END, \
                suggestion_state = CASE WHEN ?2 THEN suggestion_state ELSE 'none' END, \
                suggestion_error = CASE WHEN ?2 THEN suggestion_error ELSE NULL END, \
                revision = revision + 1, updated_at = ?3 \
@@ -1811,7 +2011,7 @@ fn forget_proposals(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn set_state(
+pub(super) fn resolve_messages(
     connection: &Connection,
     library_id: &str,
     context: &BoundModuleContext,
@@ -1819,9 +2019,11 @@ pub(super) fn set_state(
     operation_id: &str,
     request_hash: &str,
     page_ids: &[String],
-    state: ProjectWorkspaceInboxEntryState,
+    returning: bool,
+    assets_root: &std::path::Path,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     let page_ids = unique_page_ids(page_ids, MAX_BULK_PAGES)?;
+    require_decision_authority(context)?;
     require_live_entries(connection, library_id, &page_ids)?;
     let now = sqlite_now(connection)?;
     run_mutation(
@@ -1831,65 +2033,82 @@ pub(super) fn set_state(
         operation_id,
         request_hash,
         &now,
-        |_| {
-            let before = ImpliedStatuses::read(connection, &page_ids)?;
-            set_entries_state(
-                connection,
-                library_id,
-                &page_ids,
-                state_literal(state),
-                &now,
-            )?;
-            let mut effects = simple_effects("inbox_set_entry_state", &now);
+        |scope| {
+            let previous = if returning {
+                None
+            } else {
+                require_member_waiting(connection, library_id, context, &page_ids)?;
+                Some(reliable::decision_basis(connection, &page_ids)?)
+            };
+            for page in &page_ids {
+                if returning && super::page_chat::active_chat(connection, page)?.is_some() {
+                    return Err(conflict(
+                        "Return to Inbox requires the Page to have no active chat",
+                    ));
+                }
+                if !returning {
+                    record_routing_fact(connection, page, "done", &now)?;
+                }
+            }
+            let mut effects = simple_effects("inbox_write", &now);
             effects.page_ids = page_ids.clone();
-            before.follow(
+            if returning {
+                for page in &page_ids {
+                    notes::return_note(
+                        connection,
+                        library_id,
+                        context,
+                        scope,
+                        operation_id,
+                        page,
+                        assets_root,
+                        &now,
+                    )?;
+                }
+                connection.execute("UPDATE inbox_entries SET current_proposal_id=NULL,suggestion_state='none',suggestion_error=NULL,revision=revision+1,updated_at=?2
+                WHERE page_id IN (SELECT value FROM json_each(?1)) AND source_kind<>'automation'",
+                params![serde_json::to_string(&page_ids).map_err(|_| internal("Inbox Page IDs cannot be encoded"))?, now])?;
+            } else {
+                if let Some(receipt) = release_failed_delivery(
+                    connection,
+                    library_id,
+                    context,
+                    operation_id,
+                    &page_ids,
+                    &now,
+                )? {
+                    effects.absorb_database(receipt);
+                }
+                supersede_failed_proposals(connection, &page_ids, &now)?;
+                scheduled::consume(connection, &page_ids, "skipped", &now)?;
+            }
+            move_message_status(
                 connection,
                 library_id,
                 context,
                 operation_id,
-                false,
+                &page_ids,
+                if returning { "triage" } else { "done" },
+                true,
                 &mut effects,
             )?;
+            if returning {
+                scheduled::reopen(connection, &page_ids, &now)?;
+            }
+            if let Some(previous) = previous {
+                reliable::save_decision_undo(
+                    connection,
+                    context,
+                    library_id,
+                    store_epoch,
+                    operation_id,
+                    previous,
+                    vec![],
+                )?;
+            }
             Ok(effects)
         },
     )
-}
-
-fn set_entries_state(
-    connection: &Connection,
-    library_id: &str,
-    page_ids: &[String],
-    state: &str,
-    now: &str,
-) -> Result<(), StoreError> {
-    if state == "open" {
-        scheduled::reopen(connection, page_ids, now)?;
-    } else {
-        scheduled::consume(connection, page_ids, "skipped", now)?;
-    }
-    if state != "open" {
-        let ids = serde_json::to_string(page_ids)
-            .map_err(|_| internal("Inbox identities cannot be encoded"))?;
-        connection.execute("UPDATE inbox_suggestion_requests SET state='superseded',generation=generation+1,correction=NULL WHERE state='pending' AND request_id IN (SELECT request_id FROM inbox_suggestion_request_pages WHERE page_id IN (SELECT value FROM json_each(?1)))",[&ids])?;
-        connection.execute("UPDATE inbox_entries SET suggestion_request_id=NULL,suggestion_state=CASE WHEN state='open' THEN 'none' ELSE suggestion_state END WHERE suggestion_request_id IN (SELECT request_id FROM inbox_suggestion_requests WHERE state='superseded')",[])?;
-    }
-    for page_id in page_ids {
-        connection.execute(
-            // Work handed to a chat cannot be recalled; marking it done or not only closes it.
-            "UPDATE inbox_entries SET state = ?2, outcome=CASE \
-               WHEN ?2 IN ('kept','done') AND EXISTS (SELECT 1 FROM automation_decisions firing \
-                 WHERE firing.page_id=inbox_entries.page_id AND firing.status='skipped') THEN 'done' \
-               WHEN outcome = 'chat' THEN outcome \
-               WHEN ?2 = 'kept' THEN 'kept' WHEN ?2 = 'done' THEN 'done' ELSE NULL END, \
-               suggestion_state = CASE WHEN ?2 = 'open' AND source_kind <> 'automation' THEN 'none' \
-                 WHEN suggestion_state IN ('waiting','pending') AND ?2 <> 'open' \
-                 THEN 'none' ELSE suggestion_state END, suggestion_error = NULL, \
-               revision = revision + 1, updated_at = ?3 \
-             WHERE page_id = ?1 AND library_id = ?4 AND state <> ?2",
-            params![page_id, state, now, library_id],
-        )?;
-    }
-    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2064,6 +2283,7 @@ pub(super) fn retry_dispatch(
     request_hash: &str,
     proposal_id: &str,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    require_decision_authority(context)?;
     let proposal = require_proposal(connection, library_id, proposal_id)?;
     if matches!(
         proposal.action,
@@ -2104,7 +2324,7 @@ pub(super) fn retry_dispatch(
         request_hash,
         &now,
         |_| {
-            require_live_entries(connection, library_id, &proposal.page_ids)?;
+            require_member_waiting(connection, library_id, context, &proposal.page_ids)?;
             if !entries_await(connection, proposal_id, &proposal.page_ids)? {
                 return Err(conflict(GROUP_CHANGED));
             }
@@ -2151,7 +2371,9 @@ fn entries_await(
     for page_id in page_ids {
         let waiting = connection
             .query_row(
-                "SELECT state='open' AND current_proposal_id IS ?2 FROM inbox_entries WHERE page_id=?1",
+                "SELECT entry.current_proposal_id IS ?2 AND COALESCE(intake.stage NOT IN ('done','canceled'),0)
+                 FROM inbox_entries entry JOIN inbox_intake intake ON intake.page_id=entry.page_id
+                 WHERE entry.page_id=?1",
                 params![page_id, proposal_id],
                 |row| row.get::<_, bool>(0),
             )
@@ -2348,13 +2570,7 @@ pub(super) fn require_waiting_entry(
     let page_ids = [page_id.to_owned()];
     require_live_entries(connection, library_id, &page_ids)?;
     let waiting = connection.query_row(
-        &format!(
-            "SELECT {} FROM inbox_entries entry \
-             LEFT JOIN inbox_proposals proposal \
-               ON proposal.proposal_id = entry.current_proposal_id \
-             WHERE entry.page_id = ?1",
-            super::inbox_read::IN_INBOX
-        ),
+        "SELECT COALESCE((SELECT triage OR recovery FROM inbox_intake WHERE page_id=?1),0)",
         [page_id],
         |row| row.get::<_, bool>(0),
     )?;
@@ -2364,7 +2580,40 @@ pub(super) fn require_waiting_entry(
     Ok(())
 }
 
-/// Suggestions target only open entries; kept or done entries are the user's call.
+/// Person decisions require an intake Turn currently waiting for that Member.
+fn require_member_waiting(
+    connection: &Connection,
+    library: &str,
+    context: &BoundModuleContext,
+    pages: &[String],
+) -> Result<(), StoreError> {
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+    for page in pages {
+        let belongs: Option<bool> = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM inbox_member_rows member_row
+              WHERE member_row.page_id=row.page_id AND member_row.row_kind=row.row_kind AND member_row.member_id=?2)
+             FROM inbox_rows row WHERE page_id=?1 AND library_id=?3 AND row_kind='intake' AND in_inbox=1",
+            params![page,member,library], |r| r.get(0),
+        ).optional()?;
+        match belongs {
+            Some(true) => {}
+            Some(false) => {
+                return Err(StoreError::new(
+                    StoreErrorCode::Unauthorized,
+                    "This Inbox decision belongs to another Member",
+                    false,
+                ));
+            }
+            None => {
+                return Err(conflict(
+                    "This message is no longer waiting for your decision",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn require_open_entries(
     connection: &Connection,
     library_id: &str,
@@ -2373,7 +2622,7 @@ fn require_open_entries(
     require_live_entries(connection, library_id, page_ids)?;
     for page_id in page_ids {
         let open = connection.query_row(
-            "SELECT state = 'open' FROM inbox_entries WHERE page_id = ?1",
+            "SELECT COALESCE((SELECT triage FROM inbox_intake WHERE page_id=?1),0)",
             [page_id],
             |row| row.get::<_, bool>(0),
         )?;
@@ -2431,7 +2680,7 @@ fn require_one_scope(
     for page_id in page_ids {
         let scope = connection
             .query_row(
-                "SELECT scope_project_id FROM inbox_entries WHERE page_id = ?1",
+                "SELECT project_id FROM inbox_intake WHERE page_id = ?1",
                 [page_id],
                 |row| row.get::<_, Option<String>>(0),
             )
@@ -2494,6 +2743,15 @@ fn normalize_action(
             })
         }
         ProjectWorkspaceInboxDispatchAction::Keep => Ok(ProjectWorkspaceInboxDispatchAction::Keep),
+        ProjectWorkspaceInboxDispatchAction::SaveToNotes { parent_page_id } => {
+            notes::validate_destination(connection, library_id, scope, parent_page_id.as_deref())?;
+            Ok(action.clone())
+        }
+        ProjectWorkspaceInboxDispatchAction::Later { remind_at } => {
+            Ok(ProjectWorkspaceInboxDispatchAction::Later {
+                remind_at: later::normalize_time(remind_at)?,
+            })
+        }
         ProjectWorkspaceInboxDispatchAction::NewChat {
             project_id,
             prompt,
@@ -2668,14 +2926,6 @@ pub(super) fn parse_kind(
             _ => Err(corrupt("Stored Inbox entry kind is invalid")),
         })
         .transpose()
-}
-
-fn state_literal(state: ProjectWorkspaceInboxEntryState) -> &'static str {
-    match state {
-        ProjectWorkspaceInboxEntryState::Open => "open",
-        ProjectWorkspaceInboxEntryState::Kept => "kept",
-        ProjectWorkspaceInboxEntryState::Done => "done",
-    }
 }
 
 fn origin_literal(origin: ProjectWorkspaceInboxProposalOrigin) -> &'static str {

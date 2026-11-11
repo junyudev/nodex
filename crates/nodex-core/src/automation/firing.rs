@@ -241,6 +241,8 @@ pub(crate) fn claim_admitted(
 }
 pub(super) fn settle(
     connection: &Connection,
+    context: &nodex_core_contracts::BoundModuleContext,
+    operation: &str,
     dispatch: &str,
     failed: bool,
     retry: Option<i64>,
@@ -258,7 +260,7 @@ pub(super) fn settle(
     let waiting: bool = failed && retry.is_none() && connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM automation_decisions firing \
          JOIN blocks block ON block.id=firing.page_id AND block.lifecycle='active' \
-         JOIN inbox_entries entry ON entry.page_id=firing.page_id AND entry.state='open' \
+         JOIN inbox_intake intake ON intake.page_id=firing.page_id AND intake.stage NOT IN ('done','canceled') \
          WHERE firing.dispatch_id=?1 AND firing.status='admitted' \
            AND NOT EXISTS(SELECT 1 FROM automation_execution_runs run WHERE run.dispatch_id=?1 AND run.session_id IS NOT NULL))",
         [dispatch], |row| row.get(0),
@@ -274,7 +276,13 @@ pub(super) fn settle(
         if let Some(successor) = held(connection, &automation)? {
             connection.execute("UPDATE automation_decisions SET waiting_in_inbox=0,status='withdrawn',due_at_ms=NULL,updated_at_ms=?2 WHERE dispatch_id=?1", params![successor.dispatch_id,now])?;
             connection.execute("UPDATE inbox_proposals SET state='dismissed',revision=revision+1,updated_at=?2 WHERE proposal_id=(SELECT current_proposal_id FROM inbox_entries WHERE page_id=?1)", params![successor.page_id,iso])?;
-            connection.execute("UPDATE inbox_entries SET state='done',outcome='done',revision=revision+1,updated_at=?2 WHERE page_id=?1", params![successor.page_id,iso])?;
+            crate::workspace::inbox::close_absorbed_decision(
+                connection,
+                context,
+                operation,
+                successor.page_id,
+                iso,
+            )?;
             connection.execute("UPDATE automation_decisions SET missed_count=missed_count+?2+1,last_scheduled_for_ms=MAX(last_scheduled_for_ms,?3) WHERE dispatch_id=?1",params![dispatch,successor.missed_count,successor.last_scheduled_for_ms])?;
         }
     }

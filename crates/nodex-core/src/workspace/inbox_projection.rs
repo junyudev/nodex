@@ -160,6 +160,7 @@ pub(super) fn item(
         None
     };
     Ok(ProjectWorkspaceInboxItem {
+        later: None,
         problem: None,
         handback: None,
         row_kind: if kind == "turn" {
@@ -198,7 +199,7 @@ pub(super) fn item(
         },
         kind: None,
         important: false,
-        state: ProjectWorkspaceInboxEntryState::Open,
+        waiting: false,
         suggestion_state: ProjectWorkspaceInboxSuggestionState::None,
         suggestion_error: None,
         scope,
@@ -210,7 +211,6 @@ pub(super) fn item(
             page_id: page.into(),
             content_hash: "0".repeat(64),
         },
-        outcome: None,
     })
 }
 
@@ -228,7 +228,9 @@ pub(super) fn current_turn_notifications(
                AND episode.episode=intent.episode \
              JOIN inbox_rows rows ON rows.page_id=intent.page_id AND rows.row_kind='turn' \
              JOIN members member ON member.id=intent.member_id AND member.lifecycle='active' \
-             WHERE rows.library_id=?1 ORDER BY intent.created_at DESC,intent.page_id LIMIT 100",
+             WHERE rows.library_id=?1 AND NOT EXISTS(SELECT 1 FROM inbox_deferrals deferral
+               WHERE deferral.page_id=intent.page_id AND deferral.member_id=intent.member_id AND deferral.episode=intent.episode)
+             ORDER BY intent.created_at DESC,intent.page_id LIMIT 100",
         )?
         .query_map(params![library], |r| {
             Ok((
@@ -268,5 +270,5 @@ pub(super) fn notification_intents(
     library: &str,
     member: &str,
 ) -> Result<Vec<InboxTurnNotification>, StoreError> {
-    Ok(connection.prepare("SELECT intent.member_id,intent.page_id,intent.episode FROM page_turn_notification_intents intent JOIN page_turn_episodes episode ON episode.page_id=intent.page_id AND episode.episode=intent.episode JOIN inbox_rows rows ON rows.page_id=intent.page_id AND rows.row_kind='turn' WHERE rows.library_id=?1 AND intent.member_id=?2 AND intent.claimed_at IS NULL ORDER BY intent.created_at,intent.page_id LIMIT 50")?.query_map(params![library,member],|r|Ok(InboxTurnNotification{member_id:r.get(0)?,page_id:r.get(1)?,episode:r.get(2)?}))?.collect::<rusqlite::Result<Vec<_>>>()?)
+    Ok(connection.prepare("SELECT intent.member_id,intent.page_id,intent.episode FROM page_turn_notification_intents intent JOIN page_turn_episodes episode ON episode.page_id=intent.page_id AND episode.episode=intent.episode JOIN inbox_rows rows ON rows.page_id=intent.page_id AND rows.row_kind='turn' WHERE rows.library_id=?1 AND intent.member_id=?2 AND intent.claimed_at IS NULL AND NOT EXISTS(SELECT 1 FROM inbox_deferrals deferral WHERE deferral.page_id=intent.page_id AND deferral.member_id=intent.member_id AND deferral.episode=intent.episode) ORDER BY intent.created_at,intent.page_id LIMIT 50")?.query_map(params![library,member],|r|Ok(InboxTurnNotification{member_id:r.get(0)?,page_id:r.get(1)?,episode:r.get(2)?}))?.collect::<rusqlite::Result<Vec<_>>>()?)
 }

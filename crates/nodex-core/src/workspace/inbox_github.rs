@@ -152,8 +152,15 @@ pub(in crate::workspace) fn ingest(
                 &stable_uuid_v7(operation, "github-update", trigger),
             )?;
         }
-        c.execute("UPDATE inbox_suggestion_requests SET state='superseded',generation=generation+1 WHERE state='pending' AND request_id IN (SELECT request_id FROM inbox_suggestion_request_pages WHERE page_id=?1)",[&page])?;
-        c.execute("UPDATE inbox_entries SET state='open',outcome=NULL,suggestion_state='waiting',suggestion_error=NULL,suggestion_request_id=NULL,current_proposal_id=NULL,revision=revision+1,updated_at=?2 WHERE page_id=?1",params![page,now])?;
+        if c.query_row(
+            "SELECT COALESCE((SELECT triage FROM inbox_intake WHERE page_id=?1),0)",
+            [&page],
+            |r| r.get::<_, bool>(0),
+        )? {
+            supersede_open_proposals(c, std::slice::from_ref(&page), "superseded", now)?;
+            c.execute("UPDATE inbox_suggestion_requests SET state='superseded',generation=generation+1 WHERE state='pending' AND request_id IN (SELECT request_id FROM inbox_suggestion_request_pages WHERE page_id=?1)",[&page])?;
+            c.execute("UPDATE inbox_entries SET suggestion_state='waiting',suggestion_error=NULL,suggestion_request_id=NULL,current_proposal_id=NULL,revision=revision+1,updated_at=?2 WHERE page_id=?1",params![page,now])?;
+        }
         simple_effects("source", now)
     };
     register(c, &page, &author)?;

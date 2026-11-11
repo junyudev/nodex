@@ -56,7 +56,7 @@ export const mobileMethods = {
   "inbox.window": define(
     z.looseObject({
       scope: InboxScopeSchema,
-      filter: z.enum(["inbox", "processed"]),
+      filter: z.enum(["inbox", "processed", "later"]),
       after: cursor,
       first: z.number().int().min(1).max(100).optional(),
     }),

@@ -41,7 +41,7 @@ import type {
   InboxSendResult,
   InboxSetImportantInput,
   InboxSetKindInput,
-  InboxSetStateInput,
+  InboxSetLaterInput,
   InboxSummary,
   InboxSummaryInput,
   InboxWindow,
@@ -59,7 +59,7 @@ import {
   InboxSendInputSchema,
   InboxSetImportantInputSchema,
   InboxSetKindInputSchema,
-  InboxSetStateInputSchema,
+  InboxSetLaterInputSchema,
   InboxSuggestionRequestInputSchema,
   InboxSuggestionStopInputSchema,
   InboxSummaryInputSchema,
@@ -194,8 +194,17 @@ export class InboxApplication extends Context.Service<
       confirmedBy?: "user" | "nodex",
     ) => InboxMutation<InboxDecisionResult>;
     readonly dispatch: (input: InboxDispatchInput) => InboxMutation<InboxDecisionResult>;
-    readonly keep: (input: InboxPageIdsInput, operationId?: string) => InboxMutation;
-    readonly setState: (input: InboxSetStateInput, operationId?: string) => InboxMutation;
+    readonly keep: (
+      input: InboxPageIdsInput,
+      operationId?: string,
+    ) => InboxMutation<InboxDecisionResult>;
+    readonly clearLater: (input: InboxPageIdsInput, operationId?: string) => InboxMutation;
+    readonly setLater: (input: InboxSetLaterInput, operationId?: string) => InboxMutation;
+    readonly markDone: (
+      input: InboxPageIdsInput,
+      operationId?: string,
+    ) => InboxMutation<InboxDecisionResult>;
+    readonly returnMessages: (input: InboxPageIdsInput, operationId?: string) => InboxMutation;
     readonly setKind: (input: InboxSetKindInput) => InboxMutation;
     readonly setImportant: (input: InboxSetImportantInput, operationId?: string) => InboxMutation;
     readonly requestSuggestion: (input: InboxSuggestionRequestInput) => InboxMutation;
@@ -342,7 +351,7 @@ export const make = Effect.gen(function* () {
   const decision = (
     operation: string,
     intent: ApplyIntent,
-    operationId: string,
+    operationId?: string,
   ): InboxMutation<InboxDecisionResult> =>
     apply(operation, intent, operationId).pipe(
       Effect.map((apply) => ({
@@ -717,12 +726,8 @@ export const make = Effect.gen(function* () {
     confirmedBy: "user" | "nodex" = "user",
   ) {
     const parsed = yield* parse("confirm", () => InboxConfirmInputSchema.parse(input));
-    const context = yield* dispatchContext(parsed.basis.map((basis) => basis.pageId));
-    const proposal = context.open_proposals.find(
-      (proposal) => proposal.proposal_id === parsed.proposalId,
-    );
-    const action =
-      parsed.action ?? (proposal ? inboxDispatchActionFromCore(proposal.action) : null);
+    // Core replays committed confirmations before checking whether the Page still waits.
+    const action = parsed.action;
     if (action?.type === "execute_decision" && action.agent)
       yield* resolveInboxModel(runtime, action.agent).pipe(Effect.mapError(fail("confirm")));
     return yield* decision(
@@ -778,25 +783,57 @@ export const make = Effect.gen(function* () {
     operationId?: string,
   ) {
     const parsed = yield* parse("keep", () => InboxPageIdsInputSchema.parse(input));
-    return yield* mutate(
+    return yield* decision(
       "keep",
       { kind: "keep_inbox_entries", page_ids: [...parsed.pageIds] },
       operationId,
     );
   });
 
-  const setState = Effect.fn("InboxApplication.setState")(function* (
-    input: InboxSetStateInput,
+  const clearLater = Effect.fn("InboxApplication.clearLater")(function* (
+    input: InboxPageIdsInput,
     operationId?: string,
   ) {
-    const parsed = yield* parse("set-state", () => InboxSetStateInputSchema.parse(input));
+    const parsed = yield* parse("clear-later", () => InboxPageIdsInputSchema.parse(input));
     return yield* mutate(
-      "set-state",
-      {
-        kind: "set_inbox_entry_state",
-        page_ids: [...parsed.pageIds],
-        state: parsed.state,
-      },
+      "clear-later",
+      { kind: "clear_inbox_later", page_ids: [...parsed.pageIds] },
+      operationId,
+    );
+  });
+
+  const setLater = Effect.fn("InboxApplication.setLater")(function* (
+    input: InboxSetLaterInput,
+    operationId?: string,
+  ) {
+    const parsed = yield* parse("later", () => InboxSetLaterInputSchema.parse(input));
+    return yield* mutate(
+      "later",
+      { kind: "set_inbox_later", page_ids: [...parsed.pageIds], until: parsed.until },
+      operationId,
+    );
+  });
+
+  const markDone = Effect.fn("InboxApplication.markDone")(function* (
+    input: InboxPageIdsInput,
+    operationId?: string,
+  ) {
+    const { pageIds } = yield* parse("mark-done", () => InboxPageIdsInputSchema.parse(input));
+    return yield* decision(
+      "mark-done",
+      { kind: "mark_inbox_messages_done", page_ids: pageIds },
+      operationId,
+    );
+  });
+
+  const returnMessages = Effect.fn("InboxApplication.returnMessages")(function* (
+    input: InboxPageIdsInput,
+    operationId?: string,
+  ) {
+    const { pageIds } = yield* parse("return", () => InboxPageIdsInputSchema.parse(input));
+    return yield* mutate(
+      "return",
+      { kind: "return_inbox_messages", page_ids: pageIds },
       operationId,
     );
   });
@@ -1342,7 +1379,10 @@ export const make = Effect.gen(function* () {
     undo,
     dispatch,
     keep,
-    setState,
+    setLater,
+    clearLater,
+    markDone,
+    returnMessages,
     setKind,
     setImportant,
     requestSuggestion,

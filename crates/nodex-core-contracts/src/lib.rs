@@ -164,6 +164,7 @@ pub enum CoreErrorRecovery {
         head_seq: i64,
     },
     ReconnectDocumentSubscription,
+    InboxRemindAtPassed,
     DatabaseViewOrderPreparation {
         view_id: String,
     },

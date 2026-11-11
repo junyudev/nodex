@@ -5,6 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
+import { inboxLaterClock } from "./InboxLaterReminders";
 import type { ProjectSession } from "../shared/types";
 import type { SessionReminderNotificationEvent } from "../shared/codex-thread-notification";
 import { CodexApplicationEventHub } from "../main/codex-application/CodexApplicationEventHub";
@@ -159,6 +160,10 @@ export const hostedLive = Layer.effectDiscard(
         SubscriptionRef.changes(events.connection),
       ),
     });
+    yield* inboxLaterClock(
+      SubscriptionRef.get(events.connection).pipe(Effect.map((state) => state.kind === "ready")),
+      Stream.merge(notifier.inboxInvalidations, SubscriptionRef.changes(events.connection)),
+    );
     yield* owner.activate;
   }),
 );

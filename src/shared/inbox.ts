@@ -13,7 +13,6 @@ import { inboxModelGuideEntry } from "./inbox-model-guide";
 
 /** User-editable classification. It never authorizes work. */
 export type InboxEntryKind = "note" | "todo" | "question";
-export type InboxEntryState = "open" | "kept" | "done";
 /**
  * Where a message's advice stands. Only a send or a rewrite in the stream queues it as `waiting`
  * for automatic advice; `pending` has a suggestion running; `none` has no advice requested.
@@ -32,7 +31,7 @@ export type InboxProposalState =
  * `inbox` holds what still needs the user; `processed` holds the messages already handled, which
  * the phone lists on request. The desktop shows handled messages in Activity instead.
  */
-export type InboxWindowFilter = "inbox" | "processed";
+export type InboxWindowFilter = "inbox" | "processed" | "later";
 
 /**
  * Which Inbox owns a message's decision: the Library Inbox, for thoughts whose Project is not
@@ -64,6 +63,8 @@ export const INBOX_ENTRY_KINDS = [
 export type InboxDispatchAction =
   | { readonly type: "plan"; readonly summary: string; readonly steps: readonly InboxPlanStep[] }
   | { readonly type: "keep" }
+  | { readonly type: "save_to_notes"; readonly parentPageId: string | null }
+  | { readonly type: "later"; readonly remindAt: string }
   | {
       readonly type: "new_chat";
       readonly projectId: string | null;
@@ -307,9 +308,14 @@ export interface InboxPageStatus {
 export const inboxRowKey = (item: Pick<InboxItem, "rowKind" | "pageId">): string =>
   `${item.rowKind}:${item.pageId}`;
 
+export interface InboxLater {
+  readonly setAt: string;
+  readonly until: string;
+}
+
 export interface InboxItem {
+  readonly later: InboxLater | null;
   readonly handback?: components["schemas"]["InboxHandback"] | null;
-  readonly outcome: "kept" | "done" | "moved" | "chat" | null;
   readonly rowKind: "intake" | "turn" | "answer" | "problem";
   readonly problem?: components["schemas"]["SourceProblem"] | null;
   readonly turn: components["schemas"]["InboxTurn"] | null;
@@ -327,7 +333,7 @@ export interface InboxItem {
   readonly kind: InboxEntryKind | null;
   /** Marked by the user, so the message stays in view while it waits. */
   readonly important: boolean;
-  readonly state: InboxEntryState;
+  readonly waiting: boolean;
   readonly suggestionState: InboxSuggestionState;
   readonly suggestionError: string | null;
   readonly scope: InboxScope;
@@ -369,6 +375,8 @@ export interface InboxWindow {
 }
 
 export interface InboxSummary {
+  readonly notesPageId: string | null;
+  readonly laterCount: number;
   readonly storeEpoch: string;
   /** The Database this Inbox's messages become Pages in, once it exists. */
   readonly databaseId: string | null;
@@ -411,7 +419,9 @@ export interface InboxWindowInput {
 }
 
 /** A desktop Inbox reads only what still needs the user; what was handled is in Activity. */
-export type InboxStreamInput = Omit<InboxWindowInput, "filter">;
+export type InboxStreamInput = Omit<InboxWindowInput, "filter"> & {
+  readonly filter?: "inbox" | "later";
+};
 
 export interface InboxReplyDestination {
   readonly kind: "send" | "answer" | "nodex" | "unavailable";
@@ -516,8 +526,8 @@ export interface InboxPageIdsInput {
   readonly pageIds: readonly string[];
 }
 
-export interface InboxSetStateInput extends InboxPageIdsInput {
-  readonly state: InboxEntryState;
+export interface InboxSetLaterInput extends InboxPageIdsInput {
+  readonly until: string;
 }
 
 export interface InboxSetKindInput {

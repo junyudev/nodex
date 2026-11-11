@@ -729,7 +729,8 @@ Project may have zero Sessions. A Window Session owns owner-scoped Workbench
 Scenes through which one app window presents a Project, a Session, the Library
 Inbox, or Library content;
 Terminal and Browser Modules own their live runtimes.
-It binds exactly one primary Database and has lifecycle `active | inactive |
+It binds exactly one primary Database and a Notes Page once someone saves a note.
+It has lifecycle `active | inactive |
 archived`. One Database has at most one active Project. A Page created for the
 Project, from its Scene or one of its Sessions, becomes a row of that Database;
 a projectless Session's Page enters the Library root.
@@ -809,48 +810,39 @@ edge or a scheduled action. See
 
 ### Inbox
 
-An Inbox is what is yours: waiting intake messages, Pages whose current Turn
-requires the requesting Member, and Nodex's answers to that person's Inbox questions.
-The Library Inbox includes every Project and messages without a Project. A
-Project Inbox filters that same set. Core owns one ordered window, cursor,
-counts and badge predicate. Answers are visible but do not increase the badge.
+An Inbox shows Pages whose current Turn needs the requesting Member, Nodex's
+answers to their Inbox questions, and open Problems. The Library Inbox includes
+every Project and Pages without a Project. A Project Inbox follows each Page's
+current Project. Core owns the windows, cursors, counts and badge eligibility.
 
-Intake messages and answers are ordinary Pages. A Project's intake uses its
-primary Database; messages without a Project use the Library's Inbox Database,
-created on first capture. A Turn row is the work Page itself, never another
-message Page. It appears for question, approval, review, blocked, failed or
-stalled, and for ready-to-start only when it has Prerequisites that are all
-Done. Todo backlog and paused Pages stay out. Its episode start orders it;
-it leaves immediately when the Turn changes away from the requesting Member.
+A Page appears once. Triage and delivery recovery show the captured message.
+Question, approval, review, blocked, failed, stalled and newly ready work show
+the Page's Turn. Newly ready work has Prerequisites that are all Done. Todo
+backlog and paused Pages stay out. Quiet answers do not increase the badge.
 
 ### Inbox entry
 
-An Inbox entry is the Workspace-owned record beside a message Page. It holds:
+An Inbox entry records a message Page's origin, capture Inbox, author, reply
+context, kind, importance and current dispatch proposal. Capture creates the
+Page in Triage in the Project's primary Database, or the Library Inbox Database
+when it has no Project. A captured Page in Triage, with no active chat or
+delivery underway, needs its Owner's decision. When the Owner is unavailable,
+the decision waits for an active Member to handle it or take ownership.
 
-- the message's immutable source: the person, an Agent, the command line or a
-  Automation's held decision;
-- the Nodex answer it replies to, when it continues that conversation;
-- a user-editable kind: note, todo, or question, for messages that take advice;
-- whether the user marked it important, which keeps it within reach while it
-  waits;
-- a triage state: open, kept, or done.
+A Status edit from any surface handles or returns the message. Save to Notes
+moves the Page beneath its Inbox’s Notes Page and takes it out of the workflow. Location-only
+moves retain its Status and follow the Page's Project for attention. The
+captured text remains in the Page. Deleting an intake message erases its Page,
+entry, advice and revisions.
 
-An entry is in the Inbox while it still needs the user. A confirmed chat
-dispatch, filing in another Project, Keep, or Done handles it, and Activity
-records each such decision; where its Page lives never does.
-Work handed to a chat stays in progress until the user marks it done; a chat
-finishing never does. The message Page's workflow status follows the handling,
-Triage while waiting, In Progress once handed to a chat, Todo when kept or filed,
-Done when done, but only while it still shows the status the previous handling
-gave it, so a status set by hand is never overwritten.
-Deleting a message erases it: the entry, every suggestion naming it, the Page,
-and its revisions go, with no restore path.
-The entry survives relocation, so Activity still shows where a message filed into
-a Project went, while the Project's own Properties apply to the Page.
+A **deferral** sets aside one Member's Page Turn episode until a chosen time.
+Later lists the Member's deferred episodes. When the time arrives, the same
+episode returns if it still needs the Member and the Host can notify them.
+A new episode or loss of membership retires the deferral.
 
 ### Dispatch proposal
 
-A Dispatch proposal is one typed action for one or more Inbox entries: keep,
+A Dispatch proposal is one typed action for one or more Inbox entries: keep, later,
 new chat, send to chat, move to Project, plan, or run an Automation's held
 decision. A plan names several Pages to create across Projects, each with its Agent
 work and Prerequisites. A new chat may also name the Agent it
@@ -864,7 +856,8 @@ reviewable and confirmable, never withdrawn or replaced on its own. A proposal i
 confirmation, a user-written dispatch, or the user's standing consent to start their own clear requests
 makes it Dispatch work. Nodex marks each chat proposal that answers a request the user themselves clearly
 made; under that consent the Host confirms such a proposal for the user's own unchanged messages, and the
-confirmation records that Nodex made it. Plans, Keep and filing always wait for the user. Confirmed chat
+confirmation records that Nodex made it. Deferring the message makes its advice wait for review.
+Plans, Add to Todo, Save to Notes, Later and filing always wait for the user. Confirmed chat
 work stays in the `dispatching` state until the Desktop Host delivers it. A
 Automation writes the proposal for its own decision; Nodex never does.
 
@@ -987,7 +980,7 @@ A Page's Turn is Core's bounded answer to whose action comes next: a Member, its
 executing Agent, the first unsatisfied Prerequisite, a queue position, or nobody. A working
 or queued active chat names its Agent even when the Page is unassigned or assigned
 to a Member; the Agent executes for that Member. Its reason
-is paused, working, queued, question, approval, blocked, failed, stalled, review,
+is triage, delivery_recovery, paused, working, queued, question, approval, blocked, failed, stalled, review,
 ready_to_start, starting, or waiting_on_prerequisite. Done and Canceled suppress
 Turn. Main supplies revisioned execution observations for every active chat;
 Board, List, Page, CLI and work briefs consume the same Core decision, and every
@@ -1431,6 +1424,7 @@ idempotency, projections, and post-commit events behind `read` and `apply`.
 - `docs/adr/0080-the-inbox-is-what-is-yours.md`: one Core projection over intake,
   current Member Turns and quiet answers; episode-bound notes and notifications.
 
+- `docs/adr/0085-the-inbox-is-pages-whose-move-is-yours.md`: intake routing is an Owner Turn, Status controls routing, and Later follows the Member episode.
 - `docs/adr/0068-agent-runtime-execution-authority.md`: one Runtime execution
   owner, exact Session and native source identity, and full-Profile content access.
 - `docs/adr/0067-inbox-entries-and-dispatch-proposals.md`: Page-backed Inbox

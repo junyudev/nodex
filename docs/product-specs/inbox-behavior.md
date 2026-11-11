@@ -2,14 +2,13 @@
 
 ## Intent and authority
 
-The Inbox is what is yours: waiting messages to route, Pages whose current Turn
-needs you, Nodex's answers to your Inbox questions, and open Problems. The Library Inbox includes
+The Inbox shows Pages whose current Turn needs you, Nodex's answers to your
+Inbox questions, and open Problems. Intake Pages that need routing show as messages. The Library Inbox includes
 all Projects and messages without a Project; each Project Inbox filters the same
 set. Captured messages remain ordinary Pages and keep today's routing, suggestion
 and dispatch rules.
 
-Rust Core owns the Library Inbox Database, each Inbox entry's Inbox, provenance,
-and triage state, and versioned dispatch proposals. The Desktop Host owns
+Rust Core owns intake provenance, Page Status, Turn episodes and versioned dispatch proposals. The Desktop Host owns
 routing admission and validated settlement, handoff of confirmed chat work, and the Profile's Inbox
 preferences. Agent Runtime owns accepted messages, execution queues and Runs.
 The renderer owns route presentation, durable authored drafts and pending capture
@@ -17,9 +16,8 @@ intents, and selection.
 
 ## Library and Project Inboxes
 
-- Each message belongs to exactly one Inbox, fixed when it is captured: the
-  Library Inbox or one Project's Inbox. Moving its Page later never changes
-  which Inbox it belongs to.
+- The Inbox of capture stays on the entry as provenance. The Inbox window
+  follows the Page's current Project.
 - Every Inbox is the Home of its own tab set: the first tab, which cannot be
   closed or moved. A Project's Inbox is its Project's Home, with the Project's
   Views as ordinary tabs beside it; the Home's `Open Board` button opens the
@@ -67,7 +65,7 @@ Core projection, each with one cursor bound to the scope and filter:
 
 - **All:** every fact below, with deliveries, Channel replies and Turn notes.
 - **Messages:** handled messages. Each decision about a message is one fact: sent to a chat,
-  filed in a Project, kept, marked done, or returned to the Inbox. A routing suggestion is not a
+  filed in a Project, saved to Notes, added to Todo, marked done, or returned to the Inbox after handling. A routing suggestion is not a
   fact of its own: one still open belongs to the Inbox, and the decision that settles it is the
   message's fact, carrying Nodex's reason.
 - **Nodex & automations:** what Nodex, Automations and Sources decided: starts, Automation
@@ -80,7 +78,7 @@ one exists, and a trailing link naming its subject. Clicking a row expands it on
 surface, without nested cards. Activity has no message composer. Actors are Nodex, a Source, a
 Member or a chat, as supported by each committed fact. Pages, chats and remote URLs remain links
 to their own evidence. Windows are bounded and newest first. Project Activity shows the
-associated Project's facts; a message belongs to the Inbox that received it.
+associated Project's facts at the time of each decision.
 
 Descriptions name the committed event with a past-tense verb and a quoted message or chat,
 retaining the reason separately. Actor glyphs use the monochrome Nodex mark, GitHub, person or
@@ -91,7 +89,7 @@ opens GitHub settings. Reasons truncate before descriptions; rows stay on one li
 milestones retain the stage at observation time and why it did not move.
 
 A handled message reads `Sent “<message>” to “<chat>”`, `Sent “<message>” to a new chat`,
-`Filed “<message>” in <Project>`, `Kept “<message>”`, `Marked “<message>” done`,
+`Filed “<message>” in <Project>`, `Saved “<message>” to Notes`, `Added “<message>” to Todo`, `Marked “<message>” done`,
 `Planned N cards from “<message>”`, or `Returned “<message>” to the Inbox`; an Automation's run
 the person started reads `Started “<Automation>”`, and a question Nodex answered reads
 `Answered “<message>”`. A chat's handback reads `Sent “<message>” back`, by that chat, with
@@ -104,8 +102,8 @@ as its Page holds it now, the full reason, who decided, the Page key, and icon b
 - `Open chat` or `Open in Project`;
 - `Open page`;
 - `Copy`;
-- `Mark done` or `Reopen`, for work handed to a chat;
-- `Return to Inbox`, for kept or done messages;
+- Work actions for a Page handed to a chat use its ordinary work commands.
+- `Return to Inbox`, for a handled message with no active chat;
 - `Delete`, while the Page is still in its Inbox's Database.
 
 Each line records its decision as it was made; its buttons act on the message as it stands now.
@@ -139,7 +137,7 @@ hydrate only after the bounded fact window is selected.
 - Confirming a new chat in a Project puts its message Pages in that Project's
   primary Database as part of the same decision. Sending a Library Inbox Page
   to an existing Project chat moves it there too. The Page gets the Project's
-  key and appears on its Board; Status follows the handling, and Owner,
+  key and appears on its Board. Handoff advances early Status to In Progress. Owner,
   Assignee, Workspace and thread follows stay with the Page. A projectless chat
   keeps the Page in the Library Inbox Database. A plan creates each step's card
   directly in its chosen Project's Database.
@@ -240,24 +238,26 @@ is rewritten, what Nodex made of the old text steps aside.
 
 ## Inbox and Activity
 
-The goal is an empty Inbox. A message stays in the Inbox only while it still
-needs the user; once handled, it leaves the Inbox, and Activity records the decision.
+An active captured Page in Triage needs its Owner's decision while no chat or
+delivery is handling it. Without an active Owner it waits for any active Member.
+A Page can also wait for its Owner to recover a failed or unconfirmed delivery.
+Both appear as a message. When a different eligible reason needs a Member, the
+Page appears as a Turn row.
 
-- **Inbox:** open messages with no confirmed chat dispatch or an uncertain delivery. This covers
-  messages awaiting advice, with a concrete suggestion to decide, with a failed
-  suggestion, with no advice asked for, or whose delivery failed.
-- **Handled:** a confirmed chat dispatch (including one still being delivered), a message
-  filed in a Project, Keep, or Done. [Activity](#activity) holds each of these decisions.
+- **Inbox:** the Member's eligible rows, excluding their current deferrals.
+- **Later:** the Member's deferred rows, soonest first.
+- **Handled on the phone:** intake Pages whose messages are no longer waiting.
+  [Activity](#activity) records each routing decision.
 
-Where a message's Page lives never decides this. Moving the Page by other means,
-such as dragging it on a Board, leaves the message in its Inbox until it is
-handled. Failed or uncertain delivery and an undone move bring a message back to the
-Inbox. Core applies the same membership to the stream windows and to every
-Inbox count. Opening the chat a decision has not started yet, from the Chats list on
-a desktop or a phone, shows that it is starting, or why it could not start with the
-Retry Core would admit, without looking up its message; a decision Core would not send
-again says to review its message in the Inbox. Core reads this for the chat itself, and
-the open chat refreshes as its start changes.
+Location changes keep Status and change the Project scope. Moving Status on a
+Board, in the Page, through the CLI or through an Agent acting for its Member
+handles the message when it leaves Triage. Returning to Triage makes it wait
+again when it has no active chat. A Status change that routes the message
+records its Activity fact and withdraws its open proposal and pending request.
+
+Opening a destination chat before its decision reaches it shows its delivery
+state and the recovery that Core can admit. An unconfirmed send can be checked
+in the chat before choosing Send again.
 
 Returning to an Inbox, after switching tabs or relaunching, lands in the view and
 Activity filter the reader left and at their place in it. Each view keeps its own place: its
@@ -268,44 +268,33 @@ its newest rows. Choosing another Activity filter opens it at its newest lines, 
 message always shows the newest messages. Opening a handled message from elsewhere, such as a
 notification, shows its newest line in Activity, expanded.
 
-Each entry has a user-editable kind and a triage state.
+Each entry can have a kind of note, todo or question. The user's choice takes
+precedence over the proposal. Notes lead with Save to Notes. Everything else
+leads with Add to Todo. A message's action row shows the one it leads with, the note
+or the todo glyph named by its tooltip, and its menu holds the other; a suggestion
+that already is one of them offers it once, as its decision. The selection bar and
+an opened Later line offer both. Automation Ask-first decisions keep Run, Skip this run and handoff.
+Mark done and Skip this run move to Done. Filing moves the Page to Todo
+in its destination Project. Return to Inbox moves it back to Triage and
+requires that the Page have no active chat. Undo restores the decision's
+previous Status and its superseded proposal when the affected Pages still match.
+The person's Inbox decisions advance the person Status-edit fence.
 
-- **Kind:** `note`, `todo`, or `question`. A suggestion may propose a kind, and
-  the user can change it. A kind never authorizes work.
-- **Triage state:** `open`, `kept`, or `done`.
-  - Keep dismisses open suggestions and marks the entry `kept`.
-  - Done means its work is finished: handled elsewhere, or, for work handed to a
-    chat, closed by the user. A chat finishing never marks it done.
-  - `Return to Inbox` in Activity sets a kept or done entry back to `open`.
-    Work handed to a chat cannot return; `Reopen` only takes back its Done.
-
-Activity describes each recorded decision. A Page moved elsewhere and then kept
-or marked done still shows Keep or Done and can return to its original Inbox;
-returning does not move its Page.
-
-A message's Page shows its handling on its Board. It waits in Triage; handing
-its work to a chat moves it to Doing, keeping or filing it to Plan, and marking
-it done to Done. Returning it to the Inbox, reopening it, or undoing the decision moves it
-back the same way. Each step happens only while the Page still shows the status
-the previous handling gave it, and only to a status its Database still offers,
-so a status set on the Board is never overwritten. Delivery does not change it:
-a failed delivery leaves the Page in Doing.
+A deferral hides one Member's current episode until its chosen instant. The
+same episode returns at that time with its prior importance and suggestion.
+Changing the time replaces it. A changed episode or lost membership discards
+it. Clearing a deferral is quiet. The Space Host wakes at the earliest pending
+time, catches up at startup and on resume, and refreshes the Inbox.
+See [Desktop Notification Behavior](desktop-notification-behavior.md#inbox-returns).
 
 The Inbox reads like a conversation: newest at the bottom, resting against the
 composer, with time shown the way a chat shows it. A centered time appears above
 the first message once it is over an hour old, and above any message sent over an
 hour after the one before it.
 
-A message's first line opens with where its Page already stands outside the
-Inbox, since a Page moved on its Board or linked to a chat stays in the Inbox
-until the message is handled: the Page's Board status in its Board color, once it
-has left Triage, then the chats the Page is linked to, with their live state.
-Choosing that mark opens the chat, or lists them when there are several. The
-words follow on the same line, and the lines after it take the message's full
-width. A message only waiting in Triage shows neither, and while it is rewritten
-neither shows. The status only says where the Page stands; it is changed on the
-Board or the Page. A row that already offers `Open chat`, after a decision or an
-unconfirmed delivery, keeps that way to the chat for itself.
+A waiting message can show linked chats and their live state. Choosing the
+mark opens the chat or lists several. A row with its own Open chat action uses
+that action to show the destination.
 
 A message's own time appears beneath its checkbox and star, on the bubble's
 side, after the pointer rests on the message for about a second, without moving
@@ -314,14 +303,35 @@ message's Page: choosing it opens the Page, as `Open page` on the message text
 does. It is named by the time it reads. Hidden, it cannot be chosen. A message never
 simply vanishes: once decided, its card first says where it went, in its own
 place: `Starting a chat in <Project>` or `Sending to “<chat>”` with
-`Open chat`, `Moved to <Project>`, `Kept as <kind>`, or `Done`. It folds out of
-the stream after a moment, or soon after the pointer resting on it leaves. Keep,
+`Open chat`, `Moved to <Project>`, `Added to Todo`, `Saved to Notes`, or `Done`. It folds out of
+the stream after a moment, or soon after the pointer resting on it leaves. Add to Todo, Save to Notes,
 Done and filing also offer `Undo` in a toast. A message handled elsewhere simply
 folds away. Clearing the last message shows an `All clear` state, and beneath
 it [how the Inbox plans](#how-the-inbox-plans).
 
 Every badge counts actionable intake plus current eligible Turns in that scope.
 Answers do not inflate it. It is never an unread count.
+
+## Notes
+
+Save to Notes moves the message Page to the first position under its Inbox's
+Notes Page, or to the active section the person chooses. The first save creates
+and binds a top-level Library Page titled Notes. Every Project can bind its own
+Notes Page, and the Library Inbox has one for messages without a Project.
+Open Notes opens the bound Page. Its name and sections are ordinary content.
+It stays active while it is bound.
+
+The saved Page keeps its identity, Document, images and intake provenance. As
+a subpage it has no Status or Page key. Activity and the phone's Handled view
+keep the note in the scope it was saved from. Return to Inbox restores the Page
+to its source Database in Triage, using that Database's Page key rules. If the
+original Database is unavailable, the return explains why. Undo uses the
+original Page move and restores the prior proposal when it still applies.
+
+Nodex may suggest Save to Notes for a reference or fragment without work,
+including a section from a breadth-first outline of up to 60 Page titles.
+It may suggest Add to Todo for work to hold without a time, or Later when the
+person names a time. It uses existing sections.
 
 ## Important messages
 
@@ -351,6 +361,38 @@ The user can mark a message important so it stays within reach while it waits.
 - Each Inbox points only at its own important messages. Handling a message takes
   it off that list, and `Return to Inbox` brings it back with its mark. Activity
   does not show the mark.
+
+## Later
+
+Later sets aside a message or a Turn until a chosen time. It decides nothing: the row is the
+same waiting row, with its suggestion, its importance and its place on the Board, out of the
+reader's Inbox until then. Work to hold with no time in mind is a decision, and that is Add to
+Todo.
+
+- `Later`, the clock in a message's action row, in a Turn row's actions and in the selection
+  bar, opens one menu: `In 1 hour`, `In 3 hours`, the next 9:00 AM at least three hours away,
+  and Monday 9:00 AM of the following week. They are the times a chat reminder offers, counted
+  from when the menu opens. A message still waiting for advice can be set aside at once. An
+  Automation's waiting run offers no Later. Answers and Problems also keep their own actions.
+- A message then says `Later · tomorrow at 9:00 AM` in its place before it folds away; a Turn
+  row simply leaves. Either way a toast confirms the time and offers `Undo`.
+- The header's `Later` view, between Inbox and Activity, lists what the reader set aside in the
+  order it comes back: grouped by day (`Today`, `Tomorrow`, a weekday within the week, then a
+  date), each line with its time of day, title and Page key. Its count sits beside its name and
+  never adds to the Inbox's. Hovering a line offers `Change time` and `Return to Inbox`.
+  Opening it shows what was set aside with `Open page`, `Copy`, `Change time` and `Return to
+  Inbox`; a message can also be decided there without bringing it back first, with `Add to
+  Todo`, `Save to Notes`, `Mark done` and `Delete`. `Change time` names the current time above
+  the same menu. The view has no composer and says what Later is for while it is empty.
+- A row that has come back says so above its card, beside a clock: `Back from Later · set
+  aside yesterday`, until it is handled. A message takes its place in the stream at the time it
+  was set aside until, and the stream's centered times read that time. Whatever Nodex suggested
+  before is still on it.
+- A Turn set aside is that one move. When its Page needs the reader for a new reason, the new
+  row shows at once.
+- When Nodex suggests Later, the decision reads `Later · <time>` with the clock, and its menu
+  half, `Choose another time`, confirms the suggestion with a different time. The row offers no
+  second Later. A suggested time that has passed disables the decision and says to choose another.
 
 ## Turns, notes and answers
 
@@ -410,12 +452,14 @@ local-Member episode. Events must have been delivered to that Coordinator and
 concern the Page or its active chat. Each event backs one note per episode;
 exact retries preserve the note. A note neither creates a row nor changes order.
 
-`answer_inbox_question { questionPageId, body }` creates a quiet answer Page and
-handles its pending question atomically. One question has one answer; exact
+`answer_inbox_question { questionPageId, body }` creates a quiet answer Page and moves its pending question to Done atomically. One question has one answer; exact
 retries reuse it. Answers look like Nodex's conversation messages. Reply to an
 answer continues with Nodex as ordinary intake, retaining the answer's context.
 
 ## Suggestions
+
+Nodex gives routing advice for Pages whose current Turn is triage. Leaving Triage
+withdraws an unfinished request and supersedes any unconfirmed suggestion.
 
 Each suggestion request reaches Nodex's conversation as a message carrying its
 Inbox entries, images, and possible destinations. Nodex records the answer with
@@ -580,7 +624,8 @@ Project. The same limits apply to dispatches written by hand.
 Its single write records one proposal per message or group. Each proposal has
 one exact action:
 
-- **Keep:** keep it as a note.
+- **Add to Todo:** hold work without a time.
+- **Save to Notes:** save a reference under the Notes Page or an existing section.
 - **New chat:** start a chat in a Project or without one, with a prompt. While
   suggestions choose models, a new chat may also name what it runs on: an
   Agent, model and effort. When another model clearly suits part of the work,
@@ -592,7 +637,7 @@ one exact action:
 Every successful suggestion request produces a concrete action for every member.
 Tasks and questions favor a new chat; a clear continuation can target an existing
 chat. In the Library Inbox, work without a suitable Project can start a projectless
-chat. Notes, references and ambiguous fragments get a focused Keep proposal.
+chat. Notes, references and fragments without work get Save to Notes.
 An uncertain selected group can be kept as notes together. The Agent never
 completes a request by asking the user to handle the message manually.
 
@@ -674,7 +719,8 @@ and its row show one of these:
     the Inbox's own, so the decision never hides it, and the menu then offers
     `Use for all Inbox chats`;
   - the member count for a group, with access to its complete scope;
-  - `Keep`.
+  - `Add to Todo` or `Save to Notes`, whichever the message's kind leads with, unless it is
+    the decision itself.
 - **Failure:** one short reason and a new decision. A failed suggestion, or a
   delivery that can be tried again, ends the row with `Retry`, with
   `Handle manually` outlined beside it. Definite rejection ends it with
@@ -689,7 +735,7 @@ and its row show one of these:
   failure says so in place of the note, and the same button retries. Editing the
   text back makes the suggestion current again.
 - **No advice requested, or suggestions off:** `Handle manually`, `Suggest`
-  unless suggestions are off, and `Keep`.
+  unless suggestions are off, and `Add to Todo` or `Save to Notes` by kind.
 
 The row ends with its decision, flush with the card's right edge, so the step
 the row recommends is always in the same horizontal place. A labeled action
@@ -700,7 +746,7 @@ message without advice, `Handle manually` ends the row outlined. A recommended
 step whose glyph says it all, `Suggest again` or `Retry`, is a solid icon named
 by its tooltip. A row without a decision, the spinner of a running suggestion or
 a row of icons, ends where the card's bottom-right corner curve meets its bottom
-edge. `Keep as a note`, `Suggest`, `Mark done`, `Handle manually` while a
+edge. `Save to Notes`, `Suggest`, `Mark done`, `Handle manually` while a
 suggestion runs, and the message menu are quiet icon buttons named by their
 tooltips, gathered at the trailing edge before any decision. Every suggestion offers the `Mark done` check.
 Every action that asks for advice, `Suggest`, `Suggest together`, `Suggest
@@ -779,7 +825,7 @@ user's own, Nodex marked it as the user's clear request for work now, and the
 message still reads as it did when Nodex wrote the suggestion. Core checks all
 of this when it records the confirmation. Such a start sends the prompt without
 any of the suggestion's optional additions, and its decision records that Nodex
-made it. Keep, filing, plans and scheduled runs always wait for the user. A
+made it. Add to Todo, Save to Notes, filing, plans and scheduled runs always wait for the user. A
 retried start reuses the same chat and decision. Turning the preference on never
 starts a suggestion written before it.
 
@@ -822,10 +868,11 @@ instructions.
 - **Move to Project:** Core moves every member and records the filing in one
   transaction. A conflict leaves every Page and Inbox state unchanged. Filing
   is final: Activity keeps it as `Filed “<message>” in <Project>`, and it
-  never opens again in that Project's Inbox. The move's
-  single `Undo` restores the entire group and its original Inbox state, or
+  leaves the Page in Todo in that Project. The move's
+  single `Undo` restores the entire group, its original Status and any prior proposal, or
   refuses the whole undo when a member has changed since.
-- **Keep:** marks the entries `kept`.
+- **Add to Todo:** moves the Pages to Todo.
+- **Save to Notes:** moves the Pages beneath the Inbox’s Notes Page.
 
 Confirmed chat work is a durable outbox in Core. After a restart, Main re-reads
 it with the same immutable input and launch/message identities. Local handoff
@@ -865,7 +912,7 @@ its menu offers no `Suggest again`, and no suggestion can write a run decision.
   alone, starting from the Automation's own choice, and names a different choice on
   the button. A Heartbeat runs on its chat's Agent, so its decision has no menu.
 - The row offers the message menu and `Skip this run`, the `Mark done` check.
-  There is no Keep: a run is run, skipped, or handed elsewhere.
+  A run can be run, skipped, or handed elsewhere.
 - `Handle manually` adds `Run` to the dispatch editor, with the run's model
   menu and `Edit Automation`, which opens the Automation where its folders, workspace and
   schedule change for every run. Choosing another action hands the message on
@@ -926,7 +973,8 @@ gutters stay reserved. The bar's actions are icon buttons:
 
 - **Suggest together:** asks for one grouped suggestion.
 - **Handle manually:** opens the dispatch editor for the whole selection.
-- **Keep as notes**
+- **Add to Todo**
+- **Save to Notes**
 - **Mark done**
 - **Delete**
 - **Clear selection**
@@ -1044,14 +1092,15 @@ creates a second message, and does not count against the Agent budget again.
 
 ### Remote Member admission
 
-Authenticated remote Members may read Activity and the mixed Inbox projection,
-retry Problems, and use its
-person actions: answer an option, Reply, Accept and Start. Commands retain their
+Authenticated remote Members may read Activity, the mixed Inbox projection and the Later
+window, retry Problems, and take person actions including setting and clearing their own
+deferrals, answering an option, Reply, Accept and Start. Commands retain their
 current episode and request fences, and receipt replay belongs to the initiating
 Member. Turn notes and Inbox answers require the Coordinator's Agent authority;
 managed-chat handback requires captured Agent execution authority. These Agent tools
-cannot be called directly by a remote Member. Notification-intent reads and claiming
-belong to the Host. New commands remain denied remotely until explicitly admitted.
+cannot be called directly by a remote Member. A connected Desktop reads and claims its
+Member's notification intents. The Space Host refreshes Inbox views at deferral deadlines and delivers phone
+notifications. New commands remain denied remotely until explicitly admitted.
 
 ## Returning a message for routing
 

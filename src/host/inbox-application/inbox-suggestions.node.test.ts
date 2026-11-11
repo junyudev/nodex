@@ -46,6 +46,7 @@ const context = (
     },
   ],
   open_proposals: [],
+  notes_outline: [],
 });
 
 const raw = (overrides: Record<string, unknown>) => ({
@@ -790,5 +791,50 @@ describe("suggested skills", () => {
     expect(() => validate({ action: "keep", prompt: null, project_id: null })).toThrow(
       /cannot suggest skills/,
     );
+  });
+});
+
+describe("Later routing", () => {
+  const message = entry("1", "Please leave this until next week.");
+  const validate = (fields: Record<string, unknown>) =>
+    validateInboxSuggestions(
+      InboxSuggestionOutput.parse(output([raw({ action: "later", ...fields })])),
+      context([message]),
+      [message],
+      request,
+    );
+
+  it("requires a future instant", () => {
+    const remindAt = "2099-02-02T09:00:00+08:00";
+    expect(validate({ remind_at: remindAt }).suggestions[0]?.action).toEqual({
+      type: "later",
+      remindAt,
+    });
+  });
+
+  it.each([
+    {},
+    { remind_at: "2000-01-01T10:00:00Z" },
+    { remind_at: "2099-01-01T10:00:00" },
+    { remind_at: null },
+    { remind_at: "2099-01-01T10:00:00Z", explicit_request: true },
+    { remind_at: "2099-01-01T10:00:00Z", prompt: "Start the work" },
+  ])("refuses incomplete, expired or executable Later advice (%j)", (fields) => {
+    expect(() => validate(fields)).toThrow();
+  });
+
+  it("gives the Coordinator a clock and time zone to resolve relative times", () => {
+    const before = Date.now();
+    const prompt = renderInboxRoutingRequest({
+      context: context([message]),
+      instructions: "",
+      request,
+      agents: null,
+    });
+    const data = JSON.parse(prompt.split("JSON data:\n")[1]!);
+    expect(Date.parse(data.request.current_time)).toBeGreaterThanOrEqual(before);
+    expect(data.request.current_local_time).toBeTruthy();
+    expect(data.request.time_zone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect(data.request.allowed_actions).toContain("later");
   });
 });

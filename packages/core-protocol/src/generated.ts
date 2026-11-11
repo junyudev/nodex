@@ -2600,8 +2600,8 @@ export interface components {
                 /** @description The user marked the message important, so it stays in view while it waits. */
                 readonly important: boolean;
                 readonly kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
+                readonly later: components["schemas"]["InboxLater"] | null;
                 readonly location: components["schemas"]["ProjectWorkspaceInboxLocation"];
-                readonly outcome?: components["schemas"]["ProjectWorkspaceInboxOutcome"] | null;
                 readonly page_id: string;
                 readonly page_key?: string | null;
                 readonly page_status?: components["schemas"]["ProjectWorkspaceInboxPageStatus"] | null;
@@ -2613,12 +2613,12 @@ export interface components {
                 readonly row_kind: components["schemas"]["InboxRowKind"];
                 readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
                 readonly source: components["schemas"]["ProjectWorkspaceInboxSource"];
-                readonly state: components["schemas"]["ProjectWorkspaceInboxEntryState"];
                 readonly submitted_at: string;
                 readonly suggestion_error?: string | null;
                 readonly suggestion_state: components["schemas"]["ProjectWorkspaceInboxSuggestionState"];
                 readonly title: string;
                 readonly turn?: components["schemas"]["InboxTurn"] | null;
+                readonly waiting: boolean;
             }[];
             readonly next_cursor?: string | null;
         };
@@ -3080,6 +3080,9 @@ export interface components {
         } | {
             /** @enum {string} */
             readonly kind: "reconnect_document_subscription";
+        } | {
+            /** @enum {string} */
+            readonly kind: "inbox_remind_at_passed";
         } | {
             /** @enum {string} */
             readonly kind: "database_view_order_preparation";
@@ -5269,6 +5272,28 @@ export interface components {
             readonly reason: string;
             readonly receipt_id: string;
             readonly returned_at: string;
+        };
+        readonly InboxLater: {
+            readonly set_at: string;
+            readonly until: string;
+        };
+        readonly InboxLaterNotification: {
+            readonly id: string;
+            readonly member_id: string;
+            readonly page_id: string;
+            readonly returned_at: string;
+            readonly title: string;
+        };
+        /**
+         * @description Bounded routing context for the suggestion Agent. It intentionally carries
+         *     no transcripts or Page bodies other than the entries being considered. For a
+         *     Project's Inbox, Projects and chats are narrowed to that Project.
+         */
+        readonly InboxNotesOutlineItem: {
+            /** Format: int32 */
+            readonly depth: number;
+            readonly page_id: string;
+            readonly title: string;
         };
         readonly InboxOfferedSkill: {
             readonly description: string;
@@ -9088,9 +9113,30 @@ export interface components {
                 readonly page_ids: readonly string[];
             } | {
                 /** @enum {string} */
-                readonly kind: "set_inbox_entry_state";
+                readonly kind: "set_inbox_later";
                 readonly page_ids: readonly string[];
-                readonly state: components["schemas"]["ProjectWorkspaceInboxEntryState"];
+                readonly until: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "clear_inbox_later";
+                readonly page_ids: readonly string[];
+            } | {
+                /** @enum {string} */
+                readonly kind: "publish_due_inbox_later";
+                readonly wake_at: string;
+            } | {
+                readonly for_push: boolean;
+                readonly id: string;
+                /** @enum {string} */
+                readonly kind: "claim_inbox_later_notification";
+            } | {
+                /** @enum {string} */
+                readonly kind: "mark_inbox_messages_done";
+                readonly page_ids: readonly string[];
+            } | {
+                /** @enum {string} */
+                readonly kind: "return_inbox_messages";
+                readonly page_ids: readonly string[];
             } | {
                 readonly entry_kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
                 /** @enum {string} */
@@ -10421,6 +10467,13 @@ export interface components {
                 readonly kind: "inbox_turn_notifications";
             } | {
                 /** @enum {string} */
+                readonly kind: "next_inbox_later";
+            } | {
+                readonly for_push: boolean;
+                /** @enum {string} */
+                readonly kind: "inbox_later_notifications";
+            } | {
+                /** @enum {string} */
                 readonly kind: "current_turn_notifications";
             } | {
                 /** @enum {string} */
@@ -10919,6 +10972,10 @@ export interface components {
             readonly kind: "reminder_owner";
             readonly member_id: string;
         } | {
+            readonly id: string;
+            /** @enum {string} */
+            readonly kind: "inbox_later_owner";
+        } | {
             readonly episode: string;
             /** @enum {string} */
             readonly kind: "turn_owner";
@@ -11380,6 +11437,14 @@ export interface components {
             /** @enum {string} */
             readonly type: "keep";
         } | {
+            readonly parent_page_id?: string | null;
+            /** @enum {string} */
+            readonly type: "save_to_notes";
+        } | {
+            readonly remind_at: string;
+            /** @enum {string} */
+            readonly type: "later";
+        } | {
             /** @description Sent after the prompt unless the user drops them: how to run or what to consult, never what to deliver. */
             readonly additions?: readonly string[];
             readonly agent?: components["schemas"]["ProjectWorkspaceInboxChatAgent"] | null;
@@ -11406,13 +11471,9 @@ export interface components {
             /** @enum {string} */
             readonly type: "execute_decision";
         };
-        /**
-         * @description Bounded routing context for the suggestion Agent. It intentionally carries
-         *     no transcripts or Page bodies other than the entries being considered. For a
-         *     Project's Inbox, Projects and chats are narrowed to that Project.
-         */
         readonly ProjectWorkspaceInboxDispatchContext: {
             readonly entries: readonly components["schemas"]["ProjectWorkspaceInboxSuggestionInput"][];
+            readonly notes_outline: readonly components["schemas"]["InboxNotesOutlineItem"][];
             readonly open_proposals: readonly components["schemas"]["ProjectWorkspaceInboxContextProposal"][];
             readonly projects: readonly components["schemas"]["ProjectWorkspaceInboxContextProject"][];
             readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
@@ -11456,11 +11517,6 @@ export interface components {
          * @enum {string}
          */
         readonly ProjectWorkspaceInboxEntryKind: "note" | "todo" | "question";
-        /**
-         * @description Triage state chosen by the user. Execution state lives on proposals.
-         * @enum {string}
-         */
-        readonly ProjectWorkspaceInboxEntryState: "open" | "kept" | "done";
         readonly ProjectWorkspaceInboxExecutionSelection: {
             readonly interaction_mode: components["schemas"]["ProjectWorkspaceInboxInteractionMode"];
             readonly model_selection: components["schemas"]["ProjectWorkspaceInboxModelSelection"];
@@ -11494,8 +11550,8 @@ export interface components {
             /** @description The user marked the message important, so it stays in view while it waits. */
             readonly important: boolean;
             readonly kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
+            readonly later: components["schemas"]["InboxLater"] | null;
             readonly location: components["schemas"]["ProjectWorkspaceInboxLocation"];
-            readonly outcome?: components["schemas"]["ProjectWorkspaceInboxOutcome"] | null;
             readonly page_id: string;
             readonly page_key?: string | null;
             readonly page_status?: components["schemas"]["ProjectWorkspaceInboxPageStatus"] | null;
@@ -11507,12 +11563,12 @@ export interface components {
             readonly row_kind: components["schemas"]["InboxRowKind"];
             readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
             readonly source: components["schemas"]["ProjectWorkspaceInboxSource"];
-            readonly state: components["schemas"]["ProjectWorkspaceInboxEntryState"];
             readonly submitted_at: string;
             readonly suggestion_error?: string | null;
             readonly suggestion_state: components["schemas"]["ProjectWorkspaceInboxSuggestionState"];
             readonly title: string;
             readonly turn?: components["schemas"]["InboxTurn"] | null;
+            readonly waiting: boolean;
         };
         /** @description Where a message's Page lives, relative to the Inbox that received it. */
         readonly ProjectWorkspaceInboxLocation: {
@@ -11557,11 +11613,6 @@ export interface components {
             readonly model: string;
             readonly options?: readonly components["schemas"]["ProjectWorkspaceInboxModelOption"][] | null;
         };
-        /**
-         * @description Product decision, independent of the Page's current location.
-         * @enum {string}
-         */
-        readonly ProjectWorkspaceInboxOutcome: "kept" | "done" | "moved" | "chat";
         /** @description Fingerprint of the exact Page-body Markdown and ordered Library image content hashes. */
         readonly ProjectWorkspaceInboxPageBasis: {
             readonly content_hash: string;
@@ -11710,7 +11761,10 @@ export interface components {
             readonly proposal_id?: string | null;
             readonly request_id: string;
         };
-        /** @enum {string} */
+        /**
+         * @description Triage state chosen by the user. Execution state lives on proposals.
+         * @enum {string}
+         */
         readonly ProjectWorkspaceInboxSuggestionState: "none" | "waiting" | "pending" | "settled" | "failed";
         readonly ProjectWorkspaceInboxSuggestionTitle: {
             readonly page_id: string;
@@ -11739,13 +11793,16 @@ export interface components {
              */
             readonly inbox_count: number;
             /** Format: int32 */
+            readonly later_count: number;
+            /** Format: int32 */
             readonly needs_decision_count: number;
+            readonly notes_page_id?: string | null;
             /** Format: int32 */
             readonly pending_suggestion_count: number;
             readonly view_id?: string | null;
         };
         /** @enum {string} */
-        readonly ProjectWorkspaceInboxWindowFilter: "inbox" | "processed";
+        readonly ProjectWorkspaceInboxWindowFilter: "inbox" | "processed" | "later";
         readonly ProjectWorkspaceIntent: {
             readonly initialize_only: boolean;
             /** @enum {string} */
@@ -12449,9 +12506,30 @@ export interface components {
             readonly page_ids: readonly string[];
         } | {
             /** @enum {string} */
-            readonly kind: "set_inbox_entry_state";
+            readonly kind: "set_inbox_later";
             readonly page_ids: readonly string[];
-            readonly state: components["schemas"]["ProjectWorkspaceInboxEntryState"];
+            readonly until: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "clear_inbox_later";
+            readonly page_ids: readonly string[];
+        } | {
+            /** @enum {string} */
+            readonly kind: "publish_due_inbox_later";
+            readonly wake_at: string;
+        } | {
+            readonly for_push: boolean;
+            readonly id: string;
+            /** @enum {string} */
+            readonly kind: "claim_inbox_later_notification";
+        } | {
+            /** @enum {string} */
+            readonly kind: "mark_inbox_messages_done";
+            readonly page_ids: readonly string[];
+        } | {
+            /** @enum {string} */
+            readonly kind: "return_inbox_messages";
+            readonly page_ids: readonly string[];
         } | {
             readonly entry_kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
             /** @enum {string} */
@@ -14812,6 +14890,14 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "chat_message_inbound";
                 } | {
+                    /** @enum {string} */
+                    readonly kind: "next_inbox_later";
+                    readonly remind_at?: string | null;
+                } | {
+                    readonly intents: readonly components["schemas"]["InboxLaterNotification"][];
+                    /** @enum {string} */
+                    readonly kind: "inbox_later_notifications";
+                } | {
                     readonly intents: readonly components["schemas"]["InboxTurnNotification"][];
                     /** @enum {string} */
                     readonly kind: "inbox_turn_notifications";
@@ -15567,6 +15653,9 @@ export interface components {
         readonly ThreadFollowRole: "own_pr" | "origin" | "context";
         readonly TurnActor: {
             /** @enum {string} */
+            readonly kind: "members";
+        } | {
+            /** @enum {string} */
             readonly kind: "member";
             readonly member_id: string;
         } | {
@@ -15588,7 +15677,7 @@ export interface components {
             readonly kind: "none";
         };
         /** @enum {string} */
-        readonly TurnReason: "paused" | "working" | "queued" | "question" | "approval" | "blocked" | "failed" | "stalled" | "review" | "ready_to_start" | "starting" | "waiting_on_prerequisite";
+        readonly TurnReason: "triage" | "delivery_recovery" | "paused" | "working" | "queued" | "question" | "approval" | "blocked" | "failed" | "stalled" | "review" | "ready_to_start" | "starting" | "waiting_on_prerequisite";
         readonly VersionRange: {
             /** Format: int32 */
             readonly max: number;

@@ -466,6 +466,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 210,
         apply: migrate_v209_to_v210,
     },
+    MigrationStep {
+        from_revision: 210,
+        to_revision: 211,
+        apply: migrate_v210_to_v211,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2739,6 +2744,30 @@ fn migrate_v209_to_v210(
     Ok(())
 }
 
+fn migrate_v210_to_v211(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v210_to_v211.sql"))?;
+    connection.execute(
+        "INSERT OR IGNORE INTO page_turn_dirty SELECT page_id FROM inbox_entries",
+        [],
+    )?;
+    let now: String =
+        connection.query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ','now')", [], |r| {
+            r.get(0)
+        })?;
+    crate::workspace::page_turn::initialize(connection, "migration:v211", &now)?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"inbox_deferrals":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v206_to_v207(
     connection: &Connection,
     context: &MigrationContext,
@@ -4025,7 +4054,6 @@ fn prepare_current_inbox_capture_columns(connection: &Connection) -> Result<(), 
         ALTER TABLE project_session_pages ADD COLUMN status_fence INTEGER;
         ALTER TABLE project_session_pages ADD COLUMN status_moved INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE project_session_pages ADD COLUMN report_status_moved INTEGER;
-        ALTER TABLE inbox_entries ADD COLUMN status_fence INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE inbox_handoffs ADD COLUMN question_response_json TEXT;
         ALTER TABLE inbox_handoffs ADD COLUMN skill_invocations_json TEXT NOT NULL DEFAULT '[]';
         ALTER TABLE inbox_handoffs ADD COLUMN unavailable_skills_json TEXT NOT NULL DEFAULT '[]';
@@ -4041,22 +4069,50 @@ fn prepare_current_inbox_capture_columns(connection: &Connection) -> Result<(), 
     )?;
     let mut current = Connection::open_in_memory()?;
     install_current_schema(&mut current)?;
-    let sql: String = current.query_row(
-        "SELECT sql FROM sqlite_schema WHERE name='inbox_routing_deliveries'",
-        [],
-        |r| r.get(0),
-    )?;
-    connection.execute_batch(&sql)?;
-    let active_chats: String = current.query_row(
-        "SELECT sql FROM sqlite_schema WHERE name='page_active_chats'",
-        [],
-        |r| r.get(0),
-    )?;
-    connection.execute_batch(&active_chats)?;
+    for name in [
+        "inbox_routing_deliveries",
+        "page_active_chats",
+        "inbox_answers",
+        "sources",
+        "problems",
+        "inbox_note_saves",
+        "inbox_deferrals",
+        "inbox_later_notifications",
+        "activity_page_scopes",
+        "inbox_intake",
+        "inbox_rows",
+        "inbox_member_rows",
+        "turn_intake_added",
+        "turn_intake_proposal",
+        "turn_intake_delivery",
+        "turn_intake_removed",
+    ] {
+        let sql: String =
+            current.query_row("SELECT sql FROM sqlite_schema WHERE name=?1", [name], |r| {
+                r.get(0)
+            })?;
+        connection.execute_batch(&sql)?;
+    }
     Ok(())
 }
 #[cfg(test)]
 fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), StoreError> {
+    connection.execute_batch(
+        "DROP TRIGGER turn_intake_removed;
+        DROP TRIGGER turn_intake_delivery;
+        DROP TRIGGER turn_intake_proposal;
+        DROP TRIGGER turn_intake_added;
+        DROP VIEW inbox_member_rows;
+        DROP VIEW inbox_rows;
+        DROP VIEW inbox_intake;
+        DROP VIEW activity_page_scopes;
+        DROP TABLE inbox_later_notifications;
+        DROP TABLE inbox_deferrals;
+        DROP TABLE inbox_note_saves;
+        DROP TABLE inbox_answers;
+        DROP TABLE problems;
+        DROP TABLE sources;",
+    )?;
     finish_historical_actor_columns(connection)?;
     connection.execute_batch(
         "ALTER TABLE automation_execution_leases RENAME TO core_automation_leases;
@@ -4065,7 +4121,6 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
         ALTER TABLE automation_decisions DROP COLUMN frozen_action_json;
         ALTER TABLE automation_decisions RENAME TO core_automation_firings;
         DROP TABLE page_active_chats;
-        ALTER TABLE inbox_entries DROP COLUMN status_fence;
         ALTER TABLE project_session_pages DROP COLUMN report_status_moved;
         ALTER TABLE project_session_pages DROP COLUMN status_moved;
         ALTER TABLE project_session_pages DROP COLUMN status_fence;
@@ -4088,7 +4143,23 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
 }
 
 #[cfg(test)]
+fn rewind_inbox_later(connection: &Connection) -> Result<(), StoreError> {
+    let foreign_keys: bool =
+        connection.pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
+    let legacy: bool =
+        connection.pragma_query_value(None, "legacy_alter_table", |row| row.get(0))?;
+    connection.pragma_update(None, "foreign_keys", false)?;
+    connection.pragma_update(None, "legacy_alter_table", true)?;
+    let result =
+        connection.execute_batch(include_str!("../../tests/fixtures/rewind-v211-to-v210.sql"));
+    connection.pragma_update(None, "legacy_alter_table", legacy)?;
+    connection.pragma_update(None, "foreign_keys", foreign_keys)?;
+    Ok(result?)
+}
+
+#[cfg(test)]
 fn rewind_quiet_automation_runs(connection: &Connection) -> Result<(), StoreError> {
+    rewind_inbox_later(connection)?;
     connection.execute_batch(
         "ALTER TABLE automation_execution_runs DROP COLUMN quiet;
          PRAGMA user_version=209;",
@@ -5113,6 +5184,29 @@ mod tests {
         );
         assert!(resolve_migration_path(129, 132, &steps).is_none());
         assert!(resolve_migration_path(131, 133, &steps).is_none());
+    }
+
+    #[test]
+    fn inbox_deferral_schema_round_trips_through_v210() {
+        use crate::infrastructure::schema::validate_schema_identity;
+
+        let mut connection = Connection::open_in_memory().expect("Store");
+        install_current_schema(&mut connection).expect("current Store");
+        rewind_inbox_later(&connection).expect("v210 predecessor");
+        validate_schema_identity(&connection, 210).expect("published predecessor");
+        migrate_v210_to_v211(
+            &connection,
+            &MigrationContext {
+                source_revision: 210,
+                target_revision: 211,
+                source_schema_fingerprint: published_format(210).unwrap().schema_fingerprint,
+                target_schema_fingerprint: published_format(211).unwrap().schema_fingerprint,
+                backup_name: "v210.db".into(),
+                completed_at_unix_ms: 1,
+            },
+        )
+        .expect("deferral migration");
+        validate_schema_identity(&connection, 211).expect("published current Store");
     }
 
     #[test]
@@ -9477,6 +9571,12 @@ mod tests {
                     "UPDATE inbox_entries SET state='kept',outcome='kept' WHERE page_id='page:kept'",
                     [],
                 )?;
+                transaction.execute(
+                    "UPDATE data_source_property_values SET value_json='\"plan\"'
+                     WHERE property_id='status' AND membership_id IN (
+                       SELECT id FROM data_source_page_memberships WHERE page_block_id='page:kept')",
+                    [],
+                )?;
                 // Exercise every proposal FK, including retained capability rows. The
                 // migration must remove their payloads even with foreign_keys disabled.
                 transaction.execute(
@@ -9503,16 +9603,18 @@ mod tests {
         assert_eq!(store.preparation().migrated_from_version, Some(184));
         store.readers().read_default(|connection| {
             validate_current_store(connection)?;
-            let open: (String,String,Option<String>,Option<String>,Option<String>) = connection.query_row(
-                "SELECT state,suggestion_state,current_proposal_id,suggestion_request_id,outcome FROM inbox_entries WHERE page_id='page:open'",
-                [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?)),
+            let open: (String,String,Option<String>,Option<String>) = connection.query_row(
+                "SELECT intake.stage,entry.suggestion_state,entry.current_proposal_id,entry.suggestion_request_id
+                 FROM inbox_entries entry JOIN inbox_intake intake USING(page_id) WHERE entry.page_id='page:open'",
+                [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)),
             )?;
-            assert_eq!(open,("open".into(),"waiting".into(),None,None,None));
-            let kept: (String,Option<String>,Option<String>) = connection.query_row(
-                "SELECT state,current_proposal_id,outcome FROM inbox_entries WHERE page_id='page:kept'",
-                [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?)),
+            assert_eq!(open,("triage".into(),"waiting".into(),None,None));
+            let kept: (String,Option<String>) = connection.query_row(
+                "SELECT intake.stage,entry.current_proposal_id FROM inbox_entries entry
+                 JOIN inbox_intake intake USING(page_id) WHERE entry.page_id='page:kept'",
+                [], |row| Ok((row.get(0)?,row.get(1)?)),
             )?;
-            assert_eq!(kept,("kept".into(),None,Some("kept".into())));
+            assert_eq!(kept,("plan".into(),None));
             let request: (String,i64,Option<String>,Option<i64>,Option<String>) = connection.query_row(
                 "SELECT state,generation,proposal_id,expected_revision,correction FROM inbox_suggestion_requests WHERE request_id='request:old'",
                 [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?)),

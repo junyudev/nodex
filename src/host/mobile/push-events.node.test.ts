@@ -30,6 +30,7 @@ import { makeMobilePushEvents, type MobilePush } from "./push-events";
 
 type Audience = components["schemas"]["PhonePushAudience"];
 type Turn = components["schemas"]["CurrentTurnNotification"];
+type LaterIntent = components["schemas"]["InboxLaterNotification"];
 
 const turn = (pageId: string, memberId: string, overrides: Partial<Turn> = {}): Turn => ({
   member_id: memberId,
@@ -115,11 +116,13 @@ const harness = Effect.fn("harness")(function* (options: {
   readonly reported?: (memberId: string) => Effect.Effect<number | null>;
   /** Every Member's current Page Turns, as Core lists them for the host. */
   readonly turns?: () => readonly Turn[];
+  readonly later?: readonly LaterIntent[];
 }) {
   const hub = yield* PubSub.unbounded<CodexApplicationEvent>();
   const inbox = yield* PubSub.unbounded<void>();
   const received = yield* Queue.unbounded<MobilePush>();
   const audiences: Audience[] = [];
+  const claimed = new Set<string>();
   const items = options.items ?? [];
   const source = yield* makeMobilePushEvents.pipe(
     Effect.provideService(CodexApplicationEventHub, {
@@ -158,23 +161,31 @@ const harness = Effect.fn("harness")(function* (options: {
             value:
               input.kind === "current_turn_notifications"
                 ? { kind: "current_turn_notifications", turns: [...(options.turns?.() ?? [])] }
-                : input.kind === "read_coordinator"
-                  ? { kind: "read_coordinator", session_id: null }
-                  : input.kind === "read_managed_session"
-                    ? {
-                        kind: "read_managed_session",
-                        managed: (options.managed ?? []).includes(input.session_id ?? ""),
-                      }
-                    : {
-                        kind: "session_window",
-                        sessions: {
-                          items:
-                            input.session_ids?.[0] === "hidden"
-                              ? []
-                              : [{ task: { session: { display_title: "Deploy app" } } }],
+                : input.kind === "inbox_later_notifications"
+                  ? { kind: input.kind, intents: options.later ?? [] }
+                  : input.kind === "read_coordinator"
+                    ? { kind: "read_coordinator", session_id: null }
+                    : input.kind === "read_managed_session"
+                      ? {
+                          kind: "read_managed_session",
+                          managed: (options.managed ?? []).includes(input.session_id ?? ""),
+                        }
+                      : {
+                          kind: "session_window",
+                          sessions: {
+                            items:
+                              input.session_ids?.[0] === "hidden"
+                                ? []
+                                : [{ task: { session: { display_title: "Deploy app" } } }],
+                          },
                         },
-                      },
           })),
+        apply: ({ intent }: { intent: { id: string } }) =>
+          Effect.sync(() => {
+            const duplicate = claimed.has(intent.id);
+            claimed.add(intent.id);
+            return { receipt: { duplicate } };
+          }),
       },
     } as unknown as CoreModules["Service"]),
     Effect.provideService(DatabaseNotifierRuntime, {
@@ -578,4 +589,33 @@ it.effect(
         "plain",
       ]);
     }),
+);
+
+it.effect("pushes an Inbox return to the Member Core names and settles it once", () =>
+  Effect.gen(function* () {
+    const h = yield* harness({
+      attendance: Effect.succeed("away"),
+      later: [
+        {
+          id: "due:one",
+          page_id: "page:one",
+          member_id: "carol",
+          title: "Review the launch checklist",
+          returned_at: new Date(yield* Clock.currentTimeMillis).toISOString(),
+        },
+      ],
+      member: (audience) => (audience.kind === "inbox_later_owner" ? "carol" : null),
+    });
+    yield* h.inboxChanged;
+    yield* h.inboxChanged;
+    const told = yield* Queue.takeAll(h.received);
+    expect(told).toHaveLength(1);
+    expect(told[0]?.recipients.map((recipient) => recipient.memberId)).toEqual(["carol"]);
+    expect(told[0]?.message).toEqual({
+      kind: "needs_you",
+      pageId: "page:one",
+      title: "Review the launch checklist",
+      body: "Back in your Inbox",
+    });
+  }),
 );

@@ -4,6 +4,8 @@
 
 Accepted. Supersedes ADR 0078's Inbox posts and their notification ownership.
 
+Refined by [ADR 0085](0085-the-inbox-is-pages-whose-move-is-yours.md) for intake Status and Inbox membership.
+
 ## Decision
 
 Core owns one mixed Inbox window over waiting intake, the local Member's current

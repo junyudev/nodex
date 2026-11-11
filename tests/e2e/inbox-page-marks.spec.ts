@@ -18,7 +18,7 @@ const streamShot = async (page: Page, stream: Locator, file: string) => {
   await page.screenshot({ path: file, clip: box });
 };
 
-test("an Inbox message shows where its Page already stands and opens its chats", async ({}, testInfo) => {
+test("Status changes handle intake and waiting messages open their linked chats", async ({}, testInfo) => {
   test.setTimeout(240_000);
   const artifacts =
     process.env.NODEX_INBOX_PAGE_MARKS_ARTIFACT_DIR ?? testInfo.outputPath("inbox-page-marks");
@@ -58,28 +58,13 @@ test("an Inbox message shows where its Page already stands and opens its chats",
         const plain = row(seeded.inboxPlainTriage.pageId);
         const twoChats = row(seeded.inboxTriageTwoChats.pageId);
         const unread = row(seeded.inboxTriageOneIdleChat.pageId);
-        await expect(moved).toBeVisible();
+        await expect(moved).toHaveCount(0);
+        await expect(review.getByTestId("inbox-message")).toHaveCount(0);
         await page.mouse.move(0, 0);
         await page.waitForTimeout(500);
         await page.screenshot({ path: path.join(artifacts, "1-project-inbox.png") });
         await streamShot(page, stream, path.join(artifacts, "2-marks.png"));
 
-        claim(
-          "A Page moved to In Progress shows its status and its working chat",
-          ["Status: In Progress", true],
-          [
-            await moved.getByRole("img", { name: /^Status:/ }).getAttribute("aria-label"),
-            /working chat/.test((await chatMarkOf(moved).getAttribute("aria-label")) ?? ""),
-          ],
-        );
-        claim(
-          "A Page moved to In Review with no chat shows only its status",
-          ["Status: In Review", 0],
-          [
-            await review.getByRole("img", { name: /^Status:/ }).getAttribute("aria-label"),
-            await chatMarkOf(review).count(),
-          ],
-        );
         claim("A message only waiting in Triage shows no marks", 0, await marksOf(plain).count());
         claim(
           "A Triage Page linked to chats shows the chats but no status",
@@ -91,11 +76,11 @@ test("an Inbox message shows where its Page already stands and opens its chats",
         );
 
         // The marks open the message's first line inside its bubble, and stay put on hover.
-        const unit = moved.getByTestId("inbox-message-unit");
+        const unit = twoChats.getByTestId("inbox-message-unit");
         // Where the marks sit within the bubble, whatever the stream's scroll.
         const marksInBubble = async () => {
           const [marks, bubble] = await Promise.all([
-            marksOf(moved).boundingBox(),
+            marksOf(twoChats).boundingBox(),
             unit.boundingBox(),
           ]);
           if (!marks || !bubble) throw new Error("The moved message is not on screen");
@@ -109,7 +94,7 @@ test("an Inbox message shows where its Page already stands and opens its chats",
         );
         await unit.hover();
         await page.waitForTimeout(1_600);
-        await expect(moved.locator("time")).toBeVisible();
+        await expect(twoChats.locator("time")).toBeVisible();
         claim("Hovering shows the time without moving the marks", atRest, await marksInBubble());
         await streamShot(page, stream, path.join(artifacts, "3-hover-time.png"));
 
@@ -152,15 +137,7 @@ test("an Inbox message shows where its Page already stands and opens its chats",
         const libraryMoved = library.locator(
           `[data-inbox-page-id="${seeded.libraryInboxMovedWithChat.pageId}"]`,
         );
-        await expect(libraryMoved).toBeVisible();
-        claim(
-          "The Library Inbox shows a Library Page's status and chats too",
-          ["Status: In Progress", 1],
-          [
-            await libraryMoved.getByRole("img", { name: /^Status:/ }).getAttribute("aria-label"),
-            await chatMarkOf(libraryMoved).count(),
-          ],
-        );
+        await expect(libraryMoved).toHaveCount(0);
         await page.mouse.move(0, 0);
         await page.waitForTimeout(500);
         await streamShot(

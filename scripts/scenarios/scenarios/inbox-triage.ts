@@ -17,7 +17,7 @@ import {
 } from "../contracts";
 
 export const INBOX_TRIAGE_SCENARIO_ID = "inbox/triage" as const;
-export const INBOX_TRIAGE_SCENARIO_REVISION = 7 as const;
+export const INBOX_TRIAGE_SCENARIO_REVISION = 11 as const;
 /** The Claude Code account every Profile starts with. */
 const DEFAULT_CLAUDE_INSTANCE_ID = agentRuntimeProviderId({
   kind: "claude",
@@ -43,6 +43,9 @@ export async function seedInboxTriageSkills(workspace: string) {
 }
 
 const PAGE_KEYS = {
+  laterTimed: "laterTimed",
+  laterReturned: "laterReturned",
+  laterSuggested: "laterSuggested",
   kept: "keptNote",
   newChat: "newChatSuggestion",
   sendToChat: "sendToChatSuggestion",
@@ -53,6 +56,10 @@ const PAGE_KEYS = {
   projectNewChat: "projectNewChatSuggestion",
   projectSendToChat: "projectSendToChatSuggestion",
   projectMove: "projectMoveSuggestion",
+  notesPage: "notesPage",
+  notesSection: "notesSection",
+  savedNote: "savedNote",
+  waitingNote: "waitingNote",
   inboxMovedWithChat: "inboxMovedWithChat",
   inboxMovedNoChat: "inboxMovedNoChat",
   inboxTriageTwoChats: "inboxTriageTwoChats",
@@ -94,6 +101,10 @@ export interface InboxTriageScenarioFacts extends ScenarioFacts {
   readonly failedSuggestionCount: number;
   /** Messages waiting in the Nodex Project's own Inbox. */
   readonly projectInboxCount: number;
+  readonly notesPageId: string;
+  readonly notesSectionId: string;
+  readonly savedNotePageId: string;
+  readonly waitingNotePageId: string;
   readonly inboxMovedWithChat: InboxTriageMessageFacts;
   readonly inboxMovedNoChat: InboxTriageMessageFacts;
   readonly inboxTriageTwoChats: InboxTriageMessageFacts;
@@ -128,6 +139,9 @@ export const requireInboxTriageScenarioFacts = (value: unknown): InboxTriageScen
       "failedSuggestionCount",
       "projectInboxCount",
     ].every((key) => typeof candidate[key] === "number") ||
+    !["notesPageId", "notesSectionId", "savedNotePageId", "waitingNotePageId"].every(
+      (key) => typeof candidate[key] === "string",
+    ) ||
     ![
       "inboxMovedWithChat",
       "inboxMovedNoChat",
@@ -151,14 +165,14 @@ const requireSuccess = <Value>(
   throw new Error(`inbox/triage seed failed: ${result.error.message}`);
 };
 
-const captureOpenNote = async (port: ScenarioSeedPort, body: string, scope?: InboxScope) => {
+const captureOpenTodo = async (port: ScenarioSeedPort, body: string, scope?: InboxScope) => {
   const message = await port.sendInboxMessage(body, scope);
   // Advice settles suggestion work; only confirming it would handle the message.
   await port.proposeInboxDispatch({
     pageIds: [message.pageId],
     action: { type: "keep" },
-    kind: "note",
-    summary: "Keep this note for later.",
+    kind: "todo",
+    summary: "Add this to Todo.",
     rationale: null,
   });
   return message;
@@ -245,14 +259,14 @@ const materializeInboxTriage = async (
   });
 
   const kept = await port.sendInboxMessage(
-    "The Linear changelog layout is lovely — denser than ours, and the dates read at a glance.",
+    "Compare changelog layouts when we revisit the release notes.",
   );
   await port.proposeInboxDispatch({
     pageIds: [kept.pageId],
     action: { type: "keep" },
-    kind: "note",
-    summary: "Keep this as a design reference.",
-    rationale: "An observation, not a request for work.",
+    kind: "todo",
+    summary: "Add the comparison to Todo.",
+    rationale: "Work to hold for a later decision.",
   });
   await port.keepInboxEntries([kept.pageId]);
 
@@ -433,25 +447,64 @@ const materializeInboxTriage = async (
   if (!projectSource || !librarySource)
     throw new Error("inbox/triage Inbox Data Sources are missing");
 
+  const starterNote = await port.sendInboxMessage(
+    "A reference for the design library.",
+    nodexInbox,
+  );
+  await port.dispatchInboxEntries({
+    pageIds: [starterNote.pageId],
+    action: { type: "save_to_notes", parentPageId: null },
+  });
+  const notesPageId = await port.readInboxNotesPage(nodexInbox);
+  if (!notesPageId) throw new Error("inbox/triage Notes page was not created");
+  const notesSectionId = createUuidV7();
+  await port.createStandalonePage({
+    projectId: project.id,
+    pageId: notesSectionId,
+    parentPageId: notesPageId,
+    operationId: createUuidV7(),
+    documentId: createUuidV7(),
+    title: "Design references",
+  });
+  const savedNote = await port.sendInboxMessage(
+    "Keep the typography comparison for reference.",
+    nodexInbox,
+  );
+  await port.dispatchInboxEntries({
+    pageIds: [savedNote.pageId],
+    action: { type: "save_to_notes", parentPageId: notesSectionId },
+  });
+  const waitingNote = await port.sendInboxMessage(
+    "Reference for the new sidebar spacing.",
+    nodexInbox,
+  );
+  await port.proposeInboxDispatch({
+    pageIds: [waitingNote.pageId],
+    action: { type: "save_to_notes", parentPageId: notesSectionId },
+    kind: "note",
+    summary: "Save to Design references.",
+    rationale: "Reference for future design work.",
+  });
+
   const movedNote = "Keep the drag handle visible while moving a block.";
-  const libraryInboxMovedWithChat = await captureOpenNote(port, movedNote);
-  const inboxMovedWithChat = await captureOpenNote(port, movedNote, nodexInbox);
-  const inboxMovedNoChat = await captureOpenNote(
+  const libraryInboxMovedWithChat = await captureOpenTodo(port, movedNote);
+  const inboxMovedWithChat = await captureOpenTodo(port, movedNote, nodexInbox);
+  const inboxMovedNoChat = await captureOpenTodo(
     port,
     "Review the empty search results copy.",
     nodexInbox,
   );
-  const inboxPlainTriage = await captureOpenNote(
+  const inboxPlainTriage = await captureOpenTodo(
     port,
     "Try a quieter notification sound.",
     nodexInbox,
   );
-  const inboxTriageTwoChats = await captureOpenNote(
+  const inboxTriageTwoChats = await captureOpenTodo(
     port,
     "Check keyboard focus after closing search.",
     nodexInbox,
   );
-  const inboxTriageOneIdleChat = await captureOpenNote(
+  const inboxTriageOneIdleChat = await captureOpenTodo(
     port,
     "The export preview needs a final look.",
     nodexInbox,
@@ -532,6 +585,27 @@ const materializeInboxTriage = async (
     },
   });
 
+  const laterTimed = await port.sendInboxMessage("Review the launch checklist next week.");
+  const laterReturned = await port.sendInboxMessage(
+    "Check the new template with an empty Project.",
+  );
+  const remindAt = new Date(Date.now() + 7 * 24 * 60 * 60_000).toISOString();
+  // A message that says it can wait: Nodex proposes Later and the person decides.
+  const laterSuggested = await port.sendInboxMessage(
+    "Revisit the pricing page copy in three days.",
+  );
+  await port.proposeInboxDispatch({
+    pageIds: [laterSuggested.pageId],
+    action: { type: "later", remindAt: new Date(Date.now() + 3 * 24 * 60 * 60_000).toISOString() },
+    kind: "todo",
+    summary: "Set this aside for three days.",
+    rationale: "The message asks to wait three days.",
+  });
+  const returnAt = Date.now() + 2_000;
+  await port.setInboxLater([laterReturned.pageId], new Date(returnAt).toISOString());
+  await port.setInboxLater([laterTimed.pageId], remindAt);
+  await new Promise((resolve) => setTimeout(resolve, Math.max(0, returnAt - Date.now() + 1)));
+
   return {
     version: 1,
     scenarioId: INBOX_TRIAGE_SCENARIO_ID,
@@ -539,6 +613,13 @@ const materializeInboxTriage = async (
     projectId: project.id,
     databaseViewId: project.defaultDatabaseViewId,
     pageIdsByKey: {
+      [PAGE_KEYS.notesPage]: notesPageId,
+      [PAGE_KEYS.notesSection]: notesSectionId,
+      [PAGE_KEYS.savedNote]: savedNote.pageId,
+      [PAGE_KEYS.waitingNote]: waitingNote.pageId,
+      [PAGE_KEYS.laterTimed]: laterTimed.pageId,
+      [PAGE_KEYS.laterReturned]: laterReturned.pageId,
+      [PAGE_KEYS.laterSuggested]: laterSuggested.pageId,
       [PAGE_KEYS.kept]: kept.pageId,
       [PAGE_KEYS.dispatched]: dispatched.pageId,
       [PAGE_KEYS.newChat]: newChat.pageId,
@@ -576,10 +657,45 @@ const inspectInboxTriage = async (
   manifest: ScenarioManifest,
 ): Promise<InboxTriageScenarioFacts> => {
   const inbox = (await port.readInbox()).items;
+  const later = (await port.readInbox(undefined, "later")).items;
+  const returned = inbox.find(
+    (item) => item.pageId === manifest.pageIdsByKey[PAGE_KEYS.laterReturned],
+  );
+  if (
+    !later.find((item) => item.pageId === manifest.pageIdsByKey[PAGE_KEYS.laterTimed])?.later
+      ?.until ||
+    !returned?.later ||
+    Date.parse(returned.later.until) > Date.now()
+  )
+    throw new Error("inbox/triage Later fixtures are missing");
+
   const projectScope = projectInbox(manifest.projectId);
   const projectItems = (await port.readInbox(projectScope)).items;
-  const items = [...inbox, ...(await port.readHandledMessages())];
-  const inspectOpenMessage = async (
+  const handled = await port.readHandledMessages({ kind: "all" });
+  const items = [
+    ...new Map([...handled, ...inbox].map((item) => [item.rowKind + item.pageId, item])).values(),
+  ];
+  const notesPageId = manifest.pageIdsByKey[PAGE_KEYS.notesPage];
+  const notesSectionId = manifest.pageIdsByKey[PAGE_KEYS.notesSection];
+  const savedNotePageId = manifest.pageIdsByKey[PAGE_KEYS.savedNote];
+  const waitingNotePageId = manifest.pageIdsByKey[PAGE_KEYS.waitingNote];
+  const savedNote = handled.find((item) => item.pageId === savedNotePageId);
+  const waitingNote = projectItems.find((item) => item.pageId === waitingNotePageId);
+  if (
+    !notesPageId ||
+    !notesSectionId ||
+    !savedNotePageId ||
+    !waitingNotePageId ||
+    notesPageId !== (await port.readInboxNotesPage(projectScope)) ||
+    !savedNote ||
+    savedNote.waiting ||
+    savedNote.pageStatus ||
+    savedNote.pageKey ||
+    waitingNote?.kind !== "note" ||
+    waitingNote.proposal?.action.type !== "save_to_notes"
+  )
+    throw new Error("inbox/triage Notes fixtures are missing");
+  const inspectMessage = async (
     key: string,
     status: string,
     sessionKeys: readonly string[],
@@ -596,7 +712,7 @@ const inspectInboxTriage = async (
       if (!sessionId) throw new Error(`inbox/triage manifest has no ${sessionKey}`);
       return sessionId;
     });
-    const item = (library ? inbox : projectItems).find(
+    const item = (status === "triage" ? (library ? inbox : projectItems) : handled).find(
       (entry) => entry.rowKind === "intake" && entry.pageId === pageId,
     );
     const [chats, activity] = await Promise.all([
@@ -606,11 +722,9 @@ const inspectInboxTriage = async (
     const summary = activity.summaries.find((entry) => entry.pageId === pageId);
     if (
       !item ||
-      item.state !== "open" ||
-      item.outcome !== null ||
-      item.suggestionState !== "settled" ||
-      item.proposal?.state !== "open" ||
-      item.proposal.action.type !== "keep" ||
+      item.waiting !== (status === "triage") ||
+      (status === "triage" &&
+        (item.proposal?.state !== "open" || item.proposal.action.type !== "keep")) ||
       item.pageStatus?.id !== status ||
       chats.items.length !== sessionIds.length ||
       !sessionIds.every((sessionId) => chats.items.some((chat) => chat.sessionId === sessionId)) ||
@@ -622,9 +736,7 @@ const inspectInboxTriage = async (
       summary.errorCount !== 0 ||
       summary.unreadCount !== 0
     ) {
-      throw new Error(
-        `inbox/triage ${key} did not retain its open message, Status and linked Chats`,
-      );
+      throw new Error(`inbox/triage ${key} did not retain its Status and linked Chats`);
     }
     return { pageId, sessionIds };
   };
@@ -636,19 +748,16 @@ const inspectInboxTriage = async (
     inboxPlainTriage,
     libraryInboxMovedWithChat,
   ] = await Promise.all([
-    inspectOpenMessage(PAGE_KEYS.inboxMovedWithChat, "doing", [CHAT_KEYS.moved], {
+    inspectMessage(PAGE_KEYS.inboxMovedWithChat, "doing", [CHAT_KEYS.moved], {
       workingCount: 1,
     }),
-    inspectOpenMessage(PAGE_KEYS.inboxMovedNoChat, "review", []),
-    inspectOpenMessage(
-      PAGE_KEYS.inboxTriageTwoChats,
-      "triage",
-      [CHAT_KEYS.idle, CHAT_KEYS.waiting],
-      { waitingOnUserInputCount: 1 },
-    ),
-    inspectOpenMessage(PAGE_KEYS.inboxTriageOneIdleChat, "triage", [CHAT_KEYS.single]),
-    inspectOpenMessage(PAGE_KEYS.inboxPlainTriage, "triage", []),
-    inspectOpenMessage(
+    inspectMessage(PAGE_KEYS.inboxMovedNoChat, "review", []),
+    inspectMessage(PAGE_KEYS.inboxTriageTwoChats, "triage", [CHAT_KEYS.idle, CHAT_KEYS.waiting], {
+      waitingOnUserInputCount: 1,
+    }),
+    inspectMessage(PAGE_KEYS.inboxTriageOneIdleChat, "triage", [CHAT_KEYS.single]),
+    inspectMessage(PAGE_KEYS.inboxPlainTriage, "triage", []),
+    inspectMessage(
       PAGE_KEYS.libraryInboxMovedWithChat,
       "doing",
       [CHAT_KEYS.moved],
@@ -661,13 +770,22 @@ const inspectInboxTriage = async (
     scenarioRevision: manifest.scenarioRevision,
     entryCount: items.filter((item) => item.rowKind === "intake").length,
     inboxCount: inbox.length,
-    needsDecisionCount: items.filter(
-      (item) => item.state === "open" && item.proposal?.state === "open",
+    needsDecisionCount: items.filter((item) => item.waiting && item.proposal?.state === "open")
+      .length,
+    keptCount: items.filter(
+      (item) =>
+        item.pageStatus?.id === "plan" && item.pageId === manifest.pageIdsByKey[PAGE_KEYS.kept],
     ).length,
-    keptCount: items.filter((item) => item.state === "kept").length,
-    dispatchedCount: items.filter((item) => item.proposal?.state === "completed").length,
+    dispatchedCount: items.filter(
+      (item) =>
+        item.proposal?.state === "completed" && item.proposal.action.type === "send_to_chat",
+    ).length,
     failedSuggestionCount: items.filter((item) => item.suggestionState === "failed").length,
     projectInboxCount: projectItems.length,
+    notesPageId,
+    notesSectionId,
+    savedNotePageId,
+    waitingNotePageId,
     inboxMovedWithChat,
     inboxMovedNoChat,
     inboxTriageTwoChats,
@@ -676,25 +794,19 @@ const inspectInboxTriage = async (
     libraryInboxMovedWithChat,
   };
   if (
-    facts.entryCount !== 16 ||
+    facts.entryCount !== 21 ||
     facts.inboxCount !== 15 ||
-    facts.needsDecisionCount !== 13 ||
+    facts.needsDecisionCount !== 12 ||
     facts.keptCount !== 1 ||
     facts.dispatchedCount !== 1 ||
     facts.failedSuggestionCount !== 1 ||
-    facts.projectInboxCount !== 9 ||
+    facts.projectInboxCount !== 8 ||
     projectItems
       .filter((item) => item.rowKind === "intake")
-      .slice(0, 5)
+      .slice(0, 3)
       .map((item) => item.pageId)
       .join(",") !==
-      [
-        inboxTriageOneIdleChat.pageId,
-        inboxTriageTwoChats.pageId,
-        inboxPlainTriage.pageId,
-        inboxMovedNoChat.pageId,
-        inboxMovedWithChat.pageId,
-      ].join(",")
+      [inboxTriageOneIdleChat.pageId, inboxTriageTwoChats.pageId, inboxPlainTriage.pageId].join(",")
   ) {
     throw new Error(
       `inbox/triage materialized facts do not match revision ${INBOX_TRIAGE_SCENARIO_REVISION}`,

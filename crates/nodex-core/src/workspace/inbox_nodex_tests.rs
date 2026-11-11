@@ -116,7 +116,17 @@ fn delivered(
 #[test]
 fn automatic_inbox_confirmation_enforces_source_intent_basis_and_action_in_the_transaction() {
     for case in [
-        "user", "implicit", "agent", "cli", "mixed", "outdated", "keep", "move", "suggest",
+        "user",
+        "implicit",
+        "agent",
+        "cli",
+        "mixed",
+        "outdated",
+        "keep",
+        "move",
+        "suggest",
+        "deferred",
+        "deferred-before-confirm",
     ] {
         let w = seeded_workspace();
         let m = &w.module;
@@ -161,6 +171,19 @@ fn automatic_inbox_confirmation_enforces_source_intent_basis_and_action_in_the_t
             pages.push("page:user".into());
         }
         grouped_request(m, "request:auto", pages.clone());
+        let defer = || {
+            apply_host(
+                m,
+                "defer",
+                ProjectWorkspaceIntent::SetInboxLater {
+                    page_ids: vec!["page:request".into()],
+                    until: "2099-01-01T00:00:00Z".into(),
+                },
+            )
+        };
+        if case == "deferred" {
+            defer();
+        }
         let pending = requests(m).remove(0);
         let action = match case {
             "keep" => ProjectWorkspaceInboxDispatchAction::Keep,
@@ -196,6 +219,9 @@ fn automatic_inbox_confirmation_enforces_source_intent_basis_and_action_in_the_t
                 error: None,
             },
         );
+        if case == "deferred-before-confirm" {
+            defer();
+        }
         if case == "outdated" {
             let item = entry(m, "page:request");
             apply_host(
@@ -311,6 +337,27 @@ fn automatic_inbox_confirmation_enforces_source_intent_basis_and_action_in_the_t
         } else {
             assert!(result.is_err(), "{case}");
             assert!(outbox(m).is_empty(), "{case}");
+            if case.starts_with("deferred") {
+                w.kernel
+                    .writer()
+                    .call(|c| {
+                        c.execute(
+                            "UPDATE inbox_deferrals SET until_at='2001-01-01T00:00:00.000000000Z'",
+                            [],
+                        )?;
+                        Ok(())
+                    })
+                    .unwrap();
+                assert!(
+                    m.apply(&host(), request("confirm-after-deadline", confirmation))
+                        .is_err()
+                );
+                assert_eq!(
+                    entry(m, "page:request").proposal.unwrap().state,
+                    ProjectWorkspaceInboxProposalState::Open
+                );
+                assert!(outbox(m).is_empty());
+            }
         }
     }
 }

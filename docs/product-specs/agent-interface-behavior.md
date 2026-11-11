@@ -387,7 +387,8 @@ and Project from its verified execution source. A proven Run can send at most fi
 messages. A native source without causal Run evidence keeps its Run null and uses an
 independent five-message budget for that native connection. A retry with the same
 `idempotencyKey` returns the original receipt without another message or quota charge.
-The tool starts no work; Inbox triage and confirmation remain separate workflows.
+The tool gives the Agent's requesting Member a routing decision. It starts no work.
+The Member can defer that episode or clear its deferral from Later.
 The backing Page retains full Profile content access, including for planning, child
 and background Agents. See [Inbox Behavior](./inbox-behavior.md).
 

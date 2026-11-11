@@ -22,6 +22,9 @@ fn decode<T: serde::de::DeserializeOwned>(value: String) -> rusqlite::Result<T> 
 
 struct Facts {
     question_member: Option<String>,
+    intake: Option<TurnReason>,
+    owner_available: bool,
+    delivery_attempt: Option<(String, String)>,
     work: PageWork,
     stage: Option<String>,
     active: bool,
@@ -37,6 +40,27 @@ fn choose(facts: &Facts) -> (TurnActor, Option<TurnReason>) {
     use TurnReason::*;
     if matches!(facts.stage.as_deref(), Some("done" | "canceled")) {
         return (TurnActor::None, None);
+    }
+    if let Some(reason) = facts.intake.filter(|reason| {
+        *reason == Triage
+            || !facts.observation.as_ref().is_some_and(|observation| {
+                observation.pending_requests.iter().any(|request| {
+                    matches!(
+                        request.kind,
+                        SessionExecutionRequestKind::Question
+                            | SessionExecutionRequestKind::Approval
+                    )
+                })
+            })
+    }) {
+        let actor = if facts.owner_available {
+            TurnActor::Member {
+                member_id: facts.work.owner.clone(),
+            }
+        } else {
+            TurnActor::Members
+        };
+        return (actor, Some(reason));
     }
     if let Some(hold) = facts.holds.first() {
         return (
@@ -165,6 +189,31 @@ fn choose(facts: &Facts) -> (TurnActor, Option<TurnReason>) {
 }
 
 fn facts(connection: &Connection, ids: &[&str]) -> Result<BTreeMap<String, Facts>, StoreError> {
+    // Historical migrations also initialize episodes before intake became a Turn input.
+    let has_intake: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='inbox_intake')",
+        [],
+        |r| r.get(0),
+    )?;
+    let intake = if has_intake {
+        connection.prepare("SELECT intake.page_id,intake.triage,intake.recovery,
+            EXISTS(SELECT 1 FROM members member WHERE member.id=json_extract(work.value_json,'$.owner')
+              AND member.lifecycle='active' AND member.library_id=intake.library_id),
+            proposal.proposal_id,proposal.state
+            FROM json_each(?1) selected JOIN inbox_intake intake ON intake.page_id=selected.value
+            JOIN block_properties work ON work.block_id=intake.page_id AND work.property_key='work'
+            JOIN inbox_entries entry ON entry.page_id=intake.page_id
+            LEFT JOIN inbox_proposals proposal ON proposal.proposal_id=entry.current_proposal_id
+            WHERE intake.triage OR intake.recovery")?
+            .query_map([json!(ids).to_string()], |r| {
+                let recovery: bool = r.get(2)?;
+                let attempt = if recovery { Some((r.get(4)?, r.get(5)?)) } else { None };
+                Ok((r.get::<_, String>(0)?, (if recovery { TurnReason::DeliveryRecovery } else { TurnReason::Triage }, r.get::<_, bool>(3)?, attempt)))
+            })?
+            .collect::<rusqlite::Result<BTreeMap<_, _>>>()?
+    } else {
+        BTreeMap::new()
+    };
     let blockers = crate::database::work_graph::summaries(connection, ids)?;
     let mut holds = super::execution_holds::for_pages(connection, ids)?;
     let rows = connection.prepare("SELECT page.block_id,work.value_json,json_extract(status.value_json,'$'),active.session_id,observation.observed_json,report.report_outcome FROM json_each(?1) selected JOIN pages page ON page.block_id=selected.value JOIN blocks block ON block.id=page.block_id JOIN block_properties work ON work.block_id=page.block_id AND work.property_key='work' LEFT JOIN data_source_page_memberships membership ON membership.page_block_id=page.block_id AND membership.data_source_id=page.parent_id AND page.parent_kind='data_source' AND membership.removed_at IS NULL LEFT JOIN data_source_property_values status ON status.data_source_id=membership.data_source_id AND status.membership_id=membership.id AND status.property_id='status' LEFT JOIN page_active_chats active ON active.page_id=page.block_id LEFT JOIN session_execution_observations observation ON observation.session_id=active.session_id LEFT JOIN project_session_pages report ON report.page_id=page.block_id AND report.session_id=active.session_id")?
@@ -192,6 +241,9 @@ fn facts(connection: &Connection, ids: &[&str]) -> Result<BTreeMap<String, Facts
             Ok((
                 id.clone(),
                 Facts {
+                    intake: intake.get(&id).map(|(reason, _, _)| *reason),
+                    owner_available: intake.get(&id).is_some_and(|(_, owner, _)| *owner),
+                    delivery_attempt: intake.get(&id).and_then(|(_, _, attempt)| attempt.clone()),
                     question_member: active
                         .as_ref()
                         .map(|session| {
@@ -217,18 +269,26 @@ fn facts(connection: &Connection, ids: &[&str]) -> Result<BTreeMap<String, Facts
         .collect()
 }
 
-fn signature(actor: &TurnActor, reason: Option<TurnReason>, holds: &[ExecutionHold]) -> String {
+fn signature(actor: &TurnActor, reason: Option<TurnReason>, facts: &Facts) -> String {
     // Page key is presentation metadata, not a new actor; queue position is part of its actor.
     let actor = match actor {
         TurnActor::Page { page_id, .. } => json!({"kind":"page", "page_id":page_id}),
         actor => json!(actor),
     };
     let hold = (reason == Some(TurnReason::Paused)).then(|| {
-        holds
+        facts
+            .holds
             .iter()
             .map(|hold| json!([hold.scope, hold.revision]))
             .collect::<Vec<_>>()
     });
+    if let Some(attempt) = facts
+        .delivery_attempt
+        .as_ref()
+        .filter(|_| reason == Some(TurnReason::DeliveryRecovery))
+    {
+        return json!([actor, reason, hold, attempt]).to_string();
+    }
     json!([actor, reason, hold]).to_string()
 }
 
@@ -281,7 +341,7 @@ pub(crate) fn turns(
             })?;
             let (actor, reason) = choose(facts);
             let persisted = episodes.get(id).cloned();
-            let current_signature = signature(&actor, reason, &facts.holds);
+            let current_signature = signature(&actor, reason, facts);
             let (episode, since) = match persisted {
                 Some((signature, episode, since)) if signature == current_signature => {
                     (episode, since)
@@ -340,7 +400,7 @@ pub(crate) fn initialize(
         let current = facts(connection, &ids)?;
         for (id, facts) in current {
             let (actor, reason) = choose(&facts);
-            let signature = signature(&actor, reason, &facts.holds);
+            let signature = signature(&actor, reason, &facts);
             let episode = crate::domain::identity::stable_uuid_v7("page-turn", identity, &id);
             connection.execute("INSERT INTO page_turn_episodes(page_id,signature,episode,since) VALUES(?1,?2,?3,?4) ON CONFLICT(page_id) DO UPDATE SET signature=excluded.signature,episode=excluded.episode,since=excluded.since WHERE page_turn_episodes.signature<>excluded.signature",params![id,signature,episode,now])?;
         }
@@ -373,6 +433,14 @@ pub(crate) fn reconcile(connection: &Connection, commit: &CommitContext) -> Resu
     if ids.is_empty() {
         return Ok(());
     }
+    connection.execute(
+        "DELETE FROM inbox_deferrals AS deferral
+        WHERE deferral.page_id IN (SELECT value FROM json_each(?1))
+          AND NOT EXISTS(SELECT 1 FROM inbox_member_rows row
+              WHERE row.page_id=deferral.page_id AND row.member_id=deferral.member_id
+                AND row.episode=deferral.episode AND row.in_inbox=1)",
+        [json!(ids).to_string()],
+    )?;
     let impacts=connection.prepare("SELECT projection_impact_json FROM local_commit_effects WHERE store_epoch=?1 AND commit_seq=?2")?.query_map(params![commit.store_epoch(),commit.commit_seq()],|r|decode::<ProjectionImpact>(r.get(0)?))?.collect::<rusqlite::Result<Vec<_>>>()?;
     if impacts
         .iter()
@@ -446,6 +514,9 @@ mod tests {
     use super::*;
     fn base() -> Facts {
         Facts {
+            intake: None,
+            owner_available: true,
+            delivery_attempt: None,
             question_member: None,
             work: PageWork {
                 owner: "owner".into(),

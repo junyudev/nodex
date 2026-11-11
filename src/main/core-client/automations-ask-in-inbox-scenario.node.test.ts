@@ -87,7 +87,7 @@ describe("automations/ask-in-inbox scenario", () => {
           (item) => item.pageId === manifest.pageIdsByKey.releaseNotesDraft,
         );
         expect(failed).toMatchObject({
-          state: "open",
+          waiting: true,
           automationDecision: { status: "failed" },
           proposal: { origin: "automation", state: "failed", action: { type: "execute_decision" } },
         });
@@ -115,7 +115,8 @@ describe("automations/ask-in-inbox scenario", () => {
           },
           {
             pageId: manifest.pageIdsByKey.updateChangelog,
-            state: "done",
+            waiting: false,
+            pageStatus: { id: "done" },
             automationDecision: { status: "skipped" },
           },
         ]);

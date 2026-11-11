@@ -8,7 +8,7 @@ use nodex_core_contracts::{
         AutomationMode, AutomationRead, AutomationReadValue, AutomationScope, AutomationStatus,
     },
     collection::{CollectionWindow, CollectionWindowRequest},
-    inbox::{ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxScope},
+    inbox::ProjectWorkspaceInboxScope,
     sources::{ActivityFilter, ActivityRow, ActivitySubject},
     workspace::{ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue},
 };
@@ -563,9 +563,8 @@ fn skipped_and_withdrawn_decisions_override_the_mode_and_keep_the_automation_lin
     apply(
         &w.module,
         "skip",
-        ProjectWorkspaceIntent::SetInboxEntryState {
+        ProjectWorkspaceIntent::MarkInboxMessagesDone {
             page_ids: vec!["page:ask".into()],
-            state: ProjectWorkspaceInboxEntryState::Done,
         },
     );
     let skipped = decisions(&w);
@@ -582,9 +581,8 @@ fn skipped_and_withdrawn_decisions_override_the_mode_and_keep_the_automation_lin
     apply(
         &w.module,
         "reopen",
-        ProjectWorkspaceIntent::SetInboxEntryState {
+        ProjectWorkspaceIntent::ReturnInboxMessages {
             page_ids: vec!["page:ask".into()],
-            state: ProjectWorkspaceInboxEntryState::Open,
         },
     );
     automation(

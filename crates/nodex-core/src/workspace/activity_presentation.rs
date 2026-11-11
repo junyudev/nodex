@@ -115,7 +115,8 @@ fn handled_message(
             },
         },
         "filed" => format!("Filed {subject} in {project}"),
-        "kept" => format!("Kept {subject}"),
+        "kept" if text(action, "type") == "save_to_notes" => format!("Saved {subject} to Notes"),
+        "kept" => format!("Added {subject} to Todo"),
         "done" if text(action, "type") == "plan" => {
             let cards = action["steps"].as_u64().unwrap_or_default();
             format!(
@@ -458,8 +459,16 @@ mod tests {
                 json!({"type":"move_to_project","project_id":"project"}),
                 "Filed “Fix navigation” in Nodex",
             ),
-            ("kept", json!({"type":"keep"}), "Kept “Fix navigation”"),
-            ("kept", json!({"type":null}), "Kept “Fix navigation”"),
+            (
+                "kept",
+                json!({"type":"keep"}),
+                "Added “Fix navigation” to Todo",
+            ),
+            (
+                "kept",
+                json!({"type":null}),
+                "Added “Fix navigation” to Todo",
+            ),
             (
                 "done",
                 json!({"type":"plan","steps":3}),

@@ -72,8 +72,12 @@ export const inboxDispatchActionFromCore = (
         decisionId: action.decision_id,
         agent: action.agent ? inboxChatAgentFromCore(action.agent) : null,
       };
+    case "later":
+      return { type: "later", remindAt: action.remind_at };
     case "keep":
       return { type: "keep" };
+    case "save_to_notes":
+      return { type: "save_to_notes", parentPageId: action.parent_page_id ?? null };
     case "new_chat":
       return {
         type: "new_chat",
@@ -112,6 +116,8 @@ const chatAgentToCore = (agent: InboxAgentChoice): CoreInboxChatAgent => ({
 
 export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInboxDispatchAction => {
   switch (action.type) {
+    case "later":
+      return { type: "later", remind_at: action.remindAt };
     case "plan":
       return {
         type: "plan",
@@ -139,6 +145,8 @@ export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInbo
       };
     case "keep":
       return { type: "keep" };
+    case "save_to_notes":
+      return { type: "save_to_notes", parent_page_id: action.parentPageId };
     case "new_chat":
       return {
         type: "new_chat",
@@ -313,6 +321,12 @@ function projectAutomationInboxSummary(text: string): string {
 
 export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
   handback: item.handback ?? null,
+  later: item.later
+    ? {
+        setAt: item.later.set_at,
+        until: item.later.until,
+      }
+    : null,
   rowKind: item.row_kind,
   problem: item.problem ?? null,
   turn: item.turn ?? null,
@@ -328,8 +342,7 @@ export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
   replyToPageId: item.reply_to_page_id ?? null,
   kind: item.kind ?? null,
   important: item.important,
-  state: item.state,
-  outcome: item.outcome ?? null,
+  waiting: item.waiting,
   suggestionState: item.suggestion_state,
   suggestionError: item.suggestion_error ?? null,
   scope: inboxScopeFromCore(item.scope),
@@ -370,9 +383,11 @@ export const inboxSummaryFromCore = (
 ): InboxSummary => ({
   storeEpoch,
   databaseId: summary.database_id ?? null,
+  notesPageId: summary.notes_page_id ?? null,
   viewId: summary.view_id ?? null,
   entryCount: summary.entry_count,
   inboxCount: summary.inbox_count,
+  laterCount: summary.later_count,
   needsDecisionCount: summary.needs_decision_count,
   pendingSuggestionCount: summary.pending_suggestion_count,
   dispatchingCount: summary.dispatching_count,

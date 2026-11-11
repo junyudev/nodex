@@ -1398,6 +1398,8 @@ fn settle_lease(
     {
         super::firing::settle(
             connection,
+            context,
+            operation_id,
             &lease.dispatch_id,
             failed,
             retry_at_ms,

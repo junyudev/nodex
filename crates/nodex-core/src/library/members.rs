@@ -180,7 +180,10 @@ pub(crate) fn initialize_automation_owner(
     now: &str,
 ) -> Result<(), StoreError> {
     require_member(connection, library, owner)?;
-    connection.execute("UPDATE block_properties SET value_json=json_set(value_json,'$.owner',?2),revision=revision+1,updated_at=?3 WHERE block_id=?1 AND property_key='work'",params![page,owner,now])?;
+    let changed = connection.execute("UPDATE block_properties SET value_json=json_set(value_json,'$.owner',?2),revision=revision+1,updated_at=?3 WHERE block_id=?1 AND property_key='work' AND json_extract(value_json,'$.owner') IS NOT ?2",params![page,owner,now])?;
+    if changed == 0 {
+        return Ok(());
+    }
     super::mutation::refresh_page_intrinsic_projection(connection, page, now)
 }
 

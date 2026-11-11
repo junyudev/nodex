@@ -125,6 +125,9 @@ pub(super) fn push_audience(
             )
             .optional()?);
     }
+    if let PhonePushAudience::InboxLaterOwner { id } = audience {
+        return super::inbox::later::push_owner(connection, library, id);
+    }
     let Some(session) = session else {
         return Ok(None);
     };
@@ -136,7 +139,7 @@ pub(super) fn push_audience(
             super::session_mutation::validate_id("member_id", member_id)?;
             None
         }
-        PhonePushAudience::TurnOwner { .. } => None,
+        PhonePushAudience::TurnOwner { .. } | PhonePushAudience::InboxLaterOwner { .. } => None,
     };
     if let Some(run) = run {
         super::session_mutation::validate_id("run_id", run)?;
@@ -164,6 +167,6 @@ pub(super) fn push_audience(
                 |r| r.get(0),
             )
             .optional()?),
-        PhonePushAudience::TurnOwner { .. } => Ok(None),
+        PhonePushAudience::TurnOwner { .. } | PhonePushAudience::InboxLaterOwner { .. } => Ok(None),
     }
 }

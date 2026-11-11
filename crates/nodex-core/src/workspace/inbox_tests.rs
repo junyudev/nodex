@@ -5,9 +5,8 @@ use nodex_core_contracts::database::{
     DatabasePropertyValueInput, DatabasePropertyValueMutation,
 };
 use nodex_core_contracts::inbox::{
-    ProjectWorkspaceInboxDispatchAction, ProjectWorkspaceInboxEntryKind,
-    ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxItem, ProjectWorkspaceInboxLocation,
-    ProjectWorkspaceInboxMessageEdit, ProjectWorkspaceInboxOutcome,
+    ProjectWorkspaceInboxDispatchAction, ProjectWorkspaceInboxEntryKind, ProjectWorkspaceInboxItem,
+    ProjectWorkspaceInboxLocation, ProjectWorkspaceInboxMessageEdit,
     ProjectWorkspaceInboxProjectCount, ProjectWorkspaceInboxProposalOrigin,
     ProjectWorkspaceInboxProposalState, ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSource,
     ProjectWorkspaceInboxSuggestionInput, ProjectWorkspaceInboxSuggestionState,
@@ -259,7 +258,7 @@ fn sending_creates_one_hidden_inbox_and_streams_messages_newest_first() {
     assert_eq!(newest.title, "Fix the sidebar flicker");
     assert_eq!(newest.source, ProjectWorkspaceInboxSource::User);
     assert_eq!(newest.location, ProjectWorkspaceInboxLocation::Inbox);
-    assert_eq!(newest.state, ProjectWorkspaceInboxEntryState::Open);
+    assert!(newest.waiting);
     assert_eq!(
         newest.suggestion_state,
         ProjectWorkspaceInboxSuggestionState::Waiting
@@ -403,7 +402,7 @@ fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
     assert_eq!(dispatches[0].session_id, "session:dispatched");
     assert_eq!(dispatches[0].project_id.as_deref(), Some("project:default"));
     assert_eq!(dispatches[0].page_ids, vec!["page:idea"]);
-    assert_eq!(summary(module).dispatching_count, 1);
+    assert_eq!(summary_in(module, project_scope()).dispatching_count, 1);
     // A confirmed dispatch is handled: it leaves the Inbox while it is delivered.
     assert!(window(module, ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
     assert_eq!(summary(module).inbox_count, 0);
@@ -419,7 +418,12 @@ fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
             dispatched_thread_id: Some("thread:dispatched".into()),
         },
     );
-    let item = window(module, ProjectWorkspaceInboxWindowFilter::Processed).remove(0);
+    let item = window_in(
+        module,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Processed,
+    )
+    .remove(0);
     let proposal = item.proposal.expect("completed suggestion");
     assert_eq!(
         proposal.state,
@@ -429,7 +433,7 @@ fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
         proposal.chat.as_ref().map(|chat| chat.session_id.as_str()),
         Some("session:dispatched")
     );
-    assert_eq!(summary(module).dispatching_count, 0);
+    assert_eq!(summary_in(module, project_scope()).dispatching_count, 0);
 }
 
 #[test]
@@ -758,7 +762,7 @@ fn edited_messages_invalidate_unedited_suggestions() {
 }
 
 #[test]
-fn keep_dismisses_suggestions_and_states_filter_the_stream() {
+fn add_to_todo_supersedes_advice_and_undo_restores_it() {
     let workspace = seeded_workspace();
     let module = &workspace.module;
     send(module, "note", "The Linear changelog layout is nice");
@@ -775,35 +779,40 @@ fn keep_dismisses_suggestions_and_states_filter_the_stream() {
             agent: None,
         },
     );
-    apply_host(
-        module,
-        "keep:note",
-        ProjectWorkspaceIntent::KeepInboxEntries {
-            page_ids: vec!["page:note".into()],
-        },
-    );
+    let kept_decision = module
+        .apply(
+            &host(),
+            request(
+                "keep:note",
+                ProjectWorkspaceIntent::KeepInboxEntries {
+                    page_ids: vec!["page:note".into()],
+                },
+            ),
+        )
+        .unwrap();
     assert!(window(module, ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
     let kept = window(module, ProjectWorkspaceInboxWindowFilter::Processed);
     assert_eq!(kept.len(), 1);
-    assert_eq!(kept[0].state, ProjectWorkspaceInboxEntryState::Kept);
+    assert!(!kept[0].waiting);
     assert_eq!(
-        kept[0].proposal.as_ref().map(|proposal| proposal.state),
-        Some(ProjectWorkspaceInboxProposalState::Dismissed)
+        count(
+            &workspace,
+            "SELECT count(*) FROM inbox_proposals WHERE proposal_id='proposal:note' AND state='superseded'"
+        ),
+        1
     );
     assert_eq!(summary(module).needs_decision_count, 0);
     apply_host(
         module,
-        "done:note",
-        ProjectWorkspaceIntent::SetInboxEntryState {
-            page_ids: vec!["page:note".into()],
-            state: ProjectWorkspaceInboxEntryState::Done,
+        "undo:keep-note",
+        ProjectWorkspaceIntent::UndoInboxDecision {
+            undo_token: kept_decision.committed.value.inbox_undo_token.unwrap(),
         },
     );
     assert_eq!(
-        window(module, ProjectWorkspaceInboxWindowFilter::Processed)[0].state,
-        ProjectWorkspaceInboxEntryState::Done
+        item(module, "page:note").proposal.unwrap().state,
+        ProjectWorkspaceInboxProposalState::Open
     );
-
     apply_host(
         module,
         "resuggest:note",
@@ -826,7 +835,7 @@ fn keep_dismisses_suggestions_and_states_filter_the_stream() {
             message: "Model unavailable".into(),
         },
     );
-    // Asking again reopens it, so it is back in the Inbox even though its suggestion failed.
+    // Undo returned the Page to Triage, so a fresh suggestion can fail in place.
     let item = window(module, ProjectWorkspaceInboxWindowFilter::Inbox).remove(0);
     assert_eq!(
         item.suggestion_state,
@@ -900,14 +909,13 @@ fn important_messages_stay_findable_while_they_wait_in_their_own_inbox() {
     apply_host(
         module,
         "return:plan",
-        ProjectWorkspaceIntent::SetInboxEntryState {
+        ProjectWorkspaceIntent::ReturnInboxMessages {
             page_ids: vec!["page:plan".into()],
-            state: ProjectWorkspaceInboxEntryState::Open,
         },
     );
     assert_eq!(
         important_ids(&summary(module)),
-        ["page:plan", "page:pricing"]
+        ["page:pricing", "page:plan"]
     );
 
     set_important(module, "pricing", false);
@@ -956,7 +964,12 @@ fn user_dispatch_to_a_started_chat_carries_its_thread() {
         panic!("outbox");
     };
     assert_eq!(dispatches[0].thread_id.as_deref(), Some("thread:target"));
-    let item = window(module, ProjectWorkspaceInboxWindowFilter::Processed).remove(0);
+    let item = window_in(
+        module,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Processed,
+    )
+    .remove(0);
     let proposal = item.proposal.expect("manual dispatch");
     assert_eq!(proposal.origin, ProjectWorkspaceInboxProposalOrigin::User);
     assert_eq!(
@@ -987,7 +1000,7 @@ fn user_dispatch_to_a_started_chat_carries_its_thread() {
             proposal_id: "proposal:manual".into(),
         },
     );
-    assert_eq!(summary(module).dispatching_count, 1);
+    assert_eq!(summary_in(module, project_scope()).dispatching_count, 1);
 }
 
 #[test]
@@ -1019,11 +1032,13 @@ fn confirming_a_move_owns_the_library_relocation() {
             session_id: None,
         },
     );
-    let item = window(module, ProjectWorkspaceInboxWindowFilter::Processed).remove(0);
-    assert_eq!(
-        item.outcome,
-        Some(nodex_core_contracts::inbox::ProjectWorkspaceInboxOutcome::Moved)
-    );
+    let item = window_in(
+        module,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Processed,
+    )
+    .remove(0);
+    assert_eq!(item.page_status.unwrap().id, "plan");
 }
 
 #[test]
@@ -1210,18 +1225,12 @@ fn command_line_sends_are_labeled_with_their_project() {
         panic!("summary")
     };
     assert_eq!(summary.entry_count, 1);
-    module
-        .apply(
-            &command_line(true),
-            request(
-                "cli:keep",
-                ProjectWorkspaceIntent::SetInboxEntryState {
-                    page_ids: vec!["page:project".into()],
-                    state: ProjectWorkspaceInboxEntryState::Kept,
-                },
-            ),
-        )
-        .expect("selected Project does not fence triage");
+    set_status_in_context(
+        &workspace,
+        &command_line(true),
+        "page:project",
+        Some("plan"),
+    );
     assert_eq!(
         window_in(
             module,
@@ -1511,7 +1520,7 @@ fn deleting_keeps_handled_neighbours_handled_and_refuses_filed_pages() {
     let processed = window(module, ProjectWorkspaceInboxWindowFilter::Processed);
     assert_eq!(processed.len(), 1);
     assert_eq!(processed[0].page_id, "page:b");
-    assert_eq!(processed[0].state, ProjectWorkspaceInboxEntryState::Done);
+    assert!(!processed[0].waiting);
     assert!(window(module, ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
     assert_eq!(
         apply_host_error(
@@ -1776,12 +1785,16 @@ fn runtime_bound_chats_remain_suggestion_and_dispatch_targets() {
         dispatches[0].thread_id.as_deref(),
         Some("thread:runtime-root")
     );
-    let chat = window(module, ProjectWorkspaceInboxWindowFilter::Processed)
-        .remove(0)
-        .proposal
-        .unwrap()
-        .chat
-        .unwrap();
+    let chat = window_in(
+        module,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Processed,
+    )
+    .remove(0)
+    .proposal
+    .unwrap()
+    .chat
+    .unwrap();
     assert_eq!(chat.thread_id.as_deref(), Some("thread:runtime-root"));
     // Its live status comes from the Runtime execution the chat names, not from Core.
     assert_eq!(chat.status, None);
@@ -1944,7 +1957,7 @@ fn only_the_desktop_app_chooses_a_project_inbox() {
 }
 
 #[test]
-fn filing_into_a_project_keeps_the_message_handled_in_its_own_inbox() {
+fn filing_moves_the_handled_message_into_the_destination_inbox() {
     let workspace = seeded_workspace();
     let module = &workspace.module;
     send(module, "task", "Document the capture shortcut");
@@ -1973,10 +1986,14 @@ fn filing_into_a_project_keeps_the_message_handled_in_its_own_inbox() {
         },
     );
     assert!(window(module, ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
-    let history = window(module, ProjectWorkspaceInboxWindowFilter::Processed);
+    let history = window_in(
+        module,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Processed,
+    );
     assert_eq!(history.len(), 1);
-    assert_eq!(history[0].state, ProjectWorkspaceInboxEntryState::Kept);
-    assert_eq!(history[0].scope, ProjectWorkspaceInboxScope::Library);
+    assert!(!history[0].waiting);
+    assert_eq!(history[0].scope, project_scope());
     let ProjectWorkspaceInboxLocation::Database { project_id, .. } = &history[0].location else {
         panic!("Filed location: {:?}", history[0].location);
     };
@@ -1993,18 +2010,22 @@ fn filing_into_a_project_keeps_the_message_handled_in_its_own_inbox() {
         .is_empty()
     );
 
-    // Undoing the move returns the message to the Inbox that received it.
+    // Return to Inbox restores Triage in the Page’s current Project.
     apply_host(
         module,
         "reopen:file",
-        ProjectWorkspaceIntent::SetInboxEntryState {
+        ProjectWorkspaceIntent::ReturnInboxMessages {
             page_ids: vec!["page:task".into()],
-            state: ProjectWorkspaceInboxEntryState::Open,
         },
     );
-    let reopened = window(module, ProjectWorkspaceInboxWindowFilter::Inbox).remove(0);
+    let reopened = window_in(
+        module,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Inbox,
+    )
+    .remove(0);
     assert_eq!(reopened.page_id, "page:task");
-    assert_eq!(reopened.outcome, None);
+    assert!(reopened.proposal.is_none());
     assert_eq!(
         status_of(&workspace, "page:task").as_deref(),
         Some("triage")
@@ -2029,9 +2050,13 @@ fn filing_by_hand_moves_and_records_the_pages_atomically() {
     };
     apply_host(module, "file:by-hand", file());
     assert!(window(module, ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
-    assert_eq!(
-        window(module, ProjectWorkspaceInboxWindowFilter::Processed)[0].state,
-        ProjectWorkspaceInboxEntryState::Kept
+    assert!(
+        !window_in(
+            module,
+            project_scope(),
+            ProjectWorkspaceInboxWindowFilter::Processed
+        )[0]
+        .waiting
     );
 }
 
@@ -2079,13 +2104,18 @@ fn activity_keeps_one_fact_per_decision_about_a_message() {
     use nodex_core_contracts::sources::{ActivityFilter, ActivitySubject};
     let workspace = seeded_workspace();
     let module = &workspace.module;
-    let set_state = |id: &str, page: &str, state| {
+    let set_state = |id: &str, page: &str, returning: bool| {
         apply_host(
             module,
             id,
-            ProjectWorkspaceIntent::SetInboxEntryState {
-                page_ids: vec![page.into()],
-                state,
+            if returning {
+                ProjectWorkspaceIntent::ReturnInboxMessages {
+                    page_ids: vec![page.into()],
+                }
+            } else {
+                ProjectWorkspaceIntent::MarkInboxMessagesDone {
+                    page_ids: vec![page.into()],
+                }
             },
         )
     };
@@ -2121,16 +2151,7 @@ fn activity_keeps_one_fact_per_decision_about_a_message() {
         ProjectWorkspaceInboxDispatchAction::Keep,
     );
     confirm_proposal(module, "proposal:note", None);
-    set_state(
-        "done:note",
-        "page:note",
-        ProjectWorkspaceInboxEntryState::Done,
-    );
-    set_state(
-        "open:note",
-        "page:note",
-        ProjectWorkspaceInboxEntryState::Open,
-    );
+    set_state("open:note", "page:note", true);
     send(module, "kept", "Remember the onboarding survey");
     apply_host(
         module,
@@ -2139,11 +2160,7 @@ fn activity_keeps_one_fact_per_decision_about_a_message() {
             page_ids: vec!["page:kept".into()],
         },
     );
-    set_state(
-        "done:chat",
-        "page:chat",
-        ProjectWorkspaceInboxEntryState::Done,
-    );
+    set_status_by_hand(&workspace, "page:chat", "done");
 
     let all = activity_in(module, ProjectWorkspaceInboxScope::All, ActivityFilter::All);
     let messages = activity_in(
@@ -2158,11 +2175,9 @@ fn activity_keeps_one_fact_per_decision_about_a_message() {
             .map(|row| row.description.as_str())
             .collect::<Vec<_>>(),
         vec![
-            "Marked “Fix the readme typo” done",
-            "Kept “Remember the onboarding survey”",
+            "Added “Remember the onboarding survey” to Todo",
             "Returned “The changelog layout is nice” to the Inbox",
-            "Marked “The changelog layout is nice” done",
-            "Kept “The changelog layout is nice”",
+            "Added “The changelog layout is nice” to Todo",
             "Filed “Document the capture shortcut” in Nodex",
             "Sent “Fix the readme typo” to a new chat",
         ]
@@ -2184,10 +2199,7 @@ fn activity_keeps_one_fact_per_decision_about_a_message() {
         let item = row.message.as_ref().expect("Handled message");
         assert_eq!(Some(item.page_id.as_str()), row.page_id.as_deref());
     }
-    assert_eq!(
-        sent.message.as_ref().unwrap().state,
-        ProjectWorkspaceInboxEntryState::Done
-    );
+    assert!(!sent.message.as_ref().unwrap().waiting);
     assert!(
         activity_in(
             module,
@@ -2197,10 +2209,7 @@ fn activity_keeps_one_fact_per_decision_about_a_message() {
         .is_empty(),
         "The person's own decisions are not Nodex's"
     );
-    assert!(
-        activity_in(module, project_scope(), ActivityFilter::Messages).is_empty(),
-        "Messages belong to the Inbox that received them"
-    );
+    assert!(!activity_in(module, project_scope(), ActivityFilter::Messages).is_empty());
 
     // Deleting a message erases its facts with it.
     apply_host(
@@ -3127,10 +3136,7 @@ fn replacing_a_failed_group_member_retires_its_delivery_and_reopens_the_rest() {
                 ),
                 0
             );
-            assert_eq!(
-                window(module, ProjectWorkspaceInboxWindowFilter::Processed)[0].state,
-                ProjectWorkspaceInboxEntryState::Kept
-            );
+            assert!(!window(module, ProjectWorkspaceInboxWindowFilter::Processed)[0].waiting);
         } else {
             // A new request keeps the previous failed proposal visible until it settles.
             grouped_request(module, "request:a", vec!["page:a".into()]);
@@ -3158,7 +3164,7 @@ fn replacing_a_failed_group_member_retires_its_delivery_and_reopens_the_rest() {
             continue;
         }
         assert!(remaining.proposal.is_none());
-        assert_eq!(remaining.state, ProjectWorkspaceInboxEntryState::Open);
+        assert!(remaining.waiting);
         assert_eq!(
             remaining.suggestion_state,
             ProjectWorkspaceInboxSuggestionState::None
@@ -3387,6 +3393,20 @@ fn grouped_move_and_undo_share_one_decision_and_refuse_partial_undo() {
     send(module, "a", "First");
     send(module, "b", "Second");
     let pages = vec!["page:a".into(), "page:b".into()];
+    apply_host(
+        module,
+        "suggest:before-filing",
+        ProjectWorkspaceIntent::ProposeInboxDispatch {
+            proposal_id: "proposal:before-filing".into(),
+            page_ids: pages.clone(),
+            basis: pages_basis(module, pages.clone()),
+            action: ProjectWorkspaceInboxDispatchAction::Keep,
+            entry_kind: None,
+            summary: "Add both messages to Todo".into(),
+            rationale: None,
+            produced_by: None,
+        },
+    );
     let move_intent = |proposal: &str| ProjectWorkspaceIntent::DispatchInboxEntries {
         expected_store_epoch: "epoch-1".into(),
         basis: pages_basis(module, pages.clone()),
@@ -3409,7 +3429,11 @@ fn grouped_move_and_undo_share_one_decision_and_refuse_partial_undo() {
         .value
         .inbox_undo_token
         .expect("one composite undo");
-    let history = window(module, ProjectWorkspaceInboxWindowFilter::Processed);
+    let history = window_in(
+        module,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Processed,
+    );
     assert_eq!(history.len(), 2);
     assert!(
         history
@@ -3460,7 +3484,7 @@ fn grouped_move_and_undo_share_one_decision_and_refuse_partial_undo() {
             ProjectWorkspaceInboxSuggestionState::Settled
         );
         let restored = entry.proposal.unwrap();
-        assert_eq!(restored.proposal_id, "proposal:move-group");
+        assert_eq!(restored.proposal_id, "proposal:before-filing");
         assert_eq!(restored.state, ProjectWorkspaceInboxProposalState::Open);
     }
     assert_eq!(
@@ -3481,14 +3505,7 @@ fn grouped_move_and_undo_share_one_decision_and_refuse_partial_undo() {
             request("move:again", move_intent("proposal:move-again")),
         )
         .expect("move again");
-    apply_host(
-        module,
-        "done:b",
-        ProjectWorkspaceIntent::SetInboxEntryState {
-            page_ids: vec!["page:b".into()],
-            state: ProjectWorkspaceInboxEntryState::Done,
-        },
-    );
+    set_status_by_hand(&workspace, "page:b", "done");
     assert_eq!(
         apply_host_error(
             module,
@@ -3500,7 +3517,12 @@ fn grouped_move_and_undo_share_one_decision_and_refuse_partial_undo() {
         CoreErrorCode::Conflict
     );
     assert_eq!(
-        window(module, ProjectWorkspaceInboxWindowFilter::Processed).len(),
+        window_in(
+            module,
+            project_scope(),
+            ProjectWorkspaceInboxWindowFilter::Processed
+        )
+        .len(),
         2
     );
 }
@@ -3633,114 +3655,6 @@ fn remote_unknown_is_not_replayed_and_new_decisions_have_new_delivery_identity()
     );
     assert_ne!(outbox(module)[0].message_id, first.message_id);
 }
-#[test]
-fn migrating_a_pending_abstention_refinement_releases_the_suggestion_lane() {
-    use nodex_core_contracts::inbox::*;
-    let workspace = seeded_workspace();
-    let module = &workspace.module;
-    send(module, "a", "First thought");
-    let entry = pending(module).remove(0);
-    propose(
-        module,
-        "proposal:old",
-        &entry,
-        ProjectWorkspaceInboxDispatchAction::Keep,
-    );
-    apply_host(
-        module,
-        "refine:old",
-        ProjectWorkspaceIntent::RequestInboxSuggestion {
-            request_id: "request:old".into(),
-            mode: ProjectWorkspaceInboxSuggestionMode::Refine,
-            page_ids: vec!["page:a".into()],
-            basis: vec![entry.basis],
-            proposal_id: Some("proposal:old".into()),
-            expected_revision: Some(1),
-            correction: Some("Please give this a concrete next action".into()),
-        },
-    );
-    assert_eq!(
-        requests(module)[0].proposal_id.as_deref(),
-        Some("proposal:old")
-    );
-    // Preserve the public-operation membership, then install only the retired stored action.
-    workspace.kernel.writer().call(|connection| {
-        crate::infrastructure::sqlite::with_immediate_transaction(connection, |transaction| {
-            transaction.execute(
-                "UPDATE inbox_proposals SET action_json='{\"type\":\"none\",\"reason\":\"Decide manually\"}' WHERE proposal_id='proposal:old'",
-                [],
-            )?;
-            transaction.execute_batch(include_str!("../../schema/migrations/v184_to_v185.sql"))?;
-            transaction.execute("UPDATE inbox_entries SET suggestion_state='waiting' WHERE suggestion_state='pending' AND suggestion_request_id IS NULL",[])?;
-            Ok(())
-        })
-    }).expect("migrate pending historical refinement");
-    assert!(requests(module).is_empty());
-    let item = window(module, ProjectWorkspaceInboxWindowFilter::Inbox).remove(0);
-    assert!(item.proposal.is_none());
-    assert_eq!(
-        item.suggestion_state,
-        ProjectWorkspaceInboxSuggestionState::Waiting
-    );
-    apply_host(
-        module,
-        "prepare:concrete",
-        ProjectWorkspaceIntent::PrepareInboxSuggestions {
-            automatic: true,
-            request_id: "request:concrete".into(),
-            limit: 8,
-        },
-    );
-    let fresh = requests(module).remove(0);
-    assert_eq!(fresh.request_id, "request:concrete");
-    assert_eq!(
-        apply_host_error(
-            module,
-            "settle:old",
-            ProjectWorkspaceIntent::SettleInboxSuggestion {
-                automatic_dispatch: false,
-                request_id: "request:old".into(),
-                generation: 1,
-                titles: vec![],
-                suggestions: vec![],
-                produced_by: None,
-                error: Some("Old refinement failed".into()),
-            },
-        ),
-        CoreErrorCode::Conflict
-    );
-    apply_host(
-        module,
-        "settle:concrete",
-        ProjectWorkspaceIntent::SettleInboxSuggestion {
-            automatic_dispatch: false,
-            request_id: fresh.request_id,
-            generation: fresh.generation,
-            titles: vec![],
-            suggestions: vec![ProjectWorkspaceInboxSuggestedDispatch {
-                explicit_request: false,
-                proposal_id: "proposal:concrete".into(),
-                page_ids: fresh.page_ids,
-                action: ProjectWorkspaceInboxDispatchAction::Keep,
-                entry_kind: None,
-                summary: "Keep this note".into(),
-                rationale: None,
-            }],
-            produced_by: None,
-            error: None,
-        },
-    );
-    assert!(requests(module).is_empty());
-    assert_eq!(
-        window(module, ProjectWorkspaceInboxWindowFilter::Inbox)[0]
-            .proposal
-            .as_ref()
-            .unwrap()
-            .action,
-        ProjectWorkspaceInboxDispatchAction::Keep
-    );
-}
-
 #[test]
 fn successful_suggestion_settlement_requires_a_concrete_action_for_every_member() {
     use nodex_core_contracts::inbox::*;
@@ -4895,6 +4809,15 @@ fn set_status_option_by_hand(
     page_id: &str,
     option_id: Option<&str>,
 ) -> crate::database::DatabaseApplyOutcome {
+    set_status_in_context(workspace, &host(), page_id, option_id)
+}
+
+fn set_status_in_context(
+    workspace: &TestWorkspace,
+    context: &BoundModuleContext,
+    page_id: &str,
+    option_id: Option<&str>,
+) -> crate::database::DatabaseApplyOutcome {
     let revision = {
         let page_id = page_id.to_owned();
         workspace
@@ -4915,10 +4838,13 @@ fn set_status_option_by_hand(
     };
     crate::database::DatabaseModule::new("profile-1", "library-1", &workspace.kernel)
         .apply(
-            &context(),
+            context,
             ModuleApplyRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
-                operation_id: format!("status-{page_id}-{}", option_id.unwrap_or("empty")),
+                operation_id: format!(
+                    "status-{page_id}-{revision}-{}",
+                    option_id.unwrap_or("empty")
+                ),
                 store_epoch: StoreEpoch("epoch-1".to_owned()),
                 intent: vec![DatabaseIntent::EditPropertyValues {
                     edits: vec![DatabasePropertyValueMutation {
@@ -4957,38 +4883,6 @@ fn assert_inbox_invalidated(workspace: &TestWorkspace, commit_seq: i64) {
         )),
         "Inbox must refresh after a message Page's Status changes"
     );
-}
-
-#[test]
-fn inbox_messages_project_the_current_page_status_in_library_and_project_scopes() {
-    let workspace = seeded_workspace();
-    let module = &workspace.module;
-    for (id, project_id, scope) in [
-        ("library-status", None, ProjectWorkspaceInboxScope::Library),
-        ("project-status", Some(PROJECT), project_scope()),
-    ] {
-        send_to(module, id, "A message waiting for a decision", project_id);
-        let read_status = || {
-            window_in(
-                module,
-                scope.clone(),
-                ProjectWorkspaceInboxWindowFilter::Inbox,
-            )
-            .into_iter()
-            .find(|item| item.page_id == format!("page:{id}"))
-            .expect("waiting message")
-            .page_status
-            .map(|status| (status.id, status.label))
-        };
-        assert_eq!(read_status(), Some(("triage".into(), "Triage".into())));
-
-        let changed = set_status_by_hand(&workspace, &format!("page:{id}"), "doing");
-        assert_eq!(read_status(), Some(("doing".into(), "In Progress".into())));
-        assert_inbox_invalidated(&workspace, changed.committed.commit_seq);
-
-        set_status_option_by_hand(&workspace, &format!("page:{id}"), None);
-        assert_eq!(read_status(), None);
-    }
 }
 
 #[test]
@@ -5036,22 +4930,6 @@ fn inbox_page_status_uses_the_current_option_name_and_refreshes_on_rename() {
     assert_inbox_invalidated(&workspace, renamed.committed.commit_seq);
 }
 
-fn set_state(
-    module: &ProjectWorkspaceModule,
-    id: &str,
-    page_id: &str,
-    state: ProjectWorkspaceInboxEntryState,
-) {
-    apply_host(
-        module,
-        id,
-        ProjectWorkspaceIntent::SetInboxEntryState {
-            page_ids: vec![page_id.into()],
-            state,
-        },
-    );
-}
-
 fn keep(module: &ProjectWorkspaceModule, page_id: &str) {
     apply_host(
         module,
@@ -5062,186 +4940,107 @@ fn keep(module: &ProjectWorkspaceModule, page_id: &str) {
     );
 }
 
-fn handled_outcome(
-    module: &ProjectWorkspaceModule,
-    page_id: &str,
-) -> Option<ProjectWorkspaceInboxOutcome> {
-    window_in(
-        module,
-        project_scope(),
-        ProjectWorkspaceInboxWindowFilter::Processed,
-    )
-    .into_iter()
-    .find(|item| item.page_id == page_id)
-    .unwrap_or_else(|| panic!("{page_id} is not handled"))
-    .outcome
+#[test]
+fn board_status_routes_intake_and_return_creates_a_new_episode() {
+    let w = seeded_workspace();
+    let m = &w.module;
+    send_to(m, "board-intake", "Review the navigation", Some(PROJECT));
+    let page = "page:board-intake";
+    propose(
+        m,
+        "proposal:board-intake",
+        &pending(m).remove(0),
+        ProjectWorkspaceInboxDispatchAction::Keep,
+    );
+    let episode = || {
+        w.kernel
+            .readers()
+            .read_default(|c| {
+                Ok(c.query_row(
+                    "SELECT episode FROM page_turn_episodes WHERE page_id=?1",
+                    [page],
+                    |r| r.get::<_, String>(0),
+                )?)
+            })
+            .unwrap()
+    };
+    let before = episode();
+    set_status_by_hand(&w, page, "plan");
+    assert!(window_in(m, project_scope(), ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
+    assert_eq!(summary(m).inbox_count, 0);
+    assert_eq!(
+        count(
+            &w,
+            "SELECT count(*) FROM inbox_proposals WHERE proposal_id='proposal:board-intake' AND state='superseded'"
+        ),
+        1
+    );
+    assert_eq!(
+        count(
+            &w,
+            "SELECT count(*) FROM intake_dispositions WHERE page_id='page:board-intake' AND disposition='kept'"
+        ),
+        1
+    );
+    set_status_by_hand(&w, page, "triage");
+    let rows = window_in(m, project_scope(), ProjectWorkspaceInboxWindowFilter::Inbox);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0].row_kind,
+        nodex_core_contracts::inbox::InboxRowKind::Intake
+    );
+    assert_eq!(rows[0].page_id, page);
+    assert_ne!(episode(), before);
 }
 
 #[test]
-fn a_messages_status_follows_its_handling_until_someone_else_sets_it() {
-    let workspace = seeded_workspace();
-    let module = &workspace.module;
-    for (id, text) in [
-        ("chat", "Fix the flickering Board header"),
-        ("keep", "The Linear changelog layout is nice"),
-        ("done", "Rename the settings tab"),
-        ("hand", "Audit the empty states"),
-        ("aba", "Audit filters"),
-    ] {
-        send_to(module, id, text, Some(PROJECT));
-        assert_eq!(
-            status_of(&workspace, &format!("page:{id}")).as_deref(),
-            Some("triage")
-        );
-    }
-
-    let status_revision = || {
-        workspace.kernel.readers().read_default(|c| {
-        Ok(c.query_row(
-            "SELECT value.revision FROM data_source_property_values value \
-             JOIN data_source_page_memberships member ON member.id=value.membership_id \
-             WHERE member.page_block_id='page:chat' AND member.removed_at IS NULL AND value.property_id='status'",
-            [], |r| r.get::<_, i64>(0),
-        )?)
-    }).unwrap()
+fn an_agent_property_edit_routes_intake_for_its_requesting_member() {
+    let w = seeded_workspace();
+    let module = &w.module;
+    send_to(
+        module,
+        "agent-routed",
+        "A reference for later work",
+        Some(PROJECT),
+    );
+    create_session_thread(
+        module,
+        "agent-route",
+        "session:agent-route",
+        "thread:agent-route",
+        Some(PROJECT),
+        1,
+    );
+    let agent = BoundModuleContext {
+        adapter: AdapterKind::Agent,
+        agent_attribution: Some(nodex_core_contracts::BoundAgentAttribution {
+            session_id: "session:agent-route".into(),
+            run_id: None,
+            backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
+        }),
+        ..host()
     };
-    let initial_status_revision = status_revision();
-    // Work handed to a chat is being built, and stays so when its delivery completes.
-    dispatch(
-        module,
-        "chat",
-        &["page:chat"],
-        ProjectWorkspaceInboxDispatchAction::NewChat {
-            skills: vec![],
-            additions: vec![],
-            project_id: Some(PROJECT.into()),
-            prompt: "Fix the flickering Board header".into(),
-            agent: None,
-        },
-        Some("session:chat"),
-    );
-    assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("doing"));
-    assert_eq!(status_revision(), initial_status_revision + 1);
-    let ProjectWorkspaceReadValue::InboxDispatchOutbox { dispatches } = read_host(
-        module,
-        ProjectWorkspaceRead::InboxDispatchOutbox { limit: 8 },
-    ) else {
-        panic!("outbox");
-    };
-    apply_host(
-        module,
-        "complete:chat",
-        ProjectWorkspaceIntent::CompleteInboxDispatch {
-            expected_revision: dispatches[0].revision,
-            message_id: dispatches[0].message_id.clone(),
-            proposal_id: "proposal:chat".into(),
-            unavailable_skill_names: vec![],
-            dispatched_thread_id: Some("thread:chat".into()),
-        },
-    );
-    assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("doing"));
-    assert_eq!(status_revision(), initial_status_revision + 1);
-
-    // Closing the chat's work completes it, and the message still says which chat did it.
-    set_state(
-        module,
-        "done:chat",
-        "page:chat",
-        ProjectWorkspaceInboxEntryState::Done,
-    );
-    assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("done"));
-    assert_eq!(
-        handled_outcome(module, "page:chat"),
-        Some(ProjectWorkspaceInboxOutcome::Chat)
-    );
-    set_state(
-        module,
-        "reopen:chat",
-        "page:chat",
-        ProjectWorkspaceInboxEntryState::Open,
-    );
-    assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("doing"));
-    assert_eq!(
-        handled_outcome(module, "page:chat"),
-        Some(ProjectWorkspaceInboxOutcome::Chat)
-    );
+    let page = "page:agent-routed";
+    set_status_in_context(&w, &agent, page, Some("plan"));
     assert!(
         window_in(
             module,
             project_scope(),
             ProjectWorkspaceInboxWindowFilter::Inbox
         )
-        .iter()
-        .all(|item| item.page_id != "page:chat")
+        .is_empty()
     );
-
-    // Keeping plans it; returning it to the Inbox brings it back to Triage.
-    keep(module, "page:keep");
-    assert_eq!(status_of(&workspace, "page:keep").as_deref(), Some("plan"));
-    set_state(
+    set_status_in_context(&w, &agent, page, Some("triage"));
+    let rows = window_in(
         module,
-        "return:keep",
-        "page:keep",
-        ProjectWorkspaceInboxEntryState::Open,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Inbox,
     );
-    assert_eq!(
-        status_of(&workspace, "page:keep").as_deref(),
-        Some("triage")
-    );
-
-    set_state(
-        module,
-        "done:done",
-        "page:done",
-        ProjectWorkspaceInboxEntryState::Done,
-    );
-    assert_eq!(status_of(&workspace, "page:done").as_deref(), Some("done"));
-    set_state(
-        module,
-        "undo:done",
-        "page:done",
-        ProjectWorkspaceInboxEntryState::Open,
-    );
-    assert_eq!(
-        status_of(&workspace, "page:done").as_deref(),
-        Some("triage")
-    );
-
-    // A status set on the Board is the user's; handling the message leaves it alone.
-    set_status_by_hand(&workspace, "page:hand", "review");
-    keep(module, "page:hand");
-    assert_eq!(
-        status_of(&workspace, "page:hand").as_deref(),
-        Some("review")
-    );
-
-    set_status_by_hand(&workspace, "page:aba", "review");
-    set_status_by_hand(&workspace, "page:aba", "triage");
-    keep(module, "page:aba");
-    assert_eq!(
-        status_of(&workspace, "page:aba").as_deref(),
-        Some("triage"),
-        "manual ABA keeps the person's choice even at the implied predecessor"
-    );
-    assert_eq!(
-        workspace
-            .kernel
-            .readers()
-            .read_default(|c| super::page_chat::active_chat(c, "page:chat"))
-            .unwrap()
-            .unwrap()
-            .session_id,
-        "session:chat"
-    );
-
-    // The Library Inbox's Database follows the same handling.
-    send(module, "loose", "Look into a weekly digest");
-    assert_eq!(
-        status_of(&workspace, "page:loose").as_deref(),
-        Some("triage")
-    );
-    keep(module, "page:loose");
-    assert_eq!(status_of(&workspace, "page:loose").as_deref(), Some("plan"));
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].page_id, page);
+    assert_eq!(count(&w, "SELECT count(*) FROM intake_dispositions
+        WHERE page_id='page:agent-routed' AND json_extract(actor_json,'$.type')='agent'
+          AND json_extract(actor_json,'$.on_behalf_of')=(SELECT member_id FROM local_profile_members WHERE library_id='library-1')"), 2);
 }
 
 mod scheduled {
@@ -5392,7 +5191,9 @@ mod scheduled {
                 &owner,
                 ModuleReadRequest {
                     contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
-                    read: context_read,
+                    read: ProjectWorkspaceRead::InboxDispatchContext {
+                        page_ids: vec!["page:firing".into()],
+                    },
                 },
             )
             .unwrap()
@@ -5597,6 +5398,35 @@ mod scheduled {
         assert_eq!(
             retried.admission.unwrap().agent.unwrap().model.as_deref(),
             Some("model:chosen")
+        );
+    }
+
+    #[test]
+    fn later_refuses_an_automation_run_decision_without_handling_other_messages() {
+        let workspace = seeded_workspace();
+        setup(&workspace, task_input());
+        let held = item(&workspace);
+        send(
+            &workspace.module,
+            "ordinary",
+            "Review the report next week.",
+        );
+        let error = apply_host_error(
+            &workspace.module,
+            "later-automation",
+            ProjectWorkspaceIntent::SetInboxLater {
+                page_ids: vec!["page:ordinary".into(), held.page_id],
+                until: "2099-01-01T00:00:00Z".into(),
+            },
+        );
+        assert_eq!(error, CoreErrorCode::InvalidInput);
+        assert_eq!(summary(&workspace.module).later_count, 0);
+        assert_eq!(
+            count(
+                &workspace,
+                "SELECT count(*) FROM automation_decisions WHERE status='held'"
+            ),
+            1
         );
     }
 
@@ -5824,8 +5654,8 @@ mod scheduled {
     }
 
     #[test]
-    fn done_and_keep_preserve_admission_and_allow_the_next_folder_to_begin() {
-        for keep in [false, true] {
+    fn terminal_status_preserves_admission_and_allows_the_next_folder_to_begin() {
+        for terminal in ["done", "canceled"] {
             let workspace = seeded_workspace();
             apply_host(
                 &workspace.module,
@@ -5894,17 +5724,7 @@ mod scheduled {
                     expected_revision: 1,
                 },
             );
-            let intent = if keep {
-                ProjectWorkspaceIntent::KeepInboxEntries {
-                    page_ids: vec!["page:firing".into()],
-                }
-            } else {
-                ProjectWorkspaceIntent::SetInboxEntryState {
-                    page_ids: vec!["page:firing".into()],
-                    state: ProjectWorkspaceInboxEntryState::Done,
-                }
-            };
-            apply_host(&workspace.module, "close-work", intent);
+            set_status_by_hand(&workspace, "page:firing", terminal);
             assert_eq!(
                 window_in(
                     &workspace.module,
@@ -6331,13 +6151,7 @@ mod scheduled {
         setup(&workspace, task_input());
         confirm(&workspace);
         let lease = claim(&workspace, "claim-before-skip");
-        apply_host(
-            &workspace.module,
-            "keep-admission",
-            ProjectWorkspaceIntent::KeepInboxEntries {
-                page_ids: vec!["page:firing".into()],
-            },
-        );
+        set_status_by_hand(&workspace, "page:firing", "done");
         automation(
             &workspace,
             "fail-after-skip",
@@ -6352,7 +6166,6 @@ mod scheduled {
             skipped.automation_decision.unwrap().status,
             AutomationDecisionStatus::Failed
         );
-        assert_eq!(skipped.outcome, Some(ProjectWorkspaceInboxOutcome::Chat));
         assert_eq!(
             skipped.proposal.unwrap().state,
             ProjectWorkspaceInboxProposalState::Completed
@@ -6449,25 +6262,20 @@ mod scheduled {
         apply_host(
             &workspace.module,
             "skip",
-            ProjectWorkspaceIntent::SetInboxEntryState {
+            ProjectWorkspaceIntent::MarkInboxMessagesDone {
                 page_ids: vec!["page:firing".into()],
-                state: ProjectWorkspaceInboxEntryState::Done,
             },
         );
         assert_eq!(
             item(&workspace).automation_decision.unwrap().status,
             AutomationDecisionStatus::Skipped
         );
-        assert_eq!(
-            item(&workspace).outcome,
-            Some(ProjectWorkspaceInboxOutcome::Done)
-        );
+        assert_eq!(item(&workspace).page_status.unwrap().id, "done");
         apply_host(
             &workspace.module,
             "reopen",
-            ProjectWorkspaceIntent::SetInboxEntryState {
+            ProjectWorkspaceIntent::ReturnInboxMessages {
                 page_ids: vec!["page:firing".into()],
-                state: ProjectWorkspaceInboxEntryState::Open,
             },
         );
         assert_eq!(
@@ -6558,8 +6366,8 @@ mod scheduled {
         setup(&workspace, task_input());
         apply_host(
             &workspace.module,
-            "keep-first",
-            ProjectWorkspaceIntent::KeepInboxEntries {
+            "skip-first",
+            ProjectWorkspaceIntent::MarkInboxMessagesDone {
                 page_ids: vec!["page:firing".into()],
             },
         );
@@ -6567,10 +6375,7 @@ mod scheduled {
             item(&workspace).automation_decision.unwrap().status,
             AutomationDecisionStatus::Skipped
         );
-        assert_eq!(
-            item(&workspace).outcome,
-            Some(ProjectWorkspaceInboxOutcome::Done)
-        );
+        assert_eq!(item(&workspace).page_status.unwrap().id, "done");
         due(&workspace);
         let second = claim(&workspace, "second-hold");
         apply_host(
@@ -6586,9 +6391,8 @@ mod scheduled {
         let code = apply_host_error(
             &workspace.module,
             "reopen-conflict",
-            ProjectWorkspaceIntent::SetInboxEntryState {
+            ProjectWorkspaceIntent::ReturnInboxMessages {
                 page_ids: vec!["page:firing".into()],
-                state: ProjectWorkspaceInboxEntryState::Open,
             },
         );
         assert_eq!(code, CoreErrorCode::Conflict);
@@ -7257,10 +7061,7 @@ fn outdated_advice_confirms_the_current_content_and_rejects_a_stale_review() {
         CoreErrorCode::Conflict
     );
     apply_host(module, "confirm:reviewed", confirm(reviewed.basis.clone()));
-    assert_eq!(
-        window(module, ProjectWorkspaceInboxWindowFilter::Processed)[0].state,
-        ProjectWorkspaceInboxEntryState::Kept
-    );
+    assert!(!window(module, ProjectWorkspaceInboxWindowFilter::Processed)[0].waiting);
 }
 
 #[test]
@@ -7409,9 +7210,8 @@ fn sends_and_saved_stream_rewrites_wait_while_disabled_preparation_and_reopen_do
     apply_host(
         module,
         "reopen:rewrite",
-        ProjectWorkspaceIntent::SetInboxEntryState {
+        ProjectWorkspaceIntent::ReturnInboxMessages {
             page_ids: vec!["page:rewrite".into()],
-            state: ProjectWorkspaceInboxEntryState::Open,
         },
     );
     assert_eq!(
@@ -7874,7 +7674,12 @@ fn inbox_image_fingerprints_track_body_order_and_library_bytes_without_metadata(
         },
     );
     assert_eq!(
-        window(module, ProjectWorkspaceInboxWindowFilter::Processed)[0].basis,
+        window_in(
+            module,
+            project_scope(),
+            ProjectWorkspaceInboxWindowFilter::Processed
+        )[0]
+        .basis,
         replaced
     );
 }
@@ -8540,7 +8345,6 @@ mod plans {
         let w = seeded_workspace();
         super::super::test_support::create_project(&w.module, "create:other", "project:other");
         send(&w.module, "plan", "Prepare and implement");
-        w.kernel.writer().call(|c| {c.execute("UPDATE libraries SET space_kind='team' WHERE id='library-1'",[])?;c.execute("INSERT INTO members(id,library_id,display_name,lifecycle) VALUES('member:requester','library-1','Requester','active')",[])?;c.execute("UPDATE block_properties SET value_json=json_set(value_json,'$.owner','member:requester') WHERE property_key='work' AND block_id IN (SELECT page_id FROM inbox_entries)",[])?;Ok(())}).unwrap();
 
         propose(
             &w.module,
@@ -8595,7 +8399,7 @@ mod plans {
         assert_eq!(
             count(
                 &w,
-                "SELECT count(*) FROM block_properties WHERE property_key='work' AND json_extract(value_json,'$.assignee.kind')='agent' AND json_extract(value_json,'$.owner')='member:requester'"
+                "SELECT count(*) FROM block_properties WHERE property_key='work' AND json_extract(value_json,'$.assignee.kind')='agent' AND json_extract(value_json,'$.owner')=(SELECT member_id FROM local_profile_members WHERE library_id='library-1')"
             ),
             2
         );
@@ -8625,7 +8429,7 @@ mod plans {
         );
         assert!(window(&w.module, ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
         let handled = window(&w.module, ProjectWorkspaceInboxWindowFilter::Processed).remove(0);
-        assert_eq!(handled.state, ProjectWorkspaceInboxEntryState::Done);
+        assert!(!handled.waiting);
         let proposal = handled.proposal.unwrap();
         assert_eq!(proposal.summary, "Planned 2 cards");
         assert_eq!(proposal.created_page_ids, ids);
@@ -8852,6 +8656,7 @@ fn a_first_inbox_handoff_captures_the_current_person_choice_as_its_attempt_basel
     let m = &w.module;
     send_to(m, "first-handoff", "Build this", Some(PROJECT));
     set_status_by_hand(&w, "page:first-handoff", "plan");
+    set_status_by_hand(&w, "page:first-handoff", "triage");
     dispatch(
         m,
         "first-handoff",
@@ -8870,12 +8675,217 @@ fn a_first_inbox_handoff_captures_the_current_person_choice_as_its_attempt_basel
         Some("doing")
     );
     let fence=w.kernel.readers().read_default(|c|Ok(c.query_row("SELECT status_fence FROM project_session_pages WHERE page_id='page:first-handoff' AND session_id='session:first-handoff'",[],|r|r.get::<_,i64>(0))?)).unwrap();
-    assert_eq!(fence, 1);
-    set_state(
-        m,
-        "finish:first-handoff",
-        "page:first-handoff",
-        ProjectWorkspaceInboxEntryState::Done,
-    );
+    assert_eq!(fence, 2);
+    set_status_by_hand(&w, "page:first-handoff", "done");
     assert_eq!(status_of(&w, "page:first-handoff").as_deref(), Some("done"));
+}
+
+#[path = "inbox_later_tests.rs"]
+mod later;
+
+#[test]
+fn notes_are_bound_to_the_inbox_and_retain_page_identity_when_returned() {
+    let workspace = seeded_workspace();
+    let m = &workspace.module;
+    let read_note = |page: &str| {
+        let ProjectWorkspaceReadValue::InboxEntry { item: Some(item) } = read_host(
+            m,
+            ProjectWorkspaceRead::InboxEntry {
+                page_id: page.into(),
+            },
+        ) else {
+            panic!("Missing intake {page}");
+        };
+        *item
+    };
+    for (id, project, scope) in [
+        ("library-note", None, ProjectWorkspaceInboxScope::Library),
+        ("project-note", Some(PROJECT), project_scope()),
+    ] {
+        assert!(summary_in(m, scope.clone()).notes_page_id.is_none());
+        send_to(m, id, "Design reference", project);
+        let page = format!("page:{id}");
+        let before = read_note(&page);
+        assert!(before.page_key.is_some());
+        let save = |parent_page_id| ProjectWorkspaceIntent::DispatchInboxEntries {
+            expected_store_epoch: "epoch-1".into(),
+            proposal_id: format!("proposal:{id}"),
+            basis: pages_basis(m, vec![page.clone()]),
+            execution_selection: None,
+            page_ids: vec![page.clone()],
+            action: ProjectWorkspaceInboxDispatchAction::SaveToNotes { parent_page_id },
+            session_id: None,
+        };
+        assert_eq!(
+            apply_host_error(m, &format!("{id}:wrong-tree"), save(Some(page.clone()))),
+            CoreErrorCode::InvalidInput
+        );
+        assert!(summary_in(m, scope.clone()).notes_page_id.is_none());
+        let saved = m
+            .apply(&host(), request(&format!("{id}:save"), save(None)))
+            .unwrap();
+        assert!(saved.committed.value.inbox_undo_token.is_some());
+        let root = summary_in(m, scope.clone()).notes_page_id.unwrap();
+        assert_eq!(page_parent(&workspace, &page), root);
+        let note = read_note(&page);
+        assert_eq!(note.basis.content_hash, before.basis.content_hash);
+        assert_eq!(note.scope, scope);
+        assert!(!note.waiting);
+        assert!(note.page_status.is_none() && note.page_key.is_none());
+        assert!(window_in(m, scope.clone(), ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
+        let turns = workspace
+            .kernel
+            .readers()
+            .read_default(|c| super::page_turn::turns(c, std::slice::from_ref(&page)))
+            .unwrap();
+        assert!(turns[0].reason.is_none());
+        let activity = activity_in(
+            m,
+            scope.clone(),
+            nodex_core_contracts::sources::ActivityFilter::Messages,
+        );
+        assert_eq!(activity[0].description, "Saved “Design reference” to Notes");
+        let root_for_write = root.clone();
+        workspace
+            .kernel
+            .writer()
+            .call(move |c| {
+                assert!(
+                    c.execute(
+                        "UPDATE blocks SET lifecycle='archived' WHERE id=?1",
+                        [&root_for_write]
+                    )
+                    .is_err()
+                );
+                assert!(
+                    c.execute("DELETE FROM blocks WHERE id=?1", [&root_for_write])
+                        .is_err()
+                );
+                Ok(())
+            })
+            .unwrap();
+        if project.is_none() {
+            apply_host(
+                m,
+                &format!("{id}:undo"),
+                ProjectWorkspaceIntent::UndoInboxDecision {
+                    undo_token: saved.committed.value.inbox_undo_token.unwrap(),
+                },
+            );
+        } else {
+            apply_host(
+                m,
+                &format!("{id}:return"),
+                ProjectWorkspaceIntent::ReturnInboxMessages {
+                    page_ids: vec![page.clone()],
+                },
+            );
+        }
+        let returned = read_note(&page);
+        assert!(returned.waiting);
+        assert_eq!(returned.page_key, before.page_key);
+        assert_eq!(returned.page_status.unwrap().id, "triage");
+        // Finish this case before examining the other Inbox scope.
+        apply_host(
+            m,
+            &format!("{id}:done"),
+            ProjectWorkspaceIntent::MarkInboxMessagesDone {
+                page_ids: vec![page],
+            },
+        );
+    }
+}
+
+#[test]
+fn returning_a_message_requires_the_page_to_have_no_active_chat() {
+    let workspace = seeded_workspace();
+    let m = &workspace.module;
+    send(m, "active", "Check a reference.");
+    dispatch(
+        m,
+        "active-chat",
+        &["page:active"],
+        ProjectWorkspaceInboxDispatchAction::NewChat {
+            project_id: None,
+            prompt: "Check this".into(),
+            agent: None,
+            additions: vec![],
+            skills: vec![],
+        },
+        Some("session:active"),
+    );
+    assert_eq!(
+        apply_host_error(
+            m,
+            "return-active",
+            ProjectWorkspaceIntent::ReturnInboxMessages {
+                page_ids: vec!["page:active".into()],
+            }
+        ),
+        CoreErrorCode::Conflict
+    );
+}
+
+#[test]
+fn location_only_moves_keep_the_current_status_and_follow_the_page_project() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send_to(module, "moving", "Route this reference", Some(PROJECT));
+    send(module, "library-sample", "A Library message");
+    let page = "page:moving";
+    let project_source = page_parent(&workspace, page);
+    let library_source = page_parent(&workspace, "page:library-sample");
+    let transfer = |operation: &str, data_source_id: &str| {
+        let (placement, membership) = workspace
+            .kernel
+            .readers()
+            .read_default(|c| {
+                Ok(c.query_row(
+                    "SELECT block.placement_revision,membership.revision
+                     FROM blocks block JOIN data_source_page_memberships membership
+                       ON membership.page_block_id=block.id AND membership.removed_at IS NULL
+                     WHERE block.id=?1",
+                    [page],
+                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+                )?)
+            })
+            .unwrap();
+        crate::database::DatabaseModule::new("profile-1", "library-1", &workspace.kernel)
+            .apply(
+                &host(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: operation.into(),
+                    store_epoch: StoreEpoch("epoch-1".into()),
+                    intent: vec![DatabaseIntent::TransferPage {
+                        page_id: page.into(),
+                        expected_parent_revision: placement,
+                        expected_active_membership_revision: membership,
+                        target:
+                            nodex_core_contracts::database::DatabaseTransferTarget::DataSource {
+                                data_source_id: data_source_id.into(),
+                            },
+                    }],
+                },
+            )
+            .unwrap();
+    };
+    let waits_in = |scope| {
+        window_in(module, scope, ProjectWorkspaceInboxWindowFilter::Inbox)
+            .iter()
+            .any(|item| item.page_id == page)
+    };
+    assert!(waits_in(project_scope()));
+    transfer("move-to-library", &library_source);
+    assert!(waits_in(ProjectWorkspaceInboxScope::Library));
+    assert!(!waits_in(project_scope()));
+    set_status_by_hand(&workspace, page, "plan");
+    transfer("move-to-project", &project_source);
+    assert_eq!(status_of(&workspace, page).as_deref(), Some("plan"));
+    assert!(!waits_in(project_scope()));
+    set_status_by_hand(&workspace, page, "triage");
+    transfer("move-back-to-library", &library_source);
+    assert_eq!(status_of(&workspace, page).as_deref(), Some("triage"));
+    assert!(waits_in(ProjectWorkspaceInboxScope::Library));
+    assert!(!waits_in(project_scope()));
 }

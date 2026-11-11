@@ -100,6 +100,11 @@ export type AgentCatalog = z.infer<typeof AgentCatalogSchema>;
 
 export const InboxProposalActionSchema = z.discriminatedUnion("type", [
   z.looseObject({ type: z.literal("keep") }),
+  z.looseObject({ type: z.literal("save_to_notes"), parentPageId: z.string().nullable() }),
+  z.looseObject({
+    type: z.literal("later"),
+    remindAt: z.iso.datetime({ offset: true }),
+  }),
   z.looseObject({
     type: z.literal("new_chat"),
     projectId: z.string().nullable(),
@@ -212,13 +217,16 @@ const inboxEntry = {
   scope: InboxScopeSchema,
   revision: z.number().int(),
 };
+const inboxLater = z.looseObject({ setAt: isoTime, until: isoTime }).nullable();
 export const IntakeEntrySchema = z.looseObject({
   ...inboxEntry,
   rowKind: z.literal("intake"),
   pageId: z.string(),
   important: z.boolean(),
-  state: z.enum(["open", "kept", "done"]),
-  outcome: z.enum(["kept", "done", "moved", "chat"]).nullable(),
+  waiting: z.boolean(),
+  kind: z.enum(["note", "todo", "question"]).nullable(),
+  later: inboxLater,
+  status: z.string().nullable(),
   suggestion: z.looseObject({
     state: z.enum(["none", "waiting", "pending", "settled", "failed"]),
     error: z.string().nullable(),
@@ -230,10 +238,13 @@ export const TurnEntrySchema = z.looseObject({
   ...inboxEntry,
   rowKind: z.literal("turn"),
   pageId: z.string(),
+  later: inboxLater,
   turn: z.looseObject({
     episode: z.string(),
     reason: z
       .enum([
+        "triage",
+        "delivery_recovery",
         "paused",
         "working",
         "queued",
@@ -296,6 +307,7 @@ export type IntakeEntry = z.infer<typeof IntakeEntrySchema>;
 export const InboxWindowSchema = z.looseObject({
   items: z.array(InboxEntrySchema),
   nextCursor: z.string().nullable(),
+  laterCount: z.number().int().nonnegative().optional(),
 });
 export type InboxWindow = z.infer<typeof InboxWindowSchema>;
 
@@ -318,6 +330,7 @@ export const InboxDecisionSchema = z.discriminatedUnion("type", [
     proposalId: z.string(),
     revision: z.number().int(),
     keptSkillNames: z.array(z.string().min(1).max(128)).max(3).optional(),
+    remindAt: z.iso.datetime({ offset: true }).optional(),
   }),
   z.looseObject({
     type: z.literal("start_chat"),
@@ -326,8 +339,14 @@ export const InboxDecisionSchema = z.discriminatedUnion("type", [
     agent: AgentChoiceSchema.nullable(),
   }),
   z.looseObject({ type: z.literal("keep") }),
+  z.looseObject({
+    type: z.literal("later"),
+    until: z.iso.datetime({ offset: true }),
+  }),
+  z.looseObject({ type: z.literal("clear_later") }),
+  z.looseObject({ type: z.literal("save_to_notes") }),
   z.looseObject({ type: z.literal("done") }),
-  z.looseObject({ type: z.literal("reopen") }),
+  z.looseObject({ type: z.literal("return") }),
   z.looseObject({ type: z.literal("delete") }),
   z.looseObject({ type: z.literal("important"), important: z.boolean() }),
   z.looseObject({ type: z.literal("request_suggestion") }),
@@ -583,6 +602,7 @@ export const RpcErrorSchema = z.looseObject({
     "not_found",
     "conflict",
     "rejected",
+    "inbox_remind_at_passed",
     "unavailable",
     "capability_unavailable",
     "internal",

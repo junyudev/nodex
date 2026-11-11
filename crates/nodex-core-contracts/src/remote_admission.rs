@@ -152,6 +152,9 @@ pub fn authorize(
                 | "reverse_data_edit"
         ),
         "query_read" => matches!(kind, "schema" | "query" | "displayed_view_query"),
+        "workspace_read" if kind == "inbox_later_notifications" => {
+            encoded.get("for_push").and_then(|value| value.as_bool()) == Some(false)
+        }
         "workspace_read" if kind == "sources" => matches!(
             encoded
                 .get("read")
@@ -242,6 +245,9 @@ pub fn authorize(
                 .and_then(|k| k.as_str())
                 == Some("retry_problem")
         }
+        "workspace_apply" if kind == "claim_inbox_later_notification" => {
+            encoded.get("for_push").and_then(|value| value.as_bool()) == Some(false)
+        }
         "workspace_apply" if kind == "confirm_inbox_dispatch" => encoded
             .get("confirmed_by")
             .and_then(|v| v.as_str())
@@ -291,7 +297,10 @@ pub fn authorize(
                 | "request_inbox_suggestion"
                 | "retry_inbox_dispatch"
                 | "keep_inbox_entries"
-                | "set_inbox_entry_state"
+                | "set_inbox_later"
+                | "clear_inbox_later"
+                | "mark_inbox_messages_done"
+                | "return_inbox_messages"
                 | "set_inbox_entry_kind"
                 | "set_inbox_entry_important"
                 | "edit_inbox_message"

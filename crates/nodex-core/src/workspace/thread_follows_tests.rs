@@ -688,16 +688,17 @@ fn intake_deduplicates_discovery_and_dispatch_follows_its_origin_without_automat
         provenance.authority.actor_project_id = None;
     }
     apply(&w.module, "handback-external", handback);
-    let ProjectWorkspaceReadValue::InboxDispatchContext { context: original } = read(
+    let ProjectWorkspaceReadValue::InboxEntry {
+        item: Some(original),
+    } = read(
         &w.module,
-        ProjectWorkspaceRead::InboxDispatchContext {
-            page_ids: vec![page],
-        },
-    ) else {
-        panic!()
+        ProjectWorkspaceRead::InboxEntry { page_id: page },
+    )
+    else {
+        panic!("Original GitHub intake")
     };
     assert!(matches!(
-        original.entries[0].source,
+        original.source,
         ProjectWorkspaceInboxSource::Github { .. }
     ));
 }

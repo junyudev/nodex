@@ -72,6 +72,13 @@ are off the switch is unavailable.
 
 Turning it on never starts messages sent before it.
 
+Nodex proposes Later when the message asks the work to wait until a resolvable time.
+The routing request supplies the current time and time zone so Nodex can propose a future
+instant with an offset. An indefinite request to wait gets Keep. Later always waits for
+confirmation. The Member can confirm with a different time, including when the proposed
+time has passed. A chat suggestion offered while its requesting Member has the message
+deferred waits for review even after the message returns.
+
 ## Managed chats
 
 A chat Nodex watches is managed. Every chat an Inbox dispatch starts or continues, and every chat
@@ -181,6 +188,7 @@ Board cards, List rows, the Page, CLI and work briefs use that same answer.
 | Agent · Queued           | The active chat awaits Runtime admission. If its Agent is unknown, the chip shows the queue ordinal.              |
 | Owner · Blocked / Failed | The active chat's latest report is blocked or failed, or its execution failed without a person's Stop.            |
 | Owner · Stalled          | Existing stall detection finds no progress.                                                                       |
+| Owner · Triage           | An intake Page is in Triage with no active chat or delivery underway.                                             |
 | Owner · Review           | Status is In Review.                                                                                              |
 | Prerequisite Page        | The first Prerequisite, ordered by Page identity, is unsatisfied.                                                 |
 | Start / Agent · Starting | An Agent Assignee has no active chat in Triage or Todo; automatic-start consent selects Starting.                 |
@@ -193,6 +201,7 @@ as you and names anyone else:
 
 | Reason   | For you               | For another person           |
 | -------- | --------------------- | ---------------------------- |
+| Triage   | Needs your decision   | Waiting for Alice’s decision |
 | Question | Needs your answer     | Waiting for Alice’s answer   |
 | Approval | Needs your approval   | Waiting for Alice’s approval |
 | Review   | Ready for your review | Ready for Alice’s review     |
@@ -359,3 +368,8 @@ For Nodex, a returned message is a new routing decision, never new start consent
 It carries the previous chat and reason. Nodex sets `explicit_request: false` and
 chooses another destination unless the person insists on the prior chat. A returned message
 never starts on `Let Nodex start chats for me`, so that suggestion waits for the person.
+
+For triage advice, Save to Notes fits references and fragments with no task.
+Nodex may choose an existing destination from the Inbox’s bounded Notes title
+outline. It leaves section creation to the person. Add to Todo holds work
+without a time and Later honors a stated return time.

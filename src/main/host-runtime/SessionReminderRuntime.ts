@@ -3,6 +3,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
+import { inboxLaterClock } from "../../host/InboxLaterReminders";
+import { DatabaseNotifierRuntime } from "./DatabaseNotifierRuntime";
 import { make, reminderOccurrence, reminderTarget } from "../../host/SessionReminders";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { UserPresence } from "../../host/UserPresence";
@@ -52,7 +54,12 @@ export const live = Layer.effect(
         SubscriptionRef.changes(core.state),
       ),
     });
-    yield* desktop.onPowerEvent("resume", owner.wake);
+    const notifier = yield* DatabaseNotifierRuntime;
+    const later = yield* inboxLaterClock(
+      SubscriptionRef.get(core.state).pipe(Effect.map((state) => state.kind === "ready")),
+      Stream.merge(notifier.inboxInvalidations, SubscriptionRef.changes(core.state)),
+    );
+    yield* desktop.onPowerEvent("resume", Effect.andThen(owner.wake, later.wake));
     return SessionReminderRuntime.of({ activate: owner.activate });
   }),
 );
