@@ -1,3 +1,4 @@
+import { codexLinkedRootSessionFixture } from "../core-client/testing/codex-linked-root-session.test-support";
 import { SessionFolders } from "../agent-backend/SessionFolders";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -136,23 +137,13 @@ const prepare = (
     Effect.provideService(CoreModules, {
       workspace: {
         read: () =>
-          Effect.succeed({
-            value: {
-              kind: "codex_thread_session",
-              thread: {
-                thread_id: threadId,
-                backend_binding: { kind: "codex" },
-                execution_host_id: "local",
-                session_id: "permission-session",
-                status: { status_type: "idle", active_flags: [] },
-              },
-              session: {
-                id: "permission-session",
-                project_id: fixture.projectId === undefined ? "project" : fixture.projectId,
-                archived: false,
-              },
-            },
-          }),
+          Effect.succeed(
+            codexLinkedRootSessionFixture({
+              threadId,
+              sessionId: "permission-session",
+              projectId: fixture.projectId === undefined ? "project" : fixture.projectId,
+            }),
+          ),
         issueAgentAttribution: () => Effect.succeed("permission-session-credential"),
       },
     } as unknown as CoreModules["Service"]),
