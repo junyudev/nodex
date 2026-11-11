@@ -1,3 +1,4 @@
+import { codexLinkedRootSessionFixture } from "../core-client/testing/codex-linked-root-session.test-support";
 import { createAppToolAdmissionFixture } from "./app-tool-operation.test-fixtures";
 import { CodexNativeThreadLookup } from "../codex-application/CodexNativeThreadLookup";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
@@ -508,28 +509,13 @@ it.effect(
                       thread_id: "native-root",
                       expected_execution_host_id: "local",
                     });
-                    return {
-                      value: {
-                        kind: "codex_thread_session",
-                        thread: {
-                          thread_id: "native-root",
-                          backend_binding: { kind: "codex" },
-                          execution_host_id: "local",
-                          parent_thread_id: null,
-                          session_id: "native-product",
-                          thread_source: "user",
-                          status: { status_type: "idle", active_flags: [] },
-                        },
-                        session: {
-                          id: "native-product",
-                          project_id: "project",
-                          thread_id: "native-root",
-                          display_title: "Historical source",
-                          no_thread_fallback_title: "Historical source",
-                          archived: false,
-                        },
-                      },
-                    } as never;
+                    return codexLinkedRootSessionFixture({
+                      threadId: "native-root",
+                      sessionId: "native-product",
+                      projectId: "project",
+                      threadSource: "user",
+                      title: "Historical source",
+                    });
                   })
                 : Effect.fail(
                     coreRuntimeError({

@@ -1,3 +1,4 @@
+import { codexLinkedRootSessionFixture } from "../core-client/testing/codex-linked-root-session.test-support";
 import { install as installMainActions } from "./CodexMainConversationActions";
 import {
   encodeCodexAsyncQuestionReplies,
@@ -433,25 +434,14 @@ const makeHarness = (input: {
     const core = CoreModules.of({
       workspace: {
         read: (request: { thread_id: string }) =>
-          Effect.succeed({
-            value: {
-              kind: "codex_thread_session",
-              thread: {
-                thread_id: request.thread_id,
-                backend_binding: { kind: "codex" },
-                execution_host_id: OWNER_HOST,
-                thread_source: null,
-                status: { status_type: "idle", active_flags: [] },
-              },
-              session: {
-                id: "session:thread-a",
-                project_id: null,
-                no_thread_fallback_title: "Task",
-                display_title: "Task",
-                remind_at: null,
-              },
-            },
-          }),
+          Effect.succeed(
+            codexLinkedRootSessionFixture({
+              threadId: request.thread_id,
+              sessionId: "session:thread-a",
+              hostId: OWNER_HOST,
+              title: "Task",
+            }),
+          ),
         apply: (command: { intent: { intent: { message_id: string } } }) =>
           Effect.sync(() => {
             acceptedUserMessages.push(command.intent.intent.message_id);

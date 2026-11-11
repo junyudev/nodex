@@ -1,3 +1,4 @@
+import { codexLinkedRootSessionFixture } from "../core-client/testing/codex-linked-root-session.test-support";
 import { CodexTurnPresentation } from "../../host/TurnPresentation";
 import {
   makeTestTurnPresentation,
@@ -133,27 +134,13 @@ it.effect(
                 thread_id: "created",
                 expected_execution_host_id: "remote",
               });
-              return {
-                value: {
-                  kind: "codex_thread_session",
-                  thread: {
-                    thread_id: "created",
-                    backend_binding: { kind: "codex" },
-                    execution_host_id: "remote",
-                    parent_thread_id: null,
-                    session_id: "session",
-                    thread_source: "subagent",
-                    status: { status_type: "idle", active_flags: [] },
-                  },
-                  session: {
-                    id: "session",
-                    project_id: null,
-                    thread_id: "created",
-                    display_title: "Created",
-                    no_thread_fallback_title: "Created",
-                  },
-                },
-              } as never;
+              return codexLinkedRootSessionFixture({
+                threadId: "created",
+                sessionId: "session",
+                hostId: "remote",
+                threadSource: "subagent",
+                title: "Created",
+              });
             }),
         },
       } as unknown as CoreModules["Service"]);
@@ -316,25 +303,13 @@ it.effect("cancels reminders only for live person-authored native messages", () 
     const core = {
       workspace: {
         read: () =>
-          Effect.succeed({
-            value: {
-              kind: "codex_thread_session",
-              thread: {
-                thread_id: "chat-thread",
-                backend_binding: { kind: "codex" },
-                execution_host_id: "remote",
-                parent_thread_id: null,
-                thread_source: null,
-                status: { status_type: "idle", active_flags: [] },
-              },
-              session: {
-                id: "chat",
-                project_id: null,
-                display_title: "Chat",
-                no_thread_fallback_title: "Chat",
-              },
-            },
-          }),
+          Effect.succeed(
+            codexLinkedRootSessionFixture({
+              threadId: "chat-thread",
+              sessionId: "chat",
+              hostId: "remote",
+            }),
+          ),
         apply: (input: { intent: { intent: { message_id: string } } }) =>
           Effect.sync(() => {
             accepted.push(input.intent.intent.message_id);
