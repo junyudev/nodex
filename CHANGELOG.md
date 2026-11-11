@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - Set anything in your Inbox aside with **Later** when it can wait. Choose a time and the message or the work waiting on you leaves your Inbox, then comes back with a notification when that time arrives; if it needs you for a new reason before then, it shows at once. The new Later view lists everything you set aside in the order it returns, and Nodex can suggest Later for a message that says when the work should wait until. It works on the phone too.
 - Save a thought that asks for no work with **Save to Notes**. Each Project, and the Inbox itself, gets a Notes page; a saved message becomes a page beneath it, off the Board, where you can arrange notes into sections. Nodex suggests it for references and can file a note under a section you already have.
+- Agents can set properties on many Pages in one step. Ask a chat to mark a batch of cards Done or re-prioritize a Board and it commits the whole change together and reports each card's resulting values, instead of editing cards one at a time. On the command line, `nodex page properties set NODEX-4 NODEX-8 --set Status=done --set Priority=p1-high` does the same, `nodex page create` takes `--set`, and `nodex page move` moves several Pages at once.
 
 ### Changed
 
@@ -18,12 +19,20 @@ All notable changes to this project will be documented in this file.
 - Clicking an image in a Page's Files, or an image attachment in its body, now shows it over the Page instead of opening a tab. Step through the Page's images with the arrow keys, and choose **Open in tab** when you want to keep one open; Cmd/Ctrl-click still opens the tab directly.
 - Nodex tells you when a chat finishes while you are reading another one. Turn completion notifications used to stay silent whenever a Nodex window was focused, so an Automation's run or a second chat could finish unnoticed. Now only the chat in front of you stays quiet by default. Settings offers this as **When the chat isn't in view**; choose **When Nodex is in the background** to keep banners away while a Nodex window is focused.
 - Heartbeat chats read like conversations. A heartbeat's message shows its instructions and names the Automation that sent it, and the Agent's reply shows what it wrote, without the surrounding markup. Checks that found nothing to report fold into a single **Quiet check** line, and a run of them shares one line with their count and latest result; expand it to see any check in full.
+- Agents run `nodex` directly in their shells. Nodex resolves who is asking each time the command runs, so a script an Agent wrote in an earlier turn keeps working after Nodex restarts, and its changes stay credited to the chat that made them. `nodex context` shows who the command is acting as and which Space and Project it targets, and a refused command says why and what to do next.
+- A retry key can be any text up to 128 characters, in chats and with `--idempotency-key`. Reuse a key with the same request to retry a call whose result you did not see; Nodex remembers it for seven days.
+- Command line results are short. A write reports what changed on each Page, with the values before and after, and leaves out internal detail.
 
 ### Fixed
 
 - A chat's composer no longer disappears. Opening a chat that finished in the background could show its messages with nothing below them while it reconnected, after its connection failed, or after its worktree was cleaned up. The composer now stays with your draft, and a line above it says what is holding the next message and offers the fix, such as Retry or Restore worktree. A chat that failed to connect also tries again on its own when you come back to it.
 - Ended background tasks clear from the Session summary after you stop an Agent. You can also use Stop to dismiss an already-ended task that still appears.
 - A heartbeat that has nothing to report stays quiet. It no longer marks its chat unread or adds to unread Automation runs, matching the notification it already skipped. Automations set to notify on failed runs only keep their successful runs quiet the same way.
+- A Database no longer fails to open after a card moves into it. Moving a card to another Database without choosing a column could leave it with no Status, and the receiving Database then showed an invalid workflow status error. A moved card now keeps its Status, Status can no longer be cleared, and cards already affected are repaired to Triage.
+- Editing a card's properties updates its last-edited time, so sorting and filtering by recent edits include cards whose Status or other properties changed.
+- `nodex page replace` rewrites long Pages in one step and keeps unchanged blocks, with their comments and links, in place.
+- `nodex page move --to page:ID` works as its help describes, a move prepared for one destination cannot be applied to another, and `nodex page rename` takes the Page first and points out swapped arguments.
+- Command line input errors name the field that is wrong and the values allowed there, and an unknown command suggests the one you likely meant.
 
 ## [0.5.5] - 2026-11-11
 
