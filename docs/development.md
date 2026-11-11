@@ -265,6 +265,16 @@ vp run dev --home "$task_home" --enable agentation
 vp run dev --home "$task_home" --enable query-devtools
 ```
 
+Development homes, including seeds and Profile snapshots, leave the user's
+browser registration alone by default. To test Chrome control against your own
+browser, launch with `vp run dev --home <absolute-task-home> --register-browser-host`.
+Browser Settings identifies the temporary registration. Quit the development
+instance to give the registration back to the previous owner. Only one development
+instance at a time can register against your own browser. If a development
+Profile is deleted after an abrupt exit, the installed app repairs a dangling
+registration at startup. Electron scenarios register under their disposable
+Profile, so they can exercise Chrome control with a disposable browser home.
+
 Unpackaged Desktop startup fails when `NODEX_HOME` is absent. Do not invoke the
 underlying Electron or electron-vite entrypoints directly; the launcher owns
 Profile isolation and supplies the required environment.

@@ -67,6 +67,7 @@ export interface DevLauncherArguments {
   readonly rendererPort?: string;
   readonly enabledFeatures: readonly string[];
   readonly deleteHome: boolean;
+  readonly registerBrowserHost?: boolean;
   readonly help: boolean;
 }
 
@@ -99,6 +100,7 @@ Options:
   --remote-debugging-port <port>, --cdp <port>
                              Expose DevTools on port 0-65535 (default: 0)
   --enable <feature-slug>    Enable a development feature for this invocation
+  --register-browser-host    Temporarily register Chrome control with your real browsers
   --delete                   Delete the environment after a proven clean stop
   --help                     Show this help
 `;
@@ -135,6 +137,7 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
   let remoteDebuggingPort: string | undefined;
   let build = false;
   let deleteHome = false;
+  let registerBrowserHost = false;
   let help = false;
   let rendererPort: string | undefined;
   const enabledFeatures: string[] = [];
@@ -148,6 +151,10 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
     if (argument === "--") continue;
     if (argument === "--build") {
       build = true;
+      continue;
+    }
+    if (argument === "--register-browser-host") {
+      registerBrowserHost = true;
       continue;
     }
     if (argument === "--delete") {
@@ -242,6 +249,7 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
     ...(rendererPort === undefined ? {} : { rendererPort }),
     enabledFeatures,
     deleteHome,
+    ...(registerBrowserHost ? { registerBrowserHost } : {}),
     help,
   };
 };
@@ -319,6 +327,8 @@ export const createDevLaunchPlan = (input: {
                 : undefined,
             ]),
         );
+  const usesSkillsSeed =
+    (input.arguments.seed ?? input.home.manifest.seed?.id) === SKILLS_PAGES_SCENARIO_ID;
   const environment: NodeJS.ProcessEnv = {
     ...withoutAgentShell(input.environment),
     ...developmentFeatureEnvironment(enabledFeatures),
@@ -348,10 +358,14 @@ export const createDevLaunchPlan = (input: {
     ...managedDevFallbacks,
     NODEX_HOME: input.home.nodexHome,
     CODEX_HOME: input.home.codexHome,
-    ...((input.arguments.seed ?? input.home.manifest.seed?.id) === SKILLS_PAGES_SCENARIO_ID
+    NODEX_INTERNAL_BROWSER_HOST_MODE: input.arguments.registerBrowserHost
+      ? "development"
+      : usesSkillsSeed
+        ? "disposable"
+        : undefined,
+    ...(usesSkillsSeed
       ? {
           NODEX_INTERNAL_SCENARIO_HOME: path.join(input.home.root, "home"),
-          NODEX_INTERNAL_BROWSER_HOST_HOME: path.join(input.home.root, "home"),
           CLAUDE_CONFIG_DIR: path.join(input.home.root, "home", ".claude"),
         }
       : {}),

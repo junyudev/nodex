@@ -10,6 +10,7 @@ const NATIVE_HOST_CLOSURE_DIRECTORY = "chrome-control/native-host-v2";
 const NATIVE_HOST_REGISTRY_SCHEMA_VERSION = 2;
 const APP_SERVER_PROTOCOL_VERSION = 2;
 const NATIVE_HOST_PROTOCOL_VERSION = 2;
+const TEMPORARY_HOST_DESCRIPTION = "Nodex development browser native messaging host";
 const MAX_REGISTRY_BYTES = 8 * 1024 * 1024;
 const RUNTIME_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/u;
 
@@ -34,6 +35,13 @@ export interface ChromeNativeHostInstallResult {
   readonly nativeHostPath: string;
   readonly peerIdentity: ChromeNativeHostIdentity;
   readonly registryPaths: readonly string[];
+  readonly releaseRegistration?: () => Promise<void>;
+}
+
+export class ChromeHostRegistrationInUse extends Error {
+  constructor() {
+    super("Chrome control is registered to another app or Profile.");
+  }
 }
 
 export interface ChromeNativeHostInstallerOptions {
@@ -45,6 +53,7 @@ export interface ChromeNativeHostInstallerOptions {
     readonly size: number;
   };
   readonly homeDirectory: string;
+  readonly temporaryRegistration?: boolean;
   readonly runtimePaths: ChromeNativeHostRuntimePaths;
   readonly runtimeStateHome: string;
   readonly runtimeVersion: string;
@@ -266,8 +275,76 @@ async function writeAtomically(filePath: string, bytes: Uint8Array, mode: number
   }
 }
 
+const jsonBytes = (value: unknown) => Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8");
+
+interface ExistingManifest {
+  readonly bytes: Buffer;
+  readonly target: string;
+  readonly mode: number;
+  readonly temporary: boolean;
+}
+
+async function readManifest(
+  manifestPath: string,
+  hostName: string,
+): Promise<ExistingManifest | null> {
+  const handle = await fs
+    .open(manifestPath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK)
+    .catch((error: unknown) => {
+      if (isErrno(error, "ENOENT")) return null;
+      throw error;
+    });
+  if (!handle) return null;
+  try {
+    const stat = await handle.stat();
+    const uid = process.getuid?.();
+    if (
+      !stat.isFile() ||
+      stat.size > 64 * 1024 ||
+      (stat.mode & 0o022) !== 0 ||
+      (uid !== undefined && stat.uid !== uid)
+    ) {
+      throw new Error("Existing Chrome native messaging manifest is unsafe");
+    }
+    const bytes = Buffer.alloc(64 * 1024 + 1);
+    const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
+    if (bytesRead === bytes.length)
+      throw new Error("Existing Chrome native messaging manifest is too large");
+    const contents = bytes.subarray(0, bytesRead);
+    const value: unknown = JSON.parse(contents.toString("utf8"));
+    if (
+      !isRecord(value) ||
+      value.name !== hostName ||
+      value.type !== "stdio" ||
+      typeof value.path !== "string" ||
+      !path.isAbsolute(value.path) ||
+      value.path.includes("\0")
+    ) {
+      throw new Error("Existing Chrome native messaging manifest is invalid");
+    }
+    return {
+      bytes: contents,
+      target: value.path,
+      mode: stat.mode & 0o777,
+      temporary: value.description === TEMPORARY_HOST_DESCRIPTION,
+    };
+  } finally {
+    await handle.close();
+  }
+}
+
+async function isDangling(target: string): Promise<boolean> {
+  try {
+    await fs.stat(target);
+    return false;
+  } catch (error) {
+    if (isErrno(error, "ENOENT")) return true;
+    throw error;
+  }
+}
+
 async function writeJsonAtomically(filePath: string, value: unknown, mode: number): Promise<void> {
-  await writeAtomically(filePath, Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8"), mode);
+  await writeAtomically(filePath, jsonBytes(value), mode);
 }
 
 function stringArray(value: unknown): readonly string[] | null {
@@ -588,6 +665,46 @@ export async function installChromeNativeHost(
   }
 
   const canonicalHome = await canonicalOwnedRoot(options.homeDirectory, "Chrome user home");
+  const manifestPaths = resolveChromeNativeMessagingManifestPaths(canonicalHome, options.authority);
+  const manifest: ChromeNativeHostManifest = {
+    allowed_origins: options.authority.extensionIds.map(
+      (extensionId) => `chrome-extension://${extensionId}/`,
+    ),
+    description: options.temporaryRegistration
+      ? TEMPORARY_HOST_DESCRIPTION
+      : "ChatGPT browser native messaging host",
+    name: options.authority.hostName,
+    path: nativeHostPath,
+    type: "stdio",
+  };
+  const manifestBytes = jsonBytes(manifest);
+  const ownedClosure = path.join(canonicalRuntimeStateHome, NATIVE_HOST_CLOSURE_DIRECTORY);
+  const existingManifests = await Promise.all(
+    manifestPaths.map(async (manifestPath) => {
+      requireContained(canonicalHome, manifestPath, "Chrome native messaging manifest");
+      await ensureContainedDirectory(
+        canonicalHome,
+        path.relative(canonicalHome, path.dirname(manifestPath)),
+      );
+      const existing = await readManifest(manifestPath, manifest.name);
+      const owned =
+        existing?.target.startsWith(`${ownedClosure}${path.sep}`) === true &&
+        path.normalize(existing.target) === existing.target;
+      const dangling = existing ? await isDangling(existing.target) : false;
+      if (
+        existing &&
+        !dangling &&
+        !owned &&
+        (!options.temporaryRegistration || existing.temporary)
+      ) {
+        throw new ChromeHostRegistrationInUse();
+      }
+      // A temporary registration only gives back an existing, different owner.
+      const previous = existing && !dangling && !owned ? existing : null;
+      return { manifestPath, existing, previous };
+    }),
+  );
+
   const registryPaths = resolveChromeNativeHostRegistryPaths(
     canonicalHome,
     canonicalRuntimeStateHome,
@@ -641,44 +758,84 @@ export async function installChromeNativeHost(
     schemaVersion: NATIVE_HOST_REGISTRY_SCHEMA_VERSION,
     updatedAt,
   };
-  for (const registryPath of registryPaths) {
-    const registryRoot = registryPath.startsWith(`${canonicalRuntimeStateHome}${path.sep}`)
-      ? canonicalRuntimeStateHome
-      : canonicalHome;
-    requireContained(registryRoot, registryPath, "Chrome native host registry");
-    const relativeParent = path.relative(registryRoot, path.dirname(registryPath));
-    await ensureContainedDirectory(registryRoot, relativeParent);
-    await writeNativeHostRegistry(registryPath, registryEntry);
-  }
-
-  const manifestPaths = resolveChromeNativeMessagingManifestPaths(canonicalHome, options.authority);
-  const manifest: ChromeNativeHostManifest = {
-    allowed_origins: options.authority.extensionIds.map(
-      (extensionId) => `chrome-extension://${extensionId}/`,
-    ),
-    description: "ChatGPT browser native messaging host",
-    name: options.authority.hostName,
-    path: nativeHostPath,
-    type: "stdio",
+  const publishedRegistries: string[] = [];
+  const publishedManifests: typeof existingManifests = [];
+  const releaseRegistration = async () => {
+    // Only give back a manifest if the registration we published is still present.
+    const outcomes = await Promise.allSettled([
+      ...publishedManifests.map(async ({ manifestPath, previous }) => {
+        const current = await readManifest(manifestPath, manifest.name);
+        if (!current?.bytes.equals(manifestBytes)) return;
+        if (previous && !(await isDangling(previous.target))) {
+          await writeAtomically(manifestPath, previous.bytes, previous.mode);
+        } else {
+          await fs.rm(manifestPath, { force: true });
+        }
+      }),
+      ...publishedRegistries.map(async (registryPath) => {
+        const registry = await readNativeHostRegistry(registryPath);
+        const entries = registry.entries.filter(
+          (entry) =>
+            !(
+              isRecord(entry) &&
+              entry.entryId === entryId &&
+              entry.updatedAt === updatedAt &&
+              isRecord(entry.presence) &&
+              entry.presence.pid === process.pid
+            ),
+        );
+        if (entries.length !== registry.entries.length) {
+          await writeJsonAtomically(registryPath, { ...registry, entries }, 0o600);
+        }
+      }),
+    ]);
+    const failure = outcomes.find((outcome) => outcome.status === "rejected");
+    if (failure) throw failure.reason;
   };
 
-  for (const manifestPath of manifestPaths) {
-    requireContained(canonicalHome, manifestPath, "Chrome native messaging manifest");
-    const relativeParent = path.relative(canonicalHome, path.dirname(manifestPath));
-    await ensureContainedDirectory(canonicalHome, relativeParent);
-    await writeJsonAtomically(manifestPath, manifest, 0o644);
+  try {
+    for (const registryPath of registryPaths) {
+      const registryRoot = registryPath.startsWith(`${canonicalRuntimeStateHome}${path.sep}`)
+        ? canonicalRuntimeStateHome
+        : canonicalHome;
+      requireContained(registryRoot, registryPath, "Chrome native host registry");
+      const relativeParent = path.relative(registryRoot, path.dirname(registryPath));
+      await ensureContainedDirectory(registryRoot, relativeParent);
+      publishedRegistries.push(registryPath);
+      await writeNativeHostRegistry(registryPath, registryEntry);
+    }
+    for (const candidate of existingManifests) {
+      const { manifestPath, existing } = candidate;
+      const current = await readManifest(manifestPath, manifest.name);
+      if (existing ? !current?.bytes.equals(existing.bytes) : current !== null) {
+        throw new Error("Chrome native messaging registration changed during installation.");
+      }
+      publishedManifests.push(candidate);
+      await writeAtomically(manifestPath, manifestBytes, 0o644);
+    }
+    await Promise.all(
+      [nativeHostPath, ...registryPaths, ...manifestPaths].map(verifyInstalledFile),
+    );
+    await readAttestedFile(nativeHostPath, options.expectedNativeHost);
+    const finalIdentity = requireIdentity(
+      await options.verifyNativeHost(nativeHostPath),
+      options.expectedNativeHost.signingTeamId,
+    );
+    if (
+      finalIdentity.signingIdentifier !== peerIdentity.signingIdentifier ||
+      finalIdentity.teamId !== peerIdentity.teamId
+    ) {
+      throw new Error("Installed Chrome native host changed its code-signing identity");
+    }
+  } catch (error) {
+    if (options.temporaryRegistration) await releaseRegistration().catch(() => undefined);
+    throw error;
   }
-  await Promise.all([nativeHostPath, ...registryPaths, ...manifestPaths].map(verifyInstalledFile));
-  await readAttestedFile(nativeHostPath, options.expectedNativeHost);
-  const finalIdentity = requireIdentity(
-    await options.verifyNativeHost(nativeHostPath),
-    options.expectedNativeHost.signingTeamId,
-  );
-  if (
-    finalIdentity.signingIdentifier !== peerIdentity.signingIdentifier ||
-    finalIdentity.teamId !== peerIdentity.teamId
-  ) {
-    throw new Error("Installed Chrome native host changed its code-signing identity");
-  }
-  return { manifestPaths, nativeHostPath, peerIdentity, registryPaths };
+  return {
+    manifestPaths,
+    nativeHostPath,
+    peerIdentity,
+    registryPaths,
+    ...(options.temporaryRegistration ? { releaseRegistration } : {}),
+  };
 }

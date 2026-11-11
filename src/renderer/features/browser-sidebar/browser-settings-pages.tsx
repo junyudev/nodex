@@ -353,6 +353,8 @@ const CHROME_CONTROL_STATUS_LABELS: Record<ChromeControlRuntimeSnapshot["status"
   "extension-disconnected": "Waiting for extension",
   faulted: "Needs repair",
   ready: "Ready",
+  "registration-disabled": "Not registered (development instance)",
+  "registration-in-use": "Registered elsewhere",
   "runtime-unavailable": "Unavailable",
 };
 

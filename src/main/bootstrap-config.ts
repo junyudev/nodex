@@ -20,6 +20,7 @@ interface BootstrapRootTomlConfig extends Record<string, unknown> {
 export interface BootstrapConfigSnapshot {
   readonly environment: Readonly<Record<string, string>>;
   readonly nodexHome: string;
+  readonly personalNodexHome: string;
   readonly profileSettingsPath: string;
   readonly projectBootstrapConfigPath: string | null;
   readonly userBootstrapConfigPath: string;
@@ -109,27 +110,30 @@ export function resolveBootstrapConfig(
   const userBootstrapConfigPath = path.join(homeDir, ".nodex", "config.toml");
   const projectBootstrapConfigPath = findProjectConfig(cwd, exists);
 
-  const mergedConfig: BootstrapServerTomlConfig = {};
-  if (exists(userBootstrapConfigPath)) {
-    Object.assign(mergedConfig, readBootstrapServerSection(userBootstrapConfigPath, readDocument));
-  }
-  if (projectBootstrapConfigPath) {
-    Object.assign(
-      mergedConfig,
-      readBootstrapServerSection(projectBootstrapConfigPath, readDocument),
-    );
-  }
+  const userConfig = exists(userBootstrapConfigPath)
+    ? readBootstrapServerSection(userBootstrapConfigPath, readDocument)
+    : {};
+  const projectConfig = projectBootstrapConfigPath
+    ? readBootstrapServerSection(projectBootstrapConfigPath, readDocument)
+    : {};
+  const personalNodexHome = resolveNodexHomePath({
+    cwd,
+    env: {},
+    userHome: homeDir,
+    configuredHome: userConfig.home,
+  });
 
   const nodexHome = resolveNodexHomePath({
     cwd,
     env: environment,
     userHome: homeDir,
-    configuredHome: mergedConfig.home,
+    configuredHome: { ...userConfig, ...projectConfig }.home,
   });
   const runtimeEnvironment = Object.freeze({ ...environment, NODEX_HOME: nodexHome });
   return Object.freeze({
     environment: runtimeEnvironment,
     nodexHome,
+    personalNodexHome,
     profileSettingsPath: path.join(nodexHome, "config.toml"),
     projectBootstrapConfigPath,
     userBootstrapConfigPath,

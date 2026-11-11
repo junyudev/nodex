@@ -1,10 +1,16 @@
 import path from "node:path";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { resolveChromeHostRegistration } from "../browser-use/chrome/ChromeHostRegistrationPolicy";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
-import { expect, test } from "vite-plus/test";
-import type { ChromeNativeHostInstallResult } from "../browser-use/chrome/ChromeNativeHostInstaller";
+import { expect, test, vi } from "vite-plus/test";
+import {
+  ChromeHostRegistrationInUse,
+  type ChromeNativeHostInstallResult,
+} from "../browser-use/chrome/ChromeNativeHostInstaller";
 import {
   makeChromeControlRuntime,
   resolveChromeNativeHostNodeModuleDirs,
@@ -100,6 +106,7 @@ function makePorts(
   return {
     browserIconPaths: new Map([["chrome", "/runtime/chrome/assets/google-chrome.png"]]),
     bundleSupported: true,
+    registrationKind: "production",
     installNativeHost: async () => installResult,
     makeRegistry: () => registry,
     requested: true,
@@ -252,4 +259,92 @@ it.effect("reports an unavailable, unrequested bundle without touching installat
       });
     }),
   ),
+);
+
+it.live("leaves the user home untouched when a development instance has no registration", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const home = yield* Effect.acquireRelease(
+        Effect.promise(() => mkdtemp(path.join(tmpdir(), "nodex-chrome-disabled-"))),
+        (directory) => Effect.promise(() => rm(directory, { recursive: true, force: true })),
+      );
+      const originalHome = process.env.HOME;
+      yield* Effect.acquireRelease(
+        Effect.sync(() => {
+          process.env.HOME = home;
+        }),
+        () =>
+          Effect.sync(() => {
+            if (originalHome === undefined) delete process.env.HOME;
+            else process.env.HOME = originalHome;
+          }),
+      );
+      const registration = resolveChromeHostRegistration({
+        isPackaged: false,
+        isolatedRunId: "dev",
+        homeDirectory: homedir(),
+        nodexHome: path.join(home, "profile"),
+        personalNodexHome: path.join(home, ".nodex"),
+        launchMode: undefined,
+        hasScenarioHome: false,
+      });
+      const installNativeHost = vi.fn(async () => {
+        await writeFile(path.join(home, "unexpected-registration"), "");
+        return installResult;
+      });
+      const runtime = yield* makeChromeControlRuntime(
+        makePorts(makeRegistry(), {
+          installNativeHost,
+          registrationKind: registration.kind,
+        }),
+      );
+      expect(runtime.snapshot()).toMatchObject({
+        status: "registration-disabled",
+        nativeHostInstalled: false,
+        providerReady: false,
+        reason: expect.stringContaining("--register-browser-host"),
+      });
+      expect(installNativeHost).not.toHaveBeenCalled();
+      expect(yield* Effect.promise(() => readdir(home))).toEqual([]);
+    }),
+  ),
+);
+
+it.effect("identifies a temporary registration in Settings and gives it back on close", () =>
+  Effect.gen(function* () {
+    const releaseRegistration = vi.fn(async () => undefined);
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const runtime = yield* makeChromeControlRuntime(
+          makePorts(makeRegistry(), {
+            installNativeHost: async () => ({ ...installResult, releaseRegistration }),
+            registrationKind: "development",
+          }),
+        );
+        expect(runtime.snapshot()).toMatchObject({
+          status: "extension-disconnected",
+          nativeHostInstalled: true,
+          reason: "Registered for this development instance.",
+        });
+      }),
+    );
+    expect(releaseRegistration).toHaveBeenCalledOnce();
+  }),
+);
+
+it.effect("reports an existing registration owner without claiming the provider is ready", () =>
+  Effect.gen(function* () {
+    const runtime = yield* makeChromeControlRuntime(
+      makePorts(makeRegistry(), {
+        installNativeHost: async () => {
+          throw new ChromeHostRegistrationInUse();
+        },
+      }),
+    );
+    expect(runtime.snapshot()).toMatchObject({
+      status: "registration-in-use",
+      nativeHostInstalled: false,
+      providerReady: false,
+    });
+  }),
 );

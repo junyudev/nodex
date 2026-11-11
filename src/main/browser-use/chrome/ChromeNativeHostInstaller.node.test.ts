@@ -184,6 +184,44 @@ describe.skipIf(process.platform === "win32")("Chrome native host installer", ()
     expect(secondRegistry.entries[0]?.entryId).toBe(firstEntryId);
   });
 
+  test("preserves a live owner and repairs registration after its Profile disappears", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-chrome-repair-"));
+    temporaryRoots.push(root);
+    const options = await makeInstallerOptions(root);
+    const priorHome = path.join(root, "deleted-profile", "agent");
+    const prior = await installChromeNativeHost({ ...options, runtimeStateHome: priorHome });
+    const manifestPath = prior.manifestPaths[0]!;
+    const manifest = await fs.readFile(manifestPath, "utf8");
+    await expect(installChromeNativeHost(options)).rejects.toThrow("another app or Profile");
+    expect(await fs.readFile(manifestPath, "utf8")).toBe(manifest);
+
+    await fs.rm(priorHome, { recursive: true });
+    const repaired = await installChromeNativeHost(options);
+    expect(JSON.parse(await fs.readFile(manifestPath, "utf8")).path).toBe(repaired.nativeHostPath);
+  });
+
+  test("temporarily registers a development instance and gives back only its own manifests", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-chrome-dev-registration-"));
+    temporaryRoots.push(root);
+    const options = await makeInstallerOptions(root);
+    const production = await installChromeNativeHost(options);
+    const development = await installChromeNativeHost({
+      ...options,
+      runtimeStateHome: path.join(root, "dev", "agent"),
+      temporaryRegistration: true,
+    });
+    const [restored, replaced] = production.manifestPaths as readonly [string, string];
+    expect(JSON.parse(await fs.readFile(restored, "utf8")).path).toBe(development.nativeHostPath);
+    const replacement = {
+      ...JSON.parse(await fs.readFile(replaced, "utf8")),
+      path: path.join(root, "another-install", "native-host"),
+    };
+    await fs.writeFile(replaced, JSON.stringify(replacement));
+    await development.releaseRegistration!();
+    expect(JSON.parse(await fs.readFile(restored, "utf8")).path).toBe(production.nativeHostPath);
+    expect(JSON.parse(await fs.readFile(replaced, "utf8"))).toEqual(replacement);
+  });
+
   test("fails closed before writing when the packaged native host is rejected", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-chrome-reject-"));
     temporaryRoots.push(root);

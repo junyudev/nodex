@@ -35,8 +35,12 @@ import {
   resolveIsolatedRunBootstrapAccess,
   type IsolatedRunBootstrapAccess,
 } from "./core-client/isolated-run-ownership";
+import { resolveChromeHostRegistration } from "./browser-use/chrome/ChromeHostRegistrationPolicy";
 import { desktopToolHostBindingNames } from "./codex/desktop-tool-environment";
 
+const browserRegistrationHome = app.getPath("home");
+const browserHostMode = process.env.NODEX_INTERNAL_BROWSER_HOST_MODE;
+delete process.env.NODEX_INTERNAL_BROWSER_HOST_MODE;
 // A seeded development launch can use the same isolated home as Electron scenarios.
 const scenarioHome = process.env.NODEX_INTERNAL_SCENARIO_HOME;
 delete process.env.NODEX_INTERNAL_SCENARIO_HOME;
@@ -249,6 +253,15 @@ function launchMainApplication(): void {
     argv: [...process.argv],
     composerAppshotHelperPath:
       bootstrapConfig.environment.NODEX_COMPOSER_APPSHOT_HELPER?.trim() || null,
+    chromeHostRegistration: resolveChromeHostRegistration({
+      isPackaged: app.isPackaged,
+      isolatedRunId: primaryIsolatedRunId,
+      homeDirectory: browserRegistrationHome,
+      nodexHome,
+      personalNodexHome: bootstrapConfig.personalNodexHome,
+      launchMode: browserHostMode,
+      hasScenarioHome: Boolean(scenarioHome),
+    }),
     documentsPath: app.getPath("documents"),
     environment: bootstrapConfig.environment,
     environmentPath: bootstrapConfig.environment.PATH ?? null,

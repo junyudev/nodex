@@ -213,9 +213,8 @@ export async function launchNodexElectronApplication(
       ...input.environment,
       ...(input.codexHome ? { CODEX_HOME: input.codexHome } : {}),
       NODEX_HOME: input.nodexHome,
-      // Browsers read native host registrations from the real home, and the last writer owns
-      // them, so a scenario must publish under its own Profile even without isolated host paths.
-      NODEX_INTERNAL_BROWSER_HOST_HOME: path.join(input.nodexHome, "browser-host-home"),
+      // Main derives the registration home from the disposable Profile.
+      NODEX_INTERNAL_BROWSER_HOST_MODE: "disposable",
       NODEX_PROJECTS_DIR: input.projectsDirectory,
       ...(input.isolatedHostHome ? { NODEX_INTERNAL_SCENARIO_HOME: input.isolatedHostHome } : {}),
       ...(input.runId ? { NODEX_INTERNAL_ISOLATED_RUN_ID: input.runId } : {}),

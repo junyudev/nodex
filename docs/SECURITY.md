@@ -895,6 +895,13 @@ provides attribution, and removing it drops Agent authorship.
   attested browser families and extension IDs. Installation writes the signed
   host plus its bounded versioned registry atomically, preserves unrelated
   registry owners, and refuses malformed or unsafe existing registry files.
+  Main determines real-home registration authority at launch. It belongs to
+  the installed app using the personal Profile or an explicitly opted-in
+  development launch. A disposable
+  scenario's registration stays under its Profile. The installed app preserves
+  a different existing host and repairs dangling registrations. A temporary
+  development registration restores the prior manifest only while its published
+  manifest is still present.
   The extension reverse-pipe directory may be current-user private or
   current-user-owned sticky shared storage; every candidate must still be a
   non-symlink Unix socket owned by the current user with no group/world write

@@ -66,6 +66,7 @@ describe("resolveBootstrapConfig", () => {
       }),
     ).toMatchObject({
       nodexHome: path.join(cwd, "project-data"),
+      personalNodexHome: path.resolve("/home/user/user-data"),
       projectBootstrapConfigPath: path.resolve("/workspace/project/.nodex/config.toml"),
       userBootstrapConfigPath: path.resolve("/home/user/.nodex/config.toml"),
     });

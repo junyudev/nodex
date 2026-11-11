@@ -37,7 +37,7 @@ const capabilities = {
   siteInfo: { available: true, provider: "test" },
 };
 
-function configureInvokeMock() {
+function configureInvokeMock(unregistered = false) {
   invokeMock.mockImplementation(async (channel: string) => {
     if (channel === "browser-profile-capabilities") return capabilities;
     if (channel === "settings:link-opening:get") return DEFAULT_LINK_OPENING_SETTINGS;
@@ -48,12 +48,14 @@ function configureInvokeMock() {
       return {
         bundleSupported: true,
         extensionConnected: false,
-        nativeHostInstalled: true,
+        nativeHostInstalled: !unregistered,
         providerReady: false,
-        reason: "Waiting for a supported browser extension",
+        reason: unregistered
+          ? "To register with your browsers, launch with vp run dev --register-browser-host."
+          : "Waiting for a supported browser extension",
         requested: true,
         revision: 1,
-        status: "extension-disconnected",
+        status: unregistered ? "registration-disabled" : "extension-disconnected",
       };
     }
     if (channel === "browser-credentials-list-all") return [];
@@ -69,12 +71,14 @@ function configureInvokeMock() {
 
 function renderBrowser({
   browserDetail = null,
+  unregistered = false,
   onOpenBrowserDetail = () => undefined,
 }: {
+  unregistered?: boolean;
   browserDetail?: "passwords" | "contact-info" | "history" | "extensions" | "downloads" | null;
   onOpenBrowserDetail?: (destination: string, anchor?: string) => void;
 } = {}) {
-  configureInvokeMock();
+  configureInvokeMock(unregistered);
   return render(
     <TestQueryProvider>
       <BrowserSettingsPage
@@ -88,6 +92,13 @@ function renderBrowser({
 }
 
 describe("Browser settings information architecture", () => {
+  test("explains how to register Chrome control from development", async () => {
+    renderBrowser({ unregistered: true });
+    expect(await screen.findByText("Not registered (development instance)")).toBeTruthy();
+    expect(screen.getByText(/vp run dev --register-browser-host/u)).toBeTruthy();
+    expect(screen.queryByText("Waiting for extension")).toBeNull();
+  });
+
   test("keeps browser management actions inside one overview page", async () => {
     const onOpenBrowserDetail = vi.fn();
     renderBrowser({ onOpenBrowserDetail });

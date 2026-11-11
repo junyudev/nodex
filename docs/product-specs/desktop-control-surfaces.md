@@ -4,7 +4,15 @@ Nodex presents Browser Use, control of supported browser profiles, and Computer 
 
 ## Availability
 
-The built-in Browser is available when its verified runtime is ready. Control of an existing browser profile additionally requires a supported browser family, the installed native host, and a connected allowed extension instance. Browser Settings reports the live provider state as checking, unavailable, needs repair, waiting for extension, or ready. Agents can select the existing-browser backend only in the ready state.
+The built-in Browser is available when its verified runtime is ready. Control of an existing browser profile additionally requires a supported browser family, the installed native host, and a connected allowed extension instance. Browser Settings reports the live provider state as checking, unavailable, not registered, registered elsewhere, needs repair, waiting for extension, or ready. Agents can select the existing-browser backend only in the ready state.
+
+The installed app registers the host for the personal Profile and repairs registrations
+whose host executable has disappeared. A registration pointing to another
+existing host stays with that owner. Development instances leave the user's
+registration alone by default. An explicitly opted-in development instance
+registers for the duration of that launch and gives back its registration on
+clean exit if it still owns it. Disposable Electron scenarios use a registration
+home inside their own Profile.
 
 Computer Use is available only when its verified helper and operating-system requirements are ready. Its service uses the bundled Agent runtime and the owning Profile without requiring a separately installed Codex app or sharing another Profile’s configuration. A failure in one control backend does not weaken or implicitly enable another. Desktop tools are available to local Agent execution.
 

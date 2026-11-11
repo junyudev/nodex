@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { launchNodexElectronApplication } from "./electron-e2e-harness";
 
@@ -30,9 +29,7 @@ test("launches the scenario build independently of the parent development render
 
 test("keeps native host registration out of the real browsers", async () => {
   await launchNodexElectronApplication(fixture);
-  expect(launch.mock.calls[0]?.[0].env.NODEX_INTERNAL_BROWSER_HOST_HOME).toBe(
-    join(fixture.nodexHome, "browser-host-home"),
-  );
+  expect(launch.mock.calls[0]?.[0].env.NODEX_INTERNAL_BROWSER_HOST_MODE).toBe("disposable");
 });
 
 test("preserves an explicitly requested development renderer for the scenario", async () => {

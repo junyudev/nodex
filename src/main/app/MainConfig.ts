@@ -11,6 +11,15 @@ export const MainConfigValue = Schema.Struct({
   arch: Schema.String,
   argv: Schema.Array(Schema.String),
   composerAppshotHelperPath: Schema.NullOr(Schema.String),
+  chromeHostRegistration: Schema.optionalKey(
+    Schema.Union([
+      Schema.Struct({ kind: Schema.Literal("disabled") }),
+      Schema.Struct({
+        kind: Schema.Literals(["production", "development", "disposable"]),
+        homeDirectory: Schema.String,
+      }),
+    ]),
+  ),
   documentsPath: Schema.String,
   environment: Schema.Record(Schema.String, Schema.String),
   environmentPath: Schema.NullOr(Schema.String),

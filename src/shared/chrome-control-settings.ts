@@ -1,6 +1,8 @@
 export type ChromeControlRuntimeStatus =
   | "extension-disconnected"
   | "faulted"
+  | "registration-disabled"
+  | "registration-in-use"
   | "ready"
   | "runtime-unavailable";
 
@@ -19,6 +21,8 @@ export interface ChromeControlRuntimeSnapshot {
 const CHROME_CONTROL_RUNTIME_STATUSES: readonly ChromeControlRuntimeStatus[] = [
   "extension-disconnected",
   "faulted",
+  "registration-disabled",
+  "registration-in-use",
   "ready",
   "runtime-unavailable",
 ];

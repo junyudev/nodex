@@ -1,3 +1,4 @@
+import type { ChromeHostRegistration } from "../browser-use/chrome/ChromeHostRegistrationPolicy";
 import { hostCapabilities } from "../../shared/host-capabilities";
 import { createHash } from "node:crypto";
 import { constants as fsConstants, promises as fs } from "node:fs";
@@ -24,6 +25,7 @@ import {
   type ChromeNativeHostPeerIdentity,
 } from "../browser-use/chrome/ChromeExtensionPipeRegistry";
 import {
+  ChromeHostRegistrationInUse,
   installChromeNativeHost,
   readChromeNativeHostIdentity,
   type ChromeNativeHostInstallResult,
@@ -79,6 +81,7 @@ export interface ChromeControlExtensionRegistryPort {
 }
 
 export interface ChromeControlRuntimePorts {
+  readonly registrationKind: ChromeHostRegistration["kind"];
   readonly browserIconPaths?: ReadonlyMap<string, string>;
   readonly bundleSupported: boolean;
   readonly installNativeHost: () => Promise<ChromeNativeHostInstallResult>;
@@ -114,14 +117,29 @@ function boundedReason(error: unknown): string {
 }
 
 function makeSnapshot(input: {
+  readonly registrationKind: ChromeHostRegistration["kind"];
   readonly bundleSupported: boolean;
-  readonly installFailure: string | null;
+  readonly installFailure: ChromeControlRuntimeError | null;
   readonly nativeHostInstalled: boolean;
   readonly registry: ChromeExtensionPipeRegistrySnapshot;
   readonly registryFailure: string | null;
   readonly requested: boolean;
   readonly runtimeUnavailableReason: string | null;
 }): ChromeControlRuntimeSnapshot {
+  if (input.registrationKind === "disabled") {
+    return {
+      bundleSupported: input.bundleSupported,
+      extensionConnected: false,
+      nativeHostInstalled: false,
+      providerReady: false,
+      reason: "To register with your browsers, launch with vp run dev --register-browser-host.",
+      requested: input.requested,
+      revision: input.registry.revision,
+      status: "registration-disabled",
+    };
+  }
+  const registrationNote =
+    input.registrationKind === "development" ? "Registered for this development instance." : null;
   if (!input.bundleSupported) {
     return {
       bundleSupported: false,
@@ -140,11 +158,15 @@ function makeSnapshot(input: {
       extensionConnected: false,
       nativeHostInstalled: input.nativeHostInstalled,
       providerReady: false,
-      reason:
-        input.installFailure ?? input.registryFailure ?? "Chrome native host installation failed",
+      reason: input.installFailure
+        ? boundedReason(input.installFailure)
+        : (input.registryFailure ?? "Chrome native host installation failed"),
       requested: input.requested,
       revision: input.registry.revision,
-      status: "faulted",
+      status:
+        input.installFailure?.cause instanceof ChromeHostRegistrationInUse
+          ? "registration-in-use"
+          : "faulted",
     };
   }
   if (!input.registry.providerReady) {
@@ -153,7 +175,7 @@ function makeSnapshot(input: {
       extensionConnected: false,
       nativeHostInstalled: true,
       providerReady: false,
-      reason: "Waiting for a supported ChatGPT browser extension",
+      reason: registrationNote ?? "Waiting for a supported ChatGPT browser extension",
       requested: input.requested,
       revision: input.registry.revision,
       status: "extension-disconnected",
@@ -164,7 +186,7 @@ function makeSnapshot(input: {
     extensionConnected: true,
     nativeHostInstalled: true,
     providerReady: true,
-    reason: null,
+    reason: registrationNote,
     requested: input.requested,
     revision: input.registry.revision,
     status: "ready",
@@ -200,20 +222,28 @@ export const makeChromeControlRuntime = (
   ports: ChromeControlRuntimePorts,
 ): Effect.Effect<ChromeControlRuntime["Service"], never, Scope.Scope> =>
   Effect.gen(function* () {
-    let installFailure: string | null = null;
+    let installFailure: ChromeControlRuntimeError | null = null;
     let nativeHostInstalled = false;
     let registry: ChromeControlExtensionRegistryPort | null = null;
     let registryFailure: string | null = null;
 
-    if (ports.bundleSupported) {
-      const installResult = yield* Effect.tryPromise({
-        try: () => ports.installNativeHost(),
-        catch: (cause) =>
-          new ChromeControlRuntimeError({ operation: "install-native-host", cause }),
-      }).pipe(
+    if (ports.bundleSupported && ports.registrationKind !== "disabled") {
+      const installResult = yield* Effect.acquireRelease(
+        Effect.tryPromise({
+          try: () => ports.installNativeHost(),
+          catch: (cause) =>
+            new ChromeControlRuntimeError({ operation: "install-native-host", cause }),
+        }),
+        (result) =>
+          Effect.promise(() => result.releaseRegistration?.() ?? Promise.resolve()).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Could not restore Chrome registration", cause),
+            ),
+          ),
+      ).pipe(
         Effect.match({
           onFailure: (error) => {
-            installFailure = boundedReason(error);
+            installFailure = error;
             return null;
           },
           onSuccess: (result) => result,
@@ -241,6 +271,7 @@ export const makeChromeControlRuntime = (
     const snapshot = (): ChromeControlRuntimeSnapshot =>
       makeSnapshot({
         bundleSupported: ports.bundleSupported,
+        registrationKind: ports.registrationKind,
         installFailure,
         nativeHostInstalled,
         registry: registrySnapshot(),
@@ -274,6 +305,7 @@ export const makeChromeControlRuntime = (
                 ...delta,
                 snapshot: makeSnapshot({
                   bundleSupported: ports.bundleSupported,
+                  registrationKind: ports.registrationKind,
                   installFailure,
                   nativeHostInstalled,
                   registry: next,
@@ -326,7 +358,7 @@ export const makeChromeControlRuntime = (
 
 export interface ChromeControlRuntimeOptions {
   readonly browserRuntime: BrowserRuntimeAvailability;
-  readonly homeDirectory: string;
+  readonly registration: ChromeHostRegistration;
   readonly peerAuthorizationMode: BrowserUsePeerAuthorizationMode;
   readonly platform: NodeJS.Platform;
   readonly runtimeStateHome: string;
@@ -414,6 +446,8 @@ export const live = (options: ChromeControlRuntimeOptions): Layer.Layer<ChromeCo
         if (!bundleSupported || !bundle || chromeCapability?.status !== "available" || !authority) {
           throw new Error("Chrome native host is unavailable on this runtime");
         }
+        const registration = options.registration;
+        if (registration.kind === "disabled") throw new Error("Chrome registration is disabled");
         const nativeHostPath = bundle.paths.chromeNativeHost;
         if (!nativeHostPath) throw new Error("Verified Chrome native host path is unavailable");
         const nativeHostArtifact = bundle.manifest.artifacts.find(
@@ -438,7 +472,8 @@ export const live = (options: ChromeControlRuntimeOptions): Layer.Layer<ChromeCo
             signingTeamId: chromeCapability.nativeHost.signingTeamId,
             size: nativeHostArtifact.size,
           },
-          homeDirectory: options.homeDirectory,
+          homeDirectory: registration.homeDirectory,
+          temporaryRegistration: registration.kind === "development",
           runtimePaths: {
             browserClientPath: bundle.paths.browserPluginClient,
             browserServicePath: bundle.paths.browserPluginService,
@@ -470,6 +505,7 @@ export const live = (options: ChromeControlRuntimeOptions): Layer.Layer<ChromeCo
         browserIconPaths,
         bundleSupported,
         installNativeHost,
+        registrationKind: options.registration.kind,
         makeRegistry: (peerIdentity) => {
           if (!authority || !bundle) throw new Error("Chrome authority is unavailable");
           return new ChromeExtensionPipeRegistry({

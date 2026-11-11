@@ -224,6 +224,20 @@ describe("dev launcher", () => {
     });
   });
 
+  test("requires an explicit browser-host opt-in on every development launch", () => {
+    const plan = (args: string[]) =>
+      createDevLaunchPlan({
+        arguments: parseDevLauncherArguments(args),
+        environment: { NODEX_INTERNAL_BROWSER_HOST_MODE: "development" },
+        home: HOME,
+        platform: "darwin",
+      });
+    expect(plan([]).environment.NODEX_INTERNAL_BROWSER_HOST_MODE).toBeUndefined();
+    expect(plan(["--register-browser-host"]).environment.NODEX_INTERNAL_BROWSER_HOST_MODE).toBe(
+      "development",
+    );
+  });
+
   test("enables developer overlays only for the requested invocation", () => {
     const optedIn = createDevLaunchPlan({
       arguments: parseDevLauncherArguments([

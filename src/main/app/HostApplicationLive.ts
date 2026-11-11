@@ -167,7 +167,7 @@ const chromeControl = Layer.unwrap(
     const codex = yield* CodexPlatform;
     return chromeControlRuntimeLive({
       browserRuntime: codex.runtime.browserRuntime,
-      homeDirectory: config.environment.NODEX_INTERNAL_BROWSER_HOST_HOME ?? config.homeDirectory,
+      registration: config.chromeHostRegistration ?? { kind: "disabled" },
       peerAuthorizationMode: codex.runtime.source === "bundled" ? "packaged" : "development",
       platform: config.platform as NodeJS.Platform,
       runtimeStateHome: codex.runtimeStateHome,
