@@ -78,7 +78,7 @@ import { ConversationRecoverySurface } from "../shared/conversation-recovery-sur
 import { useConversationRecoveryActions } from "../conversation-recovery-actions";
 import { CodexShimmerProvider, CodexShimmerText } from "../shared/codex-shimmer-text";
 import { AnsweredUserInputBlock } from "../composer/request-cards/answered-user-input-block";
-import { ConversationAttribution } from "../shared/conversation-attribution";
+import { AutomationAttribution, ConversationAttribution } from "../shared/conversation-attribution";
 import {
   UserAttachmentStrip,
   UserMessageImageGallery,
@@ -842,9 +842,11 @@ export function SubagentActivityInlineRows({
 function UserMessageDeliveryMarkers({
   entry,
   onOpenThread,
+  onOpenSummaryAutomation,
 }: {
   entry: ThreadLeafBlockProps["block"]["entry"];
   onOpenThread?: ThreadLeafBlockProps["onOpenThread"];
+  onOpenSummaryAutomation?: ThreadLeafBlockProps["onOpenSummaryAutomation"];
 }) {
   const origin = entry.userMessageOrigin;
   const answeredBy = entry.questionReplies ? entry.respondedBy : undefined;
@@ -861,7 +863,10 @@ function UserMessageDeliveryMarkers({
       onOpenThread={onOpenThread}
     />
   ) : origin?.kind === "automation" ? (
-    <span>Sent by Automation</span>
+    <AutomationAttribution
+      automationId={origin.automationId}
+      onOpenAutomation={onOpenSummaryAutomation}
+    />
   ) : origin?.kind === "nodex" ? (
     <span>Sent by Nodex</span>
   ) : null;
@@ -883,6 +888,7 @@ export function UserMessageBubble({
   isActiveSearchMatch = false,
   onEditUserTurn,
   onOpenThread,
+  onOpenSummaryAutomation,
   projectWorkspacePath,
   threadCwd,
   compactUserMessageActions = false,
@@ -1015,7 +1021,11 @@ export function UserMessageBubble({
             unavailableImages={block.entry.unavailableImages ?? []}
           />
           <div className="group flex w-full flex-col items-end justify-end gap-1">
-            <UserMessageDeliveryMarkers entry={block.entry} onOpenThread={onOpenThread} />
+            <UserMessageDeliveryMarkers
+              entry={block.entry}
+              onOpenThread={onOpenThread}
+              onOpenSummaryAutomation={onOpenSummaryAutomation}
+            />
             {isEditing ? (
               <UserMessageEditForm
                 draft={editDraft}

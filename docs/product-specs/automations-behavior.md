@@ -202,7 +202,7 @@ quietly. Failed Turns follow the ordinary attention rules. The preference
 applies to the Turn the Automation started, including Run now. A person's
 follow-up in the same chat uses the ordinary notification rules.
 
-A quiet run starts read. It appears in run history and stays out of unread
+A quiet run starts read. It appears dimmed in run history and stays out of unread
 counts and indicators. Finishing quietly leaves the chat's unread state alone
 and sends no desktop or phone notification. A run whose Turn outcome is
 unknown when Nodex restarts can still appear for review.
@@ -222,7 +222,10 @@ decisions with reasons. Cron runs can expand beneath it, newest first; a held
 decision opens its Inbox. Runs open only after Session binding and can be
 archived. A heartbeat opens its continued chat while retaining the Automations
 sidebar. An unread run is read once its chat is shown in a focused window,
-however that chat was reached. A heartbeat's chat reads every beat it holds. Unavailable selections return to the landing page.
+however that chat was reached. A heartbeat's chat reads every beat it holds, and shows each
+beat's instructions and reply. Quiet beats collapse into expandable rows and consecutive quiet
+beats share a row. See [Heartbeats in chat](codex-thread-transcript-behavior.md#heartbeats).
+Unavailable selections return to the landing page.
 
 The editor keeps name, action, schedule, workspace, Agent/model, notification and
 runbook controls. Mode offers Dry run, Ask first and Run. Owner appears when the

@@ -11,11 +11,13 @@ All notable changes to this project will be documented in this file.
 - Opening `N more properties` on a Page now lists its empty properties by name instead of a column of rows that say Empty. Choose one and it joins the list with its editor already open, and it stays there while the Page is open. Hidden properties that hold a value still open as rows.
 - The built-in Parent property is now called **Part of**, so a Page under another reads "Part of" followed by that Page. A property you renamed keeps your name. Part of and Waits for also have their own icons.
 - Clicking an image in a Page's Files, or an image attachment in its body, now shows it over the Page instead of opening a tab. Step through the Page's images with the arrow keys, and choose **Open in tab** when you want to keep one open; Cmd/Ctrl-click still opens the tab directly.
+- Heartbeat chats read like conversations. A heartbeat's message shows its instructions and names the Automation that sent it, and the Agent's reply shows what it wrote, without the surrounding markup. Checks that found nothing to report fold into a single **Quiet check** line, and a run of them shares one line with their count and latest result; expand it to see any check in full.
 
 ### Fixed
 
 - A chat's composer no longer disappears. Opening a chat that finished in the background could show its messages with nothing below them while it reconnected, after its connection failed, or after its worktree was cleaned up. The composer now stays with your draft, and a line above it says what is holding the next message and offers the fix, such as Retry or Restore worktree. A chat that failed to connect also tries again on its own when you come back to it.
 - Ended background tasks clear from the Session summary after you stop an Agent. You can also use Stop to dismiss an already-ended task that still appears.
+- A heartbeat that has nothing to report stays quiet. It no longer marks its chat unread or adds to unread Automation runs, matching the notification it already skipped. Automations set to notify on failed runs only keep their successful runs quiet the same way.
 
 ## [0.5.5] - 2026-11-11
 

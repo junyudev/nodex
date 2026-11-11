@@ -1,3 +1,7 @@
+import {
+  projectAutomationPromptPreview,
+  projectAutomationHeartbeatReply,
+} from "../../../shared/automation-heartbeat";
 import { resolveAssistantResponseStartedAtMs } from "../../../shared/codex-assistant-response-timing";
 import { createAgentApprovalRuntime } from "./agent-approval-runtime";
 import {
@@ -615,8 +619,12 @@ export class AgentRuntimeConversationOwner {
       previews: [
         {
           itemId: prompt.messageId,
-          promptPreview: truncateCodexPromptRailPreview(prompt.prompt),
-          responsePreview: truncateCodexPromptRailPreview(prompt.response),
+          promptPreview: truncateCodexPromptRailPreview(
+            projectAutomationPromptPreview(prompt.prompt),
+          ),
+          responsePreview: truncateCodexPromptRailPreview(
+            projectAutomationHeartbeatReply(prompt.response, false).text,
+          ),
           isHeartbeat: prompt.scheduled,
         },
       ],

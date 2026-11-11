@@ -135,6 +135,22 @@ This spec does not cover:
 - Eligible live timelines apply native started, text-delta and completed records by their keyed identity. Completion preserves the receipt position; duplicate starts and late deltas cannot reopen a completed record. Ordinary lifecycle and realtime receipts share timeline identity without creating synthetic Turns.
 - Incoming timeline pagination replaces ordinary pagination and clears ordinary reconnect state. Extending older timeline history prepends older same-Turn items while preserving resident item values. A non-resume extension preserves proven completeness; a fresh resume adopts its new timeline completeness.
 
+## Heartbeats
+
+A heartbeat's opening message shows its instructions and Runbook, when attached, with the usual
+message timestamp and a **Sent by** attribution naming the Automation. The name follows renames
+and opens the Automation; a deleted Automation reads as **Sent by Automation**. The Agent's reply shows its written
+update. A reply that requests attention and consists only of a notification message shows that
+message as the reply. The same readable text feeds copy, selection, navigation previews, and
+find in chat. Agent history retains the full exchange.
+
+A successfully completed heartbeat that requested no notification appears as a collapsed
+**Quiet check** row with its message and time. Consecutive quiet heartbeats appear as a single
+row showing their count and the latest message and time. Expand the group to list the
+individual beats beneath it, then expand a beat to see its instructions, work, and reply. Running, failed, and interrupted beats,
+beats that request attention, and beats with pending questions stay open as ordinary Turns.
+Finding text or jumping to a message in a quiet beat opens the group and beat as needed.
+
 ## Transcript Entry Kinds
 
 The visible transcript can contain these projected kinds:

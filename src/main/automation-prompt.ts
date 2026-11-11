@@ -1,3 +1,8 @@
+import { runbookInstructions, type AutomationRunbook } from "../shared/automation-heartbeat";
+export {
+  buildAutomationHeartbeatPrompt,
+  type AutomationRunbook,
+} from "../shared/automation-heartbeat";
 import type { CodexModelOption, Automation } from "../shared/types";
 
 export interface AutomationInboxItemDirective {
@@ -35,22 +40,6 @@ export interface AutomationModelSettings {
   reasoningEffort: string | null;
 }
 
-export interface AutomationRunbook {
-  readonly title: string;
-  readonly pageKey: string;
-  readonly body: string;
-}
-
-const runbookInstructions = (runbook?: AutomationRunbook | null): string[] =>
-  runbook
-    ? [
-        "",
-        `Runbook: ${runbook.title} (${runbook.pageKey})`,
-        runbook.body,
-        "You may update this runbook Page with what future runs should know.",
-      ]
-    : [];
-
 export function buildAutomationRunPrompt(
   automation: Pick<Automation, "id" | "name" | "prompt" | "lastRunAt">,
   instructions = automation.prompt,
@@ -66,24 +55,6 @@ export function buildAutomationRunPrompt(
     "",
     instructions,
     ...runbookInstructions(runbook),
-  ].join("\n");
-}
-
-export function buildAutomationHeartbeatPrompt(
-  automation: Pick<Automation, "id" | "prompt">,
-  now = Date.now(),
-  instructions = automation.prompt,
-  runbook?: AutomationRunbook | null,
-): string {
-  return [
-    "<heartbeat>",
-    `  <automation_id>${automation.id}</automation_id>`,
-    `  <current_time_iso>${new Date(now).toISOString()}</current_time_iso>`,
-    "  <instructions>",
-    instructions,
-    ...runbookInstructions(runbook),
-    "  </instructions>",
-    "</heartbeat>",
   ].join("\n");
 }
 

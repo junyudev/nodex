@@ -1,3 +1,4 @@
+import { projectAutomationPromptPreview } from "../../../shared/automation-heartbeat";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { startTransition, useDeferredValue, useEffect, useEffectEvent, useState } from "react";
 import { Archive16Icon, DeleteIcon, SearchIcon } from "@/components/shared/icons";
@@ -49,7 +50,11 @@ function timestampMs(value: number): number {
 }
 
 function chatTitle(chat: CodexSidebarThreadItem): string {
-  return chat.title.trim() || chat.preview.trim() || "Untitled chat";
+  return (
+    projectAutomationPromptPreview(chat.title).trim() ||
+    projectAutomationPromptPreview(chat.preview).trim() ||
+    "Untitled chat"
+  );
 }
 
 function isNativeThreadChat(chat: CodexSidebarThreadItem): boolean {
@@ -79,7 +84,12 @@ export function projectArchivedChatGroups(input: {
     .filter((chat) => {
       if (!query) return true;
       const projectName = chat.projectId ? (input.projectNames.get(chat.projectId) ?? "") : "";
-      return [chatTitle(chat), chat.preview, chat.cwd ?? "", projectName]
+      return [
+        chatTitle(chat),
+        projectAutomationPromptPreview(chat.preview),
+        chat.cwd ?? "",
+        projectName,
+      ]
         .join("\n")
         .toLocaleLowerCase()
         .includes(query);

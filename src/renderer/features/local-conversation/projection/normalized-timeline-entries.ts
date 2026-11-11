@@ -101,6 +101,7 @@ export function markLatestCodexTimelineTurnEntry(
 
 type Segment = {
   readonly base: NormalizedConversationTurnEntry;
+  readonly wholeTurn?: true;
   readonly turnKey: string;
   readonly itemIds: string[];
   readonly includeInput: boolean;
@@ -120,6 +121,7 @@ export function projectNormalizedTimelineEntries(input: {
   readonly owner: CodexTranscriptReadOwner;
   readonly structure: CodexTranscriptStructure | null;
   readonly entries: readonly ConversationTurnListEntry[];
+  readonly pendingQuestionTurnIds?: ReadonlySet<string>;
   /**
    * Hidden subagent activity is never promoted into a dedicated row; its items remain ordinary
    * Turn items, which the Turn projection omits under the same setting. Defaults to shown.
@@ -163,6 +165,11 @@ export function projectNormalizedTimelineEntries(input: {
       byTurnId.delete(turnId);
     }
   }
+  const quietTurnIds = new Set(
+    [...byTurnId].flatMap(([turnId, entry]) =>
+      entry.quietHeartbeat && !input.pendingQuestionTurnIds?.has(turnId) ? [turnId] : [],
+    ),
+  );
   const promoted = new Set(
     timeline.entries.flatMap((entry) =>
       entry.type === "realtime" && entry.item.type === "bemItemPromoted"
@@ -307,6 +314,20 @@ export function projectNormalizedTimelineEntries(input: {
     const base = byTurnId.get(turnId);
     if (!base) return;
     represented.add(base.turnKey);
+    if (quietTurnIds.has(turnId)) {
+      voice = null;
+      descriptors.push({
+        base,
+        wholeTurn: true,
+        turnKey: base.turnKey,
+        itemIds: [],
+        includeInput: true,
+        includeTurnExtras: true,
+        presentationStatus: "completed",
+        userActions: true,
+      });
+      return;
+    }
     const details = input.owner.readTurnDetails(base.historyEntityKey);
     if (
       !details ||
@@ -334,6 +355,10 @@ export function projectNormalizedTimelineEntries(input: {
     _position: number,
     promotion?: Extract<ThreadRealtimeItem, { type: "bemItemPromoted" }>,
   ): void => {
+    if (quietTurnIds.has(turnId)) {
+      open(turnId);
+      return;
+    }
     const address = JSON.stringify([turnId, itemId]);
     if (!promotion && (seenItems.has(address) || promoted.has(address))) return;
     const base = byTurnId.get(turnId);
@@ -491,6 +516,10 @@ export function projectNormalizedTimelineEntries(input: {
     }
     if (entry.type === "turnCompleted") {
       setCurrentTurn(entry.turnId);
+      if (quietTurnIds.has(entry.turnId)) {
+        open(entry.turnId);
+        continue;
+      }
       const segment = active.get(entry.turnId);
       if (segment) {
         segment.includeTurnExtras = true;
@@ -565,6 +594,7 @@ export function projectNormalizedTimelineEntries(input: {
     if (
       entry.type !== "turnStarted" ||
       completedTurnIds.has(entry.turnId) ||
+      quietTurnIds.has(entry.turnId) ||
       active.has(entry.turnId)
     )
       continue;
@@ -594,6 +624,10 @@ export function projectNormalizedTimelineEntries(input: {
   const projected = new Map<Descriptor, CodexTimelineViewEntry>();
   for (const descriptor of descriptors) {
     if (!("base" in descriptor)) continue;
+    if (descriptor.wholeTurn) {
+      projected.set(descriptor, descriptor.base);
+      continue;
+    }
     // Work receipts can repeat an item; a slice selects its canonical identity once.
     const selected = new Set(descriptor.itemIds);
     const itemIds = descriptor.wholeItem
@@ -612,8 +646,9 @@ export function projectNormalizedTimelineEntries(input: {
     const rawItems = itemIds.map((itemId) =>
       input.owner.readItem(descriptor.base.historyEntityKey, itemId),
     );
+    const { quietHeartbeat: _quietHeartbeat, ...base } = descriptor.base;
     projected.set(descriptor, {
-      ...descriptor.base,
+      ...base,
       turnKey: descriptor.turnKey,
       turnSearchKey: descriptor.turnKey,
       turnItemIds: itemIds,

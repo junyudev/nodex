@@ -1,3 +1,7 @@
+import {
+  parseAutomationHeartbeatPrompt,
+  projectAutomationPromptPreview,
+} from "./automation-heartbeat";
 import type { UserInput } from "@nodex/codex-app-server-protocol/v2";
 import { buildCodexSteeringCompareKey } from "./codex-conversation-state/codex-steering-compare";
 import { projectCodexMarkdownLabel, projectCodexMarkdownToPlainText } from "./codex-markdown-text";
@@ -56,13 +60,6 @@ function readForkTitleCommentBody(value: unknown): string {
   return content
     .map((part) => (part.content_type === "text" && typeof part.text === "string" ? part.text : ""))
     .join("");
-}
-
-function extractCodexXmlElement(value: string, tagName: string): string | null {
-  return (
-    new RegExp(`<${tagName}>\\s*([\\s\\S]*?)\\s*<\\/${tagName}>`, "i").exec(value)?.[1]?.trim() ??
-    null
-  );
 }
 
 function stripCodexCommentImageDescriptions(value: string): string {
@@ -133,12 +130,7 @@ function projectCodexForkTitleUserMessage(rawText: string, hasImages: boolean): 
   const normalizedRawText = hasImages ? stripCodexCommentImageDescriptions(rawText) : rawText;
   const shouldStripAppshots = hasRecognizedCodexAppshot(normalizedRawText);
   const trimmed = normalizedRawText.trim();
-  let message: string | null = null;
-  if (trimmed.startsWith("<heartbeat>") && trimmed.endsWith("</heartbeat>")) {
-    const currentTime = extractCodexXmlElement(trimmed, "current_time_iso");
-    const instructions = extractCodexXmlElement(trimmed, "instructions");
-    if (currentTime !== null && instructions !== null) message = instructions;
-  }
+  let message = parseAutomationHeartbeatPrompt(trimmed)?.instructions ?? null;
 
   message ??= parseCodexDelegationText(trimmed)?.input ?? null;
 
@@ -507,8 +499,9 @@ export function cleanCodexAutoTitlePrompt(
   prompt: string,
   maxChars = CODEX_THREAD_TITLE_PROMPT_MAX_CHARS,
 ): string {
-  const parts = prompt.split(CODEX_REQUEST_MARKER_PATTERN);
-  const normalizedPrompt = (parts.length <= 1 ? prompt : (parts[parts.length - 1] ?? "")).trim();
+  const content = projectAutomationPromptPreview(prompt);
+  const parts = content.split(CODEX_REQUEST_MARKER_PATTERN);
+  const normalizedPrompt = (parts.length <= 1 ? content : (parts[parts.length - 1] ?? "")).trim();
   if (!normalizedPrompt) {
     return "";
   }

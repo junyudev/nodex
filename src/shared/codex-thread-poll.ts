@@ -1,7 +1,7 @@
-import { projectAssistantText } from "./codex-canonical-item-projector";
+import { projectAssistantMarkdown } from "./codex-canonical-item-projector";
 import { projectCodexMarkdownToPlainText } from "./codex-markdown-text";
 import type { ThreadStatus, Turn, ThreadItem } from "@nodex/codex-app-server-protocol/v2";
-import { parseCodexHeartbeatAssistantMessage } from "./codex-turn-notification";
+import { parseCodexHeartbeatAssistantMessage } from "./automation-heartbeat";
 
 export interface ThreadPollTarget {
   readonly threadId: string;
@@ -73,7 +73,7 @@ function assistant(turn: Turn | null): AssistantMessage | null {
   for (let index = turn.items.length - 1; index >= 0; index -= 1) {
     const item = turn.items[index];
     if (item?.type !== "agentMessage") continue;
-    const content = projectAssistantText(item.text, index === lastWork);
+    const content = projectAssistantMarkdown(item.text, index === lastWork);
     if (content === null || (index === lastWork && content.trimStart().startsWith("{"))) continue;
     const heartbeat = parseCodexHeartbeatAssistantMessage(content);
     const text = projectCodexMarkdownToPlainText(

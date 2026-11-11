@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "vite-plus/test";
-import { act } from "@testing-library/react";
+import { act, fireEvent } from "@testing-library/react";
 import { startTransition, Suspense, useLayoutEffect, useState, type ReactNode } from "react";
 import { NodexTooltipProvider } from "../../../components/ui/tooltip";
 import { createMaitaiStore, MaitaiProvider } from "../../../lib/maitai";
@@ -251,6 +251,7 @@ function buildTurnEntries(texts: readonly string[]): VisibleConversationTurnEntr
 
 function renderVirtualizedTurnList(input: {
   entries: LocalConversationVirtualizedTurnListEntry[];
+  pendingQuestionTurnIds?: ReadonlySet<string>;
   withViewport?: boolean;
   historyRows?: readonly CodexHistoryRow[];
   initialScrollOffset?: number;
@@ -268,6 +269,7 @@ function renderVirtualizedTurnList(input: {
   const list = (
     <LocalConversationVirtualizedTurnList
       entries={input.entries}
+      pendingQuestionTurnIds={input.pendingQuestionTurnIds}
       historyRows={input.historyRows}
       conversationId="thread_1"
       threadCwd="/tmp/project"
@@ -475,6 +477,68 @@ describe("LocalConversationVirtualizedTurnList", () => {
       view.unmount();
     },
   );
+
+  test("groups consecutive quiet beats and opens the targeted beat on message navigation", async () => {
+    const entries = buildTurnEntries([
+      "Checked first",
+      "Checked second",
+      "Needs an answer",
+      "Checked fourth",
+    ]);
+    for (const [index, entry] of entries.entries()) {
+      entry.turn.turnStartedAtMs = index + 1;
+      entry.turn.items[0]!.heartbeatPrompt = true;
+      entry.turn.items[1]!.heartbeatReply = {
+        decision: "DONT_NOTIFY",
+        body: entry.turn.items[1]!.markdownText!,
+        message: `Result ${index + 1}`,
+      };
+    }
+    installQueuedRequestAnimationFrame();
+    installTurnBlockSizes({ turn_1: 28, turn_2: 28, turn_3: 160, turn_4: 28 });
+    let api: LocalConversationVirtualizedTurnListApi | null = null;
+    const view = renderVirtualizedTurnList({
+      entries,
+      pendingQuestionTurnIds: new Set(["turn_3"]),
+      withViewport: true,
+      onApiChange: (value) => {
+        api = value;
+      },
+    });
+    const group = view.getByRole("button", { name: /2 quiet checks.*Result 2/ });
+    expect(group.getAttribute("aria-expanded")).toBe("false");
+    expect(view.queryByText("Request 2")).toBeNull();
+    expect(view.getByText("Needs an answer")).toBeTruthy();
+    expect(view.getByRole("button", { name: /Result 4/ })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(group);
+    });
+    expect(view.getByRole("button", { name: /Result 1/ })).toBeTruthy();
+    expect(view.queryByText("Request 2")).toBeNull();
+    await act(async () => {
+      fireEvent.click(group);
+    });
+
+    const currentApi = api as LocalConversationVirtualizedTurnListApi | null;
+    if (!currentApi) throw new Error("missing virtualizer API");
+    const request = new AbortController();
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = currentApi.scrollToKey(
+        "turn_2",
+        (element) => element.querySelector("[data-user-message-bubble]"),
+        {
+          signal: request.signal,
+        },
+      );
+    });
+    expect(view.getByText("Request 2")).toBeTruthy();
+    expect(view.queryByText("Request 1")).toBeNull();
+    await act(async () => {
+      request.abort();
+      await pending;
+    });
+  });
 
   test("cancels pending navigation without waiting for a frame and releases viewer protection", async () => {
     installQueuedRequestAnimationFrame();

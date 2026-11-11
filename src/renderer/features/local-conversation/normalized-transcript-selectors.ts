@@ -152,6 +152,9 @@ export function selectNormalizedConversationTurnEntries(input: {
       hasUserMessage: row.hasUserMessage,
       hasAssistantMessage: row.hasAssistantMessage,
       hasMcpApp: row.hasMcpApp,
+      ...(row.quietHeartbeat && requests.length === 0
+        ? { quietHeartbeat: row.quietHeartbeat }
+        : {}),
       requests,
       isMostRecentTurn,
       readTurn: () => input.owner.readTurn(row.entityKey),

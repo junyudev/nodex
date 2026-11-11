@@ -1,3 +1,9 @@
+import {
+  isHistoricalAutomationPrompt,
+  parseAutomationHeartbeatPrompt,
+  projectAutomationHeartbeatReply,
+  projectAutomationPromptPreview,
+} from "./automation-heartbeat";
 import type { ThreadItem, Turn } from "@nodex/codex-app-server-protocol/v2";
 import type { CodexHistoryTurnItemsPagination } from "./codex-conversation-state/codex-history-topology";
 import type { CodexThreadHistoryFeatureUnavailable } from "./codex-thread-history-features";
@@ -116,19 +122,6 @@ type CodexPromptRailUserContent = Extract<ThreadItem, { readonly type: "userMess
 const textFromInput = (content: CodexPromptRailUserContent): string =>
   content.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("\n");
 
-const isHeartbeatPrompt = (prompt: string): boolean => {
-  const text = prompt.trim();
-  if (
-    text.startsWith("<heartbeat>") &&
-    text.endsWith("</heartbeat>") &&
-    /<current_time_iso>[\s\S]*?<\/current_time_iso>/i.test(text) &&
-    /<instructions>[\s\S]*?<\/instructions>/i.test(text)
-  )
-    return true;
-  // History written before heartbeat XML keeps its original attribution.
-  return prompt.includes("Sent by scheduled task");
-};
-
 /** Truncates by Unicode code point so surrogate pairs are never split. */
 export function truncateCodexPromptRailPreview(
   value: string,
@@ -176,18 +169,25 @@ export function buildCodexPromptRailPreviews(input: {
   for (const item of promptItemsWithOpening(input.turn, input.pagination)) {
     if (item.type === "userMessage") {
       const prompt = textFromInput(item.content);
+      const heartbeat = parseAutomationHeartbeatPrompt(prompt);
       previews.push({
         itemId: item.id,
-        promptPreview: truncateCodexPromptRailPreview(prompt, maximumCodePoints),
+        promptPreview: truncateCodexPromptRailPreview(
+          projectAutomationPromptPreview(prompt),
+          maximumCodePoints,
+        ),
         responsePreview: "",
-        isHeartbeat: isHeartbeatPrompt(prompt),
+        isHeartbeat: heartbeat !== null || isHistoricalAutomationPrompt(prompt),
       });
       continue;
     }
     if (item.type !== "agentMessage") continue;
     const latest = previews.at(-1);
     if (!latest) continue;
-    latest.responsePreview = truncateCodexPromptRailPreview(item.text, maximumCodePoints);
+    latest.responsePreview = truncateCodexPromptRailPreview(
+      projectAutomationHeartbeatReply(item.text, input.turn.status === "inProgress").text,
+      maximumCodePoints,
+    );
   }
   return previews;
 }

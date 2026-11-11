@@ -3,6 +3,8 @@ import { AgentProviderIcon } from "@/components/shared/icons/provider-icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { conversationIdentityQueryOptions } from "@/lib/conversation-identity";
+import { automationsListQueryOptions } from "@/lib/query-options";
+import { isRemoteSpace } from "@/lib/renderer-space";
 import type { ConversationIdentity } from "../../../../../shared/conversation-identity";
 import type { ThreadStageActions } from "../../thread-stage-types";
 import { AgentIdentity, useAgentIdentity } from "./agent-identity";
@@ -118,6 +120,49 @@ export function ConversationAttribution({
         <ConversationReference identity={identity} onOpenThread={onOpenThread} />
       ) : (
         <span data-conversation-reference="unknown">{fallback}</span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Names the Automation that sent a message, resolved live so a rename shows everywhere. The name
+ * opens the Automation; one that was deleted, or that this window cannot read, stays anonymous.
+ */
+export function AutomationAttribution({
+  automationId,
+  onOpenAutomation,
+}: {
+  readonly automationId: string | null;
+  readonly onOpenAutomation?: ThreadStageActions["onOpenSummaryAutomation"];
+}) {
+  const { data: name } = useQuery({
+    ...automationsListQueryOptions(),
+    enabled:
+      automationId !== null &&
+      typeof window !== "undefined" &&
+      Boolean(window.api) &&
+      !isRemoteSpace(),
+    select: (automations) =>
+      automations.find((automation) => automation.id === automationId)?.name.trim() || null,
+  });
+  return (
+    <span
+      className="inline-flex min-w-0 items-center gap-1"
+      data-automation-id={automationId ?? undefined}
+    >
+      <span className="shrink-0">Sent by</span>
+      {name && automationId && onOpenAutomation ? (
+        <button
+          type="button"
+          aria-label={`Open ${name}`}
+          className="min-w-0 cursor-interaction truncate hover:text-token-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2"
+          onClick={() => void onOpenAutomation({ automationId, title: name, mode: "open" })}
+        >
+          {name}
+        </button>
+      ) : (
+        <span className="min-w-0 truncate">{name ?? "Automation"}</span>
       )}
     </span>
   );

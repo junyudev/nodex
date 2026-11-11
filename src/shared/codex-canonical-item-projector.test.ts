@@ -1,3 +1,4 @@
+import { buildAutomationHeartbeatPrompt } from "./automation-heartbeat";
 import { prepareCodexPrompt } from "./codex-prompt-preparation";
 import { encodeCodexAsyncQuestionReplies } from "./codex-async-user-input";
 import { describe, expect, test } from "vite-plus/test";
@@ -772,6 +773,50 @@ describe("projectCodexCanonicalTurnViews", () => {
         sourceKind: "local-image",
       },
     ]);
+  });
+
+  test("withholds a reply that has only begun its envelope, and keeps a settled quiet reply", () => {
+    expect(projectAssistantText("<heartb", true)).toBeNull();
+    expect(projectAssistantText("Still green.\n<heartbeat><decision>DONT", true)).toBe(
+      "Still green.",
+    );
+    expect(
+      projectAssistantText("<heartbeat><decision>DONT_NOTIFY</decision></heartbeat>", false),
+    ).toBe("");
+  });
+
+  test("projects a heartbeat opening and its reply while retaining both canonical messages", () => {
+    const text = buildAutomationHeartbeatPrompt({ id: "automation-native", prompt: "Check CI" }, 1);
+    const reply =
+      "<heartbeat><decision>NOTIFY</decision><message>CI needs attention</message></heartbeat>";
+    const opening = [{ type: "text" as const, text, text_elements: [] }];
+    const items: CodexCanonicalItem[] = [
+      {
+        id: "reply",
+        type: "agentMessage",
+        phase: "final_answer",
+        delivery: null,
+        questions: null,
+        memoryCitation: null,
+        text: reply,
+      },
+    ];
+    const turn = {
+      ...buildCanonicalTurn({ params: buildTurnParams({ input: opening }), items }),
+      status: "completed" as const,
+    };
+    const views = projectCodexCanonicalTurnViews({ threadId: THREAD_ID, turn, observedAtMs: 1000 });
+    expect(views[0]).toMatchObject({
+      markdownText: "Check CI",
+      userMessageOrigin: { kind: "automation", automationId: "automation-native" },
+      heartbeatPrompt: true,
+      rawItem: { content: opening },
+    });
+    expect(views[1]).toMatchObject({
+      markdownText: "CI needs attention",
+      heartbeatReply: { decision: "NOTIFY", body: "", message: "CI needs attention" },
+      rawItem: { text: reply },
+    });
   });
 
   test("the opening prompt keeps who sent it when it stands in for the server message", () => {

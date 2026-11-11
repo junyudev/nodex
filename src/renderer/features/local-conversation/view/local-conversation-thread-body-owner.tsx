@@ -1,3 +1,4 @@
+import { useAsyncQuestions } from "./composer/async-question-surface";
 import { toastFailure } from "@/lib/failure-toast";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useChatMessageReveal } from "./use-chat-message-reveal";
@@ -663,6 +664,16 @@ export function LocalConversationThreadBodyOwner({
   turnDiffHoverPreviewDisabled = false,
 }: LocalConversationThreadBodyOwnerProps) {
   const { owner: transcriptOwner, structure: transcriptStructure } = useCodexTranscriptStructure();
+  const { state: asyncQuestionState } = useAsyncQuestions(threadId ?? "");
+  const pendingQuestionTurnIds = useMemo(
+    () =>
+      new Set(
+        Object.values(asyncQuestionState.questions).flatMap((question) =>
+          !question.answered ? [question.sourceTurnId ?? question.turnId] : [],
+        ),
+      ),
+    [asyncQuestionState.questions],
+  );
   const transcriptViewer = useRef(Symbol("transcript-view"));
   const reportHistoryViewport = useCallback(
     (
@@ -812,9 +823,17 @@ export function LocalConversationThreadBodyOwner({
             structure: transcriptStructure,
             entries: turnEntries,
             showSubagentActivity,
+            pendingQuestionTurnIds,
           })
         : { entries: turnEntries, historyRows: null },
-    [parentTurns.length, showSubagentActivity, transcriptOwner, transcriptStructure, turnEntries],
+    [
+      parentTurns.length,
+      pendingQuestionTurnIds,
+      showSubagentActivity,
+      transcriptOwner,
+      transcriptStructure,
+      turnEntries,
+    ],
   );
   const displayedTurnEntries = useMemo(
     () =>
@@ -1438,6 +1457,7 @@ export function LocalConversationThreadBodyOwner({
                 key={conversation?.threadId ?? body.threadId ?? "unattached"}
                 presentation={presentation}
                 entries={virtualizedEntries}
+                pendingQuestionTurnIds={pendingQuestionTurnIds}
                 historyRows={historyRows}
                 onHistoryRetentionBoundaryChange={
                   history?.loadBoundary ? reportHistoryViewport : keepHistoryInView

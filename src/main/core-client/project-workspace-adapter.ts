@@ -1,3 +1,4 @@
+import { projectAutomationPromptPreview } from "../../shared/automation-heartbeat";
 import type {
   CodexBackgroundProcessRecord,
   CodexThreadActiveFlag,
@@ -238,12 +239,12 @@ export const projectWorkspacePageChatItemFromCore = (item: CorePageChatItem): Pa
   sessionId: item.session_id,
   projectId: item.project_id ?? null,
   projectName: item.project_name ?? null,
-  displayTitle: item.display_title,
+  displayTitle: projectAutomationPromptPreview(item.display_title) || "Untitled chat",
   threadId: item.thread_id ?? null,
   executionRef: item.execution_ref
     ? { runtimeId: item.execution_ref.runtime_id, threadId: item.execution_ref.thread_id }
     : null,
-  threadPreview: item.thread_preview,
+  threadPreview: projectAutomationPromptPreview(item.thread_preview),
   threadStatus: item.status
     ? {
         statusType: item.status.status_type,
@@ -514,7 +515,7 @@ export const projectWorkspaceSessionThreadFromCore = (
   agentRole: thread.agent_role ?? null,
   agentPath: thread.agent_path ?? null,
   threadName: thread.thread_name ?? undefined,
-  threadPreview: thread.thread_preview,
+  threadPreview: projectAutomationPromptPreview(thread.thread_preview),
   executionProfile: thread.model_id
     ? {
         modelId: thread.model_id,
@@ -553,7 +554,7 @@ const fromCoreTaskThread = (
   agentRole: thread.agent_role ?? null,
   agentPath: thread.agent_path ?? null,
   threadName: thread.thread_name ?? undefined,
-  threadPreview: thread.thread_preview,
+  threadPreview: projectAutomationPromptPreview(thread.thread_preview),
   executionProfile: thread.model_id
     ? {
         modelId: thread.model_id,
@@ -608,7 +609,7 @@ export const projectWorkspaceThreadFromCore = (
   agentRole: thread.agent_role ?? null,
   agentPath: thread.agent_path ?? null,
   threadName: thread.thread_name ?? null,
-  threadPreview: thread.thread_preview,
+  threadPreview: projectAutomationPromptPreview(thread.thread_preview),
   executionProfile: thread.model_id
     ? {
         modelId: thread.model_id,
@@ -790,7 +791,7 @@ const fromCoreSessionSummary = (
   executionRef: session.execution_ref
     ? { runtimeId: session.execution_ref.runtime_id, threadId: session.execution_ref.thread_id }
     : null,
-  displayTitle: session.display_title,
+  displayTitle: projectAutomationPromptPreview(session.display_title) || "Untitled chat",
   activityAt: session.activity_at,
   pinned: session.pinned,
   managed: session.managed,

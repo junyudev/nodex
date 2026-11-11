@@ -242,7 +242,7 @@ function applyUserMessageActions(
       sentAtMs:
         block.entry.deliveryStatus === "not-sent" || input.isTurnPrefix === false
           ? null
-          : resolveUserMessageSentAt(input.turn, index),
+          : (block.entry.startedAtMs ?? resolveUserMessageSentAt(input.turn, index)),
       ...(input.pinLastMessage === true && index === userItems.length - 1
         ? { alwaysVisible: true }
         : {}),

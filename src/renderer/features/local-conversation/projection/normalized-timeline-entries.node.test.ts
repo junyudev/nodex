@@ -1,3 +1,4 @@
+import { buildAutomationHeartbeatPrompt } from "../../../../shared/automation-heartbeat";
 import { describe, expect, test } from "vite-plus/test";
 import type {
   ThreadItem,
@@ -42,6 +43,79 @@ const voiceSegment = (
 });
 
 describe("normalized mixed timeline presentation", () => {
+  test.each([
+    { status: "completed", decision: "DONT_NOTIFY", automated: true, quiet: true },
+    { status: "inProgress", decision: "DONT_NOTIFY", automated: true, quiet: false },
+    { status: "failed", decision: "DONT_NOTIFY", automated: true, quiet: false },
+    { status: "interrupted", decision: "DONT_NOTIFY", automated: true, quiet: false },
+    { status: "completed", decision: "NOTIFY", automated: true, quiet: false },
+    { status: "completed", decision: "DONT_NOTIFY", automated: false, quiet: false },
+  ] as const)(
+    "groups only a settled quiet heartbeat ($status / $decision / $automated)",
+    ({ status, decision, automated, quiet }) => {
+      const opening: ThreadItem = {
+        type: "userMessage",
+        id: "opening",
+        clientId: null,
+        content: [
+          {
+            type: "text",
+            text: automated
+              ? buildAutomationHeartbeatPrompt({ id: "automation", prompt: "Check progress" }, 9000)
+              : "Check progress",
+            text_elements: [],
+          },
+        ],
+      };
+      const reply = agent(
+        "reply",
+        `Nothing changed.\n<heartbeat><decision>${decision}</decision><message>Checked progress</message></heartbeat>`,
+      );
+      const { project } = timelineOwnerFixture(
+        {
+          data: [
+            { type: "turnStarted", position: 0, turnId: "one", startedAt: 1 },
+            { type: "item", position: 1, turnId: "one", item: opening },
+            { type: "item", position: 2, turnId: "one", item: reply },
+            ...(status === "inProgress"
+              ? []
+              : [
+                  {
+                    type: "turnCompleted" as const,
+                    position: 3,
+                    turnId: "one",
+                    status,
+                    error: null,
+                    startedAt: 1,
+                    completedAt: 2,
+                    durationMs: 1000,
+                  },
+                ]),
+          ],
+          nextCursor: null,
+          activeRealtimeSessionAtPageStart: null,
+        },
+        [opening, reply],
+        { status },
+      );
+
+      const entries = project().entries;
+      const quietRows = entries.filter(
+        (entry) => "quietHeartbeat" in entry && entry.quietHeartbeat,
+      );
+      expect(quietRows).toHaveLength(quiet ? 1 : 0);
+      if (!quiet) return;
+      expect(entries).toHaveLength(1);
+      const row = entries[0];
+      if (!row || !("readTurn" in row)) throw new Error("Expected the full heartbeat Turn");
+      expect(row.quietHeartbeat).toEqual({ message: "Checked progress", atMs: 1000 });
+      expect(row.readTurn()?.items.map((item) => item.markdownText)).toEqual([
+        "Check progress",
+        "Nothing changed.",
+      ]);
+    },
+  );
+
   test("groups consecutive native voice identities while text deltas leave the row structure untouched", () => {
     const { owner, project } = timelineOwnerFixture({
       data: [voiceSegment("first", 1, "user"), voiceSegment("second", 2)],

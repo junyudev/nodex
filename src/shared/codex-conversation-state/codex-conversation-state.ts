@@ -1,3 +1,7 @@
+import {
+  parseAutomationHeartbeatInput,
+  parseAutomationHeartbeatReply,
+} from "../automation-heartbeat";
 import type {
   CodexQuestionResponder,
   CodexQuestionResponseMetadata,
@@ -470,7 +474,7 @@ export interface CodexCanonicalDelegatedTaskItem {
 /** Who sent user-role input that the user did not type. */
 export type CodexUserMessageOrigin =
   | { readonly kind: "agent"; readonly senderThreadId: string | null }
-  | { readonly kind: "automation" }
+  | { readonly kind: "automation"; readonly automationId: string | null }
   | { readonly kind: "nodex" };
 
 /** How input entered execution when it did not start an ordinary Turn. */
@@ -1385,36 +1389,6 @@ function isCodexItemStatus(value: unknown): value is CodexItemStatus {
   );
 }
 
-function extractCodexHeartbeatTag(text: string, tag: string): string | null {
-  return RegExp(`<${tag}>\\s*([\\s\\S]*?)\\s*<\\/${tag}>`, "i").exec(text)?.[1]?.trim() ?? null;
-}
-
-function hasCodexHeartbeatAutomationInput(input: readonly UserInput[]): boolean {
-  const text = input
-    .flatMap((entry) => (entry.type === "text" ? [entry.text] : []))
-    .join("\n")
-    .trim();
-  if (!text.startsWith("<heartbeat>") || !text.endsWith("</heartbeat>")) {
-    return false;
-  }
-  return (
-    extractCodexHeartbeatTag(text, "current_time_iso") !== null &&
-    extractCodexHeartbeatTag(text, "instructions") !== null
-  );
-}
-
-function hasCodexHeartbeatDecision(text: string): boolean {
-  const trimmed = text.trim();
-  const visibleText = trimmed
-    .replace(/```(?:xml)?\s*<heartbeat>[\s\S]*?<\/heartbeat>\s*```/gi, "")
-    .replace(/<heartbeat>[\s\S]*?<\/heartbeat>/gi, "")
-    .trim();
-  if (visibleText === trimmed) return false;
-  const heartbeat = Array.from(trimmed.matchAll(/<heartbeat>[\s\S]*?<\/heartbeat>/gi)).at(-1)?.[0];
-  return (
-    heartbeat !== undefined && /<decision>\s*(?:NOTIFY|DONT_NOTIFY)\s*<\/decision>/i.test(heartbeat)
-  );
-}
 function getCodexHeartbeatUserMessage(items: readonly CodexCanonicalItem[]): Extract<
   ThreadItem,
   {
@@ -1422,7 +1396,7 @@ function getCodexHeartbeatUserMessage(items: readonly CodexCanonicalItem[]): Ext
   }
 > | null {
   for (const item of items) {
-    if (item.type === "userMessage" && hasCodexHeartbeatAutomationInput(item.content)) {
+    if (item.type === "userMessage" && parseAutomationHeartbeatInput(item.content)) {
       return item;
     }
   }
@@ -1506,8 +1480,8 @@ function mergeCodexCanonicalTurnParams(
   )
     return existing;
   if (
-    hasCodexHeartbeatAutomationInput(incoming.input) ||
-    !hasCodexHeartbeatAutomationInput(existing.input)
+    parseAutomationHeartbeatInput(incoming.input) ||
+    !parseAutomationHeartbeatInput(existing.input)
   ) {
     return existing.questionResponse &&
       !incoming.questionResponse &&
@@ -1542,13 +1516,13 @@ function isCodexCanonicalArchivedHeartbeatTurn(turn: CodexCanonicalTurnState): b
   if (
     turn.status !== "completed" ||
     turn.error !== null ||
-    hasCodexHeartbeatAutomationInput(turn.params.input) ||
+    parseAutomationHeartbeatInput(turn.params.input) ||
     getCodexHeartbeatUserMessage(turn.items) !== null
   ) {
     return false;
   }
   return turn.items.some(
-    (item) => item.type === "agentMessage" && hasCodexHeartbeatDecision(item.text),
+    (item) => item.type === "agentMessage" && parseAutomationHeartbeatReply(item.text) !== null,
   );
 }
 

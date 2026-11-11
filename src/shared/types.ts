@@ -3451,6 +3451,8 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
   delegatedTask?: CodexDelegatedTaskView;
   runtimeNotice?: import("./codex-conversation-state/codex-conversation-state").CodexRuntimeNotice;
   userMessageOrigin?: import("./codex-conversation-state/codex-conversation-state").CodexUserMessageOrigin;
+  heartbeatPrompt?: true;
+  heartbeatReply?: import("./automation-heartbeat").AutomationHeartbeatReply;
   userInputIntent?: import("./codex-conversation-state/codex-conversation-state").CodexUserMessageInputIntent;
   contextCompaction?: CodexContextCompactionView;
   thought?: CodexThoughtView;
@@ -3519,6 +3521,8 @@ export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFie
   delegatedTask?: CodexDelegatedTaskView;
   runtimeNotice?: import("./codex-conversation-state/codex-conversation-state").CodexRuntimeNotice;
   userMessageOrigin?: import("./codex-conversation-state/codex-conversation-state").CodexUserMessageOrigin;
+  heartbeatPrompt?: true;
+  heartbeatReply?: import("./automation-heartbeat").AutomationHeartbeatReply;
   userInputIntent?: import("./codex-conversation-state/codex-conversation-state").CodexUserMessageInputIntent;
   contextCompaction?: CodexContextCompactionView;
   thought?: CodexThoughtView;

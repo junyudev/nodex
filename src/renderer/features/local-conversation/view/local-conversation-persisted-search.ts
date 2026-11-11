@@ -1,3 +1,4 @@
+import { projectAutomationHeartbeatExcerpt } from "../../../../shared/automation-heartbeat";
 import type { ThreadSearchOccurrence } from "@nodex/codex-app-server-protocol/v2";
 import type {
   CodexPersistedHistoryOccurrenceHydrateInput,
@@ -103,35 +104,43 @@ export function projectLocalConversationPersistedSearchResult(input: {
 }): ContentSearchLocalResult {
   const occurrences = input.page.occurrences.slice(0, Math.max(0, input.limit));
   const itemOccurrenceCounts = new Map<string, number>();
-  const matches: ContentSearchLocalMatch[] = occurrences.map((occurrence, ordinal) => {
+  const matches: ContentSearchLocalMatch[] = occurrences.flatMap((occurrence, ordinal) => {
     const itemKey = JSON.stringify([occurrence.turnId, occurrence.itemId]);
     const itemOccurrenceIndex = itemOccurrenceCounts.get(itemKey) ?? 0;
     itemOccurrenceCounts.set(itemKey, itemOccurrenceIndex + 1);
-    return {
-      id: `conversation:persisted:${JSON.stringify([
-        input.page.hostId,
-        input.page.hostGeneration,
-        occurrence.turnId,
-        occurrence.itemId,
-        itemOccurrenceIndex,
-        occurrence.snippetMatchRange.start,
-        occurrence.snippetMatchRange.end,
-      ])}`,
-      domain: "conversation",
-      contextId: input.contextId,
-      ordinal,
-      label: occurrence.snippet,
-      meta: {
-        kind: "persisted",
-        query: input.page.query,
-        itemOccurrenceIndex,
-        threadId: input.page.threadId,
-        hostId: input.page.hostId,
-        hostGeneration: input.page.hostGeneration,
-        topologyGeneration: input.page.topologyGeneration,
-        occurrence,
-      } satisfies LocalConversationPersistedSearchMatchMeta,
-    };
+    const label = projectAutomationHeartbeatExcerpt(occurrence.snippet);
+    if (
+      label !== occurrence.snippet &&
+      !label.toLocaleLowerCase().includes(input.page.query.toLocaleLowerCase())
+    )
+      return [];
+    return [
+      {
+        id: `conversation:persisted:${JSON.stringify([
+          input.page.hostId,
+          input.page.hostGeneration,
+          occurrence.turnId,
+          occurrence.itemId,
+          itemOccurrenceIndex,
+          occurrence.snippetMatchRange.start,
+          occurrence.snippetMatchRange.end,
+        ])}`,
+        domain: "conversation",
+        contextId: input.contextId,
+        ordinal,
+        label,
+        meta: {
+          kind: "persisted",
+          query: input.page.query,
+          itemOccurrenceIndex,
+          threadId: input.page.threadId,
+          hostId: input.page.hostId,
+          hostGeneration: input.page.hostGeneration,
+          topologyGeneration: input.page.topologyGeneration,
+          occurrence,
+        } satisfies LocalConversationPersistedSearchMatchMeta,
+      } satisfies ContentSearchLocalMatch,
+    ];
   });
   return {
     query: input.page.query,

@@ -65,6 +65,7 @@ export interface NormalizedConversationTurnEntry extends Omit<
   readonly hasUserMessage: boolean;
   readonly hasAssistantMessage: boolean;
   readonly hasMcpApp: boolean;
+  readonly quietHeartbeat?: import("./projection/quiet-heartbeat").QuietHeartbeat;
   readonly readTurn: () => CodexConversationTurn | null;
 }
 

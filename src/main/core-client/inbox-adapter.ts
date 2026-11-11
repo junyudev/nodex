@@ -1,3 +1,7 @@
+import {
+  parseAutomationHeartbeatReply,
+  projectAutomationHeartbeatExcerpt,
+} from "../../shared/automation-heartbeat";
 import type { components } from "@nodex/core-protocol";
 import type {
   ActivityWindow,
@@ -302,6 +306,11 @@ const proposalFromCore = (proposal: CoreInboxProposal): InboxProposal => ({
   updatedAt: proposal.updated_at,
 });
 
+function projectAutomationInboxSummary(text: string): string {
+  const reply = parseAutomationHeartbeatReply(text);
+  return reply ? reply.body || reply.message || "" : projectAutomationHeartbeatExcerpt(text);
+}
+
 export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
   handback: item.handback ?? null,
   rowKind: item.row_kind,
@@ -311,7 +320,7 @@ export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
   pageKey: item.page_key ?? null,
   pageStatus: item.page_status ? { id: item.page_status.id, label: item.page_status.label } : null,
   title: item.title,
-  body: item.body,
+  body: item.source.kind === "automation" ? projectAutomationInboxSummary(item.body) : item.body,
   bodyTruncated: item.body_truncated,
   bodyEditable: item.body_editable,
   submittedAt: item.submitted_at,

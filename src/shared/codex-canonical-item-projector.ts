@@ -1,3 +1,9 @@
+import type { CodexUserMessageOrigin } from "./codex-conversation-state/codex-conversation-state";
+import {
+  isHistoricalAutomationPrompt,
+  parseAutomationHeartbeatPrompt,
+  projectAutomationHeartbeatReply,
+} from "./automation-heartbeat";
 import { readPageReferencesAdditionalContext, withoutPageReferenceInput } from "./page-reference";
 import {
   EMPTY_THREAD_TEXT_SELECTION_CONTEXT,
@@ -187,6 +193,8 @@ export function doesCodexCanonicalItemProjectionChangeWithTurnStatus(
   if (beforeStatus === afterStatus) return false;
 
   switch (item.type) {
+    case "agentMessage":
+      return beforeStatus === "inProgress" || afterStatus === "inProgress";
     case "commandExecution":
       return (
         item.status === "inProgress" &&
@@ -257,7 +265,25 @@ export function isCodexStartupToolPrewarmText(text: string): boolean {
   return text.startsWith("<startup_tool_prewarm>");
 }
 
+/**
+ * The reply as a person reads it, with its heartbeat decision when it carries one. A reply whose
+ * only text so far is an unfinished envelope stays hidden, like any other withheld prefix; a
+ * settled envelope keeps its (possibly empty) reply so the beat it closes can be read.
+ */
+function projectAssistantReply(text: string, streaming: boolean) {
+  const reply = projectAutomationHeartbeatReply(text, streaming);
+  const withheld = !reply.heartbeat && reply.text.trim() === "" && text.trim() !== "";
+  return {
+    markdownText: withheld ? null : projectAssistantMarkdown(reply.text, streaming),
+    heartbeat: reply.heartbeat,
+  };
+}
+
 export function projectAssistantText(text: string, streaming: boolean): string | null {
+  return projectAssistantReply(text, streaming).markdownText;
+}
+
+export function projectAssistantMarkdown(text: string, streaming: boolean): string | null {
   const withoutMemoryCitations = stripUnclosedMemoryCitation(
     text.replace(
       /(?:<oai-mem-citation>|\[oai-mem-citation\])(?:(?!(?:<oai-mem-citation>|\[oai-mem-citation\])).)*?<\/oai-mem-citation>/gs,
@@ -473,6 +499,22 @@ const runtimeInputDelivery = (
   return delivery;
 };
 
+function projectUserAutomation(text: string, origin?: CodexUserMessageOrigin) {
+  const heartbeat = parseAutomationHeartbeatPrompt(text);
+  const userMessageOrigin =
+    (origin?.kind === "automation" && origin.automationId !== null) ||
+    (!heartbeat && !isHistoricalAutomationPrompt(text))
+      ? origin
+      : { kind: "automation" as const, automationId: heartbeat?.automationId ?? null };
+  return {
+    text: heartbeat?.instructions ?? text,
+    fields: {
+      ...(userMessageOrigin ? { userMessageOrigin } : {}),
+      ...(heartbeat ? { heartbeatPrompt: true as const } : {}),
+    },
+  };
+}
+
 function projectTurnParamsUserView(input: {
   readonly threadId: string;
   readonly turnId: string | null;
@@ -504,12 +546,13 @@ function projectTurnParamsUserView(input: {
     }),
     rawCommentAttachments,
   ).rawText;
+  const automation = projectUserAutomation(rawMarkdownText, input.opening?.origin);
   const delegation = parseCodexDelegationText(rawMarkdownText);
   const questionReplies = questionRepliesFromUserInput(input.params.input, rawMarkdownText);
   const markdownText =
     input.goalProjection?.message ??
     delegation?.input ??
-    (questionReplies ? formatCodexAsyncQuestionReplies(questionReplies) : rawMarkdownText);
+    (questionReplies ? formatCodexAsyncQuestionReplies(questionReplies) : automation.text);
   const userAttachments = buildCodexUserAttachmentsFromInput(
     input.params.input,
     input.params.attachments ?? [],
@@ -518,6 +561,7 @@ function projectTurnParamsUserView(input: {
   // Turn params carry only sendable input; missing imported pictures live on the opening item.
   const unavailableImages = input.opening?.unavailableImages ?? [];
   if (
+    !automation.fields.heartbeatPrompt &&
     markdownText.trim().length === 0 &&
     userAttachments.length === 0 &&
     commentAttachments.length === 0 &&
@@ -544,7 +588,10 @@ function projectTurnParamsUserView(input: {
       ? { respondedBy: input.params.questionResponse.respondedBy }
       : {}),
     ...(input.goalProjection ? { goal: true } : {}),
-    ...(input.opening?.origin ? { userMessageOrigin: input.opening.origin } : {}),
+    ...automation.fields,
+    ...(automation.fields.heartbeatPrompt && input.opening?.startedAtMs != null
+      ? { startedAtMs: input.opening.startedAtMs }
+      : {}),
     ...(input.opening?.inputIntent ? { userInputIntent: input.opening.inputIntent } : {}),
     ...(deliveryStatus ? { deliveryStatus } : {}),
     ...(commentAttachments.length === 0 ? {} : { commentAttachments: [...commentAttachments] }),
@@ -574,8 +621,11 @@ function projectSteeringUserMessage(
   context: ItemProjectionContext,
 ): CodexItemView[] {
   const rawText = projectUserMessageText(item.input);
+  const automation = projectUserAutomation(rawText);
   const questionReplies = questionRepliesFromUserInput(item.input, rawText);
-  const markdownText = questionReplies ? formatCodexAsyncQuestionReplies(questionReplies) : rawText;
+  const markdownText = questionReplies
+    ? formatCodexAsyncQuestionReplies(questionReplies)
+    : automation.text;
   const contentAttachments = buildCodexUserAttachmentsFromContent(item.input, item.id);
   if (markdownText.trim().length === 0 && contentAttachments.length === 0) return [];
 
@@ -588,6 +638,7 @@ function projectSteeringUserMessage(
       status: "completed",
       markdownText,
       questionReplies,
+      ...automation.fields,
       ...(item.restoreMessage.questionResponse
         ? { respondedBy: item.restoreMessage.questionResponse.respondedBy }
         : {}),
@@ -967,7 +1018,9 @@ function projectCanonicalItemViews(
           status: resolveCanonicalItemStatus(item, context),
         }));
       const status = resolveCanonicalItemStatus(item, context);
-      const markdownText = projectAssistantText(item.text, status === "inProgress");
+      const streaming =
+        status === "inProgress" || (status === undefined && context.turnStatus === "inProgress");
+      const { markdownText, heartbeat } = projectAssistantReply(item.text, streaming);
       if (markdownText === null) return [];
       return [
         {
@@ -977,6 +1030,7 @@ function projectCanonicalItemViews(
           role: "assistant",
           assistantPhase: item.phase ?? undefined,
           markdownText,
+          ...(heartbeat ? { heartbeatReply: heartbeat } : {}),
           ...(item.importedImages?.length ? { importedImages: item.importedImages } : {}),
           status,
         },
@@ -1323,14 +1377,16 @@ function projectCanonicalItemViews(
           pageReferences,
         ),
       );
+      const automation = projectUserAutomation(rawText, item.origin);
       const questionReplies = questionRepliesFromUserInput(item.content, rawText);
       const markdownText = questionReplies
         ? formatCodexAsyncQuestionReplies(questionReplies)
-        : rawText;
+        : automation.text;
       const userAttachments = buildCodexUserAttachmentsFromContent(item.content, item.id);
       const deliveryStatus = runtimeInputDelivery(item.runtimeDelivery, context.turnStatus);
       const unavailableImages = item.unavailableImages ?? [];
       if (
+        !automation.fields.heartbeatPrompt &&
         markdownText.trim().length === 0 &&
         userAttachments.length === 0 &&
         !hasThreadTextSelections(textSelections) &&
@@ -1352,7 +1408,10 @@ function projectCanonicalItemViews(
           ...(pageReferences.length ? { pageReferences } : {}),
           ...(userAttachments.length === 0 ? {} : { userAttachments }),
           ...(unavailableImages.length === 0 ? {} : { unavailableImages }),
-          ...(item.origin ? { userMessageOrigin: item.origin } : {}),
+          ...automation.fields,
+          ...(automation.fields.heartbeatPrompt && item.startedAtMs != null
+            ? { startedAtMs: item.startedAtMs }
+            : {}),
           ...(item.respondedBy ? { respondedBy: item.respondedBy } : {}),
           ...(item.inputIntent ? { userInputIntent: item.inputIntent } : {}),
         },

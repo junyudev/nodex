@@ -239,6 +239,7 @@ export function ThreadBlockRenderer({
         onForkFromTurn={onForkFromTurn}
         onOpenSideChat={onOpenSideChat}
         onOpenThread={onOpenThread}
+        onOpenSummaryAutomation={onOpenSummaryAutomation}
         threadCwd={threadCwd}
         compactUserMessageActions={compactUserMessageActions}
         hideUserMessageActions={hideUserMessageActions}

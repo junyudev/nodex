@@ -1,3 +1,4 @@
+import { projectAutomationPromptPreview } from "../../shared/automation-heartbeat";
 import type { ProjectSessionSummary } from "../../shared/types";
 import type { CodexPendingWorktreeEntry } from "../../shared/codex-pending-worktree";
 import type { WorkbenchAgentDockState } from "../../shared/workbench-scene";
@@ -144,7 +145,7 @@ function sessionRow(
     sessionId: session.id,
     runtimeSessionId: session.executionRef ? session.id : null,
     label: session.displayTitle || session.noThreadFallbackTitle || "New chat",
-    preview: session.thread?.threadPreview.trim() || null,
+    preview: projectAutomationPromptPreview(session.thread?.threadPreview ?? "").trim() || null,
     selected: session.id === selectedSessionId,
     attention: attentionForIndicator(indicator),
     indicator,

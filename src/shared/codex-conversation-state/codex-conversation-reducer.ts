@@ -1,3 +1,4 @@
+import { parseAutomationHeartbeatInput } from "../automation-heartbeat";
 import {
   resolveAssistantResponseStartedAtMs,
   resolveAssistantResponseWorkDurationMs,
@@ -14,7 +15,7 @@ import {
   appendConversationTurnDraft,
 } from "./codex-turn-mutation";
 import type { ServerNotification } from "@nodex/codex-app-server-protocol";
-import type { Thread, ThreadItem, UserInput } from "@nodex/codex-app-server-protocol/v2";
+import type { Thread, ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import type { CodexConversationReplayEvent } from "./codex-conversation-replay";
 import type { CodexItemStatus } from "../types";
 import {
@@ -349,27 +350,6 @@ function enqueueCollabHydrationEffect(
   });
 }
 
-function getHeartbeatField(text: string, field: string): string | null {
-  return (
-    new RegExp(`<${field}>\\s*([\\s\\S]*?)\\s*<\\/${field}>`, "i").exec(text)?.[1]?.trim() ?? null
-  );
-}
-
-function isHeartbeatUserMessage(content: readonly UserInput[]): boolean {
-  const text = content
-    .flatMap((entry) => (entry.type === "text" ? [entry.text] : []))
-    .join("\n")
-    .trim();
-  if (!text.startsWith("<heartbeat>") || !text.endsWith("</heartbeat>")) {
-    return false;
-  }
-
-  return (
-    getHeartbeatField(text, "current_time_iso") !== null &&
-    getHeartbeatField(text, "instructions") !== null
-  );
-}
-
 export function isCodexLifecycleFirstTurnWorkItem(item: ThreadItem): boolean {
   return item.type !== "userMessage" && item.type !== "hookPrompt";
 }
@@ -460,7 +440,7 @@ export function reduceCodexItemLifecycleMetadata(
     }
     if (
       item.type === "userMessage" &&
-      (options.hasMatchingPendingSteer === true || !isHeartbeatUserMessage(item.content))
+      (options.hasMatchingPendingSteer === true || !parseAutomationHeartbeatInput(item.content))
     ) {
       return {
         shouldUpsertItem: false,

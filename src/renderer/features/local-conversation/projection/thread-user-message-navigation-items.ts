@@ -297,17 +297,6 @@ export function getThreadUserMessageNavigationVisibleOutputs(
   ];
 }
 
-function isHeartbeatUserMessage(block: ThreadTranscriptBlockModel): boolean {
-  const rawItem = asRecord(block.entry.rawItem);
-  const rawType = typeof rawItem?.type === "string" ? rawItem.type : "";
-  const source = typeof block.entry.source === "string" ? block.entry.source : "";
-  return (
-    rawType.toLowerCase().includes("heartbeat") ||
-    source.toLowerCase().includes("heartbeat") ||
-    (block.entry.markdownText ?? "").includes("Sent by rule")
-  );
-}
-
 export function buildThreadUserMessageNavigationItems(
   entries: readonly VisibleConversationTurnEntry[],
   scope: ProjectlessOutputScope = {},
@@ -344,7 +333,9 @@ export function buildThreadUserMessageNavigationItems(
         label: resolveUserLabel(candidate.block),
         responsePreview: resolveAssistantResponsePreview(blocks, candidate.blockIndex),
         outputs: collectOutputsFromBlocks(remainingBlocks),
-        isHeartbeat: isHeartbeatUserMessage(candidate.block),
+        isHeartbeat:
+          candidate.block.entry.heartbeatPrompt === true ||
+          candidate.block.entry.userMessageOrigin?.kind === "automation",
       });
     }
   }

@@ -422,7 +422,9 @@ const firstLine = (text: string) => text.trim().split("\n", 1)[0]!.trim();
 function userMessageOrigin(
   item: Extract<AgentTurnItem, { type: "user_message" }>,
 ): CodexUserMessageOrigin | undefined {
-  if (item.scheduledTaskId !== undefined) return { kind: "automation" };
+  if (item.scheduledTaskId !== undefined) {
+    return { kind: "automation", automationId: item.scheduledTaskId ?? null };
+  }
   if (item.createdBy === "user") return undefined;
   return item.createdBy === "agent" && item.creationSource !== "server"
     ? { kind: "agent", senderThreadId: item.senderThreadId ?? null }
@@ -624,6 +626,7 @@ export function projectAgentRuntimeItem(
           : undefined);
       const respondedBy = projectQuestionResponder(responder, context);
       const origin = isQuestionAnswer ? undefined : userMessageOrigin(item);
+      const sentAt = origin?.kind === "automation" ? agentRuntimeTime(item.startedAt) : null;
       const inputIntent = INPUT_INTENT[item.inputIntent];
       const missing = unavailableImages(item);
       return {
@@ -634,6 +637,7 @@ export function projectAgentRuntimeItem(
         textSelections: readRuntimeThreadTextSelections(item.context),
         pageReferences: readRuntimePageReferences(item.context),
         ...(origin ? { origin } : {}),
+        ...(sentAt === null ? {} : { startedAtMs: sentAt }),
         ...(respondedBy ? { respondedBy } : {}),
         ...(inputIntent ? { inputIntent } : {}),
         ...(missing.length ? { unavailableImages: missing } : {}),

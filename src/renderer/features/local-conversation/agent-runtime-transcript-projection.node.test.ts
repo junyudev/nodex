@@ -1,3 +1,5 @@
+import { buildAutomationHeartbeatPrompt } from "../../../shared/automation-heartbeat";
+import { buildTurnRenderModel } from "./projection/build-turn-render-model";
 import { encodeCodexAsyncQuestionReplies } from "@nodex/agent-runtime/codex-conventions";
 import { resolveCodexWebMcpActivities } from "../../../shared/codex-webmcp-tool-call";
 import { prepareAgentMessage } from "../../../shared/agent-prompt";
@@ -1631,4 +1633,78 @@ test("suppresses the exact waiting action while preserving unrelated and complet
       { ...item, nativeItemRef: null },
     ),
   ).toBe(true);
+});
+
+test("runtime heartbeat shows instructions, uses the scheduled identity and copies only reply prose", () => {
+  const prompt = buildAutomationHeartbeatPrompt(
+    { id: "envelope-id", prompt: "Check the queue" },
+    Date.parse(at),
+  );
+  const envelope =
+    "<heartbeat><decision>NOTIFY</decision><message>Queue needs attention</message></heartbeat>";
+  const assistant = {
+    ...base,
+    id: "reply",
+    type: "assistant_message",
+    messageId: "reply",
+    text: "Three entries are stuck.\n" + envelope,
+    streaming: false,
+  } as const;
+  const user = projectAgentRuntimeItem(message({ text: prompt, scheduledTaskId: "scheduled-id" }));
+  const reply = projectAgentRuntimeItem(assistant);
+  const streamingReply = projectAgentRuntimeItem({
+    ...assistant,
+    text: "Three entries are stuck.\n<heartb",
+    streaming: true,
+  });
+  const views = projectCodexCanonicalTurnItemViews({
+    threadId: base.threadId,
+    turnId: base.runId,
+    items: [user!, reply!],
+    observedAtMs: Date.parse(at),
+    turnStatus: "completed",
+  });
+  expect(views[0]).toMatchObject({
+    markdownText: "Check the queue",
+    userMessageOrigin: { kind: "automation", automationId: "scheduled-id" },
+    rawItem: { content: [{ text: prompt }] },
+  });
+  expect(views[1]).toMatchObject({
+    markdownText: "Three entries are stuck.",
+    heartbeatReply: { decision: "NOTIFY", message: "Queue needs attention" },
+    rawItem: { text: assistant.text },
+  });
+  expect(
+    projectCodexCanonicalTurnItemViews({
+      threadId: base.threadId,
+      turnId: base.runId,
+      items: [streamingReply!],
+      observedAtMs: Date.parse(at),
+      turnStatus: "inProgress",
+    })[0]?.markdownText,
+  ).toBe("Three entries are stuck.");
+
+  const entries = views.map((view, index) =>
+    projectCodexItemViewToTranscriptEntry(view, "replay", index),
+  );
+  const model = buildTurnRenderModel({
+    turn: {
+      threadId: base.threadId,
+      turnId: base.runId,
+      status: "completed",
+      items: entries,
+      itemIds: entries.map((item) => item.itemId),
+    },
+    requests: [],
+    isLatestTurn: true,
+    isStreamingTurn: false,
+  });
+  const block = model.blocks.find((item) => item.type === "assistantMessage");
+  expect(
+    block && "assistantMessageActions" in block && block.assistantMessageActions?.copyText,
+  ).toBe("Three entries are stuck.");
+  expect(model.searchUnits.map((unit) => unit.text)).toEqual([
+    "Check the queue",
+    "Three entries are stuck.",
+  ]);
 });

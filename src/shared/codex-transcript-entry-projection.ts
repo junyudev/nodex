@@ -32,6 +32,8 @@ export function projectCodexItemViewToTranscriptEntry(
     delegatedTask: item.delegatedTask,
     runtimeNotice: item.runtimeNotice,
     userMessageOrigin: item.userMessageOrigin,
+    ...(item.heartbeatPrompt ? { heartbeatPrompt: true } : {}),
+    ...(item.heartbeatReply ? { heartbeatReply: item.heartbeatReply } : {}),
     userInputIntent: item.userInputIntent,
     contextCompaction: item.contextCompaction,
     thought: item.thought,

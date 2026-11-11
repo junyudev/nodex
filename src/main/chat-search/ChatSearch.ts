@@ -1,3 +1,4 @@
+import { projectAutomationHeartbeatExcerpt } from "../../shared/automation-heartbeat";
 import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
@@ -339,7 +340,9 @@ export const make = Effect.gen(function* () {
           );
           const chat = chats.get(fact.threadId);
           if (!original || !chat) continue;
-          const snippet = singleLine(fact.snippet);
+          const excerpt = projectAutomationHeartbeatExcerpt(fact.snippet);
+          const snippet = singleLine(excerpt);
+          if (excerpt !== fact.snippet && !messageMatcher(input.query)(snippet)) continue;
           matches.push({
             chat,
             snippet,
@@ -427,7 +430,9 @@ export const make = Effect.gen(function* () {
           seen.has(chat.sessionId)
         )
           continue;
-        const snippet = singleLine(hit.snippet);
+        const excerpt = projectAutomationHeartbeatExcerpt(hit.snippet);
+        const snippet = singleLine(excerpt);
+        if (excerpt !== hit.snippet && !messageMatcher(input.query)(snippet)) continue;
         const match = {
           chat,
           snippet,

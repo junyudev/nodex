@@ -1,3 +1,5 @@
+import { parseAutomationHeartbeatReply } from "../../../shared/automation-heartbeat";
+import { projectCanonicalQuietHeartbeat, type QuietHeartbeat } from "./projection/quiet-heartbeat";
 import type {
   CodexCanonicalItem,
   CodexCanonicalTurnState,
@@ -47,6 +49,7 @@ export interface CodexTranscriptStructure extends CodexTranscriptMetadata {
     readonly hasAssistantMessage: boolean;
     readonly hasMcpApp: boolean;
     readonly isStartupPrewarm: boolean;
+    readonly quietHeartbeat?: QuietHeartbeat;
   }[];
 }
 
@@ -903,7 +906,16 @@ export class CodexTranscriptReadOwner {
           nextAssistantVisible = nextViews?.some((view) => !!view.markdownText?.trim());
           if (nextViews) projectedUpdates.set(address, nextViews);
         }
+        const settledHeartbeatChanged =
+          turn.details.status === "completed" &&
+          previous?.type === "agentMessage" &&
+          next?.type === "agentMessage" &&
+          !areStructurallyEqual(
+            parseAutomationHeartbeatReply(previous.text),
+            parseAutomationHeartbeatReply(next.text),
+          );
         if (
+          settledHeartbeatChanged ||
           (change.type === "item" && (!next || !isTextOnlyReplacement(previous, next))) ||
           itemShape(previous, previousAssistantVisible) !== itemShape(next, nextAssistantVisible)
         ) {
@@ -1151,8 +1163,12 @@ export class CodexTranscriptReadOwner {
             (content) => content.type === "text" && isCodexStartupToolPrewarmText(content.text),
           );
       }
+      const quietHeartbeat = projectCanonicalQuietHeartbeat(value.details, itemIds, (id) =>
+        this.readItem(entityKey, id),
+      );
       const row = {
         entityKey,
+        ...(quietHeartbeat ? { quietHeartbeat } : {}),
         value,
         itemIds,
         hasUserMessage,

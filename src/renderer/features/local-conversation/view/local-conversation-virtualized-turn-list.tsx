@@ -1,3 +1,13 @@
+import {
+  groupQuietHeartbeats,
+  projectVisibleQuietHeartbeat,
+  type QuietHeartbeat,
+  type QuietHeartbeatGroup,
+} from "../projection/quiet-heartbeat";
+import {
+  LocalConversationQuietHeartbeat,
+  LocalConversationQuietHeartbeatGroup,
+} from "./local-conversation-quiet-heartbeat";
 import { runSyncWithCleanup } from "@/lib/run-with-cleanup";
 import {
   memo,
@@ -215,6 +225,10 @@ type LocalConversationVirtualizedHistoryRow =
       readonly kind: "content";
       readonly layoutKey: string;
       readonly entry: LocalConversationVirtualizedTurnListEntry;
+      readonly quietHeartbeat?: QuietHeartbeat;
+      readonly quietGroup?: QuietHeartbeatGroup;
+      /** A later beat listed beneath its group's row. */
+      readonly quietNested?: boolean;
     }
   | {
       readonly kind: "gap";
@@ -283,6 +297,25 @@ function buildLocalConversationVirtualizedHistoryRows(input: {
   return rows;
 }
 
+function readQuietHeartbeat(
+  row: LocalConversationVirtualizedHistoryRow,
+  pendingQuestionTurnIds: ReadonlySet<string> | undefined,
+): QuietHeartbeat | null {
+  if (row.kind === "gap" || isCodexRealtimeTimelineEntry(row.entry)) return null;
+  const { entry } = row;
+  if (entry.turnId !== null && pendingQuestionTurnIds?.has(entry.turnId)) return null;
+  return isNormalizedConversationTurnEntry(entry)
+    ? (entry.quietHeartbeat ?? null)
+    : projectVisibleQuietHeartbeat(entry);
+}
+
+function toggleKey(keys: ReadonlySet<string>, key: string): ReadonlySet<string> {
+  const next = new Set(keys);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  return next;
+}
+
 export interface LocalConversationVirtualizedTurnListApi {
   scrollToKey: (
     turnKey: string,
@@ -297,6 +330,7 @@ interface LocalConversationVirtualizedTurnListProps {
   /** Main viewports lift new Turns with response space; floating viewports only follow the bottom. */
   responseSpaceEnabled?: boolean;
   entries: LocalConversationVirtualizedTurnListEntry[];
+  pendingQuestionTurnIds?: ReadonlySet<string>;
   /** Keep interactive rows connected without mounting the interval between them and the viewport. */
   retainedTurnKeys?: readonly string[];
   conversationId: string;
@@ -476,6 +510,13 @@ interface MeasuredTurnProps {
   measuredHeightPx?: number;
   constrainedHeightPx?: number;
   entry: LocalConversationVirtualizedTurnListEntry;
+  quietHeartbeat?: QuietHeartbeat;
+  quietGroup?: QuietHeartbeatGroup;
+  quietNested?: boolean;
+  heartbeatExpanded?: boolean;
+  groupExpanded?: boolean;
+  onToggleHeartbeat?: (key: string) => void;
+  onToggleHeartbeatGroup?: (key: string) => void;
   conversationId: string;
   childMemberships?: readonly CodexConversationChildMembership[];
   parentModel?: string | null;
@@ -519,6 +560,13 @@ function MeasuredTurnComponent({
   measuredHeightPx,
   constrainedHeightPx,
   entry,
+  quietHeartbeat,
+  quietGroup,
+  quietNested = false,
+  heartbeatExpanded = false,
+  groupExpanded = false,
+  onToggleHeartbeat,
+  onToggleHeartbeatGroup,
   conversationId,
   childMemberships,
   parentModel,
@@ -582,7 +630,28 @@ function MeasuredTurnComponent({
       data-thread-turn-id={entry.turnKey}
       data-turn-key={entry.turnKey}
     >
-      {isCodexRealtimeTimelineEntry(entry) ? (
+      {quietGroup ? (
+        <LocalConversationQuietHeartbeatGroup
+          group={quietGroup}
+          expanded={groupExpanded}
+          onToggle={() => onToggleHeartbeatGroup?.(quietGroup.firstKey)}
+        />
+      ) : null}
+      {quietHeartbeat && (!quietGroup || groupExpanded) ? (
+        <LocalConversationQuietHeartbeat
+          beat={quietHeartbeat}
+          expanded={heartbeatExpanded}
+          nested={quietNested || Boolean(quietGroup)}
+          onToggle={() => {
+            if (!heartbeatExpanded) setCollapsedOverride(false);
+            onToggleHeartbeat?.(entry.turnKey);
+          }}
+        />
+      ) : null}
+      {quietHeartbeat &&
+      (!heartbeatExpanded || (quietGroup && !groupExpanded)) ? null : isCodexRealtimeTimelineEntry(
+          entry,
+        ) ? (
         <LocalConversationRealtimeTranscript
           entry={entry}
           conversationId={conversationId}
@@ -662,6 +731,13 @@ const MeasuredTurn = memo(
     left.measuredHeightPx === right.measuredHeightPx &&
     left.constrainedHeightPx === right.constrainedHeightPx &&
     left.entry === right.entry &&
+    left.quietHeartbeat === right.quietHeartbeat &&
+    left.quietGroup === right.quietGroup &&
+    left.quietNested === right.quietNested &&
+    left.heartbeatExpanded === right.heartbeatExpanded &&
+    left.groupExpanded === right.groupExpanded &&
+    left.onToggleHeartbeat === right.onToggleHeartbeat &&
+    left.onToggleHeartbeatGroup === right.onToggleHeartbeatGroup &&
     left.conversationId === right.conversationId &&
     left.parentModel === right.parentModel &&
     left.backgroundAgentRows === right.backgroundAgentRows &&
@@ -696,6 +772,7 @@ const MeasuredTurn = memo(
 
 function LocalConversationVirtualizedTurnListCore({
   entries,
+  pendingQuestionTurnIds,
   retainedTurnKeys = NO_RETAINED_TURN_KEYS,
   historyRows,
   conversationId,
@@ -773,9 +850,40 @@ function LocalConversationVirtualizedTurnListCore({
     () => readLatestCodexTimelineTurnEntry(entries)?.turnKey ?? null,
     [entries],
   );
+  const [expandedBeats, setExpandedBeats] = useState<ReadonlySet<string>>(() => new Set());
+  const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleBeat = useCallback((key: string) => {
+    setExpandedBeats((keys) => toggleKey(keys, key));
+  }, []);
+  const toggleGroup = useCallback((key: string) => {
+    setExpandedGroups((keys) => toggleKey(keys, key));
+  }, []);
+  const historyLayoutRows = useMemo(
+    () =>
+      buildLocalConversationVirtualizedHistoryRows({ entries, historyRows }).map((row) => {
+        if (row.kind === "gap") return row;
+        const quietHeartbeat = readQuietHeartbeat(row, pendingQuestionTurnIds);
+        return quietHeartbeat ? { ...row, quietHeartbeat } : row;
+      }),
+    [entries, historyRows, pendingQuestionTurnIds],
+  );
+  const quietGroups = useMemo(
+    () =>
+      groupQuietHeartbeats(historyLayoutRows, (row) =>
+        row.kind === "content" ? (row.quietHeartbeat ?? null) : null,
+      ),
+    [historyLayoutRows],
+  );
   const rows = useMemo(
-    () => buildLocalConversationVirtualizedHistoryRows({ entries, historyRows }),
-    [entries, historyRows],
+    () =>
+      historyLayoutRows.flatMap<LocalConversationVirtualizedHistoryRow>((row) => {
+        if (row.kind === "gap") return [row];
+        const group = quietGroups.get(row.layoutKey);
+        if (!group) return [row];
+        if (group.firstKey === row.layoutKey) return [{ ...row, quietGroup: group }];
+        return expandedGroups.has(group.firstKey) ? [{ ...row, quietNested: true }] : [];
+      }),
+    [historyLayoutRows, quietGroups, expandedGroups],
   );
   const layoutEntries = useMemo(
     () =>
@@ -784,12 +892,15 @@ function LocalConversationVirtualizedTurnListCore({
         estimatedHeightPx:
           row.kind === "gap"
             ? row.row.estimatedHeightPx
-            : isCodexRealtimeTimelineEntry(row.entry) && row.entry.itemType === "transcriptSegment"
-              ? row.entry.estimatedHeightPx
-              : null,
+            : row.quietHeartbeat && !expandedBeats.has(row.layoutKey)
+              ? 28
+              : isCodexRealtimeTimelineEntry(row.entry) &&
+                  row.entry.itemType === "transcriptSegment"
+                ? row.entry.estimatedHeightPx
+                : null,
         type: row.kind,
       })),
-    [rows],
+    [rows, expandedBeats],
   );
   const layout = useMemo(
     () =>
@@ -1620,6 +1731,15 @@ function LocalConversationVirtualizedTurnListCore({
       options?: { readonly signal?: AbortSignal },
     ) => {
       if (options?.signal?.aborted) return Promise.resolve();
+      const beat = historyLayoutRows.find((row) => row.layoutKey === turnKey);
+      if (beat?.kind === "content" && beat.quietHeartbeat) {
+        const group = quietGroups.get(turnKey);
+        if (group)
+          setExpandedGroups((keys) =>
+            keys.has(group.firstKey) ? keys : new Set([...keys, group.firstKey]),
+          );
+        setExpandedBeats((keys) => (keys.has(turnKey) ? keys : new Set([...keys, turnKey])));
+      }
       onHistoryRetentionBoundaryChange?.(null);
       contentAnchorsRef.current = [];
       restoringInitialContentAnchorRef.current = false;
@@ -1648,7 +1768,7 @@ function LocalConversationVirtualizedTurnListCore({
         setPendingScrollTarget(target);
       });
     },
-    [onHistoryRetentionBoundaryChange, setScrollMode],
+    [historyLayoutRows, onHistoryRetentionBoundaryChange, quietGroups, setScrollMode],
   );
 
   useLayoutEffect(() => {
@@ -2215,6 +2335,13 @@ function LocalConversationVirtualizedTurnListCore({
                   : undefined
               }
               entry={entry}
+              quietHeartbeat={row.quietHeartbeat}
+              quietGroup={row.quietGroup}
+              quietNested={row.quietNested}
+              heartbeatExpanded={expandedBeats.has(row.layoutKey)}
+              groupExpanded={expandedGroups.has(row.layoutKey)}
+              onToggleHeartbeat={toggleBeat}
+              onToggleHeartbeatGroup={toggleGroup}
               conversationId={conversationId}
               childMemberships={childMemberships}
               parentModel={parentModel}

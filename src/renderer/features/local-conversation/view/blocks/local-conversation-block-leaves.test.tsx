@@ -548,6 +548,46 @@ describe("UserMessageBubble collapse", () => {
       expect(plain.container.querySelector("[data-user-message-intent]")).toBeNull();
     });
 
+    test("names the Automation that sent a heartbeat and opens it, and keeps a deleted one anonymous", async () => {
+      installWindowApi({
+        invoke: vi
+          .fn()
+          .mockResolvedValue({ items: [{ id: "automation-1", name: "Release watch" }] }),
+        on: () => () => {},
+      });
+      const onOpenSummaryAutomation = vi.fn();
+      const renderHeartbeat = (automationId: string) => {
+        const block = buildUserMessageBlock("Check the release branch");
+        block.entry.userMessageOrigin = { kind: "automation", automationId };
+        return render(
+          <UserMessageBubble
+            block={block}
+            isLatestTurn
+            isStreamingTurn={false}
+            onOpenSummaryAutomation={onOpenSummaryAutomation}
+          />,
+        );
+      };
+      const view = renderHeartbeat("automation-1");
+      const open = await view.findByRole("button", { name: "Open Release watch" });
+      expect(
+        view.container.querySelector('[data-user-message-origin="automation"]')!.textContent,
+      ).toBe("Sent byRelease watch");
+      await act(async () => {
+        fireEvent.click(open);
+        await Promise.resolve();
+      });
+      expect(onOpenSummaryAutomation).toHaveBeenCalledWith(
+        expect.objectContaining({ automationId: "automation-1" }),
+      );
+      view.unmount();
+
+      const deleted = renderHeartbeat("automation-gone");
+      const marker = deleted.container.querySelector('[data-user-message-origin="automation"]')!;
+      expect(marker.textContent).toBe("Sent byAutomation");
+      expect(marker.querySelector("button")).toBeNull();
+    });
+
     test("names the Agent that answered a question reply instead of claiming it sent a message", async () => {
       vi.spyOn(agentRuntimeRuntime, "identify").mockResolvedValue(sender());
       const view = renderMessage((block) => {

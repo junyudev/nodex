@@ -1,3 +1,4 @@
+import { projectAutomationPromptPreview } from "../../shared/automation-heartbeat";
 import { queryOptions } from "@tanstack/react-query";
 import { isAgentExecutionThreadId } from "../../shared/agent-runtime-api";
 import type { ConversationIdentity } from "../../shared/conversation-identity";
@@ -28,7 +29,7 @@ export function nativeConversationIdentity(
   const title =
     summary.threadName?.trim() ||
     (subagent ? summary.agentNickname?.trim() : null) ||
-    summary.threadPreview.trim() ||
+    projectAutomationPromptPreview(summary.threadPreview).trim() ||
     "Untitled chat";
   return {
     threadId: summary.threadId,

@@ -1,3 +1,4 @@
+import { projectAutomationPromptPreview } from "../../../shared/automation-heartbeat";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { isHostedChat } from "@/lib/hosted-chat";
 import {
@@ -1093,7 +1094,9 @@ function normalizeConversationSnapshot(
     : [];
   const nextThreadName = projectCodexMarkdownLabel(conversation.threadName) ?? "";
   const nextThreadPreview =
-    typeof conversation.threadPreview === "string" ? conversation.threadPreview : "";
+    typeof conversation.threadPreview === "string"
+      ? projectAutomationPromptPreview(conversation.threadPreview)
+      : "";
   const nextCreatedAt = Number.isFinite(conversation.createdAt) ? conversation.createdAt : 0;
   const nextUpdatedAt = Number.isFinite(conversation.updatedAt)
     ? conversation.updatedAt
