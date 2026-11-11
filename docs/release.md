@@ -558,10 +558,47 @@ vp run browser-runtime:publish -- \
   --arm64 <macos-arm64-archive>
 ```
 
-For a new release with both Windows assets, also pass
-`--win32-x64 <archive>` and `--win32-arm64 <archive>` after the matching
-Windows workers verify their closures and exact app-server pairs.
-Use a new release tag for a changed asset set.
+To publish the first Windows assets for build `26.1027.51404`, use a new
+runtime release tag. The existing `browser-runtime-v26.1027.51404` release is
+immutable and GitHub rejects asset additions. The successor release carries
+the same macOS archive and the two reviewed Windows archives. Run the
+following only after the owner approves distribution and the Windows workers
+verify the candidate closures and exact app-server pairs. Run from the reviewed
+source commit in the Nodex checkout.
+
+```bash
+(
+  set -euo pipefail
+  runtime_lock=resources/browser-runtime/browser-runtime.lock.json
+  runtime_cache=/Users/asc/repo/nodex/cache.local/browser-runtime
+  runtime_tag=browser-runtime-v26.1027.51404.1
+  runtime_candidate=$(mktemp)
+  trap 'rm -f "$runtime_candidate"' EXIT
+  jq --arg tag "$runtime_tag" '
+    .tag = $tag
+    | .repository as $repo
+    | .assets |= map_values(.url = ("https://github.com/" + $repo
+        + "/releases/download/" + $tag + "/" + .assetName))
+  ' "$runtime_lock" > "$runtime_candidate"
+  runtime_archive() {
+    jq -r --arg cache "$runtime_cache" --arg target "$1" '
+      .assets[$target] | $cache + "/" + .archiveSha256 + "/" + .assetName
+    ' "$runtime_candidate"
+  }
+  git tag "$runtime_tag" HEAD
+  git push origin "refs/tags/$runtime_tag"
+  vp run browser-runtime:publish -- \
+    --repo junyudev/nodex --tag "$runtime_tag" --lock "$runtime_candidate" \
+    --arm64 "$(runtime_archive darwin-arm64)" \
+    --win32-x64 "$(runtime_archive win32-x64)" \
+    --win32-arm64 "$(runtime_archive win32-arm64)"
+  cp "$runtime_candidate" "$runtime_lock"
+)
+```
+
+If publication is interrupted after pushing the tag, confirm it still resolves to
+the reviewed source commit and rerun from the publication command with the same
+candidate lock. Commit the updated lock after publication succeeds.
 
 The publication command requires the reviewed release lock, proves the archive's name,
 size, hash, manifest, target architecture, and complete artifact closure,

@@ -543,6 +543,7 @@ export interface ChromeControlRuntimeOptions {
   readonly architecture?: string;
   readonly localAppData?: string;
   readonly runtimeStateHome: string;
+  readonly windowsInstallationDirectory?: string;
 }
 
 async function verifyAttestedIconPaths(
@@ -800,6 +801,7 @@ const chromeControlLayer = (
               const registration = createWindowsChromeRegistration({
                 statePath,
                 host: authority.hostName,
+                installationDirectory: options.windowsInstallationDirectory,
                 browsers,
                 security,
                 releaseResources: installer.releaseResources,

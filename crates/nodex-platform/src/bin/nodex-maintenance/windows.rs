@@ -583,7 +583,11 @@ fn maintain(args: &Arguments, log: &mut Log) -> Result<()> {
             ));
         }
     }
-    log.write("completed");
+    log.stage("desktop-tool-registrations");
+    let restored =
+        nodex_platform::desktop_tools::restore_installation_registrations(&args.installation)
+            .map_err(|error| format!("Restore Desktop Tool registrations: {error}"))?;
+    log.write(&format!("restored={restored}"));
     Ok(())
 }
 pub fn run() -> Result<()> {

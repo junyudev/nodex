@@ -17,7 +17,8 @@
 !macroend
 
 !macro customCheckAppRunning
-  ; Run the incoming maintenance before an older uninstaller can try to rename busy files.
+  ; Stop installed jobs and return owned native-messaging registrations before
+  ; an older uninstaller can move or remove the installed closure.
   ; Both installer and uninstaller extract outside $INSTDIR so they can release it.
   InitPluginsDir
   ; Maintenance must not inherit an installation-directory handle through its cwd.

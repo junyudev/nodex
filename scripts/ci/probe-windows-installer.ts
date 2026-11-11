@@ -20,12 +20,17 @@ import {
   WINDOWS_LOGIN_ITEM_NAME,
   windowsLoginItemEnabled,
 } from "../../src/main/windows-desktop-policy";
+import {
+  readBrowserRuntimeReleaseLock,
+  resolveBrowserRuntimeReleaseLockPath,
+} from "../browser-runtime-release-lock";
 import { desktopBuildTarget } from "../desktop-build-target";
 import { terminateWindowsProcessTree } from "../../src/main/process-tree";
 import { restorePackagedBrowserRuntimeClosure } from "../restore-packaged-runtime-closure.mjs";
 import { verifyWindowsArchitectureClosure } from "../windows-pe.mjs";
 import { installedPayloadInventory } from "../installed-payload.mjs";
 import { runPackagedPtyProbe, type PackagedPtyReceipt } from "../packaged-pty-probe.mjs";
+import { probeWindowsDesktopTools } from "../testing/windows-desktop-tools.test-support";
 import { assertDesktopRuntimePayload } from "../desktop-runtime-payload.mjs";
 import { claudeSdkModuleUrl } from "../../src/main/platform/node/ClaudeSdkModule";
 import {
@@ -221,6 +226,10 @@ async function main(): Promise<void> {
   const desktopCloses: Promise<void>[] = [];
   let normalQuitEvidence: unknown;
   let installationEvidence: unknown;
+  let desktopTools:
+    | Awaited<ReturnType<typeof probeWindowsDesktopTools>>
+    | { status: "skipped: candidate assets" }
+    | undefined;
   let upgradeEvidence: unknown;
   let updateHandoffEvidence: unknown;
   let detachedCoreBeforeUninstall: number | undefined;
@@ -359,7 +368,7 @@ async function main(): Promise<void> {
         writeFileSync(join(artifacts, name), readFileSync(join(logRoot, name)));
     writeFileSync(
       join(artifacts, "result.json"),
-      `${JSON.stringify({ installation: installationEvidence, evidence, packagedPty, normalQuit: normalQuitEvidence, upgrade: upgradeEvidence, updateHandoff: updateHandoffEvidence, uninstall: uninstallEvidence, failures: failures.map(failureDetails) }, null, 2)}\n`,
+      `${JSON.stringify({ installation: installationEvidence, evidence, desktopTools, packagedPty, normalQuit: normalQuitEvidence, upgrade: upgradeEvidence, updateHandoff: updateHandoffEvidence, uninstall: uninstallEvidence, failures: failures.map(failureDetails) }, null, 2)}\n`,
     );
   };
   try {
@@ -400,12 +409,19 @@ async function main(): Promise<void> {
       timeout: 30_000,
     }).trim();
     const desktopToolsRoot = join(installRoot, "resources/browser-runtime");
-    restorePackagedBrowserRuntimeClosure({
-      sourceBrowserRoot: resolve(".generated/codex-runtime/agent-runtime/browser-runtime"),
-      packagedBrowserRoot: desktopToolsRoot,
-      windowsArch: target.arch,
-      restore: false,
-    });
+    const asset = readBrowserRuntimeReleaseLock(resolveBrowserRuntimeReleaseLockPath(process.cwd()))
+      .assets[target.key];
+    if ((asset.url !== null) !== existsSync(desktopToolsRoot))
+      throw new Error("Installed Desktop Tool presence does not match the release lock");
+    if (asset.url !== null) {
+      restorePackagedBrowserRuntimeClosure({
+        sourceBrowserRoot: desktopToolsRoot,
+        packagedBrowserRoot: desktopToolsRoot,
+        windowsArch: target.arch,
+        expectedManifestSha256: asset.manifestSha256,
+        restore: false,
+      });
+    }
     const images = verifyWindowsArchitectureClosure(installRoot, target.arch, {
       installed: true,
       desktopToolsRoot,
@@ -418,6 +434,13 @@ async function main(): Promise<void> {
     if (!loginRegistration?.includes(`"${executable}" ${WINDOWS_STARTUP_ARGUMENT}`))
       throw new Error("NSIS did not register per-user background startup");
     const core = join(installRoot, "resources/bin/nodex-core.exe");
+    desktopTools = existsSync(desktopToolsRoot)
+      ? await probeWindowsDesktopTools({
+          location: { isPackaged: true, resourcesPath: join(installRoot, "resources") },
+          boundary: installRoot,
+          launcher: core,
+        })
+      : { status: "skipped: candidate assets" };
     const expectedCoreSha256 = readCoreArtifactDigest(
       core,
       join(installRoot, "resources/bin/rust-core-runtime.json"),

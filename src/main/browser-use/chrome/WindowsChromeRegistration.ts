@@ -28,6 +28,7 @@ const receipt = z.object({
   createdKey: z.boolean(),
 });
 const journal = z.object({
+  installationDirectory: z.string().optional(),
   enabled: z.boolean(),
   receipts: z.array(receipt).max(2),
 });
@@ -80,6 +81,7 @@ const samePath = (left: string, right: string) =>
 export function createWindowsChromeRegistration(options: {
   readonly statePath: string;
   readonly host: string;
+  readonly installationDirectory?: string;
   readonly browsers: readonly ("chrome" | "edge")[];
   readonly security: WindowsChromeFileSecurity;
   readonly registry: WindowsChromeRegistryPort;
@@ -99,7 +101,12 @@ export function createWindowsChromeRegistration(options: {
     .map((browser) => ({ browser, view: "x86", host }) as const);
   const journalPath = path.join(statePath, journalFile);
   const save = (state: z.infer<typeof journal>) =>
-    writeJsonAtomically(journalPath, state, 0o600, true);
+    writeJsonAtomically(
+      journalPath,
+      { ...state, installationDirectory: options.installationDirectory },
+      0o600,
+      true,
+    );
   let approved: { token: string; values: readonly (RegistryValue | null)[] } | null = null;
 
   const readState = async (): Promise<z.infer<typeof journal>> => {
@@ -127,6 +134,22 @@ export function createWindowsChromeRegistration(options: {
       new Set(state.receipts.map(({ key }) => key.browser)).size !== state.receipts.length
     ) {
       throw new Error("Browser registration receipt belongs to a different Profile or host");
+    }
+    if (
+      state.receipts.length > 0 &&
+      state.installationDirectory !== undefined &&
+      !samePath(state.installationDirectory, options.installationDirectory ?? "")
+    ) {
+      // Maintenance may have already given back every value. Only a still-live
+      // receipt reserves this Profile for its original installation.
+      const owned = await Promise.all(
+        state.receipts.map(async (entry) =>
+          sameValue(await registry.readRegistration(entry.key), entry.installed),
+        ),
+      );
+      if (owned.some(Boolean))
+        throw new Error("Browser registration receipts belong to a different installation");
+      return { enabled: state.enabled, receipts: [] };
     }
     return state;
   };
