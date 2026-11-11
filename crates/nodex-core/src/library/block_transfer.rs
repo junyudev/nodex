@@ -2625,21 +2625,6 @@ fn apply_page_ownership_transfer(
         }
         for root in &prepared.roots {
             check_request_interruption()?;
-            let routed_stage = if matches!(
-                &prepared.target,
-                PreparedPageOwnershipTarget::DataSource { .. }
-            ) && root.source_membership.is_some()
-            {
-                connection
-                    .query_row(
-                        "SELECT stage FROM inbox_intake WHERE page_id=?1",
-                        [&root.page_id],
-                        |r| r.get::<_, Option<String>>(0),
-                    )
-                    .optional()?
-            } else {
-                None
-            };
             let expected_membership_revision = root
                 .source_membership
                 .as_ref()
@@ -2677,7 +2662,16 @@ fn apply_page_ownership_transfer(
                 PreparedPageOwnershipTarget::DataSource { destination }
                     if matches!(history, PageOwnershipHistory::UndoRelocation { .. }) =>
                 {
-                    transfer_page(ExistingPageTransferTarget::RestoreDataSource(destination))?
+                    let origin =
+                        if matches!(context.actor, nodex_core_contracts::Actor::Member { .. }) {
+                            crate::database::StatusEditOrigin::Person
+                        } else {
+                            crate::database::StatusEditOrigin::WorkFact
+                        };
+                    transfer_page(ExistingPageTransferTarget::RestoreDataSource(
+                        destination,
+                        origin,
+                    ))?
                 }
                 PreparedPageOwnershipTarget::DataSource { destination } => {
                     transfer_page(ExistingPageTransferTarget::DataSource(destination))?
@@ -2686,28 +2680,6 @@ fn apply_page_ownership_transfer(
                     transfer_page(ExistingPageTransferTarget::Page { page_id })?
                 }
             };
-            if let Some(previous) = routed_stage {
-                let stage: Option<String> = connection
-                    .query_row(
-                        "SELECT stage FROM inbox_intake WHERE page_id=?1",
-                        [&root.page_id],
-                        |r| r.get(0),
-                    )
-                    .optional()?
-                    .flatten();
-                if previous != stage {
-                    crate::workspace::inbox::status_changed(
-                        connection,
-                        &root.page_id,
-                        previous.as_deref(),
-                        stage.as_deref(),
-                        &now,
-                    )?;
-                    if matches!(context.actor, nodex_core_contracts::Actor::Member { .. }) {
-                        crate::database::record_person_status_edit(connection, &root.page_id)?;
-                    }
-                }
-            }
             if let PreparedPageOwnershipTarget::Library { before_block_id } = &prepared.target {
                 connection.execute(
                     "DELETE FROM library_block_placements WHERE block_id = ?1 AND library_id = ?2",
@@ -4390,6 +4362,7 @@ fn apply_page_parent_transfer(
                         &root_destination,
                         staged_revisions,
                         &now,
+                        crate::database::StatusEditOrigin::Person,
                     )?;
                     data_source_placements.push((page_id, placement));
                 }

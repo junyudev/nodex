@@ -249,6 +249,7 @@ it.effect(
         });
         const tools = result.structuredContent?.tools as string[];
         assert.include(tools, "query_content");
+        assert.include(tools, "set_page_properties");
         assert.include(tools, "send_message_to_session");
         assert.include(tools, "session_question");
         assert.notInclude(tools, "consume_usage_reset");

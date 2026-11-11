@@ -87,7 +87,7 @@ test("projectless agents use Profile content and Automations tools in both inter
               phase === "write"
                 ? [
                     ...common,
-                    `text({updated:unwrap(await app.update_page({pageId:${JSON.stringify(pageId)},body:{kind:"patch",ifMatch:fetched.data.content.etag,patches:[{oldMarkdown:"Original projectless content.",newMarkdown:"Updated without an actor Project."}]}}))});`,
+                    `text({updated:unwrap(await app.update_page({pageId:${JSON.stringify(pageId)},body:{kind:"patch",ifMatch:fetched.data.content.etag,patches:[{oldMarkdown:"Original projectless content.",newMarkdown:"Updated without an actor Project."}]},values:[{propertyId:"Status",value:"review"}],return:["markdown"]}))});`,
                     'text({created:unwrap(await app.create_pages({destination:{kind:"library"},pages:[{title:"Created without a Project",markdown:"Independent Library Page."}],return:["etags"]}))});',
                     'text({sql:unwrap(await app.query_content({scope:{},sql:"SELECT title FROM pages",parameters:{}}))});',
                     // Table names prove the schema read without spending the output budget on it.
@@ -121,7 +121,12 @@ test("projectless agents use Profile content and Automations tools in both inter
           expect(result("context")).toMatchObject({ data: { project: null } });
           expect(result("fetched")).toHaveProperty("data.resource");
           if (phase === "write") {
-            expect(result("updated")).toHaveProperty("data");
+            expect(result("updated")).toMatchObject({
+              data: {
+                body: { markdown: "Updated without an actor Project." },
+                values: [{ propertyId: "status", before: "doing", after: "review" }],
+              },
+            });
             expect(result("created")).toHaveProperty("data.pages");
             expect(result("sql")).toHaveProperty("rows");
             expect(result("schema")).toHaveProperty("tables");

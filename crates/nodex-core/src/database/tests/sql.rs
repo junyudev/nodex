@@ -411,6 +411,7 @@ fn public_sql_counts_complete_windows_and_enforces_cross_source_authority() {
                 operation_id: "sql:second-page".into(),
                 store_epoch: StoreEpoch("epoch-1".into()),
                 intent: LibraryIntent::CreatePageFromText {
+                    values: Vec::new(),
                     title_markdown: "Other page".into(),
                     markdown: String::new(),
                     destination:

@@ -53,6 +53,63 @@ pub enum CommandOutput {
     Process { stdout: Vec<u8>, exit_status: i32 },
 }
 
+/// CLI callers consume semantic receipts; Desktop owns the LocalCommit delivery packet.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub(crate) enum CompactReceipt<T, R> {
+    Committed {
+        outcome: T,
+        receipt: R,
+        commit_seq: i64,
+    },
+    Duplicate {
+        outcome: T,
+        receipt: R,
+        commit_seq: i64,
+    },
+    NoOp {
+        outcome: T,
+        receipt: R,
+        commit_seq: i64,
+    },
+}
+
+pub(crate) fn compact_receipt<T: serde::Serialize, R: serde::Serialize>(
+    response: ApplyResponse<T, R>,
+    duplicate: bool,
+) -> Result<CommandOutput, CliError> {
+    let commit_seq = response.commit_cursor();
+    let result = match response {
+        ApplyResponse::Committed {
+            outcome, receipt, ..
+        }
+        | ApplyResponse::NoOp {
+            outcome, receipt, ..
+        } if duplicate => CompactReceipt::Duplicate {
+            outcome,
+            receipt,
+            commit_seq,
+        },
+        ApplyResponse::Committed {
+            outcome, receipt, ..
+        } => CompactReceipt::Committed {
+            outcome,
+            receipt,
+            commit_seq,
+        },
+        ApplyResponse::NoOp {
+            outcome, receipt, ..
+        } => CompactReceipt::NoOp {
+            outcome,
+            receipt,
+            commit_seq,
+        },
+    };
+    serde_json::to_value(result)
+        .map(CommandOutput::Json)
+        .map_err(internal)
+}
+
 impl CommandOutput {
     pub fn exit_status(&self) -> i32 {
         match self {
@@ -1013,16 +1070,31 @@ fn prepare_page(
     cwd: &Path,
     arguments: PagePrepareArgs,
 ) -> Result<CommandOutput, CliError> {
-    if arguments.view.is_some() && arguments.operation != PrepareOperation::Move {
+    if (arguments.view.is_some() || arguments.to.is_some())
+        && arguments.operation != PrepareOperation::Move
+    {
         return Err(CliError::new(
             CliErrorCode::InvalidInput,
-            "--view is only valid with --operation move",
+            "--view and --to are only valid with --operation move",
         ));
     }
     let project = selected_project(client, project, cwd)?;
     let page_id = resolve_page_selector(client, &project.id, &arguments.page)?;
     let operation = match arguments.operation {
         PrepareOperation::Delete => LibraryPageOperation::Delete,
+        PrepareOperation::Move if let Some(to) = &arguments.to => LibraryPageOperation::MoveTo {
+            destination: crate::page_lifecycle::resolve_page_destination(
+                client,
+                &project,
+                to,
+                None,
+                &crate::cli::DataSourcePlacementArgs {
+                    view: arguments.view,
+                    group: None,
+                    unassigned: false,
+                },
+            )?,
+        },
         PrepareOperation::Move => LibraryPageOperation::Move {
             view_id: arguments
                 .view
@@ -1880,9 +1952,8 @@ fn backup_create(
         store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
         intent,
     }))?;
-    Ok(CommandOutput::Json(
-        serde_json::to_value(committed).map_err(internal)?,
-    ))
+    let duplicate = committed.receipt().mutation.duplicate;
+    compact_receipt(committed, duplicate)
 }
 
 fn doctor(

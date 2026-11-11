@@ -33,12 +33,10 @@ access; do not select another Project to work around a denial.
 
 For an explicit ETag/revision conflict, reread the affected current state and
 reassess the original intent before constructing a new mutation. For a lost
-response, retry the original unchanged input with its saved idempotency key.
-`IDEMPOTENCY_KEY_REUSED` requires a new key for a new intent.
-`IDEMPOTENCY_WINDOW_EXPIRED` means the outcome is unknown to Core. Reread
-state before issuing a fresh call with a new key or no key. A duplicate receipt
-confirms the original operation. Without a saved key, inspect the result before repeating a write
-that could create duplicate content.
+response within seven days, retry the unchanged input with its saved idempotency
+key. A duplicate receipt confirms the original operation. Use a fresh key for
+a new intent if Nodex returns `IDEMPOTENCY_KEY_REUSED`. After seven days or
+without a saved key, inspect the affected state before repeating a write.
 
 A Page attachment conflict requires rereading `pages.file_manifest_revision`
 and the matching `page_files` File/path identity. An empty use list does not

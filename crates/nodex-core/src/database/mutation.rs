@@ -20,6 +20,9 @@ use nodex_core_contracts::database::{
     DatabaseViewPresentationOverrideInput, DatabaseViewRulesOverrideInput,
     DatabaseViewSortDirection, DatabaseViewSortField,
 };
+use nodex_core_contracts::database::{
+    DatabasePagePropertyChange, DatabasePagePropertyResult, DatabasePagePropertyUpdate,
+};
 use nodex_core_contracts::{
     BoundModuleContext, CoreModuleEventPayload, ModuleApplyRequest, ModuleMutationReceipt,
     ModuleName, StoreEpoch,
@@ -63,7 +66,7 @@ const MAX_OCCURRENCE_KEY_LENGTH: usize = 1_024;
 #[derive(Default)]
 struct MutationEffects {
     blocked_by_changed: bool,
-    status_edit_page_ids: BTreeSet<String>,
+    status_edit_origin: StatusEditOrigin,
     database_ids: BTreeSet<String>,
     data_source_ids: BTreeSet<String>,
     page_ids: BTreeSet<String>,
@@ -72,6 +75,7 @@ struct MutationEffects {
     personal_preferences: BTreeMap<String, DatabaseViewPersonalPreferences>,
     occurrence_disclosures: BTreeMap<(String, DatabaseViewDisclosureTarget), bool>,
     operation_outcomes: Vec<DatabaseOperationOutcome>,
+    page_properties: Vec<DatabasePagePropertyResult>,
 }
 
 struct DatabaseMutationRoute {
@@ -148,7 +152,29 @@ pub(crate) fn apply_in_transaction(
 ) -> Result<DatabaseApplyOutcome, StoreError> {
     validate_request(request)?;
     assert_identity(connection, profile_id, library_id)?;
-    let context = crate::infrastructure::actors::bind(connection, context)?;
+    let context = if let [
+        DatabaseIntent::SetPageProperties {
+            authorization: Some(execution),
+            ..
+        },
+    ] = request.intent.as_slice()
+    {
+        if context.project_id.as_ref().map(|id| id.0.as_str())
+            != execution.provenance.authority.actor_project_id.as_deref()
+        {
+            return Err(StoreError::new(
+                StoreErrorCode::Unauthorized,
+                "Agent Property write does not match the bound Project",
+                false,
+            ));
+        }
+        crate::library::agent_execution::validate_execution(
+            connection, context, library_id, execution,
+        )?;
+        crate::infrastructure::actors::verified_turn(connection, context, &execution.provenance)?
+    } else {
+        crate::infrastructure::actors::bind(connection, context)?
+    };
     let context = &context;
     let authority = mutation_route(context);
     let store_epoch = read_store_epoch(connection)?;
@@ -159,15 +185,33 @@ pub(crate) fn apply_in_transaction(
             true,
         ));
     }
-    let fingerprint = serde_json::to_vec(&(
-        &context.profile_id,
-        &context.library_id,
-        &context.project_id,
-        &context.adapter,
-        request.contract_version,
-        &request.store_epoch,
-        &request.intent,
-    ))
+    let fingerprint = match request.intent.as_slice() {
+        [
+            DatabaseIntent::SetPageProperties {
+                updates,
+                authorization: Some(execution),
+            },
+        ] if crate::infrastructure::module_receipts::is_admitted_retry(&request.operation_id) => {
+            serde_json::to_vec(&(
+                "nodex.agent.page-properties.retry.v1",
+                &context.profile_id,
+                &context.library_id,
+                &context.project_id,
+                &request.store_epoch,
+                crate::infrastructure::module_receipts::agent_retry_caller(execution),
+                updates,
+            ))
+        }
+        _ => serde_json::to_vec(&(
+            &context.profile_id,
+            &context.library_id,
+            &context.project_id,
+            &context.adapter,
+            request.contract_version,
+            &request.store_epoch,
+            &request.intent,
+        )),
+    }
     .map_err(|_| internal("Database mutation cannot be fingerprinted"))?;
     let request_hash = sha256(&fingerprint);
     let now = sqlite_now(connection)?;
@@ -183,11 +227,38 @@ pub(crate) fn apply_in_transaction(
             context,
         },
         |scope| {
-            let mut effects = MutationEffects::default();
+            let mut effects = MutationEffects {
+                status_edit_origin: StatusEditOrigin::for_actor(context),
+                ..MutationEffects::default()
+            };
             data_history::authorize_replays(connection, library_id, &authority, &request.intent)?;
-            let history =
-                data_history::capture(connection, library_id, &authority, &request.intent)?;
-            for (operation_index, intent) in request.intent.iter().enumerate() {
+            let expanded;
+            let intents = match request.intent.as_slice() {
+                [DatabaseIntent::SetPageProperties { updates, .. }] => {
+                    expanded = vec![DatabaseIntent::EditPropertyValues {
+                        edits: page_property_set::compile(connection, library_id, updates)?,
+                    }];
+                    &expanded
+                }
+                [DatabaseIntent::ApplyPagePropertyEdits { edits }] => {
+                    expanded = vec![DatabaseIntent::EditPropertyValues {
+                        edits: edits.clone(),
+                    }];
+                    &expanded
+                }
+                _ => &request.intent,
+            };
+            let history = data_history::capture(connection, library_id, &authority, intents)?;
+            let observed = if matches!(
+                request.intent.as_slice(),
+                [DatabaseIntent::SetPageProperties { .. }
+                    | DatabaseIntent::ApplyPagePropertyEdits { .. }]
+            ) {
+                page_property_set::observe(connection, library_id, intents)?
+            } else {
+                Vec::new()
+            };
+            for (operation_index, intent) in intents.iter().enumerate() {
                 apply_intent(
                     scope.connection(),
                     &crate::infrastructure::actors::requesting_member(connection, context)?,
@@ -200,7 +271,16 @@ pub(crate) fn apply_in_transaction(
                     &mut effects,
                 )?;
             }
-            record_explicit_status_edits(connection, context, &effects)?;
+            effects.page_properties = page_property_set::finish(connection, library_id, observed)?;
+            if matches!(
+                request.intent.as_slice(),
+                [DatabaseIntent::SetPageProperties {
+                    authorization: Some(_),
+                    ..
+                }]
+            ) {
+                page_property_set::validate_agent_receipt_size(&effects.page_properties)?;
+            }
             if effects.blocked_by_changed {
                 super::work_graph::validate_graph(connection, StoreErrorCode::InvalidInput)?;
             }
@@ -268,14 +348,29 @@ pub(crate) fn apply_as_collaborator(
         operation_id,
         intents,
         committed_at,
-        StatusEditOrigin::Explicit,
+        StatusEditOrigin::for_actor(context),
     )
 }
 
-#[derive(Clone, Copy, PartialEq)]
-enum StatusEditOrigin {
-    Explicit,
+#[derive(Clone, Copy, Default)]
+pub(crate) enum StatusEditOrigin {
+    // A resolved placement explicitly sets its group, including through Agent tools.
+    #[default]
+    Person,
+    Agent,
     WorkFact,
+}
+
+impl StatusEditOrigin {
+    fn for_actor(context: &BoundModuleContext) -> Self {
+        if context.agent_attribution.is_some()
+            || context.adapter == nodex_core_contracts::AdapterKind::Agent
+        {
+            Self::Agent
+        } else {
+            Self::Person
+        }
+    }
 }
 
 fn apply_collaborator(
@@ -291,7 +386,28 @@ fn apply_collaborator(
         return Err(invalid("Database collaborator operation count is invalid"));
     }
     let authority = mutation_route(context);
-    let mut effects = MutationEffects::default();
+    let mut effects = MutationEffects {
+        status_edit_origin: status_origin,
+        ..MutationEffects::default()
+    };
+    let expanded;
+    let observed;
+    let intents = if let [
+        DatabaseIntent::SetPageProperties {
+            updates,
+            authorization: None,
+        },
+    ] = intents
+    {
+        expanded = vec![DatabaseIntent::EditPropertyValues {
+            edits: page_property_set::compile(connection, library_id, updates)?,
+        }];
+        observed = page_property_set::observe(connection, library_id, &expanded)?;
+        &expanded
+    } else {
+        observed = Vec::new();
+        intents
+    };
     for (operation_index, intent) in intents.iter().enumerate() {
         apply_intent(
             connection,
@@ -305,9 +421,7 @@ fn apply_collaborator(
             &mut effects,
         )?;
     }
-    if status_origin == StatusEditOrigin::Explicit {
-        record_explicit_status_edits(connection, context, &effects)?;
-    }
+    effects.page_properties = page_property_set::finish(connection, library_id, observed)?;
     if effects.blocked_by_changed {
         super::work_graph::validate_graph(connection, StoreErrorCode::InvalidInput)?;
     }
@@ -329,6 +443,7 @@ fn apply_collaborator(
             .map(str::to_owned)
             .collect(),
         operation_outcomes: effects.operation_outcomes,
+        page_properties: effects.page_properties,
         committed_revisions: effects.revisions,
         commit_seq: 0,
         committed_at: committed_at.to_owned(),
@@ -354,22 +469,6 @@ pub(crate) fn status_person_revision(
             |r| r.get(0),
         )
         .map_err(Into::into)
-}
-
-fn record_explicit_status_edits(
-    connection: &Connection,
-    context: &BoundModuleContext,
-    effects: &MutationEffects,
-) -> Result<(), StoreError> {
-    if context.agent_attribution.is_some()
-        || context.adapter == nodex_core_contracts::AdapterKind::Agent
-    {
-        return Ok(());
-    }
-    for page in &effects.status_edit_page_ids {
-        record_person_status_edit(connection, page)?;
-    }
-    Ok(())
 }
 
 /// A Page-local monotonic fence survives membership moves and manual A→B→A edits.
@@ -471,6 +570,16 @@ fn validate_request(request: &ModuleApplyRequest<Vec<DatabaseIntent>>) -> Result
         )));
     }
     for intent in &request.intent {
+        if matches!(
+            intent,
+            DatabaseIntent::SetPageProperties { .. }
+                | DatabaseIntent::ApplyPagePropertyEdits { .. }
+        ) && request.intent.len() != 1
+        {
+            return Err(invalid(
+                "Setting Page Properties requires a dedicated atomic request",
+            ));
+        }
         if matches!(intent, DatabaseIntent::Configure { .. }) && request.intent.len() != 1 {
             return Err(invalid(
                 "Configuration scripts require a dedicated atomic request",
@@ -489,7 +598,8 @@ fn validate_request(request: &ModuleApplyRequest<Vec<DatabaseIntent>>) -> Result
                 ));
             }
         }
-        if let DatabaseIntent::EditPropertyValues { edits } = intent
+        if let DatabaseIntent::EditPropertyValues { edits }
+        | DatabaseIntent::ApplyPagePropertyEdits { edits } = intent
             && (edits.is_empty() || edits.len() > MAX_BULK_VALUES)
         {
             return Err(invalid(format!(
@@ -724,6 +834,8 @@ fn database_intent_kind(intent: &DatabaseIntent) -> &'static str {
         DatabaseIntent::DeleteOption { .. } => "delete_option",
         DatabaseIntent::DeleteOptionAndClearValues { .. } => "delete_option_and_clear_values",
         DatabaseIntent::PutPageLayoutEntry { .. } => "put_page_layout_entry",
+        DatabaseIntent::SetPageProperties { .. } => "set_page_properties",
+        DatabaseIntent::ApplyPagePropertyEdits { .. } => "edit_property_values",
         DatabaseIntent::EditPropertyValues { .. } => "edit_property_values",
         DatabaseIntent::TransferPage { .. } => "transfer_page",
         DatabaseIntent::PutView { .. } => "put_view",
@@ -773,6 +885,8 @@ fn page_detail_dependency_ids(intents: &[DatabaseIntent]) -> (BTreeSet<String>, 
                 database_ids.insert(database_id.clone());
             }
             DatabaseIntent::EditPropertyValues { .. }
+            | DatabaseIntent::SetPageProperties { .. }
+            | DatabaseIntent::ApplyPagePropertyEdits { .. }
             | DatabaseIntent::TransferPage { .. }
             | DatabaseIntent::PositionPage { .. }
             | DatabaseIntent::PositionPages { .. }
@@ -1044,6 +1158,10 @@ fn apply_intent(
             now,
             effects,
         ),
+        DatabaseIntent::SetPageProperties { .. }
+        | DatabaseIntent::ApplyPagePropertyEdits { .. } => Err(internal(
+            "Page Property updates must be compiled before applying",
+        )),
         DatabaseIntent::EditPropertyValues { edits } => {
             let mut addresses = HashSet::with_capacity(edits.len());
             for edit in edits {
@@ -2777,15 +2895,16 @@ fn set_value(
     if active_row.is_none() {
         return Err(not_found("Page is not an active row in the Data Source"));
     }
-    let existing_revision = connection
+    let (existing_revision, previous_stage): (i64, Option<String>) = connection
         .query_row(
-            "SELECT revision FROM data_source_property_values \
+            "SELECT revision, CASE WHEN property_id = 'status' THEN json_extract(value_json,'$') END
+             FROM data_source_property_values
              WHERE data_source_id = ?1 AND membership_id = ?2 AND property_id = ?3",
             params![address.data_source_id, membership, address.property_id],
-            |row| row.get::<_, i64>(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?
-        .unwrap_or(0);
+        .unwrap_or_default();
     require_revision(
         expected_value_revision,
         existing_revision,
@@ -2793,22 +2912,6 @@ fn set_value(
     )?;
     let value = normalize_value(&property, input_value)?;
     let revision = existing_revision + 1;
-    let previous_stage: Option<String> = if address.property_id == "status" {
-        connection
-            .query_row(
-                "SELECT json_extract(value_json,'$') FROM data_source_property_values
-             WHERE data_source_id=?1 AND membership_id=?2 AND property_id='status'",
-                params![address.data_source_id, membership],
-                |r| r.get(0),
-            )
-            .optional()?
-            .flatten()
-    } else {
-        None
-    };
-    if address.property_id == "status" {
-        effects.status_edit_page_ids.insert(address.page_id.clone());
-    }
     write_scalar_value(
         connection,
         &address.data_source_id,
@@ -2818,13 +2921,14 @@ fn set_value(
         revision,
         now,
     )?;
-    if address.property_id == "status" {
-        crate::workspace::inbox::status_changed(
+    if address.property_id == super::property_semantics::STATUS_PROPERTY_ID {
+        record_workflow_status_edit(
             connection,
             &address.page_id,
             previous_stage.as_deref(),
             value.as_str(),
             now,
+            effects.status_edit_origin,
         )?;
     }
     update_membership_completion_timestamp(
@@ -2868,6 +2972,20 @@ fn set_value(
         metadata_revision,
     );
     Ok(())
+}
+
+fn record_workflow_status_edit(
+    connection: &Connection,
+    page_id: &str,
+    previous_stage: Option<&str>,
+    stage: Option<&str>,
+    now: &str,
+    origin: StatusEditOrigin,
+) -> Result<(), StoreError> {
+    if matches!(origin, StatusEditOrigin::Person) {
+        record_person_status_edit(connection, page_id)?;
+    }
+    crate::workspace::inbox::status_changed(connection, page_id, previous_stage, stage, now)
 }
 
 fn update_membership_completion_timestamp(
@@ -3420,7 +3538,7 @@ pub(crate) enum ExistingPageTransferTarget<'a> {
     Library,
     Page { page_id: &'a str },
     DataSource(&'a PageCopyDataSourceDestination),
-    RestoreDataSource(&'a PageCopyDataSourceDestination),
+    RestoreDataSource(&'a PageCopyDataSourceDestination, StatusEditOrigin),
 }
 
 pub(crate) struct ExistingPageTransferPlacement {
@@ -3820,6 +3938,7 @@ pub(crate) fn place_copied_page_in_data_source(
             parent_revision: 1,
         },
         now,
+        StatusEditOrigin::Person,
     )
 }
 
@@ -3832,6 +3951,7 @@ pub(crate) fn place_staged_page_in_data_source(
     destination: &PageCopyDataSourceDestination,
     expected: StagedPagePlacementRevisions,
     now: &str,
+    status_origin: StatusEditOrigin,
 ) -> Result<PageCopyDataSourcePlacement, StoreError> {
     place_page_in_data_source(
         connection,
@@ -3842,6 +3962,7 @@ pub(crate) fn place_staged_page_in_data_source(
         destination,
         expected,
         now,
+        status_origin,
     )
 }
 
@@ -3855,6 +3976,7 @@ fn place_page_in_data_source(
     destination: &PageCopyDataSourceDestination,
     expected: StagedPagePlacementRevisions,
     now: &str,
+    status_origin: StatusEditOrigin,
 ) -> Result<PageCopyDataSourcePlacement, StoreError> {
     if destination.values.len() > 512 {
         return Err(invalid("Data Source placement values exceed their bound"));
@@ -4095,7 +4217,10 @@ fn place_page_in_data_source(
         now,
     )?;
 
-    let mut effects = MutationEffects::default();
+    let mut effects = MutationEffects {
+        status_edit_origin: status_origin,
+        ..MutationEffects::default()
+    };
     for value in &destination.values {
         let expected_value_revision = connection
             .query_row(
@@ -4258,10 +4383,16 @@ fn transfer_existing_page_for_structural_move(
 
     defer_projection_refresh: bool,
 ) -> Result<ExistingPageTransferPlacement, StoreError> {
+    let restore_stage = match &target {
+        ExistingPageTransferTarget::RestoreDataSource(_, origin) => {
+            inbox_stage(connection, page_id)?.map(|stage| (stage, *origin))
+        }
+        _ => None,
+    };
     let mut effects = MutationEffects::default();
     let same_data_source = match &target {
         ExistingPageTransferTarget::DataSource(destination)
-        | ExistingPageTransferTarget::RestoreDataSource(destination) => connection
+        | ExistingPageTransferTarget::RestoreDataSource(destination, _) => connection
             .query_row(
                 "SELECT membership.data_source_id = ?2 \
                  FROM data_source_page_memberships membership \
@@ -4281,7 +4412,7 @@ fn transfer_existing_page_for_structural_move(
             page_id: (*page_id).to_owned(),
         },
         ExistingPageTransferTarget::DataSource(destination)
-        | ExistingPageTransferTarget::RestoreDataSource(destination) => {
+        | ExistingPageTransferTarget::RestoreDataSource(destination, _) => {
             DatabaseTransferTarget::DataSource {
                 data_source_id: destination.data_source_id.clone(),
             }
@@ -4341,12 +4472,12 @@ fn transfer_existing_page_for_structural_move(
             now,
             &mut effects,
             true,
-            matches!(target, ExistingPageTransferTarget::RestoreDataSource(_)),
+            matches!(target, ExistingPageTransferTarget::RestoreDataSource(..)),
             defer_projection_refresh,
         )?;
     }
     if let ExistingPageTransferTarget::DataSource(destination)
-    | ExistingPageTransferTarget::RestoreDataSource(destination) = target
+    | ExistingPageTransferTarget::RestoreDataSource(destination, _) = target
     {
         for value in &destination.values {
             let expected_value_revision = connection
@@ -4404,6 +4535,19 @@ fn transfer_existing_page_for_structural_move(
             )?;
         }
     }
+    if let Some((previous_stage, origin)) = restore_stage {
+        let stage = inbox_stage(connection, page_id)?;
+        if stage.as_deref() != Some(previous_stage.as_str()) {
+            record_workflow_status_edit(
+                connection,
+                page_id,
+                Some(&previous_stage),
+                stage.as_deref(),
+                now,
+                origin,
+            )?;
+        }
+    }
     let (location_revision, metadata_revision, parent_revision, database_id) = connection
         .query_row(
             "SELECT block.placement_revision, block.metadata_revision, \
@@ -4458,6 +4602,17 @@ fn transfer_existing_page_for_structural_move(
         metadata_revision,
         parent_revision,
     })
+}
+
+fn inbox_stage(connection: &Connection, page_id: &str) -> Result<Option<String>, StoreError> {
+    Ok(connection
+        .query_row(
+            "SELECT stage FROM inbox_intake WHERE page_id=?1",
+            [page_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .flatten())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -7980,6 +8135,7 @@ fn seal_commit(
         affected_view_ids: view_ids.clone(),
         operation_kinds,
         operation_outcomes,
+        page_properties: effects.page_properties,
         committed_revisions,
         commit_seq: scope.commit_seq(),
         committed_at: now.to_owned(),
@@ -8285,3 +8441,5 @@ mod tests {
         assert!(!property_ids.contains("due_date"));
     }
 }
+
+pub(crate) mod page_property_set;

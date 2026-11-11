@@ -426,6 +426,20 @@ function resolveAdvancedUpdatePage(call: CodexDynamicToolCallView): NodexToolAct
   );
 }
 
+function resolveSetPageProperties(call: CodexDynamicToolCallView): NodexToolActivity {
+  const updates = asArray(asRecord(call.arguments)?.updates);
+  const pageIds = new Set(
+    updates
+      .flatMap((update) => asArray(asRecord(update)?.pageIds))
+      .filter((id) => typeof id === "string"),
+  );
+  const pageId = pageIds.size === 1 ? pageIds.values().next().value : null;
+  return activity(call, "page", verb("Updating", "Updated", "update"), [
+    text("properties on"),
+    pageId ? pagePart(pageId) : text(pageIds.size > 1 ? plural(pageIds.size, "page") : "pages"),
+  ]);
+}
+
 function resolveMovePages(call: CodexDynamicToolCallView): NodexToolActivity {
   const args = asRecord(call.arguments);
   const pageIds = asArray(args?.pageIds).filter(
@@ -696,6 +710,7 @@ const NODEX_TOOL_ACTIVITY = {
   query_data_source: (call) => resolveQuery(call, "data source"),
   create_pages: resolveCreatePages,
   update_page: resolveUpdatePage,
+  set_page_properties: resolveSetPageProperties,
   advanced_update_page: resolveAdvancedUpdatePage,
   move_pages: resolveMovePages,
   duplicate_page: resolveDuplicatePage,

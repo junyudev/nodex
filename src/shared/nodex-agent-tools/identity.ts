@@ -23,7 +23,7 @@ export const NODEX_APP_V5_TOOLS = NODEX_APP_V3_TOOLS;
 
 /** Page-key discovery and projection contract. */
 export const NODEX_APP_V6_TOOLSET_REVISION = 6 as const;
-export const NODEX_APP_V6_TOOLS = NODEX_APP_V5_TOOLS;
+export const NODEX_APP_V6_TOOLS = [...NODEX_APP_V5_TOOLS, "set_page_properties"] as const;
 export type NodexAgentV6ToolName = (typeof NODEX_APP_V6_TOOLS)[number];
 
 export const NODEX_APP_TOOLSET_REVISION = NODEX_APP_V6_TOOLSET_REVISION;

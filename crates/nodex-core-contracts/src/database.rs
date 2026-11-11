@@ -1438,6 +1438,14 @@ pub enum DatabaseIntent {
         visibility: DatabasePagePropertyVisibility,
         placement: Option<DatabasePageLayoutPlacement>,
     },
+    SetPageProperties {
+        updates: Vec<DatabasePagePropertyUpdate>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        authorization: Option<Box<AgentExecutionAuthorization>>,
+    },
+    ApplyPagePropertyEdits {
+        edits: Vec<DatabasePropertyValueMutation>,
+    },
     EditPropertyValues {
         edits: Vec<DatabasePropertyValueMutation>,
     },
@@ -1523,6 +1531,32 @@ pub enum DatabaseIntent {
         target: DatabaseViewDisclosureTarget,
         collapsed: bool,
     },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DatabasePagePropertyUpdate {
+    pub page_ids: Vec<String>,
+    pub values: Vec<crate::library::LibraryPageCopyValue>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub expected_value_revisions: BTreeMap<String, i64>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct DatabasePagePropertyResult {
+    pub page_id: String,
+    pub page_key: Option<String>,
+    pub data_source_id: String,
+    pub membership_revision: i64,
+    pub values: Vec<DatabasePagePropertyChange>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct DatabasePagePropertyChange {
+    pub property_id: String,
+    pub before: serde_json::Value,
+    pub after: serde_json::Value,
+    pub value_revision: i64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1779,6 +1813,8 @@ pub struct DatabaseReceipt {
     pub operation_kinds: Vec<String>,
     #[serde(default)]
     pub operation_outcomes: Vec<DatabaseOperationOutcome>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub page_properties: Vec<DatabasePagePropertyResult>,
     pub committed_revisions: BTreeMap<String, i64>,
     pub commit_seq: i64,
     pub committed_at: String,

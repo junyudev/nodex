@@ -53,6 +53,16 @@ pub(super) fn prepare_page_operation(
                 page_id,
             )?,
         },
+        LibraryPageOperation::MoveTo { destination } => LibraryPageOperationValidators::Move {
+            move_etag: super::page_write_semantic::prepare_move_to(
+                connection,
+                library_id,
+                requesting_project_id,
+                store_epoch,
+                page_id,
+                &destination,
+            )?,
+        },
         LibraryPageOperation::Move { view_id } => {
             let view_id = match view_id {
                 Some(view_id) => Some(view_id),
@@ -1034,7 +1044,7 @@ fn with_final_newline(value: &str) -> String {
     format!("{value}\n")
 }
 
-fn etag_error(error: impl std::fmt::Display) -> StoreError {
+pub(super) fn etag_error(error: impl std::fmt::Display) -> StoreError {
     StoreError::new(
         StoreErrorCode::StoreCorrupt,
         format!("Page validator authority is unavailable: {error}"),

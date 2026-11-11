@@ -1552,6 +1552,7 @@ impl OwnedDocumentModule {
                                 semantic_block_etags: None,
                                 semantic_local_block_ids: None,
                                 semantic_deleted_owner_block_ids: None,
+                                page_properties: None,
                             },
                             receipt: OwnedDocumentReceipt {
                                 mutation: ModuleMutationReceipt {
@@ -2705,6 +2706,15 @@ impl OwnedDocumentModule {
         commands: Vec<DocumentSemanticCommand>,
         prepared_agent: Option<AgentPreparedExecution>,
     ) -> Result<OwnedDocumentApplyOutcome, CoreError> {
+        if prepared_agent.is_none()
+            && commands
+                .iter()
+                .any(|command| matches!(command, DocumentSemanticCommand::SetPageProperties { .. }))
+        {
+            return Err(invalid(
+                "Use the Database Module to set Properties outside a prepared Agent Page update",
+            ));
+        }
         if let Some(execution) = prepared_agent.as_ref() {
             validate_agent_transport_context(context, &execution.authorization.provenance)?;
         }
@@ -3765,6 +3775,9 @@ impl OwnedDocumentModule {
                 } else {
                     (None, None)
                 };
+                let property_values = job.prepared_agent.as_ref().map_or(Ok(None), |prepared| {
+                    attached_property_values(&prepared.mutation.commands)
+                })?;
                 if let PreparedUpdate::Recovery { artifact_id } = &prepared {
                     let artifact_id = artifact_id.clone();
                     transaction.commit()?;
@@ -3814,7 +3827,10 @@ impl OwnedDocumentModule {
                         &base_materialization,
                         &mut committed,
                     )?;
-                    recovery_drafts::finish_or_record_noop(&transaction, &job, &mut committed)?;
+                    let events = finish_semantic_no_change(
+                        &transaction, &job, &actor_context, &authority, &store_epoch,
+                        property_values, &mut committed,
+                    )?;
                     transaction.commit()?;
                     consume_prepared_agent_lease(&mut prepared_agent_lease)?;
                     cache
@@ -3823,7 +3839,7 @@ impl OwnedDocumentModule {
                         .install(&authority.head, engine);
                     return Ok(OwnedDocumentApplyOutcome {
                         committed,
-                        events: Vec::new(),
+                        events,
                     });
                 };
                 validate_touched_block_ids_store(&touched_block_ids)?;
@@ -3851,7 +3867,10 @@ impl OwnedDocumentModule {
                         &base_materialization,
                         &mut committed,
                     )?;
-                    recovery_drafts::finish_or_record_noop(&transaction, &job, &mut committed)?;
+                    let events = finish_semantic_no_change(
+                        &transaction, &job, &actor_context, &authority, &store_epoch,
+                        property_values, &mut committed,
+                    )?;
                     transaction.commit()?;
                     consume_prepared_agent_lease(&mut prepared_agent_lease)?;
                     cache
@@ -3860,7 +3879,7 @@ impl OwnedDocumentModule {
                         .install(&authority.head, engine);
                     return Ok(OwnedDocumentApplyOutcome {
                         committed,
-                        events: Vec::new(),
+                        events,
                     });
                 }
                 let candidate_transaction = candidate.document().transact();
@@ -3998,11 +4017,26 @@ impl OwnedDocumentModule {
                             &transaction,
                             persisted.event_sequence,
                         )?;
-                        record_page_document_projection_delta(
-                            scope,
-                            &authority,
-                            &event.projection_impact,
-                        )?;
+                        if let Some(values) = property_values {
+                            let (properties, property_event) = apply_attached_page_properties(
+                                scope, &actor_context, &authority, &job.operation_id, values,
+                                &persisted.committed_at,
+                            )?;
+                            let impact = crate::infrastructure::local_commit::merge_projection_impact(
+                                event.projection_impact.clone(), property_event.projection_impact.clone(),
+                            )?;
+                            crate::database::record_local_projection_delta(
+                                &transaction, scope.evidence(), &actor_context.library_id.0, &impact,
+                            )?;
+                            committed.value.page_properties = Some(properties);
+                            file_events.push(property_event);
+                        } else {
+                            record_page_document_projection_delta(
+                                scope,
+                                &authority,
+                                &event.projection_impact,
+                            )?;
+                        }
                         committed_delivery = Some((
                             event,
                             persisted.head_seq,
@@ -4353,6 +4387,7 @@ fn committed_value(
             semantic_block_etags: None,
             semantic_local_block_ids: None,
             semantic_deleted_owner_block_ids: None,
+            page_properties: None,
         },
         receipt: OwnedDocumentReceipt {
             mutation: ModuleMutationReceipt {
@@ -4520,6 +4555,166 @@ fn committed_canvas_value(
 
 type OwnedDocumentWriterResult =
     crate::ModuleWriterResult<OwnedDocumentCommitValue, OwnedDocumentReceipt>;
+
+fn finish_semantic_no_change(
+    connection: &Connection,
+    job: &DocumentUpdateJob,
+    context: &BoundModuleContext,
+    authority: &DocumentAuthorityRow,
+    store_epoch: &str,
+    values: Option<&[nodex_core_contracts::library::LibraryPageCopyValue]>,
+    committed: &mut OwnedDocumentWriterResult,
+) -> Result<Vec<CommittedCoreModuleEvent>, StoreError> {
+    let Some(values) = values else {
+        recovery_drafts::finish_or_record_noop(connection, job, committed)?;
+        return Ok(Vec::new());
+    };
+    let now = sqlite_now(connection)?;
+    let mut events = Vec::new();
+    let result = durable_mutation::run(
+        connection,
+        OperationIdentity {
+            module: ModuleName::OwnedDocument,
+            module_name: MODULE_NAME,
+            operation_id: &job.operation_id,
+            intent_hash: &job.request_hash,
+            store_epoch,
+            committed_at: &now,
+            context,
+        },
+        |scope| {
+            let (properties, event) = apply_attached_page_properties(
+                scope,
+                context,
+                authority,
+                &job.operation_id,
+                values,
+                &now,
+            )?;
+            crate::database::record_local_projection_delta(
+                connection,
+                scope.evidence(),
+                &context.library_id.0,
+                &event.projection_impact,
+            )?;
+            let sequence = event.sequence;
+            events.push(event);
+            committed.value.page_properties = Some(properties);
+            committed.value.committed_at = Some(now.clone());
+            committed.value.outcome = DocumentCommitOutcome::Committed;
+            seal_typed_receipt(scope, job.operation_kind, committed.clone(), Some(sequence))
+        },
+    )?;
+    *committed = resolve_typed_commit(result);
+    Ok(events)
+}
+
+fn attached_property_values(
+    commands: &[DocumentSemanticCommand],
+) -> Result<Option<&[nodex_core_contracts::library::LibraryPageCopyValue]>, StoreError> {
+    let mut commands = commands.iter().filter_map(|command| match command {
+        DocumentSemanticCommand::SetPageProperties { values } => Some(values.as_slice()),
+        _ => None,
+    });
+    match (commands.next(), commands.next()) {
+        (None, None) => Ok(None),
+        (Some(values), None) if !values.is_empty() && values.len() <= 512 => Ok(Some(values)),
+        _ => Err(invalid_store(
+            "A Page update can include one list of 1–512 Property values".to_owned(),
+        )),
+    }
+}
+
+fn apply_attached_page_properties(
+    scope: &DurableMutationScope<'_>,
+    context: &BoundModuleContext,
+    authority: &DocumentAuthorityRow,
+    operation_id: &str,
+    values: &[nodex_core_contracts::library::LibraryPageCopyValue],
+    now: &str,
+) -> Result<
+    (
+        nodex_core_contracts::database::DatabasePagePropertyResult,
+        CommittedCoreModuleEvent,
+    ),
+    StoreError,
+> {
+    use nodex_core_contracts::{
+        CoreModuleEventPayload,
+        database::{DatabaseEvent, DatabaseEventKind, DatabaseIntent, DatabasePagePropertyUpdate},
+    };
+    let connection = scope.connection();
+    let library_id = authority.page_library_id.as_deref().ok_or_else(|| {
+        invalid_store("Data Source Properties require a Page Document".to_owned())
+    })?;
+    let mut receipt = crate::database::apply_intents_as_collaborator(
+        connection,
+        library_id,
+        context,
+        operation_id,
+        &[DatabaseIntent::SetPageProperties {
+            updates: vec![DatabasePagePropertyUpdate {
+                page_ids: vec![authority.owner_block_id.clone()],
+                values: values.to_vec(),
+                expected_value_revisions: Default::default(),
+            }],
+            authorization: None,
+        }],
+        now,
+    )?;
+    crate::database::validate_agent_receipt_size(&receipt.page_properties)?;
+    let properties = receipt
+        .page_properties
+        .pop()
+        .ok_or_else(|| internal("Page Property mutation omitted its result"))?;
+    let project_id = context.project_id.as_ref().map(|id| id.0.clone());
+    let payload = CoreModuleEventPayload::Database(DatabaseEvent {
+        kind: DatabaseEventKind::DatabaseChanged,
+        project_id: project_id.clone(),
+        page_ids: receipt.affected_page_ids.clone(),
+        database_ids: receipt.affected_database_ids.clone(),
+        data_source_ids: receipt.affected_data_source_ids,
+        view_ids: receipt.affected_view_ids,
+        personal_view_changes: Vec::new(),
+    });
+    let impact = crate::infrastructure::projection_impact::expand_database_coordinates(
+        connection,
+        crate::infrastructure::projection_impact::impact_for_payload(&payload)?,
+    )?;
+    let CoreModuleEventPayload::Database(database) = payload else {
+        unreachable!()
+    };
+    let payload_json = serde_json::json!({
+        "module": "database",
+        "kind": "database_changed",
+        "projectId": project_id,
+        "databaseIds": database.database_ids,
+        "dataSourceIds": database.data_source_ids,
+        "pageIds": database.page_ids,
+        "viewIds": database.view_ids,
+    })
+    .to_string();
+    let sequence = append_change_log(
+        connection,
+        NewChangeLogEntry {
+            project_id: project_id.as_deref(),
+            store_epoch: scope.store_epoch(),
+            kind: "database.changed",
+            operation_id: Some(operation_id),
+            block_ids: &receipt.affected_page_ids,
+            document_ids: &[],
+            database_block_ids: &receipt.affected_database_ids,
+            payload_json: &payload_json,
+            projection_impact: &impact,
+            committed_at: now,
+        },
+        scope.evidence(),
+    )?;
+    Ok((
+        properties,
+        load_committed_event_by_sequence(connection, sequence)?,
+    ))
+}
 
 fn record_page_document_projection_delta(
     scope: &DurableMutationScope<'_>,
@@ -5218,7 +5413,8 @@ fn build_agent_semantic_footprint(
     }
     for command in commands {
         match command {
-            DocumentSemanticCommand::SetTitle { .. }
+            DocumentSemanticCommand::SetPageProperties { .. }
+            | DocumentSemanticCommand::SetTitle { .. }
             | DocumentSemanticCommand::PatchBody { .. } => {
                 updated_roots.insert(owner_page_id.to_owned());
             }

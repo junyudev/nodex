@@ -22,7 +22,8 @@ pub struct ConfigureArgs {
 }
 pub(crate) fn prepare(args: &mut ConfigureArgs) -> Result<(), CliError> {
     let script: DatabaseConfigurationScript =
-        crate::input::read_json(&args.input, "Configuration script")?;
+        crate::input::read_json(&args.input, "Configuration script")
+            .map_err(|error| crate::input::with_schema_hint(error, "data-source configure"))?;
     if script.if_schema_revision < 1
         || script.operations.is_empty()
         || script.operations.len() > 100
@@ -69,9 +70,10 @@ pub(crate) fn execute(
         )
         .map_err(map_client_error)?;
     match response.0 {
-        ResponseEnvelope::Ok(committed) => serde_json::to_value(committed)
-            .map(CommandOutput::Json)
-            .map_err(|error| CliError::new(CliErrorCode::Internal, error.to_string())),
+        ResponseEnvelope::Ok(committed) => {
+            let duplicate = committed.receipt().mutation.duplicate;
+            crate::runtime::compact_receipt(committed, duplicate)
+        }
         ResponseEnvelope::Error(error) => Err(map_core_error(error)),
     }
 }

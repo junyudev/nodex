@@ -670,6 +670,7 @@ fn metadata_result(
                 semantic_block_etags: None,
                 semantic_local_block_ids: None,
                 semantic_deleted_owner_block_ids: None,
+                page_properties: None,
             },
             receipt: OwnedDocumentReceipt {
                 mutation: ModuleMutationReceipt {

@@ -39,6 +39,13 @@ pub(crate) fn read_json<T: DeserializeOwned>(path: &Path, label: &str) -> Result
     decode_json(&read_bytes(path, MAX_JSON_BYTES, label)?, label)
 }
 
+pub(crate) fn with_schema_hint(mut error: CliError, command: &str) -> CliError {
+    error
+        .message
+        .push_str(&format!(" See `nodex {command} --help-schema input`."));
+    error
+}
+
 pub(crate) fn decode_json<T: DeserializeOwned>(bytes: &[u8], label: &str) -> Result<T, CliError> {
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
     let result = serde_path_to_error::deserialize(&mut deserializer).map_err(|error| {

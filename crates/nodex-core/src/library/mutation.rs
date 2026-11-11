@@ -287,6 +287,7 @@ pub(super) fn apply(
                     title_markdown,
                     markdown,
                     destination,
+                    values,
                 } => {
                     super::page_write_semantic::create_page(
                         transaction,
@@ -298,6 +299,7 @@ pub(super) fn apply(
                         title_markdown,
                         markdown,
                         destination,
+                        values,
                     )
                 }
                 LibraryIntent::CreateDatabase {
@@ -459,9 +461,14 @@ pub(super) fn apply(
                     &request_hash,
                     page_id,
                     destination,
-                    expected_etag,
+                    expected_etag.as_deref(),
                     &assets_root,
                 ),
+                LibraryIntent::MovePages { page_ids, destination } =>
+                    super::agent_page_move::move_native_pages(
+                        transaction, context, &library_id, &request.operation_id, &store_epoch,
+                        &request_hash, page_ids, destination, &assets_root,
+                    ),
                 LibraryIntent::DeletePage {
                     page_id,
                     expected_etag,
@@ -6034,6 +6041,7 @@ mod tests {
             operation_id: "native-cli:create-page".to_owned(),
             store_epoch: StoreEpoch("epoch-1".to_owned()),
             intent: LibraryIntent::CreatePageFromText {
+                values: Vec::new(),
                 title_markdown: "Native **Page**".to_owned(),
                 markdown: body.to_owned(),
                 destination: LibraryPageWriteDestination::Library { at: None },
@@ -6557,6 +6565,7 @@ mod tests {
             operation_id: "native-cli:create-data-source-page".to_owned(),
             store_epoch: StoreEpoch("epoch-1".to_owned()),
             intent: LibraryIntent::CreatePageFromText {
+                values: Vec::new(),
                 title_markdown: "Database **Page**".to_owned(),
                 markdown: body.to_owned(),
                 destination: LibraryPageWriteDestination::DataSource {
@@ -6719,6 +6728,7 @@ mod tests {
                     operation_id: "native-cli:create-search-page".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: LibraryIntent::CreatePageFromText {
+                        values: Vec::new(),
                         title_markdown: "Search **Page**".to_owned(),
                         markdown: "## Runtime\n\nCore starts on demand.".to_owned(),
                         destination: LibraryPageWriteDestination::Library { at: None },
@@ -6994,7 +7004,7 @@ mod tests {
                             group: None,
                             at: Some(LibraryAgentSiblingAnchor::End),
                         },
-                        expected_etag: move_etag,
+                        expected_etag: Some(move_etag),
                     },
                 },
             )
@@ -7117,6 +7127,7 @@ mod tests {
             operation_id: operation_id.to_owned(),
             store_epoch: StoreEpoch("epoch-1".to_owned()),
             intent: LibraryIntent::CreatePageFromText {
+                values: Vec::new(),
                 title_markdown: title.to_owned(),
                 markdown: "## Body\n\nDurable content.".to_owned(),
                 destination: LibraryPageWriteDestination::Library { at: None },
@@ -7248,7 +7259,7 @@ mod tests {
                 destination: LibraryPageWriteDestination::Library {
                     at: Some(LibraryAgentSiblingAnchor::Start),
                 },
-                expected_etag: move_etag,
+                expected_etag: Some(move_etag),
             },
         };
         let moved = module
@@ -7293,7 +7304,7 @@ mod tests {
                             group: None,
                             at: Some(LibraryAgentSiblingAnchor::End),
                         },
-                        expected_etag: move_to_data_source_etag,
+                        expected_etag: Some(move_to_data_source_etag),
                     },
                 },
             )
@@ -7342,7 +7353,7 @@ mod tests {
                             group: None,
                             at: Some(LibraryAgentSiblingAnchor::Start),
                         },
-                        expected_etag: preserve_group_etag,
+                        expected_etag: Some(preserve_group_etag),
                     },
                 },
             )
@@ -7374,7 +7385,7 @@ mod tests {
                     }),
                     at: Some(LibraryAgentSiblingAnchor::End),
                 },
-                expected_etag: move_within_view_etag,
+                expected_etag: Some(move_within_view_etag),
             },
         };
         let moved_within_view_commit = module
@@ -7460,7 +7471,7 @@ mod tests {
                             }),
                             at: Some(LibraryAgentSiblingAnchor::End),
                         },
-                        expected_etag: stale_move_etag,
+                        expected_etag: Some(stale_move_etag),
                     },
                 },
             )

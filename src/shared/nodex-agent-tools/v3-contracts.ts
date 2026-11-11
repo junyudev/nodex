@@ -81,7 +81,7 @@ export const NODEX_AGENT_V3_TOOL_CONTRACTS = {
   }),
   update_page: defineV3Contract({
     description:
-      "Update one Page title or body. Insert or exact-patch Nodex Markdown by default; whole replacement requires a body ETag.",
+      "Update one Page title, body, or Data Source Properties in one atomic write. Whole-body replacement requires a body ETag.",
     inputSchema: UpdatePageV3InputSchema,
     outputSchema: UpdatePageV3OutputSchema,
     deferLoading: true,

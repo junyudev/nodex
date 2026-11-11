@@ -2076,7 +2076,12 @@ pub enum LibraryPageProjectionFileKind {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LibraryPageOperation {
-    Move { view_id: Option<String> },
+    Move {
+        view_id: Option<String>,
+    },
+    MoveTo {
+        destination: LibraryPageWriteDestination,
+    },
     Delete,
 }
 
@@ -3146,6 +3151,8 @@ pub enum LibraryIntent {
         title_markdown: String,
         markdown: String,
         destination: LibraryPageWriteDestination,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        values: Vec<LibraryPageCopyValue>,
     },
     CreateDatabase {
         database_id: String,
@@ -3201,7 +3208,12 @@ pub enum LibraryIntent {
     MovePage {
         page_id: String,
         destination: LibraryPageWriteDestination,
-        expected_etag: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expected_etag: Option<String>,
+    },
+    MovePages {
+        page_ids: Vec<String>,
+        destination: LibraryPageWriteDestination,
     },
     DeletePage {
         page_id: String,

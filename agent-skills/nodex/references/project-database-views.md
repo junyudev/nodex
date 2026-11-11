@@ -23,23 +23,17 @@ View rules. A View row is an occurrence; one Page can appear more than once.
 Use `COUNT(DISTINCT page_id)` for distinct Pages. Discover `group_key` from actual
 View output and select that value; it is not a free-form group display label.
 
-`properties`, `property_options` and `property_values` support deeper schema/value
-analysis. For ordinary queries use a bound Source's discovered Property columns.
-Select `value_revision` from `property_values` before a short Property write:
+`properties`, `property_options` and `property_values` support schema and value
+inspection. SQL columns use the Source’s current Property display names.
 
 ```sh
-nodex sql query 'SELECT value_json,value_revision FROM property_values WHERE page_id=:page AND property_id=:property' \
-  --param 'page="PAGE_ID"' --param 'property="PROPERTY_ID"'
-nodex page properties set PAGE_ID --data-source SOURCE_ID \
-  --property PROPERTY_ID --option OPTION_ID --if-revision VALUE_REVISION
+nodex page properties set NODEX-4 NODEX-8 --set Status=done --set Priority=p1-high
 ```
 
-The short setter supports select, text and number replacements (`--option`,
-`--text`, `--number`). For multiple edits or relation/set changes use
-`page properties apply --input -` with its typed schema. Replacements carry
-observed value versions. System-managed Properties use their owning operation.
-For query-selected batches, use the four observation columns and prepare/apply
-workflow in the linked query reference.
+Set several Properties and Pages together. Use `--clear PROPERTY` to clear a
+value. Use current exact names or stable IDs for Properties and options. For one
+observed value, `--if-revision` optionally fences the write. Use `apply` for
+heterogeneous fenced edits or Relations.
 
 Owner and Assignee belong to the Page and share its intrinsic `work` revision.
 Use `nodex members list` to discover people or `nodex members me` for the local
@@ -63,16 +57,21 @@ back the whole batch. Save one key and exact input before a retryable submission
 ```sh
 nodex page create --parent data_source:SOURCE_ID \
   --view VIEW_ID --group GROUP_KEY --title 'Ship beta' --empty
-nodex page prepare PAGE_ID --operation move --view VIEW_ID
+nodex page prepare PAGE_ID --operation move --to data_source:SOURCE_ID --view VIEW_ID
 nodex page move PAGE_ID --to data_source:SOURCE_ID \
-  --view VIEW_ID --group TARGET_GROUP_KEY --at end --if-match MOVE_ETAG
+  --view VIEW_ID --if-match MOVE_ETAG
 nodex page duplicate PAGE_ID --to data_source:SOURCE_ID \
   --view VIEW_ID --group TARGET_GROUP_KEY --at end
 ```
 
-Use `validators.move_etag` from preparation. It binds the relevant grouping and
-placement state. Choose one anchor: `--at`, `--before` or `--after`; use
-`--unassigned` for an intended unassigned group. Core moves ownership, grouping
-and position together. On a conflict, reread and reassess the intended move.
+Use `validators.move_etag` with the same destination and View used to prepare
+the move. The prepare command observes the default placement. Use a move without
+`--if-match` when specifying a group or position separately.
+For an unfenced batch, pass the Page selectors together and omit `--if-match`.
+Verify membership and Properties in the destination Source. Choose one of
+`--at`, `--before`, or `--after` to set the position. Omitting the group
+keeps a valid carried value or uses the destination default. Use `--unassigned`
+for an explicitly empty group on a Property that allows empty values. Core moves
+ownership, grouping and position together. On a conflict, reread and reassess the intended move.
 Keep the new identity after duplication. `nodex open view VIEW_ID` opens the View;
 `--print` returns its canonical link.

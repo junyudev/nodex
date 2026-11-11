@@ -220,6 +220,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn core_retry_window_refusal_keeps_its_code_and_recovery() {
+        use nodex_core_contracts::{CoreError, CoreErrorCode, CoreErrorRecovery};
+        use nodex_core_protocol::client::ClientError;
+
+        let error = crate::runtime::map_client_error(ClientError::Http {
+            status: 409,
+            message: "Retry window expired".into(),
+            core_error: Some(Box::new(CoreError {
+                code: CoreErrorCode::IdempotencyWindowExpired,
+                message: "Re-read state before issuing a fresh call".into(),
+                retryable: false,
+                recovery: CoreErrorRecovery::ReconcileExpiredOperation,
+            })),
+        });
+        let envelope = serde_json::to_value(ErrorEnvelope::new(&error)).unwrap();
+        assert_eq!(envelope["error"]["code"], "IDEMPOTENCY_WINDOW_EXPIRED");
+        assert_eq!(envelope["error"]["retryable"], false);
+        assert_eq!(
+            envelope["error"]["recovery"]["kind"],
+            "reconcile_expired_operation"
+        );
+    }
+
+    #[test]
     fn structured_errors_use_stable_codes_and_evidence() {
         let error = CliError::new(CliErrorCode::PatchSyntax, "expected hunk")
             .at_line(4)

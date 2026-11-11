@@ -48,6 +48,7 @@ const WRITE_ERRORS: &[&str] = &[
     "PROJECT_AMBIGUOUS",
     "PROFILE_MISMATCH",
     "SCOPE_NOT_FOUND",
+    "INVALID_INPUT",
     "ETAG_CONFLICT",
     "IDEMPOTENCY_KEY_REUSED",
     "CORE_UNAVAILABLE",
@@ -601,18 +602,17 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: IDEMPOTENCY_VALIDATOR,
         result: "property_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex page properties set page-id --property property-id --option option-id --if-revision 0",
+        example: "nodex page properties set NODEX-4 NODEX-8 --set Status=done --set Priority=p1-high",
         example_argv: &[
             "page",
             "properties",
             "set",
-            "page-id",
-            "--property",
-            "property-id",
-            "--option",
-            "option-id",
-            "--if-revision",
-            "0",
+            "NODEX-4",
+            "NODEX-8",
+            "--set",
+            "Status=done",
+            "--set",
+            "Priority=p1-high",
         ],
     },
     CommandMetadata {
@@ -729,15 +729,15 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &["operation_scope"],
         result: "prepared_page_operation",
         errors: READ_ERRORS,
-        example: "nodex page prepare page-id --operation move --view view-id",
+        example: "nodex page prepare page-id --operation move --to library",
         example_argv: &[
             "page",
             "prepare",
             "page-id",
             "--operation",
             "move",
-            "--view",
-            "view-id",
+            "--to",
+            "library",
         ],
     },
     CommandMetadata {
@@ -855,18 +855,18 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: IDEMPOTENCY_VALIDATOR,
         result: "page_creation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json page create --parent library --title Page --empty --idempotency-key create-1",
+        example: "nodex --json page create --parent data_source:source-id --title Page --empty --set Priority=p1-high",
         example_argv: &[
             "--json",
             "page",
             "create",
             "--parent",
-            "library",
+            "data_source:source-id",
             "--title",
             "Page",
             "--empty",
-            "--idempotency-key",
-            "create-1",
+            "--set",
+            "Priority=p1-high",
         ],
     },
     CommandMetadata {
@@ -913,20 +913,16 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: ETAG_AND_IDEMPOTENCY_VALIDATORS,
         result: "page_transfer_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json page move page-id --to library --at end --if-match move-etag --idempotency-key move-1",
+        example: "nodex --json page move page-id --to page:parent-page-id --at end",
         example_argv: &[
             "--json",
             "page",
             "move",
             "page-id",
             "--to",
-            "library",
+            "page:parent-page-id",
             "--at",
             "end",
-            "--if-match",
-            "move-etag",
-            "--idempotency-key",
-            "move-1",
         ],
     },
     CommandMetadata {
@@ -1811,12 +1807,11 @@ pub fn machine_help(arguments: &[OsString]) -> Result<MachineHelpDocument, CliEr
     {
         use crate::cli::HelpSchema;
         return Ok(match selection {
-            Some(HelpSchema::Names) => MachineHelpDocument::PayloadNames(
-                schema::payloads(metadata.path).into_keys().collect(),
-            ),
+            Some(HelpSchema::Names) => {
+                MachineHelpDocument::PayloadNames(schema::payload_names(metadata.path))
+            }
             Some(HelpSchema::NamedInput(name)) => {
-                let mut payloads = schema::payloads(metadata.path);
-                let payload = payloads.remove(name.as_str()).ok_or_else(|| {
+                let payload = schema::named_payload(metadata.path, &name).ok_or_else(|| {
                     CliError::new(CliErrorCode::InvalidInput, format!(
                         "Unknown payload schema {name:?}. List available names with `{} --help-schema names`.",
                         command_name(metadata.path)
@@ -1974,7 +1969,7 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
             "Confirms a waiting Ask first decision when one exists, for the person you work for. Confirm it only when the person asked you to.",
         ],
         ["page", "prepare"] => vec![
-            "Prepare validators apply only to the declared move or delete operation and scope; --view is valid only for move.",
+            "Prepare validators apply to the declared operation and destination. For a move, pass the same --to and --view you will use on page move.",
         ],
         ["search"] => {
             vec![
@@ -2018,8 +2013,8 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
             "Changes only the title. Read title_etag from pages SQL or validators.title_etag from read --json; the body and Property values remain unchanged.",
         ],
         ["page", "properties", "set"] => vec![
-            "Read Property IDs and option IDs with sql schema tasks --bind tasks=SOURCE_ID; read value_revision from property_values before replacing a value.",
-            "Prefer apply for several Pages or fields instead of repeated set calls; use SQL -> prepare-batch -> apply for query-selected targets. apply also supports clearing values, multi-select and Relation edits. Use data-source configure for definitions.",
+            "Set Properties on multiple Pages atomically. Use Property and option IDs or exact unique current names. Use --clear PROPERTY to clear an optional value. Status requires a workflow stage.",
+            "Pipe SQL results with a page_id or page_key column into --selection -. Optionally use --if-revision for one Page and one Property. Use apply for heterogeneous fenced edits or Relation edits.",
             "--owner, --assignee and --auto-start edit the Page's work for the person you work for. Set --auto-start true only when the person asked; changing the Assignee clears it.",
         ],
         ["page", "properties", "apply"] => vec![
@@ -2029,9 +2024,10 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
         ["page", "create-batch"] => vec![
             "Supply an explicit destination and 1–16 Page drafts. Each draft has title_markdown, markdown and optional typed values. All Pages are created together or none are.",
         ],
-        ["page", "move" | "delete"] => vec![
-            "Run page prepare for the same operation and View to obtain its ETag. If the condition conflicts, reread and prepare again before deciding to retry.",
+        ["page", "move"] => vec![
+            "Move up to 16 Pages atomically. Omit the group to carry a valid value into a Data Source or use its default. Each moved row reports its resulting Status. To fence a single move, run page prepare PAGE --operation move with the same --to and optional --view.",
         ],
+        ["page", "delete"] => vec!["Run page prepare PAGE --operation delete to obtain its ETag."],
         ["file", "read"] | ["page", "file", "read"] => vec![
             "--output PATH overwrites an existing regular file. --output - writes exact bytes to stdout. Inspect the download receipt for byte count and content identity.",
         ],
@@ -2053,7 +2049,10 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
 fn result_revision(path: &[&str]) -> u32 {
     match path {
         ["context"] | ["search"] | ["page", "file", "read"] => 2,
-        ["read"] | ["data-source", _] | ["sql", _] | ["page", "properties", "prepare-batch"] => 2,
+        ["read"] | ["sql", _] | ["page", "properties", _] | ["backup", "create"] => 2,
+        ["page", "create" | "create-batch" | "move" | "duplicate"] => 2,
+        ["data-source", "configure"] => 3,
+        ["data-source", _] => 2,
         _ => 1,
     }
 }
@@ -2201,8 +2200,8 @@ const RECOMMENDED_ROUTES: &[&str] = &[
     "Filter, join or summarize Pages: prefer sql query; select the needed fields, bodies and validators together.",
     "Read one known Page: read. Find ranked candidates: search; use SQL when combining search with other data.",
     "Edit exact text: patch. Add content: page insert. Substantial rewrites or a local diff: draft.",
-    "Set Owner, Assignee, or one text, number or select value: page properties set. For other value types or several Pages/fields, prefer page properties apply.",
-    "Edit SQL-selected Pages: sql query -> page properties prepare-batch -> page properties apply; preserve observed targets and versions.",
+    "Set Properties on Pages: page properties set. For heterogeneous fenced edits or Relations, use page properties apply.",
+    "Set Properties on SQL-selected Pages: pipe sql query into page properties set --selection -.",
     "Change Property definitions or saved Views: data-source configure; combine related changes in one script.",
     "Reuse known IDs and relevant validators. Send short inputs through stdin; use shell/Python for further computation.",
 ];
@@ -2224,7 +2223,7 @@ fn group_semantics(path: &[&str]) -> Vec<&'static str> {
             "Discover Sources with nodex sql query 'SELECT data_source_id,name,schema_revision FROM data_sources'.",
         ],
         ["page", "properties"] => vec![
-            "Prefer set for one select, text or number value; use apply for several Pages or fields in one atomic change. For query-selected targets, use SQL -> prepare-batch -> apply to retain the original observations.",
+            "Use set for a shared batch of values. Use apply for heterogeneous fenced edits. Prepare a fenced batch from SQL with prepare-batch.",
             "Read Property IDs and value revisions with SQL. Add or rename Property definitions through nodex data-source configure.",
         ],
         ["file"] => vec![
@@ -2384,22 +2383,22 @@ fn command_examples(metadata: &CommandMetadata) -> Vec<&'static str> {
 JSON"#,
         ),
         ["page", "create-batch"] => Some(
-            r#"nodex page create-batch --idempotency-key release-pages-1 <<'JSON'
+            r#"nodex page create-batch <<'JSON'
 {"destination":{"kind":"library"},"pages":[{"title_markdown":"Release plan","markdown":"Release date: Friday."},{"title_markdown":"Release checks","markdown":"Verify the release artifacts."}]}
 JSON"#,
         ),
         ["page", "properties", "apply"] => Some(
-            r#"nodex page properties apply --idempotency-key risk-value-1 <<'JSON'
+            r#"nodex page properties apply <<'JSON'
 {"edits":[{"address":{"page_id":"page-id","data_source_id":"source-id","property_id":"property-id"},"edit":{"kind":"replace","expected_value_revision":0,"value":{"kind":"text","value":"Needs review"}}}]}
 JSON"#,
         ),
         ["page", "properties", "prepare-batch"] => Some(
             r#"nodex sql query 'SELECT page_id,data_source_id,membership_revision,value_revisions FROM tasks WHERE title=:title' --bind tasks=source-id --param 'title="Release plan"' |
   nodex page properties prepare-batch --selection - --set 'Risk note={"kind":"text","value":"Needs review"}' |
-  nodex page properties apply --idempotency-key selected-risk-1"#,
+  nodex page properties apply"#,
         ),
         ["page", "insert"] => Some(
-            "nodex page insert page-id --at end --idempotency-key next-steps-1 <<'BODY'\n## Next steps\n\nFinish the release checks.\nBODY",
+            "nodex page insert page-id --at end <<'BODY'\n## Next steps\n\nFinish the release checks.\nBODY",
         ),
         ["patch"] => Some(
             "nodex patch --idempotency-key release-date-d62c6f1d <<'PATCH'\n*** Begin Patch\n*** Update Page: page-id\n@@\n-Release date: Friday.\n+Release date: Monday.\n*** End Patch\nPATCH",

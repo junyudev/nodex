@@ -186,6 +186,20 @@ filtering commit together, and a failure leaves neither a partial View nor
 earlier script changes. `view_rows(VIEW_ID)` reads actual saved View results for
 verification; a transient SQL WHERE clause does not create a saved filter.
 
+## Set Properties on selected Pages
+
+Select `page_id` or `page_key` and pipe the SQL result into the batch setter.
+The batch applies one set of values to every selected Page in a single commit.
+
+```sh
+nodex sql query 'SELECT page_id FROM tasks WHERE "Status"=:status' \
+  --bind tasks=SOURCE_ID --param 'status="plan"' |
+  nodex page properties set --selection - --set Priority=p1-high
+```
+
+A bound Source uses its current Property display names as SQL column names.
+Run `sql schema tasks --bind tasks=SOURCE_ID` when a Property has been renamed.
+
 ## Observed Property edits
 
 `page properties prepare-batch --selection FILE|- --set NAME=JSON` requires
@@ -203,8 +217,8 @@ Both accept their documented raw input or corresponding successful CLI envelope.
 
 ```sh
 nodex sql query 'SELECT page_id,data_source_id,membership_revision,value_revisions FROM tasks WHERE "Status"=:status' \
-  --bind tasks=SOURCE_ID --param 'status="OPTION_ID"' |
-  nodex page properties prepare-batch --selection - --set 'Priority={"kind":"number","value":1}' |
+  --bind tasks=SOURCE_ID --param 'status="plan"' |
+  nodex page properties prepare-batch --selection - --set 'Priority={"kind":"select","option_id":"p1-high"}' |
   nodex page properties apply --input - --idempotency-key priority-update-1
 ```
 
@@ -219,6 +233,5 @@ a new key. If Core reports `IDEMPOTENCY_WINDOW_EXPIRED`, re-read state before is
 call with a new key or no key.
 
 Title/body writes reuse `pages.title_etag` and `page_documents.body_etag` directly.
-Move/delete preparation is explicit: `page prepare PAGE --operation move|delete
-[--view VIEW_ID]`; View scope applies only to move. Ordinary content reads do not
-prepare unrelated lifecycle operations.
+For a fenced move use `page prepare PAGE --operation move --to DESTINATION
+[--view VIEW_ID]`. Deletion uses `page prepare PAGE --operation delete`.

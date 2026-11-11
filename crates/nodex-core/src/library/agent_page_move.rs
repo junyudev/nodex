@@ -13,7 +13,7 @@ use nodex_core_contracts::library::{
     LibraryAgentPageDestination, LibraryAgentPageLocation, LibraryBlockTransferDataSourcePlacement,
     LibraryBlockTransferDocumentHead, LibraryBlockTransferLogicalIntent, LibraryBlockTransferMode,
     LibraryBlockTransferSource, LibraryBlockTransferTarget, LibraryPageCopyDestination,
-    LibraryReadValue,
+    LibraryPageWriteDestination, LibraryReadValue,
 };
 use nodex_core_contracts::{
     AdapterKind, ApplyResponse, BoundModuleContext, LIBRARY_CONTRACT_VERSION, ModuleApplyRequest,
@@ -21,7 +21,6 @@ use nodex_core_contracts::{
 };
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::Serialize;
-use serde_json::json;
 
 use crate::database::{
     PageCopyDataSourceDestination, PageCopyPositionAnchor, PageCopyValueDraft,
@@ -73,6 +72,7 @@ struct MovePreflight {
     actor_project_id: Option<String>,
     destination_authority_hash: String,
     steps: Vec<PreparedMoveStep>,
+    transfer_actor: serde_json::Value,
     batch_documents: Option<PreparedAgentPageDocumentBatch>,
     document_heads: Vec<LibraryAgentDocumentHead>,
     footprint: AgentOperationFootprint,
@@ -395,8 +395,7 @@ pub(super) fn execute_move_pages(
                     context: &agent_context,
                 },
                 |scope| {
-                    let execution = apply_pages(
-                        &transaction,
+                    apply_and_seal_move(
                         scope,
                         &agent_context,
                         &library_id,
@@ -404,56 +403,9 @@ pub(super) fn execute_move_pages(
                         &store_epoch,
                         &move_request,
                         &mut preflight,
-                        &authorization.authorization,
                         &assets_root,
                         &committed_at,
-                    )?;
-                    let document_batch = execution.document_batch;
-                    seal_mutation_with(
-                        scope,
-                        &agent_context,
-                        &operation_id,
-                        MutationEffects {
-                            page_file_entries: Vec::new(),
-                            file_revisions: BTreeMap::new(),
-                            file_mutation: Default::default(),
-                            project_id: preflight.actor_project_id,
-                            operation_kind: "agent_move_pages",
-                            change_kind: "library.changed",
-                            did_mutate: true,
-                            created_target: None,
-                            affected_parent_keys: execution.affected_parent_keys,
-                            affected_block_ids: move_request.page_ids.clone(),
-                            affected_page_ids: execution.affected_page_ids,
-                            affected_database_ids: execution.result.affected_database_ids.clone(),
-                            affected_view_ids: execution.affected_view_ids,
-                            affected_document_ids: execution.affected_document_ids,
-                            committed_revisions: execution.committed_revisions,
-                            page_create: None,
-                            page_copy: None,
-                            canvas_mutation: None,
-                            block_transfer: None,
-                            block_transfer_undo: None,
-                            page_relocation_undo: None,
-                            structural_edit: None,
-                            page_lifecycle: None,
-                            block_property_mutation: None,
-                            agent_page_copy: None,
-                            agent_create_pages: None,
-                            agent_move_pages: Some(execution.result),
-                            change_payload: None,
-                            committed_at: execution.committed_at,
-                        },
-                        |_, event_sequence| {
-                            super::block_transfer::persist_agent_page_document_batch_checkpoints(
-                                &transaction,
-                                &agent_context,
-                                &operation_id,
-                                &document_batch,
-                                event_sequence,
-                                &committed_at,
-                            )
-                        },
+                        "agent_move_pages",
                     )
                 },
             )?;
@@ -467,6 +419,162 @@ pub(super) fn execute_move_pages(
         lease.consume()?;
     }
     Ok(result.0)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_and_seal_move(
+    scope: &DurableMutationScope<'_>,
+    context: &BoundModuleContext,
+    library_id: &str,
+    operation_id: &str,
+    store_epoch: &str,
+    request: &LibraryAgentMovePagesRequest,
+    preflight: &mut MovePreflight,
+    assets_root: &Path,
+    committed_at: &str,
+    operation_kind: &'static str,
+) -> Result<
+    durable_mutation::SealedOutcome<
+        crate::ModuleWriterResult<
+            nodex_core_contracts::library::LibraryCommitValue,
+            nodex_core_contracts::library::LibraryReceipt,
+        >,
+    >,
+    StoreError,
+> {
+    let execution = apply_pages(
+        scope.connection(),
+        scope,
+        context,
+        library_id,
+        operation_id,
+        store_epoch,
+        request,
+        preflight,
+        assets_root,
+        committed_at,
+    )?;
+    let actor_project_id = preflight.actor_project_id.clone();
+    let document_batch = execution.document_batch;
+    seal_mutation_with(
+        scope,
+        context,
+        operation_id,
+        MutationEffects {
+            page_file_entries: Vec::new(),
+            file_revisions: BTreeMap::new(),
+            file_mutation: Default::default(),
+            project_id: actor_project_id,
+            operation_kind,
+            change_kind: "library.changed",
+            did_mutate: true,
+            created_target: None,
+            affected_parent_keys: execution.affected_parent_keys,
+            affected_block_ids: request.page_ids.clone(),
+            affected_page_ids: execution.affected_page_ids,
+            affected_database_ids: execution.result.affected_database_ids.clone(),
+            affected_view_ids: execution.affected_view_ids,
+            affected_document_ids: execution.affected_document_ids,
+            committed_revisions: execution.committed_revisions,
+            page_create: None,
+            page_copy: None,
+            canvas_mutation: None,
+            block_transfer: None,
+            block_transfer_undo: None,
+            page_relocation_undo: None,
+            structural_edit: None,
+            page_lifecycle: None,
+            block_property_mutation: None,
+            agent_page_copy: None,
+            agent_create_pages: None,
+            agent_move_pages: Some(execution.result),
+            change_payload: None,
+            committed_at: execution.committed_at,
+        },
+        |_, event_sequence| {
+            super::block_transfer::persist_agent_page_document_batch_checkpoints(
+                scope.connection(),
+                context,
+                operation_id,
+                &document_batch,
+                event_sequence,
+                committed_at,
+            )
+        },
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn move_native_pages(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    operation_id: &str,
+    store_epoch: &str,
+    request_hash: &str,
+    page_ids: &[String],
+    destination: &LibraryPageWriteDestination,
+    assets_root: &Path,
+) -> Result<LibraryApplyOutcome, StoreError> {
+    let request = LibraryAgentMovePagesRequest {
+        page_ids: page_ids.to_vec(),
+        destination: super::page_write_semantic::agent_destination(destination)?,
+    };
+    validate_request(&request)?;
+    let destination = super::page_write_semantic::resolve_batch_destination(
+        connection,
+        context,
+        library_id,
+        destination,
+    )?;
+    let actor_project_id = context.project_id.as_ref().map(|id| id.0.clone());
+    let resolved = ResolvedDestination {
+        destination,
+        authorization_fingerprint: hash_serializable(context)?,
+        document_heads: Vec::new(),
+        database_id: None,
+        actor_project_id,
+    };
+    let mut preflight = compile_resolved_preflight(
+        connection,
+        None,
+        context,
+        library_id,
+        operation_id,
+        store_epoch,
+        None,
+        &request,
+        request_hash.to_owned(),
+        resolved,
+    )?;
+    let committed_at = sqlite_now(connection)?;
+    let committed = durable_mutation::run(
+        connection,
+        OperationIdentity {
+            module: ModuleName::Library,
+            module_name: MODULE_NAME,
+            operation_id,
+            intent_hash: request_hash,
+            store_epoch,
+            committed_at: &committed_at,
+            context,
+        },
+        |scope| {
+            apply_and_seal_move(
+                scope,
+                context,
+                library_id,
+                operation_id,
+                store_epoch,
+                &request,
+                &mut preflight,
+                assets_root,
+                &committed_at,
+                "move_pages",
+            )
+        },
+    )?;
+    library_commit_result(connection, committed)
 }
 
 struct MoveExecution {
@@ -490,7 +598,6 @@ fn apply_pages(
     store_epoch: &str,
     request: &LibraryAgentMovePagesRequest,
     preflight: &mut MovePreflight,
-    authorization: &AgentExecutionAuthorization,
     assets_root: &Path,
     now: &str,
 ) -> Result<MoveExecution, StoreError> {
@@ -522,7 +629,7 @@ fn apply_pages(
             &step.page_id,
             &step.source,
             &preflight.destination,
-            authorization,
+            &preflight.transfer_actor,
         )?;
         let transfer_authority = transfer_authority(preflight.actor_project_id.as_deref());
         let prepared_transfer = step
@@ -650,6 +757,40 @@ fn compile_preflight(
     request_hash: String,
 ) -> Result<MovePreflight, StoreError> {
     validate_request(request)?;
+    let resolved = resolve_destination(
+        connection,
+        context,
+        library_id,
+        authorization,
+        &request.destination,
+    )?;
+    compile_resolved_preflight(
+        connection,
+        document_runtime_cache,
+        context,
+        library_id,
+        operation_id,
+        store_epoch,
+        Some(authorization),
+        request,
+        request_hash,
+        resolved,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compile_resolved_preflight(
+    connection: &Connection,
+    document_runtime_cache: Option<&Arc<Mutex<DocumentRuntimeCache>>>,
+    context: &BoundModuleContext,
+    library_id: &str,
+    operation_id: &str,
+    store_epoch: &str,
+    authorization: Option<&AgentExecutionAuthorization>,
+    request: &LibraryAgentMovePagesRequest,
+    request_hash: String,
+    resolved: ResolvedDestination,
+) -> Result<MovePreflight, StoreError> {
     assert_no_ownership_overlap(connection, &request.page_ids)?;
     let ResolvedDestination {
         destination: resolved_destination,
@@ -657,13 +798,7 @@ fn compile_preflight(
         document_heads: destination_heads,
         database_id: destination_database_id,
         actor_project_id,
-    } = resolve_destination(
-        connection,
-        context,
-        library_id,
-        authorization,
-        &request.destination,
-    )?;
+    } = resolved;
     let destination = resolve_move_destination(
         connection,
         &request.destination,
@@ -684,16 +819,32 @@ fn compile_preflight(
         &destination_database_id,
         actor_project_id.as_deref(),
     ))?;
+    let transfer_actor = if let Some(authorization) = authorization {
+        let authority = &authorization.provenance.authority;
+        serde_json::json!({
+            "kind": "nodex_agent",
+            "tool": "move_pages",
+            "threadId": authority.thread_id,
+            "turnId": authority.turn_id,
+            "callId": authorization.call_id,
+        })
+    } else {
+        serde_json::to_value(&context.actor)
+            .map_err(|_| corrupt("Page move actor cannot be encoded"))?
+    };
     let mut source_fingerprints = Vec::with_capacity(request.page_ids.len());
     let mut steps = Vec::with_capacity(request.page_ids.len());
     let mut document_heads = destination_heads;
     for (index, page_id) in request.page_ids.iter().enumerate() {
-        let source_fingerprint = super::agent_execution::validate_execution(
-            connection,
-            context,
-            library_id,
-            authorization,
-        )?;
+        let source_fingerprint = match authorization {
+            Some(authorization) => super::agent_execution::validate_execution(
+                connection,
+                context,
+                library_id,
+                authorization,
+            )?,
+            None => destination_fingerprint.clone(),
+        };
         source_fingerprints.push(source_fingerprint.clone());
         let source = read_source(connection, library_id, page_id)?;
         let source_state_hash = source_state_hash(connection, page_id, &destination)?;
@@ -729,7 +880,7 @@ fn compile_preflight(
                 page_id,
                 &source.source,
                 &destination,
-                authorization,
+                &transfer_actor,
             )?;
             let transfer_authority = transfer_authority(actor_project_id.as_deref());
             let prepared = super::block_transfer::prepare_for_agent_page_move(
@@ -833,6 +984,7 @@ fn compile_preflight(
         actor_project_id,
         destination_authority_hash,
         steps,
+        transfer_actor,
         batch_documents: Some(batch_documents),
         document_heads,
         footprint,
@@ -1086,7 +1238,7 @@ fn transfer_intent(
     page_id: &str,
     source: &LibraryBlockTransferSource,
     destination: &LibraryPageCopyDestination,
-    authorization: &AgentExecutionAuthorization,
+    actor: &serde_json::Value,
 ) -> Result<LibraryBlockTransferLogicalIntent, StoreError> {
     let target = match destination {
         LibraryPageCopyDestination::Library { before } => LibraryBlockTransferTarget::Library {
@@ -1121,24 +1273,13 @@ fn transfer_intent(
         }
     };
     Ok(LibraryBlockTransferLogicalIntent {
-        actor: agent_actor(authorization),
+        actor: actor.clone(),
         mode: LibraryBlockTransferMode::Move,
         root_block_ids: vec![page_id.to_owned()],
         causal_dependencies: Vec::new(),
         source: source.clone(),
         target,
         promotion_policy: nodex_core_contracts::library::LibraryPagePromotionPolicy::Literal,
-    })
-}
-
-fn agent_actor(authorization: &AgentExecutionAuthorization) -> serde_json::Value {
-    let authority = &authorization.provenance.authority;
-    json!({
-        "kind": "nodex_agent",
-        "tool": "move_pages",
-        "threadId": authority.thread_id,
-        "turnId": authority.turn_id,
-        "callId": authorization.call_id,
     })
 }
 

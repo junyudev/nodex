@@ -312,3 +312,121 @@ fn projectless_agent_authority_keeps_relocation_source_foreign_keys_mandatory() 
         Ok(())
     }).unwrap();
 }
+
+#[test]
+fn agent_page_content_and_properties_commit_or_roll_back_together() {
+    use nodex_core_contracts::library::{LibraryPageCopyValue, LibraryPageWriteDestination};
+    let fixture = Fixture::projectless();
+    let source = "01980000-0000-7000-8000-000000000106";
+    fixture.apply(
+        "atomic-update:database",
+        LibraryIntent::CreateDatabase {
+            database_id: "01980000-0000-7000-8000-000000000105".into(),
+            data_source_id: source.into(),
+            view_id: "01980000-0000-7000-8000-000000000107".into(),
+            name: "Atomic updates".into(),
+            parent: LibraryWriteParent::Library { before: None },
+        },
+    );
+    fixture.apply(
+        "atomic-update:move",
+        LibraryIntent::MovePage {
+            page_id: "page:target".into(),
+            destination: LibraryPageWriteDestination::DataSource {
+                data_source_id: source.into(),
+                view_id: None,
+                group: None,
+                at: None,
+            },
+            expected_etag: None,
+        },
+    );
+    let document = OwnedDocumentModule::new("profile-1", "library-1", &fixture.kernel);
+    let before = snapshot(&fixture, &document);
+    let update = |operation: &str, title: Option<&str>, status: &str| {
+        let observed = snapshot(&fixture, &document);
+        let mut commands = vec![DocumentSemanticCommand::SetPageProperties {
+            values: vec![LibraryPageCopyValue {
+                property_id: "Status".into(),
+                value: serde_json::json!(status),
+            }],
+        }];
+        if let Some(title) = title {
+            commands.push(DocumentSemanticCommand::SetTitle {
+                inline_markdown: title.into(),
+                expected_etag: observed.title_etag.expect("title ETag"),
+            });
+        }
+        let mutation = AgentDocumentSemanticMutation {
+            document_id: observed.document_id,
+            generation: observed.generation,
+            expected_head_seq: observed.head_seq,
+            commands,
+        };
+        let prepared = document
+            .read(
+                &fixture.execution_context(),
+                ModuleReadRequest {
+                    contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
+                    read: OwnedDocumentRead::PrepareAgentSemanticMutation {
+                        operation_id: operation.into(),
+                        store_epoch: StoreEpoch("epoch-1".into()),
+                        authorization: Box::new(fixture.authorization.clone()),
+                        mutation: Box::new(mutation.clone()),
+                    },
+                },
+            )
+            .unwrap();
+        let OwnedDocumentReadValue::AgentSemanticMutationPreparation { preparation, .. } =
+            prepared.value
+        else {
+            panic!("expected Agent semantic preparation");
+        };
+        document.apply(
+            &fixture.execution_context(),
+            ModuleApplyRequest {
+                contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
+                operation_id: operation.into(),
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent: OwnedDocumentIntent::ExecutePreparedAgentSemanticMutation {
+                    authorization: Box::new(AgentPreparedExecution {
+                        authorization: fixture.authorization.clone(),
+                        token: preparation.token,
+                    }),
+                    mutation: Box::new(mutation),
+                },
+            },
+        )
+    };
+    let rejected = update(
+        "atomic-update:rejected",
+        Some("This title must roll back"),
+        "invalid option",
+    )
+    .expect_err("invalid Property value must roll back the title update");
+    assert!(rejected.message.contains("Valid options"));
+    let after_rejection = snapshot(&fixture, &document);
+    assert_eq!(after_rejection.title, before.title);
+    assert_eq!(after_rejection.head_seq, before.head_seq);
+
+    let applied = update("atomic-update:valid", Some("Both edits committed"), "Done").unwrap();
+    let receipt = applied
+        .committed
+        .value
+        .page_properties
+        .expect("Property receipt");
+    assert_eq!(receipt.values[0].after, "done");
+    assert_eq!(snapshot(&fixture, &document).title, "Both edits committed");
+    let value_only = update("atomic-update:properties-only", None, "Todo").unwrap();
+    assert_eq!(
+        value_only.committed.value.head_seq,
+        applied.committed.value.head_seq
+    );
+    let receipt = value_only
+        .committed
+        .value
+        .page_properties
+        .expect("Property-only receipt");
+    assert_eq!(receipt.values[0].before, "done");
+    assert_eq!(receipt.values[0].after, "plan");
+}

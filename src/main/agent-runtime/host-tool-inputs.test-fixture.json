@@ -59,6 +59,14 @@
       "kind": "library"
     }
   },
+  "set_page_properties": {
+    "updates": [
+      {
+        "pageIds": ["value"],
+        "values": [{ "propertyId": "status", "value": "done" }]
+      }
+    ]
+  },
   "read_session_terminal": {
     "terminalId": "value"
   },

@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { createToolSuccessSchema } from "./base-schemas";
+import { createToolSuccessSchema, PropertyIdSchema } from "./base-schemas";
+import { DatabasePagePropertyChangeSchema, DatabaseValueDraftV3Schema } from "./v3-base-schemas";
 import {
   BlockSearchResultV3Schema,
   FetchResourceV3Schema,
@@ -96,3 +97,40 @@ const DuplicatePageV6DataSchema = DuplicatePageV3DataSchema.extend({
 });
 
 export const DuplicatePageV6OutputSchema = createToolSuccessSchema(DuplicatePageV6DataSchema);
+
+const PagePropertyUpdateSchema = z.strictObject({
+  pageIds: z.array(z.string().min(1).max(512)).min(1).max(4096),
+  values: z.array(DatabaseValueDraftV3Schema).min(1).max(512),
+  expectedValueRevisions: z.record(PropertyIdSchema, z.number().int().nonnegative()).optional(),
+});
+
+export const SetPagePropertiesV6InputSchema = z
+  .strictObject({
+    updates: z.array(PagePropertyUpdateSchema).min(1).max(4096),
+  })
+  .superRefine(({ updates }, context) => {
+    if (
+      updates.reduce((total, update) => total + update.pageIds.length * update.values.length, 0) >
+      4096
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["updates"],
+        message: "A batch can set up to 4096 values.",
+      });
+    }
+  });
+
+export const SetPagePropertiesV6OutputSchema = createToolSuccessSchema(
+  z.strictObject({
+    pages: z.array(
+      z.strictObject({
+        pageId: z.string(),
+        pageKey: PageKeyV6Schema.nullable(),
+        dataSourceId: z.string(),
+        membershipRevision: z.number().int(),
+        values: z.array(DatabasePagePropertyChangeSchema),
+      }),
+    ),
+  }),
+);

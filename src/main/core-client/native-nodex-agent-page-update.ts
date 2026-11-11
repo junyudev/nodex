@@ -308,6 +308,17 @@ const mutationCommands = (
   }
   const body = request.input.body;
   return [
+    ...(request.input.values
+      ? [
+          {
+            kind: "set_page_properties" as const,
+            values: request.input.values.map(({ propertyId, value }) => ({
+              property_id: propertyId,
+              value,
+            })),
+          },
+        ]
+      : []),
     ...(request.input.title
       ? [
           {
@@ -373,6 +384,16 @@ const projectNativeNodexAgentPageUpdateOutput = (
   return UpdatePageV3OutputSchema.parse({
     data: {
       pageId: request.input.pageId,
+      ...(committed.outcome.page_properties
+        ? {
+            values: committed.outcome.page_properties.values.map((value) => ({
+              propertyId: value.property_id,
+              before: value.before,
+              after: value.after,
+              valueRevision: value.value_revision,
+            })),
+          }
+        : {}),
       effects: {
         created: created.length,
         updated: updated.length,

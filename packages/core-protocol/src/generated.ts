@@ -1230,6 +1230,7 @@ export interface components {
                 readonly mutation_effect?: components["schemas"]["DocumentMutationEffect"] | null;
                 readonly outcome: components["schemas"]["DocumentCommitOutcome"];
                 readonly owner_effect?: components["schemas"]["DocumentOwnerEffect"] | null;
+                readonly page_properties?: components["schemas"]["DatabasePagePropertyResult"] | null;
                 readonly recovery?: components["schemas"]["RecoveryDraftSummary"] | null;
                 readonly recovery_capture?: components["schemas"]["RecoveryCaptureReceipt"] | null;
                 readonly semantic_block_etags?: {
@@ -1264,6 +1265,7 @@ export interface components {
                 readonly mutation_effect?: components["schemas"]["DocumentMutationEffect"] | null;
                 readonly outcome: components["schemas"]["DocumentCommitOutcome"];
                 readonly owner_effect?: components["schemas"]["DocumentOwnerEffect"] | null;
+                readonly page_properties?: components["schemas"]["DatabasePagePropertyResult"] | null;
                 readonly recovery?: components["schemas"]["RecoveryDraftSummary"] | null;
                 readonly recovery_capture?: components["schemas"]["RecoveryCaptureReceipt"] | null;
                 readonly semantic_block_etags?: {
@@ -3691,6 +3693,15 @@ export interface components {
             readonly property_id: string;
             readonly visibility: components["schemas"]["DatabasePagePropertyVisibility"];
         } | {
+            readonly authorization?: components["schemas"]["AgentExecutionAuthorization"] | null;
+            /** @enum {string} */
+            readonly kind: "set_page_properties";
+            readonly updates: readonly components["schemas"]["DatabasePagePropertyUpdate"][];
+        } | {
+            readonly edits: readonly components["schemas"]["DatabasePropertyValueMutation"][];
+            /** @enum {string} */
+            readonly kind: "apply_page_property_edits";
+        } | {
             readonly edits: readonly components["schemas"]["DatabasePropertyValueMutation"][];
             /** @enum {string} */
             readonly kind: "edit_property_values";
@@ -4045,6 +4056,28 @@ export interface components {
             readonly data_source_id: string;
             readonly page_id: string;
             readonly property_id: string;
+        };
+        readonly DatabasePagePropertyChange: {
+            readonly after: unknown;
+            readonly before: unknown;
+            readonly property_id: string;
+            /** Format: int64 */
+            readonly value_revision: number;
+        };
+        readonly DatabasePagePropertyResult: {
+            readonly data_source_id: string;
+            /** Format: int64 */
+            readonly membership_revision: number;
+            readonly page_id: string;
+            readonly page_key?: string | null;
+            readonly values: readonly components["schemas"]["DatabasePagePropertyChange"][];
+        };
+        readonly DatabasePagePropertyUpdate: {
+            readonly expected_value_revisions?: {
+                readonly [key: string]: number;
+            };
+            readonly page_ids: readonly string[];
+            readonly values: readonly components["schemas"]["LibraryPageCopyValue"][];
         };
         /** @enum {string} */
         readonly DatabasePagePropertyVisibility: "always_show" | "hide_when_empty" | "always_hide";
@@ -4996,6 +5029,10 @@ export interface components {
             readonly update: string;
         };
         readonly DocumentSemanticCommand: {
+            /** @enum {string} */
+            readonly kind: "set_page_properties";
+            readonly values: readonly components["schemas"]["LibraryPageCopyValue"][];
+        } | {
             readonly expected_etag: string;
             readonly inline_markdown: string;
             /** @enum {string} */
@@ -7108,6 +7145,10 @@ export interface components {
             readonly kind: "move";
             readonly view_id?: string | null;
         } | {
+            readonly destination: components["schemas"]["LibraryPageWriteDestination"];
+            /** @enum {string} */
+            readonly kind: "move_to";
+        } | {
             /** @enum {string} */
             readonly kind: "delete";
         };
@@ -8190,6 +8231,7 @@ export interface components {
                 readonly kind: "create_page_from_text";
                 readonly markdown: string;
                 readonly title_markdown: string;
+                readonly values?: readonly components["schemas"]["LibraryPageCopyValue"][];
             } | {
                 readonly data_source_id: string;
                 readonly database_id: string;
@@ -8262,10 +8304,15 @@ export interface components {
                 readonly source_page_id: string;
             } | {
                 readonly destination: components["schemas"]["LibraryPageWriteDestination"];
-                readonly expected_etag: string;
+                readonly expected_etag?: string | null;
                 /** @enum {string} */
                 readonly kind: "move_page";
                 readonly page_id: string;
+            } | {
+                readonly destination: components["schemas"]["LibraryPageWriteDestination"];
+                /** @enum {string} */
+                readonly kind: "move_pages";
+                readonly page_ids: readonly string[];
             } | {
                 readonly expected_etag: string;
                 /** @enum {string} */
@@ -9464,6 +9511,15 @@ export interface components {
                 readonly placement?: components["schemas"]["DatabasePageLayoutPlacement"] | null;
                 readonly property_id: string;
                 readonly visibility: components["schemas"]["DatabasePagePropertyVisibility"];
+            } | {
+                readonly authorization?: components["schemas"]["AgentExecutionAuthorization"] | null;
+                /** @enum {string} */
+                readonly kind: "set_page_properties";
+                readonly updates: readonly components["schemas"]["DatabasePagePropertyUpdate"][];
+            } | {
+                readonly edits: readonly components["schemas"]["DatabasePropertyValueMutation"][];
+                /** @enum {string} */
+                readonly kind: "apply_page_property_edits";
             } | {
                 readonly edits: readonly components["schemas"]["DatabasePropertyValueMutation"][];
                 /** @enum {string} */
@@ -13838,6 +13894,7 @@ export interface components {
                     };
                     readonly operation_kinds: readonly string[];
                     readonly operation_outcomes?: readonly components["schemas"]["DatabaseOperationOutcome"][];
+                    readonly page_properties?: readonly components["schemas"]["DatabasePagePropertyResult"][];
                 };
                 /** @enum {string} */
                 readonly status: "committed";
@@ -13860,6 +13917,7 @@ export interface components {
                     };
                     readonly operation_kinds: readonly string[];
                     readonly operation_outcomes?: readonly components["schemas"]["DatabaseOperationOutcome"][];
+                    readonly page_properties?: readonly components["schemas"]["DatabasePagePropertyResult"][];
                 };
                 /** @enum {string} */
                 readonly status: "no_op";
@@ -13979,6 +14037,7 @@ export interface components {
                     readonly mutation_effect?: components["schemas"]["DocumentMutationEffect"] | null;
                     readonly outcome: components["schemas"]["DocumentCommitOutcome"];
                     readonly owner_effect?: components["schemas"]["DocumentOwnerEffect"] | null;
+                    readonly page_properties?: components["schemas"]["DatabasePagePropertyResult"] | null;
                     readonly recovery?: components["schemas"]["RecoveryDraftSummary"] | null;
                     readonly recovery_capture?: components["schemas"]["RecoveryCaptureReceipt"] | null;
                     readonly semantic_block_etags?: {
@@ -14013,6 +14072,7 @@ export interface components {
                     readonly mutation_effect?: components["schemas"]["DocumentMutationEffect"] | null;
                     readonly outcome: components["schemas"]["DocumentCommitOutcome"];
                     readonly owner_effect?: components["schemas"]["DocumentOwnerEffect"] | null;
+                    readonly page_properties?: components["schemas"]["DatabasePagePropertyResult"] | null;
                     readonly recovery?: components["schemas"]["RecoveryDraftSummary"] | null;
                     readonly recovery_capture?: components["schemas"]["RecoveryCaptureReceipt"] | null;
                     readonly semantic_block_etags?: {

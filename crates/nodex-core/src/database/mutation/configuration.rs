@@ -401,7 +401,7 @@ fn resolve_filter_value(
     Ok(Some(Some(resolved)))
 }
 
-fn resolve_option(
+pub(super) fn resolve_option(
     property: &PropertyRow,
     selector: &str,
 ) -> Result<super::super::property_semantics::PropertyOption, StoreError> {
@@ -410,14 +410,20 @@ fn resolve_option(
         return Ok(exact.clone());
     }
     let mut matches = options
-        .into_iter()
+        .iter()
         .filter(|candidate| candidate.name == selector);
-    match (matches.next(), matches.next()) {
-        (Some(option), None) => Ok(option),
-        _ => Err(invalid(
-            "Option selector is missing or ambiguous; use its stable ID",
-        )),
+    if let (Some(option), None) = (matches.next(), matches.next()) {
+        return Ok(option.clone());
     }
+    let valid = options
+        .iter()
+        .map(|option| format!("{:?} ({})", option.name, option.id))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(invalid(format!(
+        "Option {selector:?} is missing or ambiguous for Property {:?}. Valid options: {valid}",
+        property.name
+    )))
 }
 
 fn resolve_sorts(
@@ -455,7 +461,7 @@ fn resolve_group(
         })
         .transpose()
 }
-fn property_id(
+pub(super) fn property_id(
     connection: &Connection,
     source_id: &str,
     selector: &str,

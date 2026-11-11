@@ -53,7 +53,9 @@ export const shellRouter = (fs: FileSystem.FileSystem, directory: string) => (
 export type ShellRouter = ReturnType<typeof shellRouter>;
 
 export const cliInstruction = (binding: HostCliShell | undefined) =>
-  binding ? `Run nodex for content work. Read the bundled Skill at ${JSON.stringify(binding.skill)}.` : undefined;
+  binding
+    ? `Run nodex for content work. Use set_page_properties for batched Property edits through the Nodex tools. Read the bundled Skill at ${JSON.stringify(binding.skill)}.`
+    : undefined;
 
 /** OpenCode 2's shell tool calls Shell.create for each command, including background jobs. */
 export const source = `${shellRouting}

@@ -3279,7 +3279,7 @@ mod tests {
                     intent: LibraryIntent::MovePage {
                         page_id: ROW_PAGE.to_owned(),
                         destination: page_destination.destination.clone(),
-                        expected_etag: page_destination.expected_move_etag.clone(),
+                        expected_etag: Some(page_destination.expected_move_etag.clone()),
                     },
                 },
             )
@@ -3419,7 +3419,7 @@ mod tests {
                         intent: LibraryIntent::MovePage {
                             page_id: page_id.to_owned(),
                             destination: destination.destination,
-                            expected_etag: destination.expected_move_etag,
+                            expected_etag: Some(destination.expected_move_etag),
                         },
                     },
                 )
@@ -3600,7 +3600,7 @@ mod tests {
                     intent: LibraryIntent::MovePage {
                         page_id: MOVE_DESCENDANT_PAGE.to_owned(),
                         destination: library_destination.destination,
-                        expected_etag: library_destination.expected_move_etag,
+                        expected_etag: Some(library_destination.expected_move_etag),
                     },
                 },
             )
