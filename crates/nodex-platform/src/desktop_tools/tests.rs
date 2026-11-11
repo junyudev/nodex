@@ -3,6 +3,7 @@ use super::processes::open_process;
 use super::registry::{Browser, RegistryView};
 use super::*;
 use crate::windows::{PrivateSecurity, handle, wide};
+use std::collections::BTreeMap;
 use std::fs;
 use std::os::windows::io::AsRawHandle;
 use std::path::Path;
@@ -178,7 +179,7 @@ fn snapshot_terminates_verified_tree_and_job_drop_ends_all_children() {
     assert!(!child.0.wait().unwrap().success());
 
     let marker = temp.path().join("job");
-    let job = spawn_in_job(
+    let job = processes::spawn_in_job(
         std::env::current_exe().unwrap().to_str().unwrap(),
         &fixture_args(),
         temp.path(),
@@ -190,6 +191,7 @@ fn snapshot_terminates_verified_tree_and_job_drop_ends_all_children() {
                 marker.to_string_lossy().into_owned(),
             ),
         ]),
+        None,
     )
     .unwrap();
     let leaf = open_process(wait_marker(&marker), 0).unwrap();
