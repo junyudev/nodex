@@ -124,24 +124,11 @@ fn main() {
         return;
     }
     #[cfg(windows)]
-    if env::args().nth(1).as_deref() == Some("--desktop-tools-repl") {
-        let mut args = env::args().skip(2);
-        let Some((executable, environment)) = args.next().zip(args.next()) else {
-            std::process::exit(2);
-        };
-        let result = serde_json::from_str(&environment)
-            .map_err(std::io::Error::other)
-            .and_then(|environment| {
-                nodex_platform::desktop_tools::run_repl_job(
-                    &executable,
-                    &args.collect::<Vec<_>>(),
-                    environment,
-                )
-            });
-        match result {
+    if env::args().nth(1).as_deref() == Some("--desktop-tools-job") {
+        match nodex_platform::desktop_tools::run_job(env::args().skip(2)) {
             Ok(code) => std::process::exit(code as i32),
             Err(error) => {
-                eprintln!("Desktop Tools REPL launch failed: {error}");
+                eprintln!("Desktop Tools job launch failed: {error}");
                 std::process::exit(1);
             }
         }

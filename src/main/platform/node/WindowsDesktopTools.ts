@@ -1,7 +1,7 @@
 /* @effect-diagnostics asyncFunction:off newPromise:off globalTimers:off -- Node stdio and Duplex adapter. */
 import { spawn } from "node:child_process";
 import { isAbsolute } from "node:path";
-import { Duplex } from "node:stream";
+import { Duplex, PassThrough, type Writable } from "node:stream";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -84,6 +84,32 @@ export interface JobLaunch {
   readonly cwd: string;
   readonly env: Readonly<Record<string, string>>;
 }
+/** The same native job command supports MCP stdio and a supervised helper stream. */
+export function windowsJobCommand(
+  command: string,
+  launch: JobLaunch,
+  stdio: "inherit" | "relay",
+): { command: string; args: string[] } {
+  return {
+    command,
+    args: [
+      "--desktop-tools-job",
+      stdio,
+      launch.executable,
+      launch.cwd,
+      JSON.stringify(launch.env),
+      ...launch.args,
+    ],
+  };
+}
+
+export interface WindowsJobStdio {
+  readonly identity: WindowsProcessIdentity;
+  readonly input: Writable;
+  readonly output: PassThrough;
+  readonly exited: Promise<number | null>;
+}
+
 export interface WindowsPipeConnection {
   readonly peer: WindowsProcessIdentity;
   readonly stream: Duplex;
@@ -122,8 +148,8 @@ export interface WindowsDesktopToolsService {
     root: WindowsProcessIdentity,
   ) => NativeEffect<readonly WindowsProcessIdentity[]>;
   readonly terminateSubtree: (root: WindowsProcessIdentity) => NativeEffect<readonly number[]>;
-  /** The returned child's job lasts until the surrounding Effect Scope closes. */
-  readonly spawnInJob: (launch: JobLaunch) => NativeEffect<WindowsProcessIdentity, Scope.Scope>;
+  /** Launch with relayed stdio and stop the job when the surrounding Scope closes. */
+  readonly spawnInJob: (launch: JobLaunch) => NativeEffect<WindowsJobStdio, Scope.Scope>;
   readonly readRegistration: (key: NativeMessagingKey) => NativeEffect<RegistryValue | null>;
   readonly writeRegistration: (
     key: NativeMessagingKey,
@@ -175,23 +201,33 @@ class NativeSession {
     { resolve: (reply: Reply) => void; reject: (error: Error) => void }
   >();
   readonly #streams = new Set<Duplex>();
-  readonly #exited: Promise<void>;
+  readonly #exited: Promise<number | null>;
+  readonly #rawOutput = new PassThrough();
+  readonly #jobReply: Promise<Reply> | undefined;
+  #raw = false;
   #buffer: Buffer = Buffer.alloc(0);
   #next = 0;
   #error: Error | undefined;
   #closing: Promise<void> | undefined;
 
-  constructor(executable: string) {
+  constructor(executable: string, launch?: JobLaunch) {
     if (!isAbsolute(executable))
       throw new Error("Expected the absolute packaged Core executable path");
-    this.#child = spawn(executable, ["--desktop-tools-native"], {
+    const command = launch
+      ? windowsJobCommand(executable, launch, "relay")
+      : { command: executable, args: ["--desktop-tools-native"] };
+    this.#child = spawn(command.command, command.args, {
       windowsHide: true,
       stdio: ["pipe", "pipe", "ignore"],
     });
+    if (launch) {
+      this.#jobReply = new Promise((resolve, reject) => this.#pending.set(1, { resolve, reject }));
+    }
     this.#exited = new Promise((resolve) => {
       this.#child.once("close", (code) => {
         this.#fail(new Error(`Desktop Tools platform command exited (${code})`));
-        resolve();
+        this.#rawOutput.end();
+        resolve(code);
       });
     });
     this.#child.on("error", (error) => this.#fail(error));
@@ -204,6 +240,13 @@ class NativeSession {
     let offset = 0;
     try {
       while (offset < chunk.length) {
+        if (this.#raw) {
+          if (!this.#rawOutput.write(chunk.subarray(offset))) {
+            this.#child.stdout.pause();
+            this.#rawOutput.once("drain", () => this.#child.stdout.resume());
+          }
+          return;
+        }
         const newline = chunk.indexOf(10, offset);
         const end = newline < 0 ? chunk.length : newline;
         const part = chunk.subarray(offset, end);
@@ -217,6 +260,7 @@ class NativeSession {
         const request = this.#pending.get(reply.id);
         if (!request) throw new Error("Unexpected platform response");
         this.#pending.delete(reply.id);
+        if (this.#jobReply && "value" in reply) this.#raw = true;
         request.resolve(reply);
       }
     } catch (cause) {
@@ -230,6 +274,14 @@ class NativeSession {
     for (const request of this.#pending.values()) request.reject(error);
     this.#pending.clear();
     for (const stream of this.#streams) stream.destroy();
+  }
+
+  async job(): Promise<WindowsJobStdio> {
+    if (!this.#jobReply) throw new Error("Expected a job launcher");
+    const reply = await this.#jobReply;
+    if ("error" in reply) throw new Error(reply.error);
+    const identity = processIdentity.parse(reply.value);
+    return { identity, input: this.#child.stdin, output: this.#rawOutput, exited: this.#exited };
   }
 
   async request<T>(body: Request, schema: z.ZodType<T>): Promise<T> {
@@ -252,6 +304,8 @@ class NativeSession {
 
   async #closeOwned(): Promise<void> {
     this.#fail(new Error("Desktop Tools platform command closed"));
+    this.#rawOutput.resume();
+    this.#child.stdout.resume();
     this.#child.stdin.end();
     // EOF normally releases the native resources. Bound teardown even if a
     // native API is stalled. Job handles also close on forced termination.
@@ -311,10 +365,10 @@ const nativeError = (operation: string, cause: unknown) =>
   new WindowsDesktopToolsError({ kind: "native", operation, cause });
 
 export function makeWindowsDesktopTools(coreExecutable: string): WindowsDesktopToolsService {
-  const session = (operation: string) =>
+  const session = (operation: string, launch?: JobLaunch) =>
     Effect.acquireRelease(
       Effect.try({
-        try: () => new NativeSession(coreExecutable),
+        try: () => new NativeSession(coreExecutable, launch),
         catch: (cause) => nativeError(operation, cause),
       }),
       (session) => Effect.promise(() => session.close()),
@@ -364,7 +418,17 @@ export function makeWindowsDesktopTools(coreExecutable: string): WindowsDesktopT
     descendants: (root) => once({ op: "descendants", root }, z.array(processIdentity)),
     terminateSubtree: (root) => once({ op: "terminateSubtree", root }, z.array(pid)),
     spawnInJob: (launch) =>
-      open({ op: "spawnInJob", ...launch }, processIdentity).pipe(Effect.map(({ value }) => value)),
+      Effect.flatMap(session("spawnInJob", launch), (native) =>
+        Effect.tryPromise({
+          try: () => native.job(),
+          catch: (cause) => nativeError("spawnInJob", cause),
+        }).pipe(
+          Effect.timeoutOrElse({
+            duration: "20 seconds",
+            orElse: () => Effect.fail(nativeError("spawnInJob", "Helper launch timed out")),
+          }),
+        ),
+      ),
     readRegistration: (key) => once({ op: "readRegistration", key }, registryValue.nullable()),
     writeRegistration: (key, expected, manifest) =>
       once({ op: "writeRegistration", key, expected, manifest }, registration),

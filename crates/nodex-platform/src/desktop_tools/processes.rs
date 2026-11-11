@@ -9,12 +9,10 @@ use std::ptr::{null, null_mut};
 use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Storage::FileSystem::SYNCHRONIZE;
-use windows_sys::Win32::System::Console::{
-    GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
-};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::*;
 use windows_sys::Win32::System::JobObjects::*;
 use windows_sys::Win32::System::Threading::*;
+use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -279,10 +277,10 @@ fn file_time(identity: &ProcessIdentity) -> io::Result<u64> {
     identity.creation_time.parse().map_err(io::Error::other)
 }
 
-pub struct JobChild {
-    pub identity: ProcessIdentity,
-    _job: OwnedHandle,
-    process: OwnedHandle,
+pub(super) struct JobChild {
+    pub(super) identity: ProcessIdentity,
+    pub(super) job: OwnedHandle,
+    pub(super) process: OwnedHandle,
 }
 
 // MSVCRT argument quoting for a direct executable launch (no shell).
@@ -375,16 +373,7 @@ impl Drop for JobAttribute {
 
 /// Atomically assign the job at creation, even if the owner exits before resume.
 /// The caller supplies the complete environment and owns the returned handle.
-pub fn spawn_in_job(
-    executable: &str,
-    args: &[String],
-    cwd: &Path,
-    env: BTreeMap<String, String>,
-) -> io::Result<JobChild> {
-    spawn_job(executable, args, cwd, env, None)
-}
-
-fn spawn_job(
+pub(super) fn spawn_in_job(
     executable: &str,
     args: &[String],
     cwd: &Path,
@@ -399,6 +388,7 @@ fn spawn_job(
             "expected an absolute executable and working directory",
         ));
     }
+    let expected_image = std::fs::canonicalize(executable)?;
     let mut entries = BTreeMap::new();
     for (key, value) in env {
         if key.is_empty()
@@ -443,12 +433,14 @@ fn spawn_job(
     let mut startup = STARTUPINFOEXW {
         StartupInfo: STARTUPINFOW {
             cb: size_of::<STARTUPINFOEXW>() as u32,
+            dwFlags: STARTF_USESHOWWINDOW,
+            wShowWindow: SW_HIDE as u16,
             ..Default::default()
         },
         lpAttributeList: attributes.list,
     };
     if let Some(&[stdin, stdout, stderr]) = stdio {
-        startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+        startup.StartupInfo.dwFlags |= STARTF_USESTDHANDLES;
         startup.StartupInfo.hStdInput = stdin;
         startup.StartupInfo.hStdOutput = stdout;
         startup.StartupInfo.hStdError = stderr;
@@ -477,79 +469,17 @@ fn spawn_job(
     let process = handle(info.hProcess)?;
     let thread = handle(info.hThread)?;
     let identity = identify(info.dwProcessId, &process)?;
+    if std::fs::canonicalize(&identity.image_path)? != expected_image {
+        return Err(invalid(
+            "job child image did not match the verified executable",
+        ));
+    }
     if unsafe { ResumeThread(thread.as_raw_handle()) } == u32::MAX {
         return Err(io::Error::last_os_error());
     }
     Ok(JobChild {
         identity,
-        _job: job,
+        job,
         process,
     })
-}
-
-fn inherit_stdio(id: u32) -> io::Result<OwnedHandle> {
-    let current = unsafe { GetCurrentProcess() };
-    let mut duplicate = null_mut();
-    if unsafe {
-        DuplicateHandle(
-            current,
-            GetStdHandle(id),
-            current,
-            &mut duplicate,
-            0,
-            1,
-            DUPLICATE_SAME_ACCESS,
-        )
-    } == 0
-    {
-        return Err(io::Error::last_os_error());
-    }
-    handle(duplicate)
-}
-
-/// Preserve MCP stdio byte-for-byte. The launcher owns only the job and the
-/// parent/child lifetime, so the app-server can supply an arbitrary merged env
-/// without influencing the environment of the child.
-pub fn run_repl_job(
-    executable: &str,
-    args: &[String],
-    env: BTreeMap<String, String>,
-) -> io::Result<u32> {
-    let current = process_identity(std::process::id())?;
-    let parent = ancestors(&current)?
-        .into_iter()
-        .next()
-        .ok_or_else(|| invalid("REPL launch parent is unavailable"))?;
-    let owner = open_process(parent.pid, 0)?;
-    if identify(parent.pid, &owner)? != parent {
-        return Err(invalid("REPL launch parent identity changed"));
-    }
-    let handles = [
-        inherit_stdio(STD_INPUT_HANDLE)?,
-        inherit_stdio(STD_OUTPUT_HANDLE)?,
-        inherit_stdio(STD_ERROR_HANDLE)?,
-    ];
-    let cwd = Path::new(executable)
-        .parent()
-        .ok_or_else(|| invalid("REPL executable directory is unavailable"))?;
-    let job = spawn_job(
-        executable,
-        args,
-        cwd,
-        env,
-        Some(&handles.each_ref().map(AsRawHandle::as_raw_handle)),
-    )?;
-    drop(handles);
-    let wait = [owner.as_raw_handle(), job.process.as_raw_handle()];
-    match unsafe { WaitForMultipleObjects(wait.len() as u32, wait.as_ptr(), 0, INFINITE) } {
-        WAIT_OBJECT_0 => Ok(0),
-        status if status == WAIT_OBJECT_0 + 1 => {
-            let mut code = 0;
-            if unsafe { GetExitCodeProcess(job.process.as_raw_handle(), &mut code) } == 0 {
-                return Err(io::Error::last_os_error());
-            }
-            Ok(code)
-        }
-        _ => Err(io::Error::last_os_error()),
-    }
 }

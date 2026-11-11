@@ -34,7 +34,7 @@ it.effect("all Windows platform operations fail closed on a different OS", () =>
       tools.restoreRegistration(key, { key, installed, previous: null, createdKey: true }),
     ];
     const result = yield* Effect.forEach(operations, Effect.flip);
-    expect(result.map((error) => error.kind)).toEqual(Array(14).fill("unsupported"));
+    expect(result.map((error) => error.kind)).toEqual(Array(operations.length).fill("unsupported"));
   }).pipe(Effect.scoped, Effect.provide(windowsDesktopToolsLayer("darwin", ""))),
 );
 

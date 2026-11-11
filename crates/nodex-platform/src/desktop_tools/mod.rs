@@ -1,16 +1,16 @@
 //! Main's dedicated stdio platform command. No Profile, Store, or Core listener.
 mod authenticode;
 mod files;
+mod job_stdio;
 mod pipes;
 mod processes;
 mod registry;
 
 pub use authenticode::verify_authenticode;
 pub use files::inspect_path;
+pub use job_stdio::run_job;
 pub use pipes::{PipeConnection, PipeListener, connect_pipe, enumerate_pipes};
-pub use processes::{
-    ProcessIdentity, descendants, process_identity, run_repl_job, spawn_in_job, terminate_subtree,
-};
+pub use processes::{ProcessIdentity, descendants, process_identity, terminate_subtree};
 pub use registry::{HostKey, read_registration, restore_registration, write_registration};
 
 use files::invalid;
@@ -18,7 +18,7 @@ use pipes::{MAX_CHUNK, MAX_CONNECTIONS};
 use registry::{Registration, RegistryValue};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::io::{self, BufRead, Read, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -81,12 +81,6 @@ enum Start {
     RestoreRegistration {
         key: HostKey,
         receipt: Registration,
-    },
-    SpawnInJob {
-        executable: String,
-        args: Vec<String>,
-        cwd: PathBuf,
-        env: BTreeMap<String, String>,
     },
 }
 
@@ -191,24 +185,6 @@ pub fn run_stdio() -> io::Result<()> {
                 .enable_io()
                 .build()?
                 .block_on(run_pipes(id, body))
-        }
-        Start::SpawnInJob {
-            executable,
-            args,
-            cwd,
-            env,
-        } => {
-            let job = match spawn_in_job(&executable, &args, &cwd, env) {
-                Ok(job) => job,
-                Err(error) => return send(id, Err(error)),
-            };
-            send(id, value(&job.identity))?;
-            // Main owns stdin. Its close (including on abrupt process exit)
-            // closes the job and terminates every process in it.
-            if read_line(&mut stdin)?.is_some() {
-                return Err(invalid("job lease only accepts EOF"));
-            }
-            Ok(())
         }
         _ => send(id, run_once(body)),
     }

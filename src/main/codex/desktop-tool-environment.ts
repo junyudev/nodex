@@ -1,4 +1,5 @@
 import { win32 } from "node:path";
+import { windowsJobCommand } from "../platform/node/WindowsDesktopTools";
 
 /**
  * A desktop host configures its Desktop Tool runtime (Node REPL, Browser, Chrome, Computer Use)
@@ -164,8 +165,16 @@ export function nodeReplServerDefinition(input: {
 } {
   if (input.windowsJobLauncher) {
     return {
-      args: ["--desktop-tools-repl", input.nodeReplPath, JSON.stringify(input.env)],
-      command: input.windowsJobLauncher,
+      ...windowsJobCommand(
+        input.windowsJobLauncher,
+        {
+          executable: input.nodeReplPath,
+          cwd: win32.dirname(input.nodeReplPath),
+          args: [],
+          env: input.env,
+        },
+        "inherit",
+      ),
       enabled: true,
       env: {},
       env_vars: [] as string[],
