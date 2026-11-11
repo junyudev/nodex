@@ -1,5 +1,6 @@
 import type { SVGProps } from "react";
 import { TERMINAL_ICON_GEOMETRY } from "../../../../shared/icon-geometry";
+import { IconSilhouette } from "./icon-silhouette";
 
 export type CanonicalIconProps = SVGProps<SVGSVGElement> & {
   /** Convenience alias used by the older app-owned icon wrappers. */
@@ -28,6 +29,19 @@ type CanonicalGlyphProps = CanonicalIconProps & {
   width?: number | string;
 };
 
+const isMonochromePaint = (paint: string | undefined): boolean =>
+  paint === undefined || paint === "none" || paint === "currentColor";
+
+const isMonochromePath = (path: IconPath): boolean =>
+  typeof path === "string" || (isMonochromePaint(path.fill) && isMonochromePaint(path.stroke));
+
+/** A stroke lies half over its own fill, so one such path already paints an area twice. */
+const isFilledAndStroked = (path: IconPath): boolean =>
+  typeof path !== "string" &&
+  path.fill !== "none" &&
+  path.stroke !== undefined &&
+  path.stroke !== "none";
+
 const DEFAULT_ICON_CLASS = "icon-xs shrink-0";
 
 function CanonicalGlyph({
@@ -43,6 +57,29 @@ function CanonicalGlyph({
   const hasAccessibleName =
     svgProps["aria-label"] !== undefined || svgProps["aria-labelledby"] !== undefined;
 
+  // Several paths that cross are painted as one silhouette, so a translucent color stays even.
+  const shapes = paths.map((path, index) => {
+    if (typeof path === "string") {
+      return <path key={`${path}-${index}`} d={path} fill="currentColor" />;
+    }
+
+    return (
+      <path
+        key={`${path.d}-${index}`}
+        d={path.d}
+        fill={path.fill ?? "currentColor"}
+        fillRule={path.fillRule}
+        clipRule={path.clipRule}
+        opacity={path.opacity}
+        stroke={path.stroke}
+        strokeWidth={path.strokeWidth}
+        strokeLinecap={path.strokeLinecap}
+        strokeLinejoin={path.strokeLinejoin}
+        transform={path.transform}
+      />
+    );
+  });
+
   return (
     <svg
       width={width}
@@ -54,27 +91,11 @@ function CanonicalGlyph({
       className={className ?? DEFAULT_ICON_CLASS}
       aria-hidden={ariaHidden ?? ariaHiddenAttribute ?? (hasAccessibleName ? undefined : true)}
     >
-      {paths.map((path, index) => {
-        if (typeof path === "string") {
-          return <path key={`${path}-${index}`} d={path} fill="currentColor" />;
-        }
-
-        return (
-          <path
-            key={`${path.d}-${index}`}
-            d={path.d}
-            fill={path.fill ?? "currentColor"}
-            fillRule={path.fillRule}
-            clipRule={path.clipRule}
-            opacity={path.opacity}
-            stroke={path.stroke}
-            strokeWidth={path.strokeWidth}
-            strokeLinecap={path.strokeLinecap}
-            strokeLinejoin={path.strokeLinejoin}
-            transform={path.transform}
-          />
-        );
-      })}
+      {paths.every(isMonochromePath) && (paths.length > 1 || paths.some(isFilledAndStroked)) ? (
+        <IconSilhouette>{shapes}</IconSilhouette>
+      ) : (
+        shapes
+      )}
     </svg>
   );
 }

@@ -1,5 +1,6 @@
 import type { JSX, ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { IconSilhouette } from "./icon-silhouette";
 
 /*
  * Glyphs of the Customize surface (plugins, skills, and their actions). Each component draws one
@@ -31,7 +32,7 @@ export function IconGlyph({
       className={cn("shrink-0", className)}
       {...props}
     >
-      {children}
+      <IconSilhouette>{children}</IconSilhouette>
     </svg>
   );
 }

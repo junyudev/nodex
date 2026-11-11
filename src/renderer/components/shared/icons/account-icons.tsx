@@ -1,4 +1,5 @@
 import type { ReactNode, SVGProps } from "react";
+import { IconSilhouette } from "./icon-silhouette";
 
 type AccountIconProps = Omit<SVGProps<SVGSVGElement>, "children">;
 
@@ -21,7 +22,7 @@ function AccountIcon({
       aria-hidden="true"
       {...props}
     >
-      {children}
+      <IconSilhouette>{children}</IconSilhouette>
     </svg>
   );
 }

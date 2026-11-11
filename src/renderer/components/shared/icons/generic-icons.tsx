@@ -78,23 +78,33 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { IconSilhouette } from "./icon-silhouette";
 
 export type LucideIcon = LucideIconType;
 
 const DEFAULT_GENERIC_ICON_SIZE = 16;
 const DEFAULT_GENERIC_ICON_STROKE_WIDTH = 1.75;
+const GENERIC_ICON_GRID = 24;
+const GENERIC_ICON_VIEW_BOX = `0 0 ${GENERIC_ICON_GRID} ${GENERIC_ICON_GRID}`;
 
+/**
+ * These glyphs are drawn from several strokes that cross, so each is painted as one silhouette:
+ * a translucent text color then stays even instead of darkening at every crossing.
+ */
 function createGenericIcon(Icon: LucideIconType, displayName: string): LucideIconType {
   const GenericIcon = forwardRef<SVGSVGElement, LucideProps>(function GenericIcon(
     {
       "aria-hidden": ariaHidden,
       "aria-label": ariaLabel,
       "aria-labelledby": ariaLabelledBy,
+      absoluteStrokeWidth = false,
       children,
       className,
+      color,
       focusable = false,
       size = DEFAULT_GENERIC_ICON_SIZE,
       strokeWidth = DEFAULT_GENERIC_ICON_STROKE_WIDTH,
+      style,
       ...props
     },
     ref,
@@ -103,7 +113,12 @@ function createGenericIcon(Icon: LucideIconType, displayName: string): LucideIco
       ariaLabel !== undefined || ariaLabelledBy !== undefined || children !== undefined;
 
     return (
-      <Icon
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width={size}
+        height={size}
+        viewBox={GENERIC_ICON_VIEW_BOX}
+        fill="none"
         {...props}
         ref={ref}
         aria-hidden={hasAccessibleName ? ariaHidden : (ariaHidden ?? true)}
@@ -111,11 +126,20 @@ function createGenericIcon(Icon: LucideIconType, displayName: string): LucideIco
         aria-labelledby={ariaLabelledBy}
         className={cn("shrink-0", className)}
         focusable={focusable}
-        size={size}
-        strokeWidth={strokeWidth}
+        style={color === undefined ? style : { ...style, color }}
       >
+        <IconSilhouette>
+          <Icon
+            size={GENERIC_ICON_GRID}
+            strokeWidth={
+              absoluteStrokeWidth
+                ? (Number(strokeWidth) * GENERIC_ICON_GRID) / Number(size)
+                : strokeWidth
+            }
+          />
+        </IconSilhouette>
         {children}
-      </Icon>
+      </svg>
     );
   });
   GenericIcon.displayName = displayName;

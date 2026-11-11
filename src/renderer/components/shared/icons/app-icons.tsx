@@ -41,6 +41,7 @@ import {
   TerminalIcon,
 } from "./canonical-icons";
 import { ImageEraseIcon } from "./image-editor-icons";
+import { IconSilhouette } from "./icon-silhouette";
 
 type IconProps = {
   className?: string;
@@ -58,21 +59,23 @@ export function HooksIcon(props: IconProps) {
       xmlns="http://www.w3.org/2000/svg"
       {...props}
     >
-      <circle cx="8.99805" cy="4.875" r="1.875" stroke="currentColor" strokeWidth="1.5" />
-      <path
-        d="M9 6.75V12C9 13.6569 10.3431 15 12 15C13.6569 15 15 13.6569 15 12V9.75L13.5 11.25"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9 6.75V12C9 13.6569 7.65685 15 6 15C4.34315 15 3 13.6569 3 12V9.75L4.5 11.25"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <IconSilhouette>
+        <circle cx="8.99805" cy="4.875" r="1.875" stroke="currentColor" strokeWidth="1.5" />
+        <path
+          d="M9 6.75V12C9 13.6569 10.3431 15 12 15C13.6569 15 15 13.6569 15 12V9.75L13.5 11.25"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M9 6.75V12C9 13.6569 7.65685 15 6 15C4.34315 15 3 13.6569 3 12V9.75L4.5 11.25"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </IconSilhouette>
     </svg>
   );
 }
@@ -503,9 +506,11 @@ export function ThreadSummaryCommitIcon({ className }: IconProps) {
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <path d={THREAD_SUMMARY_COMMIT_RING_PATH} fill="currentColor" />
-      <path d={THREAD_SUMMARY_COMMIT_LEFT_PATH} fill="currentColor" />
-      <path d={THREAD_SUMMARY_COMMIT_RIGHT_PATH} fill="currentColor" />
+      <IconSilhouette>
+        <path d={THREAD_SUMMARY_COMMIT_RING_PATH} fill="currentColor" />
+        <path d={THREAD_SUMMARY_COMMIT_LEFT_PATH} fill="currentColor" />
+        <path d={THREAD_SUMMARY_COMMIT_RIGHT_PATH} fill="currentColor" />
+      </IconSilhouette>
     </svg>
   );
 }
@@ -520,27 +525,29 @@ function PushGlyph({ className }: IconProps) {
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <path
-        d={THREAD_SUMMARY_PUSH_CLOUD_PATH}
-        stroke="currentColor"
-        strokeWidth="1.33"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d={THREAD_SUMMARY_PUSH_ARROW_PATH}
-        stroke="currentColor"
-        strokeWidth="1.33"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d={THREAD_SUMMARY_PUSH_STEM_PATH}
-        stroke="currentColor"
-        strokeWidth="1.33"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <IconSilhouette>
+        <path
+          d={THREAD_SUMMARY_PUSH_CLOUD_PATH}
+          stroke="currentColor"
+          strokeWidth="1.33"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d={THREAD_SUMMARY_PUSH_ARROW_PATH}
+          stroke="currentColor"
+          strokeWidth="1.33"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d={THREAD_SUMMARY_PUSH_STEM_PATH}
+          stroke="currentColor"
+          strokeWidth="1.33"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </IconSilhouette>
     </svg>
   );
 }
@@ -931,14 +938,16 @@ export function SettingsPasswordsIcon({ className }: IconProps) {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
-      <circle cx="7" cy="7" r="3.75" stroke="currentColor" strokeWidth="1.5" />
-      <path
-        d="m9.65 9.65 7.1 7.1m0 0h-2.5m2.5 0v-2.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <IconSilhouette>
+        <circle cx="7" cy="7" r="3.75" stroke="currentColor" strokeWidth="1.5" />
+        <path
+          d="m9.65 9.65 7.1 7.1m0 0h-2.5m2.5 0v-2.5"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </IconSilhouette>
     </svg>
   );
 }
@@ -993,10 +1002,17 @@ export function SettingsGitIcon({ className }: IconProps) {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
-      <circle cx="5.4165" cy="5" r="1.875" stroke="currentColor" strokeWidth="1.33" />
-      <circle cx="5.4165" cy="15" r="1.875" stroke="currentColor" strokeWidth="1.33" />
-      <circle cx="14.5833" cy="5" r="1.875" stroke="currentColor" strokeWidth="1.33" />
-      <path d={SETTINGS_GIT_PATH} stroke="currentColor" strokeWidth="1.33" strokeLinejoin="round" />
+      <IconSilhouette>
+        <circle cx="5.4165" cy="5" r="1.875" stroke="currentColor" strokeWidth="1.33" />
+        <circle cx="5.4165" cy="15" r="1.875" stroke="currentColor" strokeWidth="1.33" />
+        <circle cx="14.5833" cy="5" r="1.875" stroke="currentColor" strokeWidth="1.33" />
+        <path
+          d={SETTINGS_GIT_PATH}
+          stroke="currentColor"
+          strokeWidth="1.33"
+          strokeLinejoin="round"
+        />
+      </IconSilhouette>
     </svg>
   );
 }
@@ -1962,32 +1978,34 @@ export function NodexLogoMarkIcon({
       aria-hidden={resolveAriaHidden(ariaHidden, ariaHiddenAttr) ?? true}
       data-nodex-logo-mark={monochrome ? "monochrome" : "app-icon"}
     >
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M142.9 730.445L56.916 623.328C36.2282 597.558 25 565.865 25 533.248V145.375C25 96.5161 64.0898 55.9743 114.518 52.5313L513.303 25.3046C542.275 23.3266 571.07 31.0273 594.87 47.1176L734.98 141.848C760.063 158.805 775 186.525 775 216.107V657.08C775 704.895 736.565 744.483 687.19 747.523L244.583 774.768C205.183 777.193 167.1 760.593 142.9 730.445Z"
-        fill={logoFill}
-      />
-      <path
-        d="M305 352L411 438.203L305 535"
-        stroke={logoDetail}
-        strokeWidth="50"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M458.035 565.638L579.966 558.361"
-        stroke={logoDetail}
-        strokeWidth="50"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M516.873 74.1691L118.087 101.396C94.1999 103.027 75.6836 122.231 75.6836 145.374V533.247C75.6836 554.992 83.1691 576.12 96.9608 593.302L182.945 700.417C196.847 717.735 218.725 727.272 241.359 725.88L683.965 698.635C706.65 697.237 724.31 679.047 724.31 657.08V216.106C724.31 202.514 717.448 189.778 705.923 181.987L565.813 87.2568C551.533 77.6028 534.255 72.9823 516.873 74.1691ZM137.862 151.425C132.315 147.318 134.955 138.763 141.923 138.264L519.555 111.177C531.588 110.314 543.543 113.628 553.273 120.522L629.043 174.203C631.918 176.241 630.57 180.64 627.008 180.834L227.097 202.584C214.994 203.242 203.048 199.686 193.425 192.562L137.862 151.425ZM208.339 270.767C208.339 257.775 218.835 247.044 232.257 246.313L655.075 223.286C668.158 222.574 679.168 232.633 679.168 245.295V627.132C679.168 640.1 668.71 650.82 655.315 651.582L235.172 675.487C220.615 676.317 208.339 665.13 208.339 651.037V270.767Z"
-        fill={logoDetail}
-      />
+      <IconSilhouette>
+        <path
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d="M142.9 730.445L56.916 623.328C36.2282 597.558 25 565.865 25 533.248V145.375C25 96.5161 64.0898 55.9743 114.518 52.5313L513.303 25.3046C542.275 23.3266 571.07 31.0273 594.87 47.1176L734.98 141.848C760.063 158.805 775 186.525 775 216.107V657.08C775 704.895 736.565 744.483 687.19 747.523L244.583 774.768C205.183 777.193 167.1 760.593 142.9 730.445Z"
+          fill={logoFill}
+        />
+        <path
+          d="M305 352L411 438.203L305 535"
+          stroke={logoDetail}
+          strokeWidth="50"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M458.035 565.638L579.966 558.361"
+          stroke={logoDetail}
+          strokeWidth="50"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d="M516.873 74.1691L118.087 101.396C94.1999 103.027 75.6836 122.231 75.6836 145.374V533.247C75.6836 554.992 83.1691 576.12 96.9608 593.302L182.945 700.417C196.847 717.735 218.725 727.272 241.359 725.88L683.965 698.635C706.65 697.237 724.31 679.047 724.31 657.08V216.106C724.31 202.514 717.448 189.778 705.923 181.987L565.813 87.2568C551.533 77.6028 534.255 72.9823 516.873 74.1691ZM137.862 151.425C132.315 147.318 134.955 138.763 141.923 138.264L519.555 111.177C531.588 110.314 543.543 113.628 553.273 120.522L629.043 174.203C631.918 176.241 630.57 180.64 627.008 180.834L227.097 202.584C214.994 203.242 203.048 199.686 193.425 192.562L137.862 151.425ZM208.339 270.767C208.339 257.775 218.835 247.044 232.257 246.313L655.075 223.286C668.158 222.574 679.168 232.633 679.168 245.295V627.132C679.168 640.1 668.71 650.82 655.315 651.582L235.172 675.487C220.615 676.317 208.339 665.13 208.339 651.037V270.767Z"
+          fill={logoDetail}
+        />
+      </IconSilhouette>
     </svg>
   );
 }
@@ -2261,15 +2279,17 @@ export function UltracodeIcon({ className, filled = true }: ModeIconProps) {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
-      <g
-        fillOpacity={filled ? 1 : 0}
-        strokeWidth={filled ? 1.8 : 1.3}
-        className={MODE_GLYPH_TRANSITION}
-      >
-        <polygon points="10.000 3.190 12.685 4.740 12.685 7.840 10.000 9.390 7.315 7.840 7.315 4.740" />
-        <polygon points="5.715 10.612 8.400 12.162 8.400 15.262 5.715 16.812 3.030 15.262 3.030 12.162" />
-        <polygon points="14.285 10.612 16.970 12.162 16.970 15.262 14.285 16.812 11.600 15.262 11.600 12.162" />
-      </g>
+      <IconSilhouette>
+        <g
+          fillOpacity={filled ? 1 : 0}
+          strokeWidth={filled ? 1.8 : 1.3}
+          className={MODE_GLYPH_TRANSITION}
+        >
+          <polygon points="10.000 3.190 12.685 4.740 12.685 7.840 10.000 9.390 7.315 7.840 7.315 4.740" />
+          <polygon points="5.715 10.612 8.400 12.162 8.400 15.262 5.715 16.812 3.030 15.262 3.030 12.162" />
+          <polygon points="14.285 10.612 16.970 12.162 16.970 15.262 14.285 16.812 11.600 15.262 11.600 12.162" />
+        </g>
+      </IconSilhouette>
     </svg>
   );
 }
@@ -2534,7 +2554,9 @@ export function ChevronDownIcon({
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden={resolveAriaHidden(ariaHidden, ariaHiddenAttr)}
     >
-      <path d={CHEVRON_DOWN_PATH} fill="currentColor" stroke="currentColor" strokeWidth="0.6" />
+      <IconSilhouette>
+        <path d={CHEVRON_DOWN_PATH} fill="currentColor" stroke="currentColor" strokeWidth="0.6" />
+      </IconSilhouette>
     </svg>
   );
 }
@@ -2984,30 +3006,37 @@ export function ReviewExpandAllDiffsIcon({ className }: IconProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn("icon-xs", className)}
     >
-      <path d="M12.8 8L19.8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M12.8 12L19.8 12.002" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M12.8 16L16.8 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path
-        d="M6.24013 6V18"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M3.74022 7.50012L6.24022 5.00012L8.74022 7.50012"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M8.74022 16.5L6.24022 19L3.74022 16.5"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <IconSilhouette>
+        <path d="M12.8 8L19.8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <path
+          d="M12.8 12L19.8 12.002"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <path d="M12.8 16L16.8 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <path
+          d="M6.24013 6V18"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M3.74022 7.50012L6.24022 5.00012L8.74022 7.50012"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M8.74022 16.5L6.24022 19L3.74022 16.5"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </IconSilhouette>
     </svg>
   );
 }
@@ -3022,36 +3051,38 @@ export function ReviewCollapseAllDiffsIcon({ className }: IconProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn("icon-xs", className)}
     >
-      <path d="M13 9.50004L20 9.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M13 14.5L17 14.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path
-        d="M6.23999 4V9"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M6.23999 15V20"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M3.74009 16.5L6.24009 14L8.74009 16.5"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M8.74009 7.5L6.24009 10L3.74009 7.5"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <IconSilhouette>
+        <path d="M13 9.50004L20 9.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <path d="M13 14.5L17 14.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <path
+          d="M6.23999 4V9"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M6.23999 15V20"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M3.74009 16.5L6.24009 14L8.74009 16.5"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M8.74009 7.5L6.24009 10L3.74009 7.5"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </IconSilhouette>
     </svg>
   );
 }
@@ -3181,9 +3212,11 @@ const WORK_RELATION_ICON_PROPS = {
 export function PartOfIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg {...props} {...WORK_RELATION_ICON_PROPS} className={cn("shrink-0", className)}>
-      <rect x="1.75" y="1.75" width="12.5" height="4.5" rx="2.25" />
-      <path d="M4.25 6.25v3.5a2.25 2.25 0 0 0 2.25 2.25h.75" />
-      <rect x="7" y="9" width="8" height="6" rx="3" fill="currentColor" stroke="none" />
+      <IconSilhouette>
+        <rect x="1.75" y="1.75" width="12.5" height="4.5" rx="2.25" />
+        <path d="M4.25 6.25v3.5a2.25 2.25 0 0 0 2.25 2.25h.75" />
+        <rect x="7" y="9" width="8" height="6" rx="3" fill="currentColor" stroke="none" />
+      </IconSilhouette>
     </svg>
   );
 }
@@ -3192,12 +3225,14 @@ export function PartOfIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
 export function WaitsForIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg {...props} {...WORK_RELATION_ICON_PROPS} className={cn("shrink-0", className)}>
-      <path d="M5.75 1.75h4.5a2 2 0 0 1 2 2c0 2.6-2.75 3-2.75 4.25s2.75 1.65 2.75 4.25a2 2 0 0 1-2 2h-4.5a2 2 0 0 1-2-2c0-2.6 2.75-3 2.75-4.25S3.75 6.35 3.75 3.75a2 2 0 0 1 2-2Z" />
-      <path
-        d="M5.75 14.25a2 2 0 0 1-2-2c0-1.9 1.5-2.6 2.4-3.25h3.7c.9.65 2.4 1.35 2.4 3.25a2 2 0 0 1-2 2Z"
-        fill="currentColor"
-        stroke="none"
-      />
+      <IconSilhouette>
+        <path d="M5.75 1.75h4.5a2 2 0 0 1 2 2c0 2.6-2.75 3-2.75 4.25s2.75 1.65 2.75 4.25a2 2 0 0 1-2 2h-4.5a2 2 0 0 1-2-2c0-2.6 2.75-3 2.75-4.25S3.75 6.35 3.75 3.75a2 2 0 0 1 2-2Z" />
+        <path
+          d="M5.75 14.25a2 2 0 0 1-2-2c0-1.9 1.5-2.6 2.4-3.25h3.7c.9.65 2.4 1.35 2.4 3.25a2 2 0 0 1-2 2Z"
+          fill="currentColor"
+          stroke="none"
+        />
+      </IconSilhouette>
     </svg>
   );
 }
@@ -3416,13 +3451,15 @@ export function GlobeIcon({ className }: IconProps) {
       className={cn("shrink-0", className)}
       aria-hidden="true"
     >
-      <circle cx="7" cy="7" r="5.25" stroke="currentColor" strokeWidth="1.2" />
-      <path
-        d="M1.75 7h10.5M7 1.75c-1.5 1.5-2 3.25-2 5.25s.5 3.75 2 5.25c1.5-1.5 2-3.25 2-5.25s-.5-3.75-2-5.25Z"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
+      <IconSilhouette>
+        <circle cx="7" cy="7" r="5.25" stroke="currentColor" strokeWidth="1.2" />
+        <path
+          d="M1.75 7h10.5M7 1.75c-1.5 1.5-2 3.25-2 5.25s.5 3.75 2 5.25c1.5-1.5 2-3.25 2-5.25s-.5-3.75-2-5.25Z"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+        />
+      </IconSilhouette>
     </svg>
   );
 }
@@ -3982,9 +4019,11 @@ export function NfmSideMenuTableHeaderIcon({ className }: IconProps) {
       strokeWidth="1.35"
       aria-hidden="true"
     >
-      <rect x="3.5" y="4.25" width="13" height="11.5" rx="1.25" />
-      <path d="M3.5 8h13" />
-      <path d="M8 4.25v11.5" />
+      <IconSilhouette>
+        <rect x="3.5" y="4.25" width="13" height="11.5" rx="1.25" />
+        <path d="M3.5 8h13" />
+        <path d="M8 4.25v11.5" />
+      </IconSilhouette>
     </svg>
   );
 }
@@ -5803,7 +5842,7 @@ function DatabaseViewPageMenuIcon({
       aria-hidden="true"
       {...props}
     >
-      {children}
+      <IconSilhouette>{children}</IconSilhouette>
     </svg>
   );
 }
