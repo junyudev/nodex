@@ -23,12 +23,12 @@ test("macOS keeps its native integrations", () => {
   });
 });
 
-test("Windows exposes app updates without macOS integrations", () => {
+test("Windows exposes Browser control and app update settings", () => {
   expect(resolveSettingsHostPresentation("win32")).toEqual({
     terminalShell: true,
     computerUse: false,
     browserProfileImport: false,
-    browserControl: false,
+    browserControl: true,
     appUpdates: true,
     launchAtLogin: true,
   });

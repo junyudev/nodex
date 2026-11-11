@@ -1457,7 +1457,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
                 Effect.map(instance.snapshot.getSnapshot, (snapshot) => snapshot.skills),
               ),
             ),
-            roots: host.desktopSkillRoots(instanceId, driverKind),
+            roots: host.desktopSkillRoots(instanceId, driverKind, cwd),
           },
           { concurrency: "unbounded" },
         );

@@ -251,7 +251,7 @@ export async function loadCodexLocalShellEnvironment(
   const baseEnvironment = input.baseEnvironment ?? process.env;
   const platform = input.platform ?? process.platform;
   input.signal?.throwIfAborted();
-  if (platform === "win32") return withoutDesktopToolHostBindings(baseEnvironment);
+  if (platform === "win32") return withoutDesktopToolHostBindings(baseEnvironment, platform);
 
   const load = async (): Promise<NodeJS.ProcessEnv> => {
     try {

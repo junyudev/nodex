@@ -317,7 +317,8 @@ export async function resolveBrowserRuntimeBundle(
         rootPath,
         artifact,
         options.signal,
-        manifest.targetPlatform !== "win32",
+        // Mode bits exist only for a POSIX closure on a POSIX host.
+        manifest.targetPlatform !== "win32" && process.platform !== "win32",
       );
       if (failure) return failure;
       if (!verifier || (manifest.targetPlatform === "darwin" && artifact.kind === "data"))

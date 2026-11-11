@@ -9,7 +9,7 @@ pub use authenticode::verify_authenticode;
 pub use files::inspect_path;
 pub use pipes::{PipeConnection, PipeListener, connect_pipe, enumerate_pipes};
 pub use processes::{
-    ProcessIdentity, descendants, process_identity, spawn_in_job, terminate_subtree,
+    ProcessIdentity, descendants, process_identity, run_repl_job, spawn_in_job, terminate_subtree,
 };
 pub use registry::{HostKey, read_registration, restore_registration, write_registration};
 
@@ -39,9 +39,17 @@ const MAX_RESPONSE: usize = 4 * 1024 * 1024;
 enum Start {
     VerifyAuthenticode {
         path: PathBuf,
+        #[serde(default)]
+        require_revocation: bool,
     },
     InspectPath {
         path: PathBuf,
+    },
+    InspectPaths {
+        paths: Vec<PathBuf>,
+    },
+    Ancestors {
+        peer: ProcessIdentity,
     },
     ProcessIdentity {
         pid: u32,
@@ -136,8 +144,27 @@ fn value(result: impl serde::Serialize) -> io::Result<Value> {
 
 fn run_once(command: Start) -> io::Result<Value> {
     match command {
-        Start::VerifyAuthenticode { path } => value(verify_authenticode(&path)?),
+        Start::VerifyAuthenticode {
+            path,
+            require_revocation,
+        } => value(authenticode::inspect_signature(&path, require_revocation)?),
         Start::InspectPath { path } => value(inspect_path(&path)?),
+        Start::InspectPaths { paths } => {
+            if paths.len() > 64 {
+                return Err(invalid("path inspection batch limit exceeded"));
+            }
+            value(
+                paths
+                    .iter()
+                    .map(|path| {
+                        inspect_path(path).map_err(|error| {
+                            io::Error::other(format!("{}: {error}", path.display()))
+                        })
+                    })
+                    .collect::<io::Result<Vec<_>>>()?,
+            )
+        }
+        Start::Ancestors { peer } => value(processes::ancestors(&peer)?),
         Start::ProcessIdentity { pid } => value(process_identity(pid)?),
         Start::Descendants { root } => value(descendants(&root)?),
         Start::TerminateSubtree { root } => value(terminate_subtree(&root)?),

@@ -197,21 +197,24 @@ interface Launch {
 /** Own the launcher transport and its physical lifetime at the same boundary. */
 export function spawnDesktopReplProcess(home: string, sessionId: string, launch: Launch) {
   const stdio = ["pipe", "pipe", "pipe"] as const;
-  // Windows will use a kill-on-close Job Object at this launch boundary.
+  // The Windows launcher holds the only handle of a kill-on-close job, so the REPL and every
+  // kernel end with it, and with this Runtime: the job also follows the launcher's parent.
   if (process.platform === "win32") {
     const child = spawn(launch.command, launch.args, {
       cwd: launch.cwd,
       env: launch.env,
+      windowsHide: true,
       stdio: [...stdio],
+    });
+    const exited = new Promise<void>((resolve) => {
+      child.once("close", () => resolve());
+      child.once("error", () => resolve());
     });
     return {
       child,
       async stop() {
-        if (!child.kill("SIGTERM")) return;
-        const deadline = Date.now() + 1_000;
-        while (child.exitCode === null && child.signalCode === null && Date.now() < deadline)
-          await delay(20);
-        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+        child.kill();
+        await exited;
       },
     };
   }

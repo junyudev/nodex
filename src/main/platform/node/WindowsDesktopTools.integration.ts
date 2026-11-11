@@ -1,10 +1,24 @@
 /* @effect-diagnostics asyncFunction:off processEnv:off -- Native integration fixtures. */
+import {
+  BROWSER_RUNTIME_BUNDLE_DIRECTORY,
+  BROWSER_RUNTIME_MANIFEST_FILENAME,
+} from "../../../shared/browser-runtime-metadata";
+import { existsSync } from "node:fs";
+import { createInterface } from "node:readline";
+import { makeWindowsBrowserPeerAuthorizer } from "../../browser-use/browser-use-peer-authorizer";
+import { resolveCodexRuntime } from "../../codex/codex-runtime";
+import { BrowserUseThreadConfigBuilder } from "../../codex/browser-use-thread-config";
+import {
+  nodeReplServerDefinition,
+  windowsDesktopToolCodexHome,
+} from "../../codex/desktop-tool-environment";
+import { makeWindowsBrowserRuntimeVerifier } from "./WindowsBrowserRuntimeVerifier";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import * as Effect from "effect/Effect";
 import { expect, test } from "vitest";
 import { requiredNativeExecutable } from "../../../../scripts/testing/native-artifacts";
@@ -29,57 +43,79 @@ const closeChild = async (child: ChildProcess) => {
   await closed;
 };
 
-testOnWindows("validates an embedded inbox signature and refuses its tampered copy", async () => {
-  const temp = await mkdtemp(join(tmpdir(), "nodex-signature-"));
-  try {
-    const system = join(process.env.SystemRoot!, "System32");
-    const candidates = [
-      "ntoskrnl.exe",
-      "winload.efi",
-      "curl.exe",
-      "WindowsPowerShell/v1.0/powershell.exe",
-    ];
-    const examined = [];
-    let signed: string | undefined;
-    for (const candidate of candidates) {
-      const path = join(system, candidate);
-      const result = await run((service) => service.verifyAuthenticode(path).pipe(Effect.result));
-      examined.push({ candidate, result });
-      if (
-        result._tag !== "Success" ||
-        result.success.status !== "verified" ||
-        !result.success.codeSigningEku
-      )
-        continue;
-      expect(result.success.signature).toBe("embedded");
-      expect(result.success.chain[0]?.subject).toBeTruthy();
-      signed = path;
-      break;
+testOnWindows(
+  "validates an embedded inbox signature and refuses its tampered copy",
+  async () => {
+    const temp = await mkdtemp(join(tmpdir(), "nodex-signature-"));
+    try {
+      const system = join(process.env.SystemRoot!, "System32");
+      const candidates = [
+        "ntoskrnl.exe",
+        "winload.efi",
+        "curl.exe",
+        "WindowsPowerShell/v1.0/powershell.exe",
+      ];
+      const examined = [];
+      let signed: string | undefined;
+      let publisher: { subject: string; issuer: string } | undefined;
+      const verifier = await run((service) =>
+        Effect.succeed(makeWindowsBrowserRuntimeVerifier(service, temp, Effect.runPromise)),
+      );
+      for (const candidate of candidates) {
+        const path = join(system, candidate);
+        const result = await run((service) =>
+          service.verifyAuthenticode(path, true).pipe(Effect.result),
+        );
+        examined.push({ candidate, result });
+        if (
+          result._tag !== "Success" ||
+          result.success.status !== "verified" ||
+          !result.success.codeSigningEku
+        )
+          continue;
+        expect(result.success.signature).toBe("embedded");
+        expect(result.success.chain[0]?.subject).toBeTruthy();
+        publisher = result.success.chain[0];
+        signed = path;
+        break;
+      }
+      expect(signed, JSON.stringify(examined)).toBeDefined();
+      expect(await verifier.verifyAuthenticode(signed!, publisher!)).toEqual({
+        ok: true,
+        value: publisher,
+      });
+      expect(
+        await verifier.verifyAuthenticode(signed!, { ...publisher!, issuer: "CN=Foreign" }),
+      ).toMatchObject({
+        ok: false,
+        reason: expect.stringContaining("publisher or issuer"),
+      });
+      const bytes = await readFile(signed!);
+      const offset = bytes.readUInt32LE(60);
+      bytes[offset + 8] ^= 1;
+      const tampered = join(temp, "tampered.exe");
+      await writeFile(tampered, bytes);
+      expect(await run((service) => service.verifyAuthenticode(tampered))).toMatchObject({
+        status: "rejected",
+        signature: "embedded",
+      });
+      expect(await verifier.verifyAuthenticode(tampered, publisher!)).toMatchObject({ ok: false });
+      const junction = join(temp, "junction");
+      await symlink(system, junction, "junction");
+      expect(await run((service) => service.inspectPath(junction))).toMatchObject({
+        reparsePoint: true,
+      });
+      expect(
+        await run((service) =>
+          service.inspectPath(join(junction, basename(signed!))).pipe(Effect.flip),
+        ),
+      ).toMatchObject({ kind: "native" });
+    } finally {
+      await rm(temp, { recursive: true, force: true });
     }
-    expect(signed, JSON.stringify(examined)).toBeDefined();
-    const bytes = await readFile(signed!);
-    const offset = bytes.readUInt32LE(60);
-    bytes[offset + 8] ^= 1;
-    const tampered = join(temp, "tampered.exe");
-    await writeFile(tampered, bytes);
-    expect(await run((service) => service.verifyAuthenticode(tampered))).toMatchObject({
-      status: "rejected",
-      signature: "embedded",
-    });
-    const junction = join(temp, "junction");
-    await symlink(system, junction, "junction");
-    expect(await run((service) => service.inspectPath(junction))).toMatchObject({
-      reparsePoint: true,
-    });
-    expect(
-      await run((service) =>
-        service.inspectPath(join(junction, basename(signed!))).pipe(Effect.flip),
-      ),
-    ).toMatchObject({ kind: "native" });
-  } finally {
-    await rm(temp, { recursive: true, force: true });
-  }
-});
+  },
+  150_000,
+);
 
 testOnWindows(
   "reports OS peer identities and exchanges duplex bytes across processes",
@@ -190,4 +226,204 @@ testOnWindows(
       expect(await run((service) => service.readRegistration(key))).toBeNull();
     }
   },
+);
+
+const launcher = () => requiredNativeExecutable("core-server");
+const standInEnvironment = () => ({
+  SYSTEMROOT: process.env.SystemRoot!,
+  ELECTRON_RUN_AS_NODE: "1",
+  NODEX_DECLARED_VALUE: "ready",
+});
+
+function spawnStandIn(script: string, args: readonly string[] = []) {
+  const server = nodeReplServerDefinition({
+    windowsJobLauncher: launcher(),
+    nodePath: process.execPath,
+    codexCliPath: process.execPath,
+    nodeReplPath: process.execPath,
+    env: standInEnvironment(),
+  });
+  return spawn(server.command, [...server.args, "-e", script, ...args], {
+    windowsHide: true,
+    env: {
+      ...process.env,
+      NODE_REPL_HOST_SERVICES_PIPE_PATH: "foreign",
+      sKy_CuA_NaTiVe_PiPe: "foreign",
+      NODEX_DECLARED_VALUE: "foreign",
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+}
+
+testOnWindows(
+  "passes a closed Windows environment and preserves Unicode arguments and stdio",
+  async () => {
+    const argument = "C:\\Nodex 测试\\path with spaces\\";
+    const child = spawnStandIn(
+      `process.stdin.once("data", (data) => {
+      process.stdout.write(JSON.stringify({ argv: process.argv[1], input: data.toString(), env: process.env }) + "\\n");
+    });`,
+      [argument],
+    );
+    try {
+      const output = createInterface({ input: child.stdout! });
+      const result = once(output, "line");
+      const exited = once(child, "exit");
+      child.stdin!.end("MCP message");
+      const [line] = await result;
+      expect(JSON.parse(line)).toEqual({
+        argv: argument,
+        input: "MCP message",
+        env: standInEnvironment(),
+      });
+      expect(await exited).toEqual([0, null]);
+    } finally {
+      await closeChild(child);
+    }
+  },
+);
+
+testOnWindows(
+  "closing the Windows REPL launcher terminates the root and its entire job",
+  async () => {
+    const child = spawnStandIn(`
+    const { spawn } = require("node:child_process");
+    const leaf = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "inherit", windowsHide: true });
+    process.stdout.write(JSON.stringify({ root: process.pid, leaf: leaf.pid }) + "\\n");
+    setInterval(() => {}, 1000);
+  `);
+    try {
+      const output = createInterface({ input: child.stdout! });
+      const [line] = await once(output, "line");
+      const { root, leaf } = JSON.parse(line);
+      const repl = await run((service) => service.processIdentity(root));
+      expect((await run((service) => service.descendants(repl))).map((peer) => peer.pid)).toContain(
+        leaf,
+      );
+      const closed = once(child, "close");
+      child.kill();
+      await closed;
+      for (const pid of [root, leaf])
+        expect(
+          await run((service) => service.processIdentity(pid).pipe(Effect.flip)),
+        ).toMatchObject({ kind: "native" });
+    } finally {
+      await closeChild(child);
+    }
+  },
+);
+
+testOnWindows(
+  "admits the launched verified-path peer and rejects a different OS image",
+  async () => {
+    await run((native) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const host = yield* native.processIdentity(process.pid);
+          const listener = yield* native.listenPipe("codex-browser-use-nodex-integration");
+          const authorize = makeWindowsBrowserPeerAuthorizer({
+            native,
+            host,
+            launcher: launcher(),
+            repl: process.execPath,
+            node: process.execPath,
+            mode: "packaged",
+          });
+          yield* native
+            .connectPipe(listener.endpoint)
+            .pipe(Effect.forkScoped({ startImmediately: true }));
+          const foreign = yield* listener.accept.pipe(Effect.timeout("15 seconds"));
+          expect(yield* authorize(foreign.peer)).toMatchObject({
+            authorized: false,
+            reason: "unverified-peer-image",
+          });
+          foreign.stream.destroy();
+          const child = yield* Effect.acquireRelease(
+            Effect.sync(() =>
+              spawnStandIn(
+                `const pipe = require("node:net").connect(process.argv[1]);
+        pipe.on("data", () => pipe.destroy());
+        pipe.on("error", () => process.exit(1));`,
+                [listener.endpoint],
+              ),
+            ),
+            (child) => Effect.promise(() => closeChild(child)),
+          );
+          const exited = once(child, "exit");
+          const owned = yield* listener.accept.pipe(Effect.timeout("15 seconds"));
+          expect(yield* authorize(owned.peer)).toEqual({ authorized: true });
+          owned.stream.write("ready");
+          expect(yield* Effect.promise(() => exited)).toEqual([0, null]);
+          owned.stream.destroy();
+        }),
+      ),
+    );
+  },
+);
+
+const projectRoot = resolve(".");
+const stagedRuntime = join(projectRoot, ".generated", "codex-runtime");
+test.skipIf(
+  process.platform !== "win32" ||
+    !existsSync(
+      join(
+        stagedRuntime,
+        "agent-runtime",
+        BROWSER_RUNTIME_BUNDLE_DIRECTORY,
+        BROWSER_RUNTIME_MANIFEST_FILENAME,
+      ),
+    ),
+)(
+  "initializes the staged vendor Windows REPL over MCP stdio",
+  async () => {
+    const verifier = await run((native) =>
+      Effect.succeed(makeWindowsBrowserRuntimeVerifier(native, stagedRuntime, Effect.runPromise)),
+    );
+    const { browserRuntime } = await resolveCodexRuntime({
+      platform: process.platform,
+      architecture: process.arch,
+      projectRootPath: projectRoot,
+      isPackaged: false,
+      windowsBrowserRuntimeVerifier: verifier,
+    });
+    if (browserRuntime.status !== "available") throw new Error(browserRuntime.message);
+    const home = await mkdtemp(join(tmpdir(), "nodex-staged-repl-"));
+    try {
+      await mkdir(windowsDesktopToolCodexHome(home), { recursive: true });
+      const result = new BrowserUseThreadConfigBuilder({
+        browserRuntime,
+        codexHome: home,
+        runtimeStateHome: home,
+        windows: { jobLauncher: launcher(), environment: process.env },
+      }).buildResult();
+      if (result.status !== "available") throw new Error(result.message);
+      const server = result.config["mcp_servers.node_repl"] as { command: string; args: string[] };
+      const child = spawn(server.command, server.args, { env: {}, windowsHide: true });
+      try {
+        const output = createInterface({ input: child.stdout });
+        const response = once(output, "line");
+        child.stdin.write(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "initialize",
+            params: {
+              protocolVersion: "2024-11-05",
+              clientInfo: { name: "Nodex native test", version: "1" },
+              capabilities: {},
+            },
+          }) + "\n",
+        );
+        expect(JSON.parse((await response)[0])).toMatchObject({
+          id: 1,
+          result: { serverInfo: { name: expect.any(String) } },
+        });
+      } finally {
+        await closeChild(child);
+      }
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
+  },
+  180_000,
 );

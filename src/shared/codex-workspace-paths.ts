@@ -19,6 +19,14 @@ function stripWindowsDevicePrefix(value: string): string {
   return value.match(/^\\\\\?\\([A-Za-z]:[\\/].*)$/)?.[1] ?? value;
 }
 
+/** WSL UNC paths identify a Linux execution location, including Windows drive mounts. */
+export function isWslWorkspacePath(value: string | null | undefined): boolean {
+  return (
+    value != null &&
+    /^\/\/(?:wsl\$|wsl\.localhost)\//i.test(stripWindowsDevicePrefix(value).replaceAll("\\", "/"))
+  );
+}
+
 function windowsComparablePath(value: string): string {
   const normalized = stripWindowsDevicePrefix(value).replaceAll("\\", "/").toLowerCase();
   const wsl = normalized.match(/^\/\/(?:wsl\$|wsl\.localhost)\/[^/]+(?:\/(.*))?$/);

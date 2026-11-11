@@ -2,6 +2,7 @@ use super::files::{invalid, open_ntfs};
 use crate::windows::wide;
 use serde::Serialize;
 use std::ffi::CStr;
+use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::os::windows::io::AsRawHandle;
@@ -11,6 +12,8 @@ use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Security::Cryptography::*;
 use windows_sys::Win32::Security::WinTrust::*;
 use windows_sys::Win32::Storage::FileSystem::FILE_READ_ATTRIBUTES;
+use x509_parser::asn1_rs::ToDer;
+use x509_parser::x509::{AttributeTypeAndValue, X509Name};
 
 #[derive(Serialize)]
 pub struct CertificateIdentity {
@@ -88,6 +91,10 @@ impl Drop for Trust {
 }
 
 pub fn verify_authenticode(path: &Path) -> io::Result<Authenticode> {
+    inspect_signature(path, false)
+}
+
+pub(super) fn inspect_signature(path: &Path, require_revocation: bool) -> io::Result<Authenticode> {
     let (mut chain, reparse) = open_ntfs(path, GENERIC_READ | FILE_READ_ATTRIBUTES)?;
     let mut file = chain.pop().expect("checked path");
     if reparse {
@@ -103,7 +110,7 @@ pub fn verify_authenticode(path: &Path) -> io::Result<Authenticode> {
         hFile: file.as_raw_handle(),
         pgKnownSubject: null_mut(),
     };
-    verify(&mut input, true)
+    verify(&mut input, true, require_revocation)
 }
 
 fn rejected(signature: &'static str, status: i32) -> Authenticode {
@@ -113,7 +120,11 @@ fn rejected(signature: &'static str, status: i32) -> Authenticode {
     }
 }
 
-fn verify(input: &mut WINTRUST_FILE_INFO, check_revocation: bool) -> io::Result<Authenticode> {
+fn verify(
+    input: &mut WINTRUST_FILE_INFO,
+    check_revocation: bool,
+    require_revocation: bool,
+) -> io::Result<Authenticode> {
     let mut signature = WINTRUST_SIGNATURE_SETTINGS {
         cbStruct: size_of::<WINTRUST_SIGNATURE_SETTINGS>() as u32,
         dwFlags: WSS_VERIFY_SPECIFIC,
@@ -127,8 +138,11 @@ fn verify(input: &mut WINTRUST_FILE_INFO, check_revocation: bool) -> io::Result<
         dwStateAction: WTD_STATEACTION_VERIFY,
         pSignatureSettings: &mut signature,
         fdwRevocationChecks: WTD_REVOKE_NONE, // Provider flags below control chain revocation.
-        dwProvFlags: WTD_CACHE_ONLY_URL_RETRIEVAL
-            | WTD_DISABLE_MD2_MD4
+        dwProvFlags: if require_revocation {
+            0
+        } else {
+            WTD_CACHE_ONLY_URL_RETRIEVAL
+        } | WTD_DISABLE_MD2_MD4
             | if check_revocation {
                 WTD_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT
             } else {
@@ -157,6 +171,7 @@ fn verify(input: &mut WINTRUST_FILE_INFO, check_revocation: bool) -> io::Result<
         // Retry only missing revocation evidence. A known revocation or any other
         // trust error remains fatal. The retry still verifies digest and chain.
         if check_revocation
+            && !require_revocation
             && matches!(
                 status,
                 CRYPT_E_REVOCATION_OFFLINE
@@ -166,7 +181,7 @@ fn verify(input: &mut WINTRUST_FILE_INFO, check_revocation: bool) -> io::Result<
             && signer.is_some_and(|signer| revocation_unavailable(signer))
         {
             drop(trust);
-            return verify(input, false);
+            return verify(input, false, false);
         }
         return Ok(rejected("embedded", status));
     }
@@ -186,9 +201,13 @@ fn verify(input: &mut WINTRUST_FILE_INFO, check_revocation: bool) -> io::Result<
                 "WinVerifyTrust returned an incomplete signer chain",
             ));
         }
+        let encoded = unsafe {
+            std::slice::from_raw_parts((*cert).pbCertEncoded, (*cert).cbCertEncoded as usize)
+        };
+        let (_, cert) = x509_parser::parse_x509_certificate(encoded).map_err(io::Error::other)?;
         chain.push(CertificateIdentity {
-            subject: name(cert, 0)?,
-            issuer: name(cert, CERT_NAME_ISSUER_FLAG)?,
+            subject: distinguished_name(cert.subject())?,
+            issuer: distinguished_name(cert.issuer())?,
         });
     }
     let cert = unsafe { (*signer.pasCertChain).pCert };
@@ -197,7 +216,9 @@ fn verify(input: &mut WINTRUST_FILE_INFO, check_revocation: bool) -> io::Result<
         chain,
         code_signing_eku: has_code_signing_eku(cert)?,
         timestamp_present: signer.csCounterSigners > 0,
-        revocation: if check_revocation {
+        revocation: if require_revocation {
+            "onlineChecked"
+        } else if check_revocation {
             "cacheChecked"
         } else {
             "cacheUnavailable"
@@ -219,31 +240,60 @@ fn revocation_unavailable(signer: &CRYPT_PROVIDER_SGNR) -> bool {
         })
 }
 
-fn name(cert: *const CERT_CONTEXT, flags: u32) -> io::Result<String> {
-    let x500 = CERT_X500_NAME_STR;
-    let format = (&raw const x500).cast();
-    let length =
-        unsafe { CertGetNameStringW(cert, CERT_NAME_RDN_TYPE, flags, format, null_mut(), 0) };
-    if length <= 1 {
-        return Err(io::Error::other(
-            "signer certificate has no distinguished name",
-        ));
+// The lock uses RFC 2253. CryptoAPI display strings use different RDN order,
+// whitespace, and quoting, so format the same certificate's DER directly.
+fn distinguished_name(name: &X509Name<'_>) -> io::Result<String> {
+    let rdns = name.iter_rdn().collect::<Vec<_>>();
+    let mut result = Vec::with_capacity(rdns.len());
+    for rdn in rdns.into_iter().rev() {
+        let attributes = rdn
+            .iter()
+            .map(distinguished_attribute)
+            .collect::<io::Result<Vec<_>>>()?;
+        result.push(attributes.join("+"));
     }
-    let mut text = vec![0; length as usize];
-    if unsafe {
-        CertGetNameStringW(
-            cert,
-            CERT_NAME_RDN_TYPE,
-            flags,
-            format,
-            text.as_mut_ptr(),
-            length,
-        )
-    } != length
-    {
-        return Err(io::Error::last_os_error());
+    Ok(result.join(","))
+}
+
+fn distinguished_attribute(attribute: &AttributeTypeAndValue<'_>) -> io::Result<String> {
+    let oid = attribute.attr_type().to_id_string();
+    let key = match oid.as_str() {
+        "2.5.4.3" => "CN",
+        "2.5.4.6" => "C",
+        "2.5.4.7" => "L",
+        "2.5.4.8" => "ST",
+        "2.5.4.9" => "STREET",
+        "2.5.4.10" => "O",
+        "2.5.4.11" => "OU",
+        "0.9.2342.19200300.100.1.25" => "DC",
+        "0.9.2342.19200300.100.1.1" => "UID",
+        _ => {
+            return Ok(format!(
+                "{oid}=#{}",
+                hex::encode_upper(
+                    attribute
+                        .attr_value()
+                        .to_der_vec()
+                        .map_err(io::Error::other)?
+                )
+            ));
+        }
+    };
+    let value = attribute.as_str().map_err(io::Error::other)?;
+    let mut result = format!("{key}=");
+    for (index, byte) in value.bytes().enumerate() {
+        match byte {
+            0..=31 | 127..=255 => write!(result, "\\{byte:02X}").expect("write to String"),
+            b',' | b'+' | b'"' | b'\\' | b'<' | b'>' | b';' => {
+                result.push('\\');
+                result.push(char::from(byte));
+            }
+            b' ' if index == 0 || index + 1 == value.len() => result.push_str("\\ "),
+            b'#' if index == 0 => result.push_str("\\#"),
+            _ => result.push(char::from(byte)),
+        }
     }
-    String::from_utf16(&text[..text.len() - 1]).map_err(io::Error::other)
+    Ok(result)
 }
 
 fn has_code_signing_eku(cert: *const CERT_CONTEXT) -> io::Result<bool> {

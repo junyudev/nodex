@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { parseDesktopIdentifier, parseDesktopToolActivity } from "@nodex/agent-runtime/contracts";
 import type { RuntimeDesktopActivitySource } from "../host-runtime/RemoteHostedPipRuntime";
+import { win32 } from "node:path";
+import { isWslWorkspacePath } from "../../shared/codex-workspace-paths";
 import { inboundTextHash } from "./ChatMessageDelivery";
 import { HostWorkspace } from "../../host/HostWorkspace";
 import { createOperationId } from "../core-runtime/operation-identity";
@@ -67,6 +69,20 @@ const sameNativeFrame = (left: AgentHostExecutionIdentity, right: ExecutionProof
 function hasExternalProviderServer(config: unknown): boolean {
   if (typeof config !== "object" || config === null || !("serverUrl" in config)) return false;
   return typeof config.serverUrl === "string" && config.serverUrl.trim().length > 0;
+}
+
+function launchesWsl(config: unknown): boolean {
+  if (typeof config !== "object" || config === null) return false;
+  const command =
+    "commandPath" in config
+      ? config.commandPath
+      : "binaryPath" in config
+        ? config.binaryPath
+        : null;
+  return (
+    typeof command === "string" &&
+    (isWslWorkspacePath(command) || /^wsl(?:\.exe)?$/iu.test(win32.basename(command)))
+  );
 }
 
 export const make = Effect.fn("AgentRuntimeHost.make")(function* (
@@ -276,11 +292,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       identity.nativeThreadRef?.driver === "codex" ? identity.nativeThreadRef.nativeId : null;
     const taskId = nativeId ?? shellTaskId(proof.threadId);
     const providerConfig = options.providers[proof.providerInstanceId]?.config;
-    const serverUrl =
-      typeof providerConfig === "object" && providerConfig !== null && "serverUrl" in providerConfig
-        ? providerConfig.serverUrl
-        : undefined;
-    const externalOpenCode = typeof serverUrl === "string" && serverUrl.trim() !== "";
+    const externalOpenCode = hasExternalProviderServer(providerConfig);
     const supportsCli =
       nativeId !== null || driver === "claudeAgent" || (driver === "opencode" && !externalOpenCode);
     const scopedConnection =
@@ -346,9 +358,15 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     };
   });
 
-  const prepareDesktop = (identity: { providerInstanceId: string; nativeDriver: string }) => {
+  const prepareDesktop = (
+    identity: { providerInstanceId: string; nativeDriver: string },
+    cwd: string | null,
+  ) => {
     if (
       !options.desktop ||
+      isWslWorkspacePath(cwd) ||
+      (config.platform === "win32" &&
+        launchesWsl(options.providers[identity.providerInstanceId]?.config)) ||
       identity.nativeDriver === "codex" ||
       driverOf(identity.providerInstanceId) !== identity.nativeDriver ||
       (identity.nativeDriver === "opencode" &&
@@ -367,7 +385,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       if (request.operation === "turn.prepare") return yield* prepare(request.identity);
       if (request.operation === "desktop.skill-roots") {
         if (!isCurrentLease(request.identity)) return yield* unavailable(request.operation);
-        return (yield* prepareDesktop(request.identity))?.pluginRoots ?? [];
+        return (yield* prepareDesktop(request.identity, request.cwd))?.pluginRoots ?? [];
       }
       if (request.operation === "thread.prepare") {
         const { identity } = request;
@@ -382,7 +400,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
             ? yield* options.workspaceEnvironment(request.cwd)
             : null;
         const prepared = environment ? { environment } : {};
-        const desktopTools = yield* prepareDesktop(identity);
+        const desktopTools = yield* prepareDesktop(identity, request.cwd);
         return desktopTools ? { ...prepared, desktopTools } : prepared;
       }
       if (request.operation === "turn.native") {

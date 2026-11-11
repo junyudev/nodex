@@ -109,6 +109,18 @@ describe("Desktop Tool host bindings", () => {
       PATH: "/usr/bin",
     });
   });
+  test("drops Windows host bindings independently of environment casing", () => {
+    const env = {
+      sky_CUA_Native_Pipe: "foreign",
+      node_repl_Trusted_Code_Paths: "foreign",
+      Path: "C:/bin",
+    };
+    expect(desktopToolHostBindingNames(env, "win32")).toEqual([
+      "node_repl_Trusted_Code_Paths",
+      "sky_CUA_Native_Pipe",
+    ]);
+    expect(withoutDesktopToolHostBindings(env, "win32")).toEqual({ Path: "C:/bin" });
+  });
 });
 
 describe("node_repl launcher", () => {

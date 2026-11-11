@@ -550,8 +550,8 @@ Use application Modules exchange typed Effects; Promise exists only at the sideb
 route callback and native pipe/API adapters, where callback fibers belong to the
 session or installation Scope. The native-pipe factory registers its finalizer before
 listening and returns only `pipePath` plus broadcast capability: the session Scope
-directly owns the net server, accepted sockets, callback admission, and exact Unix
-socket file, with no `start()`, `close()`, or disposable server class. Native-pipe
+directly owns the listener, accepted connections, and callback admission. The
+platform adapter supplies the Unix socket or Windows named pipe. Native-pipe
 commands pass through the session's single command admission semaphore. IAB deadlines,
 capture polling sleeps, cursor arrival, and WebContents attachment waits borrow the
 session Effect clock and callback runtime, so closing the session interrupts waits and

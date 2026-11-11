@@ -155,6 +155,7 @@ const hostRequestSchema = z.discriminatedUnion("operation", [
     type: z.literal("host.request"),
     id: z.string().min(1),
     operation: z.literal("desktop.skill-roots"),
+    cwd: z.string().nullable(),
     identity: hostIdentitySchema.extend({
       providerInstanceId: z.string().min(1),
       nativeDriver: z.string().min(1),

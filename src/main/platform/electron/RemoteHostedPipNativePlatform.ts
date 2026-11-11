@@ -553,7 +553,7 @@ export function makeRemoteHostedPipNativePlatform(options: {
   never,
   Scope.Scope | ScopedCallbackRuntime
 > {
-  if (!hostCapabilities(options.platform).computerControl)
+  if (!hostCapabilities(options.platform).nativePip)
     return Effect.succeed(makeUnavailable("platform-unsupported"));
   if (!options.verifiedAddonPath) return Effect.succeed(makeUnavailable("addon-missing"));
   const addon = loadSkyNativeAddon(options.verifiedAddonPath, options.expectedExports);
