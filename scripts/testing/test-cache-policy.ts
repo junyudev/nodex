@@ -11,7 +11,7 @@ export const isCacheSuite = (value: string): value is CacheSuite =>
 export function canCacheFile(suite: CacheSuite, file: string): boolean {
   return (
     nativeRequirements(suite, [file]).length === 0 &&
-    !/^(?:config\/|scripts\/|packages\/mobile\/src\/native-tests\/)/u.test(file) &&
+    !file.startsWith("packages/mobile/src/native-tests/") &&
     ![
       "packages/landing/src/landing-build.test.ts",
       "packages/nodex-app-tools-mcp/src/bundle.test.ts",
@@ -35,15 +35,21 @@ export function partitionCacheFiles(suite: CacheSuite, files: readonly string[])
   return { cacheable, uncached };
 }
 
-export function chooseCacheAudits(hits: readonly string[], seed: string, count = 1): string[] {
+export function chooseCacheAudits(
+  hits: readonly string[],
+  seed: string,
+  auditedAt: Readonly<Record<string, number>> = {},
+  count = 1,
+): string[] {
   const ranked = [...new Set(hits)].map((file) => ({
     file,
+    lastAudit: auditedAt[file] ?? 0,
     rank: createHash("sha256")
       .update(JSON.stringify([seed, file]))
       .digest("hex"),
   }));
   return ranked
-    .toSorted((a, b) => a.rank.localeCompare(b.rank))
+    .toSorted((a, b) => a.lastAudit - b.lastAudit || a.rank.localeCompare(b.rank))
     .slice(0, count)
     .map(({ file }) => file);
 }
@@ -53,4 +59,22 @@ export function relativeInput(root: string, file: string): string | undefined {
   if (!relative || relative === ".." || relative.startsWith("../") || path.isAbsolute(relative))
     return undefined;
   return relative;
+}
+
+export function cacheReach(
+  files: readonly string[],
+  eligible: ReadonlySet<string>,
+  timings: Readonly<Record<string, number>>,
+) {
+  let totalMs = 0;
+  let eligibleMs = 0;
+  let timed = 0;
+  for (const file of files) {
+    const duration = timings[file];
+    if (!(duration > 0 && Number.isFinite(duration))) continue;
+    totalMs += duration;
+    if (eligible.has(file)) eligibleMs += duration;
+    timed++;
+  }
+  return { timed, timeShare: totalMs > 0 ? eligibleMs / totalMs : undefined };
 }

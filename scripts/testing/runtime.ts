@@ -53,12 +53,12 @@ export function vitestCommand(
   );
 }
 
-export async function discoverSuite(
+export async function discoverSuiteManifest(
   suite: SuiteId,
   args: readonly string[],
   related: boolean,
   context: Pick<Command, "cwd" | "env" | "signal">,
-): Promise<readonly string[]> {
+) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "nodex-test-discovery-"));
   try {
     const output = path.join(directory, "files.json");
@@ -77,12 +77,25 @@ export async function discoverSuite(
     const result = await runCommand(command);
     if (result.exitCode !== 0)
       throw new Error("Test discovery failed for " + suite + " (exit " + result.exitCode + ").");
-    const files: unknown = JSON.parse(await readFile(output, "utf8"));
-    if (!Array.isArray(files) || !files.every((file): file is string => typeof file === "string")) {
+    const { files, isolated } = JSON.parse(await readFile(output, "utf8")) as {
+      files?: unknown;
+      isolated?: unknown;
+    };
+    if (
+      typeof isolated !== "boolean" ||
+      !Array.isArray(files) ||
+      !files.every((file): file is string => typeof file === "string")
+    ) {
       throw new Error("Invalid test discovery result for " + suite + ".");
     }
-    return files;
+    return { files, isolated };
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+}
+
+export async function discoverSuite(
+  ...args: Parameters<typeof discoverSuiteManifest>
+): Promise<readonly string[]> {
+  return (await discoverSuiteManifest(...args)).files;
 }

@@ -16,13 +16,20 @@ export async function discoverTests(suite: string, args: readonly string[], rela
     const specifications = related
       ? await context.getRelevantTestSpecifications(filter)
       : await context.globTestSpecifications(filter);
-    return [
+    const files = [
       ...new Set(
         specifications.map((specification) =>
           path.relative(process.cwd(), specification.moduleId).replaceAll(path.sep, "/"),
         ),
       ),
     ].sort();
+    const isolated = specifications.every(
+      ({ project }) =>
+        project.config.isolate &&
+        !project.config.browser.enabled &&
+        project.config.experimental.viteModuleRunner !== false,
+    );
+    return { files, isolated };
   } finally {
     await context.close();
   }
@@ -33,6 +40,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.met
   if (!suite || !output || !["run", "related"].includes(mode)) {
     throw new Error("Expected suite, manifest path, run/related, and optional Vitest arguments.");
   }
-  const files = await discoverTests(suite, args, mode === "related");
-  await writeFile(output, JSON.stringify(files, null, 2) + "\n");
+  const manifest = await discoverTests(suite, args, mode === "related");
+  await writeFile(output, JSON.stringify(manifest, null, 2) + "\n");
 }

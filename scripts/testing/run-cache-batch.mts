@@ -26,16 +26,37 @@ const recorder: Reporter = {
   async onTestRunEnd(modules, errors, reason) {
     if (errors.length > 0 || reason === "interrupted") return;
     const projects = await recordedProjects(recordedDirectory);
-    const readDependencies = dependencyReader(root, new Set(workspace));
+    const inputs = new Set(workspace);
+    const readDependencies = dependencyReader(root, inputs);
+    const readRendererJsdomDependencies = dependencyReader(root, inputs, true);
     for (const module of modules) {
       const file = module.relativeModuleId;
+      const {
+        environmentSetupDuration,
+        prepareDuration,
+        setupDuration,
+        collectDuration,
+        duration,
+      } = module.diagnostic();
+      const durationMs =
+        environmentSetupDuration + prepareDuration + setupDuration + collectDuration + duration;
       if (!canCacheFile(suite, file)) {
-        evidence.push({ file, passed: module.state() === "passed", reason: "path policy" });
+        evidence.push({
+          file,
+          passed: module.state() === "passed",
+          reason: "path policy",
+          durationMs,
+        });
         continue;
       }
-      evidence.push(
-        await readDependencies(module, projects[module.toTestSpecification().project.name]),
-      );
+      const project = module.toTestSpecification().project;
+      const read =
+        suite === "renderer" &&
+        project.config.environment === "jsdom" &&
+        !("Worker" in globalThis || "AudioWorkletNode" in globalThis)
+          ? readRendererJsdomDependencies
+          : readDependencies;
+      evidence.push({ ...(await read(module, projects[project.name])), durationMs });
     }
   },
 };

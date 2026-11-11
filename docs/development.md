@@ -1114,9 +1114,11 @@ Add a snapshot cache only after measurement shows live authoritative materializa
 `vp run test:cached unit` and `vp run test:cached renderer` discover test files
 with the suite's Vitest config and accept the same file filters. On macOS they
 run all misses, uncached files, and one sampled hit in a single Vitest run per
-suite. That run uses the suite's environment, pool, workers, native preparation,
-and machine budget. CI, other host platforms, stress and live tiers, and timing
-collection use the ordinary runner. Set `NODEX_TEST_CACHE=off` to bypass the cache.
+suite. The audit picks the least recently audited hit in the checkout and
+randomizes ties. The run uses the suite's environment, pool, workers, native
+preparation, and machine budget. CI, other host platforms, stress and live tiers,
+detailed timing collection, and configurations without isolated files and a Vite
+module graph use the ordinary runner. Set `NODEX_TEST_CACHE=off` to bypass the cache.
 
 A reusable pass requires every test in the file to pass without retries, skips,
 or todos. Vitest records the imports the workers loaded. The cache also follows
@@ -1131,20 +1133,29 @@ files invalidate the shared key. Local artifact directories such as
 `cache.local/` do not affect workspace identity. Keep checkout and installation
 inputs stable during validation.
 
-Eligibility excludes workspace modules that import I/O-capable Node builtins or
-use opaque module loading or start workers. Modules that call network clients
-stay eligible: a response is not a checkout input, and a test can only reach a
-server of its own through those builtins. The cache assumes an intact
-locked dependency install. Keep tests that use subprocesses, external fixtures,
-native artifacts, or mutable host state on the uncached path. Add exceptions to
-`scripts/testing/test-cache-policy.ts` when the graph cannot express a test's
-inputs. The suite prints the eligible fraction and reasons for uncached files. The
-latest per-file report is under `node_modules/.cache/test-result-reports/`.
+Eligibility excludes I/O-capable Node builtins, opaque module loading, native
+artifacts, unknown virtual modules, and worker execution outside the module graph.
+The pinned toolchain supplies the allowed virtual helper. In renderer jsdom tests,
+the known browser worker and audio worklet URL imports record their entry files
+and resolved static imports. The environment has no native Worker or AudioWorklet
+implementation. Browser tests continue to exercise real worker execution.
+
+Tooling tests can use the cache when their imports have recorded inputs. External
+tooling dependencies and ambient tooling inputs such as environment variables
+stay uncached. The cache assumes an intact locked dependency install. Keep tests
+that use subprocesses, external fixtures, native artifacts, or mutable host state
+on the uncached path. Add exceptions to `scripts/testing/test-cache-policy.ts`
+when the graph cannot express a test's inputs.
+
+The suite prints eligibility by file count and by the share of measured file
+time, including environment setup, collection, and test execution. The latest
+report under `node_modules/.cache/test-result-reports/` retains per-file timings
+across focused runs and cache hits.
 
 Passes live under the primary checkout's `cache.local/test-results/`.
 `NODEX_BUILD_CACHE_DIR` overrides the cache root. Each test keeps up to four
 recent content records so independent worktrees and branch switches can reuse
-passes. A failed audit fails the command and invalidates the shared suite cache.
+passes. A failed audit or a corrupt record fails the command and invalidates the shared suite cache.
 
 ### Measuring engineering feedback
 

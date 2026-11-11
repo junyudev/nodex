@@ -6,9 +6,10 @@ import { nativeRequirements } from "../../config/test-suites.ts";
 import { resolveVitestTestTier } from "../../config/vitest-test-tier.ts";
 import { runCommand, withCommandSignal } from "../tooling/process.ts";
 import { prepareNativeArtifacts, preparedNativeEnvironment } from "./native-artifacts.ts";
-import { discoverSuite, runtimeCommand } from "./runtime.ts";
+import { discoverSuiteManifest, runtimeCommand } from "./runtime.ts";
 import { runTests } from "./run-tests.ts";
 import {
+  cacheReach,
   chooseCacheAudits,
   isCacheSuite,
   partitionCacheFiles,
@@ -17,10 +18,12 @@ import {
 import {
   cacheDirectory,
   cacheEpoch,
+  CorruptCachedPass,
   fileHasher,
   findPass,
   globalCacheKey,
   invalidateCache,
+  readCacheReport,
   savePass,
   workspaceInputs,
   writeCacheReport,
@@ -55,26 +58,34 @@ export async function runCachedSuite(
   const commandContext = { cwd: root, env: { ...env, NODEX_TEST_TIER: tier }, signal };
   const directory = cacheDirectory(root, env, suite);
   const resultsRoot = path.dirname(path.dirname(directory));
-  const [selected, workspace, epoch] = await Promise.all([
-    discoverSuite(suite, filters, false, commandContext),
+  const [{ files: selected, isolated }, workspace, epoch, history] = await Promise.all([
+    discoverSuiteManifest(suite, filters, false, commandContext),
     workspaceInputs(root, resultsRoot),
     cacheEpoch(directory),
+    readCacheReport(root, suite),
   ]);
+  // Skipping files changes the shared worker state when isolation is disabled.
+  if (!isolated) return runUncached();
   const hash = fileHasher(root);
   const globalKey = await globalCacheKey(root, suite, commandContext.env, epoch, workspace, hash);
   if (!globalKey || selected.length === 0) return runUncached();
 
   const { cacheable, uncached } = partitionCacheFiles(suite, selected);
-  const hits = new Set(
-    (
-      await Promise.all(
-        cacheable.map(async (file) =>
-          (await findPass(directory, file, globalKey, hash)) ? file : undefined,
-        ),
-      )
-    ).filter((file) => file !== undefined),
-  );
-  const [audit] = chooseCacheAudits([...hits], randomUUID());
+  const found = await Promise.all(
+    cacheable.map(async (file) =>
+      (await findPass(directory, file, globalKey, hash)) ? file : undefined,
+    ),
+  ).catch(async (error: unknown) => {
+    if (!(error instanceof CorruptCachedPass)) throw error;
+    await invalidateCache(directory);
+    process.stderr.write(
+      `[test-cache] Audit failed for ${error.message}: corrupted record. Invalidated ${suite} cached passes.\n`,
+    );
+    return undefined;
+  });
+  if (!found) return 1;
+  const hits = new Set(found.filter((file) => file !== undefined));
+  const [audit] = chooseCacheAudits([...hits], randomUUID(), history.auditedAt);
   const batch = selected.filter((file) => !hits.has(file) || file === audit);
   process.stdout.write(
     `[test-cache] ${suite}: ${hits.size} hits, ${batch.length} files to run${audit ? " including audit " + audit : ""} (${((performance.now() - started) / 1_000).toFixed(2)}s lookup)\n`,
@@ -132,7 +143,7 @@ export async function runCachedSuite(
     const currentWorkspace = await workspaceInputs(root, resultsRoot);
     const stable = currentWorkspace.topology === workspace.topology && (await hash.unchanged());
     const reasons = new Map<string, number>();
-    let eligible = hits.size;
+    const eligible = new Set(hits);
     for (const entry of evidence) {
       if (entry.file === audit) continue;
       const deps = entry.deps;
@@ -144,7 +155,7 @@ export async function runCachedSuite(
         );
         continue;
       }
-      eligible++;
+      eligible.add(entry.file);
       if (!stable) continue;
       const inputs = await Promise.all(
         deps.map(async (file) => [file, await hash(file, batchStarted)] as const),
@@ -157,14 +168,36 @@ export async function runCachedSuite(
         ),
       });
     }
+    const timings = { ...history.timings };
+    const auditedAt = { ...history.auditedAt };
+    for (const { file, durationMs } of evidence) {
+      if (durationMs !== undefined && durationMs > 0) timings[file] = durationMs;
+    }
+    if (audit) auditedAt[audit] = Date.now();
+    const previous = cacheReach(selected, eligible, history.timings ?? {});
+    const usePrevious = previous.timed === selected.length;
+    const reach = usePrevious ? previous : cacheReach(selected, eligible, timings);
+    const share =
+      reach.timeShare === undefined
+        ? ""
+        : `, ${(100 * reach.timeShare).toFixed(1)}% of ${usePrevious ? "previous" : "observed"} file time` +
+          (reach.timed < selected.length ? ` (${reach.timed}/${selected.length} timed)` : "");
     await writeCacheReport(root, suite, {
       hits: [...hits],
-      evidence: evidence.map(({ file, passed, reason }) => ({ file, passed, reason })),
+      evidence: evidence.map(({ file, passed, reason, input, durationMs }) => ({
+        file,
+        passed,
+        reason,
+        input,
+        durationMs,
+      })),
+      timings,
+      auditedAt,
     });
     const missing = batch.length - evidence.length;
     if (missing > 0) reasons.set("missing test evidence", missing);
     process.stdout.write(
-      `[test-cache] ${suite}: ${eligible}/${selected.length} cacheable; ${
+      `[test-cache] ${suite}: ${eligible.size}/${selected.length} cacheable (${((eligible.size / selected.length) * 100).toFixed(1)}% of files${share}); ${
         [...reasons]
           .sort((left, right) => right[1] - left[1])
           .map(([reason, count]) => `${reason} (${count})`)

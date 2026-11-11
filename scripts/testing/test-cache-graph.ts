@@ -34,11 +34,56 @@ export function builtinReason(request: string) {
     : undefined;
 }
 
-export function sourceReason(file: string, source: string): string | undefined {
-  if (!/\.[cm]?[jt]sx?$/u.test(file)) return undefined;
+// Oxc's explicit-resource-management transform embeds this helper in the locked Vite toolchain.
+const lockedVirtualModules = new Set(["\0@oxc-project+runtime@0.155.0/helpers/esm/usingCtx.js"]);
+
+const rendererWorkerUrls = new Map([
+  [
+    "src/renderer/features/dictation/dictation-streaming-client.ts",
+    "./dictation-pcm-worklet.ts?worker&url",
+  ],
+  ["src/renderer/lib/highlight-pool.tsx", "./highlight.worker.ts?worker&url"],
+  [
+    "src/renderer/lib/realtime-voice/realtime-voice-media.ts",
+    "./realtime-voice-audio-worklet.ts?worker&url",
+  ],
+]);
+
+// Tooling can invoke tools through dependencies even with no direct Node builtin import.
+const pureToolingImports = new Set([
+  "@effect/vitest",
+  "effect",
+  "effect/Effect",
+  "effect/testing",
+  "vite-plus/test",
+  "vitest",
+]);
+
+const scriptFile = (file: string) => /\.[cm]?[jt]sx?$/u.test(file);
+
+interface SourceInputs {
+  readonly reason?: string;
+  readonly staticRequests?: readonly string[];
+  readonly workerUrl?: string;
+  readonly expandsGlob?: boolean;
+  readonly customEnvironment?: boolean;
+}
+
+function inspectSource(file: string, source: string, rendererJsdom: boolean): SourceInputs {
+  const workerUrl = rendererJsdom ? rendererWorkerUrls.get(file) : undefined;
   const parsed = parseSync(file, source);
-  if (parsed.errors.length > 0) return "unparsed module";
+  if (parsed.errors.length > 0) return { reason: "unparsed module" };
   const { staticImports, staticExports, dynamicImports } = parsed.module;
+  const staticRequests = [
+    ...staticImports
+      .filter(({ entries }) => entries.length === 0 || entries.some(({ isType }) => !isType))
+      .map(({ moduleRequest }) => moduleRequest.value),
+    ...staticExports.flatMap(({ entries }) =>
+      entries.flatMap(({ moduleRequest, isType }) =>
+        moduleRequest && !isType ? [moduleRequest.value] : [],
+      ),
+    ),
+  ];
   const requests = [
     ...staticImports.map(({ moduleRequest }) => moduleRequest.value),
     ...staticExports.flatMap(({ entries }) =>
@@ -49,27 +94,68 @@ export function sourceReason(file: string, source: string): string | undefined {
     moduleRequest: { start, end },
   } of dynamicImports) {
     const literal = /^(['"`])([^'"$`\\]+)\1$/u.exec(source.slice(start, end).trim());
-    if (!literal) return "computed import";
+    if (!literal) return { reason: "computed import" };
     requests.push(literal[2]);
   }
   for (const request of requests) {
     const reason = builtinReason(request);
-    if (reason) return reason;
-    if (/^https?:/u.test(request) || /[?&](?:shared)?worker(?:[&=]|$)/u.test(request))
-      return "external execution";
+    if (reason) return { reason };
+    if (
+      /^https?:/u.test(request) ||
+      (/[?&](?:shared)?worker(?:[&=]|$)/u.test(request) && request !== workerUrl)
+    )
+      return { reason: "external execution" };
+    if (
+      /^(?:scripts|config)\//u.test(file) &&
+      !request.startsWith(".") &&
+      !isBuiltin(request) &&
+      !pureToolingImports.has(request)
+    )
+      return { reason: "tooling dependency" };
   }
+  // This private class method looks like CommonJS to the conservative source check.
+  const loaderSource =
+    file === "src/renderer/lib/local-structural-transaction-presentation.ts"
+      ? source.replace(/\b(?:this\.|private )require\s*\(/gu, "(")
+      : source;
   if (
     /\b(?:require|createRequire|process\.(?:getBuiltinModule|dlopen)|import\.meta\.resolve)\s*\(/u.test(
-      source,
+      loaderSource,
     )
   )
-    return "runtime module resolution";
-  if (/\bprocess\.(?:cwd|chdir)\s*\(/u.test(source)) return "checkout-dependent code";
-  // A worker script is loaded outside the module graph, so its content is not a recorded input.
-  // Network clients are not excluded: a response is not a checkout input, and a test can only
-  // reach a server of its own through the Node builtins rejected above.
-  if (/\b(?:Worker|SharedWorker)\s*\(/u.test(source)) return "worker script";
-  return undefined;
+    return { reason: "runtime module resolution" };
+  if (/\bprocess\.(?:cwd|chdir)\s*\(/u.test(source)) return { reason: "checkout-dependent code" };
+  if (
+    /^(?:scripts|config)\//u.test(file) &&
+    /\b(?:process\s*(?:\[|\.(?!(?:platform|arch|versions)\b))|fetch\s*\()/u.test(source)
+  )
+    return { reason: "ambient tooling inputs" };
+  // jsdom has no native Worker or AudioWorklet. This factory uses the recorded URL,
+  // and the renderer tests that exercise the worklet clients mock addModule.
+  const workerSource =
+    workerUrl &&
+    file === "src/renderer/lib/highlight-pool.tsx" &&
+    staticRequests.includes(workerUrl)
+      ? source.replace(
+          /\bnew Worker\(highlightWorkerUrl, \{ type: "module", name: profile\.name \}\)/gu,
+          "",
+        )
+      : source;
+  if (/\b(?:Worker|SharedWorker)\s*\(/u.test(workerSource)) return { reason: "worker script" };
+  return {
+    staticRequests,
+    workerUrl: workerUrl && requests.includes(workerUrl) ? workerUrl : undefined,
+  };
+}
+
+export function sourceReason(file: string, source: string, rendererJsdom = false) {
+  return scriptFile(file) ? inspectSource(file, source, rendererJsdom).reason : undefined;
+}
+
+export function virtualModuleReason(id: string) {
+  return (id.startsWith("\0") || id.startsWith("virtual:")) && !lockedVirtualModules.has(id)
+    ? "virtual module"
+    : undefined;
 }
 
 export interface TestEvidence {
@@ -77,6 +163,8 @@ export interface TestEvidence {
   readonly passed: boolean;
   readonly deps?: readonly string[];
   readonly reason?: string;
+  readonly input?: string;
+  readonly durationMs?: number;
 }
 
 interface RecordedProject {
@@ -115,23 +203,50 @@ export function graphInputs(
   );
 }
 
-export function dependencyReader(root: string, workspace: ReadonlySet<string>) {
-  const inspected = new Map<string, Promise<{ reason?: string; expandsGlob: boolean }>>();
+export function dependencyReader(
+  root: string,
+  workspace: ReadonlySet<string>,
+  rendererJsdom = false,
+) {
+  const inspected = new Map<string, Promise<SourceInputs>>();
   const modules = new Map<EnvironmentModuleNode, Promise<{ edges: string[]; reason?: string }>>();
-  const checkSource = (file: string): Promise<{ reason?: string; expandsGlob: boolean }> => {
+  const staticEdges = new Map<DevEnvironment, Map<string, Promise<(string | undefined)[]>>>();
+  const checkSource = (file: string): Promise<SourceInputs> => {
     const existing = inspected.get(file);
     if (existing) return existing;
-    const pending = /\.[cm]?[jt]sx?$/u.test(file)
+    const pending = scriptFile(file)
       ? readFile(path.join(root, file), "utf8")
           .then((source) => ({
-            reason: sourceReason(file, source),
+            ...inspectSource(file, source, rendererJsdom),
+            customEnvironment: /@(?:vitest|jest)-environment\s+(?!jsdom\b)/u.test(source),
             expandsGlob: /\bimport\s*\.\s*meta\s*\.\s*glob\b/u.test(source),
           }))
-          .catch(() => ({ reason: "unreadable module", expandsGlob: false }))
-      : Promise.resolve({ expandsGlob: false });
+          .catch(() => ({ reason: "unreadable module" }))
+      : Promise.resolve({});
     inspected.set(file, pending);
     return pending;
   };
+
+  function workerEdges(environment: DevEnvironment, importer: string, requests: readonly string[]) {
+    let byImporter = staticEdges.get(environment);
+    if (!byImporter) {
+      byImporter = new Map();
+      staticEdges.set(environment, byImporter);
+    }
+    const existing = byImporter.get(importer);
+    if (existing) return existing;
+    const pending = Promise.all(
+      requests.map(async (request) => {
+        if (isBuiltin(request)) return request;
+        const resolved = await environment.pluginContainer
+          .resolveId(request, importer)
+          .catch(() => null);
+        return resolved?.id;
+      }),
+    );
+    byImporter.set(importer, pending);
+    return pending;
+  }
 
   function graphEdges(
     environment: DevEnvironment,
@@ -179,6 +294,7 @@ export function dependencyReader(root: string, workspace: ReadonlySet<string>) {
     const environment = module.viteEnvironment;
     if (!recorded || !environment) return { file, passed: true, reason: "missing module graph" };
     const deps = new Set<string>();
+    const workerInputs = new Set<string>();
     const ids = new Set([
       module.moduleId,
       ...spec.project.config.setupFiles,
@@ -198,23 +314,62 @@ export function dependencyReader(root: string, workspace: ReadonlySet<string>) {
       const reason = builtinReason(id);
       if (reason || nativeArtifact(id))
         return { file, passed: true, reason: reason ?? "native artifact" };
-      if (dependencyPackage(id)) continue;
-      if (id.startsWith("\0") || id.startsWith("virtual:"))
-        return { file, passed: true, reason: "virtual module" };
+      const virtual = virtualModuleReason(id);
+      if (virtual) return { file, passed: true, reason: virtual, input: id };
+      // Pure builtins have no workspace file. Node's version is in the global key.
+      if (lockedVirtualModules.has(id) || dependencyPackage(id) || isBuiltin(id)) continue;
       const absolute = id.startsWith("file:") ? fileURLToPath(cleanId(id)) : cleanId(id);
       const input = relativeInput(root, absolute);
       if (!input || !workspace.has(input))
-        return { file, passed: true, reason: "untracked module path" };
+        return {
+          file,
+          passed: true,
+          reason: "untracked module path",
+          input: relativeInput(root, absolute) ?? id,
+        };
       deps.add(input);
-      const { reason: source, expandsGlob } = await checkSource(input);
-      if (source) return { file, passed: true, reason: source };
+      const source = await checkSource(input);
+      if (source.reason) return { file, passed: true, reason: source.reason, input };
+      if (source.workerUrl) {
+        // Queue the plain entry separately from its Vite ?worker&url wrapper.
+        const [entry] = await workerEdges(environment, absolute, [cleanId(source.workerUrl)]);
+        if (!entry || !workspace.has(relativeInput(root, entry) ?? ""))
+          return { file, passed: true, reason: "unresolved worker entry", input };
+        workerInputs.add(entry);
+      }
       const nodes = new Set(environment.moduleGraph.getModulesByFile(absolute));
       const node = environment.moduleGraph.getModuleById(id);
       if (node) nodes.add(node);
       for (const imported of nodes) {
-        const { edges, reason: unsafe } = await graphEdges(environment, imported, expandsGlob);
+        const { edges, reason: unsafe } = await graphEdges(
+          environment,
+          imported,
+          source.expandsGlob === true,
+        );
         if (unsafe) return { file, passed: true, reason: unsafe };
         for (const edge of edges) ids.add(edge);
+      }
+    }
+    if (workerInputs.size > 0 && (await checkSource(file)).customEnvironment)
+      return { file, passed: true, reason: "custom worker environment" };
+    // Vite only loaded the URL wrapper. Resolve the worker's static imports
+    // even if Vite never transformed its source as a script.
+    for (const id of workerInputs) {
+      const reason = builtinReason(id) ?? virtualModuleReason(id);
+      if (reason || nativeArtifact(id))
+        return { file, passed: true, reason: reason ?? "native artifact", input: id };
+      if (lockedVirtualModules.has(id) || dependencyPackage(id) || isBuiltin(id)) continue;
+      const input = relativeInput(root, cleanId(id));
+      if (id !== cleanId(id) || !input || !workspace.has(input))
+        return { file, passed: true, reason: "untracked worker input", input: id };
+      deps.add(input);
+      const source = await checkSource(input);
+      if (source.reason || source.workerUrl || source.expandsGlob)
+        return { file, passed: true, reason: source.reason ?? "opaque worker input", input };
+      const edges = await workerEdges(environment, id, source.staticRequests ?? []);
+      for (const edge of edges) {
+        if (!edge) return { file, passed: true, reason: "unresolved worker import", input };
+        workerInputs.add(edge);
       }
     }
     return { file, passed: true, deps: [...deps].sort() };

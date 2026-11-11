@@ -12,6 +12,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { resolvePrimaryCheckoutRoot } from "../immutable-artifact-cache.ts";
+import type { TestEvidence } from "./test-cache-graph.ts";
 import type { CacheSuite } from "./test-cache-policy.ts";
 
 export interface CachedPass {
@@ -204,15 +205,28 @@ async function publish(file: string, content: string) {
   }
 }
 
+type CacheReportHistory = {
+  readonly timings?: Record<string, number>;
+  readonly auditedAt?: Record<string, number>;
+};
+
+const reportPath = (root: string, suite: CacheSuite) =>
+  path.join(root, "node_modules/.cache/test-result-reports", suite + ".json");
+
+export async function readCacheReport(root: string, suite: CacheSuite) {
+  return readFile(reportPath(root, suite), "utf8")
+    .then((content) => (JSON.parse(content) as CacheReportHistory | null) ?? {})
+    .catch((): CacheReportHistory => ({}));
+}
+
 export const writeCacheReport = (
   root: string,
   suite: CacheSuite,
-  report: { hits: readonly string[]; evidence: readonly unknown[] },
-) =>
-  publish(
-    path.join(root, "node_modules/.cache/test-result-reports", suite + ".json"),
-    JSON.stringify(report),
-  );
+  report: CacheReportHistory & {
+    hits: readonly string[];
+    evidence: readonly Omit<TestEvidence, "deps">[];
+  },
+) => publish(reportPath(root, suite), JSON.stringify(report));
 
 export const invalidateCache = (directory: string) =>
   publish(path.join(directory, "epoch"), randomUUID());
@@ -240,6 +254,8 @@ export async function matchesPass(
 const entriesForFile = (directory: string, file: string) => path.join(directory, digest(file));
 const maxEntries = 4;
 
+export class CorruptCachedPass extends Error {}
+
 export async function findPass(
   directory: string,
   file: string,
@@ -252,9 +268,13 @@ export async function findPass(
     (entry) => entry.startsWith(key + "-") && entry.endsWith(".json"),
   )) {
     const record = path.join(base, name);
-    const pass = await readFile(record, "utf8")
-      .then((data) => JSON.parse(data) as CachedPass)
-      .catch(() => undefined);
+    const content = await readFile(record, "utf8").catch((error: unknown) => {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+      throw error;
+    });
+    if (content === undefined) continue;
+    if (name !== key + "-" + digest(content) + ".json") throw new CorruptCachedPass(file);
+    const pass = JSON.parse(content) as CachedPass;
     if (pass && (await matchesPass(pass, key, file, hash))) {
       const now = new Date();
       await utimes(record, now, now).catch(() => undefined);
