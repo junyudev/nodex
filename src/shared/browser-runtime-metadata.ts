@@ -233,6 +233,7 @@ export type WindowsBrowserRuntimeManifest = BrowserRuntimeManifestCommon & {
       plugin: BrowserRuntimeBundledPlugin;
       serviceExecutable: string;
       captureExecutable: string;
+      minimumWindowsVersion?: string;
       status: "available";
     };
     nativePip?: never;
@@ -832,14 +833,24 @@ function parseWindowsComputerUse(
   const plugin = parseComputerUsePlugin(value.plugin);
   const serviceExecutable = parseNonEmptyString(value.serviceExecutable);
   const captureExecutable = parseNonEmptyString(value.captureExecutable);
+  const minimumWindowsVersion = value.minimumWindowsVersion;
   if (
+    (minimumWindowsVersion !== undefined &&
+      (typeof minimumWindowsVersion !== "string" ||
+        !/^\d+\.\d+\.\d+(?:\.\d+)?$/u.test(minimumWindowsVersion))) ||
     !plugin ||
     !serviceExecutable ||
     !captureExecutable ||
     serviceExecutable === captureExecutable
   )
     return null;
-  return { status: "available", plugin, serviceExecutable, captureExecutable };
+  return {
+    status: "available",
+    plugin,
+    serviceExecutable,
+    captureExecutable,
+    ...(minimumWindowsVersion === undefined ? {} : { minimumWindowsVersion }),
+  };
 }
 
 function parseWindowsPeTrust(

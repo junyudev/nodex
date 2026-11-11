@@ -18,6 +18,7 @@ import {
 } from "../codex-runtime/CodexAppServerCapabilities";
 import { projectCodexGatewayThreadResumeResponse } from "../codex-runtime/CodexGatewayProtocolProjection";
 import {
+  DISABLED_DESKTOP_TOOL_REPL_CONFIG,
   buildCodexDesktopThreadFeatureConfig,
   buildCodexThreadConfig,
 } from "../codex/codex-thread-config";
@@ -289,7 +290,7 @@ export const live: Layer.Layer<
         const toolConfig =
           location.hostId === gateway.localHostId
             ? yield* tools.threadConfig(location.cwd)
-            : { "features.js_repl": false, "mcp_servers.node_repl.enabled": false };
+            : DISABLED_DESKTOP_TOOL_REPL_CONFIG;
         const config = yield* Effect.try({
           try: () =>
             buildCodexThreadConfig({

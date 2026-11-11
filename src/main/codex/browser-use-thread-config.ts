@@ -11,7 +11,10 @@ import type { BrowserRuntimeBackend } from "../../shared/browser-runtime-metadat
 import { resolveAvailableBrowserUseBackends } from "./browser-use-backends";
 import type { ComputerUseRuntimeResult } from "../host-runtime/ComputerUseRuntime";
 import { nodexDesktopToolMarketplaceName } from "./bundled-desktop-tool-marketplace";
-import { computerUseNativePipePath } from "./computer-use-runtime-config";
+import {
+  computerUseNativePipePath,
+  windowsComputerUseReplEnvironment,
+} from "./computer-use-runtime-config";
 import {
   nodeReplServerDefinition,
   windowsReplSystemEnvironment,
@@ -43,8 +46,16 @@ export type BrowserUseThreadConfigResult =
 export interface WindowsDesktopToolServerOptions {
   readonly jobLauncher: string;
   readonly environment: Readonly<Record<string, string | undefined>>;
-  readonly computerUse?: { readonly env: Readonly<Record<string, string>> };
 }
+type WindowsReplOptions = WindowsDesktopToolServerOptions & {
+  readonly computerUse?: {
+    readonly env: NonNullable<ReturnType<typeof windowsComputerUseReplEnvironment>>;
+  };
+};
+type AvailableMacComputerUse = Extract<
+  ComputerUseRuntimeResult,
+  { status: "available"; platform?: "darwin" }
+>;
 
 type BrowserUseThreadConfigBuilderOptions = {
   windows?: WindowsDesktopToolServerOptions;
@@ -62,8 +73,8 @@ function buildNodeReplServer(
   runtimeStateHome: string,
   codexHome: string,
   availableBackends: readonly BrowserRuntimeBackend[],
-  computerUseRuntime: Extract<ComputerUseRuntimeResult, { status: "available" }> | null,
-  windows?: WindowsDesktopToolServerOptions,
+  computerUseRuntime: AvailableMacComputerUse | null,
+  windows?: WindowsReplOptions,
 ) {
   const targetPath = windows ? path.win32 : path;
   const availableBackendsValue = availableBackends.join(",");
@@ -91,6 +102,7 @@ function buildNodeReplServer(
   }
   const env: Record<string, string> = {
     ...(windows ? windowsReplSystemEnvironment(windows.environment) : {}),
+    ...windows?.computerUse?.env,
     BROWSER_USE_AVAILABLE_BACKENDS: availableBackendsValue,
     BROWSER_USE_CODEX_APP_BUILD_FLAVOR: windows
       ? nodexDesktopToolMarketplaceName(runtimeStateHome, "win32")
@@ -115,12 +127,6 @@ function buildNodeReplServer(
       "Control the Chrome browser in conjunction with the Chrome Plugin.";
   }
   if (windows?.computerUse) {
-    const bindings = Object.entries(windows.computerUse.env);
-    for (const [name, value] of bindings) {
-      const key = name.toUpperCase();
-      if (key === "SKY_CUA_NATIVE_PIPE" || key === "SKY_CUA_NATIVE_PIPE_DIRECTORY")
-        env[key] = value;
-    }
     env.NODE_REPL_INSTRUCTIONS_USE_CASE_COMPUTER_USE = "Control desktop apps through Computer Use.";
   }
   if (computerUseRuntime && !windows) {
@@ -213,10 +219,18 @@ export class BrowserUseThreadConfigBuilder {
       (!plugins || (plugins.computerUse.status === "ready" && plugins.computerUse.enabled));
     const computerUseRuntime = computerUseReady ? this.computerUseRuntime() : null;
     const availableComputerUseRuntime =
-      !windowsTarget && computerUseRuntime?.status === "available" ? computerUseRuntime : null;
+      !windowsTarget &&
+      computerUseRuntime?.status === "available" &&
+      computerUseRuntime.platform !== "win32"
+        ? computerUseRuntime
+        : null;
+    const windowsComputerUseEnv = windowsComputerUseReplEnvironment(computerUseRuntime);
     const windows =
       windowsTarget && this.windows
-        ? { ...this.windows, computerUse: computerUseReady ? this.windows.computerUse : undefined }
+        ? {
+            ...this.windows,
+            computerUse: windowsComputerUseEnv ? { env: windowsComputerUseEnv } : undefined,
+          }
         : undefined;
     if (availableBackends.length === 0 && !availableComputerUseRuntime && !windows?.computerUse) {
       return {

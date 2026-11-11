@@ -44,6 +44,22 @@ export const live: Layer.Layer<
     yield* ipc.handleQuery("computer-use-settings-get", (event) =>
       trusted(event, "Computer Use settings").pipe(Effect.andThen(settings.getSnapshot)),
     );
+    yield* ipc.handlePlainCommand("computer-use-settings-set-enabled", (event, value: unknown) =>
+      trusted(event, "Computer Use setting").pipe(
+        Effect.andThen(validate("set-enabled", () => parseBoolean(value, "Computer Use setting"))),
+        Effect.flatMap((enabled) =>
+          Effect.gen(function* () {
+            if (!settings.setWindowsEnabled) {
+              return yield* new ComputerUseSettingsIpcError({
+                operation: "set-enabled",
+                cause: new Error("This Computer Use setting is unavailable on this platform."),
+              });
+            }
+            return yield* settings.setWindowsEnabled(enabled);
+          }),
+        ),
+      ),
+    );
     yield* ipc.handlePlainCommand(
       "computer-use-settings-remove-app-approval",
       (event, bundleIdentifier: string) =>

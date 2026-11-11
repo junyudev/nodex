@@ -26,7 +26,7 @@ test("macOS keeps its native integrations", () => {
 test("Windows exposes Browser control and app update settings", () => {
   expect(resolveSettingsHostPresentation("win32")).toEqual({
     terminalShell: true,
-    computerUse: false,
+    computerUse: true,
     browserProfileImport: false,
     browserControl: true,
     appUpdates: true,

@@ -16,6 +16,15 @@ registration home inside their own Profile. Windows scenarios leave HKCU untouch
 
 Computer Use is available only when its verified helper and operating-system requirements are ready. Its service uses the bundled Agent runtime and the owning Profile without requiring a separately installed Codex app or sharing another Profile’s configuration. A failure in one control backend does not weaken or implicitly enable another. Desktop tools are available to local Agent execution. Remote and WSL execution do not receive local desktop tools. Native picture-in-picture is available on macOS.
 
+On Windows, Computer Use uses the verified helper for the installed architecture. A local Agent
+can request app access through the chat's normal approval flow. Windows Computer Use settings show
+availability, the Computer Use switch, and any app approvals saved in the user's Codex configuration.
+Removing an app from **Always-allowed apps** revokes its saved approval. Turning Computer Use off
+closes its connection and stops its helper, including for chats that already opened it.
+The helper owns Windows capture, input, privacy indicators, Escape handling, and restrictions
+on controlling elevated windows. Locked Use, click sounds, and Messages
+approvals are macOS features.
+
 Local chats receive the desktop tools alongside the user's own MCP servers. Codex chats also receive Desktop features. When desktop tools cannot be prepared, the chat continues without them. The built-in Browser opens in the window that sent the message. A turn that no window sent, such as a queued, scheduled, or Agent-started turn, keeps the Browser window the chat already had. Archiving or deleting a chat releases its Browser pages and closes its Runtime-owned JavaScript session.
 
 ### Existing browsers on Windows

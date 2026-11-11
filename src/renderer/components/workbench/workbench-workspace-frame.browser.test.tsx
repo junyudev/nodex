@@ -13,7 +13,10 @@ installRendererThemeFixture();
 
 // Page loading is independently covered; this suite measures the real route/frame composition.
 vi.mock("./workbench-settings-section-pages", () => ({
-  SETTINGS_PAGE_COMPONENTS: { general: () => <h1>General</h1> },
+  SETTINGS_PAGE_COMPONENTS: {
+    general: () => <h1>General</h1>,
+    "computer-use": () => <h1>Computer use</h1>,
+  },
 }));
 
 const noop = () => {};
@@ -75,7 +78,7 @@ test.each([true, false])(
   },
 );
 
-test("Windows Settings starts at the page gutter and excludes unsupported deep links", async () => {
+test("Windows Computer Use Settings opens at the page gutter", async () => {
   const root = document.documentElement;
   const previousOs = root.dataset.codexOs;
   root.dataset.codexOs = "win32";
@@ -117,11 +120,11 @@ test("Windows Settings starts at the page gutter and excludes unsupported deep l
         </WorkbenchWorkspaceFrame>
       </div>,
     );
-    await view.findByRole("heading", { name: "General" });
+    await view.findByRole("heading", { name: "Computer use" });
     expect(view.getByLabelText("Settings", { selector: "div" }).getBoundingClientRect().top).toBe(
       44,
     );
-    expect(view.queryByRole("link", { name: "Computer use", hidden: true })).toBeNull();
+    expect(view.getByRole("link", { name: "Computer use", hidden: true })).toBeTruthy();
     expect(view.getByRole("link", { name: "Browser", hidden: true })).toBeTruthy();
   } finally {
     if (previousOs === undefined) delete root.dataset.codexOs;

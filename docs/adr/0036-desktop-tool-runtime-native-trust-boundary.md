@@ -54,8 +54,8 @@ Windows x64 and arm64 each have their own sealed closure. Main verifies every
 manifest digest, rejects reparse points and untrusted owners or write grants,
 and requires embedded Authenticode signatures with a trusted code-signing
 chain, revocation evidence, and the manifest's subject and issuer. Windows
-verification runs in a bounded background task. The Browser backend becomes
-eligible only after the native process and pipe provider can start.
+verification runs in one bounded background task shared by Browser and
+Computer Use. Each backend becomes eligible after the native provider is ready.
 
 ### Windows Desktop Tool launch and Browser transport
 

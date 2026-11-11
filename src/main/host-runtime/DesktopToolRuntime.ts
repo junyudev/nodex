@@ -16,6 +16,7 @@ import {
   type BrowserPluginReconcileResult,
 } from "../codex/browser-plugin-reconciler";
 import type { BrowserRuntimeAvailability } from "../codex/browser-runtime-bundle";
+import { DISABLED_DESKTOP_TOOL_REPL_CONFIG } from "../codex/codex-thread-config";
 import type { NodeExecutionRuntime } from "../platform/node/NodeExecutionRuntime";
 import {
   BrowserUseThreadConfigBuilder,
@@ -110,7 +111,7 @@ const make = (options: DesktopToolRuntimeLayerOptions) =>
         computerUsePluginReady:
           pluginResult?.status === "ready" &&
           pluginResult.computerUse.status === "ready" &&
-          (computerUse?.status === "available" || !!options.windows?.computerUse),
+          computerUse?.status === "available",
         computerUse,
         plugins: pluginResult,
       } satisfies DesktopToolRuntimeSnapshot;
@@ -185,7 +186,7 @@ const make = (options: DesktopToolRuntimeLayerOptions) =>
       // depend on a Settings screen (or another earlier request) having reconciled plugins.
       threadConfig: (cwd) =>
         isWslWorkspacePath(cwd)
-          ? Effect.succeed({ "mcp_servers.node_repl.enabled": false })
+          ? Effect.succeed(DISABLED_DESKTOP_TOOL_REPL_CONFIG)
           : ensureReady.pipe(
               Effect.flatMap((current) =>
                 Effect.gen(function* () {
@@ -214,7 +215,7 @@ const make = (options: DesktopToolRuntimeLayerOptions) =>
                       if (options.platform === "win32") {
                         return {
                           ...buildDesktopToolPluginOverrides(disabledDesktopPluginIds),
-                          "mcp_servers.node_repl.enabled": false,
+                          ...DISABLED_DESKTOP_TOOL_REPL_CONFIG,
                         };
                       }
                       return disabledDesktopPluginIds.length > 0
@@ -283,8 +284,7 @@ export const live = (
                   ),
                 ),
             },
-            computerUseAvailable: () =>
-              computerUse.current()?.status === "available" || !!options.windows?.computerUse,
+            computerUseAvailable: () => computerUse.current()?.status === "available",
             runtimeStateHome: options.runtimeStateHome,
           }),
         readConfigRequirements: gateway.requestLocal("configRequirements/read", undefined).pipe(

@@ -42,3 +42,11 @@ test("Windows can expose Browser control independently of Computer Use and PiP",
     nativePip: false,
   });
 });
+
+test("gates Windows Computer Use independently of Browser and native PiP", () => {
+  expect(hostCapabilities("win32", "x64", { computerUseReady: true })).toMatchObject({
+    browserControl: false,
+    computerControl: true,
+    nativePip: false,
+  });
+});

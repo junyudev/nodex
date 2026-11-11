@@ -80,6 +80,7 @@ it.effect("registers and releases Computer Use settings channels with the Main S
       "computer-use-settings-remove-app-approval",
       "computer-use-settings-remove-message-approval",
       "computer-use-settings-set-always-hide-pip",
+      "computer-use-settings-set-enabled",
       "computer-use-settings-set-locked-use",
       "computer-use-settings-set-sound-mode",
     ]);

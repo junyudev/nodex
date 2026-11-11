@@ -210,6 +210,7 @@ const fixture = Effect.gen(function* () {
       acp: { driver: "acpRegistry", config: {} },
       claude: { driver: "claudeAgent", config: {} },
       codex: { driver: "codex", config: {} },
+      "codex-wsl": { driver: "codex", config: { binaryPath: "C:/Windows/System32/wsl.exe" } },
       external: { driver: "opencode", config: { serverUrl: "https://opencode.example" } },
     },
     workspaceEnvironment: (cwd) =>
@@ -271,7 +272,7 @@ const fixture = Effect.gen(function* () {
     Effect.provideService(CoreAuthority, {
       identity: { profileId: "profile", libraryId: "library", storeEpoch: "epoch" },
     } as never),
-    Effect.provideService(MainConfig, {} as never),
+    Effect.provideService(MainConfig, { platform: "win32" } as never),
   );
   return {
     execute,
@@ -565,7 +566,7 @@ const prepareThread = (
     threadId: "thread:child",
     providerInstanceId,
     nativeDriver:
-      providerInstanceId === "codex"
+      providerInstanceId === "codex" || providerInstanceId === "codex-wsl"
         ? "codex"
         : providerInstanceId === "claude"
           ? "claudeAgent"
@@ -583,6 +584,18 @@ it.effect("only the current lease's Codex threads receive the desktop tool confi
       config: { "mcp_servers.node_repl": { cwd: "/worktree" } },
     });
     yield* Effect.flip(f.execute(prepareThread("codex", "previous-lease")));
+  }).pipe(Effect.scoped),
+);
+
+it.effect("WSL threads receive no local Desktop Tools", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const cwd = "//wsl.localhost/Ubuntu/home/user/repo";
+    const config = { "features.js_repl": false, "mcp_servers.node_repl.enabled": false };
+    assert.deepEqual(yield* f.execute(prepareThread("codex", "lease", cwd)), { config });
+    assert.deepEqual(yield* f.execute(prepareThread("codex-wsl")), { config });
+    assert.deepEqual(yield* f.execute(prepareThread("claude", "lease", cwd)), {});
+    assert.equal(f.desktopPreparations(), 0);
   }).pipe(Effect.scoped),
 );
 

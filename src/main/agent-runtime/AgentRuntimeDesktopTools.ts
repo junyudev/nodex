@@ -3,6 +3,7 @@ import type { HostDesktopTools } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
 import { CODEX_DESKTOP_THREAD_FEATURE_CONFIG } from "../codex/codex-thread-config";
 import type { CodexTurnPresentation } from "../../host/TurnPresentation";
+import type { ComputerUseRuntime } from "../host-runtime/ComputerUseRuntime";
 import type { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import type { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import type { WindowRuntime } from "../window-runtime/WindowRuntime";
@@ -43,6 +44,7 @@ export interface AgentRuntimeDesktopTools {
  */
 export const make = (ports: {
   readonly pip?: AgentRuntimeDesktopTools["pip"];
+  readonly computerUse?: ComputerUseRuntime["Service"]["windows"];
   readonly tools: Pick<DesktopToolRuntime["Service"], "threadConfig" | "desktopTools">;
   readonly browserUse: Pick<
     BrowserUseRuntime["Service"],
@@ -71,15 +73,23 @@ export const make = (ports: {
         .threadConfig(cwd)
         .pipe(Effect.map((tools) => ({ ...CODEX_DESKTOP_THREAD_FEATURE_CONFIG, ...tools }))),
     observeNativeTurn: (turn) => {
+      const computerUse = ports.computerUse?.observeTurn(turn) ?? Effect.void;
       const browserTurn = { sessionId: turn.nativeThreadId, turnId: turn.nativeTurnId };
       if (turn.phase === "ended")
-        return ports.browserUse
-          .turnEnded(browserTurn)
-          .pipe(
-            Effect.andThen(ports.browserUse.endSessionActivity(turn.nativeThreadId)),
-            warn("Browser could not end an Agent Turn", turn),
-          );
+        return Effect.all(
+          [
+            computerUse,
+            ports.browserUse
+              .turnEnded(browserTurn)
+              .pipe(
+                Effect.andThen(ports.browserUse.endSessionActivity(turn.nativeThreadId)),
+                warn("Browser could not end an Agent Turn", turn),
+              ),
+          ],
+          { concurrency: "unbounded", discard: true },
+        );
       return Effect.gen(function* () {
+        yield* computerUse;
         // A Turn nobody submitted from a window keeps the route its conversation already has.
         const anchor = ports.presentation.read(turn.threadId, turn.runId);
         const owner = anchor ? ownerOf(anchor.windowSessionId) : undefined;
@@ -108,7 +118,7 @@ export const make = (ports: {
               .releaseSession(nativeThreadId)
               .pipe(warn("Browser could not release an Agent conversation", { nativeThreadId })),
           { discard: true },
-        );
+        ).pipe(Effect.ensuring(ports.computerUse?.releaseSession(sessionId) ?? Effect.void));
       }),
   };
 };
