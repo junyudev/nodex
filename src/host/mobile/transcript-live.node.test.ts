@@ -1,6 +1,6 @@
-import { appendFile, chmod, copyFile, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
@@ -73,7 +73,6 @@ it.live(
         const home = join(scenario.profile.nodexHome, "execution");
         const fake = join(home, "fake-codex");
         const commands = join(fake, "commands.jsonl");
-        const binary = join(home, "codex-stream.mjs");
         yield* Effect.promise(async () => {
           await mkdir(fake, { recursive: true });
           await writeFile(
@@ -87,8 +86,8 @@ it.live(
             }),
           );
           await writeFile(commands, "");
-          await copyFile(fixturePath("codex-transcript-performance-app-server.mjs"), binary);
-          await chmod(binary, 0o755);
+          const peer = pathToFileURL(fixturePath("codex-transcript-performance-app-server.mjs"));
+          await writeFile(join(home, "app-server"), `void import(${JSON.stringify(peer.href)});\n`);
         });
         const command = (value: object) =>
           Effect.promise(() => appendFile(commands, `${JSON.stringify(value)}\n`));
@@ -115,7 +114,7 @@ it.live(
               codex: {
                 driver: "codex",
                 config: {
-                  binaryPath: binary,
+                  binaryPath: process.execPath,
                   homePath: join(home, "codex"),
                   setupMode: "existing",
                 },

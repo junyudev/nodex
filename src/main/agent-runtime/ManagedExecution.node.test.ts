@@ -1,4 +1,4 @@
-import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import type { AgentHostRequest } from "@nodex/agent-runtime/contracts";
 import type { components } from "@nodex/core-protocol";
 import { MainConfig } from "../app/MainConfig";
@@ -43,19 +43,18 @@ const fixture = Effect.fn("test.managedExecution")(function* (
 ) {
   const home = join(scenario.profile.nodexHome, "execution");
   yield* Effect.promise(() => mkdir(home, { recursive: true }));
-  const binary = join(home, "codex-peer.mjs");
-  yield* Effect.promise(async () => {
-    await writeFile(
-      binary,
-      `#!/usr/bin/env node
-import { join } from "node:path";
+  // The Runtime starts Codex with argv[1] = app-server. Node can run that entry
+  // point directly in the Runtime's cwd on both Windows and Unix.
+  yield* Effect.promise(() =>
+    writeFile(
+      join(home, "app-server"),
+      `const { join } = require("node:path");
 process.env.NODEX_FAKE_CODEX_STATE_PATH ??= join(process.env.CODEX_HOME, "state.json");
 process.env.NODEX_FAKE_CODEX_LOG_PATH ??= join(process.env.CODEX_HOME, "requests.jsonl");
-await import(${JSON.stringify(new URL("../../../tests/e2e/fixtures/codex-queue-app-server.mjs", import.meta.url).href)});
+void import(${JSON.stringify(new URL("../../../tests/e2e/fixtures/codex-queue-app-server.mjs", import.meta.url).href)});
 `,
-    );
-    await chmod(binary, 0o755);
-  });
+    ),
+  );
   let hostRequest: (request: AgentHostRequest) => Effect.Effect<unknown, unknown> = () =>
     Effect.succeed({});
   const runtime = yield* acquireAgentRuntimeProcess({
@@ -78,7 +77,11 @@ await import(${JSON.stringify(new URL("../../../tests/e2e/fixtures/codex-queue-a
           instanceId,
           {
             driver: "codex",
-            config: { binaryPath: binary, homePath: join(home, instanceId), setupMode: "existing" },
+            config: {
+              binaryPath: process.execPath,
+              homePath: join(home, instanceId),
+              setupMode: "existing",
+            },
           },
         ]),
       ),
