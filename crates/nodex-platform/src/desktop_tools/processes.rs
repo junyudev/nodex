@@ -9,6 +9,9 @@ use std::ptr::{null, null_mut};
 use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Storage::FileSystem::SYNCHRONIZE;
+use windows_sys::Win32::System::Console::{
+    GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::*;
 use windows_sys::Win32::System::JobObjects::*;
 use windows_sys::Win32::System::Threading::*;
@@ -239,9 +242,47 @@ pub fn terminate_subtree(root: &ProcessIdentity) -> io::Result<Vec<u32>> {
     Ok(terminated)
 }
 
+/// Process instances along a live parent chain, nearest first.
+pub fn ancestors(peer: &ProcessIdentity) -> io::Result<Vec<ProcessIdentity>> {
+    let children = snapshot()?;
+    let parents: HashMap<u32, u32> = children
+        .into_iter()
+        .flat_map(|(parent, children)| children.into_iter().map(move |child| (child, parent)))
+        .collect();
+    let process = open_process(peer.pid, 0)?;
+    if identify(peer.pid, &process)? != *peer {
+        return Err(invalid("peer process identity changed"));
+    }
+    same_logon(&process)?;
+    let mut current = peer.clone();
+    let mut result = Vec::new();
+    for _ in 0..32 {
+        let Some(&parent) = parents.get(&current.pid) else {
+            break;
+        };
+        let Ok(process) = open_process(parent, 0) else {
+            break;
+        };
+        let Ok(identity) = identify(parent, &process) else {
+            break;
+        };
+        if file_time(&identity)? > file_time(&current)? || same_logon(&process).is_err() {
+            break;
+        }
+        current = identity.clone();
+        result.push(identity);
+    }
+    Ok(result)
+}
+
+fn file_time(identity: &ProcessIdentity) -> io::Result<u64> {
+    identity.creation_time.parse().map_err(io::Error::other)
+}
+
 pub struct JobChild {
     pub identity: ProcessIdentity,
     _job: OwnedHandle,
+    process: OwnedHandle,
 }
 
 // MSVCRT argument quoting for a direct executable launch (no shell).
@@ -274,17 +315,18 @@ struct JobAttribute {
     list: LPPROC_THREAD_ATTRIBUTE_LIST,
 }
 impl JobAttribute {
-    fn new(job: &HANDLE) -> io::Result<Self> {
+    fn new(job: &HANDLE, stdio: Option<&[HANDLE; 3]>) -> io::Result<Self> {
+        let count = if stdio.is_some() { 2 } else { 1 };
         let mut bytes = 0;
         unsafe {
-            InitializeProcThreadAttributeList(null_mut(), 1, 0, &mut bytes);
+            InitializeProcThreadAttributeList(null_mut(), count, 0, &mut bytes);
         }
         if bytes == 0 {
             return Err(io::Error::last_os_error());
         }
         let mut storage = vec![0usize; bytes.div_ceil(size_of::<usize>())];
         let list = storage.as_mut_ptr().cast();
-        if unsafe { InitializeProcThreadAttributeList(list, 1, 0, &mut bytes) } == 0 {
+        if unsafe { InitializeProcThreadAttributeList(list, count, 0, &mut bytes) } == 0 {
             return Err(io::Error::last_os_error());
         }
         let attributes = Self {
@@ -302,6 +344,21 @@ impl JobAttribute {
                 null(),
             )
         } == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        if let Some(stdio) = stdio
+            && unsafe {
+                UpdateProcThreadAttribute(
+                    list,
+                    0,
+                    PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
+                    stdio.as_ptr().cast(),
+                    size_of_val(stdio),
+                    null_mut(),
+                    null(),
+                )
+            } == 0
         {
             return Err(io::Error::last_os_error());
         }
@@ -323,6 +380,16 @@ pub fn spawn_in_job(
     args: &[String],
     cwd: &Path,
     env: BTreeMap<String, String>,
+) -> io::Result<JobChild> {
+    spawn_job(executable, args, cwd, env, None)
+}
+
+fn spawn_job(
+    executable: &str,
+    args: &[String],
+    cwd: &Path,
+    env: BTreeMap<String, String>,
+    stdio: Option<&[HANDLE; 3]>,
 ) -> io::Result<JobChild> {
     if !Path::new(executable).is_absolute()
         || !cwd.is_absolute()
@@ -372,14 +439,20 @@ pub fn spawn_in_job(
         return Err(io::Error::last_os_error());
     }
     let job_handle = job.as_raw_handle();
-    let attributes = JobAttribute::new(&job_handle)?;
-    let startup = STARTUPINFOEXW {
+    let attributes = JobAttribute::new(&job_handle, stdio)?;
+    let mut startup = STARTUPINFOEXW {
         StartupInfo: STARTUPINFOW {
             cb: size_of::<STARTUPINFOEXW>() as u32,
             ..Default::default()
         },
         lpAttributeList: attributes.list,
     };
+    if let Some(&[stdin, stdout, stderr]) = stdio {
+        startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+        startup.StartupInfo.hStdInput = stdin;
+        startup.StartupInfo.hStdOutput = stdout;
+        startup.StartupInfo.hStdError = stderr;
+    }
     let mut info = PROCESS_INFORMATION::default();
     if unsafe {
         CreateProcessW(
@@ -387,7 +460,7 @@ pub fn spawn_in_job(
             command.as_mut_ptr(),
             null(),
             null(),
-            0,
+            i32::from(stdio.is_some()),
             CREATE_SUSPENDED
                 | CREATE_UNICODE_ENVIRONMENT
                 | CREATE_NO_WINDOW
@@ -410,5 +483,73 @@ pub fn spawn_in_job(
     Ok(JobChild {
         identity,
         _job: job,
+        process,
     })
+}
+
+fn inherit_stdio(id: u32) -> io::Result<OwnedHandle> {
+    let current = unsafe { GetCurrentProcess() };
+    let mut duplicate = null_mut();
+    if unsafe {
+        DuplicateHandle(
+            current,
+            GetStdHandle(id),
+            current,
+            &mut duplicate,
+            0,
+            1,
+            DUPLICATE_SAME_ACCESS,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    handle(duplicate)
+}
+
+/// Preserve MCP stdio byte-for-byte. The launcher owns only the job and the
+/// parent/child lifetime, so the app-server can supply an arbitrary merged env
+/// without influencing the environment of the child.
+pub fn run_repl_job(
+    executable: &str,
+    args: &[String],
+    env: BTreeMap<String, String>,
+) -> io::Result<u32> {
+    let current = process_identity(std::process::id())?;
+    let parent = ancestors(&current)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| invalid("REPL launch parent is unavailable"))?;
+    let owner = open_process(parent.pid, 0)?;
+    if identify(parent.pid, &owner)? != parent {
+        return Err(invalid("REPL launch parent identity changed"));
+    }
+    let handles = [
+        inherit_stdio(STD_INPUT_HANDLE)?,
+        inherit_stdio(STD_OUTPUT_HANDLE)?,
+        inherit_stdio(STD_ERROR_HANDLE)?,
+    ];
+    let cwd = Path::new(executable)
+        .parent()
+        .ok_or_else(|| invalid("REPL executable directory is unavailable"))?;
+    let job = spawn_job(
+        executable,
+        args,
+        cwd,
+        env,
+        Some(&handles.each_ref().map(AsRawHandle::as_raw_handle)),
+    )?;
+    drop(handles);
+    let wait = [owner.as_raw_handle(), job.process.as_raw_handle()];
+    match unsafe { WaitForMultipleObjects(wait.len() as u32, wait.as_ptr(), 0, INFINITE) } {
+        WAIT_OBJECT_0 => Ok(0),
+        status if status == WAIT_OBJECT_0 + 1 => {
+            let mut code = 0;
+            if unsafe { GetExitCodeProcess(job.process.as_raw_handle(), &mut code) } == 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(code)
+        }
+        _ => Err(io::Error::last_os_error()),
+    }
 }

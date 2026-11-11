@@ -5,6 +5,7 @@ import { constants as fsConstants, promises as fs } from "node:fs";
 import path from "node:path";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
@@ -535,6 +536,7 @@ function makeWindowsChromeControlRuntime(
 
 export interface ChromeControlRuntimeOptions {
   readonly browserRuntime: BrowserRuntimeAvailability;
+  readonly windowsBrowserReady?: Effect.Effect<void>;
   readonly registration: ChromeHostRegistration;
   readonly peerAuthorizationMode: BrowserUsePeerAuthorizationMode;
   readonly platform: NodeJS.Platform;
@@ -571,7 +573,7 @@ async function verifyAttestedIconPaths(
   return result;
 }
 
-export const live = (
+const chromeControlLayer = (
   options: ChromeControlRuntimeOptions,
 ): Layer.Layer<ChromeControlRuntime, never, WindowsDesktopTools | ScopedCallbackRuntime> =>
   Layer.effect(
@@ -581,10 +583,9 @@ export const live = (
       const bundle =
         options.browserRuntime.status === "available" ? options.browserRuntime.bundle : null;
       const chromeCapability = bundle?.manifest.capabilities.browserUse.backends.chrome ?? null;
-      const platformSupported = hostCapabilities(
-        options.platform,
-        options.architecture,
-      ).browserControl;
+      const platformSupported = hostCapabilities(options.platform, options.architecture, {
+        browserReady: options.windowsBrowserReady !== undefined && bundle !== null,
+      }).browserControl;
       const descriptorArtifact =
         bundle && chromeCapability?.status === "available"
           ? bundle.manifest.artifacts.find(
@@ -882,6 +883,61 @@ export const live = (
       });
     }),
   );
+
+export const live = (
+  options: ChromeControlRuntimeOptions,
+): Layer.Layer<ChromeControlRuntime, never, WindowsDesktopTools | ScopedCallbackRuntime> => {
+  const windowsBrowserReady = options.windowsBrowserReady;
+  if (!windowsBrowserReady) return chromeControlLayer(options);
+  return Layer.effect(
+    ChromeControlRuntime,
+    Effect.gen(function* () {
+      // Windows verification and registration may finish after Main starts.
+      let current: ChromeControlRuntime["Service"] | undefined;
+      const initializing = yield* windowsBrowserReady.pipe(
+        Effect.andThen(Layer.build(chromeControlLayer(options))),
+        Effect.map((context) => Context.get(context, ChromeControlRuntime)),
+        Effect.tap((service) =>
+          Effect.sync(() => {
+            current = service;
+          }),
+        ),
+        Effect.forkScoped({ startImmediately: true }),
+      );
+      const ready = Fiber.join(initializing);
+      return ChromeControlRuntime.of({
+        available: () => current?.available() ?? false,
+        changes: Stream.unwrap(ready.pipe(Effect.map((service) => service.changes))),
+        focusPresentation: (input) =>
+          ready.pipe(Effect.flatMap((service) => service.focusPresentation(input))),
+        isConnectedInstance: (family, id) => current?.isConnectedInstance(family, id) ?? false,
+        refresh: ready.pipe(Effect.flatMap((service) => service.refresh)),
+        resolveBrowserIconPath: (family) => current?.resolveBrowserIconPath(family) ?? null,
+        snapshot: () =>
+          current?.snapshot() ??
+          makeSnapshot({
+            registrationKind: options.registration.kind,
+            bundleSupported: false,
+            installFailure: null,
+            nativeHostInstalled: false,
+            registry: EMPTY_REGISTRY_SNAPSHOT,
+            registryFailure: null,
+            requested: false,
+            runtimeUnavailableReason:
+              options.browserRuntime.status === "unavailable"
+                ? options.browserRuntime.message
+                : null,
+          }),
+        updateWindowsRegistration: (action) =>
+          ready.pipe(
+            Effect.flatMap(
+              (service) => service.updateWindowsRegistration?.(action) ?? service.refresh,
+            ),
+          ),
+      });
+    }),
+  );
+};
 
 export const testLayer = (ports: ChromeControlRuntimePorts): Layer.Layer<ChromeControlRuntime> =>
   Layer.effect(ChromeControlRuntime, makeChromeControlRuntime(ports));

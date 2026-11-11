@@ -207,9 +207,11 @@ const isPluginReady = (plugin: MarketplacePlugin | null, version: string): boole
 
 function canonicalPath(value: string): string {
   try {
-    return fs.realpathSync(value);
+    const resolved = fs.realpathSync(value);
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
   } catch {
-    return path.resolve(value);
+    const resolved = path.resolve(value);
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
   }
 }
 
@@ -539,7 +541,9 @@ export const makeBrowserPluginReconciler = (
     const computerUseAvailable = options.computerUseAvailable ?? (() => false);
     const runtimeStateHome = path.resolve(options.runtimeStateHome);
     const environment: ReconcileEnvironment = {
-      browserRuntime: options.browserRuntime,
+      get browserRuntime() {
+        return options.browserRuntime;
+      },
       client: options.client,
       runtimeStateHome,
       marketplaceName: nodexDesktopToolMarketplaceName(runtimeStateHome),

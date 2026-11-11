@@ -347,10 +347,11 @@ const sameRoute = (
   left.ownerWebContentsId === right.ownerWebContentsId;
 
 export const makeBrowserUseSessionRuntime = (
-  enabled: boolean,
+  enabled: boolean | (() => boolean),
   platform: BrowserUseSessionRuntimePlatform,
 ): Effect.Effect<BrowserUseSessionRuntime, never, import("effect/Scope").Scope> =>
   Effect.gen(function* () {
+    const isEnabled = typeof enabled === "function" ? enabled : () => enabled;
     const state = yield* Ref.make<RegistryState>({
       active: new Map(),
       events: [],
@@ -472,7 +473,7 @@ export const makeBrowserUseSessionRuntime = (
     const captureRoute = Effect.fn("BrowserUseSessionRuntime.captureRoute")((
       input: BrowserUseRouteCapture,
     ) => {
-      if (!enabled) {
+      if (!isEnabled()) {
         return Effect.fail(
           runtimeError(
             "capture-route",
@@ -588,7 +589,7 @@ export const makeBrowserUseSessionRuntime = (
             );
           }),
         ),
-      availableBackends: () => (enabled ? ["iab"] : []),
+      availableBackends: () => (isEnabled() ? ["iab"] : []),
       captureRoute,
       debugSnapshot: mutationLock.withPermits(1)(
         Ref.get(state).pipe(

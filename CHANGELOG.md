@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - Set anything in your Inbox aside with **Later** when it can wait. Choose a time and the message or the work waiting on you leaves your Inbox, then comes back with a notification when that time arrives; if it needs you for a new reason before then, it shows at once. The new Later view lists everything you set aside in the order it returns, and Nodex can suggest Later for a message that says when the work should wait until. It works on the phone too.
 - Save a thought that asks for no work with **Save to Notes**. Each Project, and the Inbox itself, gets a Notes page; a saved message becomes a page beneath it, off the Board, where you can arrange notes into sections. Nodex suggests it for references and can file a note under a section you already have.
 - Agents can set properties on many Pages in one step. Ask a chat to mark a batch of cards Done or re-prioritize a Board and it commits the whole change together and reports each card's resulting values, instead of editing cards one at a time. On the command line, `nodex page properties set NODEX-4 NODEX-8 --set Status=done --set Priority=p1-high` does the same, `nodex page create` takes `--set`, and `nodex page move` moves several Pages at once.
+- Agents running locally on Windows can use Nodex’s in-app Browser, with the same site access approvals as on macOS.
 
 ### Changed
 

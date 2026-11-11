@@ -1,3 +1,5 @@
+import { win32 } from "node:path";
+
 /**
  * A desktop host configures its Desktop Tool runtime (Node REPL, Browser, Chrome, Computer Use)
  * through environment variables, so another host's configuration can reach Nodex in two ways:
@@ -31,6 +33,9 @@ const DESKTOP_TOOL_HOST_BINDINGS: ReadonlySet<string> = new Set([
   "NODE_REPL_TRUSTED_CODE_PATHS",
   // A host's Computer Use service.
   "SKY_CUA_SERVICE_NATIVE_PIPE_PATH",
+  "SKY_CUA_NATIVE_PIPE",
+  "SKY_CUA_NATIVE_PIPE_DIRECTORY",
+  "CODEX_WINDOWS_REGISTERED_CORE",
   "SKY_CUA_SERVICE_PATH",
   // The Browser backends a host advertises to its own shells.
   "BROWSER_USE_AVAILABLE_BACKENDS",
@@ -49,21 +54,28 @@ export const DESKTOP_TOOL_RUNTIME_NAMESPACES = [
 
 type AmbientEnvironment = Readonly<Record<string, string | undefined>>;
 
+const isDesktopToolHostBinding = (name: string, platform: string): boolean =>
+  DESKTOP_TOOL_HOST_BINDINGS.has(platform === "win32" ? name.toUpperCase() : name);
+
 /** Names of Desktop Tool bindings that another host left in an ambient environment. */
-export function desktopToolHostBindingNames(environment: AmbientEnvironment): string[] {
+export function desktopToolHostBindingNames(
+  environment: AmbientEnvironment,
+  platform: string = process.platform,
+): string[] {
   return Object.keys(environment)
-    .filter((name) => DESKTOP_TOOL_HOST_BINDINGS.has(name))
+    .filter((name) => isDesktopToolHostBinding(name, platform))
     .sort();
 }
 
 /** A compact copy of an ambient environment without another host's Desktop Tool bindings. */
 export function withoutDesktopToolHostBindings(
   environment: AmbientEnvironment,
+  platform: string = process.platform,
 ): Record<string, string> {
   return Object.fromEntries(
     Object.entries(environment).filter(
       (entry): entry is [string, string] =>
-        typeof entry[1] === "string" && !DESKTOP_TOOL_HOST_BINDINGS.has(entry[0]),
+        typeof entry[1] === "string" && !isDesktopToolHostBinding(entry[0], platform),
     ),
   );
 }
@@ -137,11 +149,29 @@ child.once("exit", (code, signal) => {
  * runs, or with which inputs, is pinned; Codex merges only presentation and approval preferences.
  */
 export function nodeReplServerDefinition(input: {
+  readonly windowsJobLauncher?: string;
   readonly codexCliPath: string;
   readonly env: Readonly<Record<string, string>>;
   readonly nodePath: string;
   readonly nodeReplPath: string;
-}) {
+}): {
+  args: string[];
+  command: string;
+  enabled: boolean;
+  env: Record<string, string>;
+  env_vars: string[];
+  startup_timeout_sec: number;
+} {
+  if (input.windowsJobLauncher) {
+    return {
+      args: ["--desktop-tools-repl", input.nodeReplPath, JSON.stringify(input.env)],
+      command: input.windowsJobLauncher,
+      enabled: true,
+      env: {},
+      env_vars: [] as string[],
+      startup_timeout_sec: 120,
+    };
+  }
   return {
     args: [
       "-e",
@@ -161,3 +191,30 @@ export function nodeReplServerDefinition(input: {
     startup_timeout_sec: 120,
   };
 }
+
+const WINDOWS_REPL_SYSTEM_ENV = [
+  "SYSTEMROOT",
+  "SYSTEMDRIVE",
+  "USERPROFILE",
+  "LOCALAPPDATA",
+  "APPDATA",
+  "TEMP",
+  "TMP",
+];
+
+/** Only these OS paths are borrowed from Main; Codex and Agent environments cannot add any. */
+export function windowsReplSystemEnvironment(environment: AmbientEnvironment) {
+  const canonical = new Map(
+    Object.entries(environment).map(([key, value]) => [key.toUpperCase(), value]),
+  );
+  return Object.fromEntries(
+    WINDOWS_REPL_SYSTEM_ENV.flatMap((key) => {
+      const value = canonical.get(key);
+      return value ? [[key, value] as const] : [];
+    }),
+  );
+}
+
+/** The kernel's sandbox CLI must not reload another desktop's shell policy from shared Codex home. */
+export const windowsDesktopToolCodexHome = (runtimeStateHome: string): string =>
+  win32.join(runtimeStateHome, "desktop-tools", "codex-home");

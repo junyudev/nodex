@@ -9,10 +9,7 @@ import {
   applyCodexWorktreeShellEnvironment,
   type CodexStoredShellEnvironment,
 } from "../../codex/codex-worktree-shell-environment";
-import {
-  desktopToolHostBindingNames,
-  withoutDesktopToolHostBindings,
-} from "../../codex/desktop-tool-environment";
+import { withoutDesktopToolHostBindings } from "../../codex/desktop-tool-environment";
 import { ApplicationSettings } from "../../settings/ApplicationSettings";
 import {
   DEFAULT_TERMINAL_SHELL_SETTINGS,
@@ -145,20 +142,13 @@ const terminalLaunchEnvironment = (
   environment: Readonly<NodeJS.ProcessEnv>,
   platform: string,
 ): Record<string, string> => {
-  const launch = withoutDesktopToolHostBindings(
+  return withoutDesktopToolHostBindings(
     // Startup files branch on TERM, so the login probe must see the terminal it is configuring.
     mergeProcessEnvironments(platform, environment, terminalLaunchRemovals, {
       TERM: TERMINAL_TYPE,
     }),
+    platform,
   );
-  if (platform !== "win32") return launch;
-  const normalized = Object.fromEntries(
-    Object.entries(launch).map(([key, value]) => [key.toUpperCase(), value]),
-  );
-  const bindings = Object.fromEntries(
-    desktopToolHostBindingNames(normalized).map((key) => [key, undefined]),
-  );
-  return mergeProcessEnvironments(platform, launch, bindings);
 };
 
 interface TerminalEnvironmentLayers {

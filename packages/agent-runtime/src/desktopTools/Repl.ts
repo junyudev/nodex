@@ -30,8 +30,8 @@ interface ReplOptions {
 
 /**
  * MCP's stock stdio transport adds ambient environment defaults and only kills its direct
- * child. This boundary uses MCP framing but owns the whole process group, without wrapping
- * or changing the host's signed node_repl -> codex -> node launcher.
+ * child. This boundary owns MCP framing and closes the host launch tree through a POSIX
+ * process group or the Windows launcher’s kill-on-close job.
  */
 function desktopToolTransport(
   options: ReplOptions,
@@ -41,6 +41,7 @@ function desktopToolTransport(
   let stop: (() => Promise<void>) | undefined;
   let closing: Promise<void> | undefined;
   let notifiedClosed = false;
+  let cancelTimedOut = false;
   const notifyClosed = () => {
     if (notifiedClosed) return;
     notifiedClosed = true;
@@ -48,13 +49,15 @@ function desktopToolTransport(
   };
   const buffer = new ReadBuffer();
   const cancellationAcks = new Map<RequestId, { done: Promise<void>; resolve: () => void }>();
+  const windows = process.platform === "win32";
   const transport: Transport = {
     async start() {
       const launched = spawnDesktopReplProcess(options.home, options.sessionId, {
         command: options.server.command,
         args: options.server.args,
         cwd: options.cwd ?? undefined,
-        env: { ...options.environment, ...options.server.env },
+        // Windows launches in a closed environment: only what the host declared.
+        env: windows ? options.server.env : { ...options.environment, ...options.server.env },
       });
       child = launched.child;
       stop = launched.stop;
@@ -104,7 +107,15 @@ function desktopToolTransport(
             const done = new Promise<void>((resolve) => {
               acknowledge = resolve;
             });
-            cancellationAcks.set(id, { done, resolve: acknowledge });
+            const ack = { done, resolve: acknowledge };
+            cancellationAcks.set(id, ack);
+            if (windows) {
+              void Promise.race([done, delay(1_000)]).then(() => {
+                if (closing || cancellationAcks.get(id) !== ack) return;
+                cancelTimedOut = true;
+                void transport.close();
+              });
+            }
             // Never retain acknowledgments forever if a crashed child cannot answer.
             if (cancellationAcks.size > 64)
               cancellationAcks.delete(cancellationAcks.keys().next().value!);
@@ -119,14 +130,14 @@ function desktopToolTransport(
       if (closing) return closing;
       closing = Promise.resolve().then(async () => {
         // Cancellation notifications are written before close. EOF alone leaves active kernels
-        // alive; signal the owned group and bound graceful termination before escalating.
-        if (cancellationAcks.size > 0) {
+        // alive, so the process owner ends the whole tree.
+        if (!cancelTimedOut && cancellationAcks.size > 0) {
           await Promise.race([
             Promise.all([...cancellationAcks.values()].map((ack) => ack.done)),
             delay(1_000),
           ]);
-          cancellationAcks.clear();
         }
+        cancellationAcks.clear();
         child?.stdin.end();
         try {
           await stop?.();

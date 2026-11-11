@@ -12,7 +12,11 @@ import { resolveAvailableBrowserUseBackends } from "./browser-use-backends";
 import type { ComputerUseRuntimeResult } from "../host-runtime/ComputerUseRuntime";
 import { nodexDesktopToolMarketplaceName } from "./bundled-desktop-tool-marketplace";
 import { computerUseNativePipePath } from "./computer-use-runtime-config";
-import { nodeReplServerDefinition } from "./desktop-tool-environment";
+import {
+  nodeReplServerDefinition,
+  windowsReplSystemEnvironment,
+  windowsDesktopToolCodexHome,
+} from "./desktop-tool-environment";
 
 const BROWSER_USE_IN_APP_INSTRUCTIONS =
   "Control the in-app browser in conjunction with the Browser Plugin.";
@@ -36,7 +40,14 @@ export type BrowserUseThreadConfigResult =
       status: "available";
     };
 
+export interface WindowsDesktopToolServerOptions {
+  readonly jobLauncher: string;
+  readonly environment: Readonly<Record<string, string | undefined>>;
+  readonly computerUse?: { readonly env: Readonly<Record<string, string>> };
+}
+
 type BrowserUseThreadConfigBuilderOptions = {
+  windows?: WindowsDesktopToolServerOptions;
   availableBackends?: () => readonly BrowserRuntimeBackend[];
   browserRuntime: BrowserRuntimeAvailability;
   computerUsePluginReady?: () => boolean;
@@ -52,38 +63,45 @@ function buildNodeReplServer(
   codexHome: string,
   availableBackends: readonly BrowserRuntimeBackend[],
   computerUseRuntime: Extract<ComputerUseRuntimeResult, { status: "available" }> | null,
+  windows?: WindowsDesktopToolServerOptions,
 ) {
+  const targetPath = windows ? path.win32 : path;
   const availableBackendsValue = availableBackends.join(",");
   // app-server installs local marketplace plugins into versioned directories
   // beneath CODEX_HOME/plugins/cache and exposes skill paths from that cache.
   // Trust only this Profile's materialized source and native installed cache.
   // Other clients' plugins in the shared home do not gain trusted RPC access.
-  const installedPluginCache = path.join(
+  const installedPluginCache = targetPath.join(
     codexHome,
     "plugins",
     "cache",
-    nodexDesktopToolMarketplaceName(runtimeStateHome),
+    nodexDesktopToolMarketplaceName(runtimeStateHome, windows ? "win32" : undefined),
   );
   const trustedCodePaths = [runtimeStateHome, installedPluginCache, bundle.rootPath].join(
-    path.delimiter,
+    targetPath.delimiter,
   );
   const trustedServices: Record<string, string> = {};
   if (availableBackends.length > 0) {
     trustedServices.browser = bundle.paths.browserPluginService;
   }
-  if (computerUseRuntime && bundle.paths.computerUseRpcService) {
+  if (windows?.computerUse) {
+    trustedServices.sky = "@oai/sky/service";
+  } else if (computerUseRuntime && bundle.paths.computerUseRpcService) {
     trustedServices.sky = bundle.paths.computerUseRpcService;
   }
   const env: Record<string, string> = {
+    ...(windows ? windowsReplSystemEnvironment(windows.environment) : {}),
     BROWSER_USE_AVAILABLE_BACKENDS: availableBackendsValue,
-    BROWSER_USE_CODEX_APP_BUILD_FLAVOR: bundle.manifest.buildFlavor,
+    BROWSER_USE_CODEX_APP_BUILD_FLAVOR: windows
+      ? nodexDesktopToolMarketplaceName(runtimeStateHome, "win32")
+      : bundle.manifest.buildFlavor,
     BROWSER_USE_CODEX_APP_VERSION: bundle.manifest.desktopBuild,
     BROWSER_USE_DISABLE_AMBIENT_NETWORK: "1",
     CODEX_CLI_PATH: bundle.paths.codexCli,
-    CODEX_HOME: codexHome,
+    CODEX_HOME: windows ? windowsDesktopToolCodexHome(runtimeStateHome) : codexHome,
     NODE_REPL_DISABLE_ANALYTICS: "1",
     NODE_REPL_NATIVE_PIPE_CONNECT_TIMEOUT_MS: "1000",
-    NODE_REPL_NODE_MODULE_DIRS: bundle.nodeModuleDirs.join(path.delimiter),
+    NODE_REPL_NODE_MODULE_DIRS: bundle.nodeModuleDirs.join(targetPath.delimiter),
     NODE_REPL_NODE_PATH: bundle.paths.node,
     NODE_REPL_TRUSTED_RPC_ENABLED: "1",
     NODE_REPL_TRUSTED_SERVICES: JSON.stringify(trustedServices),
@@ -96,7 +114,16 @@ function buildNodeReplServer(
     env.NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME =
       "Control the Chrome browser in conjunction with the Chrome Plugin.";
   }
-  if (computerUseRuntime) {
+  if (windows?.computerUse) {
+    const bindings = Object.entries(windows.computerUse.env);
+    for (const [name, value] of bindings) {
+      const key = name.toUpperCase();
+      if (key === "SKY_CUA_NATIVE_PIPE" || key === "SKY_CUA_NATIVE_PIPE_DIRECTORY")
+        env[key] = value;
+    }
+    env.NODE_REPL_INSTRUCTIONS_USE_CASE_COMPUTER_USE = "Control desktop apps through Computer Use.";
+  }
+  if (computerUseRuntime && !windows) {
     env.NODE_REPL_HOST_SERVICES_PIPE_PATH = computerUseRuntime.hostServicesPipePath;
     env.NODE_REPL_INSTRUCTIONS_USE_CASE_COMPUTER_USE = COMPUTER_USE_INSTRUCTIONS;
     env.SKY_CUA_SERVICE_NATIVE_PIPE_PATH = computerUseNativePipePath(runtimeStateHome);
@@ -104,6 +131,7 @@ function buildNodeReplServer(
   }
 
   return nodeReplServerDefinition({
+    windowsJobLauncher: windows?.jobLauncher,
     codexCliPath: bundle.paths.codexCli,
     env,
     nodePath: bundle.paths.node,
@@ -122,6 +150,7 @@ type DesktopRuntimeResult =
   | Extract<BrowserUseThreadConfigResult, { status: "unavailable" }>;
 
 export class BrowserUseThreadConfigBuilder {
+  private readonly windows: WindowsDesktopToolServerOptions | undefined;
   private readonly availableBackends: () => readonly BrowserRuntimeBackend[];
   private readonly browserRuntime: BrowserRuntimeAvailability;
   private readonly computerUsePluginReady: () => boolean;
@@ -131,19 +160,29 @@ export class BrowserUseThreadConfigBuilder {
   private readonly runtimeStateHome: string;
 
   constructor(options: BrowserUseThreadConfigBuilderOptions) {
+    this.windows = options.windows;
+    const targetPath = this.windows ? path.win32 : path;
     this.availableBackends = options.availableBackends ?? (() => ["iab"]);
     this.browserRuntime = options.browserRuntime;
     this.computerUsePluginReady = options.computerUsePluginReady ?? (() => false);
     this.computerUseRuntime = options.computerUseRuntime ?? (() => null);
-    this.codexHome = path.resolve(options.codexHome);
+    this.codexHome = targetPath.resolve(options.codexHome);
     this.disabledDesktopPluginIds = options.disabledDesktopPluginIds ?? [];
-    this.runtimeStateHome = path.resolve(options.runtimeStateHome);
+    this.runtimeStateHome = targetPath.resolve(options.runtimeStateHome);
   }
 
   private resolveRuntime(
     plugins?: Extract<BrowserPluginReconcileResult, { status: "ready" }>,
   ): DesktopRuntimeResult {
     if (this.browserRuntime.status === "unavailable") return this.browserRuntime;
+
+    const windowsTarget = this.browserRuntime.bundle.manifest.targetPlatform === "win32";
+    if (windowsTarget && !this.windows)
+      return {
+        message: "Windows Desktop Tool launch provider is unavailable",
+        reason: "platform-verification-failed",
+        status: "unavailable",
+      };
 
     let requestedBackends: readonly BrowserRuntimeBackend[];
     try {
@@ -174,8 +213,12 @@ export class BrowserUseThreadConfigBuilder {
       (!plugins || (plugins.computerUse.status === "ready" && plugins.computerUse.enabled));
     const computerUseRuntime = computerUseReady ? this.computerUseRuntime() : null;
     const availableComputerUseRuntime =
-      computerUseRuntime?.status === "available" ? computerUseRuntime : null;
-    if (availableBackends.length === 0 && !availableComputerUseRuntime) {
+      !windowsTarget && computerUseRuntime?.status === "available" ? computerUseRuntime : null;
+    const windows =
+      windowsTarget && this.windows
+        ? { ...this.windows, computerUse: computerUseReady ? this.windows.computerUse : undefined }
+        : undefined;
+    if (availableBackends.length === 0 && !availableComputerUseRuntime && !windows?.computerUse) {
       return {
         message: "Browser runtime bundle is verified, but no browser backend is available",
         reason: "backend-unavailable",
@@ -190,9 +233,10 @@ export class BrowserUseThreadConfigBuilder {
         this.codexHome,
         availableBackends,
         availableComputerUseRuntime,
+        windows,
       ),
       availableBackends,
-      computerUseAvailable: availableComputerUseRuntime !== null,
+      computerUseAvailable: availableComputerUseRuntime !== null || !!windows?.computerUse,
       status: "available",
     };
   }
@@ -208,7 +252,7 @@ export class BrowserUseThreadConfigBuilder {
           ["chrome", runtime.availableBackends.includes("chrome")],
           ["computer-use", runtime.computerUseAvailable],
         ].map(([name, enabled]) => [
-          `plugins.${name}@${nodexDesktopToolMarketplaceName(this.runtimeStateHome)}.enabled`,
+          `plugins.${name}@${nodexDesktopToolMarketplaceName(this.runtimeStateHome, this.windows ? "win32" : undefined)}.enabled`,
           enabled,
         ]),
       ),
@@ -237,7 +281,7 @@ export class BrowserUseThreadConfigBuilder {
       server: { command, args, env },
       pluginRoots: [
         ...(runtime.availableBackends.includes("iab")
-          ? [path.join(plugins.marketplaceRoot, "plugins", "browser")]
+          ? [(this.windows ? path.win32 : path).join(plugins.marketplaceRoot, "plugins", "browser")]
           : []),
         ...(runtime.availableBackends.includes("chrome") && plugins.chrome.status === "ready"
           ? [plugins.chrome.pluginRoot]

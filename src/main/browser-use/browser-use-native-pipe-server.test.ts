@@ -1,3 +1,6 @@
+import { Duplex, PassThrough } from "node:stream";
+import * as Queue from "effect/Queue";
+import type { WindowsPipeConnection } from "../platform/node/WindowsDesktopTools";
 import fs from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
@@ -16,6 +19,8 @@ import {
   BrowserUseNativePipeFrameDecoder,
   encodeBrowserUseNativePipeFrame,
 } from "./native-pipe-framing";
+
+const testUnixPipe = it.effect.skipIf(process.platform === "win32");
 
 const makeServer = (
   authorized: boolean,
@@ -71,7 +76,7 @@ const readOne = (socket: net.Socket): Promise<Record<string, unknown>> => {
   });
 };
 
-it.effect("authorizes before reading and returns isolated JSON-RPC responses", () =>
+testUnixPipe("authorizes before reading and returns isolated JSON-RPC responses", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const server = yield* makeServer(true, (request, context) => ({
@@ -109,7 +114,7 @@ it.effect("authorizes before reading and returns isolated JSON-RPC responses", (
   ),
 );
 
-it.effect("rejects unauthorized peers without dispatching a request", () =>
+testUnixPipe("rejects unauthorized peers without dispatching a request", () =>
   Effect.scoped(
     Effect.gen(function* () {
       let calls = 0;
@@ -129,22 +134,20 @@ it.effect("rejects unauthorized peers without dispatching a request", () =>
 );
 
 // Named pipes do not expose POSIX directory or socket permission bits.
-it.effect.skipIf(process.platform === "win32")(
-  "uses restrictive directory and socket permissions",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const server = yield* makeServer(true, () => "pong");
-        const directoryMode =
-          (yield* Effect.promise(() => fs.stat(path.dirname(server.pipePath)))).mode & 0o777;
-        const socketMode = (yield* Effect.promise(() => fs.stat(server.pipePath))).mode & 0o777;
-        expect(directoryMode).toBe(0o700);
-        expect(socketMode).toBe(0o600);
-      }),
-    ),
+testUnixPipe("uses restrictive directory and socket permissions", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const server = yield* makeServer(true, () => "pong");
+      const directoryMode =
+        (yield* Effect.promise(() => fs.stat(path.dirname(server.pipePath)))).mode & 0o777;
+      const socketMode = (yield* Effect.promise(() => fs.stat(server.pipePath))).mode & 0o777;
+      expect(directoryMode).toBe(0o700);
+      expect(socketMode).toBe(0o600);
+    }),
+  ),
 );
 
-it.effect("closes accepted sockets and removes the exact pipe with its Scope", () =>
+testUnixPipe("closes accepted sockets and removes the exact pipe with its Scope", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const directory = yield* Effect.acquireRelease(
@@ -178,7 +181,7 @@ it.effect("closes accepted sockets and removes the exact pipe with its Scope", (
   ),
 );
 
-it.effect("reports bounded request lifecycle metadata without request parameters", () =>
+testUnixPipe("reports bounded request lifecycle metadata without request parameters", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const started: unknown[] = [];
@@ -220,7 +223,7 @@ it.effect("reports bounded request lifecycle metadata without request parameters
   ),
 );
 
-it.effect("surfaces the actionable cause of a wrapped Browser request failure", () =>
+testUnixPipe("surfaces the actionable cause of a wrapped Browser request failure", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const server = yield* makeServer(true, () => {
@@ -244,6 +247,75 @@ it.effect("surfaces the actionable cause of a wrapped Browser request failure", 
         },
         id: 1,
       });
+    }),
+  ),
+);
+
+it.effect("dispatches framed Windows traffic only after the native peer is admitted", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const accepted = yield* Queue.unbounded<WindowsPipeConnection>();
+      const requests: string[] = [];
+      const rejected = yield* Queue.unbounded<string>();
+      const makePeer = (pid: number) => {
+        const output = new PassThrough();
+        const stream = new Duplex({
+          read() {},
+          write(chunk, _encoding, callback) {
+            output.write(chunk, callback);
+          },
+        });
+        return {
+          output,
+          connection: {
+            peer: { pid, creationTime: String(pid), imagePath: "C:/runtime/node_repl.exe" },
+            stream,
+          },
+        };
+      };
+      const server = yield* makeBrowserUseNativePipeServer({
+        platform: "win32",
+        socketPeerAuthorizer: () => {
+          throw new Error("POSIX authorization must not run");
+        },
+        handler: (request) => {
+          requests.push(request.method);
+          return "result";
+        },
+        events: {
+          onRejectedSocket: ({ reason }) => {
+            Queue.offerUnsafe(rejected, reason!);
+          },
+        },
+        windows: {
+          profileNamespace: "profile-a",
+          native: {
+            listenPipe: (prefix) =>
+              Effect.succeed({
+                endpoint: "\\\\.\\pipe\\" + prefix + "-nonce",
+                accept: Queue.take(accepted),
+              }),
+          },
+          authorize: ({ pid }) => Effect.succeed({ authorized: pid === 1, reason: "foreign" }),
+        },
+      });
+      expect(server.pipePath).toContain("codex-browser-use-profile-a-nonce");
+      const frame = encodeBrowserUseNativePipeFrame(
+        JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getInfo" }),
+      );
+      const denied = makePeer(2);
+      denied.connection.stream.push(frame);
+      yield* Queue.offer(accepted, denied.connection);
+      expect(yield* Queue.take(rejected)).toBe("foreign");
+      const allowed = makePeer(1);
+      const received = new Promise<Buffer>((resolve) => allowed.output.once("data", resolve));
+      allowed.connection.stream.push(frame);
+      yield* Queue.offer(accepted, allowed.connection);
+      const [body] = new BrowserUseNativePipeFrameDecoder().push(
+        yield* Effect.promise(() => received),
+      );
+      expect(JSON.parse(body!)).toEqual({ jsonrpc: "2.0", id: 1, result: "result" });
+      expect(requests).toEqual(["getInfo"]);
     }),
   ),
 );

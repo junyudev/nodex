@@ -8,7 +8,7 @@ export function resolveSettingsHostPresentation(platform: string) {
     terminalShell: platform === "win32",
     computerUse: capabilities.computerControl,
     browserProfileImport: capabilities.browserProfileImport,
-    browserControl: capabilities.browserControl,
+    browserControl: platform === "win32" || capabilities.browserControl,
     appUpdates: capabilities.autoUpdate,
     launchAtLogin: platform === "win32" || platform === "windows",
   };

@@ -1,3 +1,4 @@
+import { hostCapabilities } from "./host-capabilities";
 import type { BrowserRuntimeBackend } from "./browser-runtime-metadata";
 
 export const BROWSER_USE_PEER_AUTHORIZATION_ENV = "CODEX_BROWSER_USE_PEER_AUTHORIZATION";
@@ -23,6 +24,8 @@ export type BrowserUseHostCapability =
     };
 
 export function resolveBrowserUseHostCapability(input: {
+  readonly windowsTransportReady?: boolean;
+  readonly execution?: "local" | "remote" | "wsl";
   readonly browserRuntimeStatus: "available" | "unavailable";
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly isPackaged: boolean;
@@ -37,7 +40,10 @@ export function resolveBrowserUseHostCapability(input: {
       status: "unavailable",
     };
   }
-  if (input.platform !== "darwin") {
+  if (
+    (input.platform !== "darwin" && input.platform !== "win32") ||
+    (input.execution !== undefined && input.execution !== "local")
+  ) {
     return {
       availableBackends: [],
       message: `The in-app Browser host is unsupported on ${input.platform}`,
@@ -46,7 +52,23 @@ export function resolveBrowserUseHostCapability(input: {
       status: "unavailable",
     };
   }
-  if (input.isPackaged) {
+  if (
+    !hostCapabilities(input.platform, undefined, {
+      browserReady: input.windowsTransportReady === true,
+    }).browserControl
+  ) {
+    return {
+      availableBackends: [],
+      message: "The Windows Browser transport is unavailable",
+      peerAuthorizationMode: "disabled",
+      reason: "runtime-unavailable",
+      status: "unavailable",
+    };
+  }
+  if (
+    input.isPackaged ||
+    (input.platform === "win32" && input.environment[BROWSER_USE_PEER_AUTHORIZATION_ENV] !== "1")
+  ) {
     return {
       availableBackends: ["iab"],
       peerAuthorizationMode: "packaged",

@@ -286,7 +286,10 @@ export const live: Layer.Layer<
             yield* ensureCurrent(capability);
           }
         }
-        const toolConfig = yield* tools.threadConfig(location.cwd);
+        const toolConfig =
+          location.hostId === gateway.localHostId
+            ? yield* tools.threadConfig(location.cwd)
+            : { "features.js_repl": false, "mcp_servers.node_repl.enabled": false };
         const config = yield* Effect.try({
           try: () =>
             buildCodexThreadConfig({

@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { PathSecurity } from "../../platform/node/WindowsDesktopTools";
+import { hasTrustedWindowsOwner, type PathSecurity } from "../../platform/node/WindowsDesktopTools";
 import type { ChromeBrowserAuthority } from "./ChromeBrowserFamilyRegistry";
 import {
   createChromeNativeHostManifest,
@@ -23,12 +23,8 @@ export function windowsChromeFileSecurity(
 ): WindowsChromeFileSecurity {
   const verify = async (candidate: string) => {
     const security = await inspect(candidate);
-    if (
-      security.reparsePoint ||
-      security.grantsForeignWrite ||
-      security.ownerSid !== security.currentUserSid
-    ) {
-      throw new Error("Browser control files must belong to the current Windows user");
+    if (security.reparsePoint || security.grantsForeignWrite || !hasTrustedWindowsOwner(security)) {
+      throw new Error("Browser control files must belong to this Windows user or the system");
     }
   };
   return {

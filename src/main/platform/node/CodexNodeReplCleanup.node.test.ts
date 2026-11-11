@@ -2,12 +2,10 @@
 import { mkdtemp, mkdir, writeFile, rm, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as Effect from "effect/Effect";
+import type { WindowsProcessIdentity } from "./WindowsDesktopTools";
 import { expect, test } from "vite-plus/test";
-import {
-  cleanupNodeReplExecutions,
-  listNodeReplChildProcesses,
-  createNodeReplWindowsProcessProviderLoader,
-} from "./CodexNodeReplCleanup";
+import { cleanupNodeReplExecutions, listNodeReplChildProcesses } from "./CodexNodeReplCleanup";
 
 async function fixture(run: (home: string, path: string) => Promise<void>) {
   const home = await mkdtemp(join(tmpdir(), "nodex-repl-cleanup-"));
@@ -38,6 +36,7 @@ test("removes stale PID records without killing an unrelated process", async () 
     const killed: number[] = [];
     const result = await cleanupNodeReplExecutions({
       codexHome,
+      platform: "darwin",
       sessionId: "session",
       turnId: "turn",
       dependencies: {
@@ -57,6 +56,7 @@ test("kills verified descendants deepest first, deduplicates, and removes comple
     const killed: number[] = [];
     const result = await cleanupNodeReplExecutions({
       codexHome,
+      platform: "darwin",
       sessionId: "session",
       turnId: "turn",
       dependencies: {
@@ -82,6 +82,7 @@ test("another turn's valid record survives without process inspection", async ()
   fixture(async (codexHome, path) => {
     const result = await cleanupNodeReplExecutions({
       codexHome,
+      platform: "darwin",
       sessionId: "session",
       turnId: "other",
       dependencies: {
@@ -99,6 +100,7 @@ test("preserves invalid records whose execution owner cannot be proven", async (
     await writeFile(path, "invalid external record");
     const result = await cleanupNodeReplExecutions({
       codexHome,
+      platform: "darwin",
       sessionId: "session",
       turnId: "turn",
       dependencies: {
@@ -116,6 +118,7 @@ test("failed descendant enumeration kills only verified kernel and preserves ret
     const killed: number[] = [];
     const result = await cleanupNodeReplExecutions({
       codexHome,
+      platform: "darwin",
       sessionId: "session",
       turnId: "turn",
       dependencies: {
@@ -168,71 +171,48 @@ test("empty descendant selection performs no second process query", async () => 
   ).toEqual([]);
   expect(calls).toBe(1);
 });
-test("Windows uses its native descendant snapshot and never executes POSIX commands", async () =>
+test("Windows terminates only the native kernel identity under its owned REPL", async () =>
   fixture(async (codexHome, path) => {
-    const requests: Array<{ includeCommandLine: true; rootPid: number }> = [];
-    const killed: number[] = [];
-    const provider = {
-      listProcesses: (request: { includeCommandLine: true; rootPid: number }) => {
-        requests.push(request);
-        return [
-          { pid: 101, parentPid: 1 },
-          { pid: 102, parentPid: 101 },
-          { pid: 103, parentPid: 102 },
-          { pid: 104, parentPid: 103 },
-          { pid: 900, parentPid: 1 },
-        ];
-      },
-    };
+    const repl = { pid: 101, creationTime: "1000", imagePath: "C:/Desktop Tools/node_repl.exe" };
+    const kernel = { pid: 102, creationTime: "1001", imagePath: "C:/Desktop Tools/node.exe" };
+    const terminated: WindowsProcessIdentity[] = [];
     const counts = await cleanupNodeReplExecutions({
       codexHome,
+      platform: "win32",
       sessionId: "session",
       turnId: "turn",
       dependencies: {
-        listChildProcesses: (pid) =>
-          listNodeReplChildProcesses(
-            pid,
-            async () => {
-              throw new Error("POSIX path must not run");
-            },
-            { platform: "win32", loadWindowsProvider: () => provider },
-          ),
-        kill: (pid) => {
-          killed.push(pid);
+        windows: {
+          replPath: repl.imagePath,
+          nodePath: kernel.imagePath,
+          isOwnedRepl: () => Effect.succeed(true),
+          runNative: Effect.runPromise,
+          native: {
+            processIdentity: () => Effect.succeed(repl),
+            descendants: () => Effect.succeed([kernel, { ...kernel, pid: 900 }]),
+            terminateSubtree: (root) =>
+              Effect.sync(() => {
+                terminated.push(root);
+                return [104, 103, root.pid];
+              }),
+          },
         },
       },
     });
-    expect(requests).toEqual([
-      { includeCommandLine: true, rootPid: 101 },
-      { includeCommandLine: true, rootPid: 102 },
-    ]);
-    expect(killed).toEqual([104, 103, 102]);
+    expect(terminated).toEqual([kernel]);
     expect(counts).toEqual({ failedCount: 0, killedCount: 1, scannedCount: 1, staleCount: 0 });
     await expect(access(path)).rejects.toThrow();
   }));
-test("native provider discovery retries an absent resource and caches an installed addon", async () => {
-  let exists = false;
-  const loads: string[] = [];
-  const provider = { listProcesses: () => [] };
-  const load = createNodeReplWindowsProcessProviderLoader({
-    resourcesPath: "/bundle",
-    exists: () => exists,
-    load: (path) => {
-      loads.push(path);
-      return provider;
-    },
-  });
-  expect(
-    await listNodeReplChildProcesses(
-      101,
-      async () => {
-        throw new Error("must not run ps");
-      },
-      { platform: "win32", loadWindowsProvider: load },
-    ),
-  ).toEqual([]);
-  exists = true;
-  expect(load()).toBe(provider);
-  expect(load()).toBe(provider);
-  expect(loads).toEqual([join("/bundle", "native", "windows-account.node")]);
-});
+
+test("Windows cleanup fails when the process provider is absent", async () =>
+  fixture(async (codexHome, path) => {
+    await expect(
+      cleanupNodeReplExecutions({
+        codexHome,
+        platform: "win32",
+        sessionId: "session",
+        turnId: "turn",
+      }),
+    ).rejects.toThrow("native process provider");
+    await access(path);
+  }));

@@ -4,7 +4,7 @@ Nodex presents Browser Use, control of supported browser profiles, and Computer 
 
 ## Availability
 
-The built-in Browser is available when its verified runtime is ready. Control of an existing browser profile additionally requires a supported browser family, the installed native host, and a connected allowed extension instance. Browser Settings reports the live provider state as checking, unavailable, not registered, registered elsewhere, needs repair, waiting for extension, or ready. Agents can select the existing-browser backend only in the ready state.
+The built-in Browser is available to local Agents on macOS and on Windows x64 and arm64 when the verified runtime and its transport are ready. Control of an existing browser profile additionally requires a supported browser family, the installed native host, and a connected allowed extension instance. Browser Settings reports the live provider state as checking, unavailable, not registered, registered elsewhere, needs repair, waiting for extension, or ready. Agents can select the existing-browser backend only in the ready state.
 
 On macOS, the installed app registers the host for the personal Profile and repairs registrations
 whose host executable has disappeared. A registration pointing to another
@@ -14,7 +14,7 @@ registers for the duration of that launch and gives back its registration on
 clean exit if it still owns it. On macOS, disposable Electron scenarios use a
 registration home inside their own Profile. Windows scenarios leave HKCU untouched.
 
-Computer Use is available only when its verified helper and operating-system requirements are ready. Its service uses the bundled Agent runtime and the owning Profile without requiring a separately installed Codex app or sharing another Profile’s configuration. A failure in one control backend does not weaken or implicitly enable another. Desktop tools are available to local Agent execution.
+Computer Use is available only when its verified helper and operating-system requirements are ready. Its service uses the bundled Agent runtime and the owning Profile without requiring a separately installed Codex app or sharing another Profile’s configuration. A failure in one control backend does not weaken or implicitly enable another. Desktop tools are available to local Agent execution. Remote and WSL execution do not receive local desktop tools. Native picture-in-picture is available on macOS.
 
 Local chats receive the desktop tools alongside the user's own MCP servers. Codex chats also receive Desktop features. When desktop tools cannot be prepared, the chat continues without them. The built-in Browser opens in the window that sent the message. A turn that no window sent, such as a queued, scheduled, or Agent-started turn, keeps the Browser window the chat already had. Archiving or deleting a chat releases its Browser pages and closes its Runtime-owned JavaScript session.
 

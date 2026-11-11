@@ -106,6 +106,10 @@ it.effect.each(["local", "remote-a"])(
         const resume = requests[1]!;
         const config = resume.params.config as Record<string, unknown>;
         assert.strictEqual(config["features.js_repl"], false);
+        if (hostId !== "local") {
+          assert.strictEqual(config["mcp_servers.node_repl.enabled"], false);
+          assert.strictEqual(config["mcp_servers.node_repl"], undefined);
+        }
         assert.deepEqual(
           config["mcp_servers.nodex_app.enabled_tools"],
           hostId === "local" ? appToolCatalog.map((tool) => tool.name) : undefined,
