@@ -155,9 +155,9 @@ intents, on the phone as on the desktop, preventing duplicate interruptions. Sha
 observation occurrences remain intact. See [Coordinator behavior](coordinator-behavior.md).
 
 1. non-default hosts do not emit turn notifications;
-2. an automation-level `DONT_NOTIFY` suppresses;
-3. when there is no automation decision, a heartbeat `DONT_NOTIFY`
-   suppresses;
+2. for a completed or interrupted Turn, an Automation decision of `DONT_NOTIFY` suppresses;
+3. for a completed or interrupted Turn with no Automation decision, a heartbeat
+   decision of `DONT_NOTIFY` suppresses;
 4. real children suppress;
 5. `threadSource === "realtime_voice"` suppresses;
 6. a terminal-specific pending continuation suppresses;
@@ -175,14 +175,11 @@ Pending continuation is exact to the terminal state:
   agent, or any active descendant suppresses every terminal state;
 - a pending steer does not suppress on its own.
 
-The automation decision is an optional upstream fact. Nodex does not currently
-persist a per-automation notification mode, so local automation turns provide
-no automation decision and use the heartbeat fallback. Adding mute or
-failed-runs-only controls requires an Automation-owned persisted contract; it
-must not be inferred from cron or heartbeat identity.
-
-Completed, failed, and interrupted terminal states all enter this policy.
-User interruption is not an unconditional exclusion.
+An Automation's saved notification preference takes precedence over the
+heartbeat decision. A quiet completion produces no desktop notification or
+phone push and leaves the chat's unread state alone. Failed Turns still enter
+the ordinary notification policy even if the heartbeat asked to stay quiet.
+Questions and approvals still ask for attention as soon as the chat needs them.
 
 The title is the normalized task title, falling back to `Turn complete`. The
 body prefers the heartbeat notification message, then heartbeat-visible text,
@@ -369,8 +366,8 @@ title is the Session title, and its host is the local host.
   question notification. One identity follows the waiting episode across Run changes and is
   withdrawn when the Session stops waiting.
 
-Either event marks the Session unread in Core unless its conversation is seen or
-the Session is archived. A Runtime conversation reports its presentation through
+Questions, approvals, and completions that ask for attention mark the Session
+unread in Core unless its conversation is seen or the Session is archived. A Runtime conversation reports its presentation through
 the same registry as native chats, so a visible root is not marked unread;
 showing a delegated child does not present its root. Process
 restarts and missed observations reread activity without producing notifications.

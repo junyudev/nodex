@@ -2,8 +2,10 @@ import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
+import { quietAutomationTurnReason } from "../../shared/codex-thread-notification";
 import type {
   CodexNotificationConversationFacts,
+  CodexTurnCompletedNotificationEvent,
   CodexNotificationTurnStatus,
   CodexThreadNotificationEvent,
 } from "../../shared/codex-thread-notification";
@@ -58,8 +60,9 @@ const waitingFamily = (activity: AgentRuntimeSessionActivity | null) => {
 
 /**
  * Turns Session activity transitions into unread state and desktop notifications. A foreground
- * Run ending (including automatic wake Runs) or a new attention request marks an unpresented
- * Session unread and raises the shared notification owner with native conversation copy.
+ * Run ending (including automatic wake Runs) or a new attention request raises the shared
+ * notification owner with native conversation copy. Completions that ask for attention and
+ * new requests mark an unpresented Session unread.
  * User attention replaces completion while the Session waits, including questions revealed at
  * turn end. A temporary side chat's attention surfaces through its source Session; its completion
  * keeps the side chat's own conversation and copy but opens its tab inside the source Session, and
@@ -120,13 +123,10 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
       const sideChatSource = session.sideChatSource;
       // A side chat's attention already waits on its source Session; only its replies notify.
       if (sideChatSource && !turnCompleted) return;
-      if (!session.archived && !session.unread && !options.isSeen({ rootThreadId, sessionId }))
-        yield* options.markUnread(sessionId);
       // A side chat opens as a tab of its source Session, never as a Scene of its own.
       const parentNavigationPath = sideChatSource?.rootThreadId
         ? `session:${encodeURIComponent(sideChatSource.sessionId)}/thread:${encodeURIComponent(sideChatSource.rootThreadId)}`
         : null;
-      if (sideChatSource && !parentNavigationPath) return;
       const conversation: CodexNotificationConversationFacts = {
         conversationId: rootThreadId,
         title: session.title,
@@ -136,6 +136,7 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
         sideConversationParentNavigationPath: parentNavigationPath,
         runtimeSessionId: sessionId,
       };
+      let completion: CodexTurnCompletedNotificationEvent | null = null;
       if (turnCompleted) {
         const settledOutcome =
           outcome === undefined ? yield* readOutcome(transition, endedRun.runId) : outcome;
@@ -149,21 +150,28 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
         const hasPendingContinuation =
           after?.status === "background" ||
           (after?.status === "running" && status !== "interrupted");
-        const lastAgentMessage = !hasPendingContinuation
-          ? yield* finalReply(transition, settledOutcome)
-          : null;
-        options.publish({
+        const reply = yield* finalReply(transition, settledOutcome);
+        completion = {
           type: "turn-completed",
           hostId: DEFAULT_CODEX_HOST_ID,
           conversation,
           turnId: endedRun.runId,
           status,
-          lastAgentMessage,
-          heartbeatAssistantMessage: parseCodexHeartbeatAssistantMessage(lastAgentMessage),
+          lastAgentMessage: hasPendingContinuation ? null : reply,
+          heartbeatAssistantMessage: parseCodexHeartbeatAssistantMessage(reply),
           automationNotificationDecision: automationNotificationDecision(policy, status),
           hasPendingContinuation,
-        });
+        };
       }
+      if (
+        (attentionStarted || (completion && !quietAutomationTurnReason(completion))) &&
+        !session.archived &&
+        !session.unread &&
+        !options.isSeen({ rootThreadId, sessionId })
+      )
+        yield* options.markUnread(sessionId);
+      if (sideChatSource && !parentNavigationPath) return;
+      if (completion) options.publish(completion);
       if (attentionStarted && after)
         options.publish({
           hostId: DEFAULT_CODEX_HOST_ID,

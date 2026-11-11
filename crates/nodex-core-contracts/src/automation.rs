@@ -332,6 +332,9 @@ pub struct AutomationRun {
     pub dispatch_id: Option<String>,
     pub run_revision: i64,
     pub status: AutomationRunStatus,
+    /// This run settled without asking for attention.
+    #[serde(default)]
+    pub quiet: bool,
     pub read_at_ms: Option<i64>,
     pub session_title: Option<String>,
     pub source_cwd: Option<String>,
@@ -356,6 +359,9 @@ pub struct AutomationInboxItem {
     pub source_cwd: Option<String>,
     pub run_id: String,
     pub session_id: Option<String>,
+    /// This run settled without asking for attention.
+    #[serde(default)]
+    pub quiet: bool,
     pub read_at_ms: Option<i64>,
     pub created_at_ms: i64,
     pub status: AutomationRunStatus,
@@ -737,6 +743,8 @@ pub enum AutomationIntent {
     CompleteRunForReview {
         run_id: String,
         expected_revision: i64,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        quiet: bool,
         inbox_title: Option<String>,
         inbox_summary: Option<String>,
     },
@@ -759,6 +767,8 @@ pub enum AutomationIntent {
     ArchiveRun {
         run_id: String,
         expected_revision: i64,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        quiet: bool,
         archived_user_message: Option<String>,
         archived_assistant_message: Option<String>,
         archived_reason: Option<String>,

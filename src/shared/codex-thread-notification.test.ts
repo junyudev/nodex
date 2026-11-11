@@ -204,6 +204,25 @@ describe("codex thread notification policy", () => {
     ).toEqual({ type: "suppress", reason: "conversation-presented" });
   });
 
+  test("saved Automation decisions take precedence and failed turns retain attention", () => {
+    const heartbeatAssistantMessage = {
+      decision: "DONT_NOTIFY" as const,
+      visibleText: null,
+      notificationMessage: null,
+    };
+    expect(
+      decideCodexTurnOccurrence(
+        turn({ automationNotificationDecision: "NOTIFY", heartbeatAssistantMessage }),
+        { managed: false },
+      ),
+    ).toEqual({ type: "show" });
+    expect(
+      decideCodexTurnOccurrence(turn({ status: "failed", heartbeatAssistantMessage }), {
+        managed: false,
+      }),
+    ).toEqual({ type: "show" });
+  });
+
   test("the occurrence decision is shared by every channel and ignores desktop settings", () => {
     const unmanaged = { managed: false };
     expect(decideCodexTurnOccurrence(turn(), unmanaged)).toEqual({ type: "show" });

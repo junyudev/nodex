@@ -4026,6 +4026,101 @@ mod tests {
     }
 
     #[test]
+    fn quiet_runs_settle_read_and_stay_out_of_unread_counts() {
+        let harness = harness();
+        create(&harness);
+        for run_id in ["quiet-completed", "quiet-interrupted", "ordinary"] {
+            apply(
+                &harness,
+                &format!("begin-{run_id}"),
+                AutomationIntent::BeginRun {
+                    run_id: run_id.to_owned(),
+                    automation_id: "daily-report".to_owned(),
+                    agent_selection: None,
+                    message_id: None,
+                    notification_policy: None,
+                    dispatch_id: None,
+                    session_id: None,
+                    session_title: None,
+                    source_cwd: None,
+                },
+            )
+            .unwrap();
+            let intent = if run_id == "quiet-interrupted" {
+                AutomationIntent::ArchiveRun {
+                    run_id: run_id.to_owned(),
+                    expected_revision: 1,
+                    quiet: true,
+                    archived_user_message: None,
+                    archived_assistant_message: None,
+                    archived_reason: Some("auto".to_owned()),
+                }
+            } else {
+                AutomationIntent::CompleteRunForReview {
+                    run_id: run_id.to_owned(),
+                    expected_revision: 1,
+                    quiet: run_id == "quiet-completed",
+                    inbox_title: None,
+                    inbox_summary: None,
+                }
+            };
+            let settlement = apply(&harness, &format!("settle-{run_id}"), intent).unwrap();
+            let run = &settlement.committed.value.runs[0];
+            assert_eq!(run.quiet, run_id != "ordinary");
+            assert_eq!(run.read_at_ms.is_some(), run.quiet);
+        }
+        let attempt = apply(
+            &harness,
+            "mark-quiet-unread",
+            AutomationIntent::SetRunReadState {
+                run_id: "quiet-completed".to_owned(),
+                expected_revision: 2,
+                read: false,
+            },
+        )
+        .unwrap();
+        assert!(attempt.committed.value.runs[0].read_at_ms.is_some());
+
+        let inbox = harness
+            .module
+            .read(
+                &harness.context,
+                ModuleReadRequest {
+                    contract_version: AUTOMATION_CONTRACT_VERSION,
+                    read: AutomationRead::Inbox {
+                        window: Default::default(),
+                    },
+                },
+            )
+            .unwrap();
+        let AutomationReadValue::Inbox {
+            window,
+            unread_counts,
+        } = inbox.value
+        else {
+            panic!("inbox snapshot");
+        };
+        assert_eq!(unread_counts.total, 1);
+        assert_eq!(window.items.len(), 3);
+        assert!(
+            window
+                .items
+                .iter()
+                .filter(|item| item.quiet)
+                .all(|item| item.read_at_ms.is_some())
+        );
+        assert_eq!(
+            window
+                .items
+                .iter()
+                .filter(|item| item.read_at_ms.is_none())
+                .map(|item| item.run_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["ordinary"],
+        );
+    }
+
+    #[test]
     fn run_lifecycle_is_revisioned_projected_and_exactly_replayed() {
         let harness = harness();
         create(&harness);
@@ -4107,6 +4202,7 @@ mod tests {
             &harness,
             "complete-run",
             AutomationIntent::CompleteRunForReview {
+                quiet: false,
                 run_id: "run:review".to_owned(),
                 expected_revision: 3,
                 inbox_title: Some("Report ready".to_owned()),
@@ -4187,6 +4283,7 @@ mod tests {
             &harness,
             "archive-run",
             AutomationIntent::ArchiveRun {
+                quiet: false,
                 run_id: "run:review".to_owned(),
                 expected_revision: 7,
                 archived_user_message: None,
@@ -4400,6 +4497,7 @@ mod tests {
             &harness,
             "user-archive",
             AutomationIntent::ArchiveRun {
+                quiet: false,
                 run_id: "run:user-archived".to_owned(),
                 expected_revision: 1,
                 archived_user_message: None,

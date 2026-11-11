@@ -1731,6 +1731,7 @@ export interface components {
             readonly inbox_title?: string | null;
             /** @enum {string} */
             readonly kind: "complete_run_for_review";
+            readonly quiet?: boolean;
             readonly run_id: string;
         } | {
             /** Format: int64 */
@@ -1764,6 +1765,7 @@ export interface components {
             readonly expected_revision: number;
             /** @enum {string} */
             readonly kind: "archive_run";
+            readonly quiet?: boolean;
             readonly run_id: string;
         } | {
             /** Format: int64 */
@@ -1900,6 +1902,8 @@ export interface components {
             readonly inbox_summary?: string | null;
             readonly inbox_title?: string | null;
             readonly page_id?: string | null;
+            /** @description This run settled without asking for attention. */
+            readonly quiet?: boolean;
             /** Format: int64 */
             readonly read_at_ms?: number | null;
             readonly run_id: string;
@@ -2191,6 +2195,8 @@ export interface components {
                 /** Format: int64 */
                 readonly created_at_ms: number;
                 readonly description?: string | null;
+                /** @description This run settled without asking for attention. */
+                readonly quiet?: boolean;
                 /** Format: int64 */
                 readonly read_at_ms?: number | null;
                 readonly run_id: string;
@@ -2244,6 +2250,8 @@ export interface components {
                 readonly inbox_summary?: string | null;
                 readonly inbox_title?: string | null;
                 readonly page_id?: string | null;
+                /** @description This run settled without asking for attention. */
+                readonly quiet?: boolean;
                 /** Format: int64 */
                 readonly read_at_ms?: number | null;
                 readonly run_id: string;
@@ -7943,6 +7951,7 @@ export interface components {
                 readonly inbox_title?: string | null;
                 /** @enum {string} */
                 readonly kind: "complete_run_for_review";
+                readonly quiet?: boolean;
                 readonly run_id: string;
             } | {
                 /** Format: int64 */
@@ -7976,6 +7985,7 @@ export interface components {
                 readonly expected_revision: number;
                 /** @enum {string} */
                 readonly kind: "archive_run";
+                readonly quiet?: boolean;
                 readonly run_id: string;
             } | {
                 /** Format: int64 */

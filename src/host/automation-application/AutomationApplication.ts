@@ -209,6 +209,7 @@ export interface AutomationRuns {
   ) => AutomationEffect<boolean>;
   readonly completeForReview: (input: {
     readonly runId: string;
+    readonly quiet?: boolean;
     readonly inboxTitle?: string | null;
     readonly inboxSummary?: string | null;
   }) => AutomationEffect<boolean>;
@@ -218,7 +219,10 @@ export interface AutomationRuns {
     readonly inboxSummary?: string | null;
   }) => AutomationEffect<boolean>;
   readonly accept: (runId: string) => AutomationEffect<boolean>;
-  readonly archive: (input: AutomationRunArchiveInput) => AutomationEffect<boolean>;
+  readonly archive: (
+    input: AutomationRunArchiveInput,
+    quiet?: boolean,
+  ) => AutomationEffect<boolean>;
   readonly delete: (runId: string) => AutomationEffect<boolean>;
   readonly unarchive: (runId: string) => AutomationEffect<boolean>;
 }
@@ -1153,6 +1157,7 @@ export const make: Effect.Effect<
           (current) => ({
             kind: "complete_run_for_review",
             run_id: input.runId,
+            quiet: input.quiet ?? false,
             expected_revision: current.run_revision,
             inbox_title: input.inboxTitle ?? null,
             inbox_summary: input.inboxSummary ?? null,
@@ -1173,10 +1178,11 @@ export const make: Effect.Effect<
           run_id: runId,
           expected_revision: current.run_revision,
         })).pipe(Effect.map((run) => run !== null)),
-      archive: (input) =>
+      archive: (input, quiet = false) =>
         applyRun("runs.archive", input.runId, (current) => ({
           kind: "archive_run",
           run_id: input.runId,
+          quiet,
           expected_revision: current.run_revision,
           archived_user_message: input.archivedUserMessage ?? null,
           archived_assistant_message: input.archivedAssistantMessage ?? null,

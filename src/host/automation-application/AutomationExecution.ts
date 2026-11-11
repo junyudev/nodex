@@ -1,3 +1,7 @@
+import { automationNotificationDecision } from "../../shared/automation-notification-policy";
+import { quietAutomationTurnReason } from "../../shared/codex-thread-notification";
+import { parseCodexHeartbeatAssistantMessage } from "../../shared/codex-turn-notification";
+import { readAutomationTurnPolicy } from "./AutomationTurnPolicy";
 import { modelIsOn, spendsNodexCredit } from "../../shared/model-policy";
 import { isNodexProviderId } from "../../shared/nodex-models";
 import { createHash } from "node:crypto";
@@ -294,7 +298,11 @@ export const live: Layer.Layer<
         );
       return result.value;
     });
-    const awaitResult = Effect.fn("AutomationExecution.awaitResult")(function* (
+    const archiveRun = (runId: string, quiet = false) =>
+      automation.runs.archive({ runId, archivedReason: "auto" }, quiet);
+
+    const settleRun = Effect.fn("AutomationExecution.settleRun")(function* (
+      run: { runId: string; inboxTitle: string | null; pending: boolean },
       sessionId: string,
       messageId: string,
       changes: Stream.Stream<void, unknown>,
@@ -314,16 +322,39 @@ export const live: Layer.Layer<
               ),
         ),
       );
-      if (outcome.status !== "completed")
-        return yield* fail(
-          "execute",
-          outcome.status === "failed" ? "The run failed." : `The run was ${outcome.status}.`,
-        );
+      if (!run.pending) return outcome.status;
+      if (outcome.status === "failed") {
+        yield* archiveRun(run.runId).pipe(Effect.ignore);
+        return outcome.status;
+      }
       const item = outcome.finalAssistantItemId
         ? yield* application.item({ sessionId, itemId: outcome.finalAssistantItemId })
         : null;
-      return item?.type === "assistant_message" ? item.text : "";
+      const text = item?.type === "assistant_message" ? item.text : "";
+      const policy = yield* readAutomationTurnPolicy(core, messageId);
+      const status = outcome.status === "completed" ? "completed" : "interrupted";
+      const quiet =
+        quietAutomationTurnReason({
+          status,
+          automationNotificationDecision: automationNotificationDecision(policy, status),
+          heartbeatAssistantMessage: parseCodexHeartbeatAssistantMessage(text),
+        }) !== null;
+      if (status === "completed") {
+        yield* automation.runs.completeForReview({
+          runId: run.runId,
+          inboxTitle: run.inboxTitle,
+          inboxSummary: text.slice(0, 2000),
+          quiet,
+        });
+      } else {
+        yield* archiveRun(run.runId, quiet);
+      }
+      return outcome.status;
     });
+    const requireCompleted = (status: RunOutcome["status"]) =>
+      status === "completed"
+        ? Effect.void
+        : fail("execute", status === "failed" ? "The run failed." : `The run was ${status}.`);
     // A migrated, already-bound dispatch can predate the only retained definition.
     // Reconcile its accepted messages; that newer definition cannot authorize a launch.
     const reconcileAcceptedDispatch = Effect.fn("AutomationExecution.reconcileAcceptedDispatch")(
@@ -356,13 +387,14 @@ export const live: Layer.Layer<
               "execute",
               "The original Automation Turn is unavailable for reconciliation.",
             );
-          const summary = yield* awaitResult(run.sessionId, messageId, changes, context.deadlineMs);
-          if (run.status === "IN_PROGRESS")
-            yield* automation.runs.completeForReview({
-              runId,
-              inboxTitle: run.sessionTitle,
-              inboxSummary: summary.slice(0, 2000),
-            });
+          const status = yield* settleRun(
+            { runId, inboxTitle: run.sessionTitle, pending: run.status === "IN_PROGRESS" },
+            run.sessionId,
+            messageId,
+            changes,
+            context.deadlineMs,
+          );
+          yield* requireCompleted(status);
         }
         if (!bound)
           return yield* fail("execute", "This Automation changed before it ran. Try again.");
@@ -501,7 +533,7 @@ export const live: Layer.Layer<
           }))
         )
           return yield* fail("heartbeat", "Automation Run admission changed");
-        yield* Effect.gen(function* () {
+        const status = yield* Effect.gen(function* () {
           if (!(yield* automation.runs.bindSession({ runId, sessionId })))
             return yield* fail("heartbeat", "Automation Session attachment changed");
           if (!previous)
@@ -519,26 +551,19 @@ export const live: Layer.Layer<
                 modelSelection: selected,
               },
             });
-          const summary = yield* awaitResult(sessionId, messageId, changes, context.deadlineMs);
-          yield* automation.runs.completeForReview({
-            runId,
-            inboxTitle: definition.name,
-            inboxSummary: summary.slice(0, 2000),
-          });
+          return yield* settleRun(
+            { runId, inboxTitle: definition.name, pending: true },
+            sessionId,
+            messageId,
+            changes,
+            context.deadlineMs,
+          );
         }).pipe(
           Effect.onExit((exit) =>
-            Exit.isSuccess(exit)
-              ? Effect.void
-              : automation.runs
-                  .archive({
-                    runId,
-                    archivedReason: "auto",
-                    archivedUserMessage: null,
-                    archivedAssistantMessage: null,
-                  })
-                  .pipe(Effect.ignore),
+            Exit.isSuccess(exit) ? Effect.void : archiveRun(runId).pipe(Effect.ignore),
           ),
         );
+        yield* requireCompleted(status);
         return;
       }
       const cwds: readonly (string | null)[] =
@@ -552,7 +577,7 @@ export const live: Layer.Layer<
         const runId = identity("run", [definition.id, dispatchId, index]);
         const sessionId = identity("session", [definition.id, dispatchId, index]);
         const messageId = identity("message", [definition.id, dispatchId, index]);
-        yield* Effect.gen(function* () {
+        const status = yield* Effect.gen(function* () {
           const retainedRun = yield* automation.runs.get(runId);
           const previous = retainedRun
             ? yield* application.runOutcome({
@@ -569,19 +594,17 @@ export const live: Layer.Layer<
               definition,
             );
             const changes = yield* subscribeExecutionChanges(supervisor.get());
-            const summary = yield* awaitResult(
+            return yield* settleRun(
+              {
+                runId,
+                inboxTitle: retainedRun.sessionTitle,
+                pending: retainedRun.status === "IN_PROGRESS" || !retainedRun.sessionId,
+              },
               retainedRun.sessionId ?? sessionId,
               messageId,
               changes,
               context.deadlineMs,
             );
-            if (retainedRun.status === "IN_PROGRESS" || !retainedRun.sessionId)
-              yield* automation.runs.completeForReview({
-                runId,
-                inboxTitle: retainedRun.sessionTitle,
-                inboxSummary: summary.slice(0, 2000),
-              });
-            return;
           }
           const { selected, agentSelection, runbook } = yield* prepare;
           if (
@@ -629,26 +652,19 @@ export const live: Layer.Layer<
           });
           if (!(yield* automation.runs.bindSession({ runId, sessionId })))
             return yield* fail("execute", "Automation Session attachment changed");
-          const summary = yield* awaitResult(sessionId, messageId, changes, context.deadlineMs);
-          yield* automation.runs.completeForReview({
-            runId,
-            inboxTitle: definition.name,
-            inboxSummary: summary.slice(0, 2000),
-          });
+          return yield* settleRun(
+            { runId, inboxTitle: definition.name, pending: true },
+            sessionId,
+            messageId,
+            changes,
+            context.deadlineMs,
+          );
         }).pipe(
           Effect.onExit((exit) =>
-            Exit.isSuccess(exit)
-              ? Effect.void
-              : automation.runs
-                  .archive({
-                    runId,
-                    archivedReason: "auto",
-                    archivedUserMessage: null,
-                    archivedAssistantMessage: null,
-                  })
-                  .pipe(Effect.ignore),
+            Exit.isSuccess(exit) ? Effect.void : archiveRun(runId).pipe(Effect.ignore),
           ),
         );
+        if (status) yield* requireCompleted(status);
       }
     });
     return AutomationExecution.of({

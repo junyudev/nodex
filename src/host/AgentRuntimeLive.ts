@@ -82,7 +82,8 @@ import {
   makeProviderSettingsRefresh,
 } from "../main/agent-runtime/AgentRuntimeProviderConfiguration";
 import { CoreAuthority } from "../main/core-runtime/CoreAuthority";
-import { CoreApplicationAgent } from "../main/core-runtime/CoreApplicationAgent";
+import { readAutomationTurnPolicy } from "./automation-application/AutomationTurnPolicy";
+import { quietAutomationTurnReason } from "../shared/codex-thread-notification";
 import { CoreModules } from "../main/core-runtime/CoreModules";
 import { DatabaseNotifierRuntime } from "../main/host-runtime/DatabaseNotifierRuntime";
 import { subscribe as subscribeExecutionChanges } from "../main/agent-runtime/AgentRuntimeExecutionChanges";
@@ -401,23 +402,7 @@ const supervisor = Layer.effectContext(
       transitions: activity.transitions,
       isSeen: ({ rootThreadId, sessionId }) =>
         presence.isSeen({ conversationId: rootThreadId, sessionId }),
-      readAutomationNotificationPolicy: (messageId) =>
-        modules.automation
-          .read(
-            {
-              kind: "automation_notification_policy",
-              message_id: messageId,
-            },
-            { class: "background" },
-          )
-          .pipe(
-            Effect.provideService(CoreApplicationAgent, null),
-            Effect.map((snapshot) =>
-              snapshot.value.kind === "automation_notification_policy"
-                ? (snapshot.value.policy ?? null)
-                : null,
-            ),
-          ),
+      readAutomationNotificationPolicy: (messageId) => readAutomationTurnPolicy(modules, messageId),
       readSession,
       markUnread: (sessionId) =>
         projects.markProjectSessionUnread({
@@ -427,7 +412,10 @@ const supervisor = Layer.effectContext(
       publish: (event) => {
         applicationEvents.publish({ kind: "threadNotification", value: event });
         // Session notifications finish their unread write before publishing read activity.
-        if (event.type === "turn-completed" || event.type === "user-input-requested")
+        if (
+          event.type === "user-input-requested" ||
+          (event.type === "turn-completed" && !quietAutomationTurnReason(event))
+        )
           applicationEvents.publish({
             kind: "hostMessage",
             value: {

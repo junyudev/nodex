@@ -63,6 +63,7 @@ test("marking runs read clears them from the unread counts and leaves other runs
     sourceCwd: null,
     runId,
     sessionId: "chat",
+    quiet: false,
     readAt: null,
     createdAt: 1,
     status: "PENDING_REVIEW",

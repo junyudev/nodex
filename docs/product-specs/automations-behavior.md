@@ -196,11 +196,16 @@ title and key; each chat links to it and may update its instructions for later
 runs. A missing or deleted runbook fails visibly until another Page or None is
 selected. Runbook content cannot edit Automation authority.
 
-The saved `failed_runs_only` notification preference suppresses successful and
-interrupted completion notifications while retaining failures. Null restores
-normal policy; omitted preferences are preserved. The preference binds the exact
-originating Turn, including heartbeats and Run now, so personal follow-ups in
-the same chat use normal notifications. Global notification settings still apply.
+With **Failed runs only**, successful and interrupted cron runs and heartbeats
+finish quietly. With the default preference, a heartbeat can ask to finish
+quietly. Failed Turns follow the ordinary attention rules. The preference
+applies to the Turn the Automation started, including Run now. A person's
+follow-up in the same chat uses the ordinary notification rules.
+
+A quiet run starts read. It appears in run history and stays out of unread
+counts and indicators. Finishing quietly leaves the chat's unread state alone
+and sends no desktop or phone notification. A run whose Turn outcome is
+unknown when Nodex restarts can still appear for review.
 
 ## Automations surface
 
@@ -216,8 +221,8 @@ The selected Automation shows its condition, action, schedule, target and recent
 decisions with reasons. Cron runs can expand beneath it, newest first; a held
 decision opens its Inbox. Runs open only after Session binding and can be
 archived. A heartbeat opens its continued chat while retaining the Automations
-sidebar. A finished run is read once its chat is shown in a focused window,
-however that chat was reached; a heartbeat's chat reads every beat it holds. Unavailable selections return to the landing page.
+sidebar. An unread run is read once its chat is shown in a focused window,
+however that chat was reached. A heartbeat's chat reads every beat it holds. Unavailable selections return to the landing page.
 
 The editor keeps name, action, schedule, workspace, Agent/model, notification and
 runbook controls. Mode offers Dry run, Ask first and Run. Owner appears when the

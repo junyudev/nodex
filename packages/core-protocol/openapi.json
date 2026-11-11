@@ -6690,6 +6690,9 @@
                   "complete_run_for_review"
                 ]
               },
+              "quiet": {
+                "type": "boolean"
+              },
               "run_id": {
                 "type": "string"
               }
@@ -6829,6 +6832,9 @@
                 "enum": [
                   "archive_run"
                 ]
+              },
+              "quiet": {
+                "type": "boolean"
               },
               "run_id": {
                 "type": "string"
@@ -7369,6 +7375,10 @@
               "string",
               "null"
             ]
+          },
+          "quiet": {
+            "type": "boolean",
+            "description": "This run settled without asking for attention."
           },
           "read_at_ms": {
             "type": [
@@ -8583,6 +8593,10 @@
                     "null"
                   ]
                 },
+                "quiet": {
+                  "type": "boolean",
+                  "description": "This run settled without asking for attention."
+                },
                 "read_at_ms": {
                   "type": [
                     "integer",
@@ -8821,6 +8835,10 @@
                     "string",
                     "null"
                   ]
+                },
+                "quiet": {
+                  "type": "boolean",
+                  "description": "This run settled without asking for attention."
                 },
                 "read_at_ms": {
                   "type": [
@@ -32244,6 +32262,9 @@
                       "complete_run_for_review"
                     ]
                   },
+                  "quiet": {
+                    "type": "boolean"
+                  },
                   "run_id": {
                     "type": "string"
                   }
@@ -32383,6 +32404,9 @@
                     "enum": [
                       "archive_run"
                     ]
+                  },
+                  "quiet": {
+                    "type": "boolean"
                   },
                   "run_id": {
                     "type": "string"

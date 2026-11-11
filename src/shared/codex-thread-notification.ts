@@ -142,6 +142,23 @@ export interface CodexTurnOccurrenceFacts {
   managed: boolean;
 }
 
+/** Whether the Automation or heartbeat asked for the turn to finish quietly. */
+export function quietAutomationTurnReason(
+  event: Pick<
+    CodexTurnCompletedNotificationEvent,
+    "status" | "automationNotificationDecision" | "heartbeatAssistantMessage"
+  >,
+): "automation-dont-notify" | "heartbeat-dont-notify" | null {
+  if (event.status === "failed") return null;
+  if (event.automationNotificationDecision === "DONT_NOTIFY") return "automation-dont-notify";
+  if (
+    event.automationNotificationDecision === null &&
+    event.heartbeatAssistantMessage?.decision === "DONT_NOTIFY"
+  )
+    return "heartbeat-dont-notify";
+  return null;
+}
+
 /**
  * Whether a finished turn is worth telling the person at all, before any channel applies its own
  * settings or presence. Desktop notifications and phone pushes share this decision.
@@ -154,15 +171,8 @@ export function decideCodexTurnOccurrence(
   if (event.hostId !== DEFAULT_CODEX_HOST_ID) {
     return { type: "suppress", reason: "remote-host-turn" };
   }
-  if (event.automationNotificationDecision === "DONT_NOTIFY") {
-    return { type: "suppress", reason: "automation-dont-notify" };
-  }
-  if (
-    event.automationNotificationDecision === null &&
-    event.heartbeatAssistantMessage?.decision === "DONT_NOTIFY"
-  ) {
-    return { type: "suppress", reason: "heartbeat-dont-notify" };
-  }
+  const quiet = quietAutomationTurnReason(event);
+  if (quiet) return { type: "suppress", reason: quiet };
   if (isCodexNotificationChildConversation(event.conversation)) {
     return { type: "suppress", reason: "child-conversation" };
   }

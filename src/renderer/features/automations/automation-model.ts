@@ -25,6 +25,8 @@ export interface AutomationRunRowModel {
   readonly title: string;
   readonly isRunning: boolean;
   readonly isUnread: boolean;
+  /** Finished without asking for attention. */
+  readonly isQuiet: boolean;
   readonly canOpen: boolean;
 }
 
@@ -182,6 +184,7 @@ export function buildAutomationRunRows(
         title: formatAutomationRunTitle(item),
         isRunning: item.status === "IN_PROGRESS",
         isUnread: isUnreadRun(item),
+        isQuiet: item.quiet,
         canOpen: sessionId !== null,
       };
     });

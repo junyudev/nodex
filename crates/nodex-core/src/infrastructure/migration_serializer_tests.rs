@@ -485,6 +485,7 @@ fn serializer_failure_rolls_back_inbox_text_document_text_and_revision_together(
 fn skill_mention_migration_preserves_the_predecessors_literal_directives() {
     let (home, mut connection) = predecessor();
     prepare_profile_store(&mut connection, home.path()).unwrap();
+    rewind_quiet_automation_runs(&connection).unwrap();
     connection.pragma_update(None, "user_version", 207).unwrap();
     connection
         .execute(

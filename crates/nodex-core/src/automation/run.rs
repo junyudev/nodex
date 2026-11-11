@@ -42,7 +42,7 @@ pub(super) fn read_run(
         .query_row(
             "SELECT run_id, automation_id, run_revision, status, read_at, session_title, \
                     source_cwd, inbox_title, inbox_summary, archived_user_message, \
-                    archived_assistant_message, archived_reason, created_at, updated_at, session_id, dispatch_id, page_id, agent_selection_json \
+                    archived_assistant_message, archived_reason, created_at, updated_at, session_id, dispatch_id, page_id, agent_selection_json, quiet \
              FROM automation_execution_runs WHERE run_id = ?1",
             [run_id],
             run_from_row,
@@ -96,7 +96,7 @@ pub(super) fn read_runs_window(
     let mut statement = connection.prepare(
         "SELECT run_id, automation_id, run_revision, status, read_at, session_title, \
                 source_cwd, inbox_title, inbox_summary, archived_user_message, \
-                archived_assistant_message, archived_reason, created_at, updated_at, session_id, dispatch_id, page_id, agent_selection_json \
+                archived_assistant_message, archived_reason, created_at, updated_at, session_id, dispatch_id, page_id, agent_selection_json, quiet \
          FROM automation_execution_runs \
          WHERE (?1 IS NULL OR automation_id = ?1) AND (?2 OR status <> 'ARCHIVED') \
            AND (?3 IS NULL OR created_at < ?3 OR (created_at = ?3 AND run_id > ?4)) \
@@ -195,7 +195,7 @@ pub(super) fn read_inbox_window(
                 runs.archived_reason, runs.source_cwd, runs.run_id, runs.read_at, \
                 runs.created_at, runs.status, \
                 CASE runs.status WHEN 'IN_PROGRESS' THEN 0 \
-                  WHEN 'PENDING_REVIEW' THEN 1 ELSE 2 END AS status_bucket, runs.session_id \
+                  WHEN 'PENDING_REVIEW' THEN 1 ELSE 2 END AS status_bucket, runs.session_id, runs.quiet \
          FROM automation_execution_runs runs \
          JOIN automations automations \
            ON automations.automation_id = runs.automation_id \
@@ -301,12 +301,14 @@ pub(super) fn apply(
         AutomationIntent::CompleteRunForReview {
             run_id,
             expected_revision,
+            quiet,
             inbox_title,
             inbox_summary,
         } => complete_for_review(
             connection,
             run_id,
             *expected_revision,
+            *quiet,
             inbox_title.as_deref(),
             inbox_summary.as_deref(),
         ),
@@ -335,6 +337,7 @@ pub(super) fn apply(
         AutomationIntent::ArchiveRun {
             run_id,
             expected_revision,
+            quiet,
             archived_user_message,
             archived_assistant_message,
             archived_reason,
@@ -342,6 +345,7 @@ pub(super) fn apply(
             connection,
             run_id,
             *expected_revision,
+            *quiet,
             archived_user_message.as_deref(),
             archived_assistant_message.as_deref(),
             archived_reason.as_deref(),
@@ -498,7 +502,7 @@ fn begin_run(
         }
         let changed = connection.execute(
             "UPDATE automation_execution_runs SET status = 'IN_PROGRESS', archived_reason = NULL, \
-               archived_user_message = NULL, archived_assistant_message = NULL, read_at = NULL, \
+               archived_user_message = NULL, archived_assistant_message = NULL, read_at = NULL, quiet = 0, \
                updated_at = ?1, run_revision = run_revision + 1 \
              WHERE run_id = ?2 AND session_id IS NULL AND status = 'ARCHIVED' AND archived_reason = 'auto'",
             params![now_ms, run_id],
@@ -643,6 +647,7 @@ fn complete_for_review(
     connection: &Connection,
     run_id: &str,
     expected_revision: i64,
+    quiet: bool,
     inbox_title: Option<&str>,
     inbox_summary: Option<&str>,
 ) -> Result<RunMutationEffects, StoreError> {
@@ -658,9 +663,10 @@ fn complete_for_review(
     update_one(
         connection,
         "UPDATE automation_execution_runs SET status = 'PENDING_REVIEW', inbox_title = ?1, \
-           inbox_summary = ?2, updated_at = ?3, run_revision = run_revision + 1 \
+           inbox_summary = ?2, updated_at = ?3, run_revision = run_revision + 1, quiet = ?6, \
+           read_at = CASE WHEN ?6 THEN COALESCE(read_at, ?3) ELSE read_at END \
          WHERE run_id = ?4 AND run_revision = ?5 AND status = 'IN_PROGRESS'",
-        params![title, summary, now_ms, run_id, expected_revision],
+        params![title, summary, now_ms, run_id, expected_revision, quiet],
         "Automation run changed before review completion",
     )?;
     single_run_effects(connection, "complete_run_for_review", run_id, committed_at)
@@ -721,8 +727,11 @@ fn set_read_state(
     expected_revision: i64,
     read: bool,
 ) -> Result<RunMutationEffects, StoreError> {
-    require_run_revision(connection, run_id, expected_revision)?;
+    let current = require_run_revision(connection, run_id, expected_revision)?;
     let (now_ms, committed_at) = core_now(connection)?;
+    if current.quiet && !read {
+        return single_run_effects(connection, "set_run_read_state", run_id, committed_at);
+    }
     let read_at = read.then_some(now_ms);
     update_one(
         connection,
@@ -779,6 +788,7 @@ fn archive_run(
     connection: &Connection,
     run_id: &str,
     expected_revision: i64,
+    quiet: bool,
     archived_user_message: Option<&str>,
     archived_assistant_message: Option<&str>,
     archived_reason: Option<&str>,
@@ -800,7 +810,8 @@ fn archive_run(
         connection,
         "UPDATE automation_execution_runs SET status = 'ARCHIVED', archived_user_message = ?1, \
            archived_assistant_message = ?2, archived_reason = COALESCE(archived_reason, ?3), \
-           updated_at = ?4, run_revision = run_revision + 1 \
+           updated_at = ?4, run_revision = run_revision + 1, quiet = quiet OR ?7, \
+           read_at = CASE WHEN ?7 THEN COALESCE(read_at, ?4) ELSE read_at END \
          WHERE run_id = ?5 AND run_revision = ?6",
         params![
             user_message,
@@ -808,7 +819,8 @@ fn archive_run(
             reason,
             now_ms,
             run_id,
-            expected_revision
+            expected_revision,
+            quiet
         ],
         "Automation run changed before archive",
     )?;
@@ -1108,6 +1120,7 @@ fn run_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationRun> {
         dispatch_id: row.get(15)?,
         run_revision: row.get(2)?,
         status: parse_status(&row.get::<_, String>(3)?).map_err(conversion)?,
+        quiet: row.get(18)?,
         read_at_ms: row.get(4)?,
         session_title: row.get(5)?,
         source_cwd: row.get(6)?,
@@ -1133,6 +1146,7 @@ fn inbox_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationInboxIt
         source_cwd: row.get(7)?,
         run_id: row.get(8)?,
         session_id: row.get(13)?,
+        quiet: row.get(14)?,
         read_at_ms: row.get(9)?,
         created_at_ms: row.get(10)?,
         status: parse_status(&row.get::<_, String>(11)?).map_err(conversion)?,

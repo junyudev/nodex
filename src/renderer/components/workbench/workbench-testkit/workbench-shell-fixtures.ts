@@ -139,6 +139,7 @@ export function makeAutomationInboxItem(
     sourceCwd: "/Users/asc/repo/nodex",
     runId: "run-alpha",
     sessionId: "session:run:alpha",
+    quiet: false,
     readAt: null,
     createdAt: 10,
     status: "PENDING_REVIEW",

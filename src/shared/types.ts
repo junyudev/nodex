@@ -2398,6 +2398,8 @@ export interface AutomationRun {
   sessionId: string | null;
   automationId: string;
   status: AutomationRunStatus;
+  /** The run settled without asking for attention. */
+  quiet: boolean;
   readAt: number | null;
   sessionTitle: string | null;
   sourceCwd: string | null;
@@ -2422,6 +2424,8 @@ export interface AutomationInboxItem {
   sourceCwd: string | null;
   runId: string;
   sessionId: string | null;
+  /** The run settled without asking for attention. */
+  quiet: boolean;
   readAt: number | null;
   createdAt: number;
   status: AutomationRunStatus;

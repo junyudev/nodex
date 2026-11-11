@@ -186,7 +186,6 @@ it.effect("an automatic wake Run after delegated results notifies once it finish
       ["turn-run:wake"],
     );
     assert.deepEqual(h.unread, ["session:a", "session:a"]);
-    assert.strictEqual(h.requests.filter((method) => method === "thread.item").length, 1);
   }),
 );
 
@@ -330,13 +329,13 @@ it.effect(
     }),
 );
 
-it.effect("an asynchronous question revealed at turn end replaces completion", () =>
+it.effect("a question revealed at a quiet Automation's turn end still marks it unread", () =>
   Effect.gen(function* () {
-    const h = harness({});
+    const h = harness({ automationPolicy: "failed_runs_only" });
     yield* h.deliver([
       transition(activity("running"), activity("running")),
       transition(activity("running"), activity("waiting", { activeRunId: null }), {
-        runId: "run:1",
+        runId: "run:automation",
         status: "completed",
       }),
       transition(activity("waiting", { activeRunId: null }), null),
@@ -448,7 +447,6 @@ it.effect.each(["running", "waiting"] as const)(
         status === "waiting" ? ["request-resolved"] : [],
       );
       assert.deepEqual(h.unread, ["session:a"]);
-      assert.deepEqual(h.requests, []);
     }),
 );
 
@@ -561,6 +559,7 @@ it.effect("the ended Run's heartbeat decision still suppresses completion", () =
     ]);
     assert.strictEqual(h.events.length, 1);
     assert.deepEqual(h.shown, []);
+    assert.deepEqual(h.unread, []);
   }),
 );
 
@@ -576,6 +575,10 @@ it.effect.each(["completed", "interrupted", "failed"] as const)(
       assert.deepEqual(
         h.shown.map((notice) => notice.id),
         status === "failed" ? ["turn-run:automation", "turn-run:person"] : ["turn-run:person"],
+      );
+      assert.deepEqual(
+        h.unreadAtCompletion,
+        status === "failed" ? [["session:a"], ["session:a", "session:a"]] : [[], ["session:a"]],
       );
     }),
 );

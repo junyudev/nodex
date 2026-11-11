@@ -220,7 +220,13 @@ function AutomationRunRow({
         onClick={run.canOpen ? onOpen : undefined}
         onKeyDown={(event) => run.canOpen && activateOnKey(event, onOpen)}
       >
-        <span className="min-w-0 flex-1 truncate text-base leading-5 text-token-foreground">
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-base leading-5",
+            run.isQuiet ? "text-token-text-secondary" : "text-token-foreground",
+          )}
+          data-run-quiet={run.isQuiet || undefined}
+        >
           {run.title}
         </span>
         <span className="flex shrink-0 group-hover/run:hidden group-focus-within/run:hidden">

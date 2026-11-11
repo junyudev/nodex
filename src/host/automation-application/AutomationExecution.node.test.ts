@@ -93,6 +93,8 @@ const setup = (
     busy: false,
     denyMessage: false,
     failedOutcome: false,
+    interruptedOutcome: false,
+    reply: "Completed report",
     pendingOutcome: false,
     waitingForInput: false,
     preferReviewedDefault: false,
@@ -106,6 +108,7 @@ const setup = (
     dispatches: 0,
   };
   const runs = new Map<string, AutomationRun>();
+  const turnPolicies = new Map<string, Automation["notificationPolicy"]>();
   const launches: AgentRuntimeLaunch[] = [];
   const physical = new Set<string>();
   const completions: string[] = [];
@@ -124,6 +127,15 @@ const setup = (
             }),
         } as unknown as InboxApplication["Service"]),
         Layer.succeed(CoreModules, {
+          automation: {
+            read: ({ message_id }: { message_id: string }) =>
+              Effect.succeed({
+                value: {
+                  kind: "automation_notification_policy",
+                  policy: turnPolicies.get(message_id) ?? null,
+                },
+              }),
+          },
           library: {
             read: (input: { file_kind: string }) =>
               state.missingRunbook
@@ -194,6 +206,8 @@ const setup = (
                   runId: string;
                   dispatchId?: string;
                   automationId: string;
+                  messageId: string;
+                  notificationPolicy: Automation["notificationPolicy"];
                   sessionTitle: string;
                   sourceCwd: string | null;
                   agentSelection?: AutomationRun["agentSelection"];
@@ -210,7 +224,9 @@ const setup = (
                         });
                       return true;
                     }
+                    turnPolicies.set(input.messageId, input.notificationPolicy);
                     runs.set(input.runId, {
+                      quiet: false,
                       runId: input.runId,
                       sessionId: null,
                       pageId: null,
@@ -239,26 +255,30 @@ const setup = (
                 completeForReview: ({
                   runId,
                   inboxSummary,
+                  quiet,
                 }: {
                   runId: string;
                   inboxSummary: string;
+                  quiet: boolean;
                 }) =>
                   Effect.sync(() => {
                     runs.set(runId, {
                       ...runs.get(runId)!,
                       status: "PENDING_REVIEW",
                       inboxSummary,
+                      quiet,
                     });
                     completions.push(runId);
                     return true;
                   }),
-                archive: ({ runId }: { runId: string }) =>
+                archive: ({ runId }: { runId: string }, quiet = false) =>
                   Effect.sync(() => {
                     if (!runs.has(runId)) return false;
                     runs.set(runId, {
                       ...runs.get(runId)!,
                       status: "ARCHIVED",
                       archivedReason: "auto",
+                      quiet,
                     });
                     return true;
                   }),
@@ -358,14 +378,16 @@ const setup = (
                       ? "running"
                       : state.failedOutcome
                         ? "failed"
-                        : "completed",
+                        : state.interruptedOutcome
+                          ? "interrupted"
+                          : "completed",
                     completedAt: "2026-10-14T00:00:00Z",
                     finalAssistantItemId: "result",
                   }
                 : null,
             ),
           item: () =>
-            Effect.succeed({ type: "assistant_message", id: "result", text: "Completed report" }),
+            Effect.succeed({ type: "assistant_message", id: "result", text: state.reply }),
           stop: ({ runId }: { runId: string }) =>
             Effect.sync(() => {
               stops.push(runId);
@@ -625,6 +647,69 @@ it.effect.each([true, false])(
       assert.equal(fixture.launches.length, explicit ? 1 : 0);
       if (explicit)
         assert.deepInclude(fixture.launches[0]?.modelSelection, { instanceId, model: "model" });
+    }).pipe(Effect.provide(fixture.layer));
+  },
+);
+
+it.effect.each([
+  { kind: "heartbeat", policy: null, decision: "DONT_NOTIFY", outcome: "completed", quiet: true },
+  {
+    kind: "cron",
+    policy: "failed_runs_only",
+    decision: "NOTIFY",
+    outcome: "completed",
+    quiet: true,
+  },
+  {
+    kind: "cron",
+    policy: "failed_runs_only",
+    decision: "NOTIFY",
+    outcome: "interrupted",
+    quiet: true,
+  },
+  {
+    kind: "heartbeat",
+    policy: "failed_runs_only",
+    decision: "DONT_NOTIFY",
+    outcome: "failed",
+    quiet: false,
+  },
+] as const)(
+  "settles $outcome $kind runs with quiet=$quiet",
+  ({ kind, policy, decision, outcome, quiet }) => {
+    const fixture = setup();
+    fixture.state.definition = {
+      ...fixture.state.definition,
+      kind,
+      notificationPolicy: policy,
+      ...(kind === "heartbeat" ? { targetSessionId: "heartbeat-session" } : {}),
+    };
+    fixture.state.reply = `<heartbeat><decision>${decision}</decision></heartbeat>`;
+    fixture.state.failedOutcome = outcome === "failed";
+    fixture.state.interruptedOutcome = outcome === "interrupted";
+    return Effect.gen(function* () {
+      const execution = yield* AutomationExecution;
+      const result = yield* execution
+        .executeClaimed(fixture.state.definition, {
+          ...context,
+          heartbeat: {
+            automationsEnabled: true,
+            rendererState: {
+              rendererClientId: "renderer",
+              isEligible: true,
+              reason: null,
+              updatedAtMs: 1000,
+            },
+            collaborationMode: null,
+          },
+        })
+        .pipe(Effect.result);
+      assert.equal(result._tag, outcome === "completed" ? "Success" : "Failure");
+      assert.equal(fixture.runs.size, 1);
+      assert.include([...fixture.runs.values()][0], {
+        quiet,
+        status: outcome === "completed" ? "PENDING_REVIEW" : "ARCHIVED",
+      });
     }).pipe(Effect.provide(fixture.layer));
   },
 );

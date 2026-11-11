@@ -970,6 +970,61 @@ it.effect("keeps Inbox and Reminder scheduler traffic on the root background lan
   }),
 );
 
+it.effect("projects quiet runs into history without adding unread indicators", () =>
+  Effect.gen(function* () {
+    const quietRun = run({ status: "PENDING_REVIEW", quiet: true, read_at_ms: 150 });
+    let current = run();
+    const application = yield* make.pipe(
+      Effect.provideService(
+        CoreModules,
+        coreModules({
+          read: (input) =>
+            Effect.succeed(
+              input.kind === "run"
+                ? readSnapshot({ kind: "run", item: current })
+                : readSnapshot({
+                    kind: "inbox",
+                    window: window([
+                      {
+                        automation_id: quietRun.automation_id,
+                        automation_name: "Daily Report",
+                        run_id: quietRun.run_id,
+                        session_id: quietRun.session_id,
+                        title: quietRun.session_title,
+                        description: null,
+                        source_cwd: null,
+                        archived_assistant_message: null,
+                        archived_user_message: null,
+                        archived_reason: null,
+                        quiet: true,
+                        read_at_ms: 150,
+                        created_at_ms: 120,
+                        status: "PENDING_REVIEW",
+                      },
+                    ]),
+                    unread_counts: { total: 0 },
+                  }),
+            ),
+          apply: ({ intent }) => {
+            assert.include(intent, { kind: "complete_run_for_review", quiet: true });
+            current = quietRun;
+            return Effect.succeed(committed({ runs: [current] }));
+          },
+        }),
+      ),
+      Effect.provideService(AutomationRoutingIndex, routingIndex()),
+    );
+
+    assert.isTrue(
+      yield* application.runs.completeForReview({ runId: quietRun.run_id, quiet: true }),
+    );
+    assert.include(yield* application.runs.get(quietRun.run_id), { quiet: true, readAt: 150 });
+    const inbox = yield* application.inbox.read();
+    assert.include(inbox.items[0], { quiet: true, readAt: 150 });
+    assert.deepEqual(inbox.unreadRunCounts, { total: 0, automationIds: [], unreadRuns: [] });
+  }),
+);
+
 it.effect("preserves an omitted notification preference and clears an explicit null", () =>
   Effect.gen(function* () {
     let saved = definition({ notification_policy: "failed_runs_only" });

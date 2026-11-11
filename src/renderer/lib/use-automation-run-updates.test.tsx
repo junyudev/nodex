@@ -60,6 +60,7 @@ function makeInboxItem(runId: string): AutomationInboxItem {
     sourceCwd: "/tmp/codex",
     runId,
     sessionId: "session:shared",
+    quiet: false,
     readAt: null,
     createdAt: 1,
     status: "PENDING_REVIEW",

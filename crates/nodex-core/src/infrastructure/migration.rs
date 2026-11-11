@@ -461,6 +461,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 209,
         apply: migrate_v208_to_v209,
     },
+    MigrationStep {
+        from_revision: 209,
+        to_revision: 210,
+        apply: migrate_v209_to_v210,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2719,6 +2724,21 @@ fn migrate_v208_to_v209(
     Ok(())
 }
 
+fn migrate_v209_to_v210(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v209_to_v210.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"quiet_automation_runs":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v206_to_v207(
     connection: &Connection,
     context: &MigrationContext,
@@ -4068,7 +4088,17 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
 }
 
 #[cfg(test)]
+fn rewind_quiet_automation_runs(connection: &Connection) -> Result<(), StoreError> {
+    connection.execute_batch(
+        "ALTER TABLE automation_execution_runs DROP COLUMN quiet;
+         PRAGMA user_version=209;",
+    )?;
+    Ok(())
+}
+
+#[cfg(test)]
 fn rewind_inbox_skill_columns(connection: &Connection) -> Result<(), StoreError> {
+    rewind_quiet_automation_runs(connection)?;
     connection.execute_batch(
         "ALTER TABLE inbox_handoffs DROP COLUMN unavailable_skills_json;
          ALTER TABLE inbox_handoffs DROP COLUMN skill_invocations_json;
@@ -4174,6 +4204,45 @@ mod tests {
         super::install_current_schema(connection).unwrap();
         super::rewind_inbox_skill_columns(connection).unwrap();
         super::validate_schema_identity(connection, 206).unwrap();
+    }
+
+    #[test]
+    fn quiet_run_migration_preserves_existing_attention() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        install_current_schema(&mut connection).unwrap();
+        rewind_quiet_automation_runs(&connection).unwrap();
+        validate_schema_identity(&connection, 209).unwrap();
+        connection
+            .execute(
+                "INSERT INTO automation_execution_runs(run_id, automation_id, status, read_at,
+             created_at, updated_at, admission_hash) VALUES
+             ('read', 'task', 'PENDING_REVIEW', 10, 1, 10, ?1),
+             ('unread', 'task', 'PENDING_REVIEW', NULL, 1, 10, ?1)",
+                ["a".repeat(64)],
+            )
+            .unwrap();
+
+        let context = MigrationContext {
+            source_revision: 209,
+            target_revision: 210,
+            backup_name: "backup".into(),
+            source_schema_fingerprint: published_format(209).unwrap().schema_fingerprint,
+            target_schema_fingerprint: published_format(210).unwrap().schema_fingerprint,
+            completed_at_unix_ms: 10,
+        };
+        migrate_v209_to_v210(&connection, &context).unwrap();
+        validate_schema_identity(&connection, 210).unwrap();
+
+        let states = connection
+            .prepare("SELECT quiet, read_at FROM automation_execution_runs ORDER BY run_id")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get::<_, bool>(0)?, row.get::<_, Option<i64>>(1)?))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(states, vec![(false, Some(10)), (false, None)]);
     }
 
     #[test]
@@ -4404,6 +4473,7 @@ mod tests {
                 )
                 .unwrap();
         }
+        rewind_quiet_automation_runs(&connection).unwrap();
         connection.pragma_update(None, "user_version", 208).unwrap();
         validate_schema_identity(&connection, 208).unwrap();
 

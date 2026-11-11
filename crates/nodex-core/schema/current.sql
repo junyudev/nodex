@@ -5451,6 +5451,7 @@ CREATE TABLE automation_execution_runs (
   run_revision INTEGER NOT NULL DEFAULT 1 CHECK (run_revision >= 1),
   admission_hash TEXT NOT NULL CHECK (length(admission_hash) = 64 AND admission_hash NOT GLOB '*[^0-9a-f]*'),
   dispatch_id TEXT,
+  quiet INTEGER NOT NULL DEFAULT 0 CHECK (quiet IN (0, 1) AND (quiet = 0 OR (read_at IS NOT NULL AND status <> 'IN_PROGRESS'))),
   CHECK (length(run_id) BETWEEN 1 AND 512 AND run_id = trim(run_id)),
   CHECK (session_id IS NULL OR (length(session_id) BETWEEN 1 AND 512 AND session_id = trim(session_id))),
   CHECK (status IN ('IN_PROGRESS', 'PENDING_REVIEW', 'ACCEPTED', 'ARCHIVED'))
@@ -5987,4 +5988,4 @@ CREATE TABLE project_session_chat_folders (
   output_directory TEXT,
   origin TEXT NOT NULL CHECK (origin IN ('generated', 'chosen'))
 ) WITHOUT ROWID;
-PRAGMA user_version=209;
+PRAGMA user_version=210;

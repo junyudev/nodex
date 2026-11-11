@@ -59,6 +59,7 @@ function run(overrides: Partial<AutomationInboxItem> = {}): AutomationInboxItem 
     sourceCwd: null,
     runId: "run",
     sessionId: "session-run",
+    quiet: false,
     readAt: null,
     createdAt: 1,
     status: "PENDING_REVIEW",
