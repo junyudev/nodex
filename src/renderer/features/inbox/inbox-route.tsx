@@ -34,10 +34,12 @@ import type { Project } from "../../../shared/types";
 import { messageTextOf } from "../../../shared/message-content";
 import { extractMarkdownText } from "../../../shared/nodex-markdown";
 import {
-  ArchiveIcon,
+  NoteIcon,
+  TodoIcon,
   BoardIcon,
   NodexLogoMarkIcon,
   CheckmarkIcon,
+  ClockIcon,
   CloseIcon,
   DeleteIcon,
   DispatchIcon,
@@ -71,6 +73,7 @@ import {
   inboxChatPageIds,
   inboxBuriedImportant,
   inboxTimestampSeparators,
+  INBOX_HOLD_LABELS,
   type InboxOutcomeTarget,
   type InboxRowOffers,
 } from "./inbox-presentation";
@@ -86,13 +89,19 @@ import { useInboxJump, useInboxMessagesInView } from "./use-inbox-important";
 import { useInboxActions } from "./use-inbox-actions";
 import { useAutomationsQuery } from "@/lib/use-automations-query";
 import { useInboxDepartures } from "./use-inbox-departures";
-import { useInboxActivity, useInboxStream, useInboxSummary } from "./use-inbox";
+import { useInboxActivity, useInboxLater, useInboxStream, useInboxSummary } from "./use-inbox";
+import { InboxLaterMenu } from "./inbox-later-menu";
+import { InboxLaterView } from "./inbox-later-view";
 import { INBOX_STICK_TO_BOTTOM_PX, type InboxView } from "./inbox-viewport";
 import { initialInboxPlace, initiallyFollowsInbox, useInboxViewport } from "./use-inbox-viewport";
 
-/** The Inbox holds what still needs the reader; Activity holds what was handled or done. */
+/**
+ * The Inbox holds what needs the reader now, Later what they set aside to need them again, and
+ * Activity what was handled or done.
+ */
 const INBOX_VIEWS = {
   inbox: { label: "Inbox", icon: InboxIcon },
+  later: { label: "Later", icon: ClockIcon },
   activity: { label: "Activity", icon: ListLayoutIcon },
 } as const satisfies Record<InboxView, { label: string; icon: unknown }>;
 
@@ -121,22 +130,30 @@ export interface InboxRouteProps {
 function InboxHeader({
   view,
   inboxCount,
+  laterCount,
   databaseId,
   databaseLabel,
+  notesPageId,
   agents,
   onViewChange,
   onOpenDatabase,
+  onOpenPage,
   onOpenSettings,
   onOpenNodex,
 }: {
   readonly view: InboxView;
   readonly inboxCount: number;
+  /** Messages set aside; they wait outside the Inbox's own count. */
+  readonly laterCount: number;
   readonly databaseId: string | null;
   /** What the Database button opens: the Inbox's own Database or the Project's Board. */
   readonly databaseLabel: string;
+  /** Where this Inbox's saved notes live, once the first has been saved. */
+  readonly notesPageId: string | null;
   readonly agents: InboxAgents;
   readonly onViewChange: (view: InboxView) => void;
   readonly onOpenDatabase: (databaseId: string) => void;
+  readonly onOpenPage: (pageId: string) => void;
   readonly onOpenSettings: () => void;
   /** Opens Nodex's own conversation, where the reader can talk to it directly. */
   readonly onOpenNodex: () => void;
@@ -146,8 +163,9 @@ function InboxHeader({
     // An Inbox is its Scene's Home tab, so it tops the tab like a Board's views do.
     <header className={cn(SURFACE_TOOLBAR_ROW_CLASS, "shrink-0")}>
       <div role="tablist" aria-label="Inbox view" className="-ml-1 flex min-w-0 items-center">
-        {(["inbox", "activity"] as const).map((option) => {
+        {(["inbox", "later", "activity"] as const).map((option) => {
           const ViewIcon = INBOX_VIEWS[option].icon;
+          const count = option === "inbox" ? inboxCount : option === "later" ? laterCount : 0;
           return (
             <button
               key={option}
@@ -159,9 +177,9 @@ function InboxHeader({
             >
               <ViewIcon className="size-4 shrink-0 text-current" />
               <span className="ml-1.5">{INBOX_VIEWS[option].label}</span>
-              {option === "inbox" && inboxCount > 0 ? (
+              {count > 0 ? (
                 <span className="ml-1.5 font-normal text-token-text-tertiary tabular-nums">
-                  {inboxCount}
+                  {count}
                 </span>
               ) : null}
             </button>
@@ -173,6 +191,11 @@ function InboxHeader({
         <ToolbarIconButton label="Open Nodex" onClick={onOpenNodex} disabled={!hostAvailable}>
           <NodexLogoMarkIcon monochrome className="icon-sm" />
         </ToolbarIconButton>
+        {notesPageId ? (
+          <ToolbarIconButton label="Open Notes" onClick={() => onOpenPage(notesPageId)}>
+            <NoteIcon className="icon-sm" />
+          </ToolbarIconButton>
+        ) : null}
         {databaseId ? (
           <ToolbarIconButton label={databaseLabel} onClick={() => onOpenDatabase(databaseId)}>
             <BoardIcon className="icon-sm" />
@@ -327,9 +350,10 @@ export function InboxRoute({
   }
   const stream = useInboxStream(scope);
   const activity = useInboxActivity(scope, activityFilter, view === "activity");
+  const later = useInboxLater(scope, view === "later");
   const summary = useInboxSummary(scope);
   // The view shown pages through its own window.
-  const shown = view === "inbox" ? stream : activity;
+  const shown = view === "inbox" ? stream : view === "later" ? later : activity;
   useApplicationPending(visible && (shown.isPending || summary.isPending));
   // The Inbox's preferences arrive with the Agents they name.
   const agents = useInboxAgents();
@@ -361,7 +385,8 @@ export function InboxRoute({
         });
       if (view !== "inbox") return;
       departures.depart(
-        stream.items.filter((item) => pageIds.includes(item.pageId)),
+        // A message says where it went in its place; a Turn set aside simply leaves.
+        stream.items.filter((item) => item.rowKind === "intake" && pageIds.includes(item.pageId)),
         decision,
       );
     },
@@ -392,9 +417,9 @@ export function InboxRoute({
     scrollRef,
     stickToBottomRef,
     anchorIds:
-      view === "inbox"
-        ? stream.items.map((item) => item.pageId)
-        : activity.rows.map((row) => row.id),
+      view === "activity"
+        ? activity.rows.map((row) => row.id)
+        : (view === "inbox" ? stream : later).items.map((item) => item.pageId),
     ready: !shown.isPending,
     hasNextPage: shown.hasNextPage,
     isFetchingNextPage: shown.isFetchingNextPage,
@@ -545,6 +570,7 @@ export function InboxRoute({
           onOpenPR={() => {
             if (data.pull_request_url) void openExternalUrl(data.pull_request_url);
           }}
+          onLater={(until) => void actions.later([item.pageId], until)}
         />
       );
     }
@@ -564,6 +590,10 @@ export function InboxRoute({
                 )
             : undefined,
           onSetDone: (done) => void actions.setState([item.pageId], done ? "done" : "open"),
+          onHold: (hold) =>
+            void (hold === "notes"
+              ? actions.saveToNotes([item.pageId], [item.basis])
+              : actions.keep([item.pageId])),
           onSetKind: (kind) => void actions.setKind(item.pageId, kind),
           onSetImportant: (marked) => void actions.setImportant(item.pageId, marked),
           onDelete: () => requestDelete([item]),
@@ -646,14 +676,20 @@ export function InboxRoute({
     void shown.retry();
     void summary.refetch();
   };
-  const loaded = view === "inbox" ? stream.items.length > 0 : activity.rows.length > 0;
+  const loaded =
+    view === "activity"
+      ? activity.rows.length > 0
+      : (view === "inbox" ? stream : later).items.length > 0;
 
   const header = (
     <InboxHeader
       view={view}
       inboxCount={summary.data?.inboxCount ?? 0}
+      laterCount={summary.data?.laterCount ?? 0}
       databaseId={summary.data?.databaseId ?? null}
       databaseLabel={inboxProjectId ? "Open Board" : "Open Inbox as a Database"}
+      notesPageId={summary.data?.notesPageId ?? null}
+      onOpenPage={onOpenPage}
       onViewChange={changeView}
       agents={agents}
       onOpenDatabase={onOpenDatabase}
@@ -726,6 +762,26 @@ export function InboxRoute({
               />
               {loadEarlier}
             </div>
+          ) : view === "later" ? (
+            <div
+              data-testid="inbox-later"
+              className="mx-auto flex w-full max-w-(--thread-content-max-width) flex-1 flex-col gap-3 px-toolbar pt-3 pb-6"
+            >
+              <InboxLaterView
+                items={later.items}
+                onOpenPage={onOpenPage}
+                onReturn={(pageId) => void actions.clearLater([pageId])}
+                onReschedule={(pageId, remindAt) => void actions.later([pageId], remindAt, true)}
+                onHold={(item, hold) =>
+                  void (hold === "notes"
+                    ? actions.saveToNotes([item.pageId], [item.basis])
+                    : actions.keep([item.pageId]))
+                }
+                onSetDone={(pageId) => void actions.setState([pageId], "done")}
+                onDelete={(item) => requestDelete([item])}
+              />
+              {loadEarlier}
+            </div>
           ) : inboxItems.length === 0 ? (
             <EmptyState
               everUsed={(summary.data?.entryCount ?? 0) > 0}
@@ -769,8 +825,8 @@ export function InboxRoute({
       <div
         className={cn(
           "relative mx-auto flex w-full max-w-(--thread-content-max-width) shrink-0 flex-col px-toolbar pb-6",
-          // Activity has no composer; the draft stays as it was for the Inbox.
-          view === "activity" && "hidden",
+          // Only the Inbox has a composer; the draft stays as it was for it.
+          view !== "inbox" && "hidden",
         )}
       >
         {/* Selection tools float over the stream, so selecting never resizes or shifts it. */}
@@ -847,13 +903,35 @@ export function InboxRoute({
                       })
                     }
                   />
+                  <InboxLaterMenu
+                    align="start"
+                    onChoose={(remindAt) =>
+                      void actions.later(selectedPageIds, remindAt).then((done) => {
+                        if (done) clearSelection();
+                      })
+                    }
+                  />
                   <InboxIconAction
-                    label="Keep"
-                    icon={ArchiveIcon}
+                    label={INBOX_HOLD_LABELS.todo}
+                    icon={TodoIcon}
                     onClick={() =>
                       void actions.keep(selectedPageIds).then((done) => {
                         if (done) clearSelection();
                       })
+                    }
+                  />
+                  <InboxIconAction
+                    label={INBOX_HOLD_LABELS.notes}
+                    icon={NoteIcon}
+                    onClick={() =>
+                      void actions
+                        .saveToNotes(
+                          selectedPageIds,
+                          selectedItems.map((item) => item.basis),
+                        )
+                        .then((done) => {
+                          if (done) clearSelection();
+                        })
                     }
                   />
                   <InboxIconAction

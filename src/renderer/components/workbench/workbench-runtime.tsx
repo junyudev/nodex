@@ -3757,7 +3757,7 @@ export function WorkbenchRuntime({
       requestInboxEntryOpen({
         pageId: entry.pageId,
         scope: inboxScope,
-        view: entry.state === "open" && !entry.outcome ? "inbox" : "activity",
+        view: entry.rowKind === "turn" || entry.waiting ? "inbox" : "activity",
       });
       openInboxScope(inboxScope);
       return;

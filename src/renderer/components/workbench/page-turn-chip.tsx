@@ -21,6 +21,8 @@ import {
 import { cn } from "@/lib/utils";
 
 const GLYPHS: Record<TurnReason, ComponentType<{ className?: string }>> = {
+  triage: QuestionIcon,
+  delivery_recovery: WarningCircleIcon,
   paused: PauseIcon,
   working: ActivitySpinnerIcon,
   queued: ClockIcon,

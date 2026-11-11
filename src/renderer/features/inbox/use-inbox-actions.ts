@@ -6,7 +6,6 @@ import type {
   InboxConfirmationDraft,
   InboxDispatchAction,
   InboxEntryKind,
-  InboxEntryState,
   InboxPageBasis,
   InboxProposal,
   InboxPreparedConfirmation,
@@ -30,7 +29,10 @@ import {
   retryInboxDispatch,
   setInboxEntryImportant,
   setInboxEntryKind,
-  setInboxEntryState,
+  markInboxMessagesDone,
+  returnInboxMessages,
+  setInboxLater,
+  clearInboxLater,
   stopInboxSuggestion,
   undoInboxDecision,
 } from "@/lib/inbox-runtime";
@@ -38,6 +40,7 @@ import { CoreApiError } from "@/lib/core-api-error";
 import { readableIpcError } from "@/lib/ipc-error-message";
 import { RendererCommandRejectedError } from "@/lib/renderer-command";
 import { inboxReceiptNeedsReview, type InboxDecision } from "./inbox-presentation";
+import { describeLaterConfirmation } from "./inbox-later";
 import { invalidateInbox } from "./use-inbox";
 import { useInboxCaptureState } from "./use-inbox-capture";
 import { useSendInboxMessage } from "./use-send-inbox-message";
@@ -71,9 +74,25 @@ export interface InboxActions {
     basis: readonly InboxPageBasis[],
     chat?: InboxChat | null,
   ) => Promise<boolean>;
+  /** Holds messages as work: their Pages move to Todo. */
   readonly keep: (pageIds: readonly string[]) => Promise<boolean>;
+  /** Holds messages as notes: their Pages move under the Inbox's Notes page, off the Board. */
+  readonly saveToNotes: (
+    pageIds: readonly string[],
+    basis: readonly InboxPageBasis[],
+  ) => Promise<boolean>;
+  /**
+   * Sets messages aside until `remindAt`. `reschedule` changes
+   * when messages already set aside come back, which is not a new decision to undo.
+   */
+  readonly later: (
+    pageIds: readonly string[],
+    remindAt: string,
+    reschedule?: boolean,
+  ) => Promise<boolean>;
+  readonly clearLater: (pageIds: readonly string[]) => Promise<boolean>;
   readonly delete: (pageIds: readonly string[]) => Promise<boolean>;
-  readonly setState: (pageIds: readonly string[], state: InboxEntryState) => Promise<boolean>;
+  readonly setState: (pageIds: readonly string[], action: "done" | "open") => Promise<boolean>;
   readonly setKind: (pageId: string, kind: InboxEntryKind | null) => Promise<boolean>;
   readonly setImportant: (pageId: string, important: boolean) => Promise<boolean>;
   readonly requestSuggestion: (
@@ -86,7 +105,7 @@ export interface InboxActions {
 }
 
 const clearedLabel = (outcome: "kept" | "done", count: number): string => {
-  if (outcome === "kept") return count > 1 ? `Kept ${count} messages` : "Kept";
+  if (outcome === "kept") return count > 1 ? `Added ${count} messages to Todo` : "Added to Todo";
   return count > 1 ? `Marked ${count} messages done` : "Marked done";
 };
 
@@ -151,17 +170,35 @@ export function useInboxActions(
     );
   };
 
-  const announceCleared = (outcome: "kept" | "done", pageIds: readonly string[]) =>
-    toast.success(clearedLabel(outcome, pageIds.length), {
-      action: {
-        label: "Undo",
-        onClick: () => {
-          void run("The message could not be restored", () =>
-            setInboxEntryState({ pageIds, state: "open" }),
-          );
-        },
-      },
-    });
+  const announceCleared = (
+    outcome: "kept" | "done",
+    pageIds: readonly string[],
+    undoToken: string | null,
+  ) =>
+    toast.success(
+      clearedLabel(outcome, pageIds.length),
+      undoToken
+        ? {
+            action: {
+              label: "Undo",
+              onClick: () => {
+                void run("The message could not be restored", () =>
+                  undoInboxDecision({ operationId: createUuidV7(), undoToken }),
+                );
+              },
+            },
+          }
+        : undefined,
+    );
+
+  const clearLater = (pageIds: readonly string[]) =>
+    run("The message could not be returned", () => clearInboxLater({ pageIds }));
+
+  const announceLater = (pageIds: readonly string[], remindAt: string, undo: boolean) =>
+    toast.success(
+      describeLaterConfirmation(remindAt, pageIds.length, new Date()),
+      undo ? { action: { label: "Undo", onClick: () => void clearLater(pageIds) } } : undefined,
+    );
 
   const submitPrepared = (prepared: InboxPreparedConfirmation) => {
     if (prepared.kind === "proposal") {
@@ -182,8 +219,12 @@ export function useInboxActions(
     switch (action.type) {
       case "plan":
         return { kind: "plan", count: action.steps.length };
+      case "later":
+        return { kind: "later", remindAt: action.remindAt };
       case "keep":
         return { kind: "keep" };
+      case "save_to_notes":
+        return { kind: "save_to_notes" };
       case "move_to_project":
         return { kind: "move", projectName: projectName(action.projectId) };
       case "new_chat":
@@ -240,13 +281,16 @@ export function useInboxActions(
             decisionOf(action, prepared.sessionId, chat),
           );
         }
-        if (result.value.undoToken) {
+        if (
+          result.value.undoToken &&
+          (action?.type === "move_to_project" || action?.type === "save_to_notes")
+        ) {
           const undoToken = result.value.undoToken;
           const operationId = createBoundedOperationId("inbox.undo");
           toast.success(
             action?.type === "move_to_project"
               ? `Moved to ${projects.find((project) => project.id === action.projectId)?.name ?? "Project"}`
-              : "Moved",
+              : "Saved to Notes",
             {
               action: {
                 label: "Undo",
@@ -262,6 +306,13 @@ export function useInboxActions(
           announceCleared(
             "kept",
             draft.basis.map((basis) => basis.pageId),
+            result.value.undoToken,
+          );
+        else if (action?.type === "later")
+          announceLater(
+            draft.basis.map((basis) => basis.pageId),
+            action.remindAt,
+            true,
           );
       },
       {
@@ -370,12 +421,31 @@ export function useInboxActions(
           chat ?? null,
         ),
       ),
+    saveToNotes: (pageIds, basis) =>
+      run("The message could not be saved to Notes", () =>
+        decide({
+          kind: "direct",
+          storeEpoch: storeEpoch ?? "",
+          pageIds,
+          action: { type: "save_to_notes", parentPageId: null },
+          basis,
+        }),
+      ),
     keep: (pageIds) =>
-      run("The message could not be kept", async () => {
-        await keepInboxEntries({ pageIds });
+      run("The message could not be added to Todo", async () => {
+        const {
+          value: { undoToken },
+        } = await keepInboxEntries({ pageIds });
         onDecided(pageIds, { kind: "keep" });
-        announceCleared("kept", pageIds);
+        announceCleared("kept", pageIds, undoToken);
       }),
+    later: (pageIds, remindAt, reschedule = false) =>
+      run("The message could not be set aside", async () => {
+        await setInboxLater({ pageIds, until: remindAt });
+        if (!reschedule) onDecided(pageIds, { kind: "later", remindAt });
+        announceLater(pageIds, remindAt, !reschedule);
+      }),
+    clearLater,
     delete: (pageIds) =>
       run("The message could not be deleted", async () => {
         await deleteInboxMessages({ pageIds });
@@ -393,11 +463,15 @@ export function useInboxActions(
       }),
     setState: (pageIds, state) =>
       run("The message could not be updated", async () => {
-        await setInboxEntryState({ pageIds, state });
-        if (state === "done") {
-          onDecided(pageIds, { kind: "done" });
-          announceCleared("done", pageIds);
+        if (state === "open") {
+          await returnInboxMessages({ pageIds });
+          return;
         }
+        const {
+          value: { undoToken },
+        } = await markInboxMessagesDone({ pageIds });
+        onDecided(pageIds, { kind: "done" });
+        announceCleared("done", pageIds, undoToken);
       }),
     setKind: (pageId, kind) =>
       run("The message could not be updated", () => setInboxEntryKind({ pageId, kind })),

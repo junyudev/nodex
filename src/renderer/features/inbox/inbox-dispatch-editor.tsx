@@ -32,7 +32,9 @@ type ActionType = InboxDispatchAction["type"];
 const ACTION_LABELS: Readonly<Record<ActionType, string>> = {
   plan: "Plan",
   execute_decision: "Run",
-  keep: "Keep",
+  keep: "Add to Todo",
+  save_to_notes: "Save to Notes",
+  later: "Later",
   new_chat: "New chat",
   send_to_chat: "Send to chat",
   move_to_project: "Move to Project",
@@ -41,7 +43,9 @@ const ACTION_LABELS: Readonly<Record<ActionType, string>> = {
 const CONFIRM_LABELS: Readonly<Record<ActionType, string>> = {
   plan: "Start plan",
   execute_decision: "Run",
-  keep: "Keep",
+  keep: "Add to Todo",
+  save_to_notes: "Save to Notes",
+  later: "Later",
   new_chat: "Start chat",
   send_to_chat: "Send",
   move_to_project: "Move",
@@ -62,10 +66,15 @@ export interface InboxDispatchAutomationDecision {
  */
 const actionTypesFor = (decisionId: string | null | undefined): readonly ActionType[] =>
   (Object.keys(ACTION_LABELS) as ActionType[]).filter(
-    (type) => type !== "plan" && (decisionId ? type !== "keep" : type !== "execute_decision"),
+    (type) =>
+      type !== "plan" &&
+      type !== "later" &&
+      (decisionId ? type !== "keep" && type !== "save_to_notes" : type !== "execute_decision"),
   );
 
 export interface InboxDispatchDraft {
+  readonly remindAt?: string;
+  readonly parentPageId?: string | null;
   readonly plan?: Extract<InboxDispatchAction, { type: "plan" }>;
   readonly proposal?: InboxProposal;
   readonly chat?: InboxChat | null;
@@ -93,6 +102,22 @@ export function draftFromAction(
       return {
         type: "plan",
         plan: action,
+        projectId: null,
+        sessionId: null,
+        prompt: fallbackPrompt,
+      };
+    case "later":
+      return {
+        type: "later",
+        remindAt: action.remindAt,
+        projectId: null,
+        sessionId: null,
+        prompt: fallbackPrompt,
+      };
+    case "save_to_notes":
+      return {
+        type: "save_to_notes",
+        parentPageId: action.parentPageId,
         projectId: null,
         sessionId: null,
         prompt: fallbackPrompt,
@@ -174,6 +199,10 @@ export function actionFromDraft(draft: InboxDispatchDraft): InboxDispatchAction 
   switch (draft.type) {
     case "plan":
       return draft.plan ?? null;
+    case "later":
+      return draft.remindAt ? { type: "later", remindAt: draft.remindAt } : null;
+    case "save_to_notes":
+      return { type: "save_to_notes", parentPageId: draft.parentPageId ?? null };
     case "keep":
       return { type: "keep" };
     case "new_chat":

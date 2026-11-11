@@ -6,11 +6,15 @@ import { PageTurnChip } from "@/components/workbench/page-turn-chip";
 import {
   ChatIcon,
   ChevronDownIcon,
+  ClockIcon,
   NodexLogoMarkIcon,
   OpenExternalIcon,
 } from "@/components/shared/icons";
 import { Reply } from "@/components/shared/icons/generic-icons";
 import { InboxIconAction } from "./inbox-icon-action";
+import { describeBackFromLater } from "./inbox-later";
+import { InboxLaterMenu } from "./inbox-later-menu";
+import { useInboxClock } from "./use-inbox-clock";
 import { FileReadBoundary } from "@/components/board/editor/file-runtime";
 import { NfmDocument } from "@/components/board/nfm-renderer";
 import { FileReferenceIntentProvider } from "@/lib/file-reference-intent";
@@ -35,6 +39,7 @@ export function InboxTurnRow({
   onAccept,
   onStart,
   onOpenPR,
+  onLater,
 }: {
   readonly item: InboxItem;
   readonly onOpenPage: () => void;
@@ -44,10 +49,13 @@ export function InboxTurnRow({
   readonly onAccept: () => Promise<unknown>;
   readonly onStart: () => Promise<unknown>;
   readonly onOpenPR: () => void;
+  /** Sets this move aside until a time; a new reason to need the reader shows at once. */
+  readonly onLater: (until: string) => void;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hostAvailable = useSpaceHostAvailable();
+  const backFromLater = describeBackFromLater(item.later, new Date(useInboxClock()));
   const data = item.turn;
   if (!data) return null;
   const reason = data.turn.reason;
@@ -81,110 +89,123 @@ export function InboxTurnRow({
   const problem =
     error ?? data.delivery_error ?? (unavailable ? "No active chat can receive a reply." : null);
   return (
-    // One object, as a message is: what the Turn says on top and, joined to it, what to do about
-    // it. It keeps to its own words' width, so the reply never drifts away from what it answers.
-    <article
-      data-inbox-turn={reason}
-      data-inbox-page-id={item.pageId}
-      className="flex w-fit max-w-[80%] min-w-[min(18rem,80%)] flex-col overflow-hidden rounded-2xl border border-token-border"
-    >
-      <div className="flex flex-col gap-1 border-b border-token-border px-3 py-2">
-        <div className="flex min-w-0 items-center gap-3">
-          <button
-            type="button"
-            className="min-w-0 flex-1 truncate text-left text-sm font-medium"
-            onClick={onOpenPage}
-          >
-            {item.title}
-          </button>
-          <PageTurnChip turn={data.turn} holder={READER} />
-        </div>
-        <div className="flex min-w-0 items-start gap-1.5 text-sm text-token-description-foreground">
-          {data.note_id ? (
-            <span role="img" aria-label="Note from Nodex" className="shrink-0">
-              <NodexLogoMarkIcon monochrome className="mt-0.5 size-3.5 shrink-0" />
-            </span>
-          ) : null}
-          <TurnBody key={item.body} body={item.body} markdown={!exactQuestion} />
-        </div>
-      </div>
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2">
-        {problem ? (
-          <p role="status" className="min-w-0 flex-[1_1_12rem] text-xs text-danger">
-            {problem}
-          </p>
-        ) : null}
-        <div className="ml-auto flex min-h-6 flex-wrap items-center justify-end gap-1.5">
-          {/* Ways to look closer are glyphs; only what the row asks the reader to decide is named. */}
-          {chat === "glance" ? (
-            <InboxIconAction label="Open chat" icon={ChatIcon} onClick={onOpenChat} />
-          ) : null}
-          {reason === "review" && data.pull_request_url ? (
-            <InboxIconAction label="Open PR" icon={OpenExternalIcon} onClick={onOpenPR} />
-          ) : null}
-          {replyable && data.active_chat ? (
-            <NodexButton size="xs" variant="outline" className="gap-1.5" onClick={onReply}>
-              <Reply className="icon-xs shrink-0" />
-              Reply
-            </NodexButton>
-          ) : null}
-          {reason === "question" ? (
-            <>
-              {data.options.slice(0, 4).map((label) => (
-                <NodexButton
-                  key={label}
-                  size="xs"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() => act(() => onAnswer(label))}
-                >
-                  {label}
-                </NodexButton>
-              ))}
-              {data.options.length > 4 ? (
-                <NodexDropdownMenu
-                  align="end"
-                  triggerButton={
-                    <NodexButton size="xs" variant="ghost" disabled={pending}>
-                      More…
-                    </NodexButton>
-                  }
-                >
-                  {data.options.slice(4).map((label) => (
-                    <NodexDropdownItem key={label} onSelect={() => act(() => onAnswer(label))}>
-                      {label}
-                    </NodexDropdownItem>
-                  ))}
-                </NodexDropdownMenu>
-              ) : null}
-            </>
-          ) : reason === "review" ? (
-            <NodexButton
-              size="xs"
-              variant="primary"
-              disabled={pending}
-              onClick={() => act(onAccept)}
+    <div className="flex flex-col items-start gap-1">
+      {backFromLater ? (
+        <p
+          data-testid="inbox-back-from-later"
+          className="flex max-w-[80%] items-center gap-1 px-1 text-xs text-token-description-foreground"
+        >
+          <ClockIcon className="icon-2xs shrink-0" />
+          <span className="truncate">{backFromLater}</span>
+        </p>
+      ) : null}
+      {/* One object, as a message is: what the Turn says on top and, joined to it, what to do
+          about it. It keeps to its own words' width, so the reply never drifts away from what it
+          answers. */}
+      <article
+        data-inbox-turn={reason}
+        data-inbox-page-id={item.pageId}
+        className="flex w-fit max-w-[80%] min-w-[min(18rem,80%)] flex-col overflow-hidden rounded-2xl border border-token-border"
+      >
+        <div className="flex flex-col gap-1 border-b border-token-border px-3 py-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              className="min-w-0 flex-1 truncate text-left text-sm font-medium"
+              onClick={onOpenPage}
             >
-              Accept
-            </NodexButton>
-          ) : reason === "ready_to_start" ? (
-            <NodexButton
-              size="xs"
-              variant="primary"
-              disabled={pending || !hostAvailable}
-              onClick={() => act(onStart)}
-            >
-              {hostAvailable ? "Start" : REMOTE_AGENT_REASON}
-            </NodexButton>
-          ) : null}
-          {chat === "decision" ? (
-            <NodexButton size="xs" variant="primary" onClick={onOpenChat}>
-              Open chat
-            </NodexButton>
-          ) : null}
+              {item.title}
+            </button>
+            <PageTurnChip turn={data.turn} holder={READER} />
+          </div>
+          <div className="flex min-w-0 items-start gap-1.5 text-sm text-token-description-foreground">
+            {data.note_id ? (
+              <span role="img" aria-label="Note from Nodex" className="shrink-0">
+                <NodexLogoMarkIcon monochrome className="mt-0.5 size-3.5 shrink-0" />
+              </span>
+            ) : null}
+            <TurnBody key={item.body} body={item.body} markdown={!exactQuestion} />
+          </div>
         </div>
-      </div>
-    </article>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2">
+          {problem ? (
+            <p role="status" className="min-w-0 flex-[1_1_12rem] text-xs text-danger">
+              {problem}
+            </p>
+          ) : null}
+          <div className="ml-auto flex min-h-6 flex-wrap items-center justify-end gap-1.5">
+            <InboxLaterMenu onChoose={onLater} />
+            {/* Ways to look closer are glyphs; only what the row asks the reader to decide is named. */}
+            {chat === "glance" ? (
+              <InboxIconAction label="Open chat" icon={ChatIcon} onClick={onOpenChat} />
+            ) : null}
+            {reason === "review" && data.pull_request_url ? (
+              <InboxIconAction label="Open PR" icon={OpenExternalIcon} onClick={onOpenPR} />
+            ) : null}
+            {replyable && data.active_chat ? (
+              <NodexButton size="xs" variant="outline" className="gap-1.5" onClick={onReply}>
+                <Reply className="icon-xs shrink-0" />
+                Reply
+              </NodexButton>
+            ) : null}
+            {reason === "question" ? (
+              <>
+                {data.options.slice(0, 4).map((label) => (
+                  <NodexButton
+                    key={label}
+                    size="xs"
+                    variant="outline"
+                    disabled={pending}
+                    onClick={() => act(() => onAnswer(label))}
+                  >
+                    {label}
+                  </NodexButton>
+                ))}
+                {data.options.length > 4 ? (
+                  <NodexDropdownMenu
+                    align="end"
+                    triggerButton={
+                      <NodexButton size="xs" variant="ghost" disabled={pending}>
+                        More…
+                      </NodexButton>
+                    }
+                  >
+                    {data.options.slice(4).map((label) => (
+                      <NodexDropdownItem key={label} onSelect={() => act(() => onAnswer(label))}>
+                        {label}
+                      </NodexDropdownItem>
+                    ))}
+                  </NodexDropdownMenu>
+                ) : null}
+              </>
+            ) : reason === "review" ? (
+              <NodexButton
+                size="xs"
+                variant="primary"
+                disabled={pending}
+                onClick={() => act(onAccept)}
+              >
+                Accept
+              </NodexButton>
+            ) : reason === "ready_to_start" ? (
+              <NodexButton
+                size="xs"
+                variant="primary"
+                disabled={pending || !hostAvailable}
+                onClick={() => act(onStart)}
+              >
+                {hostAvailable ? "Start" : REMOTE_AGENT_REASON}
+              </NodexButton>
+            ) : null}
+            {chat === "decision" ? (
+              <NodexButton size="xs" variant="primary" onClick={onOpenChat}>
+                Open chat
+              </NodexButton>
+            ) : null}
+          </div>
+        </div>
+      </article>
+    </div>
   );
 }
 

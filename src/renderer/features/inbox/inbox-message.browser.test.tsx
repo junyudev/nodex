@@ -21,8 +21,8 @@ installRendererThemeFixture();
 const waiting: InboxItem = {
   pageId: "page:1",
   rowKind: "intake",
+  later: null,
   turn: null,
-  outcome: null,
   basis: { pageId: "page:1", contentHash: "content:1" },
   pageKey: "IN-1",
   pageStatus: null,
@@ -35,7 +35,7 @@ const waiting: InboxItem = {
   replyToPageId: null,
   kind: null,
   important: false,
-  state: "open",
+  waiting: true,
   suggestionState: "pending",
   suggestionError: null,
   automationDecision: null,

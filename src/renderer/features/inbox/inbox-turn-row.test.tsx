@@ -103,3 +103,22 @@ test("a note from Nodex leads with its mark, not a label", () => {
   expect(mark.querySelector("svg")?.getAttribute("data-nodex-logo-mark")).toBe("monochrome");
   expect(screen.queryByText(/Nodex note/u)).toBeNull();
 });
+test("a move that can wait is set aside until a chosen time", async () => {
+  const handlers = props();
+  render(<InboxTurnRow item={row("review")} {...handlers} />);
+  await openNodexMenu(screen.getByRole("button", { name: "Later" }));
+  const option = await screen.findByRole("menuitem", { name: "In 1 hour" });
+  await act(async () => {
+    fireEvent.click(option);
+    await Promise.resolve();
+  });
+  const [until] = handlers.onLater.mock.calls[0]!;
+  expect(Date.parse(until)).toBeGreaterThan(Date.now());
+});
+test("a move that came back from Later says when it was set aside", () => {
+  const past = new Date(Date.now() - 60_000).toISOString();
+  render(
+    <InboxTurnRow item={{ ...row("review"), later: { setAt: past, until: past } }} {...props()} />,
+  );
+  expect(screen.getByTestId("inbox-back-from-later").textContent).toMatch(/^Back from Later/u);
+});

@@ -13,6 +13,7 @@ afterEach(() => {
 const row = (fix: "reconnect" | "retry" | "open_card"): InboxItem => ({
   pageId: "problem",
   rowKind: "problem",
+  later: null,
   problem: {
     id: "problem",
     library_id: "library",
@@ -39,8 +40,7 @@ const row = (fix: "reconnect" | "retry" | "open_card"): InboxItem => ({
   replyToPageId: null,
   kind: null,
   important: false,
-  state: "open",
-  outcome: null,
+  waiting: true,
   suggestionState: "none",
   suggestionError: null,
   scope: { kind: "all" },

@@ -20,7 +20,8 @@ import {
 import type { Project } from "../../../shared/types";
 import {
   ActivitySpinnerIcon,
-  ArchiveIcon,
+  NoteIcon,
+  TodoIcon,
   CheckmarkIcon,
   CompactChevronDownIcon,
   DispatchIcon,
@@ -49,12 +50,16 @@ import { InboxMessageEditor } from "./inbox-message-editor";
 import { InboxPlanSteps } from "./inbox-plan-steps";
 import { INBOX_EASE_OUT } from "./inbox-stream-item";
 import { InboxOutcomeLine } from "./inbox-outcome";
+import { InboxLaterMenu } from "./inbox-later-menu";
 import {
   describeInboxAction,
   describeInboxAutomationDecision,
   inboxPageRoutingContext,
   inboxRowAction,
   inboxRowOffers,
+  inboxDecisionHold,
+  inboxLeadHold,
+  INBOX_HOLD_LABELS,
   inboxTriageModel,
   isChatAction,
   type InboxOutcome,
@@ -583,6 +588,7 @@ export function InboxTriage({
   const handled = useInboxOutcome(item);
   const done = () => void actions.setState([item.pageId], "done");
   const keep = () => void actions.keep([item.pageId]);
+  const saveToNotes = () => void actions.saveToNotes([item.pageId], [item.basis]);
   const handleManually = () =>
     onManualDraftChange(
       draftForInboxItem(
@@ -613,7 +619,21 @@ export function InboxTriage({
       }}
     />
   );
-  const keepAction = <InboxIconAction label="Keep" icon={ArchiveIcon} onClick={keep} />;
+  // One way to hold the message leads, by its kind; the other waits in its menu. A suggestion
+  // that already is that hold offers it as its decision instead.
+  const leadHold = inboxLeadHold(item);
+  const holdAction =
+    offers.hold && !item.automationDecision && leadHold !== inboxDecisionHold(item) ? (
+      <InboxIconAction
+        label={INBOX_HOLD_LABELS[leadHold]}
+        icon={leadHold === "notes" ? NoteIcon : TodoIcon}
+        onClick={leadHold === "notes" ? saveToNotes : keep}
+      />
+    ) : null;
+  // An automation's waiting run is run, skipped or handed elsewhere; it is never set aside.
+  const laterAction = item.automationDecision ? null : (
+    <InboxLaterMenu onChoose={(remindAt) => void actions.later([item.pageId], remindAt)} />
+  );
   // Done with an automation's waiting run means it does not run this time.
   const doneAction = offers.done ? (
     <InboxIconAction
@@ -749,6 +769,8 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menuNode}
+                {laterAction}
+                {holdAction}
                 {doneAction}
                 {handleManuallyAction}
                 <AdviceSpinner onStop={stopAdvice} />
@@ -761,9 +783,14 @@ export function InboxTriage({
         const presentation = describeInboxAction(proposal.action, {
           targetProjectName: proposal.targetProjectName,
           chat: proposal.chat,
+          now,
         });
         const newChat = proposal.action.type === "new_chat";
         const executesDecision = proposal.action.type === "execute_decision";
+        const proposedLater = proposal.action.type === "later" ? proposal.action : null;
+        // A time Nodex proposed may have come and gone while the suggestion waited.
+        const laterPassed =
+          proposedLater?.remindAt != null && Date.parse(proposedLater.remindAt) <= now.getTime();
         // A Heartbeat's run continues its chat on that chat's own Agent.
         const choosesModel =
           newChat || (executesDecision && taskAgent !== null && !automationDecision?.heartbeat);
@@ -829,7 +856,8 @@ export function InboxTriage({
                     onClick={askAgain}
                   />
                 ) : null}
-                {proposal.action.type === "keep" || executesDecision ? null : keepAction}
+                {proposedLater ? null : laterAction}
+                {holdAction}
                 {doneAction}
               </InboxIconActions>
               <Decision
@@ -839,7 +867,9 @@ export function InboxTriage({
                     ? "Checking skill availability"
                     : !hostAvailable && executesDecision
                       ? "Space host unavailable"
-                      : undefined
+                      : laterPassed
+                        ? "That time has passed. Choose another."
+                        : undefined
                 }
                 target={presentation.target}
                 variant={variant}
@@ -861,6 +891,24 @@ export function InboxTriage({
                       label={executesDecision ? "Choose the model for this run" : undefined}
                       variant={variant}
                       onChange={(next) => chooseAgent(proposal.proposalId, next)}
+                    />
+                  ) : proposedLater ? (
+                    <InboxLaterMenu
+                      label="Choose another time"
+                      current={laterPassed ? undefined : proposedLater.remindAt}
+                      onChoose={(remindAt) =>
+                        void actions.confirm(proposal, { type: "later", remindAt })
+                      }
+                      trigger={
+                        <NodexButton
+                          size="xs"
+                          variant={variant}
+                          aria-label="Choose another time"
+                          className="rounded-s-none px-1.5"
+                        >
+                          <CompactChevronDownIcon className="icon-2xs shrink-0" />
+                        </NodexButton>
+                      }
                     />
                   ) : null
                 }
@@ -905,7 +953,8 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menuNode}
-                {keepAction}
+                {laterAction}
+                {holdAction}
                 {doneAction}
               </InboxIconActions>
               {/* Asking again is the obvious next step; deciding by hand stays beside it. */}
@@ -942,7 +991,8 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menuNode}
-                {item.automationDecision ? null : keepAction}
+                {laterAction}
+                {holdAction}
                 {doneAction}
               </InboxIconActions>
               {failure === "unknown" ? (
@@ -1014,7 +1064,8 @@ export function InboxTriage({
                     onClick={() => void actions.requestSuggestion([item.pageId], [item.basis])}
                   />
                 ) : null}
-                {keepAction}
+                {laterAction}
+                {holdAction}
                 {doneAction}
               </InboxIconActions>
               {handleManuallyDecision("outline")}

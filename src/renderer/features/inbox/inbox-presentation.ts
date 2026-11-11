@@ -21,6 +21,7 @@ import type { ContentRoutingContext } from "../../../shared/content-routing-cont
 import { USER_TURN_TIMESTAMP_GAP_MS } from "../local-conversation/projection/conversation-turn-timestamps";
 import type { SessionLiveIndicator } from "@/lib/session-execution";
 import { formatUsageCountdown } from "@/lib/usage-meter";
+import { describeLaterOutcome } from "./inbox-later";
 
 /** What the strip attached to a message in the Inbox shows: what Nodex made of it. */
 export type InboxTriageModel =
@@ -104,21 +105,8 @@ export const isWorkAction = (
   { type: "new_chat" | "send_to_chat" | "execute_decision" }
 > => isChatAction(action) || action.type === "execute_decision";
 
-/**
- * Mirrors Core's Inbox membership: a message is handled once its work is handed on, or once it
- * is filed, kept, or done. Where its Page lives never decides it. Failed or uncertain delivery,
- * and an Automation run that failed before reaching a chat, remain in the Inbox for a decision.
- */
 export function isInboxItemHandled(item: InboxItem): boolean {
-  if (item.state !== "open") return true;
-  const proposal = item.proposal;
-  return Boolean(
-    proposal &&
-    isWorkAction(proposal.action) &&
-    proposal.failureKind !== "unknown" &&
-    item.automationDecision?.status !== "failed" &&
-    (proposal.state === "dispatching" || proposal.state === "completed"),
-  );
+  return item.rowKind === "intake" && !item.waiting;
 }
 
 export function inboxTriageModel(item: InboxItem, policy: InboxSuggestionPolicy): InboxTriageModel {
@@ -173,9 +161,50 @@ export interface InboxRowOffers {
   readonly done: boolean;
   readonly handleManually: boolean;
   readonly suggest: boolean;
+  /** The row shows the way to hold the message that its kind leads with. */
+  readonly hold: boolean;
 }
 
-export const NO_ROW_OFFERS: InboxRowOffers = { done: false, handleManually: false, suggest: false };
+export const NO_ROW_OFFERS: InboxRowOffers = {
+  done: false,
+  handleManually: false,
+  suggest: false,
+  hold: false,
+};
+
+/**
+ * The two ways to hold a message without handing it to an Agent: as work in the Todo stage, or as
+ * a note under the Inbox's Notes page, off the Board altogether.
+ */
+export type InboxHold = "todo" | "notes";
+
+export const INBOX_HOLD_LABELS: Readonly<Record<InboxHold, string>> = {
+  todo: "Add to Todo",
+  notes: "Save to Notes",
+};
+
+/** A note asks for no work, so it leads with Notes; anything else leads with Todo. */
+export const inboxLeadHold = (item: InboxItem): InboxHold =>
+  inboxEntryKind(item) === "note" ? "notes" : "todo";
+
+/** The hold a suggestion's own decision already is, so the row never offers it twice. */
+export const inboxDecisionHold = (item: InboxItem): InboxHold | null => {
+  const action = item.proposal?.state === "open" ? item.proposal.action : null;
+  return action?.type === "keep" ? "todo" : action?.type === "save_to_notes" ? "notes" : null;
+};
+
+/**
+ * The holds a message's menu offers: whichever its row does not already show, and never one an
+ * Automation's waiting run could take.
+ */
+export function inboxMenuHolds(item: InboxItem, offers: InboxRowOffers): readonly InboxHold[] {
+  if (!item.waiting || item.automationDecision || item.source.kind === "nodex") return [];
+  const decision = inboxDecisionHold(item);
+  const lead = inboxLeadHold(item);
+  return (["todo", "notes"] as const).filter(
+    (hold) => hold !== decision && !(offers.hold && hold === lead),
+  );
+}
 
 /**
  * What a message's action row offers beside its menu, so the menu holds only the rest and no
@@ -190,24 +219,25 @@ export function inboxRowOffers(
   switch (model.kind) {
     case "suggesting":
     case "dispatch-failed":
-      return { done: true, handleManually: true, suggest: false };
+      return { done: true, handleManually: true, suggest: false, hold: true };
     case "decision-withdrawn":
-      return { done: true, handleManually: true, suggest: false };
+      return { done: true, handleManually: true, suggest: false, hold: false };
     case "answer":
-      return { done: false, handleManually: false, suggest: false };
+      return NO_ROW_OFFERS;
     case "suggestion":
       // Changing a suggestion happens in `Handle manually`, which stays in the menu. An outdated
       // or failed one asks again from the row, where new advice then shows its spinner.
       return {
         done: true,
         handleManually: false,
+        hold: true,
         suggest:
           model.refreshing ||
           (input.suggestionsOffered && (model.proposal.outdated || model.refreshError !== null)),
       };
     case "suggestion-failed":
     case "undecided":
-      return { done: true, handleManually: true, suggest: input.suggestionsOffered };
+      return { done: true, handleManually: true, suggest: input.suggestionsOffered, hold: true };
     case "handled":
       return NO_ROW_OFFERS;
   }
@@ -247,7 +277,15 @@ export const inboxEntryKind = (item: InboxItem): InboxEntryKind | null =>
 export const inboxPageStatusMark = (item: InboxItem): InboxPageStatus | null =>
   item.pageStatus && item.pageStatus.id !== DEFAULT_WORKFLOW_STATUS ? item.pageStatus : null;
 
-export type InboxOutcomeIcon = "chat" | "pending" | "move" | "keep" | "done" | "inbox";
+export type InboxOutcomeIcon =
+  | "chat"
+  | "pending"
+  | "move"
+  | "todo"
+  | "notes"
+  | "later"
+  | "done"
+  | "inbox";
 
 export type InboxOutcomeTarget =
   | { readonly kind: "session"; readonly sessionId: string }
@@ -274,10 +312,10 @@ export interface InboxOutcome {
   readonly inProgress: boolean;
 }
 
-const keptLabel = (kind: InboxEntryKind | null) =>
-  kind ? `Kept as ${INBOX_KIND_LABELS[kind].toLowerCase()}` : "Kept";
-
-const KEPT = { icon: "keep", status: null, open: null, canReturn: true, done: null } as const;
+/** Held without an Agent: both can go back to the Inbox. */
+const HELD = { status: null, open: null, canReturn: true, done: null, inProgress: false } as const;
+const IN_TODO = { ...HELD, icon: "todo", label: "Added to Todo" } as const;
+const IN_NOTES = { ...HELD, icon: "notes", label: "Saved to Notes" } as const;
 const DONE = { icon: "done", label: "Done", status: null, open: null, canReturn: true } as const;
 const SKIPPED = { ...DONE, label: "Skipped" } as const;
 
@@ -331,9 +369,6 @@ export function describeInboxOutcome(
       inProgress: false,
     };
 
-  if (item.outcome === "kept") {
-    return { ...KEPT, label: keptLabel(item.kind), inProgress: false };
-  }
   if (item.proposal?.action.type === "plan" && item.proposal.state === "completed") {
     return {
       ...DONE,
@@ -343,21 +378,10 @@ export function describeInboxOutcome(
       inProgress: false,
     };
   }
-  if (item.outcome === "done") {
-    return {
-      ...DONE,
-      label: doneLabel(item),
-      done: null,
-      inProgress: false,
-    };
-  }
   const proposal = item.proposal;
-  if (
-    proposal?.action.type === "execute_decision" &&
-    (item.outcome === "chat" || proposal.state === "completed")
-  ) {
+  if (proposal?.action.type === "execute_decision" && proposal.state === "completed") {
     const chat = proposal.chat;
-    const done = item.state === "done";
+    const done = item.pageStatus?.id === "done";
     const title = `“${decisionAutomationName(item)}”`;
     // A Cron run reaches a chat once its workspace is ready; a Heartbeat already has its chat.
     if (!chat) {
@@ -367,7 +391,7 @@ export function describeInboxOutcome(
         status: done ? DONE_STATUS : null,
         open: null,
         canReturn: false,
-        done,
+        done: null,
         inProgress: !done,
       };
     }
@@ -378,21 +402,21 @@ export function describeInboxOutcome(
       status,
       open: { kind: "session", sessionId: chat.sessionId },
       canReturn: false,
-      done,
+      done: null,
       inProgress: status.inProgress,
     };
   }
   if (
     proposal &&
     isChatAction(proposal.action) &&
-    (item.outcome === "chat" ||
+    (proposal.state === "completed" ||
       (proposal.state === "dispatching" && proposal.failureKind !== "unknown"))
   ) {
     const chat = proposal.chat;
     const open: InboxOutcomeTarget | null = chat
       ? { kind: "session", sessionId: chat.sessionId }
       : null;
-    const done = item.state === "done";
+    const done = item.pageStatus?.id === "done";
     const label = proposal.answeredQuestion
       ? `${proposal.state === "completed" ? "Answered" : "Answering"} “${chat?.displayTitle ?? "chat"}”’s question`
       : chatLabel(
@@ -409,7 +433,7 @@ export function describeInboxOutcome(
         status: done ? DONE_STATUS : null,
         open,
         canReturn: false,
-        done,
+        done: null,
         inProgress: !done,
       };
     }
@@ -421,12 +445,12 @@ export function describeInboxOutcome(
         status,
         open,
         canReturn: false,
-        done,
+        done: null,
         inProgress: status.inProgress,
       };
     }
   }
-  if (item.outcome === "moved") {
+  if (proposal?.action.type === "move_to_project" && proposal.state === "completed") {
     return {
       icon: "move",
       label: `Moved to ${proposal?.targetProjectName ?? (item.location.kind === "database" ? item.location.projectName : null) ?? "Project"}`,
@@ -440,6 +464,10 @@ export function describeInboxOutcome(
       inProgress: false,
     };
   }
+  if (proposal?.action.type === "save_to_notes" && proposal.state === "completed") return IN_NOTES;
+  if (!item.waiting && item.pageStatus?.id === "done")
+    return { ...DONE, label: doneLabel(item), done: null, inProgress: false };
+  if (!item.waiting && item.pageStatus?.id === "plan") return IN_TODO;
   return {
     icon: "inbox",
     label: "In the Inbox",
@@ -455,6 +483,9 @@ export function describeInboxOutcome(
 export type InboxDecision =
   | { readonly kind: "plan"; readonly count: number }
   | { readonly kind: "keep" }
+  | { readonly kind: "save_to_notes" }
+  /** Set aside until a time; the message stays undecided and comes back then. */
+  | { readonly kind: "later"; readonly remindAt: string }
   | { readonly kind: "done" }
   /** An automation's waiting run, confirmed to run now. */
   | { readonly kind: "run"; readonly taskName: string }
@@ -469,7 +500,11 @@ export type InboxDecision =
     };
 
 /** What a message shows in its place in the Inbox between the decision and folding away. */
-export function describeInboxDecision(item: InboxItem, decision: InboxDecision): InboxOutcome {
+export function describeInboxDecision(
+  item: InboxItem,
+  decision: InboxDecision,
+  now: Date = new Date(),
+): InboxOutcome {
   switch (decision.kind) {
     case "plan":
       return {
@@ -479,8 +514,17 @@ export function describeInboxDecision(item: InboxItem, decision: InboxDecision):
         done: null,
         inProgress: false,
       };
+    case "later":
+      return {
+        ...HELD,
+        icon: "later",
+        label: describeLaterOutcome(decision.remindAt, now),
+        inProgress: false,
+      };
+    case "save_to_notes":
+      return IN_NOTES;
     case "keep":
-      return { ...KEPT, label: keptLabel(inboxEntryKind(item)), inProgress: false };
+      return IN_TODO;
     case "done":
       return { ...(item.automationDecision ? SKIPPED : DONE), done: null, inProgress: false };
     case "run":
@@ -535,14 +579,23 @@ export function describeInboxAction(
   context: {
     readonly targetProjectName: string | null;
     readonly chat: InboxChat | null;
+    /** When a Later suggestion's time is read against; the present unless given. */
+    readonly now?: Date;
   },
 ): InboxActionPresentation {
   switch (action.type) {
     case "plan":
       // Confirming creates the cards and starts those that wait for nothing.
       return { verb: "Start plan", target: `Start ${action.steps.length} cards` };
+    case "later":
+      return {
+        verb: "Later",
+        target: describeLaterOutcome(action.remindAt, context.now ?? new Date()),
+      };
     case "keep":
-      return { verb: "Keep", target: "Keep" };
+      return { verb: "Add to Todo", target: "Add to Todo" };
+    case "save_to_notes":
+      return { verb: "Save to Notes", target: "Save to Notes" };
     case "new_chat":
       return {
         verb: "Start chat",
@@ -711,6 +764,21 @@ export const inboxReceiptNeedsReview = (error: unknown): boolean =>
   (error.code === "idempotency_window_expired" || error.code === "legacy_idempotency_unavailable");
 
 /**
+ * When a message entered the stream where it now sits: when it was sent, or when it last came
+ * back, from Later or from a chat that returned it.
+ */
+export const inboxStreamTime = (item: InboxItem): string => {
+  const until = item.later?.until;
+  const returned = [
+    until && Date.parse(until) <= Date.now() ? until : null,
+    item.handback?.returned_at,
+  ].filter((at): at is string => typeof at === "string");
+  return returned.length > 0
+    ? returned.reduce((a, b) => (Date.parse(a) > Date.parse(b) ? a : b))
+    : item.submittedAt;
+};
+
+/**
  * Where the oldest-first Inbox stream shows a centered time, as a conversation does: above
  * the first message once it is over an hour old, and above any message sent over an hour
  * after the one before it. Each message's own time waits for a hover.
@@ -720,10 +788,10 @@ export function inboxTimestampSeparators(
   nowMs: number,
 ): Array<number | null> {
   return items.map((item, index) => {
-    const sentAtMs = Date.parse(item.submittedAt);
+    const sentAtMs = Date.parse(inboxStreamTime(item));
     if (!Number.isFinite(sentAtMs)) return null;
     const previous = items[index - 1];
-    const sinceMs = previous ? sentAtMs - Date.parse(previous.submittedAt) : nowMs - sentAtMs;
+    const sinceMs = previous ? sentAtMs - Date.parse(inboxStreamTime(previous)) : nowMs - sentAtMs;
     return sinceMs > USER_TURN_TIMESTAMP_GAP_MS ? sentAtMs : null;
   });
 }

@@ -10,13 +10,16 @@ import {
   AutomationMoreIcon,
   AutomationsIcon,
   CheckmarkIcon,
+  ClockIcon,
   DeleteIcon,
   DispatchIcon,
   ImportantFilledIcon,
   ImportantIcon,
+  NoteIcon,
   PageIcon,
   RefreshIcon,
   TagsIcon,
+  TodoIcon,
 } from "@/components/shared/icons";
 import {
   NodexDropdownItem,
@@ -33,6 +36,8 @@ import { StatusIcon } from "@/lib/status-presentation";
 import type { PageChatActivitySummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { INBOX_KIND_ICONS, InboxIconAction } from "./inbox-icon-action";
+import { describeBackFromLater } from "./inbox-later";
+import { useInboxClock } from "./use-inbox-clock";
 import { InboxArrivalRing, InboxImportantStar } from "./inbox-important";
 import { InboxMessageDocument } from "./inbox-message-document";
 import { NodexAuthor } from "./inbox-nodex";
@@ -40,6 +45,9 @@ import {
   INBOX_KIND_LABELS,
   formatInboxTime,
   inboxEntryKind,
+  inboxMenuHolds,
+  INBOX_HOLD_LABELS,
+  type InboxHold,
   inboxPageStatusMark,
   type InboxRowOffers,
 } from "./inbox-presentation";
@@ -49,6 +57,8 @@ export interface InboxMessageMenuHandlers {
   /** Absent while suggestions are off. */
   readonly onSuggestAgain?: () => void;
   readonly onSetDone: (done: boolean) => void;
+  /** Holds the message the way its row does not already offer. */
+  readonly onHold: (hold: InboxHold) => void;
   readonly onSetKind: (kind: InboxEntryKind) => void;
   readonly onSetImportant: (important: boolean) => void;
   readonly onDelete: () => void;
@@ -69,7 +79,6 @@ export function InboxMessageMenu({
   readonly rowOffers: InboxRowOffers;
 }) {
   if (item.source.kind === "nodex") return null;
-  const done = item.state === "done";
   const kind = inboxEntryKind(item);
   return (
     <NodexDropdownMenu
@@ -95,10 +104,7 @@ export function InboxMessageMenu({
         </NodexDropdownItem>
       )}
       {/* A held Automation decision carries its frozen action, never routing advice. */}
-      {item.state === "open" &&
-      !rowOffers.suggest &&
-      !item.automationDecision &&
-      handlers.onSuggestAgain ? (
+      {item.waiting && !rowOffers.suggest && !item.automationDecision && handlers.onSuggestAgain ? (
         <NodexDropdownItem
           leftSlot={<RefreshIcon className="icon-xs" />}
           onSelect={handlers.onSuggestAgain}
@@ -106,15 +112,26 @@ export function InboxMessageMenu({
           Suggest again
         </NodexDropdownItem>
       ) : null}
-      {done || !rowOffers.done ? (
+      {inboxMenuHolds(item, rowOffers).map((hold) => (
+        <NodexDropdownItem
+          key={hold}
+          leftSlot={
+            hold === "notes" ? <NoteIcon className="icon-xs" /> : <TodoIcon className="icon-xs" />
+          }
+          onSelect={() => handlers.onHold(hold)}
+        >
+          {INBOX_HOLD_LABELS[hold]}
+        </NodexDropdownItem>
+      ))}
+      {item.waiting && !rowOffers.done ? (
         <NodexDropdownItem
           leftSlot={<CheckmarkIcon className="icon-xs" />}
-          onSelect={() => handlers.onSetDone(!done)}
+          onSelect={() => handlers.onSetDone(true)}
         >
-          {done ? "Reopen" : "Mark done"}
+          Mark done
         </NodexDropdownItem>
       ) : null}
-      {item.state === "open" ? (
+      {item.waiting ? (
         <NodexDropdownItem
           leftSlot={
             item.important ? (
@@ -229,6 +246,9 @@ export function InboxMessage({
   readonly actions: React.ReactNode;
 }) {
   const fromUser = item.source.kind === "user";
+  // A message that was set aside says so while it waits again, so its age is no surprise.
+  const now = new Date(useInboxClock());
+  const backFromLater = item.waiting ? describeBackFromLater(item.later, now) : null;
   const status = inboxPageStatusMark(item);
   const chats = linkedChats && linkedChats.relatedCount > 0 ? linkedChats : null;
   // Where the message's Page already stands, read before its words: its Board status once it
@@ -314,6 +334,15 @@ export function InboxMessage({
             {item.handback.chat.display_title}
           </button>{" "}
           sent this back: {item.handback.reason}
+        </p>
+      ) : null}
+      {backFromLater ? (
+        <p
+          data-testid="inbox-back-from-later"
+          className="flex max-w-[80%] items-center gap-1 px-1 text-xs text-token-description-foreground"
+        >
+          <ClockIcon className="icon-2xs shrink-0" />
+          <span className="truncate">{backFromLater}</span>
         </p>
       ) : null}
       {item.source.kind === "nodex" ? (

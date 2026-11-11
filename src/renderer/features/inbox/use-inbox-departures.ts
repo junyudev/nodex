@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { InboxItem } from "../../../shared/inbox";
-import { describeInboxDecision, type InboxDecision, type InboxOutcome } from "./inbox-presentation";
+import {
+  describeInboxDecision,
+  inboxStreamTime,
+  type InboxDecision,
+  type InboxOutcome,
+} from "./inbox-presentation";
 
 /** How long a decided message shows where it went before it folds away. */
 export const INBOX_DEPARTURE_MS = 1_800;
@@ -101,7 +106,7 @@ export function useInboxDepartures(items: readonly InboxItem[]): InboxDepartures
 
 /**
  * Puts decided messages Core no longer lists back where they were in the newest-first stream:
- * before the first message sent earlier than each of them.
+ * before the first message that entered the stream earlier than each of them.
  */
 export function retainDeparted(
   items: readonly InboxItem[],
@@ -112,7 +117,9 @@ export function retainDeparted(
   if (missing.length === 0) return items;
   const merged = [...items];
   for (const item of missing) {
-    const index = merged.findIndex((other) => other.submittedAt < item.submittedAt);
+    const index = merged.findIndex(
+      (other) => Date.parse(inboxStreamTime(other)) < Date.parse(inboxStreamTime(item)),
+    );
     merged.splice(index === -1 ? merged.length : index, 0, item);
   }
   return merged;

@@ -22,8 +22,8 @@ import {
 
 const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   pageId: "page:1",
-  outcome: null,
   rowKind: "intake",
+  later: null,
   turn: null,
   basis: { pageId: "page:1", contentHash: "content:1" },
   pageKey: "IN-1",
@@ -37,7 +37,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   replyToPageId: null,
   kind: null,
   important: false,
-  state: "open",
+  waiting: true,
   suggestionState: "settled",
   suggestionError: null,
   automationDecision: null,
@@ -262,14 +262,22 @@ describe("isInboxItemHandled", () => {
       projectName: "Nodex",
     } as const;
     expect(isInboxItemHandled(item({ proposal: proposal() }))).toBe(false);
-    expect(isInboxItemHandled(item({ proposal: proposal({ state: "dispatching" }) }))).toBe(true);
+    expect(
+      isInboxItemHandled(item({ waiting: false, proposal: proposal({ state: "dispatching" }) })),
+    ).toBe(true);
     expect(isInboxItemHandled(item({ proposal: proposal({ state: "failed" }) }))).toBe(false);
-    expect(isInboxItemHandled(item({ state: "kept", outcome: "kept" }))).toBe(true);
-    expect(isInboxItemHandled(item({ state: "done", outcome: "done" }))).toBe(true);
+    expect(
+      isInboxItemHandled(item({ waiting: false, pageStatus: { id: "plan", label: "Todo" } })),
+    ).toBe(true);
+    expect(
+      isInboxItemHandled(item({ waiting: false, pageStatus: { id: "done", label: "Done" } })),
+    ).toBe(true);
     // Filing marks the message kept; moving its Page by other means does not handle it.
-    expect(isInboxItemHandled(item({ state: "kept", outcome: "kept", location: elsewhere }))).toBe(
-      true,
-    );
+    expect(
+      isInboxItemHandled(
+        item({ waiting: false, pageStatus: { id: "plan", label: "Todo" }, location: elsewhere }),
+      ),
+    ).toBe(true);
     expect(isInboxItemHandled(item({ location: elsewhere }))).toBe(false);
   });
 });
@@ -278,9 +286,15 @@ describe("describeInboxOutcome", () => {
   it("keeps triage outcomes independent of the Page location", () => {
     for (const state of ["kept", "done"] as const) {
       expect(
-        describeInboxOutcome(item({ state, outcome: state, location: { kind: "other" } })),
+        describeInboxOutcome(
+          item({
+            waiting: false,
+            pageStatus: { id: state === "kept" ? "plan" : "done", label: state },
+            location: { kind: "other" },
+          }),
+        ),
       ).toMatchObject({
-        icon: state === "kept" ? "keep" : "done",
+        icon: state === "kept" ? "todo" : "done",
         canReturn: true,
       });
     }
@@ -306,7 +320,6 @@ describe("describeInboxOutcome", () => {
     expect(
       describeInboxOutcome(
         item({
-          outcome: "chat",
           proposal: proposal({ state: "completed", chat, confirmedBy: "nodex" }),
         }),
       ).label,
@@ -319,7 +332,6 @@ describe("describeInboxOutcome", () => {
     expect(
       describeInboxOutcome(
         item({
-          outcome: "chat",
           proposal: proposal({ state: "completed", chat, confirmedBy: "user" }),
         }),
       ).label,
@@ -328,16 +340,14 @@ describe("describeInboxOutcome", () => {
 
   it("names where a handled message went and how to get back to it", () => {
     expect(
-      describeInboxOutcome(
-        item({ outcome: "chat", proposal: proposal({ state: "completed", chat }) }),
-      ),
+      describeInboxOutcome(item({ proposal: proposal({ state: "completed", chat }) })),
     ).toEqual({
       icon: "chat",
       label: "Started “Homepage positioning”",
       status: { label: "New reply", tone: "attention", inProgress: true },
       open: { kind: "session", sessionId: "session:1" },
       canReturn: false,
-      done: false,
+      done: null,
       inProgress: true,
     });
     expect(
@@ -354,8 +364,7 @@ describe("describeInboxOutcome", () => {
     expect(
       describeInboxOutcome(
         item({
-          state: "kept",
-          outcome: "moved",
+          waiting: false,
           proposal: proposal({
             state: "completed",
             action: { type: "move_to_project", projectId: "project:nodex" },
@@ -371,12 +380,16 @@ describe("describeInboxOutcome", () => {
       ),
     ).toMatchObject({ icon: "move", label: "Moved to Nodex", open: { kind: "database" } });
     expect(
-      describeInboxOutcome(item({ state: "kept", outcome: "kept", kind: "question" })),
+      describeInboxOutcome(
+        item({ waiting: false, pageStatus: { id: "plan", label: "Todo" }, kind: "question" }),
+      ),
     ).toMatchObject({
-      label: "Kept as question",
+      label: "Added to Todo",
       canReturn: true,
     });
-    expect(describeInboxOutcome(item({ state: "done", outcome: "done" }))).toMatchObject({
+    expect(
+      describeInboxOutcome(item({ waiting: false, pageStatus: { id: "done", label: "Done" } })),
+    ).toMatchObject({
       label: "Done",
       canReturn: true,
     });
@@ -477,22 +490,28 @@ describe("chat progress", () => {
   it("keeps dispatched work in progress until the user closes it, whatever its chat does", () => {
     const delivered = (state: "open" | "done", live: "running" | null) =>
       describeInboxOutcome(
-        item({ state, outcome: "chat", proposal: proposal({ state: "completed", chat: runtime }) }),
+        item({
+          waiting: false,
+          pageStatus: state === "done" ? { id: "done", label: "Done" } : null,
+          proposal: proposal({ state: "completed", chat: runtime }),
+        }),
         live,
       );
-    expect(delivered("open", "running")).toMatchObject({ inProgress: true, done: false });
-    expect(delivered("open", null)).toMatchObject({ inProgress: false, done: false });
+    expect(delivered("open", "running")).toMatchObject({ inProgress: true, done: null });
+    expect(delivered("open", null)).toMatchObject({ inProgress: false, done: null });
     expect(delivered("done", "running")).toMatchObject({
       label: "Started “Homepage positioning”",
       status: { label: "Done" },
       inProgress: false,
-      done: true,
+      done: null,
       canReturn: false,
     });
     expect(
       describeInboxOutcome(item({ proposal: proposal({ state: "dispatching", chat: null }) })),
-    ).toMatchObject({ icon: "pending", inProgress: true, done: false });
-    expect(describeInboxOutcome(item({ state: "kept", outcome: "kept" }))).toMatchObject({
+    ).toMatchObject({ icon: "pending", inProgress: true, done: null });
+    expect(
+      describeInboxOutcome(item({ waiting: false, pageStatus: { id: "plan", label: "Todo" } })),
+    ).toMatchObject({
       inProgress: false,
       done: null,
     });
@@ -523,10 +542,14 @@ describe("describeInboxDecision", () => {
         projectName: null,
       }).label,
     ).toBe("Sending to “Homepage positioning”");
-    // The kind it keeps is the one the user set, else the one suggested.
-    expect(
-      describeInboxDecision(item({ proposal: proposal({ kind: "todo" }) }), { kind: "keep" }).label,
-    ).toBe("Kept as todo");
+    expect(describeInboxDecision(item(), { kind: "keep" })).toMatchObject({
+      icon: "todo",
+      label: "Added to Todo",
+    });
+    expect(describeInboxDecision(item(), { kind: "save_to_notes" })).toMatchObject({
+      icon: "notes",
+      label: "Saved to Notes",
+    });
     expect(describeInboxDecision(item(), { kind: "done" }).label).toBe("Done");
     expect(describeInboxDecision(item(), { kind: "move", projectName: "Nodex" }).label).toBe(
       "Moved to Nodex",
@@ -598,18 +621,25 @@ describe("inboxRowOffers", () => {
   const offers = (model: Parameters<typeof inboxRowOffers>[0], grouped = false) =>
     inboxRowOffers(model, { suggestionsOffered: true, grouped });
 
+  it("holds a waiting message from its row, and never an answer or a handled one", () => {
+    expect(offers({ kind: "undecided" }).hold).toBe(true);
+    expect(offers({ kind: "suggesting" }).hold).toBe(true);
+    expect(offers({ kind: "decision-withdrawn" }).hold).toBe(false);
+    expect(offers({ kind: "handled" }).hold).toBe(false);
+  });
+
   it("names what the row shows, so the menu can leave it out", () => {
-    expect(offers({ kind: "undecided" })).toEqual({
+    expect(offers({ kind: "undecided" })).toMatchObject({
       done: true,
       handleManually: true,
       suggest: true,
     });
-    expect(offers({ kind: "suggesting" })).toEqual({
+    expect(offers({ kind: "suggesting" })).toMatchObject({
       done: true,
       handleManually: true,
       suggest: false,
     });
-    expect(offers({ kind: "suggestion-failed", message: "Timed out" })).toEqual({
+    expect(offers({ kind: "suggestion-failed", message: "Timed out" })).toMatchObject({
       done: true,
       handleManually: true,
       suggest: true,
@@ -621,7 +651,7 @@ describe("inboxRowOffers", () => {
 
   it("keeps Handle manually in the menu beside a suggestion, where it changes the suggestion", () => {
     const current = { kind: "suggestion", proposal: proposal(), refreshing: false } as const;
-    expect(offers({ ...current, refreshError: null })).toEqual({
+    expect(offers({ ...current, refreshError: null })).toMatchObject({
       done: true,
       handleManually: false,
       suggest: false,
@@ -640,7 +670,7 @@ describe("inboxRowOffers", () => {
   });
 
   it("offers nothing beside the menu for a group member or a handled message", () => {
-    const nothing = { done: false, handleManually: false, suggest: false };
+    const nothing = { done: false, handleManually: false, suggest: false, hold: false };
     expect(
       offers(
         { kind: "suggestion", proposal: proposal(), refreshing: false, refreshError: null },
@@ -700,7 +730,7 @@ describe("an automation's waiting run", () => {
       proposal: runTask,
     });
     const admitted = waiting({
-      outcome: "chat",
+      waiting: false,
       automationDecision: { ...automationDecision, status: "admitted" },
       proposal: { ...runTask, state: "completed" },
     });
@@ -711,7 +741,6 @@ describe("an automation's waiting run", () => {
       inProgress: true,
     });
     const failed = waiting({
-      outcome: "chat",
       automationDecision: {
         ...automationDecision,
         status: "failed",
@@ -729,7 +758,6 @@ describe("an automation's waiting run", () => {
   it("follows its run's chat in History as soon as the run reaches one", () => {
     // The automationDecision stays admitted while its run works; the chat's own status tells how it goes.
     const ran = waiting({
-      outcome: "chat",
       automationDecision: { ...automationDecision, status: "admitted" },
       proposal: { ...runTask, state: "completed", chat },
     });
@@ -744,8 +772,8 @@ describe("an automation's waiting run", () => {
 
   it("reads as skipped when the user marks it done instead of running it", () => {
     const skipped = waiting({
-      state: "done",
-      outcome: "done",
+      waiting: false,
+      pageStatus: { id: "done", label: "Done" },
       automationDecision: { ...automationDecision, status: "skipped" },
     });
     expect(describeInboxOutcome(skipped).label).toBe("Skipped");

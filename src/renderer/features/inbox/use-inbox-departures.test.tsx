@@ -11,8 +11,8 @@ import {
 const message = (pageId: string, submittedAt: string): InboxItem => ({
   pageId,
   rowKind: "intake",
+  later: null,
   turn: null,
-  outcome: null,
   basis: { pageId, contentHash: "content:1" },
   pageKey: null,
   pageStatus: null,
@@ -25,7 +25,7 @@ const message = (pageId: string, submittedAt: string): InboxItem => ({
   replyToPageId: null,
   kind: null,
   important: false,
-  state: "open",
+  waiting: true,
   suggestionState: "settled",
   suggestionError: null,
   automationDecision: null,
@@ -114,7 +114,7 @@ describe("useInboxDepartures", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(INBOX_DEPARTURE_MS * 2);
     });
-    expect(hook.result.current.outcomeOf("page:newest")).toMatchObject({ label: "Kept" });
+    expect(hook.result.current.outcomeOf("page:newest")).toMatchObject({ label: "Added to Todo" });
 
     // Leaving right after deciding still leaves the outcome up for its full moment.
     hook.rerender({ items: [newest, middle] });

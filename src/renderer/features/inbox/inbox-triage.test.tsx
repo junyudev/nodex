@@ -52,8 +52,8 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
 const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   pageId: "page:1",
   rowKind: "intake",
+  later: null,
   turn: null,
-  outcome: null,
   basis: { pageId: "page:1", contentHash: "content:1" },
   pageKey: "IN-1",
   pageStatus: null,
@@ -66,7 +66,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   replyToPageId: null,
   kind: "question",
   important: false,
-  state: "open",
+  waiting: true,
   suggestionState: "settled",
   suggestionError: null,
   automationDecision: null,
@@ -86,6 +86,9 @@ const actions = (): InboxActions => ({
   confirm: vi.fn(async () => true),
   dispatch: vi.fn(async () => true),
   keep: vi.fn(async () => true),
+  saveToNotes: vi.fn(async () => true),
+  clearLater: vi.fn(async () => true),
+  later: vi.fn(async () => true),
   delete: vi.fn(async () => true),
   setState: vi.fn(async () => true),
   setKind: vi.fn(async () => true),
@@ -337,7 +340,8 @@ describe("InboxTriage", () => {
     });
     // The strip says when it fell due; the instructions are the message itself.
     expect(screen.getByTestId("inbox-suggestion").textContent).toMatch(/^Due /u);
-    expect(screen.queryByRole("button", { name: "Keep" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add to Todo" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save to Notes" })).toBeNull();
     await click("Run in Nodex");
     await waitFor(() => expect(commands.confirm).toHaveBeenCalledWith(runTask));
     await click("Skip this run");
@@ -378,11 +382,11 @@ describe("InboxTriage", () => {
     }
   });
 
-  test("a note gets a concrete Keep decision without asking the user to dispatch", async () => {
+  test("a note can confirm a Save to Notes suggestion directly", async () => {
     const note = proposal({
-      action: { type: "keep" },
+      action: { type: "save_to_notes", parentPageId: null },
       kind: "note",
-      summary: "Keep the navigation reference",
+      summary: "Save the navigation reference",
     });
     const commands = renderTriage({
       item: item({
@@ -390,10 +394,10 @@ describe("InboxTriage", () => {
         proposal: note,
       }),
     });
-    expect(screen.getByText("Keep the navigation reference")).toBeTruthy();
+    expect(screen.getByText("Save the navigation reference")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Handle manually" })).toBeNull();
     expect(commands.confirm).not.toHaveBeenCalled();
-    await click("Keep");
+    await click("Save to Notes");
     await waitFor(() => expect(commands.confirm).toHaveBeenCalledWith(note));
     expect(commands.dispatch).not.toHaveBeenCalled();
   });
@@ -739,11 +743,11 @@ describe("InboxTriage", () => {
     expect(onOpenSession).toHaveBeenCalledWith("session:new");
   });
 
-  test("keep and done clear the message without dispatching it", async () => {
+  test("holding or finishing a message clears it without dispatching it", async () => {
     const commands = renderTriage();
     // Nothing in this row opens a chat, so the message may offer its own linked chats.
     expect(rowOpensChat).toBe(false);
-    await click("Keep");
+    await click("Add to Todo");
     await waitFor(() => expect(commands.keep).toHaveBeenCalledWith(["page:1"]));
     await click("Mark done");
     await waitFor(() => expect(commands.setState).toHaveBeenCalledWith(["page:1"], "done"));
@@ -881,6 +885,7 @@ const menuHandlers = (overrides: Partial<InboxMessageMenuHandlers> = {}) => ({
   onDispatch: vi.fn(),
   onSuggestAgain: vi.fn(),
   onSetDone: vi.fn(),
+  onHold: vi.fn(),
   onSetKind: vi.fn(),
   onSetImportant: vi.fn(),
   onDelete: vi.fn(),
@@ -937,6 +942,143 @@ describe("The message menu", () => {
     await screen.findByRole("menuitem", { name: "Handle manually" });
     expect(menuItems()).not.toContain("Mark done");
     expect(menuItems()).toContain("Suggest again");
+  });
+});
+
+describe("Holding a message", () => {
+  test("a note leads with Notes and keeps Todo in its menu", async () => {
+    const onHold = vi.fn();
+    const note = item({ kind: "note", proposal: null, suggestionState: "none" });
+    const commands = renderTriage({
+      item: note,
+      menu: (rowOffers) => (
+        <InboxMessageMenu item={note} rowOffers={rowOffers} handlers={menuHandlers({ onHold })} />
+      ),
+    });
+    expect(screen.queryByRole("button", { name: "Add to Todo" })).toBeNull();
+    await click("Save to Notes");
+    await waitFor(() =>
+      expect(commands.saveToNotes).toHaveBeenCalledWith(["page:1"], [note.basis]),
+    );
+    await openNodexMenu(screen.getByRole("button", { name: "Message actions" }));
+    const todo = await screen.findByRole("menuitem", { name: "Add to Todo" });
+    expect(menuItems()).not.toContain("Save to Notes");
+    await act(async () => {
+      fireEvent.click(todo);
+      await Promise.resolve();
+    });
+    expect(onHold).toHaveBeenCalledWith("todo");
+  });
+
+  test("work leads with Todo and keeps Notes in its menu", async () => {
+    const todo = item({ kind: "todo", proposal: null, suggestionState: "none" });
+    renderTriage({
+      item: todo,
+      menu: (rowOffers) => (
+        <InboxMessageMenu item={todo} rowOffers={rowOffers} handlers={menuHandlers()} />
+      ),
+    });
+    expect(screen.getByRole("button", { name: "Add to Todo" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save to Notes" })).toBeNull();
+    await openNodexMenu(screen.getByRole("button", { name: "Message actions" }));
+    await screen.findByRole("menuitem", { name: "Save to Notes" });
+    expect(menuItems()).not.toContain("Add to Todo");
+  });
+
+  test("a suggestion that already is the hold offers it once, as its decision", async () => {
+    const saved = proposal({
+      action: { type: "save_to_notes", parentPageId: null },
+      kind: "note",
+      summary: "A reference, not a request for work.",
+    });
+    const note = item({ kind: null, proposal: saved });
+    const commands = renderTriage({
+      item: note,
+      menu: (rowOffers) => (
+        <InboxMessageMenu item={note} rowOffers={rowOffers} handlers={menuHandlers()} />
+      ),
+    });
+    expect(screen.getAllByRole("button", { name: "Save to Notes" })).toHaveLength(1);
+    await click("Save to Notes");
+    await waitFor(() => expect(commands.confirm).toHaveBeenCalledWith(saved));
+    await openNodexMenu(screen.getByRole("button", { name: "Message actions" }));
+    await screen.findByRole("menuitem", { name: "Add to Todo" });
+    expect(menuItems()).not.toContain("Save to Notes");
+  });
+});
+
+describe("Later", () => {
+  const choose = async (trigger: string, choice: string | RegExp) => {
+    await openNodexMenu(screen.getByRole("button", { name: trigger }));
+    const option = await screen.findByRole("menuitem", { name: choice });
+    await act(async () => {
+      fireEvent.click(option);
+      await Promise.resolve();
+    });
+  };
+
+  test("a waiting message is set aside until a chosen time", async () => {
+    const commands = renderTriage({ item: item({ proposal: null, suggestionState: "none" }) });
+    await choose("Later", "In 1 hour");
+    const [pageIds, remindAt] = vi.mocked(commands.later).mock.calls[0]!;
+    expect(pageIds).toEqual(["page:1"]);
+    expect(Date.parse(remindAt!)).toBeGreaterThan(Date.now());
+  });
+
+  test("a message can be set aside while its advice is still on the way", () => {
+    renderTriage({ item: item({ proposal: null, suggestionState: "pending" }) });
+    expect(screen.getByRole("button", { name: "Later" })).toBeTruthy();
+  });
+
+  test("an automation's waiting run is never set aside", () => {
+    renderTriage({
+      item: item({
+        proposal: null,
+        suggestionState: "none",
+        automationDecision: {
+          automationId: "automation:deps",
+          dispatchId: "dispatch:1",
+          status: "held",
+          firstScheduledFor: 0,
+          lastScheduledFor: 0,
+          missedCount: 0,
+          failureMessage: null,
+        },
+      }),
+    });
+    expect(screen.queryByRole("button", { name: "Later" })).toBeNull();
+  });
+
+  test("Nodex's Later suggestion names its time and confirms as proposed", async () => {
+    const remindAt = new Date(Date.now() + 3 * 86_400_000).toISOString();
+    const later = proposal({
+      action: { type: "later", remindAt },
+      summary: "This can wait until after the release.",
+    });
+    const commands = renderTriage({ item: item({ proposal: later }) });
+    // The decision covers Later, so the row does not offer it a second time.
+    expect(screen.queryByRole("button", { name: "Later" })).toBeNull();
+    const decision = screen.getByRole("button", { name: /^Later · / });
+    await act(async () => {
+      fireEvent.click(decision);
+      await Promise.resolve();
+    });
+    expect(commands.confirm).toHaveBeenCalledWith(later);
+    await choose("Choose another time", "In 3 hours");
+    expect(commands.confirm).toHaveBeenLastCalledWith(later, {
+      type: "later",
+      remindAt: expect.any(String),
+    });
+  });
+
+  test("a suggested time that has passed asks for another instead of confirming", () => {
+    const later = proposal({
+      action: { type: "later", remindAt: "2020-01-01T09:00:00.000Z" },
+      summary: "This can wait.",
+    });
+    renderTriage({ item: item({ proposal: later }) });
+    expect(screen.getByRole("button", { name: /^Later · / })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Choose another time" })).toBeTruthy();
   });
 });
 

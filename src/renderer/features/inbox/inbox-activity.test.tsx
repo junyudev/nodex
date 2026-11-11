@@ -45,8 +45,8 @@ const chat = (overrides: Partial<InboxChat> = {}): InboxChat => ({
 const message = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   pageId: "page:1",
   rowKind: "intake",
+  later: null,
   turn: null,
-  outcome: null,
   basis: { pageId: "page:1", contentHash: "content:1" },
   pageKey: "IN-1",
   pageStatus: null,
@@ -59,7 +59,7 @@ const message = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   replyToPageId: null,
   kind: "todo",
   important: false,
-  state: "open",
+  waiting: true,
   suggestionState: "settled",
   suggestionError: null,
   automationDecision: null,
@@ -82,7 +82,6 @@ const sent = (item: Partial<InboxItem> = {}, status: InboxChat["status"] = null)
     session_id: "session:1",
     category: "messages",
     message: message({
-      outcome: "chat",
       proposal: {
         proposalId: "proposal:1",
         revision: 3,
@@ -203,25 +202,24 @@ describe("Activity", () => {
     expect(screen.getByText("IN-1")).toBeTruthy();
     await press(screen.getByRole("button", { name: "Open chat" }));
     expect(actions.onOpenTarget).toHaveBeenCalledWith({ kind: "session", sessionId: "session:1" });
-    // Work handed to a chat cannot return to the Inbox; the user closes it.
+    // Work handed to a chat uses the Page’s work actions.
     expect(screen.queryByRole("button", { name: "Return to Inbox" })).toBeNull();
-    await press(screen.getByRole("button", { name: "Mark done" }));
-    expect(actions.onSetDone).toHaveBeenCalledWith("page:1", true);
+    expect(screen.queryByRole("button", { name: "Mark done" })).toBeNull();
   });
 
-  test("a kept message can return to the Inbox or be deleted", async () => {
-    const kept = message({ state: "kept", outcome: "kept" });
+  test("a message added to Todo can return to the Inbox or be deleted", async () => {
+    const kept = message({ waiting: false, pageStatus: { id: "plan", label: "Todo" } });
     const { actions } = show([
       fact({
         id: "message:2",
-        description: "Kept “Fix the readme typo”",
+        description: "Added “Fix the readme typo” to Todo",
         reason: null,
         page_id: "page:1",
         category: "messages",
         message: kept,
       }),
     ]);
-    await press(screen.getByRole("button", { name: /Kept “Fix the readme typo”/ }));
+    await press(screen.getByRole("button", { name: /Added “Fix the readme typo” to Todo/ }));
     expect(screen.queryByRole("button", { name: "Mark done" })).toBeNull();
     await press(screen.getByRole("button", { name: "Return to Inbox" }));
     expect(actions.onReturn).toHaveBeenCalledWith("page:1");

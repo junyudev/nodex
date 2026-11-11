@@ -22,6 +22,7 @@ import {
   readInboxSettings,
   readInboxSummary,
   readInboxWindow,
+  readInboxLaterWindow,
   readInboxActivity,
   updateInboxSettings,
 } from "@/lib/inbox-runtime";
@@ -108,6 +109,35 @@ export function useInboxStream(scope: InboxScope) {
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     staleTime: 2_000,
+  });
+  const items = useMemo<readonly InboxItem[]>(
+    () => (query.data?.pages ?? []).flatMap((page) => page.items),
+    [query.data],
+  );
+  return {
+    items,
+    error: query.error,
+    retry: query.refetch,
+    isPending: query.isPending,
+    hasNextPage: query.hasNextPage,
+    isFetchingNextPage: query.isFetchingNextPage,
+    fetchNextPage: query.fetchNextPage,
+  };
+}
+
+/**
+ * What was set aside, read while Later shows: timed messages soonest first, then someday. Each
+ * further page reaches messages that come back later.
+ */
+export function useInboxLater(scope: InboxScope, enabled: boolean) {
+  const query = useInfiniteQuery({
+    queryKey: queryKeys.inbox.later(inboxScopeKey(scope)),
+    queryFn: ({ pageParam }) =>
+      readInboxLaterWindow({ scope, after: pageParam, first: INBOX_WINDOW_SIZE }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    staleTime: 2_000,
+    enabled,
   });
   const items = useMemo<readonly InboxItem[]>(
     () => (query.data?.pages ?? []).flatMap((page) => page.items),

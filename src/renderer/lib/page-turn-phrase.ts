@@ -25,6 +25,10 @@ const possessive = (name: string) => `${name}’s`;
 
 /** Reasons that wait for one person, worded for whoever reads them. */
 const ASKS: Partial<Record<TurnReason, (holder: PageTurnHolder) => string>> = {
+  triage: (holder) =>
+    holder.you ? "Needs your decision" : `Waiting for ${possessive(holder.name)} decision`,
+  delivery_recovery: (holder) =>
+    `Delivery needs ${holder.you ? "your" : possessive(holder.name)} attention`,
   question: (holder) =>
     holder.you ? "Needs your answer" : `Waiting for ${possessive(holder.name)} answer`,
   approval: (holder) =>
@@ -48,11 +52,16 @@ const quiet = (text: string, detail: string | null = null): PageTurnPhrase => ({
 export function pageTurnPhrase(turn: PageTurn, holder: PageTurnHolder): PageTurnPhrase | null {
   const { reason, actor } = turn;
   if (!reason || actor.kind === "none") return null;
+  const reader = actor.kind === "members" ? { ...holder, you: true } : holder;
   const ask = ASKS[reason];
   if (ask)
     return {
-      text: ask(holder),
-      tone: holder.you ? (reason === "failed" ? "danger" : "attention") : "quiet",
+      text: ask(reader),
+      tone: reader.you
+        ? reason === "failed" || reason === "delivery_recovery"
+          ? "danger"
+          : "attention"
+        : "quiet",
       detail: null,
     };
   switch (reason) {

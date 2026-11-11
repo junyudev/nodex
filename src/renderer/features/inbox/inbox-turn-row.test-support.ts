@@ -4,6 +4,7 @@ import type { TurnReason } from "../../../shared/page-turn";
 
 export const turnRow = (reason: TurnReason, options: string[] = []): InboxItem => ({
   rowKind: "turn",
+  later: null,
   pageId: "page",
   pageKey: "NODEX-1",
   pageStatus: null,
@@ -16,7 +17,7 @@ export const turnRow = (reason: TurnReason, options: string[] = []): InboxItem =
   replyToPageId: null,
   kind: null,
   important: false,
-  state: "open",
+  waiting: true,
   suggestionState: "none",
   suggestionError: null,
   scope: { kind: "project", projectId: "project" },
@@ -25,7 +26,6 @@ export const turnRow = (reason: TurnReason, options: string[] = []): InboxItem =
   automationDecision: null,
   revision: 1,
   basis: { pageId: "page", contentHash: "0".repeat(64) },
-  outcome: null,
   turn: {
     turn: {
       page_id: "page",
@@ -58,4 +58,5 @@ export const turnRowHandlers = () => ({
   onAccept: vi.fn().mockResolvedValue(undefined),
   onStart: vi.fn().mockResolvedValue(undefined),
   onOpenPR: vi.fn(),
+  onLater: vi.fn(),
 });

@@ -15,15 +15,16 @@ export const ACTIVITY_FILTERS = [
   "problems",
 ] as const satisfies readonly ActivityFilter[];
 
-/** What a view's place is anchored to: a message in the Inbox, a fact in Activity. */
+/** What a view's place is anchored to: a message in the Inbox or Later, a fact in Activity. */
 const ANCHOR_ATTRIBUTE = {
   inbox: "data-inbox-page-id",
+  later: "data-inbox-page-id",
   activity: "data-activity-id",
 } as const satisfies Record<InboxView, string>;
 
 /**
  * Where a reader is in one view. `latest` follows the live edge: the bottom of the Inbox, which
- * reads oldest first, and the top of Activity, which reads newest first. Otherwise the place is
+ * reads oldest first, and the top of Later, which reads soonest first, and of Activity, which reads newest first. Otherwise the place is
  * the row at the top of the viewport, so it survives rows being handled or loaded around it.
  */
 export type InboxViewportPosition =
@@ -37,7 +38,8 @@ export interface InboxViewport {
   readonly positions: Partial<Record<InboxView, InboxViewportPosition>>;
 }
 
-const isView = (value: unknown): value is InboxView => value === "inbox" || value === "activity";
+const isView = (value: unknown): value is InboxView =>
+  value === "inbox" || value === "later" || value === "activity";
 const isActivityFilter = (value: unknown): value is ActivityFilter =>
   ACTIVITY_FILTERS.some((filter) => filter === value);
 

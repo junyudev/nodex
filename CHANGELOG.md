@@ -6,8 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Set anything in your Inbox aside with **Later** when it can wait. Choose a time and the message or the work waiting on you leaves your Inbox, then comes back with a notification when that time arrives; if it needs you for a new reason before then, it shows at once. The new Later view lists everything you set aside in the order it returns, and Nodex can suggest Later for a message that says when the work should wait until. It works on the phone too.
+- Save a thought that asks for no work with **Save to Notes**. Each Project, and the Inbox itself, gets a Notes page; a saved message becomes a page beneath it, off the Board, where you can arrange notes into sections. Nodex suggests it for references and can file a note under a section you already have.
+
 ### Changed
 
+- The Inbox and the Board now agree about every message. A message waits in your Inbox while its card is in Triage and yours to decide, so moving the card on the Board handles it, and moving it back to Triage brings it back. **Keep** is now **Add to Todo**, and a card appears in the Inbox once, whether it waits to be routed or needs your answer or review. In a shared Space, each person's Inbox shows the messages they own.
 - Stable updates reach you sooner with the same build already tested on Nightly. Both channels show app versions as `x.y.z`, and you can choose your channel in Settings.
 - Opening `N more properties` on a Page now lists its empty properties by name instead of a column of rows that say Empty. Choose one and it joins the list with its editor already open, and it stays there while the Page is open. Hidden properties that hold a value still open as rows.
 - The built-in Parent property is now called **Part of**, so a Page under another reads "Part of" followed by that Page. A property you renamed keeps your name. Part of and Waits for also have their own icons.

@@ -13,7 +13,7 @@ import type {
   InboxSendInput,
   InboxSetImportantInput,
   InboxSetKindInput,
-  InboxSetStateInput,
+  InboxSetLaterInput,
   InboxSummaryInput,
   InboxStreamInput,
   UpdateInboxSettingsInput,
@@ -25,6 +25,8 @@ import {
   invokePlainCommand,
   invokeRendererQuery,
 } from "./renderer-command";
+
+export type { InboxDispatchAction, InboxItem, InboxSummary } from "../../shared/inbox";
 
 const inboxCommand = <const Key extends string, const Channel extends InboxCommandChannel>(
   key: Key,
@@ -44,8 +46,11 @@ type InboxCommandChannel =
   | "inbox:confirm"
   | "inbox:dispatch"
   | "inbox:keep"
+  | "inbox:later"
+  | "inbox:clear-later"
   | "inbox:delete"
-  | "inbox:set-state"
+  | "inbox:mark-done"
+  | "inbox:return"
   | "inbox:set-kind"
   | "inbox:set-important"
   | "inbox:request-suggestion"
@@ -58,9 +63,12 @@ const sendCommand = inboxCommand("inbox.send", "inbox:send");
 const editCommand = inboxCommand("inbox.edit", "inbox:edit");
 const confirmCommand = inboxCommand("inbox.confirm", "inbox:confirm");
 const dispatchCommand = inboxCommand("inbox.dispatch", "inbox:dispatch");
+const laterCommand = inboxCommand("inbox.later", "inbox:later");
+const clearLaterCommand = inboxCommand("inbox.clear-later", "inbox:clear-later");
 const keepCommand = inboxCommand("inbox.keep", "inbox:keep");
 const deleteCommand = inboxCommand("inbox.delete", "inbox:delete");
-const setStateCommand = inboxCommand("inbox.set-state", "inbox:set-state");
+const markDoneCommand = inboxCommand("inbox.mark-done", "inbox:mark-done");
+const returnMessagesCommand = inboxCommand("inbox.return", "inbox:return");
 const setKindCommand = inboxCommand("inbox.set-kind", "inbox:set-kind");
 const setImportantCommand = inboxCommand("inbox.set-important", "inbox:set-important");
 const requestSuggestionCommand = inboxCommand(
@@ -85,6 +93,8 @@ export const readInboxSummary = (input: InboxSummaryInput) =>
 export const readInboxCounts = () => invokeRendererQuery("inbox:counts");
 export const readInboxWindow = (input: InboxStreamInput) =>
   invokeRendererQuery("inbox:window", input);
+export const readInboxLaterWindow = (input: Omit<InboxStreamInput, "filter">) =>
+  readInboxWindow({ ...input, filter: "later" });
 export const sendInboxMessage = (input: InboxSendInput) =>
   invokeLocalCommitCommand(sendCommand, input);
 export const editInboxMessage = (input: InboxEditInput) =>
@@ -95,10 +105,16 @@ export const dispatchInboxEntries = (input: InboxDispatchInput) =>
   invokeLocalCommitCommand(dispatchCommand, input);
 export const keepInboxEntries = (input: InboxPageIdsInput) =>
   invokeLocalCommitCommand(keepCommand, input);
+export const setInboxLater = (input: InboxSetLaterInput) =>
+  invokeLocalCommitCommand(laterCommand, input);
+export const clearInboxLater = (input: InboxPageIdsInput) =>
+  invokeLocalCommitCommand(clearLaterCommand, input);
 export const deleteInboxMessages = (input: InboxPageIdsInput) =>
   invokeLocalCommitCommand(deleteCommand, input);
-export const setInboxEntryState = (input: InboxSetStateInput) =>
-  invokeLocalCommitCommand(setStateCommand, input);
+export const markInboxMessagesDone = (input: InboxPageIdsInput) =>
+  invokeLocalCommitCommand(markDoneCommand, input);
+export const returnInboxMessages = (input: InboxPageIdsInput) =>
+  invokeLocalCommitCommand(returnMessagesCommand, input);
 export const setInboxEntryKind = (input: InboxSetKindInput) =>
   invokeLocalCommitCommand(setKindCommand, input);
 export const setInboxEntryImportant = (input: InboxSetImportantInput) =>

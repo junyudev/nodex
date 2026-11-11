@@ -1,7 +1,9 @@
 import {
   ActivitySpinnerIcon,
-  ArchiveIcon,
+  NoteIcon,
+  TodoIcon,
   CheckmarkIcon,
+  ClockIcon,
   InboxIcon,
   MoveToIcon,
   ChatIcon,
@@ -31,8 +33,12 @@ function InboxOutcomeGlyph({
       return <ActivitySpinnerIcon className={shared} />;
     case "move":
       return <MoveToIcon className={shared} />;
-    case "keep":
-      return <ArchiveIcon className={shared} />;
+    case "todo":
+      return <TodoIcon className={shared} />;
+    case "notes":
+      return <NoteIcon className={shared} />;
+    case "later":
+      return <ClockIcon className={shared} />;
     case "done":
       return <CheckmarkIcon className={shared} />;
     case "inbox":

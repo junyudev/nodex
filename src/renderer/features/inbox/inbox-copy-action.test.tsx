@@ -15,8 +15,8 @@ vi.mock("@/components/ui/toast", () => ({ toast: { success: vi.fn(), danger: vi.
 const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   pageId: "page:1",
   rowKind: "intake",
+  later: null,
   turn: null,
-  outcome: null,
   basis: { pageId: "page:1", contentHash: "content:1" },
   pageKey: "NOD-1",
   pageStatus: null,
@@ -29,7 +29,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   replyToPageId: null,
   kind: null,
   important: false,
-  state: "open",
+  waiting: true,
   suggestionState: "settled",
   suggestionError: null,
   automationDecision: null,
