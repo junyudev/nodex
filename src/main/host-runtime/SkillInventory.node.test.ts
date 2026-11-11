@@ -137,8 +137,8 @@ describe("SkillInventory", () => {
           "original",
         ]);
         expect(
-          inventory.locations.find((row) => row.directory.endsWith("/.claude/skills"))?.skills[0]
-            .agents[0].discovery,
+          inventory.locations.find((row) => row.directory === path.join(cwd, ".claude", "skills"))
+            ?.skills[0].agents[0].discovery,
         ).toBe("shadowed");
         expect(
           inventory.locations.find((row) => row.directory === path.join(cwd, ".agents", "skills")),
@@ -158,6 +158,9 @@ describe("SkillInventory", () => {
     () =>
       Effect.gen(function* () {
         const directory = yield* Effect.promise(() => seed(userSkills));
+        const originalMode = (yield* Effect.promise(() =>
+          fs.stat(path.join(directory, "SKILL.md")),
+        )).mode;
         const edited = manifest.replace("Exact body", "Edited body");
         const skills = yield* fixture();
         const skillId = value(yield* skills.list(personal)).locations[0].skills[0].id;
@@ -192,7 +195,7 @@ describe("SkillInventory", () => {
         expect(yield* Effect.promise(() => fs.readFile(renamedFile, "utf8"))).toBe(
           renamed.value.markdown,
         );
-        expect((yield* Effect.promise(() => fs.stat(renamedFile))).mode & 0o777).toBe(0o640);
+        expect((yield* Effect.promise(() => fs.stat(renamedFile))).mode).toBe(originalMode);
         yield* Effect.promise(() => fs.unlink(renamedFile));
         expect(
           yield* skills.writeDocument({
@@ -254,10 +257,10 @@ describe("SkillInventory", () => {
         const copy = value(yield* skills.readDocument({ ...project, skillId: copied.skillId }));
         expect(copy.files).toEqual(["SKILL.md", "script.sh"]);
         expect(copy.markdown).toBe(manifest.replace("'original'", "'copied'"));
-        expect(
-          (yield* Effect.promise(() => fs.stat(path.join(cwd, ".agents/skills/copied/script.sh"))))
-            .mode & 0o777,
-        ).toBe(0o751);
+        const scriptMode = (yield* Effect.promise(() => fs.stat(path.join(source, "script.sh"))))
+          .mode;
+        const copiedScript = path.join(cwd, ".agents", "skills", "copied", "script.sh");
+        expect((yield* Effect.promise(() => fs.stat(copiedScript))).mode).toBe(scriptMode);
         expect(
           yield* skills.transfer({
             ...project,
