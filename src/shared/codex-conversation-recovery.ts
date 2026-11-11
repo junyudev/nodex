@@ -82,7 +82,7 @@ export class ConversationStreamRecovery<Conversation extends RecoveryConversatio
     this.deps.resetHistory();
     this.deps.resetStreams(options.restoreStreams === true);
     for (const conversation of this.deps.conversations()) {
-      if (conversation.resumeState !== "needs_resume") this.deps.markNeedsResume(conversation.id);
+      this.deps.markNeedsResume(conversation.id);
     }
     const foreground = options.foregroundConversationId;
     if (foreground != null && this.recoverable.has(foreground))
@@ -122,7 +122,8 @@ export class ConversationStreamRecovery<Conversation extends RecoveryConversatio
   private canRestore(conversationId: string): boolean {
     return (
       this.deps.getConversation(conversationId)?.resumeState === "needs_resume" &&
-      this.deps.ownsHistory(conversationId)
+      this.deps.ownsHistory(conversationId) &&
+      !this.deps.isSuppressed(conversationId)
     );
   }
 
@@ -162,7 +163,8 @@ export class ConversationStreamRecovery<Conversation extends RecoveryConversatio
           if (
             this.generation !== generation ||
             this.deps.isDisposed() ||
-            this.deps.hasResumeInFlight(id)
+            this.deps.hasResumeInFlight(id) ||
+            !this.canRestore(id)
           )
             return;
           return this.deps.resume(conversation);

@@ -1159,20 +1159,12 @@ export function useAgentRuntimeConversationAdapter(input: {
     [memberActions],
   );
   useEffect(() => acquired?.retain(), [acquired]);
-  // A replacement execution process re-reads what failed while it was unavailable.
   const runtimeConnection = useAgentRuntimeConnectionState();
   const [catalogConnection, setCatalogConnection] = useState(runtimeConnection.status);
   if (catalogConnection !== runtimeConnection.status) {
     setCatalogConnection(runtimeConnection.status);
     if (runtimeConnection.status === "ready" && catalogState.error) refreshCatalog();
   }
-  const previousConnection = useRef(runtimeConnection.status);
-  useEffect(() => {
-    const recovered =
-      runtimeConnection.status === "ready" && previousConnection.current !== "ready";
-    previousConnection.current = runtimeConnection.status;
-    if (recovered && owner?.getSnapshot().connection === "failed") void owner.resume();
-  }, [runtimeConnection.status, owner]);
   const projection = state.conversation?.snapshot.projection;
   const nativeSessions = projection?.providerSessions;
   // A native session can negotiate capabilities that its initial catalog did not know.

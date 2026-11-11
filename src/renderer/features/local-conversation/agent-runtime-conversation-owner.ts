@@ -120,7 +120,7 @@ export type AgentRuntimeReadTransport = Pick<
   | "readQueuedPreview"
   | "attachment"
 > &
-  Partial<Pick<AgentRuntimeRendererTransport, "respond">>;
+  Partial<Pick<AgentRuntimeRendererTransport, "connection" | "respond">>;
 export type ResolvedAgentRuntimeTarget = AgentRuntimeSessionTarget & { readonly threadId: string };
 export interface AgentRuntimeConversationOwnerSnapshot {
   readonly conversation: AgentRuntimeConversation | null;
@@ -160,6 +160,8 @@ const isTurnOpening = (
 const runKey = (threadId: string, runId: string) => JSON.stringify(["agent-run", threadId, runId]);
 /** Older history a reader just asked for stays resident until they can reach it. */
 const HISTORY_REVEAL_GRACE_MS = 2_000;
+const ATTACHMENT_RETRY_INITIAL_MS = 1_000;
+const ATTACHMENT_RETRY_MAX_MS = 30_000;
 const emptyChildren: readonly CodexConversationChildMembership[] = [];
 
 function replyItemRole(type: AgentTurnItem["type"] | undefined): AgentReplyItemRole {
@@ -342,6 +344,8 @@ export class AgentRuntimeConversationOwner {
   #readMode: "control" | "transcript" | null = null;
   #releaseEvents: (() => void) | null = null;
   #opening: Promise<void> | null = null;
+  #attachmentRetry: ReturnType<typeof setTimeout> | null = null;
+  #attachmentRetryDelay = ATTACHMENT_RETRY_INITIAL_MS;
   #historyRequest: Promise<"applied" | "stale"> | null = null;
   #disposed = false;
   #supportsUserTurnEdits = false;
@@ -559,6 +563,7 @@ export class AgentRuntimeConversationOwner {
       this.#leases -= 1;
       if (this.#leases > 0) return;
       this.#generation += 1;
+      this.#resetAttachmentRetry();
       this.#releaseEvents?.();
       this.#releaseEvents = null;
       this.#opening = null;
@@ -582,6 +587,7 @@ export class AgentRuntimeConversationOwner {
   };
   readonly resume = async (): Promise<void> => {
     if (this.#disposed) return;
+    this.#resetAttachmentRetry();
     if (
       !this.#opening &&
       (this.#state.connection !== "ready" ||
@@ -765,6 +771,7 @@ export class AgentRuntimeConversationOwner {
     if (this.#disposed) return;
     this.#disposed = true;
     this.#generation += 1;
+    this.#resetAttachmentRetry();
     this.#releaseEvents?.();
     this.#releaseEvents = null;
     for (const timer of this.#historyHoldTimers) clearTimeout(timer);
@@ -794,6 +801,37 @@ export class AgentRuntimeConversationOwner {
       return;
     this.#state = { ...this.#state, ...patch };
     for (const listener of this.#listeners) listener();
+  }
+  #resetAttachmentRetry(): void {
+    if (this.#attachmentRetry !== null) clearTimeout(this.#attachmentRetry);
+    this.#attachmentRetry = null;
+    this.#attachmentRetryDelay = ATTACHMENT_RETRY_INITIAL_MS;
+  }
+  #scheduleAttachmentRetry(): void {
+    if (
+      this.#disposed ||
+      this.#leases === 0 ||
+      this.#opening ||
+      this.#state.connection !== "failed" ||
+      this.#attachmentRetry !== null
+    )
+      return;
+    // Check availability after failure, including when the Runtime recovered during the open.
+    const timer = setTimeout(async () => {
+      const ready = await Promise.resolve()
+        .then(() => this.#transport.connection?.())
+        .then(
+          (connection) =>
+            !connection || connection.status === "ready" || connection.status === "idle",
+          () => false,
+        );
+      if (this.#attachmentRetry !== timer) return;
+      this.#attachmentRetry = null;
+      if (ready) this.#restart();
+      else this.#scheduleAttachmentRetry();
+    }, this.#attachmentRetryDelay);
+    this.#attachmentRetry = timer;
+    this.#attachmentRetryDelay = Math.min(this.#attachmentRetryDelay * 2, ATTACHMENT_RETRY_MAX_MS);
   }
   #restart(background = false): void {
     if (this.#disposed || this.#leases === 0 || this.#opening) return;
@@ -899,9 +937,10 @@ export class AgentRuntimeConversationOwner {
           return;
         }
         this.#releaseEvents = release;
+        this.#resetAttachmentRetry();
       })
       .catch((cause: unknown) => {
-        if (generation === this.#generation && !background)
+        if (generation === this.#generation && (!background || this.#releaseEvents === null))
           this.#patch({ connection: "failed", error: messageOf(cause) });
       })
       .finally(() => {
@@ -915,6 +954,7 @@ export class AgentRuntimeConversationOwner {
           this.#restart();
           return this.#opening;
         }
+        this.#scheduleAttachmentRetry();
       });
     this.#opening = pending;
   }

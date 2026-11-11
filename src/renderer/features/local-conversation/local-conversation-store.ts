@@ -2126,6 +2126,10 @@ export class CodexAppServerManager {
   >();
   private readonly conversationRemovedCallbacks = new Set<(threadId: string) => void>();
   private readonly attachmentStateByThreadId = new Map<string, LocalConversationAttachmentState>();
+  private readonly readOnlySubagentAttachments = new Map<
+    string,
+    Promise<CodexConversationSnapshot | null>
+  >();
   private readonly interruptedTurnResumesInFlightByThreadId = new Map<string, Promise<unknown>>();
   private readonly failedTurnContinuationsInFlightByThreadId = new Map<
     string,
@@ -2279,6 +2283,12 @@ export class CodexAppServerManager {
       setConversation: (state, details) => {
         const before = this.conversationsById.get(state.id)?.canonicalState;
         this.applyCanonicalDocument(state, details);
+        if (
+          !details &&
+          state.resumeState === "resumed" &&
+          !isLocalConversationWriterConflict(this.readConversationAttachmentState(state.id))
+        )
+          this.setConversationAttachmentState(state.id, { status: "attached" });
         if (!details || !before) return;
         const existing = new Set(
           mergeCodexCanonicalTurnStates(residentConversationTurns(before), before.turns)
@@ -2436,7 +2446,9 @@ export class CodexAppServerManager {
       ownsHistory: (id) => this.streamState.ownsConversationHistoryStream(id),
       hasResumeInFlight: (id) => this.resumeInFlightByThreadId.has(id),
       isSuppressed: (id) =>
-        this.archiveState.isSuppressed(id) || this.threadSummariesById.get(id)?.archived === true,
+        this.archiveState.isSuppressed(id) ||
+        this.threadSummariesById.get(id)?.archived === true ||
+        isLocalConversationWriterConflict(this.readConversationAttachmentState(id)),
       isDisposed: () => this.destroyed,
       cancelResumes: () => {
         for (const id of this.resumeInFlightByThreadId.keys()) this.nativeResumeBuffers.delete(id);
@@ -2447,9 +2459,19 @@ export class CodexAppServerManager {
         this.streamState.resetAfterReconnect(preserve);
       },
       markNeedsResume: (id) => {
-        this.historyClient.updateConversation(id, (draft) => {
-          draft.resumeState = "needs_resume";
-        });
+        const wasResumable = this.historyClient.getConversation(id)?.resumeState === "needs_resume";
+        if (!wasResumable)
+          this.historyClient.updateConversation(id, (draft) => {
+            draft.resumeState = "needs_resume";
+          });
+        const attachment = this.readConversationAttachmentState(id);
+        if (
+          this.resumeInFlightByThreadId.has(id) ||
+          this.readOnlySubagentAttachments.has(id) ||
+          isLocalConversationWriterConflict(attachment) ||
+          (wasResumable && attachment.status === "attached")
+        )
+          return;
         this.setConversationAttachmentState(id, IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE);
       },
       resume: (conversation) =>
@@ -2598,6 +2620,7 @@ export class CodexAppServerManager {
       coordinator: this.queuedMessages,
       role: (id) => this.streamState.getRole(id),
       canSend: (id, message) =>
+        !isLocalConversationWriterConflict(this.readConversationAttachmentState(id)) &&
         (!this.isServerQueueEnabled(id) ||
           (this.serverQueuedMessages.findByClientMessageId(id, message.id) === undefined &&
             (!requiresUntrustedAppInputConfirmation(message.context) ||
@@ -3721,6 +3744,25 @@ export class CodexAppServerManager {
     return this.attachmentStateByThreadId.get(threadId) ?? IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE;
   }
 
+  private hasResumedFollower(threadId: string): boolean {
+    return (
+      this.streamState.getRole(threadId)?.role === "follower" &&
+      this.readConversation(threadId)?.resumeState === "resumed"
+    );
+  }
+
+  private settleCancelledResumeAttachment(threadId: string): void {
+    if (
+      this.resumeInFlightByThreadId.has(threadId) ||
+      this.readOnlySubagentAttachments.has(threadId) ||
+      this.readConversationAttachmentState(threadId).status !== "attaching"
+    )
+      return;
+    if (this.readConversation(threadId)?.resumeState === "resuming")
+      this.markConversationResumeState(threadId, "needs_resume");
+    this.setConversationAttachmentState(threadId, IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE);
+  }
+
   private setConversationAttachmentState(
     threadId: string,
     state: LocalConversationAttachmentState,
@@ -4062,7 +4104,7 @@ export class CodexAppServerManager {
         })
         .catch((error: unknown) => {
           failure = error;
-          if (isCurrent()) {
+          if (isCurrent() && !this.hasResumedFollower(threadId)) {
             if (
               navigationTraceAtDispatch !== null &&
               codexThreadNavigation.getTrace(threadId)?.traceparent ===
@@ -4086,6 +4128,7 @@ export class CodexAppServerManager {
               failure,
             );
             this.resumeInFlightByThreadId.delete(threadId);
+            this.settleCancelledResumeAttachment(threadId);
           }
         }),
     };
@@ -4094,9 +4137,12 @@ export class CodexAppServerManager {
   }
 
   private cancelPendingConversationResumes(): void {
-    const attempts = [...this.resumeInFlightByThreadId.values()];
+    const attempts = [...this.resumeInFlightByThreadId];
     this.resumeInFlightByThreadId.clear();
-    for (const attempt of attempts) attempt.cancel();
+    for (const [threadId, attempt] of attempts) {
+      attempt.cancel();
+      if (!this.destroyed) this.settleCancelledResumeAttachment(threadId);
+    }
   }
 
   registerWindowActivity(activity: ConversationWindowActivity): Disposable & {
@@ -4154,8 +4200,13 @@ export class CodexAppServerManager {
     this.suspendedNativeHostContext = null;
     this.invalidateNativeRequests();
     this.markAllConversationsNeedResumeAfterReconnect();
-    for (const id of this.conversationsById.keys())
-      this.setConversationAttachmentState(id, IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE);
+    for (const id of this.conversationsById.keys()) {
+      if (
+        !this.readOnlySubagentAttachments.has(id) &&
+        !isLocalConversationWriterConflict(this.readConversationAttachmentState(id))
+      )
+        this.setConversationAttachmentState(id, IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE);
+    }
   }
 
   private suspendNativeConnection(options?: { readonly preserveHostContextLoad?: boolean }): void {
@@ -4298,6 +4349,7 @@ export class CodexAppServerManager {
     ]);
     if (!lifetime.isCurrent() || this.nativeHostContext !== metadataHostContext)
       throw new Error("Conversation manager retired during resume metadata read");
+    if (this.hasResumedFollower(threadId)) return this.readConversation(threadId);
     this.markConversationResumeState(threadId, "resuming");
     if (metadata) this.registerThreadMetadata(metadata);
     const workspaceRoots = options.workspaceRoots ?? workspace.context.runtimeWorkspaceRoots;
@@ -4705,7 +4757,8 @@ export class CodexAppServerManager {
     } catch (error) {
       if (this.goalHydrationTokens.get(threadId) === goalToken) {
         this.goalHydrationTokens.delete(threadId);
-        this.markConversationResumeState(threadId, "needs_resume");
+        if (!this.hasResumedFollower(threadId))
+          this.markConversationResumeState(threadId, "needs_resume");
       }
       throw error;
     } finally {
@@ -4846,7 +4899,17 @@ export class CodexAppServerManager {
   }
 
   /** Subscribe to Main's bounded history through the ordinary peer stream, without resuming execution. */
-  private async attachReadOnlySubagent(
+  private attachReadOnlySubagent(threadId: string): Promise<CodexConversationSnapshot | null> {
+    const pending = this.readOnlySubagentAttachments.get(threadId);
+    if (pending) return pending;
+    const attachment = this.runReadOnlySubagentAttachment(threadId).finally(() =>
+      this.readOnlySubagentAttachments.delete(threadId),
+    );
+    this.readOnlySubagentAttachments.set(threadId, attachment);
+    return attachment;
+  }
+
+  private async runReadOnlySubagentAttachment(
     threadId: string,
   ): Promise<CodexConversationSnapshot | null> {
     if (this.destroyed) throw new Error("Conversation manager is disposed");
@@ -5553,7 +5616,8 @@ export class CodexAppServerManager {
       }
     }
     this.markConversationResumeState(conversationId, "needs_resume");
-    this.setConversationAttachmentState(conversationId, IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE);
+    if (!isLocalConversationWriterConflict(this.readConversationAttachmentState(conversationId)))
+      this.setConversationAttachmentState(conversationId, IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE);
   }
 
   private buildOriginalNativeTurnRequest(

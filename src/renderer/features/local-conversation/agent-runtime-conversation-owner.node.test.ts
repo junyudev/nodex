@@ -157,6 +157,7 @@ function transport(initial: AgentRuntimeConversation, pages: readonly AgentHisto
   const port: AgentRuntimeReadTransport = {
     read: vi.fn(async () => initial),
     control: vi.fn(async () => conversation([])),
+    connection: vi.fn(async () => ({ status: "ready" as const, generation: "test-runtime" })),
     history: vi.fn(async () => pages[index++]!),
     promptIndex: vi.fn(async () => ({ prompts: [], complete: true })),
     item: vi.fn(async () => null),
@@ -283,6 +284,68 @@ async function open(initial: AgentRuntimeConversation, pages: readonly AgentHist
   await owner.resume();
   return { owner, wire, release };
 }
+
+test("retries when observation fails after a snapshot and the Runtime is already ready", async () => {
+  vi.useFakeTimers();
+  const wire = transport(conversation([assistant("Loaded transcript")]));
+  let failObserve!: (error: Error) => void;
+  vi.mocked(wire.port.subscribe).mockImplementationOnce(
+    () => new Promise((_resolve, reject) => (failObserve = reject)),
+  );
+  const owner = new AgentRuntimeConversationOwner(target, wire.port);
+  const release = owner.readOwner.subscribeStructure(() => {});
+  try {
+    await vi.advanceTimersByTimeAsync(0);
+    expect(owner.getSnapshot().connection).toBe("ready");
+    const opening = owner.resume();
+    failObserve(new Error("Observation unavailable"));
+    await opening;
+    expect(owner.getSnapshot()).toMatchObject({
+      connection: "failed",
+      error: "Observation unavailable",
+    });
+    expect(owner.readOwner.readStructure()?.turns).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(owner.getSnapshot()).toMatchObject({ connection: "ready", error: null });
+    wire.emit(event(assistant("Live transcript")));
+    await expect(owner.whenObserved(2)).resolves.toBeUndefined();
+  } finally {
+    release();
+    owner.dispose();
+    vi.useRealTimers();
+  }
+});
+
+test("a failed reset read backs off, manual resume resets the delay, and final release stops retries", async () => {
+  vi.useFakeTimers();
+  const { owner, wire, release } = await open(conversation([assistant("Loaded transcript")]));
+  try {
+    const read = vi.mocked(wire.port.read);
+    read.mockRejectedValue(new Error("Snapshot unavailable"));
+    wire.reset();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(owner.getSnapshot().connection).toBe("failed");
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(read).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(read).toHaveBeenCalledTimes(3);
+
+    await owner.resume();
+    expect(read).toHaveBeenCalledTimes(4);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(read).toHaveBeenCalledTimes(5);
+
+    release();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(read).toHaveBeenCalledTimes(5);
+  } finally {
+    release();
+    owner.dispose();
+    vi.useRealTimers();
+  }
+});
 
 function historyBoundary(owner: AgentRuntimeConversationOwner): CodexHistoryBoundaryRef {
   const gap = owner.readOwner.readStructure()?.timeline?.find((entry) => entry.kind === "gap");

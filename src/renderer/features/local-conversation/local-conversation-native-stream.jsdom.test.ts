@@ -2431,39 +2431,40 @@ test("native reconnect retires stream roles and invalidates canonical history wi
   expect(residentConversationTurns(after).map((turn) => turn.turnId)).toEqual(turnIds);
 });
 
-test("WebSocket reconnect restores its existing owner and follower using one interactive native resume", async () => {
-  fixture.sourceEpoch = "persistent-endpoint";
-  const { owner, follower, threadId } = await connectedManagers();
-  const native = {
-    sourceEpoch: fixture.sourceEpoch,
-    transportKind: "websocket" as const,
-    generation: 1,
-  };
-  const connection = (status: "connected" | "disconnected", generation: number) =>
+function publishWebSocketConnection(status: "connected" | "disconnected") {
+  return act(async () => {
     dispatchCodexAppServerMessage("shared-object-updated", {
       hostId: "local",
       object: {
         objectType: "connection",
         objectId: "connection",
-        value: { status, retries: 1, native: { ...native, generation } },
+        value: {
+          status,
+          retries: 1,
+          native: {
+            sourceEpoch: fixture.sourceEpoch!,
+            transportKind: "websocket",
+            generation: fixture.generation,
+          },
+        },
       },
     });
-  await act(async () => {
-    connection("connected", 1);
   });
+}
+
+test("WebSocket reconnect restores its existing owner and follower using one interactive native resume", async () => {
+  fixture.sourceEpoch = "persistent-endpoint";
+  const { owner, follower, threadId } = await connectedManagers();
+  await publishWebSocketConnection("connected");
   const historyGeneration =
     owner.readConversation(threadId)!.canonicalState!.turnHistory!.history.generation;
   fixture.calls.length = 0;
   fixture.scheduling.length = 0;
-  await act(async () => {
-    connection("disconnected", 1);
-  });
+  await publishWebSocketConnection("disconnected");
   expect(owner.getStreamRole(threadId)?.role).toBe("owner");
   expect(follower.getStreamRole(threadId)?.role).toBe("follower");
   fixture.generation = 2;
-  await act(async () => {
-    connection("connected", 2);
-  });
+  await publishWebSocketConnection("connected");
   await waitFor(() => {
     expect(fixture.calls.filter((call) => call.method === "thread/resume")).toHaveLength(1);
     expect(owner.readConversation(threadId)?.resumeState).toBe("resumed");
@@ -2486,6 +2487,114 @@ test("WebSocket reconnect restores its existing owner and follower using one int
     priority: "interactive",
     source: "thread_hydration",
   });
+});
+
+test("a same-source disconnect settles a resume cancelled during metadata I/O", async () => {
+  fixture.sourceEpoch = "persistent-endpoint";
+  const { owner, threadId } = await connectedManagers();
+  owner.retireNativeHostContext();
+  await publishWebSocketConnection("connected");
+  let finishMetadata!: () => void;
+  fixture.workspaceReady = new Promise<void>((resolve) => {
+    finishMetadata = resolve;
+  });
+  const pending = owner.requestThreadStreamResume(threadId);
+  const cancelled = expect(pending).rejects.toThrow("retired during resume metadata read");
+  try {
+    await waitFor(() =>
+      expect(owner.readConversationAttachmentState(threadId).status).toBe("attaching"),
+    );
+    expect(owner.readConversation(threadId)?.resumeState).toBe("needs_resume");
+    expect(owner.readConversationStreamRole(threadId)).toBeNull();
+
+    await publishWebSocketConnection("disconnected");
+    expect(owner.readConversationAttachmentState(threadId).status).toBe("idle");
+    fixture.generation += 1;
+    await publishWebSocketConnection("connected");
+    fixture.workspaceReady = null;
+    expect((await owner.requestThreadStreamResume(threadId))?.resumeState).toBe("resumed");
+    finishMetadata();
+    await cancelled;
+    expect(owner.readConversationAttachmentState(threadId).status).toBe("attached");
+  } finally {
+    finishMetadata();
+    await cancelled;
+  }
+});
+
+test.each(["reconnect", "peer snapshot"] as const)(
+  "%s clears a transient failed attachment on readable history",
+  async (recovery) => {
+    fixture.sourceEpoch = "persistent-endpoint";
+    const { owner, threadId } = await connectedManagers();
+    const snapshot = owner.readConversation(threadId)!.canonicalState!;
+    owner.retireNativeHostContext();
+    await publishWebSocketConnection("connected");
+    let failPreparation!: (error: Error) => void;
+    fixture.resumePrepareReady = new Promise<void>((_resolve, reject) => {
+      failPreparation = reject;
+    });
+    const failed = expect(owner.requestThreadStreamResume(threadId)).rejects.toThrow(
+      "Resume unavailable",
+    );
+    await waitFor(() => expect(owner.readConversation(threadId)?.resumeState).toBe("resuming"));
+    failPreparation(new Error("Resume unavailable"));
+    await failed;
+    expect(owner.readConversation(threadId)?.resumeState).toBe("needs_resume");
+    expect(owner.readConversationAttachmentState(threadId).status).toBe("failed");
+
+    if (recovery === "reconnect") {
+      await publishWebSocketConnection("disconnected");
+      fixture.generation += 1;
+      await publishWebSocketConnection("connected");
+      expect(owner.readConversation(threadId)?.resumeState).toBe("needs_resume");
+      expect(owner.readConversationAttachmentState(threadId).status).toBe("idle");
+      return;
+    }
+
+    await owner.setThreadStreamFollowing(threadId, true);
+    owner.receiveCoordination("threadStreamStateChanged", {
+      sourceClientId: "replacement-owner",
+      params: {
+        hostId: "local",
+        conversationId: threadId,
+        change: { type: "snapshot", revision: 1, conversationState: snapshot },
+      },
+    });
+    expect(owner.readConversation(threadId)?.resumeState).toBe("resumed");
+    expect(owner.readConversationStreamRole(threadId)).toBe("follower");
+    expect(owner.readConversationAttachmentState(threadId).status).toBe("attached");
+  },
+);
+
+test("a standing writer conflict survives WebSocket recovery without a native retry", async () => {
+  fixture.sourceEpoch = "persistent-endpoint";
+  const { owner, threadId } = await connectedManagers();
+  owner.retireNativeHostContext();
+  await publishWebSocketConnection("connected");
+  const conflict = "This thread already has a live local writer";
+  fixture.nativeRequest = async (method) => {
+    if (method === "thread/resume") throw new Error(conflict);
+    if (method === "thread/read") return { thread: fixture.response!.thread };
+    throw new Error(`Unexpected native request ${method}`);
+  };
+  await expect(owner.requestThreadStreamResume(threadId)).rejects.toThrow(conflict);
+  expect(owner.readConversationAttachmentState(threadId)).toEqual({
+    status: "failed",
+    message: conflict,
+  });
+  expect(owner.readConversationStreamRole(threadId)).toBe("owner");
+  fixture.calls.length = 0;
+
+  await publishWebSocketConnection("disconnected");
+  fixture.generation += 1;
+  await publishWebSocketConnection("connected");
+  expect(owner.readConversation(threadId)?.resumeState).toBe("needs_resume");
+  expect(owner.readConversationAttachmentState(threadId)).toEqual({
+    status: "failed",
+    message: conflict,
+  });
+  expect(fixture.calls.filter((call) => call.method === "thread/resume")).toEqual([]);
 });
 
 test.each(["account", "endpoint"] as const)(
