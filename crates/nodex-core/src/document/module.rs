@@ -2875,6 +2875,7 @@ impl OwnedDocumentModule {
                     materialization,
                     &prepared.materialization,
                     DocumentMutationEffectPolicy {
+                        replacement: false,
                         write_fence_block_ids: &prepared.write_fence_block_ids,
                         title_write_fence_required: prepared.title_write_fence_required,
                         force_write_fence: false,
@@ -2984,6 +2985,7 @@ impl OwnedDocumentModule {
                     materialization,
                     &prepared.materialization,
                     DocumentMutationEffectPolicy {
+                        replacement: true,
                         write_fence_block_ids: &prepared.write_fence_block_ids,
                         title_write_fence_required: prepared.title_write_fence_required,
                         force_write_fence: true,
@@ -3301,6 +3303,7 @@ impl OwnedDocumentModule {
                     materialization,
                     &prepared.materialization,
                     DocumentMutationEffectPolicy {
+                        replacement: false,
                         write_fence_block_ids: &prepared.write_fence_block_ids,
                         title_write_fence_required: prepared.title_write_fence_required,
                         force_write_fence: true,
@@ -3553,6 +3556,7 @@ impl OwnedDocumentModule {
                         committed.value.committed_at = Some(persisted.committed_at.clone());
                         committed.value.mutation_effect = Some(DocumentMutationEffect {
                             base_head_seq: authority.head.head_seq,
+                            replacement: None,
                             touched_block_ids: vec![authority.owner_block_id.clone()],
                             created_block_ids: Vec::new(),
                             deleted_block_ids: Vec::new(),
@@ -4111,6 +4115,7 @@ fn flatten_semantic_coordinates<'a>(
 }
 
 struct DocumentMutationEffectPolicy<'a> {
+    replacement: bool,
     write_fence_block_ids: &'a [String],
     title_write_fence_required: bool,
     force_write_fence: bool,
@@ -4201,6 +4206,12 @@ fn document_mutation_effect(
     };
     DocumentMutationEffect {
         base_head_seq,
+        replacement: (policy.replacement && !deleted_block_ids.is_empty()).then_some(
+            nodex_core_contracts::document::DocumentReplacementSummary {
+                preserved: after_ids.len() - created_block_ids.len(),
+                recreated: created_block_ids.len(),
+            },
+        ),
         touched_block_ids: touched_block_ids.into_iter().collect(),
         created_block_ids,
         deleted_block_ids,
@@ -4718,6 +4729,9 @@ fn prepare_semantic_update(
                 materialization,
                 &prepared.materialization,
                 DocumentMutationEffectPolicy {
+                    replacement: commands.iter().any(|command| {
+                        matches!(command, DocumentSemanticCommand::ReplaceBody { .. })
+                    }),
                     write_fence_block_ids: &prepared.write_fence_block_ids,
                     title_write_fence_required: prepared.title_write_fence_required,
                     force_write_fence: false,
@@ -11870,6 +11884,7 @@ mod tests {
                 &before,
                 &after,
                 DocumentMutationEffectPolicy {
+                    replacement: false,
                     write_fence_block_ids: &[],
                     title_write_fence_required: false,
                     force_write_fence: false,

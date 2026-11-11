@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -504,7 +504,21 @@ pub fn prepare_markdown_replacement_update(
     } else {
         format!("{markdown}\n")
     };
-    prepare_exact_markdown_patch_update(
+    // Validate the requested structure independently of the old body's lineage.
+    use crate::domain::markdown::parse_markdown_located;
+    let invalid_markdown = |message: String| {
+        operation_error(
+            DocumentOperationErrorCode::InvalidMarkdown,
+            message,
+            None,
+            None,
+        )
+    };
+    let target =
+        parse_markdown_located(markdown).map_err(|error| invalid_markdown(error.to_string()))?;
+    validate_replacement_children(markdown, &target).map_err(invalid_markdown)?;
+
+    match prepare_exact_markdown_patch_update(
         document_id,
         schema,
         full_state_v1,
@@ -516,7 +530,163 @@ pub fn prepare_markdown_replacement_update(
         }],
         rich_title,
         allocate_block_id,
+    ) {
+        Ok(update) => return Ok(update),
+        Err(error)
+            if matches!(
+                error.code(),
+                DocumentOperationErrorCode::InvalidMarkdown
+                    | DocumentOperationErrorCode::MarkdownPatchNotFound
+                    | DocumentOperationErrorCode::MarkdownPatchAmbiguous
+                    | DocumentOperationErrorCode::InvalidBlock
+                    | DocumentOperationErrorCode::InvalidOperation
+                    | DocumentOperationErrorCode::BatchTooLarge
+            ) => {}
+        Err(error) => return Err(error),
+    }
+    let blocks =
+        retain_exact_markdown_blocks(&source.block_tree, &target.blocks, allocate_block_id)?;
+    let tree = dematerialize_block_tree(&blocks)?;
+    prepare_document_body_replacement_update(
+        document_id,
+        schema,
+        full_state_v1,
+        expected_state_vector_v1,
+        &blocks,
+        &tree,
+        rich_title,
+        true,
     )
+}
+
+/// Correlate identical visible content in document order, including repeated Blocks.
+/// Use the original authority node to retain properties Markdown does not express.
+fn retain_exact_markdown_blocks(
+    source: &[MaterializedBlockNode],
+    target: &[crate::domain::markdown::MarkdownBlock],
+    allocate: &mut impl FnMut() -> String,
+) -> Result<Vec<MaterializedBlockNode>, DocumentOperationError> {
+    use crate::domain::markdown::{
+        MarkdownBlock, language_blocks, materialize_markdown_blocks_with_ids, serialize_markdown,
+    };
+    type Key = (std::mem::Discriminant<nodex_markdown::BlockKind>, String);
+    type Candidates<'a> = HashMap<Key, VecDeque<&'a MaterializedBlockNode>>;
+
+    fn key(block: &MarkdownBlock) -> Key {
+        let own = MarkdownBlock {
+            id: block.id.clone(),
+            kind: block.kind.clone(),
+            children: Vec::new(),
+        };
+        (
+            std::mem::discriminant(&own.kind),
+            serialize_markdown(&[own]),
+        )
+    }
+
+    fn index<'a>(
+        source: &'a [MaterializedBlockNode],
+        projected: &[MarkdownBlock],
+        candidates: &mut Candidates<'a>,
+    ) {
+        for (block, projected) in source.iter().zip(projected) {
+            candidates
+                .entry(key(projected))
+                .or_default()
+                .push_back(block);
+            index(&block.children, &projected.children, candidates);
+        }
+    }
+
+    fn resolve(
+        target: &[MarkdownBlock],
+        candidates: &mut Candidates<'_>,
+        allocate: &mut impl FnMut() -> String,
+    ) -> Result<Vec<MaterializedBlockNode>, DocumentOperationError> {
+        target
+            .iter()
+            .map(|projected| {
+                let mut block = if let Some(source) = candidates
+                    .get_mut(&key(projected))
+                    .and_then(VecDeque::pop_front)
+                {
+                    MaterializedBlockNode {
+                        id: source.id.clone(),
+                        block_type: source.block_type.clone(),
+                        props: source.props.clone(),
+                        content: source.content.clone(),
+                        children: Vec::new(),
+                    }
+                } else {
+                    let own = MarkdownBlock {
+                        id: projected.id.clone(),
+                        kind: projected.kind.clone(),
+                        children: Vec::new(),
+                    };
+                    materialize_markdown_blocks_with_ids(&[own], allocate)
+                        .map_err(|error| {
+                            operation_error(
+                                DocumentOperationErrorCode::InvalidMarkdown,
+                                error.to_string(),
+                                None,
+                                None,
+                            )
+                        })?
+                        .remove(0)
+                };
+                block.children = resolve(&projected.children, candidates, allocate)?;
+                Ok(block)
+            })
+            .collect()
+    }
+
+    let projected = language_blocks(source).map_err(|error| {
+        operation_error(
+            DocumentOperationErrorCode::InvalidMarkdown,
+            error.to_string(),
+            None,
+            None,
+        )
+    })?;
+    let mut candidates = Candidates::new();
+    index(source, &projected, &mut candidates);
+    resolve(target, &mut candidates, allocate)
+}
+
+fn validate_replacement_children(
+    markdown: &str,
+    target: &crate::domain::markdown::LocatedMarkdown,
+) -> Result<(), String> {
+    use crate::domain::markdown::{MarkdownBlock, MarkdownSourceBlock};
+    fn visit<'a>(
+        blocks: &[MarkdownBlock],
+        locations: &mut impl Iterator<Item = &'a MarkdownSourceBlock>,
+        markdown: &str,
+    ) -> Result<(), String> {
+        for block in blocks {
+            let location = locations.next();
+            if !block.children.is_empty() && !block.accepts_children() {
+                let start = location
+                    .and_then(|item| item.spans.first())
+                    .map_or(0, |span| span.start);
+                let line = markdown[..start]
+                    .bytes()
+                    .filter(|byte| *byte == b'\n')
+                    .count()
+                    + 1;
+                let construct = match &block.kind {
+                    nodex_markdown::BlockKind::Heading { .. } => "A plain heading",
+                    _ => "This Block",
+                };
+                return Err(format!(
+                    "Line {line}: {construct} cannot contain child Blocks. Align the following Blocks with it or put them in a toggle."
+                ));
+            }
+            visit(&block.children, locations, markdown)?;
+        }
+        Ok(())
+    }
+    visit(&target.blocks, &mut target.locations.iter(), markdown)
 }
 
 pub(crate) fn prepare_document_snapshot_restore_update(
@@ -536,6 +706,7 @@ pub(crate) fn prepare_document_snapshot_restore_update(
         target_blocks,
         &target_tree,
         rich_title,
+        false,
     )
 }
 
@@ -878,6 +1049,7 @@ fn prepare_document_body_replacement_update(
     target_blocks: &[MaterializedBlockNode],
     target_tree: &BlockTree,
     rich_title: Option<&[RichTextItem]>,
+    retain_live_nodes: bool,
 ) -> Result<PreparedDocumentOperationUpdate, DocumentOperationError> {
     let source = load_document(document_id, full_state_v1)?;
     let expected = decode_state_vector_v1(expected_state_vector_v1)
@@ -893,22 +1065,32 @@ fn prepare_document_body_replacement_update(
     }
     let source_decoded = decode_block_document(&source, schema)?;
     let source_materialization = materialize_decoded_document(&source_decoded)?;
-    let old_ids: BTreeSet<_> = current_ids(&source_decoded.block_tree.blocks)
-        .into_iter()
-        .collect();
     let working = load_document(document_id, full_state_v1)?;
     let body = working.get_or_insert_xml_fragment("body");
     let title = schema
         .has_title()
         .then(|| working.get_or_insert_text("title"));
     let mut title_write_fence_required = false;
+    let mut write_fences = BTreeSet::new();
     {
         let mut transaction = working.transact_mut();
-        let body_length = body.len(&transaction);
-        if body_length > 0 {
-            body.remove_range(&mut transaction, 0, body_length);
+        if retain_live_nodes && let Some(XmlOut::Element(root)) = body.get(&transaction, 0) {
+            reconcile_replacement_group(
+                &root,
+                &mut transaction,
+                &source_decoded.block_tree.blocks,
+                &target_tree.blocks,
+                &mut write_fences,
+            )?;
+        } else {
+            let body_length = body.len(&transaction);
+            if body_length > 0 {
+                body.remove_range(&mut transaction, 0, body_length);
+            }
+            encode_block_tree(&body, &mut transaction, target_tree)?;
+            write_fences.extend(current_ids(&source_decoded.block_tree.blocks));
+            write_fences.extend(flatten_materialized_ids(target_blocks));
         }
-        encode_block_tree(&body, &mut transaction, target_tree)?;
         if let Some(rich_title) = rich_title {
             replace_title(
                 schema,
@@ -941,19 +1123,83 @@ fn prepare_document_body_replacement_update(
             None,
         ));
     }
-    let write_fence_block_ids: BTreeSet<_> = old_ids
-        .into_iter()
-        .chain(flatten_materialized_ids(target_blocks))
-        .collect();
     let transaction = working.transact();
     Ok(PreparedDocumentOperationUpdate {
         update_v1: transaction.encode_state_as_update_v1(&source_vector),
         state_vector_v1: transaction.state_vector().encode_v1(),
         materialization,
-        write_fence_block_ids: write_fence_block_ids.into_iter().collect(),
+        moved_block_ids: if retain_live_nodes {
+            write_fences.iter().cloned().collect()
+        } else {
+            Vec::new()
+        },
+        write_fence_block_ids: write_fences.into_iter().collect(),
         title_write_fence_required,
-        moved_block_ids: Vec::new(),
     })
+}
+
+/// Keep integrated Yrs nodes for the common sibling order. Reparented or
+/// reordered nodes retain their Block IDs when their placement requires reinsertion.
+fn reconcile_replacement_group(
+    group: &yrs::XmlElementRef,
+    transaction: &mut yrs::TransactionMut<'_>,
+    source: &[BlockNode],
+    target: &[BlockNode],
+    write_fences: &mut BTreeSet<String>,
+) -> Result<(), DocumentOperationError> {
+    let source_order: Vec<_> = source.iter().map(|node| node.id.clone()).collect();
+    let target_order: Vec<_> = target.iter().map(|node| node.id.clone()).collect();
+    let retained = super::markdown_patch::longest_retained_order(&source_order, &target_order);
+    let source_by_id: HashMap<_, _> = source.iter().map(|node| (node.id.as_str(), node)).collect();
+    for (index, node) in source.iter().enumerate().rev() {
+        if !retained.contains(&node.id) {
+            group.remove(transaction, index as u32);
+            collect_canonical_ids(node, write_fences);
+        }
+    }
+    for (index, node) in target.iter().enumerate() {
+        if !retained.contains(&node.id) {
+            insert_block_nodes(group, transaction, index as u32, std::slice::from_ref(node));
+            collect_canonical_ids(node, write_fences);
+            continue;
+        }
+        let previous = source_by_id[node.id.as_str()];
+        if previous.children.is_empty() && node.children.is_empty() {
+            continue;
+        }
+        let Some(XmlOut::Element(container)) = group.get(transaction, index as u32) else {
+            return Err(operation_error(
+                DocumentOperationErrorCode::DocumentStateCorrupt,
+                "Replacement lost a retained Block's XML container",
+                None,
+                Some(&node.id),
+            ));
+        };
+        let existing = container
+            .children(transaction)
+            .find_map(|child| match child {
+                XmlOut::Element(element) if element.tag().as_ref() == BLOCK_GROUP_NODE_NAME => {
+                    Some(element)
+                }
+                _ => None,
+            });
+        let children = existing.unwrap_or_else(|| {
+            let index = container.len(transaction);
+            container.insert(
+                transaction,
+                index,
+                XmlElementPrelim::empty(BLOCK_GROUP_NODE_NAME),
+            )
+        });
+        reconcile_replacement_group(
+            &children,
+            transaction,
+            &previous.children,
+            &node.children,
+            write_fences,
+        )?;
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2124,6 +2370,105 @@ mod tests {
             .unwrap();
         assert!(hook.get(&peer.transact()).is_some());
         assert_eq!(prepared.write_fence_block_ids, vec!["first"]);
+    }
+
+    #[test]
+    fn replacement_beyond_the_correlation_budget_keeps_exact_live_nodes() {
+        use yrs::{Assoc, IndexedSequence, Map, SharedRef, StickyIndex};
+
+        let mut image = paragraph("image", "");
+        image.block_type = "image".into();
+        image.content = None;
+        image.props = BTreeMap::from([
+            (
+                "url".into(),
+                serde_json::json!("https://example.com/release.png"),
+            ),
+            ("caption".into(), serde_json::json!("Release")),
+            ("name".into(), serde_json::json!("original.png")),
+        ]);
+        let source = [
+            image.clone(),
+            paragraph("reviewed", "Review this paragraph."),
+        ]
+        .into_iter()
+        .chain(
+            (0..600)
+                .map(|index| paragraph(&format!("before-{index}"), &format!("Old line {index}"))),
+        )
+        .collect::<Vec<_>>();
+        let (state, vector) = patch_fixture_state(&source);
+        let peer = load_document("patch-fixture", &state).unwrap();
+        let body = peer.get_or_insert_xml_fragment("body");
+        let anchor = locate_xml_block(&body, &peer.transact(), "image")
+            .unwrap()
+            .container
+            .hook();
+        // A collaboration fixture stores a thread separately from its relative text anchor.
+        let review = Doc::new();
+        let threads = review.get_or_insert_map("comment-threads");
+        let text = {
+            let txn = peer.transact();
+            let block = locate_xml_block(&body, &txn, "reviewed").unwrap().container;
+            let Some(XmlOut::Element(content)) = block.get(&txn, 0) else {
+                panic!("paragraph content");
+            };
+            let Some(XmlOut::Text(text)) = content.get(&txn, 0) else {
+                panic!("paragraph text");
+            };
+            text
+        };
+        let comment_anchor = text
+            .sticky_index(&peer.transact(), 7, Assoc::After)
+            .unwrap();
+        let thread = serde_json::json!({
+            "anchor": comment_anchor.encode_v1(),
+            "comments": ["Please keep this wording."]
+        })
+        .to_string();
+        threads.insert(&mut review.transact_mut(), "review-thread", thread.clone());
+        let markdown = [
+            "![Release](https://example.com/release.png)".into(),
+            "Review this paragraph.".into(),
+        ]
+        .into_iter()
+        .chain((0..600).map(|index| format!("New line {index}")))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+        let mut allocated = 0;
+        let prepared = prepare_markdown_replacement_update(
+            "patch-fixture",
+            BlockDocumentSchema::PageV4,
+            &state,
+            &vector,
+            &markdown,
+            None,
+            &mut || {
+                allocated += 1;
+                format!("new-{allocated}")
+            },
+        )
+        .unwrap();
+        assert_eq!(prepared.materialization.block_tree[0], image);
+        assert_eq!(allocated, 600);
+        peer.transact_mut()
+            .apply_update(Update::decode_v1(&prepared.update_v1).unwrap())
+            .unwrap();
+        let txn = peer.transact();
+        assert!(anchor.get(&txn).is_some());
+        let Some(Out::Any(Any::String(saved))) = threads.get(&review.transact(), "review-thread")
+        else {
+            panic!("retained comment thread");
+        };
+        assert_eq!(saved.as_ref(), thread);
+        let saved: Value = serde_json::from_str(&saved).unwrap();
+        let encoded: Vec<u8> = serde_json::from_value(saved["anchor"].clone()).unwrap();
+        let resolved = StickyIndex::decode_v1(&encoded)
+            .unwrap()
+            .get_offset(&txn)
+            .unwrap();
+        assert_eq!(resolved.index, 7);
+        assert_eq!(resolved.branch.id(), text.hook().id().clone());
     }
 
     #[test]

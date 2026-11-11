@@ -795,7 +795,7 @@ fn compile_operations(
 
 /// Retain a longest common sibling subsequence in O(n log n), so inserting or
 /// reordering a small region never moves all the unaffected sibling subtrees.
-fn longest_retained_order(current: &[String], desired: &[String]) -> BTreeSet<String> {
+pub(super) fn longest_retained_order(current: &[String], desired: &[String]) -> BTreeSet<String> {
     let positions: BTreeMap<_, _> = current
         .iter()
         .enumerate()

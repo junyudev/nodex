@@ -378,6 +378,7 @@ const projectNativeNodexAgentPageUpdateOutput = (
         updated: updated.length,
         moved: moved.length,
         deleted: deleted.length,
+        ...(effect?.replacement ? { replacement: effect.replacement } : {}),
         ...(wantsBlockIds
           ? {
               blockIds: {

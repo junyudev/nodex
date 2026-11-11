@@ -4855,6 +4855,7 @@ export interface components {
             readonly created_block_ids: readonly string[];
             readonly deleted_block_ids: readonly string[];
             readonly moved_block_ids: readonly string[];
+            readonly replacement?: components["schemas"]["DocumentReplacementSummary"] | null;
             readonly title_changed: boolean;
             readonly touched_block_ids: readonly string[];
             readonly updated_block_ids: readonly string[];
@@ -4954,6 +4955,13 @@ export interface components {
             readonly generation: number;
             readonly store_epoch: components["schemas"]["StoreEpoch"];
             readonly update_id: string;
+        };
+        /** @description Identity counts for a body replacement that retires Blocks. */
+        readonly DocumentReplacementSummary: {
+            /** @description Block IDs retained in the new body. */
+            readonly preserved: number;
+            /** @description New Block IDs allocated for the replacement body. */
+            readonly recreated: number;
         };
         /** @enum {string} */
         readonly DocumentRevisionKind: "automatic" | "manual" | "operation" | "restore" | "safety";

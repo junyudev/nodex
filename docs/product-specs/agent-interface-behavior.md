@@ -773,13 +773,14 @@ whole-body replacement. A projection that cannot express a change without
 ambiguously modifying existing Blocks fails before commit and requires explicit
 Block operations. Alignment work and the compiled structural operation count are
 bounded; large rewrites may need smaller edits.
-Whole-body replacement compiles one patch from the current exact body to the
-supplied Markdown, under the caller's body ETag. It uses the same identity
-preservation rules: unchanged Blocks retain their IDs and live collaborative
-nodes, and unchanged images keep their file names and natural dimensions.
-Owning resource shells must remain in place. Replacement shares the patch
-compiler's alignment and structural bounds; a failed precise edit is never
-silently retried as replacement.
+Whole-body replacement validates the complete supplied Markdown and commits it
+under the caller's body ETag. It preserves existing Block identities and live
+nodes where it can correlate them safely. If the correlation or compiled
+operation budget is exceeded, it matches exact surviving Blocks by their
+Markdown content and type and writes the replacement atomically. The receipt
+counts retained and newly allocated Block identities when the replacement retires
+any existing identities. Owning resource shells must remain in place. Invalid nesting
+names the offending construct and its line.
 
 Local draft apply has the same preservation contract. Its sealed baseline binds
 the original Document generation and authoritative Block source locations. Edits

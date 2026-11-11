@@ -716,6 +716,8 @@ pub enum DocumentMutationCoordination {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct DocumentMutationEffect {
     pub base_head_seq: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replacement: Option<DocumentReplacementSummary>,
     pub touched_block_ids: Vec<String>,
     pub created_block_ids: Vec<String>,
     pub deleted_block_ids: Vec<String>,
@@ -724,6 +726,15 @@ pub struct DocumentMutationEffect {
     pub write_fence_block_ids: Vec<String>,
     pub title_changed: bool,
     pub coordination: DocumentMutationCoordination,
+}
+
+/// Identity counts for a body replacement that retires Blocks.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct DocumentReplacementSummary {
+    /// Block IDs retained in the new body.
+    pub preserved: usize,
+    /// New Block IDs allocated for the replacement body.
+    pub recreated: usize,
 }
 
 /// Core-authored address invalidation over a bounded interval of Document heads.
