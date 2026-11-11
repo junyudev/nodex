@@ -6,6 +6,10 @@ type CoreRecovery = CoreFailureEvidence["recovery"];
 const coreCodes = {
   invalid_input: true,
   unauthorized: true,
+  agent_turn_ended: true,
+  agent_session_unavailable: true,
+  agent_generation_changed: true,
+  agent_binding_malformed: true,
   not_found: true,
   ambiguous: true,
   conflict: true,

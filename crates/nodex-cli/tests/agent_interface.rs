@@ -1,5 +1,8 @@
+mod support;
+
+use support::cli_command;
+
 use std::fs;
-use std::process::Command;
 
 use serde_json::Value;
 
@@ -7,7 +10,7 @@ use serde_json::Value;
 fn capabilities_succeeds_without_resolving_a_profile_or_starting_core() {
     let temp = nodex_platform::test_support::tempdir().expect("temporary HOME");
     let unavailable_home = temp.path().join("must-not-be-created");
-    let output = Command::new(env!("CARGO_BIN_EXE_nodex"))
+    let output = cli_command()
         .args([
             "--expect-profile",
             "missing-profile",
@@ -51,10 +54,7 @@ fn capabilities_succeeds_without_resolving_a_profile_or_starting_core() {
 #[test]
 fn capabilities_report_the_markdown_revision_that_docs_describe() {
     let run = |args: &[&str]| {
-        let output = Command::new(env!("CARGO_BIN_EXE_nodex"))
-            .args(args)
-            .output()
-            .expect("run nodex");
+        let output = cli_command().args(args).output().expect("run nodex");
         assert!(output.status.success());
         output.stdout
     };
@@ -74,7 +74,7 @@ fn capabilities_report_the_markdown_revision_that_docs_describe() {
 
 #[test]
 fn every_leaf_exposes_machine_readable_help_without_core() {
-    let output = Command::new(env!("CARGO_BIN_EXE_nodex"))
+    let output = cli_command()
         .args(["--json", "page", "move", "--help"])
         .output()
         .expect("run machine help");
@@ -93,7 +93,7 @@ fn actual_offline_results_and_errors_obey_the_published_schemas() {
     let directory = nodex_platform::test_support::tempdir().expect("isolated directory");
     let nonexistent_home = directory.path().join("must-not-exist");
     let invoke = |args: &[&str]| {
-        Command::new(env!("CARGO_BIN_EXE_nodex"))
+        cli_command()
             .args(args)
             .env("HOME", directory.path())
             .env("NODEX_HOME", &nonexistent_home)
@@ -153,7 +153,7 @@ fn query_help_is_progressive_and_schema_selection_is_offline() {
     let home = nodex_platform::test_support::tempdir().unwrap();
     let nonexistent = home.path().join("no-core");
     let invoke = |args: &[&str]| {
-        Command::new(env!("CARGO_BIN_EXE_nodex"))
+        cli_command()
             .args(args)
             .env("NODEX_HOME", &nonexistent)
             .output()

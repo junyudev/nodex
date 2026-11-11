@@ -577,7 +577,16 @@ pub struct AgentAttributionRequest {
     pub session_id: String,
     #[serde(default)]
     pub run_id: Option<String>,
-    /// Runtime-verified input message; Core derives its Member from acceptance evidence.
+    pub backend: nodex_core_contracts::agent::AgentBackendKind,
+}
+
+/// A Runtime-verified Run and the accepted input that opened it.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RecordAgentRunRequest {
+    pub session_id: String,
+    pub run_id: String,
+    /// Core derives the requesting Member from the acceptance evidence.
     #[serde(default)]
     pub message_id: Option<String>,
     pub backend: nodex_core_contracts::agent::AgentBackendKind,
@@ -1040,6 +1049,14 @@ mod api {
     pub(super) fn issue_agent_attribution() {}
 
     #[utoipa::path(
+        post,
+        path = "/core/v1/agent-runs/record",
+        request_body = RecordAgentRunRequest,
+        responses((status = 200, description = "Recorded Agent Run", body = bool))
+    )]
+    pub(super) fn record_agent_run() {}
+
+    #[utoipa::path(
         get,
         path = "/core/v1/events",
         params(("after" = Option<i64>, Query, description = "Last committed event sequence observed")),
@@ -1374,6 +1391,7 @@ mod team_api {
         api::health,
         api::handshake,
         api::issue_agent_attribution,
+        api::record_agent_run,
         api::events,
         api::resolve_local_mutation,
         api::admit_app_tool_operation,
@@ -1462,6 +1480,7 @@ mod team_api {
         HandshakeRequest,
         HandshakeResponse,
         AgentAttributionRequest,
+        RecordAgentRunRequest,
         AgentAttributionResponse,
         HealthResponse,
         HttpErrorResponse,
@@ -1614,6 +1633,7 @@ mod tests {
             "/core/v1/admin/space/remove-member",
             "/core/v1/admin/shutdown",
             "/core/v1/agent-attributions",
+            "/core/v1/agent-runs/record",
             "/core/v1/events",
             "/core/v1/handshake",
             "/core/v1/health",

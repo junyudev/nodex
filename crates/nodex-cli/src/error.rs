@@ -10,6 +10,11 @@ pub enum CliErrorCode {
     ScopeNotFound,
     ScopeAmbiguous,
     IdentityUnauthorized,
+    AgentTurnEnded,
+    AgentSessionUnavailable,
+    AgentGenerationChanged,
+    AgentBindingMalformed,
+
     ScopeBudgetExceeded,
     MaterializationStale,
     CoreUnavailable,
@@ -54,6 +59,11 @@ impl CliErrorCode {
             Self::ScopeNotFound => "SCOPE_NOT_FOUND",
             Self::ScopeAmbiguous => "SCOPE_AMBIGUOUS",
             Self::IdentityUnauthorized => "IDENTITY_UNAUTHORIZED",
+            Self::AgentTurnEnded => "AGENT_TURN_ENDED",
+            Self::AgentSessionUnavailable => "AGENT_SESSION_UNAVAILABLE",
+            Self::AgentGenerationChanged => "AGENT_GENERATION_CHANGED",
+            Self::AgentBindingMalformed => "AGENT_BINDING_MALFORMED",
+
             Self::ScopeBudgetExceeded => "SCOPE_BUDGET_EXCEEDED",
             Self::MaterializationStale => "MATERIALIZATION_STALE",
             Self::CoreUnavailable => "CORE_UNAVAILABLE",

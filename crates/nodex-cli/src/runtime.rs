@@ -27,8 +27,7 @@ use nodex_core_contracts::{
 };
 use nodex_core_protocol::client::{ClientError, CoreClient, connect_or_launch};
 
-/// Set by Nodex for the Agents it runs; see `CoreClient::attribute_to_agent`.
-pub const AGENT_ATTRIBUTION_ENV: &str = "NODEX_AGENT_ATTRIBUTION";
+/// Host gateway connection supplied by the managed shell dispatcher.
 pub const AGENT_ENDPOINT_ENV: &str = "NODEX_AGENT_ENDPOINT";
 pub const AGENT_CREDENTIAL_ENV: &str = "NODEX_AGENT_CREDENTIAL";
 use nodex_core_protocol::{
@@ -41,8 +40,8 @@ use serde_json::{Value, json};
 use crate::cli::{
     BackupCommand, BlockArgs, BlockCommand, Cli, Command, DraftArgs, DraftCommand, HistoryArgs,
     InboxArgs, InboxCommand, OpenArgs, OpenCommand, PageArgs, PageCommand, PagePrepareArgs,
-    PrepareOperation, ProfileArgs, ProfileCheckArgs, ProfileCloneArgs, ProfileCommand, ReadArgs,
-    RgArgs, SedArgs, ServiceArgs,
+    PrepareOperation, ProfileArgs, ProfileCloneArgs, ProfileCommand, ReadArgs, RgArgs, SedArgs,
+    ServiceArgs,
 };
 use crate::error::{CliError, CliErrorCode};
 
@@ -143,18 +142,42 @@ pub(crate) fn execute_with_presentation(
             "A remote connection admits Space commands only",
         ));
     }
-    let agent_endpoint = env::var(AGENT_ENDPOINT_ENV).ok();
-    let agent_credential = env::var(AGENT_CREDENTIAL_ENV).ok();
-    let scoped_agent = agent_endpoint.is_some() || agent_credential.is_some();
+    let cwd = env::current_dir().map_err(core_unavailable)?;
+    let environment_home = env::var_os("NODEX_HOME");
+    let home_flag = cli.home.as_deref();
+    let explicit_home = home_flag
+        .map(Path::as_os_str)
+        .or(environment_home.as_deref())
+        .filter(|value| !value.is_empty() && !value.to_string_lossy().trim().is_empty())
+        .map(|path| cwd.join(path));
+    let bound_home = env::var_os("NODEX_AGENT_PROFILE_HOME").map(PathBuf::from);
+    let different_home = explicit_home.as_ref().is_some_and(|home| {
+        bound_home
+            .as_ref()
+            .is_none_or(|bound| !same_profile_home(home, bound))
+    });
+    let agent_endpoint = env::var_os(AGENT_ENDPOINT_ENV);
+    let agent_credential = env::var_os(AGENT_CREDENTIAL_ENV);
+    let pinned_turn = env::var_os("NODEX_CLI_TURN_ID");
+    let scoped_agent = !different_home
+        && (agent_endpoint.is_some()
+            || agent_credential.is_some()
+            || pinned_turn.is_some()
+            || env::var_os("NODEX_CLI_TASK_ID").is_some()
+            || env::var_os("NODEX_AGENT_SHELL").is_some());
     if scoped_agent
-        && (cli.remote_connection.is_some()
-            || !agent_content_command(&cli.command)
-            || agent_endpoint.is_none()
-            || agent_credential.is_none())
+        && let Some(turn) = pinned_turn
+        && env::var_os("NODEX_BOUND_TURN").as_ref() != Some(&turn)
     {
         return Err(CliError::new(
+            CliErrorCode::AgentTurnEnded,
+            "This shell belongs to an ended Agent Turn. Run nodex from a shell in the active Turn.",
+        ));
+    }
+    if scoped_agent && (cli.remote_connection.is_some() || !agent_content_command(&cli.command)) {
+        return Err(CliError::new(
             CliErrorCode::InvalidInput,
-            "Agent Turn credentials admit content commands only; Host administration is unavailable",
+            "Agent Turn credentials admit content commands only. Host administration is unavailable.",
         ));
     }
     if let Command::Serve(arguments) = &cli.command {
@@ -168,7 +191,7 @@ pub(crate) fn execute_with_presentation(
                 "serve selects its Space with --home; Profile and content selectors are unavailable",
             ));
         }
-        return crate::serve::execute(arguments.clone());
+        return crate::serve::execute(arguments.clone(), cli.home);
     }
     if matches!(
         &cli.command,
@@ -206,7 +229,12 @@ pub(crate) fn execute_with_presentation(
         reject_profile_scope_flags(&cli)?;
         return match command {
             ProfileCommand::Clone(arguments) => clone_profile(arguments),
-            ProfileCommand::Check(arguments) => check_profile(arguments),
+            ProfileCommand::Check => {
+                let home = cli.home.as_deref().ok_or_else(|| {
+                    CliError::new(CliErrorCode::InvalidInput, "profile check requires --home")
+                })?;
+                check_profile(home)
+            }
         }
         .map(CommandOutput::Json);
     }
@@ -222,7 +250,6 @@ pub(crate) fn execute_with_presentation(
         _ => {}
     }
     crate::page_mutation::prepare_block_input(&mut cli.command)?;
-    let cwd = env::current_dir().map_err(core_unavailable)?;
     match &cli.command {
         Command::Draft(DraftArgs {
             command: DraftCommand::Diff { directory },
@@ -234,6 +261,8 @@ pub(crate) fn execute_with_presentation(
     }
     let home = if scoped_agent {
         cwd.join(".nodex-agent-content")
+    } else if let Some(home) = explicit_home {
+        home
     } else {
         resolve_home(&cwd)?
     };
@@ -242,7 +271,7 @@ pub(crate) fn execute_with_presentation(
             .map(CommandOutput::Json)
             .map_err(internal);
     }
-    let mut client = if let Some(path) = &cli.remote_connection {
+    let client = if let Some(path) = &cli.remote_connection {
         let metadata = nodex_platform::private_fs::checked_metadata(
             path,
             nodex_platform::private_fs::EntryKind::File,
@@ -258,29 +287,42 @@ pub(crate) fn execute_with_presentation(
         let bytes = std::fs::read(path).map_err(internal)?;
         let connection: nodex_core_protocol::client::RemoteConnection =
             serde_json::from_slice(&bytes).map_err(internal)?;
-        CoreClient::connect_remote(&connection, env!("CARGO_PKG_VERSION"))
-    } else {
-        match (agent_endpoint, agent_credential) {
-            (Some(endpoint), Some(credential)) => CoreClient::connect_agent(&endpoint, &credential),
-            _ => connect_or_launch(
-                &home,
-                option_env!("NODEX_RELEASE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
-                None,
-            ),
+        CoreClient::connect_remote(&connection, env!("CARGO_PKG_VERSION")).map_err(map_client_error)
+    } else if scoped_agent {
+        match (agent_endpoint.and_then(|value| value.into_string().ok()), agent_credential.and_then(|value| value.into_string().ok())) {
+            (Some(endpoint), Some(credential)) => CoreClient::connect_agent(&endpoint, &credential).map_err(|error| match error {
+                ClientError::InvalidRuntime(_) => malformed_agent_binding(),
+                ClientError::Io(_) => CliError::new(CliErrorCode::AgentGenerationChanged, "The Agent Host connection is unavailable. Resume the Session in Nodex and run nodex context again."),
+                error => map_client_error(error),
+            }),
+            _ => Err(malformed_agent_binding()),
         }
-    }
-    .map_err(map_client_error)?;
+    } else {
+        connect_or_launch(
+            &home,
+            option_env!("NODEX_RELEASE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
+            None,
+        )
+        .map_err(map_client_error)
+    }?;
     validate_expected_profile(cli.expect_profile.as_deref(), &client, &home)?;
-    // Nodex gives each Agent it runs a credential for its own chat. Core verifies it, so a
-    // copied or stale value cannot name another chat; without one, changes are external.
-    if let Some(credential) = env::var(AGENT_ATTRIBUTION_ENV)
-        .ok()
-        .filter(|value| !value.is_empty())
-    {
-        client
-            .attribute_to_agent(credential)
-            .map_err(map_client_error)?;
-    }
+    let project_source = if cli.project.is_some() {
+        "flag"
+    } else if let Some(project) = client.agent_project_id.clone() {
+        cli.project = Some(project);
+        "host_binding"
+    } else {
+        "default"
+    };
+    let profile_source = if scoped_agent {
+        "host_binding"
+    } else if home_flag.is_some() {
+        "flag"
+    } else if environment_home.is_some() {
+        "environment"
+    } else {
+        "default"
+    };
 
     match cli.command {
         Command::Serve(_) => unreachable!("serve is handled before connecting to Core"),
@@ -322,6 +364,7 @@ pub(crate) fn execute_with_presentation(
             cli.page.as_deref(),
             &home,
             &cwd,
+            (profile_source, project_source),
         ),
         Command::Page(PageArgs {
             command: PageCommand::Prepare(arguments),
@@ -482,6 +525,8 @@ fn agent_content_command(command: &Command) -> bool {
         command,
         Command::Automations(_)
             | Command::Members(_)
+            | Command::Work(_)
+            | Command::Open(_)
             | Command::Sources(_)
             | Command::Sql(_)
             | Command::Read(_)
@@ -526,8 +571,8 @@ fn clone_profile(arguments: &ProfileCloneArgs) -> Result<Value, CliError> {
     serde_json::to_value(receipt).map_err(internal)
 }
 
-fn check_profile(arguments: &ProfileCheckArgs) -> Result<Value, CliError> {
-    let check = nodex_profile::check_profile_store(&arguments.home)
+fn check_profile(home: &Path) -> Result<Value, CliError> {
+    let check = nodex_profile::check_profile_store(home)
         .map_err(|error| CliError::new(CliErrorCode::InvalidInput, error.message))?;
     serde_json::to_value(check).map_err(internal)
 }
@@ -1704,9 +1749,22 @@ fn context(
     explicit_page: Option<&str>,
     home: &Path,
     cwd: &Path,
+    sources: (&'static str, &'static str),
 ) -> Result<CommandOutput, CliError> {
+    let actor = client.actor().map_err(map_client_error)?;
     let projects = read_all_projects(client, false)?;
-    let resolved = resolve_project(client, projects, explicit_project, cwd)?;
+    let resolved = match resolve_project(client, projects, explicit_project, cwd) {
+        Ok(project) => Some(project),
+        Err(error)
+            if error.code == CliErrorCode::ProjectNotFound
+                && explicit_project.is_none()
+                && explicit_database.is_none()
+                && explicit_page.is_none() =>
+        {
+            None
+        }
+        Err(error) => return Err(error),
+    };
     let readiness = if client.is_scoped_agent() {
         "ready".to_owned()
     } else {
@@ -1718,23 +1776,30 @@ fn context(
             "context accepts only one of --database or --page",
         ));
     }
-    let primary_database_id = resolved.project.database_id.clone();
-    let scope = if let Some(selector) = explicit_database {
-        ContextScope {
-            kind: "database",
-            id: resolve_database_selector(client, &resolved.project, selector)?,
-        }
-    } else if let Some(selector) = explicit_page {
-        ContextScope {
-            kind: "page",
-            id: resolve_page_scope(client, &resolved.project.id, selector)?,
-        }
-    } else {
-        ContextScope {
-            kind: "database",
-            id: primary_database_id.clone(),
-        }
-    };
+    let primary_database_id = resolved
+        .as_ref()
+        .map(|entry| entry.project.database_id.clone());
+    let scope = resolved
+        .as_ref()
+        .map(|resolved| -> Result<ContextScope, CliError> {
+            Ok(if let Some(selector) = explicit_database {
+                ContextScope {
+                    kind: "database",
+                    id: resolve_database_selector(client, &resolved.project, selector)?,
+                }
+            } else if let Some(selector) = explicit_page {
+                ContextScope {
+                    kind: "page",
+                    id: resolve_page_scope(client, &resolved.project.id, selector)?,
+                }
+            } else {
+                ContextScope {
+                    kind: "database",
+                    id: resolved.project.database_id.clone(),
+                }
+            })
+        })
+        .transpose()?;
     let background_registration = if client.is_scoped_agent() {
         "not_applicable".to_owned()
     } else {
@@ -1744,10 +1809,15 @@ fn context(
         profile: ContextProfile {
             id: client.handshake.generation.profile_id.clone(),
             library_id: client.handshake.library_id.clone(),
+            source: sources.0,
         },
-        project: resolved.project,
-        matched_by: resolved.matched_by,
-        matched_root: resolved.matched_root,
+        actor,
+        project_source: sources.1,
+        matched_by: resolved.as_ref().map(|entry| entry.matched_by),
+        matched_root: resolved
+            .as_ref()
+            .and_then(|entry| entry.matched_root.clone()),
+        project: resolved.map(|entry| entry.project),
         primary_database_id,
         scope,
         core: ContextCore {
@@ -2026,8 +2096,16 @@ fn validate_expected_profile(
     }
     Err(CliError::new(
         CliErrorCode::ProfileMismatch,
-        "Connected Profile does not match the expected identity. Refresh the host connection context before retrying.",
+        format!("Expected Profile {expected}, but connected to Profile {actual}. Run nodex context without the assertion to inspect the connection."),
     ).with_details(json!({ "expected": expected, "actual": actual, "home": home })))
+}
+
+fn same_profile_home(left: &Path, right: &Path) -> bool {
+    left == right
+        || std::fs::canonicalize(left)
+            .ok()
+            .zip(std::fs::canonicalize(right).ok())
+            .is_some_and(|(left, right)| left == right)
 }
 
 fn resolve_home(cwd: &Path) -> Result<PathBuf, CliError> {
@@ -2116,17 +2194,28 @@ pub(crate) fn map_client_error(error: ClientError) -> CliError {
         ClientError::Http {
             core_error: Some(error),
             ..
-        } if matches!(
-            error.code,
-            CoreErrorCode::IdempotencyKeyReused
-                | CoreErrorCode::IdempotencyWindowExpired
-                | CoreErrorCode::LegacyIdempotencyUnavailable
-        ) =>
-        {
-            map_core_error(*error)
+        } => map_core_error(*error),
+        ClientError::Http {
+            status: 401 | 403, ..
+        } => CliError::new(
+            CliErrorCode::IdentityUnauthorized,
+            format!("{error}. Run nodex context to verify the connection."),
+        ),
+        ClientError::Http { .. } | ClientError::Json(_) => {
+            CliError::new(CliErrorCode::ProtocolIncompatible, error.to_string())
+        }
+        ClientError::RequestTooLarge { .. } | ClientError::ResponseTooLarge { .. } => {
+            CliError::new(CliErrorCode::ScopeBudgetExceeded, error.to_string())
         }
         error => CliError::new(CliErrorCode::CoreUnavailable, error.to_string()),
     }
+}
+
+fn malformed_agent_binding() -> CliError {
+    CliError::new(
+        CliErrorCode::AgentBindingMalformed,
+        "The Agent CLI binding is missing or malformed. Use plain nodex from the active Turn to preserve Agent authorship.",
+    )
 }
 
 pub(crate) fn map_core_error(error: CoreError) -> CliError {
@@ -2134,6 +2223,11 @@ pub(crate) fn map_core_error(error: CoreError) -> CliError {
         CoreErrorCode::NotFound => CliErrorCode::ScopeNotFound,
         CoreErrorCode::Ambiguous => CliErrorCode::ScopeAmbiguous,
         CoreErrorCode::Unauthorized => CliErrorCode::IdentityUnauthorized,
+        CoreErrorCode::AgentTurnEnded => CliErrorCode::AgentTurnEnded,
+        CoreErrorCode::AgentSessionUnavailable => CliErrorCode::AgentSessionUnavailable,
+        CoreErrorCode::AgentGenerationChanged => CliErrorCode::AgentGenerationChanged,
+        CoreErrorCode::AgentBindingMalformed => CliErrorCode::AgentBindingMalformed,
+
         CoreErrorCode::ResourceExhausted => CliErrorCode::ScopeBudgetExceeded,
         CoreErrorCode::PatchNotFound => CliErrorCode::PatchNotFound,
         CoreErrorCode::PatchAmbiguous => CliErrorCode::PatchAmbiguous,
@@ -2178,11 +2272,13 @@ fn internal(error: impl std::fmt::Display) -> CliError {
 #[derive(Serialize, utoipa::ToSchema)]
 pub(crate) struct ContextOutput {
     profile: ContextProfile,
-    project: ProjectWorkspaceProject,
-    matched_by: &'static str,
+    actor: nodex_core_contracts::actor::Actor,
+    project: Option<ProjectWorkspaceProject>,
+    project_source: &'static str,
+    matched_by: Option<&'static str>,
     matched_root: Option<String>,
-    primary_database_id: String,
-    scope: ContextScope,
+    primary_database_id: Option<String>,
+    scope: Option<ContextScope>,
     core: ContextCore,
     background_registration: String,
 }
@@ -2191,6 +2287,7 @@ pub(crate) struct ContextOutput {
 pub(crate) struct ContextProfile {
     id: String,
     library_id: String,
+    source: &'static str,
 }
 
 #[derive(Serialize, utoipa::ToSchema)]

@@ -24,16 +24,14 @@ test.runIf(process.platform === "win32")(
       const executable = join(root, "probe.ps1");
       await writeFile(
         executable,
-        "@{ home = $env:NODEX_HOME; attribution = $env:NODEX_AGENT_ATTRIBUTION; arguments = @($args) } | ConvertTo-Json -Compress\n",
+        "@{ endpoint = $env:NODEX_AGENT_ENDPOINT; arguments = @($args) } | ConvertTo-Json -Compress\n",
       );
       await prepareNodexCliShell(root);
       await bindNodexCliShell({
         nodexHome: root,
         threadId: "parent",
         executable,
-        profileId: "profile",
-        projectId: "project",
-        agentAttribution: "credential",
+        scopedConnection: { endpoint: "http://127.0.0.1:10000", credential: "fixture" },
       });
       const routing = await composeNodexCliShellEnvironment({
         nodexHome: root,
@@ -72,16 +70,8 @@ test.runIf(process.platform === "win32")(
           windowsVerbatimArguments: shell === "cmd.exe",
         });
         expect(JSON.parse(result.stdout)).toEqual({
-          home: root,
-          attribution: "credential",
-          arguments: [
-            "--expect-profile",
-            "profile",
-            "--project",
-            "project",
-            "context",
-            "space 汉字",
-          ],
+          endpoint: "http://127.0.0.1:10000",
+          arguments: ["context", "space 汉字"],
         });
       }
       await unbindNodexCliShell(root, "child");

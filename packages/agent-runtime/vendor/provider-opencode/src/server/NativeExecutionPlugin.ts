@@ -2,16 +2,88 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
 import { pathToFileURL } from "node:url";
+import type { HostCliShell } from "@nodex/provider-core/server/ExecutionHost";
 
 import { fromLenientJson } from "@nodex/runtime-shared/schemaJson";
 import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
 import { NODEX_APP_MCP_SERVER } from "@nodex/runtime-shared/nodexAppMcp";
 
-/** Native tool context is attached after model input validation, never accepted from the model. */
-export const source = `export default {
+const shellRouting = `import { readFile } from "node:fs/promises";
+import { delimiter, join } from "node:path";
+const route = async (id) => {
+  if (!/^[A-Za-z0-9_-]+$/.test(id ?? "")) return;
+  try {
+    return JSON.parse(await readFile(join(process.env.NODEX_OPENCODE_CLI_ROUTING, id), "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+};
+const markAgentShell = (env) => {
+  env.NODEX_AGENT_SHELL = "1";
+  if (process.env.NODEX_AGENT_PROFILE_HOME)
+    env.NODEX_AGENT_PROFILE_HOME = process.env.NODEX_AGENT_PROFILE_HOME;
+};
+const bind = (env, binding) => {
+  if (binding.profileHome) env.NODEX_AGENT_PROFILE_HOME = binding.profileHome;
+  env.NODEX_CLI_TASK_ID = binding.taskId;
+  env.NODEX_CLI_TURN_ID = binding.turnId;
+  env.PATH = [binding.bin, env.PATH ?? process.env.PATH].filter(Boolean).join(delimiter);
+};
+`;
+
+/** Register only a provider-observed Session, in its local server's private directory. */
+export const shellRouter = (fs: FileSystem.FileSystem, directory: string) => (
+  sessionId: string,
+  binding: HostCliShell | undefined,
+) => Effect.gen(function* () {
+  if (!/^[A-Za-z0-9_-]+$/u.test(sessionId)) return false;
+  const file = `${directory}/${sessionId}`;
+  if (!binding) {
+    yield* fs.remove(file, { force: true });
+    return false;
+  }
+  const temp = yield* fs.makeTempFile({ directory, prefix: `.${sessionId}-` });
+  yield* fs.writeFileString(temp, JSON.stringify(binding), { mode: 0o600 }).pipe(
+    Effect.andThen(fs.rename(temp, file)),
+    Effect.ensuring(fs.remove(temp, { force: true }).pipe(Effect.ignore)),
+  );
+  return true;
+});
+
+export type ShellRouter = ReturnType<typeof shellRouter>;
+
+export const cliInstruction = (binding: HostCliShell | undefined) =>
+  binding ? `Run nodex for content work. Read the bundled Skill at ${JSON.stringify(binding.skill)}.` : undefined;
+
+/** OpenCode 2's shell tool calls Shell.create for each command, including background jobs. */
+export const source = `${shellRouting}
+import { randomUUID } from "node:crypto";
+const marker = "# nodex-shell:";
+export default {
   id: "nodex-native-execution",
-  async setup({ tool }) {
-    await tool.hook("execute.before", (event) => {
+  async setup({ tool, shell }) {
+    const pending = new Map();
+    await shell.hook("create.before", async (event) => {
+      markAgentShell(event.env);
+      if (!event.command.startsWith(marker)) return;
+      const end = event.command.indexOf("\\n");
+      const key = event.command.slice(marker.length, end);
+      const binding = pending.get(key);
+      pending.delete(key);
+      if (!binding) throw new Error("The Nodex shell binding is unavailable.");
+      bind(event.env, binding);
+      event.command = event.command.slice(end + 1);
+    });
+    await tool.hook("execute.before", async (event) => {
+      if ((event.tool === "shell" || event.tool === "bash") && typeof event.input?.command === "string") {
+        const binding = await route(event.sessionID);
+        if (binding) {
+          const key = randomUUID();
+          if (pending.size >= 256) pending.delete(pending.keys().next().value);
+          pending.set(key, binding);
+          event.input = { ...event.input, command: marker + key + "\\n" + event.input.command };
+        }
+      }
       if (!event.tool.startsWith(${JSON.stringify(`${NODEX_APP_MCP_SERVER}-`)})) return;
       event.input = {
         ...(event.input ?? {}),
@@ -27,12 +99,18 @@ export const source = `export default {
 `;
 
 /** OpenCode 1 publishes each tool's immutable message context before its before-tool hook. */
-export const sourceV1 = `export default async function () {
+export const sourceV1 = `${shellRouting}
+export default async function () {
   const calls = new Map();
   const waiting = new Map();
   const keyOf = (sessionID, callID) => JSON.stringify([sessionID, callID]);
   const owns = (tool) => tool.startsWith(${JSON.stringify(`${NODEX_APP_MCP_SERVER}_`)});
   return {
+    async "shell.env"(input, output) {
+      markAgentShell(output.env);
+      const binding = await route(input.sessionID);
+      if (binding) bind(output.env, binding);
+    },
     event({ event }) {
       if (event.type !== "message.part.updated") return;
       const part = event.properties.part;
@@ -84,8 +162,12 @@ export const environment = Effect.fn("OpenCode.NativeExecutionPlugin.environment
   const config = yield* Schema.decodeUnknownEffect(
     fromLenientJson(Schema.Record(Schema.String, Schema.Unknown)),
   )(content);
+  const routing = `${directory}/shells`;
+  yield* fs.makeDirectory(routing, { mode: 0o700 });
   const environment: NodeJS.ProcessEnv = {
     ...inherited,
+    NODEX_AGENT_SHELL: "1",
+    NODEX_OPENCODE_CLI_ROUTING: routing,
     OPENCODE_CONFIG_CONTENT: JSON.stringify({
       ...config,
       ...(generation === "v1"

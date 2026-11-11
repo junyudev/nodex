@@ -176,7 +176,7 @@ const harness = (input: {
     input.workspace ??
     ({
       admitToolOperation: () => Effect.die("Unexpected application tool admission"),
-      issueAgentAttribution: () => Effect.die("Unexpected Agent attribution"),
+      recordAgentRun: () => Effect.die("Unexpected Agent attribution"),
       read: () => Effect.die("Unexpected Core read"),
       apply: () => Effect.die("Unexpected Core apply"),
     } as CoreModuleClients["workspace"]);
@@ -336,7 +336,7 @@ it.effect("persists a validated same-thread profile before canonical and remote 
     let stored = coreThread();
     const workspace: CoreModuleClients["workspace"] = {
       admitToolOperation: () => Effect.die("Unexpected application tool admission"),
-      issueAgentAttribution: () => Effect.die("Unexpected Agent attribution"),
+      recordAgentRun: () => Effect.die("Unexpected Agent attribution"),
       read: () => Effect.succeed({ value: { kind: "thread", thread: stored } } as never),
       apply: (operation) =>
         Effect.sync(() => {

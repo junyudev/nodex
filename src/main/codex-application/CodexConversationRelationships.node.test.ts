@@ -128,7 +128,7 @@ const buildRelationships = Effect.fn("CodexConversationRelationshipsTest.build")
   };
   const workspace: CoreModuleClients["workspace"] = {
     admitToolOperation: () => Effect.die("Unexpected application tool admission"),
-    issueAgentAttribution: () => Effect.die("Unexpected Agent attribution"),
+    recordAgentRun: () => Effect.die("Unexpected Agent attribution"),
     read: (read) => {
       if (read.kind === "thread") {
         return Effect.succeed({

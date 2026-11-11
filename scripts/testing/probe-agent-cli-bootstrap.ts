@@ -12,7 +12,7 @@ import {
   bindNodexCliShell,
 } from "../../src/main/platform/node/NodexCliShell";
 import { buildNodexCliBootstrap } from "../../src/main/platform/node/NodexCliBootstrap";
-import { withCoreScenario } from "../scenarios/harness/core-scenario-harness";
+import { withAgentCliScenario } from "../scenarios/harness/agent-cli-gateway";
 import { prepareNativeArtifacts, preparedNativeEnvironment } from "./native-artifacts";
 
 const withPinnedShell = async (
@@ -133,7 +133,7 @@ const main = async () => {
   });
   Object.assign(process.env, preparedNativeEnvironment(prepared));
   const defaults = Effect.runSync(MainConfig.pipe(Effect.provide(testLayer())));
-  await withCoreScenario({ scenarioId: "library/files" }, async (scenario) => {
+  await withAgentCliScenario({ scenarioId: "library/files" }, async (scenario, issue) => {
     await prepareNodexCliShell(scenario.profile.nodexHome);
     const bootstrap = await Effect.runPromise(
       buildNodexCliBootstrap(
@@ -143,16 +143,14 @@ const main = async () => {
           projectRootPath: resolve("."),
           nodexHome: scenario.profile.nodexHome,
         },
-        scenario.runtime.identity,
         {
           threadId: "probe-task",
           hostId: "local",
-          projectId: scenario.manifest.projectId,
-          agentAttribution: null,
+          scopedConnection: await issue("probe-task"),
         },
       ),
     );
-    assert.ok(bootstrap.value.includes("Use nodex directly"), bootstrap.value);
+    assert.ok(bootstrap.value.includes("Run nodex for content work"), bootstrap.value);
     const prefix = "nodex";
     const env = {
       PATH: nodexCliShellPaths(scenario.profile.nodexHome).bin,
@@ -179,9 +177,7 @@ const main = async () => {
           nodexHome: scenario.profile.nodexHome,
           threadId: started.thread.id,
           executable: resolve("target/debug/nodex"),
-          profileId: scenario.runtime.identity.profileId,
-          projectId: scenario.manifest.projectId,
-          agentAttribution: null,
+          scopedConnection: await issue(started.thread.id),
         });
         assert.equal((await shell(started.thread.id, "command -v nodex")).trim(), "nodex");
         const nativeContext = JSON.parse(
@@ -198,19 +194,24 @@ const main = async () => {
         assert.equal(context.exitCode, 0, context.stderr);
         assert.equal(JSON.parse(context.stdout).result.project.id, scenario.manifest.projectId);
         await scenario.withStoppedCore(async () => {
-          const restarted = await command({
+          const unavailable = await command({
             command: ["/bin/sh", "-c", `${prefix} --json context`],
             cwd: scenario.profile.runRoot,
             env,
-
-            timeoutMs: 60_000,
           });
-          assert.equal(restarted.exitCode, 0, restarted.stderr);
-          const nextContext = JSON.parse(restarted.stdout).result;
-          assert.equal(nextContext.profile.id, scenario.runtime.identity.profileId);
-          assert.equal(nextContext.project.id, scenario.manifest.projectId);
-          assert.notEqual(nextContext.core.pid, JSON.parse(context.stdout).result.core.pid);
+          assert.equal(unavailable.exitCode, 2, unavailable.stderr);
+          assert.equal(JSON.parse(unavailable.stdout).error.code, "CORE_UNAVAILABLE");
         });
+        const restarted = await command({
+          command: ["/bin/sh", "-c", `${prefix} --json context`],
+          cwd: scenario.profile.runRoot,
+          env,
+        });
+        assert.equal(restarted.exitCode, 0, restarted.stderr);
+        const nextContext = JSON.parse(restarted.stdout).result;
+        assert.equal(nextContext.profile.id, scenario.runtime.identity.profileId);
+        assert.equal(nextContext.project.id, scenario.manifest.projectId);
+        assert.notEqual(nextContext.core.pid, JSON.parse(context.stdout).result.core.pid);
         const page = scenario.manifest.pageIdsByKey.sharedImageA;
         const full = await command({
           command: [

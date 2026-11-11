@@ -1993,7 +1993,7 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
 
 fn result_revision(path: &[&str]) -> u32 {
     match path {
-        ["search"] | ["page", "file", "read"] => 2,
+        ["context"] | ["search"] | ["page", "file", "read"] => 2,
         ["read"] | ["data-source", _] | ["sql", _] | ["page", "properties", "prepare-batch"] => 2,
         _ => 1,
     }
@@ -2022,6 +2022,14 @@ fn machine_help_for(
                 errors.push(code);
             }
         }
+    }
+    if matches!(metadata.effect, CommandEffect::Read | CommandEffect::Write) {
+        errors.extend([
+            "AGENT_TURN_ENDED",
+            "AGENT_SESSION_UNAVAILABLE",
+            "AGENT_GENERATION_CHANGED",
+            "AGENT_BINDING_MALFORMED",
+        ]);
     }
     MachineHelp {
         schema_version: MACHINE_HELP_SCHEMA_VERSION,

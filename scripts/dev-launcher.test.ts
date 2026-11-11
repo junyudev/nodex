@@ -149,11 +149,23 @@ describe("dev launcher", () => {
     ]);
     const plan = createDevLaunchPlan({
       arguments: parsed,
-      environment: {},
+      environment: {
+        NODEX_AGENT_SHELL: "1",
+        NODEX_AGENT_PROFILE_HOME: "/outer",
+        NODEX_CLI_TASK_ID: "outer",
+        NODEX_CLI_TURN_ID: "outer-turn",
+        NODEX_BOUND_TURN: "outer-turn",
+        PATH: "/outer/runtime/agent-cli/bin:/usr/bin",
+      },
       home: HOME,
       platform: "darwin",
       architecture: "arm64",
     });
+    expect(plan.environment.NODEX_AGENT_SHELL).toBeUndefined();
+    expect(plan.environment.NODEX_CLI_TASK_ID).toBeUndefined();
+    expect(plan.environment.NODEX_CLI_TURN_ID).toBeUndefined();
+    expect(plan.environment.NODEX_BOUND_TURN).toBeUndefined();
+    expect(plan.environment.PATH).toBe("/usr/bin");
     expect(plan.mode).toBe("hmr");
     expect(plan.preparation).toContainEqual(
       vitePlusCommand(["run", "build:agent-runtime", "--development"]),

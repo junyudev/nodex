@@ -9,18 +9,12 @@ import * as Effect from "effect/Effect";
 import { describe, expect, test } from "vite-plus/test";
 import { MainConfig, testLayer } from "../../app/MainConfig";
 import { requiredNativeExecutable } from "../../../../scripts/testing/native-artifacts";
-import { withCoreScenario } from "../../../../scripts/scenarios/harness/core-scenario-harness";
-import {
-  buildAgentRuntimeCliContext,
-  buildNodexCliBootstrap,
-  type NodexCliTaskContext,
-} from "./NodexCliBootstrap";
-import type { NodexAgentTurnContext } from "../../../shared/nodex-agent-authority";
+import { withAgentCliScenario } from "../../../../scripts/scenarios/harness/agent-cli-gateway";
+import { buildNodexCliBootstrap, type NodexCliTaskContext } from "./NodexCliBootstrap";
 import {
   nodexCliShellLaunchArgs,
   nodexCliShellPaths,
   prepareNodexCliShell,
-  bindNodexCliShell,
   shellQuote,
 } from "./NodexCliShell";
 
@@ -44,12 +38,6 @@ const runShell = (command: string, options: ExecFileOptions) => {
     },
   );
 };
-const commandPrefix = (context: string) =>
-  process.platform === "win32"
-    ? context
-        .split("including after changing directories: ")[1]!
-        .split(". Read the bundled Skill")[0]!
-    : context.split("For shell content work, use ")[1]!.split(" followed by the command")[0]!;
 const shellPath = (bin: string) =>
   [
     bin,
@@ -61,204 +49,20 @@ const shellPath = (bin: string) =>
 const task: NodexCliTaskContext = {
   threadId: "thread-a",
   hostId: "local",
-  projectId: "project",
-  agentAttribution: null,
+  scopedConnection: { endpoint: "http://127.0.0.1:10000", credential: "fixture" },
 };
-const identity = { profileId: "profile:test", libraryId: "library:test", storeEpoch: "epoch:test" };
 const config = Effect.runSync(
   MainConfig.pipe(Effect.provide(testLayer({ platform: process.platform }))),
 );
 
 describe("Nodex per-Turn CLI connection", () => {
-  test("routes Agent shell work through the exact build, Profile and Project", async () => {
-    const root = await mkdtemp(join(tmpdir(), "nodex runtime ' "));
-    try {
-      const bin = join(root, "bin");
-      const skill = join(root, ".generated/official-agent-skills/skills/nodex");
-      await mkdir(bin, { recursive: true });
-      await mkdir(skill, { recursive: true });
-      await copyFile(requiredNativeExecutable("cli"), join(bin, cliName));
-      await copyFile(
-        requiredNativeExecutable("core-server"),
-        join(bin, process.platform === "win32" ? "nodex-core.exe" : "nodex-core"),
-      );
-      await copyFile(resolve("agent-skills/nodex/SKILL.md"), join(skill, "SKILL.md"));
-      await withCoreScenario({ scenarioId: "library/files" }, async (current) => {
-        const selected = {
-          ...config,
-          projectRootPath: root,
-          nodexHome: current.profile.nodexHome,
-          environment: { NODEX_CORE_EXECUTABLE: join(bin, "nodex-core") },
-        };
-        const authority: NodexAgentTurnContext = {
-          threadId: "engine:thread",
-          turnId: "run:turn",
-          rootThreadId: "session:root",
-          libraryId: current.runtime.identity.libraryId,
-          storeEpoch: current.runtime.identity.storeEpoch,
-          admittedAtMs: 1,
-
-          actorProjectId: current.manifest.projectId,
-        };
-        const context = await Effect.runPromise(
-          buildAgentRuntimeCliContext(selected, current.runtime.identity, authority, null, null),
-        );
-        expect(context).not.toBeNull();
-        const command = commandPrefix(context!);
-        const result = await runShell(`${command} --json context`, {
-          cwd: tmpdir(),
-          env: { PATH: shellPath(""), NODEX_HOME: join(root, "wrong-profile") },
-        });
-        const actual = JSON.parse(result.stdout).result;
-        expect(actual.profile.id).toBe(current.runtime.identity.profileId);
-        expect(actual.project.id).toBe(current.manifest.projectId);
-        const projectless = await Effect.runPromise(
-          buildAgentRuntimeCliContext(
-            selected,
-            current.runtime.identity,
-            { ...authority, actorProjectId: null },
-            null,
-            null,
-          ),
-        );
-        expect(projectless).not.toBeNull();
-        expect(
-          await Effect.runPromise(
-            buildAgentRuntimeCliContext(
-              {
-                ...selected,
-                environment: { NODEX_CORE_EXECUTABLE: join(root, "missing", "nodex-core") },
-              },
-              current.runtime.identity,
-              authority,
-              "codex-task",
-              null,
-            ),
-          ),
-        ).toContain("unavailable");
-        // A Codex shell names its task, so plain nodex reaches this Profile and Project.
-        await prepareNodexCliShell(current.profile.nodexHome);
-        const bound = await Effect.runPromise(
-          buildAgentRuntimeCliContext(
-            selected,
-            current.runtime.identity,
-            authority,
-            "codex-task",
-            null,
-          ),
-        );
-        expect(bound).toContain("Use nodex directly");
-        const plain = await runShell("nodex context", {
-          cwd: tmpdir(),
-          env: {
-            PATH: shellPath(nodexCliShellPaths(current.profile.nodexHome).bin),
-            CODEX_THREAD_ID: "codex-task",
-            NODEX_HOME: join(root, "wrong-profile"),
-          },
-        });
-        const routed = JSON.parse(plain.stdout).result;
-        expect(routed.profile.id).toBe(current.runtime.identity.profileId);
-        expect(routed.project.id).toBe(current.manifest.projectId);
-      });
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-  test("names the chat whose Agent attached a Page File through the CLI", async () => {
-    const root = await mkdtemp(join(tmpdir(), "nodex attribution ' "));
-    try {
-      const bin = join(root, "bin");
-      const skill = join(root, ".generated/official-agent-skills/skills/nodex");
-      await mkdir(bin, { recursive: true });
-      await mkdir(skill, { recursive: true });
-      await copyFile(requiredNativeExecutable("cli"), join(bin, cliName));
-      await copyFile(
-        requiredNativeExecutable("core-server"),
-        join(bin, process.platform === "win32" ? "nodex-core.exe" : "nodex-core"),
-      );
-      await copyFile(resolve("agent-skills/nodex/SKILL.md"), join(skill, "SKILL.md"));
-      await writeFile(join(root, "report.html"), "<h1>Cold start</h1>");
-      await withCoreScenario({ scenarioId: "library/files" }, async (current) => {
-        const selected = {
-          ...config,
-          projectRootPath: root,
-          nodexHome: current.profile.nodexHome,
-          environment: { NODEX_CORE_EXECUTABLE: join(bin, "nodex-core") },
-        };
-        const projectId = current.manifest.projectId;
-        const pageId = current.manifest.pageIdsByKey.sharedImageA!;
-        const chat = await current.seed.createRelatedChat({
-          projectId,
-          relatedPageIds: [pageId],
-          noThreadFallbackTitle: "Dashboard cold start",
-        });
-        const authority: NodexAgentTurnContext = {
-          threadId: "engine:thread",
-          turnId: "run:turn",
-          rootThreadId: "session:root",
-          libraryId: current.runtime.identity.libraryId,
-          storeEpoch: current.runtime.identity.storeEpoch,
-          admittedAtMs: 1,
-          actorProjectId: projectId,
-        };
-        const attach = async (credential: string | null, path: string) => {
-          const context = await Effect.runPromise(
-            buildAgentRuntimeCliContext(
-              selected,
-              current.runtime.identity,
-              authority,
-              null,
-              credential,
-            ),
-          );
-          const command = commandPrefix(context!);
-          const { revision } = await current.seed.readPageFileInventory(projectId, pageId);
-          await runShell(
-            `${command} --json page file put '${pageId}' --path ${path} --from report.html --if-manifest ${revision}`,
-            { cwd: root, env: { PATH: shellPath("") } },
-          );
-          const inventory = await current.seed.readPageFileInventory(projectId, pageId);
-          return inventory.files.find((item) => item.logical_path === path)?.attachment;
-        };
-
-        const identity = await current.runtime.rootClient.libraryRead({ kind: "local_member" });
-        if (identity.value.kind !== "local_member") throw new Error("Member identity required");
-        const memberId = identity.value.value.id;
-        const credential = await current.runtime.rootClient.issueAgentAttribution({
-          session_id: chat.sessionId,
-          backend: "claude",
-        });
-        expect(await attach(credential, "profile/report.html")).toMatchObject({
-          attached_by: {
-            type: "agent",
-            session_id: chat.sessionId,
-            run_id: null,
-            on_behalf_of: memberId,
-          },
-        });
-        // Without Nodex's credential, the same command cannot name a chat.
-        expect(await attach(null, "profile/external.html")).toMatchObject({
-          attached_by: { type: "member", member_id: memberId },
-        });
-        await expect(
-          current.runtime.rootClient.issueAgentAttribution({
-            session_id: "missing-session",
-            backend: "codex",
-          }),
-        ).rejects.toThrow();
-      });
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
   test("withholds the connection outside verified local execution and when artifacts are missing", async () => {
     for (const [override, reason] of [
       [{ hostId: "remote" }, "remote execution host"],
       [{}, "unavailable"],
     ] as const) {
       const result = await Effect.runPromise(
-        buildNodexCliBootstrap(config, identity, { ...task, ...override }),
+        buildNodexCliBootstrap(config, { ...task, ...override }),
       );
       expect(result.kind).toBe("application");
       expect(result.value).toContain(reason);
@@ -280,8 +84,8 @@ describe("Nodex per-Turn CLI connection", () => {
         join(bin, process.platform === "win32" ? "nodex-core.exe" : "nodex-core"),
       );
       await copyFile(resolve("agent-skills/nodex/SKILL.md"), join(skillRoot, "SKILL.md"));
-      await withCoreScenario({ scenarioId: "library/files" }, async (first) => {
-        await withCoreScenario({ scenarioId: "library/files" }, async (second) => {
+      await withAgentCliScenario({ scenarioId: "library/files" }, async (first, issueFirst) => {
+        await withAgentCliScenario({ scenarioId: "library/files" }, async (second, issueSecond) => {
           await prepareNodexCliShell(first.profile.nodexHome);
           await prepareNodexCliShell(second.profile.nodexHome);
           const otherProject = await first.seed.createProject({
@@ -305,16 +109,16 @@ describe("Nodex per-Turn CLI connection", () => {
             });
           await Promise.all([
             Effect.runPromise(
-              buildNodexCliBootstrap(firstConfig, first.runtime.identity, {
+              buildNodexCliBootstrap(firstConfig, {
                 ...task,
-                projectId: first.manifest.projectId,
+                scopedConnection: await issueFirst(task.threadId),
               }),
             ),
             Effect.runPromise(
-              buildNodexCliBootstrap(firstConfig, first.runtime.identity, {
+              buildNodexCliBootstrap(firstConfig, {
                 ...task,
                 threadId: "thread-b",
-                projectId: otherProject.id,
+                scopedConnection: await issueFirst("thread-b", otherProject.id),
               }),
             ),
           ]);
@@ -382,19 +186,19 @@ describe("Nodex per-Turn CLI connection", () => {
             JSON.parse((await runContext("spawned-child", task.threadId)).stdout).result.project.id,
           ).toBe(first.manifest.projectId);
           await Effect.runPromise(
-            buildNodexCliBootstrap(firstConfig, first.runtime.identity, {
+            buildNodexCliBootstrap(firstConfig, {
               ...task,
               threadId: "spawned-child",
-              projectId: otherProject.id,
+              scopedConnection: await issueFirst("spawned-child", otherProject.id),
             }),
           );
           expect(
             JSON.parse((await runContext("spawned-child", task.threadId)).stdout).result.project.id,
           ).toBe(otherProject.id);
           await Effect.runPromise(
-            buildNodexCliBootstrap(firstConfig, first.runtime.identity, {
+            buildNodexCliBootstrap(firstConfig, {
               ...task,
-              projectId: first.manifest.projectId,
+              scopedConnection: await issueFirst(task.threadId),
             }),
           );
           expect(JSON.parse((await runContext(task.threadId)).stdout).result.project.id).toBe(
@@ -407,7 +211,7 @@ describe("Nodex per-Turn CLI connection", () => {
             stderr: expect.stringContaining("unavailable"),
           });
           await expect(runContext("../thread-b")).rejects.toMatchObject({
-            stderr: expect.stringContaining("no valid task binding"),
+            stderr: expect.stringContaining("AGENT_BINDING_MALFORMED"),
           });
           for (const [current, projectId] of [
             [first, first.manifest.projectId],
@@ -423,17 +227,21 @@ describe("Nodex per-Turn CLI connection", () => {
                   nodexHome: current.profile.nodexHome,
                   environment: { NODEX_CORE_EXECUTABLE: join(bin, "nodex-core") },
                 },
-                current.runtime.identity,
-                { ...task, projectId },
+                {
+                  ...task,
+                  scopedConnection: await (current === first ? issueFirst : issueSecond)(
+                    task.threadId,
+                    projectId,
+                  ),
+                },
               ),
             );
-            expect(entry.value).toContain("Use nodex directly");
-            expect(entry.value).toContain(shellQuote(projectId));
+            expect(entry.value).toContain("Run nodex for content work");
             expect(entry.value).toContain(shellQuote(join(skillRoot, "SKILL.md")));
             const env = {
               PATH: shellPath(nodexCliShellPaths(current.profile.nodexHome).bin),
               CODEX_THREAD_ID: task.threadId,
-              NODEX_HOME: second.profile.nodexHome,
+              NODEX_HOME: current.profile.nodexHome,
             };
             const result = await runShell("nodex --json context", {
               cwd: root,
@@ -443,6 +251,16 @@ describe("Nodex per-Turn CLI connection", () => {
             const context = JSON.parse(result.stdout).result;
             expect(context.profile.id).toBe(current.runtime.identity.profileId);
             expect(context.project.id).toBe(projectId);
+            if (current === first && projectId === first.manifest.projectId) {
+              const alternate = await runShell("nodex --json context", {
+                cwd: root,
+                env: { ...env, NODEX_HOME: second.profile.nodexHome },
+              });
+              expect(JSON.parse(alternate.stdout).result).toMatchObject({
+                profile: { id: second.runtime.identity.profileId, source: "environment" },
+                actor: { type: "member" },
+              });
+            }
             if (projectId === otherProject.id) continue;
             const pageId = current.manifest.pageIdsByKey.sharedImageA;
             const body = await runShell(`nodex read '@${pageId}'`, {
@@ -450,16 +268,8 @@ describe("Nodex per-Turn CLI connection", () => {
               env,
             });
             expect(body.stdout).toContain("Shared image A");
-            await bindNodexCliShell({
-              nodexHome: current.profile.nodexHome,
-              threadId: task.threadId,
-              executable: join(bin, cliName),
-              profileId: "wrong-profile",
-              projectId,
-              agentAttribution: null,
-            });
             const rejected = await runShell(
-              `nodex page rename '${pageId}' --if-match unused 'Unexpected title'`,
+              `nodex --expect-profile wrong-profile page rename '${pageId}' --if-match unused 'Unexpected title'`,
               {
                 cwd: root,
                 env,
@@ -475,16 +285,7 @@ describe("Nodex per-Turn CLI connection", () => {
               details: {
                 expected: "wrong-profile",
                 actual: current.runtime.identity.profileId,
-                home: current.profile.nodexHome,
               },
-            });
-            await bindNodexCliShell({
-              nodexHome: current.profile.nodexHome,
-              threadId: task.threadId,
-              executable: join(bin, cliName),
-              profileId: current.runtime.identity.profileId,
-              projectId,
-              agentAttribution: null,
             });
             const unchanged = await runShell(`nodex read '${pageId}'`, {
               cwd: root,

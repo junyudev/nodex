@@ -723,6 +723,46 @@
         }
       }
     },
+    "/core/v1/agent-runs/record": {
+      "post": {
+        "tags": [
+          "api"
+        ],
+        "operationId": "record_agent_run",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordAgentRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Recorded Agent Run",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/core/v1/blobs/prepare": {
       "post": {
         "tags": [
@@ -3395,13 +3435,6 @@
         "properties": {
           "backend": {
             "$ref": "#/components/schemas/AgentBackendKind"
-          },
-          "message_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Runtime-verified input message; Core derives its Member from acceptance evidence."
           },
           "run_id": {
             "type": [
@@ -12095,6 +12128,10 @@
         "enum": [
           "invalid_input",
           "unauthorized",
+          "agent_turn_ended",
+          "agent_session_unavailable",
+          "agent_generation_changed",
+          "agent_binding_malformed",
           "not_found",
           "ambiguous",
           "conflict",
@@ -55647,6 +55684,34 @@
             "type": "string"
           }
         }
+      },
+      "RecordAgentRunRequest": {
+        "type": "object",
+        "description": "A Runtime-verified Run and the accepted input that opened it.",
+        "required": [
+          "session_id",
+          "run_id",
+          "backend"
+        ],
+        "properties": {
+          "backend": {
+            "$ref": "#/components/schemas/AgentBackendKind"
+          },
+          "message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Core derives the requesting Member from the acceptance evidence."
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "RecoveryBundleContent": {
         "oneOf": [

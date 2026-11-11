@@ -1,3 +1,4 @@
+import { ScopedAgentCore } from "../../host/ScopedAgentCore";
 import { codexLinkedRootSessionFixture } from "../core-client/testing/codex-linked-root-session.test-support";
 import { SessionFolders } from "../agent-backend/SessionFolders";
 import { assert, it } from "@effect/vitest";
@@ -134,6 +135,9 @@ const prepare = (
     }),
     Effect.provideService(MainConfig, {} as MainConfig["Service"]),
     Effect.provideService(CoreAuthority, {} as CoreAuthority["Service"]),
+    Effect.provideService(ScopedAgentCore, {
+      issue: () => Effect.succeed({ endpoint: "http://127.0.0.1:10000", credential: "fixture" }),
+    }),
     Effect.provideService(CoreModules, {
       workspace: {
         read: () =>
@@ -144,7 +148,7 @@ const prepare = (
               projectId: fixture.projectId === undefined ? "project" : fixture.projectId,
             }),
           ),
-        issueAgentAttribution: () => Effect.succeed("permission-session-credential"),
+        recordAgentRun: () => Effect.void,
       },
     } as unknown as CoreModules["Service"]),
     Effect.provideService(CodexAgentConfigRuntime, {
@@ -179,6 +183,7 @@ const prepare = (
     }),
     Effect.provideService(CodexThreadHostResolver, { resolve: () => Effect.succeed("local") }),
     Effect.provideService(CodexGateway, {
+      connection: () => Effect.succeed({ kind: "ready", hostId: "local", generation: 1 }),
       requestForThread: (
         id: string,
         method: string,

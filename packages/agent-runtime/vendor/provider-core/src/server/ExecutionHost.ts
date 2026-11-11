@@ -60,6 +60,14 @@ export interface HostDesktopTools {
 }
 
 /** What a host contributes to a native thread as it starts, resumes or forks. */
+export interface HostCliShell {
+  readonly turnId: string;
+  readonly taskId: string;
+  readonly profileHome?: string;
+  readonly bin: string;
+  readonly skill: string;
+}
+
 export interface HostThreadPreparation {
   readonly config?: Readonly<Record<string, unknown>>;
   readonly environment?: HostWorkspaceEnvironment;
@@ -120,6 +128,7 @@ export class ExecutionHost extends Context.Reference<{
   ) => Effect.Effect<
     {
       readonly instructions?: string;
+      readonly cliShell?: HostCliShell;
       readonly identity?: HostTurnIdentity;
       /** Current Project Sources, resolved by the host after execution admission. */
       readonly sourceRoots?: readonly string[];

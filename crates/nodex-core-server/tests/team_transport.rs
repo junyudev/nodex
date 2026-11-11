@@ -3322,7 +3322,7 @@ impl HostedChats {
     }
     fn run_in(&self, session: &str, run: &str, message: &str) {
         let (status, attributed) = self.core.local_request(
-            "/core/v1/agent-attributions",
+            "/core/v1/agent-runs/record",
             self.host_binding(),
             json!({"session_id":session,"run_id":run,"message_id":message,"backend":"codex"}),
         );

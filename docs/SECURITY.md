@@ -232,16 +232,13 @@ in logs and host status. Mode bits and environment scrubbing do not isolate nati
 code running as Core's OS user: it can discover and read that user's private files.
 Use a dedicated host account and a separate Runner identity for OS isolation.
 
-The scoped Agent content audience is loopback-only and checks the captured Turn's
-authority on every request. It forwards bounded content operations through its own
-Native CLI connection and forces the Core-issued Agent attribution and Project
-scope. Caller-supplied connection, execution-priority and attribution headers never
-cross this audience. Administration, enrollment, Host handshake, maintenance and
-credential issuance are refused. Replacing a Turn binding retires the previous
-credential; a changed Core generation also refuses it. Agent CLI connections have
-no private Profile path or local-Core launch fallback. Personal desktop CLI
-bindings retain their local transport. Extracting a host kernel alone does not
-enable serving or remote execution. Treat Pages, repository content, attachments
+The loopback Agent content audience is shared by Desktop and the headless Host.
+It bounds requests and forwards an allowlist of content routes with a Native CLI
+connection, Core-issued attribution and a caller-selected Project in the same
+Profile. Caller-supplied connection, execution-priority and attribution headers
+are discarded. Administration, enrollment, Host handshake, maintenance and
+credential issuance are refused. The shell receives no private Core socket,
+bearer or launch authority. Treat Pages, repository content, attachments
 and provider output as untrusted instructions, never membership authority.
 See [Team Space behavior](product-specs/team-space-behavior.md).
 
@@ -475,23 +472,39 @@ fingerprints are never persisted or sent to the renderer. Credential failures
 retain only a categorical reason. Only same-host HTTPS API pagination is accepted.
 GitHub Source ingestion performs read-only network operations.
 
-## Agent attribution credentials
+## Agent CLI attribution
 
-Content changes name an Agent only through a credential Core issued. When Main
-starts a Turn for a chat it has verified (the proven Session of a runtime
-execution, or the Session that owns a local native Codex task), it asks Core for a
-credential naming that product Session and its backend family. Core issues it only
-to the desktop Host and only for an existing, unarchived Session, signs it with a
-random key that exists only in that Core process, and accepts it for at most seven
-days or until Core restarts. Main gives it only to that task's CLI: the private
-per-task shell binding for Codex, or the command it gives other runtimes. The CLI
-presents it on content requests.
+A provider shell resolves the Host-managed `nodex` command at invocation time.
+The dispatcher reads a private, atomically replaced binding for its Session or
+native task. Each CLI process presents that Turn's gateway grant for its whole
+invocation. The gateway rechecks the exact execution before forwarding and
+retires the previous grant when a Turn replaces it. Calls between Turns fail.
+Claude and locally launched OpenCode pin the shell to the originating Run
+before it can spawn a background job. Codex's shell environment identifies
+the task only. Its dispatcher's lifetime check applies to the CLI process, so a
+new CLI invocation from an earlier Turn's detached shell can acquire the
+current grant while a later Turn of the same task is active. Core still
+attributes the operation to that Session and its eligible Member. Native Codex
+CLI grants are Session-scoped and carry no Run ID. With no active Turn, the
+gateway refuses the call. Process ancestry cannot establish a Turn after the
+operating system reparents a detached shell.
+The Host can reconnect and obtain new Core credentials for the same live Run
+after a Core restart if the Profile, Library and Store epoch still match. An
+invocation already connected to the old generation must reconnect explicitly
+so that a changed generation cannot silently replay a write.
 
-Core verifies every presentation. A missing, altered, expired or foreign
-credential attributes nothing, and the change proceeds as external rather than
-failing. Request JSON never names an actor. A credential identifies a chat for
-provenance; it grants no access beyond what every caller in the Profile already
-has.
+Only the authenticated Host can request Core attribution. Core verifies the
+current Session and derives the Agent Actor and its requesting Member. The
+Runtime records its proven Run and, when available, the exact accepted input
+during Turn preparation. This binds the requesting Member and preserves message
+editing and Run ownership even when the Agent makes no CLI calls.
+The gateway keeps Core’s signed credential private and refreshes it during
+long Turns. An invalid managed binding fails closed for the Host's Profile.
+An explicit `--home` or `NODEX_HOME` selecting another Profile uses that Profile's
+ordinary local Member connection, which `nodex context` reports. A new development
+Host and its Core start independently of the launching Agent’s shell binding.
+A local shell shares its operating-system account’s access. Managed routing
+provides attribution, and removing it drops Agent authorship.
 
 ## Security Controls in Place
 

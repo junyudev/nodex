@@ -215,7 +215,7 @@ fn agent_credentials_freeze_the_run_requester_before_observation() {
     }).unwrap();
     space
         .membership
-        .bind_agent_attribution(
+        .record_agent_run(
             "chat",
             Some("run"),
             Some("message"),
@@ -229,7 +229,7 @@ fn agent_credentials_freeze_the_run_requester_before_observation() {
     }).unwrap();
     space
         .membership
-        .bind_agent_attribution(
+        .record_agent_run(
             "chat",
             Some("run"),
             Some("message"),
@@ -259,11 +259,11 @@ fn agent_credentials_freeze_the_run_requester_before_observation() {
     // message still belongs to Bob, including after a provisional observation.
     space
         .membership
-        .bind_agent_attribution("chat", Some("queued-run"), None, AgentBackendKind::Codex)
+        .record_agent_run("chat", Some("queued-run"), None, AgentBackendKind::Codex)
         .unwrap();
     space
         .membership
-        .bind_agent_attribution(
+        .record_agent_run(
             "chat",
             Some("queued-run"),
             Some("message"),
@@ -276,12 +276,12 @@ fn agent_credentials_freeze_the_run_requester_before_observation() {
     })).unwrap(), Actor::Agent {on_behalf_of,..} if on_behalf_of==bob.member_id)
     );
     assert!(
-        matches!(space.membership.bind_agent_attribution("chat", Some("unknown-run"), Some("unknown-message"), AgentBackendKind::Codex), Err(e) if e.code==StoreErrorCode::MissingDependencies)
+        matches!(space.membership.record_agent_run("chat", Some("unknown-run"), Some("unknown-message"), AgentBackendKind::Codex), Err(e) if e.code==StoreErrorCode::MissingDependencies)
     );
     assert!(
         space
             .membership
-            .bind_agent_attribution("missing", Some("run"), None, AgentBackendKind::Codex)
+            .record_agent_run("missing", Some("run"), None, AgentBackendKind::Codex)
             .is_err()
     );
 }
@@ -341,7 +341,7 @@ fn automation_messages_act_for_their_grant_owner_before_the_run_binds_its_chat()
     ] {
         space
             .membership
-            .bind_agent_attribution("chat", Some(run), Some(message), AgentBackendKind::Acp)
+            .record_agent_run("chat", Some(run), Some(message), AgentBackendKind::Acp)
             .unwrap();
         assert_eq!(on_behalf_of(run), alice.member_id);
     }
@@ -358,7 +358,7 @@ fn automation_messages_act_for_their_grant_owner_before_the_run_binds_its_chat()
         })
         .unwrap();
     assert!(matches!(
-        space.membership.bind_agent_attribution(
+        space.membership.record_agent_run(
             "chat",
             Some("engine:later"),
             Some("automation:message:bound"),

@@ -86,7 +86,7 @@ test("the real Desktop binds plain nodex to its connected Profile and task Proje
       )
       .toBeTruthy();
     expect(threadId, connection).toBeDefined();
-    expect(connection).toContain("Use nodex directly");
+    expect(connection).toContain("Run nodex for content work");
     expect(shellEnvironment?.PATH).toBeDefined();
     const result = await exec("/bin/zsh", ["-lc", "nodex context"], {
       cwd: harness.profile.runRoot,
@@ -97,6 +97,11 @@ test("the real Desktop binds plain nodex to its connected Profile and task Proje
       },
     });
     const resolved = JSON.parse(result.stdout).result;
+    expect(resolved.actor).toMatchObject({
+      type: "agent",
+      session_id: expect.any(String),
+      run_id: expect.any(String),
+    });
     expect(resolved.project.id).toBe(manifest.projectId);
     expect(resolved.profile.id).toBe(
       readCoreRuntimeConnection(harness.profile.nodexHome).descriptor.profile_id,

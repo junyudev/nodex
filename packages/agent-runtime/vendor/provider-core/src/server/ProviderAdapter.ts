@@ -448,6 +448,7 @@ export interface ProviderAdapterV2TurnInput {
   readonly hostExecutionIdentity?: import("./ExecutionHost.ts").HostTurnIdentity;
   /** Trusted execution-host context supplied after Turn admission. */
   readonly hostInstructions?: string;
+  readonly hostCliShell?: import("./ExecutionHost.ts").HostCliShell;
   /** Current Project Sources supplied by the host for this admitted Turn. */
   readonly hostSourceRoots?: readonly string[];
   readonly hostOrchestrationInstructions?: string;

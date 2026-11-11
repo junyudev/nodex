@@ -1,3 +1,4 @@
+import { ScopedAgentCore } from "../../host/ScopedAgentCore";
 import { SessionFolders } from "../agent-backend/SessionFolders";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -40,6 +41,7 @@ const prepare = (canonical: CodexCanonicalConversationState | null) =>
     }),
     Effect.provideService(MainConfig, {} as MainConfig["Service"]),
     Effect.provideService(CoreAuthority, {} as CoreAuthority["Service"]),
+    Effect.provideService(ScopedAgentCore, { issue: () => Effect.die("unused") }),
     Effect.provideService(CoreModules, {
       workspace: {
         read: () =>
@@ -49,9 +51,9 @@ const prepare = (canonical: CodexCanonicalConversationState | null) =>
             retryable: false,
             cause: new Error("Core is outside this test"),
           }),
-        issueAgentAttribution: () =>
+        recordAgentRun: () =>
           coreRuntimeError({
-            operation: "workspace.issueAgentAttribution",
+            operation: "workspace.recordAgentRun",
             reason: "operation",
             retryable: false,
             cause: new Error("Core is outside this test"),

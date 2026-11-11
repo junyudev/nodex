@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { inboundTextHash } from "./ChatMessageDelivery";
 import { HostWorkspace } from "../../host/HostWorkspace";
 import { createOperationId } from "../core-runtime/operation-identity";
@@ -28,7 +29,7 @@ import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { createHostedAppToolCaller } from "../app-tools/AppToolCaller";
 import { agentBackendKindOfRuntimeDriver } from "../../shared/agent-backend";
-import { buildAgentRuntimeCliContext } from "../platform/node/NodexCliBootstrap";
+import { buildNodexCliBootstrap, nodexCliShellBinding } from "../platform/node/NodexCliBootstrap";
 import type { AgentRuntimeProcessConnection } from "../platform/node/AgentRuntimeProcess";
 import { make as makeRuntimeAuthority } from "./AgentRuntimeAuthority";
 import type { AgentRuntimeDesktopTools } from "./AgentRuntimeDesktopTools";
@@ -102,6 +103,10 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       options.presentation?.finishRuntimeLease(runtimeId, leaseId);
     }),
   );
+  const shellTaskId = (threadId: string) =>
+    createHash("sha256")
+      .update(JSON.stringify([runtimeId, leaseId, threadId]))
+      .digest("hex");
   const projectIdOf = (value: string) => (value === options.projectlessId ? null : value);
   const isCurrentLease = (identity: {
     readonly runtimeId: string;
@@ -243,14 +248,14 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         : [];
     if (presentation) yield* presentation.observe(proof);
     const base = `You are working in Nodex Session ${sessionId}. Use the Nodex application tools for content operations.`;
-    // Core vouches for this verified execution, so the CLI's changes name this chat.
+    // Record the verified opening input before the provider can act or request approval.
     const backend = agentBackendKindOfRuntimeDriver(driverOf(proof.providerInstanceId));
     if (!backend) return yield* unavailable("turn.actor");
     const inputMessage = yield* connection.request("thread.run-message", {
       threadId: proof.threadId,
       runId: proof.runId,
     });
-    const agentAttribution = yield* core.workspace.issueAgentAttribution({
+    yield* core.workspace.recordAgentRun({
       session_id: sessionId,
       run_id: proof.runId,
       ...(inputMessage?.id === proof.userMessageId && inputMessage.createdBy === "user"
@@ -258,34 +263,58 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         : {}),
       backend,
     });
+    const driver = driverOf(proof.providerInstanceId);
+    const nativeId =
+      identity.nativeThreadRef?.driver === "codex" ? identity.nativeThreadRef.nativeId : null;
+    const taskId = nativeId ?? shellTaskId(proof.threadId);
+    const providerConfig = options.providers[proof.providerInstanceId]?.config;
+    const serverUrl =
+      typeof providerConfig === "object" && providerConfig !== null && "serverUrl" in providerConfig
+        ? providerConfig.serverUrl
+        : undefined;
+    const externalOpenCode = typeof serverUrl === "string" && serverUrl.trim() !== "";
+    const supportsCli =
+      nativeId !== null || driver === "claudeAgent" || (driver === "opencode" && !externalOpenCode);
     const scopedConnection =
-      scopedCore && agentAttribution
+      scopedCore && supportsCli
         ? yield* scopedCore.issue({
-            owner: proof.threadId,
+            owner: taskId,
+            identity: coreAuthority.identity,
             projectId: context.actorProjectId,
-            attribution: agentAttribution,
-            authorize: authorize(identity).pipe(
-              Effect.map(
-                ({ proof }) =>
-                  proof.status === "starting" ||
-                  proof.status === "running" ||
-                  proof.status === "waiting",
-              ),
-              Effect.orElseSucceed(() => false),
-            ),
+            attribution: {
+              session_id: sessionId,
+              run_id: proof.runId,
+              backend,
+            },
+            authorize: Effect.gen(function* () {
+              const current = yield* readProof(identity).pipe(Effect.orElseSucceed(() => null));
+              if (current === null) return "turn_ended" as const;
+              if (current.archived) return "session_unavailable" as const;
+              if (
+                current.status !== "starting" &&
+                current.status !== "running" &&
+                current.status !== "waiting"
+              )
+                return "turn_ended" as const;
+              const binding = yield* authorizeExecution(
+                current,
+                projectIdOf(current.projectId),
+              ).pipe(Effect.orElseSucceed(() => null));
+              if (binding?.sessionId !== sessionId) return "session_unavailable" as const;
+              const holds = yield* effectiveHolds(core, { kind: "session", session_id: sessionId });
+              return open && holds.length === 0 ? ("allowed" as const) : ("turn_ended" as const);
+            }).pipe(Effect.orElseSucceed(() => "turn_ended" as const)),
           })
         : undefined;
-    if (scopedCore && !scopedConnection) return yield* unavailable("scoped-agent-core");
-    const cli = yield* buildAgentRuntimeCliContext(
-      config,
-      coreAuthority.identity,
-      context,
-      identity.nativeThreadRef?.driver === "codex"
-        ? (identity.nativeThreadRef.nativeId ?? null)
-        : null,
-      agentAttribution,
-      scopedConnection,
-    );
+    const cli = scopedConnection
+      ? yield* buildNodexCliBootstrap(config, {
+          threadId: taskId,
+          hostId: "local",
+          scopedConnection,
+          turnId: proof.runId,
+        }).pipe(Effect.orElseSucceed(() => null))
+      : null;
+    const cliShell = cli?.routed ? nodexCliShellBinding(config, taskId, proof.runId) : undefined;
     const coordinator = yield* core.workspace.read({ kind: "read_coordinator" }, undefined, null);
     const managed = yield* core.workspace.read(
       { kind: "read_managed_session", session_id: sessionId },
@@ -300,7 +329,13 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         : managed.value.kind === "read_managed_session" && managed.value.managed
           ? MANAGED_SESSION_INSTRUCTIONS
           : null;
-    return { instructions: [base, cli, role].filter(Boolean).join("\n\n"), sourceRoots };
+    return {
+      instructions: [base, driver === "opencode" ? null : cli?.value, role]
+        .filter(Boolean)
+        .join("\n\n"),
+      sourceRoots,
+      ...(cliShell ? { cliShell } : {}),
+    };
   });
 
   const execute = Effect.fn("AgentRuntimeHost.execute")(

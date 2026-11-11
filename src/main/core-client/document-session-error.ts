@@ -18,6 +18,10 @@ type CoreError = components["schemas"]["CoreError"];
 const documentErrorCodes = {
   invalid_input: "invalid_document_update",
   unauthorized: "invalid_session",
+  agent_turn_ended: "invalid_session",
+  agent_session_unavailable: "invalid_session",
+  agent_generation_changed: "invalid_session",
+  agent_binding_malformed: "invalid_session",
   not_found: "document_not_found",
   ambiguous: "unknown",
   conflict: "recovery_required",

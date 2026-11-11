@@ -1,3 +1,4 @@
+import * as NativeExecutionPlugin from "../NativeExecutionPlugin.ts";
 import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 /**
  * The OpenCode 2 runtime behind the `opencode` driver. It talks to the
@@ -204,6 +205,7 @@ type Tokens = EventOf<"session.step.ended">["data"]["tokens"];
 
 /** What a turn reports against: a run's own turn, or a subagent session's runless one. */
 interface TurnOwner {
+  readonly hostCliShell?: ExecutionHost.HostCliShell;
   readonly hostExecutionIdentity?: ExecutionHost.HostTurnIdentity;
   readonly appThread: OrchestrationV2AppThread;
   readonly threadId: OrchestrationV2AppThread["id"];
@@ -1564,6 +1566,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       threads.set(childId, child);
       childOwners.set(childId, rootOf(call.state));
       call.child = child;
+      yield* (connection.bindCliShell?.(childId, call.turn.input.hostCliShell) ?? Effect.succeed(false)).pipe(Effect.ignore({ log: true }));
       yield* emit({ type: "app_thread.created", driver, appThread });
       yield* emit({
         type: "provider_thread.updated",
@@ -3497,7 +3500,9 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           );
         if (added) state.mcp = wanted;
       }
+      const cliBound = yield* (connection.bindCliShell?.(sessionId, turnInput.hostCliShell) ?? Effect.succeed(false)).pipe(Effect.orElseSucceed(() => false));
       const instructions = [
+        cliBound ? NativeExecutionPlugin.cliInstruction(turnInput.hostCliShell) : undefined,
         buildRuntimeInstructions({ harness: "OpenCode", model: turnInput.modelSelection.model }),
         state.mcp !== undefined
           ? turnInput.hostOrchestrationInstructions

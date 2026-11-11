@@ -79,7 +79,7 @@ pub(crate) fn requesting_member(
     local_member(c, &context.library_id.0)
 }
 
-/// The first observation or credential captures a Run's requester. Later messages
+/// Turn preparation captures a Run's requester from its accepted input. Later messages
 /// cannot redirect that Run's questions to a different Member.
 pub(crate) fn session_requester(
     c: &Connection,

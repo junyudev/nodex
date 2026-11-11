@@ -1,9 +1,13 @@
 //! CLI and Desktop share Core-owned listener intent and startup restoration.
+
+mod support;
+
+use support::cli_command;
+
 use nodex_core_protocol::client::{CoreClient, connect_or_launch};
 use nodex_platform::{private_fs, test_support::tempdir};
 use serde_json::Value;
 use std::path::Path;
-use std::process::Command;
 use std::time::{Duration, Instant};
 
 struct CoreGuard(u32);
@@ -13,7 +17,7 @@ impl Drop for CoreGuard {
     }
 }
 fn command(home: &Path, args: &[&str]) -> Value {
-    let output = Command::new(env!("CARGO_BIN_EXE_nodex"))
+    let output = cli_command()
         .arg("--json")
         .args(args)
         .env("NODEX_HOME", home)

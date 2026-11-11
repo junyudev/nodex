@@ -169,7 +169,13 @@ test("HTTPS host calls retain each Member's Actor, attention and right to answer
         launch_request_id: "launch:host-members",
       },
     });
-    // Credential issuance wins the race with the first execution observation.
+    // Preparation captures the opening Member before the first observation or CLI call.
+    await host.recordAgentRun({
+      session_id: sessionId,
+      run_id: runId,
+      message_id: workMessageId,
+      backend: "codex",
+    });
     const attribution = await host.issueAgentAttribution({
       session_id: sessionId,
       run_id: runId,
@@ -240,15 +246,20 @@ test("HTTPS host calls retain each Member's Actor, attention and right to answer
       return id;
     };
     const queuedRun = createUuidV7();
-    await host.issueAgentAttribution({
+    await host.recordAgentRun({
       session_id: sessionId,
       run_id: queuedRun,
+      backend: "codex",
+    });
+    await host.recordAgentRun({
+      session_id: sessionId,
+      run_id: queuedRun,
+      message_id: workMessageId,
       backend: "codex",
     });
     const queuedAttribution = await host.issueAgentAttribution({
       session_id: sessionId,
       run_id: queuedRun,
-      message_id: workMessageId,
       backend: "codex",
     });
     const queuedOperation = operation();
@@ -283,6 +294,11 @@ test("HTTPS host calls retain each Member's Actor, attention and right to answer
       },
     });
     const coordinatorRunId = createUuidV7();
+    await host.recordAgentRun({
+      session_id: coordinatorSessionId,
+      run_id: coordinatorRunId,
+      backend: "codex",
+    });
     const coordinatorAttribution = await host.issueAgentAttribution({
       session_id: coordinatorSessionId,
       run_id: coordinatorRunId,
@@ -479,5 +495,27 @@ test("HTTPS host calls retain each Member's Actor, attention and right to answer
     await relay(alice.client, approval, (options) =>
       host.workspaceRead({ kind: "session", session_id: sessionId }, options),
     );
+    await host.spaceRemoveMember({ member_id: bob.identity.member_id });
+    const failure = {
+      status: 404,
+      coreError: {
+        code: "agent_session_unavailable",
+        message:
+          "The Agent Session is archived, missing, or no longer has an eligible Member. Reopen the Session in Nodex or start a new one.",
+      },
+    };
+    await expect(
+      host.issueAgentAttribution({
+        session_id: sessionId,
+        run_id: runId,
+        backend: "codex",
+      }),
+    ).rejects.toMatchObject(failure);
+    await expect(
+      admin.requestJson("GET", "/core/v1/identity", undefined, {
+        ...headers,
+        "x-nodex-agent-attribution": attribution,
+      }),
+    ).rejects.toMatchObject(failure);
   });
 });

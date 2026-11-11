@@ -22,7 +22,7 @@ const harness = () => {
   const identity = { profileId: "profile", libraryId: "library", storeEpoch: "epoch" };
   const workspace: CoreModules["Service"]["workspace"] = {
     admitToolOperation: () => Effect.die("Unexpected application tool admission"),
-    issueAgentAttribution: () => Effect.die("Unexpected Agent attribution"),
+    recordAgentRun: () => Effect.die("Unexpected Agent attribution"),
     read: (read, _options, projectId) =>
       Effect.sync(() => {
         if (read.kind !== "turn_authority")

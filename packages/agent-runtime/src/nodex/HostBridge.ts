@@ -41,6 +41,15 @@ const decodePrepared = Schema.decodeUnknownEffect(
   Schema.Struct({
     instructions: Schema.optional(Schema.String),
     sourceRoots: Schema.optional(Schema.Array(Schema.String)),
+    cliShell: Schema.optional(
+      Schema.Struct({
+        taskId: Schema.String,
+        profileHome: Schema.optional(Schema.String),
+        turnId: Schema.String,
+        bin: Schema.String,
+        skill: Schema.String,
+      }),
+    ),
   }),
 );
 const decodeThreadConfig = Schema.decodeUnknownEffect(
@@ -244,6 +253,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
     return {
       identity,
       ...(result.instructions === undefined ? {} : { instructions: result.instructions }),
+      ...(result.cliShell === undefined ? {} : { cliShell: result.cliShell }),
       ...(result.sourceRoots === undefined ? {} : { sourceRoots: result.sourceRoots }),
     };
   });

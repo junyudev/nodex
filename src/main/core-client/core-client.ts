@@ -47,6 +47,7 @@ import { readCoreRuntimeConnection } from "./runtime-descriptor";
 import { decodeBoundedJson } from "./codec";
 import type {
   AgentAttributionRequest,
+  RecordAgentRunRequest,
   AppToolOperationRequest,
   AppToolOperationIdentity,
   CoreClientPort,
@@ -601,6 +602,19 @@ export class CoreClient implements CoreClientPort {
     return this.#transport.requestJson<boolean>(
       "POST",
       "/core/v1/admin/host/complete",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+
+  async recordAgentRun(
+    input: RecordAgentRunRequest,
+    options: CoreRequestOptions = {},
+  ): Promise<void> {
+    await this.#transport.requestJson(
+      "POST",
+      "/core/v1/agent-runs/record",
       input,
       this.#moduleHeaders(),
       options,

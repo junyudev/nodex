@@ -60,6 +60,7 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
 
 const CONNECTION_HEADER: &str = "x-nodex-connection-id";
 const CONNECTION_BINDING_HEADER: &str = "x-nodex-connection-binding";
+const AGENT_GENERATION_HEADER: &str = "x-nodex-agent-core-generation";
 const PROJECT_HEADER: &str = "x-nodex-project-id";
 
 #[derive(Debug, Error)]
@@ -97,7 +98,7 @@ pub struct CoreClient {
     auth: String,
     connection_id: String,
     connection_binding: String,
-    agent_attribution: Option<String>,
+    pub agent_project_id: Option<String>,
     pub descriptor: RuntimeDescriptor,
     pub handshake: HandshakeResponse,
 }
@@ -198,7 +199,7 @@ impl CoreClient {
             auth,
             connection_id,
             connection_binding: handshake.connection_binding.clone(),
-            agent_attribution: None,
+            agent_project_id: None,
             descriptor,
             handshake,
         })
@@ -235,7 +236,7 @@ impl CoreClient {
             auth: runtime.auth,
             connection_id,
             connection_binding: handshake.connection_binding.clone(),
-            agent_attribution: None,
+            agent_project_id: None,
             descriptor: runtime.descriptor,
             handshake,
         })
@@ -261,6 +262,7 @@ impl CoreClient {
         struct AgentContext {
             descriptor: RuntimeDescriptor,
             handshake: HandshakeResponse,
+            project_id: Option<String>,
         }
         let socket = CoreEndpoint::Agent(address);
         let context: AgentContext =
@@ -277,7 +279,7 @@ impl CoreClient {
             auth: credential.to_owned(),
             connection_id: "scoped-agent-cli".into(),
             connection_binding: context.handshake.connection_binding.clone(),
-            agent_attribution: None,
+            agent_project_id: context.project_id,
             descriptor: context.descriptor,
             handshake: context.handshake,
         })
@@ -287,16 +289,17 @@ impl CoreClient {
         matches!(self.socket, CoreEndpoint::Agent(_))
     }
 
-    /// Presents a Core-issued Agent attribution credential on content requests, so Core
-    /// names that Agent's Session as their author. An invalid credential refuses admission.
-    pub fn attribute_to_agent(&mut self, credential: String) -> Result<(), ClientError> {
-        if !valid_header(&credential) {
-            return Err(ClientError::InvalidRuntime(
-                "Agent attribution credential is invalid".to_owned(),
-            ));
-        }
-        self.agent_attribution = Some(credential);
-        Ok(())
+    pub fn actor(&self) -> Result<nodex_core_contracts::actor::Actor, ClientError> {
+        request_without_body(
+            &self.socket,
+            &self.auth,
+            "/core/v1/identity",
+            &[
+                (CONNECTION_HEADER, &self.connection_id),
+                (CONNECTION_BINDING_HEADER, &self.connection_binding),
+                (AGENT_GENERATION_HEADER, &self.descriptor.start_nonce),
+            ],
+        )
     }
 
     pub fn space_remote_access(
@@ -974,8 +977,8 @@ impl CoreClient {
             (CONNECTION_HEADER, self.connection_id.as_str()),
             (CONNECTION_BINDING_HEADER, self.connection_binding.as_str()),
         ];
-        if let Some(credential) = &self.agent_attribution {
-            headers.push((crate::AGENT_ATTRIBUTION_HEADER, credential.as_str()));
+        if self.is_scoped_agent() {
+            headers.push((AGENT_GENERATION_HEADER, &self.descriptor.start_nonce));
         }
         headers.extend(scope.values);
         request_json(&self.socket, &self.auth, path, request, &headers)
@@ -1015,6 +1018,13 @@ fn connected_stream_request(
         "{method} {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {}\r\nContent-Type: application/octet-stream\r\nContent-Length: {byte_length}\r\nConnection: close\r\n",
         client.auth,
     )?;
+    if client.is_scoped_agent() {
+        write!(
+            stream,
+            "{AGENT_GENERATION_HEADER}: {}\r\n",
+            client.descriptor.start_nonce
+        )?;
+    }
     for (name, value) in [
         (CONNECTION_HEADER, client.connection_id.as_str()),
         (
@@ -1069,7 +1079,7 @@ pub fn connect_or_launch(
         None => discover_core_executable()?,
     };
     let mut child = process::spawn_detached(
-        Command::new(&executable)
+        process::clear_agent_shell_environment(&mut Command::new(&executable))
             .args([
                 "--home",
                 &home.to_string_lossy(),

@@ -10,6 +10,24 @@ pub use unix::*;
 #[cfg(windows)]
 pub use windows::*;
 
+/// A separate Nodex or Core process owns its own Profile and Agent bindings.
+pub fn clear_agent_shell_environment(command: &mut Command) -> &mut Command {
+    for key in [
+        "NODEX_AGENT_ENDPOINT",
+        "NODEX_AGENT_CREDENTIAL",
+        "NODEX_AGENT_SHELL",
+        "NODEX_AGENT_PROFILE_HOME",
+        "NODEX_CLI_TASK_ID",
+        "NODEX_CLI_TURN_ID",
+        "NODEX_BOUND_TURN",
+        "CODEX_THREAD_ID",
+        "CODEX_SESSION_ID",
+    ] {
+        command.env_remove(key);
+    }
+    command
+}
+
 /// One run of a process. Operating systems recycle PIDs, Windows within seconds,
 /// so a PID alone never proves that the process which once held it still runs.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

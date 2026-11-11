@@ -662,6 +662,7 @@ const supervisor = Layer.effectContext(
             entryPath,
             configuration,
             environment,
+            profileHome: config.nodexHome,
             agentRunner: hostPolicy?.agentRunner,
             host,
             productEvent: analytics.recordFromRuntime,

@@ -101,6 +101,11 @@ pub struct BoundEditorHistoryOwner {
 pub enum CoreErrorCode {
     InvalidInput,
     Unauthorized,
+    AgentTurnEnded,
+    AgentSessionUnavailable,
+    AgentGenerationChanged,
+    AgentBindingMalformed,
+
     NotFound,
     Ambiguous,
     Conflict,

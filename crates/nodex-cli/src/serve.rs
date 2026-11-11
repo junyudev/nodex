@@ -26,9 +26,6 @@ use std::{
 
 #[derive(Clone, Debug, PartialEq, Args)]
 pub struct ServeArgs {
-    /// Absolute private home for this team Space.
-    #[arg(long, global = true)]
-    pub home: Option<PathBuf>,
     #[command(subcommand)]
     pub command: ServeCommand,
 }
@@ -218,10 +215,8 @@ fn configuration(home: &Path) -> Result<HostConfiguration, CliError> {
     Ok(config)
 }
 
-pub(crate) fn execute(args: ServeArgs) -> Result<CommandOutput, CliError> {
-    let home = args
-        .home
-        .ok_or_else(|| invalid("serve requires --home <absolute-space-home>"))?;
+pub(crate) fn execute(args: ServeArgs, home: Option<PathBuf>) -> Result<CommandOutput, CliError> {
+    let home = home.ok_or_else(|| invalid("serve requires --home <absolute-space-home>"))?;
     if !home.is_absolute() || private_fs::has_traversal(&home) {
         return Err(invalid("serve requires an absolute home without traversal"));
     }
@@ -619,10 +614,8 @@ fn start(
         .arg(&instance)
         .env("ELECTRON_RUN_AS_NODE", "1")
         .env_remove("NODE_OPTIONS")
-        .env_remove("NODE_PATH")
-        .env_remove("NODEX_AGENT_ENDPOINT")
-        .env_remove("NODEX_AGENT_CREDENTIAL")
-        .env_remove("NODEX_AGENT_ATTRIBUTION");
+        .env_remove("NODE_PATH");
+    nodex_platform::process::clear_agent_shell_environment(&mut command);
     if allow_same_user_agents {
         command.arg("--allow-same-user-agents");
     }

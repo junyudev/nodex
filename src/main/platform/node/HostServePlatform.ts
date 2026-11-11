@@ -1,4 +1,5 @@
 /* @effect-diagnostics asyncFunction:off newPromise:off preferSchemaOverJson:off globalTimers:off -- Bounded native lifecycle/filesystem work is a Node Adapter. */
+import { withoutAgentShell } from "./agent-shell-environment";
 import { spawn } from "node:child_process";
 import { lstat, open, realpath, rename, unlink, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
@@ -82,12 +83,7 @@ export async function openHostLease(input: {
       String(input.pid),
     ],
     {
-      env: {
-        ...input.environment,
-        NODEX_AGENT_ENDPOINT: undefined,
-        NODEX_AGENT_CREDENTIAL: undefined,
-        NODEX_AGENT_ATTRIBUTION: undefined,
-      },
+      env: withoutAgentShell(input.environment),
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     },

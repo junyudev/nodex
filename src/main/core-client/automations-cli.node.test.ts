@@ -60,7 +60,11 @@ describe("Automations CLI over the clock and Inbox owners", () => {
                 env: {
                   ...process.env,
                   NODEX_HOME: context.profile.nodexHome,
-                  NODEX_AGENT_ATTRIBUTION: "",
+                  NODEX_AGENT_ENDPOINT: undefined,
+                  NODEX_AGENT_CREDENTIAL: undefined,
+                  NODEX_CLI_TASK_ID: undefined,
+                  NODEX_CLI_TURN_ID: undefined,
+                  NODEX_AGENT_SHELL: undefined,
                 },
                 cwd: context.profile.runRoot,
               },

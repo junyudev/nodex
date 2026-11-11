@@ -103,6 +103,7 @@ export interface OpenCodeServerConnection {
   readonly version: string;
   readonly exitCode: Effect.Effect<number, never> | null;
   readonly external: boolean;
+  readonly bindCliShell?: NativeExecutionPlugin.ShellRouter;
 }
 
 const OPENCODE_RUNTIME_ERROR_TAG = "OpenCodeRuntimeError";
@@ -881,6 +882,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
         version: server.version,
         exitCode: server.exitCode,
         external: false,
+        ...(environment.NODEX_OPENCODE_CLI_ROUTING === undefined ? {} : { bindCliShell: NativeExecutionPlugin.shellRouter(fileSystem, environment.NODEX_OPENCODE_CLI_ROUTING) }),
       };
     });
   };

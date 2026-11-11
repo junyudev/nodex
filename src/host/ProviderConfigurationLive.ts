@@ -15,6 +15,7 @@ import {
   codexAccountHomeLaunchArgs,
   inspectCodexAccountHome,
 } from "../main/platform/node/CodexAccountHome";
+import { nodexCliPaths } from "../main/platform/node/NodexCliBootstrap";
 import { nodexCliShellLaunchArgs, prepareNodexCliShell } from "../main/platform/node/NodexCliShell";
 import { scenarioAgentRuntimeProjectRoot } from "../main/platform/node/AgentRuntimeEntrypoint";
 import { CodexPlatform, CodexLocalLaunch } from "./ProviderPlatform";
@@ -106,7 +107,7 @@ export const localLaunch = Layer.effect(
     );
     const accountArgs = codexAccountHomeLaunchArgs(codex.accountHome);
     const cliArgs = yield* Effect.tryPromise(() =>
-      prepareNodexCliShell(config.nodexHome, config.platform),
+      prepareNodexCliShell(config.nodexHome, config.platform, nodexCliPaths(config).executable),
     ).pipe(
       Effect.andThen(
         Effect.tryPromise(() =>
