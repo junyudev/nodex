@@ -199,6 +199,8 @@ Each runtime has its own runner; the wrong one fails, or passes, for the wrong r
 
 ### Writing tests
 
+- Write a test for behavior that can break and that types do not already guarantee: state and protocol logic, persistence and migrations, parsing of external formats, permission and scoping guards, race fixes, and the logic a bug fix changed. Skip tests for trivial logic, copy, callback wiring, mock-call mirrors, and props rendered to static markup. A purely visual fix is proven by before/after captures, not a test.
+- Extend before you add: when an existing test or table covers the behavior, add a case there. Test a behavior once, at the cheapest layer that would fail without the change (pure function, then renderer, then Chromium, then Electron integration, then E2E), and do not repeat it in a wrapper or at each call site. E2E is for behavior that crosses process boundaries.
 - Test behavior and domain contracts, not implementation. Avoid source-string checks, long `className` matching, and broad `textContent.includes(...)` unless the string is a real user-visible or accessibility contract.
 - Renderer tests are act-clean: an `act(...)` warning is a failing test. Prefer awaited Testing Library patterns. Wrap low-level events, timers, and gestures in `await act(async () => { ...; await Promise.resolve(); })`, then await the observable outcome, and release gestures in `try/finally`.
 - Let positive waits inherit [shared timeouts](config/test-timeouts.ts). Await observable outcomes and use a test clock for timing behavior. See [test timing lint](docs/LINTING.md#test-timing) for the rules and inline exceptions.
