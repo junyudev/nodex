@@ -606,7 +606,10 @@ import type {
   BrowserUsePolicySnapshot,
 } from "./browser-use-policy";
 import type { ComputerUseSettingsSnapshot, ComputerUseSoundMode } from "./computer-use-settings";
-import type { ChromeControlRuntimeSnapshot } from "./chrome-control-settings";
+import type {
+  ChromeControlRuntimeSnapshot,
+  ChromeControlSettingsAction,
+} from "./chrome-control-settings";
 import type {
   FeedbackUploadParams,
   FeedbackUploadResponse,
@@ -2077,6 +2080,10 @@ export interface IpcApi
   };
   "chrome-control-settings-get": {
     args: [];
+    result: ChromeControlRuntimeSnapshot;
+  };
+  "chrome-control-settings-update": {
+    args: [action: ChromeControlSettingsAction];
     result: ChromeControlRuntimeSnapshot;
   };
   "computer-use-settings-remove-app-approval": {

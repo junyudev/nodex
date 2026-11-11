@@ -537,7 +537,7 @@ skills for both provider controls and execution. See
 
 Main selects the instance's Chrome native host registration authority at startup.
 The host runtime uses that authority to keep disposable Profiles out of the
-user's per-browser registration directories.
+user's browser registration directories and Windows registry.
 
 User-visible availability, placement, focus, visibility, lifecycle, and privacy behavior is specified in [Desktop control surfaces](product-specs/desktop-control-surfaces.md).
 

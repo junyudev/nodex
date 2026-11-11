@@ -9,6 +9,7 @@ const base = {
   isolatedRunId: null,
   hasScenarioHome: false,
   isPackaged: false,
+  platform: "darwin" as const,
   launchMode: undefined,
 };
 
@@ -35,6 +36,24 @@ test.each([
   ["unpackaged direct launch with inherited opt-in", { launchMode: "development" }, "disabled"],
   ["packaged scenario", { isPackaged: true, hasScenarioHome: true }, "disabled"],
   ["Electron scenario", { isPackaged: true, launchMode: "disposable" }, "disposable"],
+  ["Windows packaged personal Profile", { platform: "win32", isPackaged: true }, "production"],
+  [
+    "Windows packaged alternate Profile",
+    { platform: "win32", isPackaged: true, nodexHome: path.resolve("alternate") },
+    "disabled",
+  ],
+  ["Windows development", { platform: "win32", isolatedRunId: "dev" }, "disabled"],
+  [
+    "Windows development opt-in",
+    { platform: "win32", isolatedRunId: "dev", launchMode: "development" },
+    "development",
+  ],
+  ["Windows scenario", { platform: "win32", launchMode: "disposable" }, "disabled"],
+  [
+    "Windows scenario with a development mode",
+    { platform: "win32", isolatedRunId: "dev", hasScenarioHome: true, launchMode: "development" },
+    "disabled",
+  ],
 ] as const)("%s registration ownership", (_label, input, kind) => {
   expect(resolveChromeHostRegistration({ ...base, ...input })).toEqual(
     kind === "disabled"

@@ -2,6 +2,7 @@ import { watch, type FSWatcher } from "node:fs";
 import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
+import type { Duplex } from "node:stream";
 import type {
   BrowserUsePeerAuthorizationResult,
   BrowserUseSocketPeerAuthorizer,
@@ -55,17 +56,29 @@ export interface ChromeExtensionFocusInput {
   readonly tabId: string;
 }
 
+export const WINDOWS_CHROME_PIPE_PREFIX = "codex-browser-use";
+
+export interface WindowsChromePipeTransport {
+  readonly enumerate: (prefix: string, limit: number) => Promise<readonly string[]>;
+  readonly withPeer: <T>(
+    endpoint: string,
+    signal: AbortSignal,
+    use: (stream: Duplex) => Promise<T>,
+  ) => Promise<T>;
+}
+
 export interface ChromeExtensionPipeRegistryOptions {
   readonly authority: ChromeBrowserAuthority;
   /** Restricts discovery to exact socket basenames, primarily for isolated runtime probes. */
   readonly candidateSocketNames?: readonly string[];
   readonly directory?: string;
-  readonly expectedPeerIdentity: ChromeNativeHostPeerIdentity;
+  readonly expectedPeerIdentity?: ChromeNativeHostPeerIdentity;
   readonly healthCheckIntervalMs?: number;
   readonly onDiagnostic?: (diagnostic: { readonly code: string; readonly detail?: string }) => void;
   readonly onSnapshot?: (snapshot: ChromeExtensionPipeRegistrySnapshot) => void;
   readonly requestTimeoutMs?: number;
-  readonly socketPeerAuthorizer: BrowserUseSocketPeerAuthorizer;
+  readonly socketPeerAuthorizer?: BrowserUseSocketPeerAuthorizer;
+  readonly windows?: WindowsChromePipeTransport;
 }
 
 export interface ChromeNativeHostPeerIdentity {
@@ -170,6 +183,72 @@ function isJsonRpcResponse(value: unknown, id: number): value is JsonRpcResponse
 
 let nextRequestId = 1;
 
+async function requestStream(
+  stream: Duplex,
+  method: string,
+  params: Record<string, unknown>,
+  timeoutMs: number,
+  connect?: (send: () => void) => void,
+): Promise<unknown> {
+  const requestId = nextRequestId;
+  nextRequestId = nextRequestId >= Number.MAX_SAFE_INTEGER ? 1 : nextRequestId + 1;
+  const decoder = new BrowserUseNativePipeFrameDecoder();
+  return await new Promise<unknown>((resolve, reject) => {
+    const finish = (outcome: { readonly error?: unknown; readonly result?: unknown }): void => {
+      clearTimeout(timeout);
+      stream.pause();
+      stream.off("data", onData);
+      stream.off("close", onClose);
+      // Keep the error handler through stream teardown. A destroyed native
+      // stream may still complete a pending read or write with an error.
+      if (outcome.error !== undefined) reject(outcome.error);
+      else resolve(outcome.result);
+    };
+    const onClose = () =>
+      finish({ error: new Error("Chrome extension pipe closed before responding") });
+    const timeout = setTimeout(
+      () => finish({ error: new Error("Chrome extension pipe request timed out") }),
+      timeoutMs,
+    );
+    timeout.unref();
+    const onData = (chunk: Buffer) => {
+      try {
+        const responses = decoder
+          .push(chunk)
+          .map((message) => JSON.parse(message) as unknown)
+          .filter((message) => isJsonRpcResponse(message, requestId));
+        if (responses.length === 0) return;
+        if (responses.length !== 1) {
+          throw new Error("Chrome extension pipe returned a duplicate response id");
+        }
+        const response = responses[0]!;
+        if (response.error !== undefined) {
+          const message =
+            isObject(response.error) && typeof response.error.message === "string"
+              ? response.error.message.slice(0, 512)
+              : "Chrome extension pipe request failed";
+          throw new Error(message);
+        }
+        finish({ result: response.result });
+      } catch (error) {
+        finish({ error });
+      }
+    };
+    const send = () =>
+      stream.write(
+        encodeBrowserUseNativePipeFrame(
+          JSON.stringify({ jsonrpc: "2.0", id: requestId, method, params }),
+        ),
+      );
+    stream.on("data", onData);
+    stream.resume();
+    stream.once("error", (error) => finish({ error }));
+    stream.once("close", onClose);
+    if (connect) connect(send);
+    else send();
+  });
+}
+
 async function requestSocket(
   socketPath: string,
   method: string,
@@ -178,71 +257,18 @@ async function requestSocket(
   socketPeerAuthorizer: BrowserUseSocketPeerAuthorizer,
   expectedPeerIdentity: ChromeNativeHostPeerIdentity,
 ): Promise<unknown> {
-  const requestId = nextRequestId;
-  nextRequestId = nextRequestId >= Number.MAX_SAFE_INTEGER ? 1 : nextRequestId + 1;
   const socket = net.createConnection(socketPath);
-  const decoder = new BrowserUseNativePipeFrameDecoder();
-
   try {
-    return await new Promise<unknown>((resolve, reject) => {
-      let settled = false;
-      const finish = (outcome: { readonly error?: unknown; readonly result?: unknown }): void => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        socket.removeAllListeners();
-        if (outcome.error !== undefined) reject(outcome.error);
-        else resolve(outcome.result);
-      };
-      const timeout = setTimeout(
-        () => finish({ error: new Error("Chrome extension pipe request timed out") }),
-        timeoutMs,
-      );
-      timeout.unref();
-
+    return await requestStream(socket, method, params, timeoutMs, (send) =>
       socket.once("connect", () => {
         try {
           authorizeExpectedPeer(socket, socketPeerAuthorizer, expectedPeerIdentity);
-          socket.write(
-            encodeBrowserUseNativePipeFrame(
-              JSON.stringify({ jsonrpc: "2.0", id: requestId, method, params }),
-            ),
-          );
+          send();
         } catch (error) {
-          finish({ error });
+          socket.destroy(error instanceof Error ? error : new Error(String(error)));
         }
-      });
-      socket.on("data", (chunk) => {
-        try {
-          const matchingResponses = decoder
-            .push(chunk)
-            .map((message) => JSON.parse(message) as unknown)
-            .filter((message) => isJsonRpcResponse(message, requestId));
-          if (matchingResponses.length === 0) return;
-          if (matchingResponses.length !== 1) {
-            finish({ error: new Error("Chrome extension pipe returned a duplicate response id") });
-            return;
-          }
-          const response = matchingResponses[0];
-          if (!response) return;
-          if (response.error !== undefined) {
-            const message =
-              isObject(response.error) && typeof response.error.message === "string"
-                ? response.error.message.slice(0, 512)
-                : "Chrome extension pipe request failed";
-            finish({ error: new Error(message) });
-            return;
-          }
-          finish({ result: response.result });
-        } catch (error) {
-          finish({ error });
-        }
-      });
-      socket.once("error", (error) => finish({ error }));
-      socket.once("close", () =>
-        finish({ error: new Error("Chrome extension pipe closed before responding") }),
-      );
-    });
+      }),
+    );
   } finally {
     socket.destroy();
   }
@@ -307,12 +333,14 @@ export class ChromeExtensionPipeRegistry {
   private readonly authority: ChromeBrowserAuthority;
   private readonly candidateSocketNames: ReadonlySet<string> | null;
   private readonly directory: string;
-  private readonly expectedPeerIdentity: ChromeNativeHostPeerIdentity;
+  private readonly expectedPeerIdentity: ChromeNativeHostPeerIdentity | undefined;
   private readonly healthCheckIntervalMs: number;
   private readonly onDiagnostic: NonNullable<ChromeExtensionPipeRegistryOptions["onDiagnostic"]>;
   private readonly onSnapshot: NonNullable<ChromeExtensionPipeRegistryOptions["onSnapshot"]>;
   private readonly requestTimeoutMs: number;
-  private readonly socketPeerAuthorizer: BrowserUseSocketPeerAuthorizer;
+  private readonly socketPeerAuthorizer: BrowserUseSocketPeerAuthorizer | undefined;
+  private readonly windows: WindowsChromePipeTransport | undefined;
+  private windowsStopped = false;
   private directoryWatcher: FSWatcher | null = null;
   private healthCheckTimer: NodeJS.Timeout | null = null;
   private instances: readonly RegisteredChromeExtension[] = [];
@@ -325,6 +353,10 @@ export class ChromeExtensionPipeRegistry {
 
   constructor(options: ChromeExtensionPipeRegistryOptions) {
     this.authority = options.authority;
+    this.windows = options.windows;
+    if (!options.windows && (!options.expectedPeerIdentity || !options.socketPeerAuthorizer)) {
+      throw new Error("Chrome extension peer authorization is unavailable");
+    }
     if (
       (options.candidateSocketNames?.length ?? 0) > MAX_CANDIDATE_SOCKETS ||
       options.candidateSocketNames?.some(
@@ -354,6 +386,7 @@ export class ChromeExtensionPipeRegistry {
   async start(): Promise<ChromeExtensionPipeRegistrySnapshot> {
     if (this.started) return this.snapshot();
     this.started = true;
+    this.windowsStopped = false;
     this.armParentWatcher();
     this.armDirectoryWatcher();
     const snapshot = await this.refresh();
@@ -364,6 +397,7 @@ export class ChromeExtensionPipeRegistry {
 
   stop(): void {
     this.started = false;
+    this.windowsStopped = true;
     this.parentWatcher?.close();
     this.parentWatcher = null;
     this.directoryWatcher?.close();
@@ -415,6 +449,40 @@ export class ChromeExtensionPipeRegistry {
       if (remaining > 0) return remaining;
       throw new Error("Chrome extension focus deadline expired");
     };
+    if (this.windows) {
+      const exactInstance = instance;
+      await this.windows.withPeer(
+        exactInstance.socketPath,
+        AbortSignal.timeout(remainingTimeout()),
+        async (stream) => {
+          const current = parseBackendInfo(
+            await requestStream(
+              stream,
+              "getInfo",
+              { session_id: sessionId, turn_id: "pip-focus" },
+              remainingTimeout(),
+            ),
+            this.authority,
+          );
+          if (
+            !current ||
+            current.extensionInstanceId !== exactInstance.extensionInstanceId ||
+            current.extensionId !== exactInstance.extensionId ||
+            current.family !== exactInstance.family ||
+            this.windowsStopped
+          ) {
+            throw new Error("Chrome extension instance changed before focus");
+          }
+          await requestStream(
+            stream,
+            "focusTab",
+            { session_id: sessionId, tabId: numericTabId },
+            remainingTimeout(),
+          );
+        },
+      );
+      return;
+    }
     await validateSocketPath(this.directory, instance.socketPath);
     const currentInfo = parseBackendInfo(
       await requestSocket(
@@ -422,8 +490,8 @@ export class ChromeExtensionPipeRegistry {
         "getInfo",
         { session_id: sessionId, turn_id: "pip-focus" },
         remainingTimeout(),
-        this.socketPeerAuthorizer,
-        this.expectedPeerIdentity,
+        this.socketPeerAuthorizer!,
+        this.expectedPeerIdentity!,
       ),
       this.authority,
     );
@@ -440,13 +508,13 @@ export class ChromeExtensionPipeRegistry {
       "focusTab",
       { session_id: sessionId, tabId: numericTabId },
       remainingTimeout(),
-      this.socketPeerAuthorizer,
-      this.expectedPeerIdentity,
+      this.socketPeerAuthorizer!,
+      this.expectedPeerIdentity!,
     );
   }
 
   private armDirectoryWatcher(): void {
-    if (!this.started || this.directoryWatcher !== null) return;
+    if (this.windows || !this.started || this.directoryWatcher !== null) return;
     try {
       this.directoryWatcher = watch(this.directory, { persistent: false }, () => {
         this.scheduleWatchedRefresh();
@@ -464,7 +532,7 @@ export class ChromeExtensionPipeRegistry {
   }
 
   private armParentWatcher(): void {
-    if (!this.started || this.parentWatcher !== null) return;
+    if (this.windows || !this.started || this.parentWatcher !== null) return;
     try {
       const expectedName = path.basename(this.directory);
       this.parentWatcher = watch(
@@ -500,7 +568,7 @@ export class ChromeExtensionPipeRegistry {
   }
 
   private updateHealthCheck(active: boolean): void {
-    if (!this.started || !active) {
+    if (!this.started || (!this.windows && !active)) {
       if (this.healthCheckTimer !== null) clearInterval(this.healthCheckTimer);
       this.healthCheckTimer = null;
       return;
@@ -514,48 +582,77 @@ export class ChromeExtensionPipeRegistry {
     this.healthCheckTimer.unref();
   }
 
-  private async refreshUnlocked(): Promise<ChromeExtensionPipeRegistrySnapshot> {
-    let names: string[];
-    try {
-      const directoryStats = await fs.lstat(this.directory);
-      const currentUserId = process.getuid?.();
-      if (
-        !directoryStats.isDirectory() ||
-        directoryStats.isSymbolicLink() ||
-        !isSafeChromeExtensionSocketDirectoryMetadata(directoryStats, currentUserId)
-      ) {
-        throw new Error("Chrome extension socket directory failed ownership checks");
-      }
-      names = (await fs.readdir(this.directory))
-        .filter((name) => this.candidateSocketNames?.has(name) ?? true)
-        .sort()
+  private async candidates(): Promise<readonly string[]> {
+    if (this.windows) {
+      const prefix = "\\\\.\\pipe\\" + WINDOWS_CHROME_PIPE_PREFIX;
+      return [
+        ...new Set(await this.windows.enumerate(WINDOWS_CHROME_PIPE_PREFIX, MAX_CANDIDATE_SOCKETS)),
+      ]
+        .filter(
+          (endpoint) =>
+            endpoint.toLowerCase().startsWith(prefix) &&
+            /^[a-z0-9_.-]*$/iu.test(endpoint.slice(prefix.length)),
+        )
         .slice(0, MAX_CANDIDATE_SOCKETS);
+    }
+    const directoryStats = await fs.lstat(this.directory);
+    const currentUserId = process.getuid?.();
+    if (
+      !directoryStats.isDirectory() ||
+      directoryStats.isSymbolicLink() ||
+      !isSafeChromeExtensionSocketDirectoryMetadata(directoryStats, currentUserId)
+    ) {
+      throw new Error("Chrome extension socket directory failed ownership checks");
+    }
+    return (await fs.readdir(this.directory))
+      .filter((name) => this.candidateSocketNames?.has(name) ?? true)
+      .sort()
+      .slice(0, MAX_CANDIDATE_SOCKETS)
+      .map((name) => path.join(this.directory, name));
+  }
+
+  private async refreshUnlocked(): Promise<ChromeExtensionPipeRegistrySnapshot> {
+    let candidates: readonly string[];
+    try {
+      candidates = await this.candidates();
     } catch (error) {
-      if (isObject(error) && error.code === "ENOENT") return this.replaceInstances([]);
-      this.onDiagnostic({ code: "directory-invalid", detail: safeErrorCode(error) });
+      if (!isObject(error) || error.code !== "ENOENT") {
+        this.onDiagnostic({
+          code: this.windows ? "pipe-enumeration-failed" : "directory-invalid",
+          detail: safeErrorCode(error),
+        });
+      }
       return this.replaceInstances([]);
     }
 
-    const candidates = names.map((name) => path.join(this.directory, name));
     const inspected = await mapConcurrent(candidates, MAX_CONCURRENT_PROBES, async (socketPath) => {
+      const params = { session_id: PROBE_SESSION_ID, turn_id: PROBE_SESSION_ID };
       try {
-        await validateSocketPath(this.directory, socketPath);
-        const info = parseBackendInfo(
-          await requestSocket(
-            socketPath,
-            "getInfo",
-            { session_id: PROBE_SESSION_ID, turn_id: PROBE_SESSION_ID },
-            this.requestTimeoutMs,
-            this.socketPeerAuthorizer,
-            this.expectedPeerIdentity,
-          ),
-          this.authority,
-        );
+        const windows = this.windows;
+        if (!windows) await validateSocketPath(this.directory, socketPath);
+        const response = windows
+          ? await windows.withPeer(
+              socketPath,
+              AbortSignal.timeout(this.requestTimeoutMs),
+              (stream) => requestStream(stream, "getInfo", params, this.requestTimeoutMs),
+            )
+          : await requestSocket(
+              socketPath,
+              "getInfo",
+              params,
+              this.requestTimeoutMs,
+              this.socketPeerAuthorizer!,
+              this.expectedPeerIdentity!,
+            );
+        const info = parseBackendInfo(response, this.authority);
+        if (windows && info && !getChromeBrowserFamily(this.authority, info.family)?.windows)
+          return null;
         return info ? ({ ...info, socketPath } satisfies RegisteredChromeExtension) : null;
       } catch {
         return null;
       }
     });
+    if (this.windows && this.windowsStopped) return this.snapshot();
 
     const instanceCounts = new Map<string, number>();
     for (const instance of inspected) {

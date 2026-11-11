@@ -4,6 +4,7 @@ import { DEFAULT_BROWSER_USE_POLICY } from "../../../shared/browser-use-policy";
 import { DEFAULT_LINK_OPENING_SETTINGS } from "../../../shared/link-opening-settings";
 import { render, settleAsyncRender } from "../../test/dom";
 import { TestQueryProvider } from "../../test/query";
+import * as settingsHost from "@/lib/settings-host-presentation";
 import { BrowserSettingsPage } from "./browser-settings-pages";
 
 beforeEach(() => {
@@ -37,26 +38,33 @@ const capabilities = {
   siteInfo: { available: true, provider: "test" },
 };
 
-function configureInvokeMock(unregistered = false) {
+function configureInvokeMock(
+  unregistered: boolean,
+  chromeSettings?: unknown,
+  updatedChromeSettings?: unknown,
+) {
   invokeMock.mockImplementation(async (channel: string) => {
     if (channel === "browser-profile-capabilities") return capabilities;
     if (channel === "settings:link-opening:get") return DEFAULT_LINK_OPENING_SETTINGS;
     if (channel === "browser-use-policy-get") return DEFAULT_BROWSER_USE_POLICY;
     if (channel === "browser-use-policy-update-modes") return DEFAULT_BROWSER_USE_POLICY;
     if (channel === "browser-use-policy-update-origin-rule") return DEFAULT_BROWSER_USE_POLICY;
+    if (channel === "chrome-control-settings-update") return updatedChromeSettings;
     if (channel === "chrome-control-settings-get") {
-      return {
-        bundleSupported: true,
-        extensionConnected: false,
-        nativeHostInstalled: !unregistered,
-        providerReady: false,
-        reason: unregistered
-          ? "To register with your browsers, launch with vp run dev --register-browser-host."
-          : "Waiting for a supported browser extension",
-        requested: true,
-        revision: 1,
-        status: unregistered ? "registration-disabled" : "extension-disconnected",
-      };
+      return (
+        chromeSettings ?? {
+          bundleSupported: true,
+          extensionConnected: false,
+          nativeHostInstalled: !unregistered,
+          providerReady: false,
+          reason: unregistered
+            ? "To register with your browsers, launch with vp run dev --register-browser-host."
+            : "Waiting for a supported browser extension",
+          requested: true,
+          revision: 1,
+          status: unregistered ? "registration-disabled" : "extension-disconnected",
+        }
+      );
     }
     if (channel === "browser-credentials-list-all") return [];
     if (channel === "browser-contact-info-list") return [];
@@ -73,12 +81,16 @@ function renderBrowser({
   browserDetail = null,
   unregistered = false,
   onOpenBrowserDetail = () => undefined,
+  chromeSettings,
+  updatedChromeSettings,
 }: {
   unregistered?: boolean;
   browserDetail?: "passwords" | "contact-info" | "history" | "extensions" | "downloads" | null;
   onOpenBrowserDetail?: (destination: string, anchor?: string) => void;
+  chromeSettings?: unknown;
+  updatedChromeSettings?: unknown;
 } = {}) {
-  configureInvokeMock(unregistered);
+  configureInvokeMock(unregistered, chromeSettings, updatedChromeSettings);
   return render(
     <TestQueryProvider>
       <BrowserSettingsPage
@@ -186,13 +198,63 @@ test("Windows keeps built-in Browser settings while hiding unsupported host inte
     expect(view.getByRole("button", { name: "Manage Download history" })).toBeTruthy();
     expect(view.queryByRole("button", { name: "Import" })).toBeNull();
     expect(view.queryByText("Profile import")).toBeNull();
-    expect(view.queryByText("Control existing browsers")).toBeNull();
-    expect(
-      invokeMock.mock.calls.some(([channel]) => channel === "chrome-control-settings-get"),
-    ).toBe(false);
     view.unmount();
   } finally {
     if (previousOs === undefined) delete root.dataset.codexOs;
     else root.dataset.codexOs = previousOs;
+  }
+});
+
+test("shows the owner’s manifest and offers explicit takeover and give back on Windows", async () => {
+  const host = vi.spyOn(settingsHost, "readSettingsHostPresentation").mockReturnValue({
+    ...settingsHost.resolveSettingsHostPresentation("win32"),
+    browserControl: true,
+  });
+  const manifestPath = "C:\\Other App\\manifest.json";
+  const token = "2260d48a-1234-4123-a134-5fedccf5a5d9";
+  const current = {
+    bundleSupported: true,
+    extensionConnected: false,
+    nativeHostInstalled: false,
+    providerReady: false,
+    reason: null,
+    requested: true,
+    revision: 1,
+    status: "registration-in-use",
+    windows: {
+      owner: "app",
+      manifestPaths: [manifestPath],
+      takeoverToken: token,
+      canGiveBack: false,
+    },
+  };
+  try {
+    renderBrowser({
+      chromeSettings: current,
+      updatedChromeSettings: {
+        ...current,
+        nativeHostInstalled: true,
+        revision: 2,
+        status: "extension-disconnected",
+        windows: { owner: null, manifestPaths: [], takeoverToken: null, canGiveBack: true },
+      },
+    });
+    await settleAsyncRender();
+    expect(screen.getByText("In use by another app")).toBeTruthy();
+    expect(screen.getByText(manifestPath)).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Use with Nodex" }));
+    });
+    expect(invokeMock).toHaveBeenCalledWith("chrome-control-settings-update", {
+      kind: "takeover",
+      token,
+    });
+    expect(screen.getByText("Waiting for extension")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Give back" }));
+    });
+    expect(invokeMock).toHaveBeenCalledWith("chrome-control-settings-update", { kind: "disable" });
+  } finally {
+    host.mockRestore();
   }
 });

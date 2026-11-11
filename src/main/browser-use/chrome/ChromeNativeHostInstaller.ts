@@ -215,9 +215,10 @@ async function ensureContainedDirectory(
   return current;
 }
 
-async function readAttestedFile(
+export async function readAttestedFile(
   filePath: string,
   expected: { readonly sha256: string; readonly size: number },
+  executable = true,
 ): Promise<Buffer> {
   if (
     !/^[a-f0-9]{64}$/u.test(expected.sha256) ||
@@ -229,7 +230,11 @@ async function readAttestedFile(
   const handle = await fs.open(filePath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
   try {
     const stats = await handle.stat();
-    if (!stats.isFile() || stats.size !== expected.size || (stats.mode & 0o111) === 0) {
+    if (
+      !stats.isFile() ||
+      stats.size !== expected.size ||
+      (executable && (stats.mode & 0o111) === 0)
+    ) {
       throw new Error("Chrome native host does not match its manifest artifact");
     }
     const bytes = await handle.readFile();
@@ -251,7 +256,12 @@ async function syncDirectory(directory: string): Promise<void> {
   }
 }
 
-async function writeAtomically(filePath: string, bytes: Uint8Array, mode: number): Promise<void> {
+export async function writeAtomically(
+  filePath: string,
+  bytes: Uint8Array,
+  mode: number,
+  windows = false,
+): Promise<void> {
   const directory = path.dirname(filePath);
   const temporaryPath = path.join(directory, `.${path.basename(filePath)}.${randomUUID()}.tmp`);
   let handle: fs.FileHandle | null = null;
@@ -266,8 +276,10 @@ async function writeAtomically(filePath: string, bytes: Uint8Array, mode: number
     await handle.close();
     handle = null;
     await fs.rename(temporaryPath, filePath);
-    await fs.chmod(filePath, mode);
-    await syncDirectory(directory);
+    if (!windows) {
+      await fs.chmod(filePath, mode);
+      await syncDirectory(directory);
+    }
   } catch (error) {
     await handle?.close().catch(() => undefined);
     await fs.rm(temporaryPath, { force: true }).catch(() => undefined);
@@ -343,8 +355,13 @@ async function isDangling(target: string): Promise<boolean> {
   }
 }
 
-async function writeJsonAtomically(filePath: string, value: unknown, mode: number): Promise<void> {
-  await writeAtomically(filePath, jsonBytes(value), mode);
+export async function writeJsonAtomically(
+  filePath: string,
+  value: unknown,
+  mode: number,
+  windows = false,
+): Promise<void> {
+  await writeAtomically(filePath, jsonBytes(value), mode, windows);
 }
 
 function stringArray(value: unknown): readonly string[] | null {
@@ -374,7 +391,10 @@ function registryEntryConflicts(
   );
 }
 
-async function readNativeHostRegistry(registryPath: string): Promise<ChromeNativeHostRegistry> {
+async function readNativeHostRegistry(
+  registryPath: string,
+  windows: boolean,
+): Promise<ChromeNativeHostRegistry> {
   let handle: fs.FileHandle;
   try {
     handle = await fs.open(registryPath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
@@ -393,7 +413,7 @@ async function readNativeHostRegistry(registryPath: string): Promise<ChromeNativ
     if (currentUserId !== undefined && stats.uid !== currentUserId) {
       throw new Error(`Chrome native host registry is owned by another user: ${registryPath}`);
     }
-    if ((stats.mode & 0o022) !== 0) {
+    if (!windows && (stats.mode & 0o022) !== 0) {
       throw new Error(`Chrome native host registry is writable by another user: ${registryPath}`);
     }
     const parsed: unknown = JSON.parse(await handle.readFile("utf8"));
@@ -421,11 +441,12 @@ async function readNativeHostRegistry(registryPath: string): Promise<ChromeNativ
   }
 }
 
-async function writeNativeHostRegistry(
+export async function writeNativeHostRegistry(
   registryPath: string,
   entry: ChromeNativeHostRegistryEntry,
+  windows = false,
 ): Promise<void> {
-  const registry = await readNativeHostRegistry(registryPath);
+  const registry = await readNativeHostRegistry(registryPath, windows);
   const entries = [
     ...registry.entries.filter((existing) => !registryEntryConflicts(existing, entry)),
     entry,
@@ -443,7 +464,28 @@ async function writeNativeHostRegistry(
     registryPath,
     { entries, schemaVersion: NATIVE_HOST_REGISTRY_SCHEMA_VERSION },
     0o600,
+    windows,
   );
+}
+
+/** Release this Profile's native-host resources while preserving co-installed entries. */
+export async function removeWindowsChromeNativeHostResources(
+  registryPath: string,
+  runtimeStateHome: string,
+  host: string,
+): Promise<void> {
+  const registry = await readNativeHostRegistry(registryPath, true);
+  const home = path.win32.normalize(runtimeStateHome).toLowerCase();
+  const entries = registry.entries.filter((entry) => {
+    if (!isRecord(entry) || !isRecord(entry.paths) || typeof entry.paths.codexHome !== "string")
+      return true;
+    return (
+      path.win32.normalize(entry.paths.codexHome).toLowerCase() !== home ||
+      !stringArray(entry.nativeHostNames)?.includes(host)
+    );
+  });
+  if (entries.length === registry.entries.length) return;
+  await writeJsonAtomically(registryPath, { ...registry, entries }, 0o600, true);
 }
 
 function stableRuntimeId(parts: readonly string[]): string {
@@ -506,6 +548,87 @@ function requireIdentity(
     throw new Error("Chrome native host code-signing identity does not match the runtime manifest");
   }
   return identity;
+}
+
+export function createChromeNativeHostManifest(
+  authority: ChromeBrowserAuthority,
+  nativeHostPath: string,
+  temporary = false,
+): ChromeNativeHostManifest {
+  return {
+    allowed_origins: authority.extensionIds.map(
+      (extensionId) => `chrome-extension://${extensionId}/`,
+    ),
+    description: temporary ? TEMPORARY_HOST_DESCRIPTION : "ChatGPT browser native messaging host",
+    name: authority.hostName,
+    path: nativeHostPath,
+    type: "stdio",
+  };
+}
+
+export function createChromeNativeHostRegistryEntry(options: {
+  readonly authority: ChromeBrowserAuthority;
+  readonly channel: string;
+  readonly nativeHostPath: string;
+  readonly runtimePaths: ChromeNativeHostRuntimePaths;
+  readonly runtimeStateHome: string;
+  readonly runtimeVersion: string;
+}): ChromeNativeHostRegistryEntry {
+  const {
+    channel,
+    runtimeVersion,
+    nativeHostPath,
+    runtimeStateHome: canonicalRuntimeStateHome,
+  } = options;
+  const extensionBuildChannels = options.authority.hostName.endsWith(".internal")
+    ? [...new Set([channel, "prod"])]
+    : [channel];
+  const registryRuntimePaths: ChromeNativeHostRegistryEntry["paths"] = {
+    browserClientPath: options.runtimePaths.browserClientPath,
+    browserServicePath: options.runtimePaths.browserServicePath,
+    codexCliPath: options.runtimePaths.codexCliPath,
+    codexHome: canonicalRuntimeStateHome,
+    extensionHostPath: nativeHostPath,
+    nodeModuleDirs: options.runtimePaths.nodeModuleDirs,
+    nodePath: options.runtimePaths.nodePath,
+    nodeReplPath: options.runtimePaths.nodeReplPath,
+    resourcesPath: options.runtimePaths.resourcesPath,
+  };
+  const installId = `codex-install-${stableRuntimeId([
+    options.authority.hostName,
+    registryRuntimePaths.resourcesPath,
+    registryRuntimePaths.codexHome,
+  ])}`;
+  const entryId = `codex-runtime-${stableRuntimeId([
+    options.authority.hostName,
+    ...options.authority.extensionIds,
+    channel,
+    runtimeVersion,
+    registryRuntimePaths.extensionHostPath,
+    registryRuntimePaths.codexCliPath,
+    registryRuntimePaths.codexHome,
+    registryRuntimePaths.resourcesPath,
+  ])}`;
+  const updatedAt = new Date().toISOString();
+  return {
+    appServerProtocolVersion: APP_SERVER_PROTOCOL_VERSION,
+    appVersion: runtimeVersion,
+    channel,
+    cliVersion: runtimeVersion,
+    entryId,
+    extensionBuildChannels,
+    extensionIds: options.authority.extensionIds,
+    installId,
+    nativeHostNames: [options.authority.hostName],
+    nativeHostProtocolVersion: NATIVE_HOST_PROTOCOL_VERSION,
+    nativeHostVersion: runtimeVersion,
+    paths: registryRuntimePaths,
+    presence: { lastSeenAt: updatedAt, pid: process.pid, startedAt: updatedAt },
+    proxyHost: "127.0.0.1",
+    proxyPort: 0,
+    schemaVersion: NATIVE_HOST_REGISTRY_SCHEMA_VERSION,
+    updatedAt,
+  };
 }
 
 function defaultCommandReader(command: string, args: readonly string[]): string {
@@ -666,17 +789,11 @@ export async function installChromeNativeHost(
 
   const canonicalHome = await canonicalOwnedRoot(options.homeDirectory, "Chrome user home");
   const manifestPaths = resolveChromeNativeMessagingManifestPaths(canonicalHome, options.authority);
-  const manifest: ChromeNativeHostManifest = {
-    allowed_origins: options.authority.extensionIds.map(
-      (extensionId) => `chrome-extension://${extensionId}/`,
-    ),
-    description: options.temporaryRegistration
-      ? TEMPORARY_HOST_DESCRIPTION
-      : "ChatGPT browser native messaging host",
-    name: options.authority.hostName,
-    path: nativeHostPath,
-    type: "stdio",
-  };
+  const manifest = createChromeNativeHostManifest(
+    options.authority,
+    nativeHostPath,
+    options.temporaryRegistration,
+  );
   const manifestBytes = jsonBytes(manifest);
   const ownedClosure = path.join(canonicalRuntimeStateHome, NATIVE_HOST_CLOSURE_DIRECTORY);
   const existingManifests = await Promise.all(
@@ -709,55 +826,15 @@ export async function installChromeNativeHost(
     canonicalHome,
     canonicalRuntimeStateHome,
   );
-  const extensionBuildChannels = options.authority.hostName.endsWith(".internal")
-    ? [...new Set([channel, "prod"])]
-    : [channel];
-  const registryRuntimePaths: ChromeNativeHostRegistryEntry["paths"] = {
-    browserClientPath: runtimePaths.browserClientPath,
-    browserServicePath: runtimePaths.browserServicePath,
-    codexCliPath: runtimePaths.codexCliPath,
-    codexHome: canonicalRuntimeStateHome,
-    extensionHostPath: nativeHostPath,
-    nodeModuleDirs: runtimePaths.nodeModuleDirs,
-    nodePath: runtimePaths.nodePath,
-    nodeReplPath: runtimePaths.nodeReplPath,
-    resourcesPath: runtimePaths.resourcesPath,
-  };
-  const installId = `codex-install-${stableRuntimeId([
-    options.authority.hostName,
-    registryRuntimePaths.resourcesPath,
-    registryRuntimePaths.codexHome,
-  ])}`;
-  const entryId = `codex-runtime-${stableRuntimeId([
-    options.authority.hostName,
-    ...options.authority.extensionIds,
+  const registryEntry = createChromeNativeHostRegistryEntry({
+    authority: options.authority,
     channel,
+    nativeHostPath,
+    runtimePaths,
+    runtimeStateHome: canonicalRuntimeStateHome,
     runtimeVersion,
-    registryRuntimePaths.extensionHostPath,
-    registryRuntimePaths.codexCliPath,
-    registryRuntimePaths.codexHome,
-    registryRuntimePaths.resourcesPath,
-  ])}`;
-  const updatedAt = new Date().toISOString();
-  const registryEntry: ChromeNativeHostRegistryEntry = {
-    appServerProtocolVersion: APP_SERVER_PROTOCOL_VERSION,
-    appVersion: runtimeVersion,
-    channel,
-    cliVersion: runtimeVersion,
-    entryId,
-    extensionBuildChannels,
-    extensionIds: options.authority.extensionIds,
-    installId,
-    nativeHostNames: [options.authority.hostName],
-    nativeHostProtocolVersion: NATIVE_HOST_PROTOCOL_VERSION,
-    nativeHostVersion: runtimeVersion,
-    paths: registryRuntimePaths,
-    presence: { lastSeenAt: updatedAt, pid: process.pid, startedAt: updatedAt },
-    proxyHost: "127.0.0.1",
-    proxyPort: 0,
-    schemaVersion: NATIVE_HOST_REGISTRY_SCHEMA_VERSION,
-    updatedAt,
-  };
+  });
+  const { entryId, updatedAt } = registryEntry;
   const publishedRegistries: string[] = [];
   const publishedManifests: typeof existingManifests = [];
   const releaseRegistration = async () => {
@@ -773,7 +850,7 @@ export async function installChromeNativeHost(
         }
       }),
       ...publishedRegistries.map(async (registryPath) => {
-        const registry = await readNativeHostRegistry(registryPath);
+        const registry = await readNativeHostRegistry(registryPath, false);
         const entries = registry.entries.filter(
           (entry) =>
             !(

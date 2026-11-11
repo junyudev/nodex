@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import { parseChromeControlSettingsAction } from "../../../shared/chrome-control-settings";
 import { MainConfig } from "../../app/MainConfig";
 import { ChromeControlRuntime } from "../../host-runtime/ChromeControlRuntime";
 import { safeSendToWindow } from "../../ipc-safe-send";
@@ -15,7 +16,7 @@ export class ChromeControlSettingsIpcError extends Schema.TaggedError<ChromeCont
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
 
-/** Read-only settings projection; provider installation and repair remain Main-owned. */
+/** Settings projection and explicit Windows registration actions. */
 export const live: Layer.Layer<
   never,
   never,
@@ -27,7 +28,7 @@ export const live: Layer.Layer<
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
 
-    yield* ipc.handleQuery("chrome-control-settings-get", (event: IpcMainInvokeEvent) =>
+    const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
         try: () =>
           requireTrustedAppRendererSender(
@@ -37,8 +38,25 @@ export const live: Layer.Layer<
           ),
         catch: (cause) =>
           new ChromeControlSettingsIpcError({ operation: "authorize-renderer", cause }),
-      }).pipe(Effect.andThen(chrome.refresh)),
+      });
+    yield* ipc.handleQuery("chrome-control-settings-get", (event) =>
+      authorize(event).pipe(Effect.andThen(chrome.refresh)),
     );
+    const update = chrome.updateWindowsRegistration;
+    if (update) {
+      yield* ipc.handlePlainCommand("chrome-control-settings-update", (event, input: unknown) =>
+        authorize(event).pipe(
+          Effect.andThen(
+            Effect.try({
+              try: () => parseChromeControlSettingsAction(input),
+              catch: (cause) =>
+                new ChromeControlSettingsIpcError({ operation: "parse-action", cause }),
+            }),
+          ),
+          Effect.flatMap(update),
+        ),
+      );
+    }
 
     yield* chrome.changes.pipe(
       Stream.runForEach((change) =>
