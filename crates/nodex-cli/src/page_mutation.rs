@@ -145,6 +145,7 @@ pub(crate) fn set_page_title(
         SemanticWrite::Title {
             title,
             expected_etag: arguments.if_match,
+            suggest_swapped: arguments.file.is_none(),
         },
         &arguments.mutation.r#return,
     )
@@ -275,6 +276,7 @@ enum SemanticWrite {
     Title {
         title: String,
         expected_etag: String,
+        suggest_swapped: bool,
     },
     BlockInsert {
         anchor: DocumentSemanticAnchor,
@@ -335,6 +337,7 @@ impl SemanticWrite {
             Self::Title {
                 title,
                 expected_etag,
+                ..
             } => vec![DocumentSemanticCommand::SetTitle {
                 inline_markdown: title.clone(),
                 expected_etag: expected_etag.clone(),
@@ -480,7 +483,21 @@ fn apply_selected_semantic_write(
             return_fields,
         );
     }
-    let page_id = resolve_page_selector(client, &project.id, page_selector)?;
+    let page_id = resolve_page_selector(client, &project.id, page_selector).map_err(|mut error| {
+        if let SemanticWrite::Title { title, suggest_swapped: true, .. } = &write
+            && error.code == CliErrorCode::ScopeNotFound
+            && let Ok(other) = resolve_page_selector(client, &project.id, title)
+            && let Ok(snapshot) = unwrap_library(client.library_read(
+                Some(&project.id),
+                LibraryRead::PageLifecyclePreflight { page_id: other },
+            ))
+            && matches!(snapshot.value, LibraryReadValue::PageLifecyclePreflight { value }
+                if value.page.as_ref().is_some_and(|page| page.lifecycle == "active"))
+        {
+            error.message.push_str(". The arguments look swapped. Use `nodex page rename PAGE TITLE --if-match ETAG`.");
+        }
+        error
+    })?;
     apply_semantic_write(
         client,
         &project.id,
