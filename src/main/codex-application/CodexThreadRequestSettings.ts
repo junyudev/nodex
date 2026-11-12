@@ -5,7 +5,7 @@ import type { CodexPersonality } from "../../shared/types";
 import {
   buildCodexDesktopDeveloperInstructions,
   buildCodexThreadDeveloperInstructions,
-} from "../codex/codex-developer-instructions";
+} from "../../shared/codex-developer-instructions";
 import { buildCodexDesktopThreadFeatureConfig } from "../codex/codex-thread-config";
 import { CodexGateway, type CodexGatewayRequestOptions } from "../codex-runtime/CodexGateway";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
