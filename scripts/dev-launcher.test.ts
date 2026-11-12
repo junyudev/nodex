@@ -155,7 +155,8 @@ describe("dev launcher", () => {
         NODEX_CLI_TASK_ID: "outer",
         NODEX_CLI_TURN_ID: "outer-turn",
         NODEX_BOUND_TURN: "outer-turn",
-        PATH: "/outer/runtime/agent-cli/bin:/usr/bin",
+        // The Host composes this with the machine's own separators.
+        PATH: [path.join("/outer", "runtime", "agent-cli", "bin"), "/usr/bin"].join(path.delimiter),
       },
       home: HOME,
       platform: "darwin",
