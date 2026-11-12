@@ -2,10 +2,11 @@ use std::env;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
+use tokio::time::Instant;
 
 const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
@@ -226,28 +227,27 @@ fn invalid_idle_timeout(reason: &str) -> io::Error {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::AtomicUsize;
-
     use super::*;
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn idle_monitor_resets_the_full_period_after_activity() {
         let coordinator = LifecycleCoordinator::new();
-        let checks = Arc::new(AtomicUsize::new(0));
-        let observed = Arc::clone(&checks);
+        let mut checks = 0;
         let task = tokio::spawn(monitor_idle(
             coordinator.clone(),
             Duration::from_millis(60),
             move || {
-                let check = observed.fetch_add(1, Ordering::AcqRel);
-                check != 2
+                checks += 1;
+                checks != 3
             },
         ));
         tokio::time::sleep(Duration::from_millis(80)).await;
         assert!(!coordinator.is_draining());
-        tokio::time::sleep(Duration::from_millis(80)).await;
+        tokio::time::timeout(Duration::from_millis(80), task)
+            .await
+            .expect("Core drains after the renewed idle period")
+            .expect("idle monitor");
         assert!(coordinator.is_draining());
-        task.await.expect("idle monitor");
     }
 
     #[tokio::test]
