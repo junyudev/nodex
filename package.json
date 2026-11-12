@@ -238,7 +238,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@effect/platform-node": "4.0.6",
-    "@effect/tsgo": "0.59.0",
+    "@effect/tsgo": "0.67.1",
     "@effect/vitest": "4.0.6",
     "@electron/osx-sign": "2.7.2",
     "@excalidraw/excalidraw": "0.18.1",
