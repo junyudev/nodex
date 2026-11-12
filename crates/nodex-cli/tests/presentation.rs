@@ -2,7 +2,9 @@ mod support;
 
 use support::cli_command;
 
-use std::process::{Command, Output, Stdio};
+#[cfg(target_os = "macos")]
+use std::process::Command;
+use std::process::{Output, Stdio};
 
 use serde_json::Value;
 

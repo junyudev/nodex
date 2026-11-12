@@ -239,6 +239,7 @@ pub(crate) fn claim_admitted(
     }
     Ok((leases, expired))
 }
+#[allow(clippy::too_many_arguments)]
 pub(super) fn settle(
     connection: &Connection,
     context: &nodex_core_contracts::BoundModuleContext,

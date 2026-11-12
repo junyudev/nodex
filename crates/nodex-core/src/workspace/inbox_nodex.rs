@@ -286,7 +286,7 @@ pub(in crate::workspace) fn apply(
                     library,
                     context,
                     operation,
-                    &[page_id.clone()],
+                    std::slice::from_ref(page_id),
                     "done",
                     false,
                     &mut effects,
