@@ -133,6 +133,13 @@ Inbox that Space has, the other linked Spaces, and Settings.
   accepts at most 16 MiB of photos in total; an oversized batch is refused before upload.
   Retrying an upload keeps the same File reference. An upload never changes an existing File: if that File has since been edited or removed
   on the desktop, the photo becomes a new one.
+- Nodex is a destination when another app shares text, a link, a web page or up to six photos:
+  as `Nodex` among the apps and as `Add to Nodex Inbox` among the actions on iPhone, and as
+  `Nodex` in Android's share sheet. Sharing opens Nodex with the content in the current Space's
+  Inbox Composer: words and links after anything already written there, photos beside them.
+  Nothing is sent until the person sends it, so they can add a note or choose another Inbox first.
+  Sharing before a Space is linked keeps the content for the first one linked. Documents, video
+  and audio are not offered Nodex, because an Inbox message carries only text and photos.
 - An intake row with routing advice offers one decision labeled by what it does, such as `Start chat`.
   Accepting authorizes the suggestion the phone is showing; a suggestion that changed since then is
   refused rather than applied. A suggestion to set a message aside shows its return time or
