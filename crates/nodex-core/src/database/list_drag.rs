@@ -467,7 +467,7 @@ pub(crate) fn chosen_group_axes<'a>(
         graph.occurrence(key),
         Some(DatabaseListProjectionRow::Group { .. })
     ))
-    .then(|| normalized.subgroup_key.as_deref());
+    .then_some(normalized.subgroup_key.as_deref());
     (group, subgroup)
 }
 
