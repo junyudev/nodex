@@ -39,6 +39,7 @@ export function windowsDesktopToolConformanceCandidate(
     throw new Error(`Unsupported Windows Desktop Tool architecture: ${arch}`);
   const lock = readBrowserRuntimeReleaseLock(resolveBrowserRuntimeReleaseLockPath(repositoryRoot));
   const asset = lock.assets[`win32-${arch}`];
+  if (!asset) throw new Error(`Desktop Tool runtime is unavailable for win32-${arch}`);
   const pair = {
     appServer: asset.appServer,
     browser: {

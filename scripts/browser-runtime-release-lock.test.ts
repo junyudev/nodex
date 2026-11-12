@@ -65,6 +65,18 @@ describe("parseBrowserRuntimeReleaseLock", () => {
     expect(() => parseBrowserRuntimeReleaseLock(lock)).toThrow("must contain exactly darwin-arm64");
   });
 
+  test("records Windows targets with no verified runtime", () => {
+    const lock = makeLock();
+    const assets = lock.assets as Record<string, unknown>;
+    assets["win32-x64"] = null;
+    assets["win32-arm64"] = null;
+
+    const parsed = parseBrowserRuntimeReleaseLock(lock);
+    expect(parsed.assets["win32-x64"]).toBeNull();
+    expect(parsed.assets["win32-arm64"]).toBeNull();
+    expect(parsed.assets["darwin-arm64"].url).not.toBeNull();
+  });
+
   test("rejects non-HTTPS release assets", () => {
     const lock = makeLock();
     const assets = lock.assets as Record<string, Record<string, unknown>>;
@@ -86,6 +98,8 @@ describe("parseBrowserRuntimeReleaseLock", () => {
     for (const target of BROWSER_RUNTIME_RELEASE_TARGETS) {
       const [targetPlatform, targetArch] = target.split("-");
       const asset = browserLock.assets[target];
+      if (!asset) continue;
+      expect(asset.url).not.toBeNull();
       const appServer = {
         entrypointSha256: agentLock.builds[target].entrypointSha256,
         protocolSchemaFingerprint: agentLock.protocolSchema.sha256,
@@ -101,7 +115,6 @@ describe("parseBrowserRuntimeReleaseLock", () => {
         targetArch,
         targetPlatform,
       };
-      expect(asset.url).not.toBeNull();
       if ("appServer" in asset) expect(asset.appServer).toEqual(appServer);
       expect(isTestedBrowserAppServerPair(appServer, browser)).toBe(true);
     }

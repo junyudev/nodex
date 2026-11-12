@@ -123,7 +123,12 @@ jobs:
           DESKTOP_TOOLS_ARCH: ${{ matrix.arch }}
         run: |
           $lock = Get-Content -Raw resources/browser-runtime/browser-runtime.lock.json | ConvertFrom-Json -AsHashtable
-          if ($null -eq $lock.assets["win32-$env:DESKTOP_TOOLS_ARCH"].url) {
+          $asset = $lock.assets["win32-$env:DESKTOP_TOOLS_ARCH"]
+          if ($null -eq $asset) {
+            "Desktop Tools ($env:DESKTOP_TOOLS_ARCH): skipped: no conformance-tested runtime" >> $env:GITHUB_STEP_SUMMARY
+            exit 0
+          }
+          if ($null -eq $asset.url) {
             "Desktop Tools ($env:DESKTOP_TOOLS_ARCH): skipped: candidate assets" >> $env:GITHUB_STEP_SUMMARY
             exit 0
           }

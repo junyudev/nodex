@@ -112,11 +112,11 @@ The Windows package omits macOS bridges and helpers, Sparkle, native PiP, and th
 Python workspace runtime.
 
 The Desktop Tool lock pins each Windows archive independently. Windows staging
-downloads a published asset and stages its exact closure. An unpublished
-candidate (`url: null`) leaves the entire closure out, even if a previous build
-staged it. The installer still works and Desktop Tools report unavailable. CI
-reports `skipped: candidate assets` for that CPU. A failed published download or
-an incomplete closure fails the build. For local candidate inspection,
+downloads a published asset and stages its exact closure. A null asset entry or
+an unpublished candidate (`url: null`) leaves the closure out and removes any
+previously staged copy. The installer still works and Desktop Tools report
+unavailable. The installed-app probe reports `skipped: no published runtime` for
+that CPU. A failed published download or an incomplete closure fails the build. For local candidate inspection,
 `materialize-browser-runtime.ts --target-platform win32 --target-arch <arch>`
 accepts `--archive` or a digest-addressed `--cache`.
 

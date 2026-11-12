@@ -34,6 +34,8 @@ through the Nodex launcher, negotiates MCP, lists tools, calls `js`, and checks
 that the launcher and observed job processes exit. The installed receipt records
 the number of verified vendor signatures and closed processes. A candidate
 without a download URL reports `skipped: candidate assets` in the job summary.
+A null Windows asset entry reports that no conformance-tested runtime is available.
+Neither case exercises the vendor runtime.
 
 Before publication, run the same staged vendor check on each matching Windows
 worker with the approved local candidate archive. In a disposable checkout,

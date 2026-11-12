@@ -6,6 +6,23 @@
 export const TESTED_BROWSER_APP_SERVER_PAIRS = Object.freeze([
   Object.freeze({
     appServer: Object.freeze({
+      entrypointSha256: "97bc82fd46f117cf10efb95e6ff0c81dc4784f5797bcdc2cb75093ba09e4def0",
+      protocolSchemaFingerprint: "6fa0fe27be2847f726cb5b4a361bf2033455ee22e52124751e7e18d079b0c4fd",
+      runtimeVersion: "0.167.2",
+      sourceCommit: "ce21072c90d32c40af7a55b60b2fb35c84a43a6a",
+      targetArch: "arm64",
+      targetPlatform: "darwin",
+    }),
+    browser: Object.freeze({
+      browserPluginVersion: "26.1103.60933",
+      manifestSha256: "ff41f0236459ab8b433d9b4a937ac8da8603466841824781a40bdcdcc3bbd635",
+      peerCliVersion: "0.167.0-alpha.3.2",
+      targetArch: "arm64",
+      targetPlatform: "darwin",
+    }),
+  }),
+  Object.freeze({
+    appServer: Object.freeze({
       entrypointSha256: "39acf979729dd290f9a24ee38b2914e036c91b65952872e28ae2a6b88a7db7c1",
       protocolSchemaFingerprint: "8261ecaf2cf5a159d1f02e84df9b6404a47d047116412f20d08df71192d27491",
       runtimeVersion: "0.166.0",

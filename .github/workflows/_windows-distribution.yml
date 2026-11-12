@@ -97,8 +97,8 @@ jobs:
             'passed' {
               "Desktop Tools ($env:DESKTOP_TOOLS_ARCH): installed REPL passed, $($probe.desktopTools.signedImages) vendor signatures verified, $($probe.desktopTools.processesClosed) processes closed" >> $env:GITHUB_STEP_SUMMARY
             }
-            'skipped: candidate assets' {
-              "Desktop Tools ($env:DESKTOP_TOOLS_ARCH): skipped: candidate assets" >> $env:GITHUB_STEP_SUMMARY
+            'skipped: no published runtime' {
+              "Desktop Tools ($env:DESKTOP_TOOLS_ARCH): skipped: no published runtime" >> $env:GITHUB_STEP_SUMMARY
             }
             default { throw 'Missing installed Desktop Tool conformance result' }
           }

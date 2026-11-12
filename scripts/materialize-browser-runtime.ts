@@ -228,6 +228,7 @@ export async function materializeBrowserRuntime(
   const targetKey = browserRuntimeTargetKey(options.targetPlatform, options.targetArch);
   if (!targetKey) throw new Error("Unsupported Desktop Tool release target");
   const asset = lock.assets[targetKey];
+  if (!asset) throw new Error(`Desktop Tool runtime is unavailable for ${targetKey}`);
   const outputPath = path.resolve(options.outputPath);
   const reusable = readReusableSource({
     asset,

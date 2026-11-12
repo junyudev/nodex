@@ -50,8 +50,8 @@ async function stageCodex(target: DesktopBuildTarget, cached: boolean): Promise<
     ".generated/browser-runtime-source",
     target.platform === "darwin" ? target.arch : `win32-${target.arch}`,
   );
-  const stageDesktopTools =
-    target.platform === "darwin" || browserLock().assets[target.key].url !== null;
+  const browserAsset = browserLock().assets[target.key];
+  const stageDesktopTools = target.platform === "darwin" || Boolean(browserAsset?.url);
   if (stageDesktopTools) {
     await materializeBrowserRuntime({
       outputPath: browserSource,
@@ -62,7 +62,8 @@ async function stageCodex(target: DesktopBuildTarget, cached: boolean): Promise<
   if (!stageDesktopTools) {
     // Cached Agent runtime staging does not own the optional Desktop Tool subtree.
     rmSync(stagedDesktopTools, { recursive: true, force: true });
-    process.stdout.write(`Desktop Tools (${target.key}): skipped: candidate assets\n`);
+    const reason = browserAsset ? "candidate assets" : "no conformance-tested runtime";
+    process.stdout.write(`Desktop Tools (${target.key}): skipped: ${reason}\n`);
   }
   await stageCodexRuntime({
     targetPlatform: target.platform,
@@ -141,7 +142,7 @@ async function main(): Promise<void> {
     }
     if (
       target.platform === "win32" &&
-      existsSync(stagedDesktopTools) !== (browserLock().assets[target.key].url !== null)
+      existsSync(stagedDesktopTools) !== Boolean(browserLock().assets[target.key]?.url)
     )
       throw new Error(
         "Staged Desktop Tool presence does not match the release lock. Restage the native runtime.",
