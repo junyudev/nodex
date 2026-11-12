@@ -2,7 +2,7 @@ import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2/ThreadItem"
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
-import { codexImageInputSource } from "../../shared/codex-image-input";
+import { codexHostedFileSource } from "../../shared/codex-image-input";
 import { stripCodexRemarkDirectiveLines } from "../../shared/codex-remark-directives";
 import type { CodexTranscriptEntry, CodexUserAttachment } from "../../shared/types";
 import {
@@ -87,10 +87,10 @@ const formatRawArchiveContent = (value: unknown): string | null => {
   const type = nonEmptyString(item.type);
   if (type === "text") return nonEmptyString(item.text);
   if (type === "image" || type === "localImage" || type === "audio" || type === "localAudio") {
-    const fileId = type === "image" ? nonEmptyString(item.fileId) : null;
+    const fileId = type === "image" || type === "audio" ? nonEmptyString(item.fileId) : null;
     const source =
       nonEmptyString(item.url) ??
-      (fileId ? codexImageInputSource({ type: "image", fileId }) : null) ??
+      (fileId ? codexHostedFileSource(fileId) : null) ??
       nonEmptyString(item.path) ??
       nonEmptyString(item.source);
     return source ? `${type}: ${source}` : null;
@@ -145,9 +145,10 @@ const formatProtocolUserMessage = (
         return text ? [text] : [];
       }
       case "image":
-        return [`image: ${codexImageInputSource(entry)}`];
       case "audio":
-        return [`${entry.type}: ${entry.url}`];
+        return [
+          `${entry.type}: ${"url" in entry ? entry.url : codexHostedFileSource(entry.fileId)}`,
+        ];
       case "localImage":
       case "localAudio":
         return [`${entry.type}: ${entry.path}`];

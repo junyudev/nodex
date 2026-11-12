@@ -123,7 +123,7 @@ const makePagedHistory = (input: {
   return makeHistoryPageAdapter.pipe(Effect.provideService(CodexGateway, gateway));
 };
 
-it.effect("retains hosted image references in projected and native archive excerpts", () =>
+it.effect("retains hosted media references in projected and native archive excerpts", () =>
   Effect.gen(function* () {
     const item = {
       type: "userMessage",
@@ -132,10 +132,12 @@ it.effect("retains hosted image references in projected and native archive excer
       content: [
         { type: "text", text: "Inspect this image", text_elements: [] },
         { type: "image", fileId: "file_image" },
+        { type: "audio", fileId: "file_audio" },
       ],
     } satisfies ThreadItem;
     const expected = {
-      archivedUserMessage: "Inspect this image\nimage: file-service://file_image",
+      archivedUserMessage:
+        "Inspect this image\nimage: file-service://file_image\naudio: file-service://file_audio",
       archivedAssistantMessage: null,
     };
     const projected = resolveAutomationArchiveMessagesFromTranscript([

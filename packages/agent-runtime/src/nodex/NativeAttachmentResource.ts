@@ -48,16 +48,14 @@ export function nativeSessionMediaResources(item: ThreadItem): readonly NativeMe
             resource: { name: basename(part.path), source: part.path },
           },
         ];
-      if (part.type === "image")
+      if (part.type === "image" || part.type === "audio")
         return [
           {
             id,
-            media: "image",
-            resource: "url" in part ? { name: "Attached image", source: part.url } : null,
+            media: part.type,
+            resource: "url" in part ? { name: `Attached ${part.type}`, source: part.url } : null,
           },
         ];
-      if (part.type === "audio")
-        return [{ id, media: "audio", resource: { name: "Attached audio", source: part.url } }];
       return [];
     });
   if (item.type === "dynamicToolCall")
