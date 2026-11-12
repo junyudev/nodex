@@ -39,10 +39,15 @@ The Host supervises each installed plugin MCP server through a broker. The broke
 owns local process launch or remote connections, credentials, and shutdown. It
 can share an upstream where the installation revision, server, Project scope,
 and credential principal permit it. Each Agent Session or MCP App view gets
-its own authenticated, revocable Plugin server lease. The broker derives access
+its own authenticated, revocable Plugin server lease. The first authenticated
+HTTP connection binds the bearer. A lease expires after eight hours by default,
+with a maximum lifetime configurable at issuance. The broker derives access
 from the verified caller and current Plugin activation. Disabling or uninstalling
 revokes affected leases before runtime cleanup, so a cached tool list cannot
 authorize a new call. An MCP App view can use this authority without an Agent Session.
+
+For Agent delivery, calls already dispatched may finish after revocation. New calls
+fail, and results from in-flight calls are withheld from the revoked Session.
 
 ### Codex delivery
 
@@ -73,6 +78,12 @@ The adapter registers broker endpoints through the SDK's `setMcpServers` control
 channel. On revocation, Nodex revokes the leases and resumes the Session in a
 fresh query with the current Project's skills and servers before the next turn.
 See the [Claude Agent SDK reference](https://code.claude.com/docs/en/agent-sdk/typescript).
+
+### Duplicate native installations
+
+The Nodex copy takes precedence inside Nodex threads. Nodex disables the native
+copy for that thread when the backend can do so safely. Otherwise Nodex shows
+the conflict and lets the person choose.
 
 ### Deferred contributions
 
