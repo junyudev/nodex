@@ -23,6 +23,8 @@ export interface PluginStoreCommit {
     readonly installationId: string;
   };
   readonly deleteData?: string;
+  /** Notify the runtime under the writer fence, after commit and before cleanup. */
+  readonly onCommit?: Effect.Effect<void>;
 }
 
 /** The registry replacement is the commit point for a staged generation. */

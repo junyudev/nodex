@@ -67,10 +67,16 @@ export class PluginInstallation extends Context.Service<
   PluginInstallationService
 >()("nodex/host/PluginInstallation") {}
 
+export type PublishPluginInstallation = (
+  id: string,
+  installation: PluginInstallationRecord | null,
+) => Effect.Effect<void>;
+
 export function makePluginInstallation(
   reader: AgentPluginReaderService,
   store: PluginInstallationStore,
   newGeneration: () => string,
+  publishInstallation: PublishPluginInstallation = () => Effect.void,
 ): PluginInstallationService {
   const readPackage = Effect.fnUntraced(function* (directory: string) {
     const result = yield* reader.read(directory);
@@ -116,6 +122,7 @@ export function makePluginInstallation(
         if (!next.ok) return yield* Effect.fail(next.error);
         const cleanupWarnings = yield* store.compareAndSwap(registry.revision, next.registry, {
           publish: { directory: stage, installationId: next.installation.id },
+          onCommit: publishInstallation(next.installation.id, next.installation),
         });
         return { installation: next.installation, cleanupWarnings };
       }),
@@ -156,7 +163,9 @@ export function makePluginInstallation(
     const next = change(registry);
     if (!next.ok) return yield* Effect.fail(next.error);
     if (next.registry !== registry) {
-      const warnings = yield* store.compareAndSwap(registry.revision, next.registry);
+      const warnings = yield* store.compareAndSwap(registry.revision, next.registry, {
+        onCommit: publishInstallation(next.installation.id, next.installation),
+      });
       if (warnings.length > 0) yield* Effect.logWarning("Agent Plugin registry cleanup", warnings);
     }
     return next.installation;
@@ -169,11 +178,10 @@ export function makePluginInstallation(
     const registry = yield* store.read;
     const next = uninstallPluginInstallation(registry, id);
     if (!next.ok) return yield* Effect.fail(next.error);
-    const cleanupWarnings = yield* store.compareAndSwap(
-      registry.revision,
-      next.registry,
-      options?.data === "delete" ? { deleteData: id } : undefined,
-    );
+    const cleanupWarnings = yield* store.compareAndSwap(registry.revision, next.registry, {
+      ...(options?.data === "delete" && { deleteData: id }),
+      onCommit: publishInstallation(id, null),
+    });
     return { installation: next.installation, cleanupWarnings };
   });
 

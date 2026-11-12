@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import { randomUUID } from "node:crypto";
 import {
   cp,
@@ -25,7 +26,10 @@ import {
 import { PORTABLE_1_0_MANIFEST_SCHEMA } from "../../shared/agent-plugins/portable-1.0.0";
 import { makeAgentPluginReader } from "./AgentPluginReader";
 import { packageFilesNode } from "./PackageFilesNode";
-import { makePluginInstallation } from "./PluginInstallation";
+import { testLayer as mainConfig } from "../../main/app/MainConfig";
+import { makePluginInstallation, PluginInstallation } from "./PluginInstallation";
+import { live as pluginInstallationLive } from "./PluginInstallationLive";
+import { PluginMcpBroker } from "./broker";
 import { makePluginInstallationStoreNode } from "./PluginInstallationStoreNode";
 
 const reader = makeAgentPluginReader(packageFilesNode);
@@ -340,4 +344,36 @@ it.effect(
       ).toEqual({ code: "invalid-registry" });
       expect(yield* Effect.promise(() => readFile(file, "utf8"))).toBe(corrupt);
     }).pipe(Effect.scoped),
+);
+
+it.live("revokes an open broker lease when the installation service disables it", () =>
+  Effect.gen(function* () {
+    const { home, source } = yield* testProfile;
+    const digest = yield* previewDigest(source.locator);
+    yield* Effect.gen(function* () {
+      const plugins = yield* PluginInstallation;
+      const broker = yield* PluginMcpBroker;
+      const { installation } = yield* plugins.install(source, digest);
+      yield* plugins.setProjectEnabled(installation.id, project, true);
+      const scope = {
+        installationId: installation.id,
+        generation: installation.activeGeneration,
+        serverKey: "catalog",
+        project,
+        principal: { kind: "agent-session", id: "session" },
+      } as const;
+      const lease = yield* broker.openLease(scope);
+
+      yield* plugins.setEnabled(installation.id, false);
+
+      expect(yield* Effect.flip(broker.listTools(scope, lease))).toMatchObject({
+        code: "invalid_lease",
+      });
+      expect(yield* Effect.flip(broker.openLease(scope))).toMatchObject({
+        code: "server_inactive",
+      });
+    }).pipe(
+      Effect.provide(pluginInstallationLive.pipe(Layer.provide(mainConfig({ nodexHome: home })))),
+    );
+  }),
 );

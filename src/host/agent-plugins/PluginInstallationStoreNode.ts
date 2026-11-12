@@ -184,6 +184,7 @@ async function reclaimWriter(lock: string) {
     const [owner] = owners;
     const pid = Number(/^([1-9]\d*)-[a-f0-9-]{36}$/.exec(owner ?? "")?.[1]);
     if (
+      !owner ||
       owners.length !== 1 ||
       !Number.isSafeInteger(pid) ||
       pid > 0x7fffffff ||
@@ -191,7 +192,7 @@ async function reclaimWriter(lock: string) {
     )
       throw new StoreFailure({ code: "store-busy" });
     // Remove only the observed owner. A replacement lock always contains its own marker.
-    await unlink(path.join(lock, owner!)).catch((cause: unknown) => {
+    await unlink(path.join(lock, owner)).catch((cause: unknown) => {
       if (!hasCode(cause, "ENOENT")) throw cause;
     });
   }
@@ -205,20 +206,25 @@ async function acquireWriter(root: string) {
   const lock = path.join(root, ".writer");
   const owner = process.pid + "-" + randomUUID();
   const candidate = await mkdtemp(path.join(root, ".writer-"));
-  const claim = async () =>
-    rename(candidate, lock).catch(async (cause: unknown) => {
+  const claim = async () => {
+    try {
+      await rename(candidate, lock);
+      return true;
+    } catch (cause) {
       if (!(await directoryAt(lock))) throw cause;
       return false;
-    });
+    }
+  };
   try {
     // Publish the owner and lock atomically so an interrupted claimant never leaves an empty lock.
     await writeFile(path.join(candidate, owner), "", { flag: "wx", mode: 0o600 });
-    if ((await claim()) === false) {
+    if (!(await claim())) {
       await reclaimWriter(lock);
-      if ((await claim()) === false) throw new StoreFailure({ code: "store-busy" });
+      if (!(await claim())) throw new StoreFailure({ code: "store-busy" });
     }
-  } finally {
-    await rm(candidate, { force: true, recursive: true });
+  } catch (cause) {
+    await rm(candidate, { force: true, recursive: true }).catch(() => undefined);
+    throw cause;
   }
   return async () => {
     await unlink(path.join(lock, owner));
@@ -257,56 +263,81 @@ export function makePluginInstallationStoreNode(profileHome: string): PluginInst
     io("discard-stage", () => rm(directory, { force: true, recursive: true }));
 
   const compareAndSwap: PluginInstallationStore["compareAndSwap"] = (expected, next, commit) =>
-    io("publish", async () => {
-      const profile = await home();
-      const root = rootAt(profile);
-      await directoryAt(root, true);
-      const releaseWriter = await acquireWriter(root);
+    Effect.gen(function* () {
+      const { profile, root, releaseWriter } = yield* io("acquire-writer", async () => {
+        const profile = await home();
+        const root = rootAt(profile);
+        await directoryAt(root, true);
+        return { profile, root, releaseWriter: await acquireWriter(root) };
+      });
 
       const warnings: PluginCleanupWarning[] = [];
-      const temporary = path.join(root, ".registry-" + randomUUID());
-      let published: string | undefined;
-      try {
-        const current = await readRegistry(root);
-        if (current.revision !== expected)
-          throw new StoreFailure({ code: "revision-conflict", expected, actual: current.revision });
-        if (next.revision !== expected + 1 || !pluginRegistrySchema.safeParse(next).success)
-          throw new StoreFailure({ code: "invalid-registry" });
+      yield* Effect.gen(function* () {
+        const current = yield* io("publish", async () => {
+          const current = await readRegistry(root);
+          if (current.revision !== expected)
+            throw new StoreFailure({
+              code: "revision-conflict",
+              expected,
+              actual: current.revision,
+            });
+          if (next.revision !== expected + 1 || !pluginRegistrySchema.safeParse(next).success)
+            throw new StoreFailure({ code: "invalid-registry" });
 
-        const publication = nextPublication(root, current, next, commit);
-        await prepareRegistryFile(temporary, next);
-        if (publication) {
-          const { stage, relative } = publication;
-          const destination = path.join(profile, relative);
-          if (!(await directoryAt(stage)))
-            throw new StoreFailure({ code: "store-io", operation: "publish" });
-          await packageParent(profile, relative, true);
-          await rename(stage, destination);
-          published = destination;
-        }
+          const publication = nextPublication(root, current, next, commit);
+          const temporary = path.join(root, ".registry-" + randomUUID());
+          let published: string | undefined;
+          try {
+            await prepareRegistryFile(temporary, next);
+            if (publication) {
+              const { stage, relative } = publication;
+              const destination = path.join(profile, relative);
+              if (!(await directoryAt(stage)))
+                throw new StoreFailure({ code: "store-io", operation: "publish" });
+              await packageParent(profile, relative, true);
+              await rename(stage, destination);
+              published = destination;
+            }
 
-        await rename(temporary, path.join(root, "registry.json"));
-        // Everything after this point is cleanup. Never report a failed publication here.
-        published = undefined;
-        const active = new Set(next.installations.map(pluginPackageDirectory));
-        for (const installation of current.installations) {
-          const directory = pluginPackageDirectory(installation);
-          if (active.has(directory)) continue;
-          await removeGeneration(profile, directory).catch(() =>
-            warnings.push({ kind: "generation", installationId: installation.id }),
-          );
-        }
-        if (commit?.deleteData) {
-          const installationId = commit.deleteData;
-          await removeData(profile, installationId).catch(() =>
-            warnings.push({ kind: "data", installationId }),
-          );
-        }
-      } finally {
-        if (published) await rm(published, { force: true, recursive: true }).catch(() => undefined);
-        await rm(temporary, { force: true }).catch(() => undefined);
-        await releaseWriter().catch(() => warnings.push({ kind: "writer-lock" }));
-      }
+            await rename(temporary, path.join(root, "registry.json"));
+            published = undefined;
+          } finally {
+            if (published)
+              await rm(published, { force: true, recursive: true }).catch(() => undefined);
+            await rm(temporary, { force: true }).catch(() => undefined);
+          }
+          return current;
+        });
+
+        yield* (commit?.onCommit ?? Effect.void).pipe(
+          Effect.ensuring(
+            Effect.promise(async () => {
+              const active = new Set(next.installations.map(pluginPackageDirectory));
+              for (const installation of current.installations) {
+                const directory = pluginPackageDirectory(installation);
+                if (active.has(directory)) continue;
+                await removeGeneration(profile, directory).catch(() =>
+                  warnings.push({ kind: "generation", installationId: installation.id }),
+                );
+              }
+              if (commit?.deleteData) {
+                const installationId = commit.deleteData;
+                await removeData(profile, installationId).catch(() =>
+                  warnings.push({ kind: "data", installationId }),
+                );
+              }
+            }),
+          ),
+        );
+      }).pipe(
+        Effect.ensuring(
+          Effect.promise(() =>
+            releaseWriter().catch(() => {
+              warnings.push({ kind: "writer-lock" });
+            }),
+          ),
+        ),
+      );
       return warnings;
     }).pipe(Effect.uninterruptible);
 
