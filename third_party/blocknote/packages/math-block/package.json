@@ -57,7 +57,7 @@
     "@blocknote/react": "workspace:*",
     "@handlewithcare/prosemirror-inputrules": "^0.1.4",
     "katex": "0.19.1",
-    "prosemirror-model": "^1.25.12",
+    "prosemirror-model": "^1.25.13",
     "prosemirror-state": "^1.4.4",
     "react-icons": "5.7.0"
   },
