@@ -516,7 +516,9 @@ it.live(
         const f = yield* fixture(scenario, {
           NODEX_FAKE_CODEX_ASYNC_QUESTIONS: "1",
           NODEX_FAKE_CODEX_AUTO_COMPLETE_FIRST_TURN: "1",
-          NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS: "1800",
+          // The fake completes every resumed Turn on this delay too; keep it well above
+          // the polling round-trips below so the hand-back lands while the Run is active.
+          NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS: "10000",
         });
         const chat = yield* f.start("Question reply");
         const details = yield* f.runtime
@@ -527,7 +529,7 @@ it.live(
                 result.recentRuns[0]?.status === "completed" && result.pendingRequests.length > 0,
               schedule: Schedule.spaced("20 millis"),
             }),
-            Effect.timeout("15 seconds"),
+            Effect.timeout("30 seconds"),
           );
         const question = details.pendingRequests[0]!;
         const reply =
