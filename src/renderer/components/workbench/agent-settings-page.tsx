@@ -9,6 +9,11 @@ import {
 import { ClaudeAgentSettingsControl } from "./claude-agent-settings-control";
 import { AgentCapacitySettingControl } from "./agent-capacity-setting-control";
 import { DefaultPermissionsSettingControl } from "./default-permissions-setting-control";
+import {
+  ArtifactOpeningSettingRow,
+  EffectiveInstructionsRow,
+  StandingInstructionsRow,
+} from "./agent-instructions-settings-control";
 import { CodexAgentSettingsSection } from "./codex-home-settings-control";
 import { OpenCodeAgentSettingsControl } from "./opencode-agent-settings-control";
 import type { SettingsSectionPageProps } from "./workbench-settings-page-registry";
@@ -35,6 +40,11 @@ export function AgentSettingsPage({ open, settingsAnchor }: SettingsSectionPageP
           >
             <AgentCapacitySettingControl />
           </SettingRow>
+        </SectionBlock>
+        <SectionBlock id="agent-instructions">
+          <ArtifactOpeningSettingRow />
+          <StandingInstructionsRow />
+          <EffectiveInstructionsRow />
         </SectionBlock>
         <CodexAgentSettingsSection open={open} disclosure={disclosure("codex")} />
         <ClaudeAgentSettingsControl open={open} disclosure={disclosure("claude")} />
