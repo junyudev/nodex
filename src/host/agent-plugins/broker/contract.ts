@@ -1,4 +1,5 @@
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
+import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import type * as Effect from "effect/Effect";
 import type {
@@ -57,14 +58,20 @@ export interface PluginMcpBrokerOptions {
   readonly restartBudget?: number;
 }
 
-export interface PluginMcpBroker {
+export interface PluginMcpLeaseOptions {
+  readonly approval?: PluginMcpApproval;
+  /** Maximum lifetime in milliseconds from issuance. Defaults to eight hours. */
+  readonly maxLifetimeMs?: number;
+}
+
+export interface PluginMcpBrokerService {
   readonly publishInstallation: (
     installationId: string,
     installation: PluginMcpInstallation | null,
   ) => Effect.Effect<void>;
   readonly openLease: (
     scope: PluginMcpLeaseScope,
-    approval?: PluginMcpApproval,
+    options?: PluginMcpLeaseOptions,
   ) => Effect.Effect<PluginMcpLease, PluginMcpFailure>;
   readonly revokeLease: (leaseId: string) => Effect.Effect<void>;
   /** Trusted in-process callers supply their own scope as well as the credential. */
@@ -79,3 +86,7 @@ export interface PluginMcpBroker {
     args?: Record<string, unknown>,
   ) => Effect.Effect<CallToolResult, PluginMcpFailure>;
 }
+
+export class PluginMcpBroker extends Context.Service<PluginMcpBroker, PluginMcpBrokerService>()(
+  "nodex/host/PluginMcpBroker",
+) {}

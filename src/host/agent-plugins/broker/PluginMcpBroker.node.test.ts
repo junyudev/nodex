@@ -1,3 +1,5 @@
+import { Agent, request } from "node:http";
+import { text } from "node:stream/consumers";
 import { mkdtemp, mkdir, readFile, rm, copyFile, symlink, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, basename, join } from "node:path";
@@ -6,6 +8,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as TestClock from "effect/testing/TestClock";
 import { it } from "@effect/vitest";
 import { afterEach, expect, vi } from "vitest";
 import type { PluginMcpFailureCode } from "../../../shared/agent-plugins/mcp-lease";
@@ -94,12 +97,45 @@ function httpInstallation(url: string): PluginMcpInstallation {
   };
 }
 
+// A leased client owns one HTTP connection across MCP requests.
+const connectionFetch =
+  (
+    agent: Agent,
+  ): NonNullable<ConstructorParameters<typeof StreamableHTTPClientTransport>[1]>["fetch"] =>
+  (url, init) =>
+    new Promise((resolve, reject) => {
+      const headers = Object.fromEntries(new Headers(init?.headers));
+      const outgoing = request(
+        url,
+        { agent, method: init?.method, headers, signal: init?.signal ?? undefined },
+        (incoming) => {
+          const status = incoming.statusCode ?? 500;
+          const responseHeaders = new Headers();
+          for (const [key, values] of Object.entries(incoming.headersDistinct)) {
+            for (const value of values ?? []) responseHeaders.append(key, value);
+          }
+          void text(incoming).then(
+            (body) => resolve(new Response(body || null, { status, headers: responseHeaders })),
+            reject,
+          );
+        },
+      );
+      outgoing.on("error", reject);
+      if (typeof init?.body === "string") outgoing.end(init.body);
+      else outgoing.end();
+    });
+
 const attach = Effect.fnUntraced(function* (lease: PluginMcpLease) {
+  const agent = yield* Effect.acquireRelease(
+    Effect.sync(() => new Agent({ keepAlive: true, maxSockets: 1 })),
+    (agent) => Effect.sync(() => agent.destroy()),
+  );
   const client = yield* Effect.acquireRelease(
     Effect.sync(() => new Client({ name: "test", version: "1" })),
     (client) => Effect.promise(() => client.close()),
   );
   const transport = new StreamableHTTPClientTransport(new URL(lease.url), {
+    fetch: connectionFetch(agent),
     requestInit: { headers: { Authorization: "Bearer " + lease.bearerToken } },
   });
   yield* Effect.promise(() => client.connect(transport));
@@ -127,12 +163,12 @@ it.live(
           const { root, data, installation } = yield* setupStdio("serve");
           const broker = yield* make();
           yield* broker.publishInstallation(scope.installationId, installation);
-          const lease = yield* broker.openLease(scope, allow);
+          const lease = yield* broker.openLease(scope, { approval: allow });
           const view = {
             ...scope,
             principal: { kind: "interface-view", id: scope.principal.id },
           } as const;
-          const viewLease = yield* broker.openLease(view, allow);
+          const viewLease = yield* broker.openLease(view, { approval: allow });
           expect(
             yield* Effect.promise(() => readFile(join(data, "starts"), "utf8").catch(() => null)),
           ).toBeNull();
@@ -175,7 +211,7 @@ it.live.each(["../outside", "./link"])(
       });
       const broker = yield* make();
       yield* broker.publishInstallation(scope.installationId, installation);
-      const lease = yield* broker.openLease(scope, allow);
+      const lease = yield* broker.openLease(scope, { approval: allow });
       yield* expectFailure(broker.listTools(scope, lease), "invalid_configuration");
     }),
 );
@@ -197,7 +233,7 @@ it.live(
       yield* broker.publishInstallation(scope.installationId, installation);
       yield* expectFailure(broker.openLease(otherProject), "server_inactive");
       yield* expectFailure(broker.openLease(otherSpace), "server_inactive");
-      const lease = yield* broker.openLease(scope, allow);
+      const lease = yield* broker.openLease(scope, { approval: allow });
       yield* expectFailure(broker.listTools(otherProject, lease), "invalid_lease");
       yield* expectFailure(broker.listTools(otherSpace, lease), "invalid_lease");
       const client = yield* attach(lease);
@@ -224,9 +260,12 @@ it.live(
         ...installation,
         activeProjects: [scope.project, otherProject.project],
       });
-      const otherLease = yield* broker.openLease(otherProject, allow);
+      const otherLease = yield* broker.openLease(otherProject, { approval: allow });
       const mismatched = yield* Effect.promise(() =>
-        fetch(otherLease.url, { headers: { Authorization: "Bearer " + lease.bearerToken } }),
+        fetch(otherLease.url, {
+          method: "POST",
+          headers: { Authorization: "Bearer " + lease.bearerToken },
+        }),
       );
       expect(mismatched.status).toBe(401);
       expect(yield* Effect.promise(() => mismatched.json())).toMatchObject({
@@ -240,6 +279,42 @@ it.live(
     }),
 );
 
+it.live("rejects replay of a bound bearer on a different HTTP connection", () =>
+  Effect.gen(function* () {
+    const fixture = yield* httpFixture;
+    const broker = yield* make();
+    yield* broker.publishInstallation(scope.installationId, httpInstallation(fixture.url));
+    const lease = yield* broker.openLease(scope);
+    const client = yield* attach(lease);
+    const replay = yield* Effect.promise(() =>
+      fetch(lease.url, {
+        method: "POST",
+        headers: { Authorization: "Bearer " + lease.bearerToken },
+      }),
+    );
+    expect(replay.status).toBe(401);
+    yield* Effect.promise(() => replay.text());
+    expect((yield* Effect.promise(() => client.listTools())).tools).toHaveLength(2);
+  }),
+);
+
+it.effect("expires leases after the default and per-lease maximum lifetimes", () =>
+  Effect.gen(function* () {
+    const fixture = yield* httpFixture;
+    const broker = yield* make();
+    yield* broker.publishInstallation(scope.installationId, httpInstallation(fixture.url));
+    yield* expectFailure(broker.openLease(scope, { maxLifetimeMs: 0 }), "invalid_configuration");
+    const lease = yield* broker.openLease(scope);
+    const short = yield* broker.openLease(scope, { maxLifetimeMs: 100 });
+    yield* TestClock.adjust(100);
+    yield* expectFailure(broker.listTools(scope, short), "invalid_lease");
+    yield* TestClock.adjust("7 hours");
+    expect(yield* broker.listTools(scope, lease)).toHaveLength(2);
+    yield* TestClock.adjust(60 * 60 * 1000 - 100);
+    yield* expectFailure(broker.listTools(scope, lease), "invalid_lease");
+  }).pipe(Effect.scoped),
+);
+
 it.live(
   "revokes a call in flight and cancels the upstream request while another lease remains live",
   () =>
@@ -247,8 +322,8 @@ it.live(
       const fixture = yield* httpFixture;
       const broker = yield* make();
       yield* broker.publishInstallation(scope.installationId, httpInstallation(fixture.url));
-      const first = yield* broker.openLease(scope, allow);
-      const second = yield* broker.openLease(scope, allow);
+      const first = yield* broker.openLease(scope, { approval: allow });
+      const second = yield* broker.openLease(scope, { approval: allow });
       const client = yield* attach(first);
       const active = yield* Effect.tryPromise(() => client.callTool({ name: "hang" })).pipe(
         Effect.flip,
@@ -271,7 +346,7 @@ it.live("interrupts the upstream call when the downstream MCP client disconnects
     const fixture = yield* httpFixture;
     const broker = yield* make();
     yield* broker.publishInstallation(scope.installationId, httpInstallation(fixture.url));
-    const lease = yield* broker.openLease(scope, allow);
+    const lease = yield* broker.openLease(scope, { approval: allow });
     const client = yield* attach(lease);
     yield* Effect.tryPromise(() => client.callTool({ name: "hang" })).pipe(
       Effect.ignore,
@@ -325,7 +400,7 @@ it.live("requires approval before calling and returns typed deny and unanswered 
     const broker = yield* make({ requestTimeoutMs: 500 });
     yield* broker.publishInstallation(scope.installationId, httpInstallation(fixture.url));
     const approval = vi.fn(() => Effect.succeed("deny" as const));
-    const denied = yield* broker.openLease(scope, approval);
+    const denied = yield* broker.openLease(scope, { approval });
     yield* expectFailure(
       broker.callTool(scope, denied, "inspect", { example: true }),
       "approval_denied",
@@ -335,12 +410,12 @@ it.live("requires approval before calling and returns typed deny and unanswered 
       arguments: { example: true },
       tool: expect.objectContaining({ name: "inspect" }),
     });
-    const ask = yield* broker.openLease(scope, () => Effect.succeed("ask"));
+    const ask = yield* broker.openLease(scope, { approval: () => Effect.succeed("ask") });
     yield* expectFailure(broker.callTool(scope, ask, "inspect"), "approval_required");
     const unannotated = yield* broker.openLease(scope);
     yield* expectFailure(broker.callTool(scope, unannotated, "inspect"), "approval_required");
     yield* expectFailure(broker.callTool(scope, unannotated, "missing"), "unknown_tool");
-    const unanswered = yield* broker.openLease(scope, () => Effect.never);
+    const unanswered = yield* broker.openLease(scope, { approval: () => Effect.never });
     yield* expectFailure(broker.callTool(scope, unanswered, "inspect"), "approval_required");
     expect(fixture.calls).toEqual([]);
   }),
@@ -351,7 +426,7 @@ it.live("times out and disconnects an unresponsive tool request", () =>
     const fixture = yield* httpFixture;
     const broker = yield* make({ requestTimeoutMs: 300 });
     yield* broker.publishInstallation(scope.installationId, httpInstallation(fixture.url));
-    const lease = yield* broker.openLease(scope, allow);
+    const lease = yield* broker.openLease(scope, { approval: allow });
     yield* expectFailure(broker.callTool(scope, lease, "hang"), "timeout");
     yield* Effect.promise(() => fixture.disconnected);
     expect(fixture.calls).toEqual(["hang"]);
@@ -365,7 +440,7 @@ it.live(
       const { data, installation } = yield* setupStdio("serve");
       const broker = yield* make({ restartBudget: 1 });
       yield* broker.publishInstallation(scope.installationId, installation);
-      const lease = yield* broker.openLease(scope, allow);
+      const lease = yield* broker.openLease(scope, { approval: allow });
       yield* expectFailure(
         broker.callTool(scope, lease, "inspect", { exit: true }),
         "upstream_unavailable",
@@ -387,7 +462,7 @@ it.live("bounds automatic restart when an upstream exits before negotiating capa
     const { data, installation } = yield* setupStdio("crash");
     const broker = yield* make({ restartBudget: 1 });
     yield* broker.publishInstallation(scope.installationId, installation);
-    const lease = yield* broker.openLease(scope, allow);
+    const lease = yield* broker.openLease(scope, { approval: allow });
     yield* expectFailure(broker.listTools(scope, lease), "restart_budget_exhausted");
     expect(yield* Effect.promise(() => readFile(join(data, "starts"), "utf8"))).toBe(
       "start\nstart\n",

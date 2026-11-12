@@ -15,7 +15,7 @@ export interface PluginMcpLeaseScope {
   readonly principal: PluginMcpPrincipal;
 }
 
-/** Keep the bearer in trusted delivery code. The URL alone conveys no authority. */
+/** The first authenticated HTTP connection binds the bearer. Keep it in trusted delivery code. */
 export interface PluginMcpLease {
   readonly id: string;
   readonly url: string;

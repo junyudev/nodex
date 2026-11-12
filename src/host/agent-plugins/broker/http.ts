@@ -1,5 +1,6 @@
 import { once } from "node:events";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import type { Socket } from "node:net";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
@@ -31,9 +32,11 @@ const unauthorized = JSON.stringify({
 });
 
 export const listen = Effect.fnUntraced(function* (
-  authorize: (id: string, token: string) => Projection | undefined,
+  authorize: (id: string, token: string, connection: symbol) => Projection | undefined,
 ) {
-  const listener = createServer();
+  // The authenticated HTTP connection must survive idle time between Agent turns.
+  const listener = createServer({ keepAliveTimeout: 0 });
+  const connections = new WeakMap<Socket, symbol>();
   const port = yield* Effect.acquireRelease(
     Effect.tryPromise({
       try: async () => {
@@ -62,9 +65,20 @@ export const listen = Effect.fnUntraced(function* (
       response.writeHead(403, { connection: "close" }).end();
       return;
     }
+    // This stateless JSON endpoint has no server-initiated event stream.
+    if (request.method !== "POST") {
+      response.writeHead(405, { allow: "POST" }).end();
+      return;
+    }
+
     const id = /^\/plugin-mcp\/([A-Za-z0-9_-]+)$/.exec(request.url ?? "")?.[1];
     const token = /^Bearer ([A-Za-z0-9_-]+)$/.exec(request.headers.authorization ?? "")?.[1];
-    const lease = id && token ? authorize(id, token) : undefined;
+    let connection = connections.get(request.socket);
+    if (!connection) {
+      connection = Symbol();
+      connections.set(request.socket, connection);
+    }
+    const lease = id && token ? authorize(id, token, connection) : undefined;
     if (!lease) {
       response
         .writeHead(401, {

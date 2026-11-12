@@ -1,4 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -8,7 +9,7 @@ import type { PluginMcpLease, PluginMcpLeaseScope } from "../../../shared/agent-
 import {
   PluginMcpFailure,
   type PluginMcpApproval,
-  type PluginMcpBroker,
+  type PluginMcpBrokerService,
   type PluginMcpBrokerOptions,
   type PluginMcpInstallation,
 } from "./contract";
@@ -22,6 +23,8 @@ export type {
   PluginMcpPrincipal,
   PluginMcpProject,
 } from "../../../shared/agent-plugins/mcp-lease";
+
+const defaultLifetimeMs = 8 * 60 * 60 * 1000;
 
 const keyFor = (scope: PluginMcpLeaseScope) =>
   JSON.stringify([
@@ -55,15 +58,18 @@ type Lease = {
   readonly entry: Entry;
   readonly revoked: Deferred.Deferred<never, PluginMcpFailure>;
   readonly approval: PluginMcpApproval;
+  readonly expiresAt: bigint;
+  connection?: symbol;
 };
 
 /** Compose in the Profile Scope. Trusted callers supply authoritative activation and principal facts. */
 export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
   options: PluginMcpBrokerOptions,
-): Effect.fn.Return<PluginMcpBroker, PluginMcpFailure, Scope.Scope> {
+): Effect.fn.Return<PluginMcpBrokerService, PluginMcpFailure, Scope.Scope> {
   if (!Number.isSafeInteger(options.restartBudget ?? 2) || (options.restartBudget ?? 2) < 0)
     return yield* new PluginMcpFailure("invalid_configuration");
   const parent = yield* Scope.Scope;
+  const clock = yield* Clock.Clock;
   const owner = yield* Scope.fork(parent);
   const gate = yield* Semaphore.make(1);
   const installations = new Map<string, PluginMcpInstallation>();
@@ -88,22 +94,23 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
     });
   });
 
+  const isLive = (lease: Lease) =>
+    !closed && leases.get(lease.id) === lease && clock.monotonicTimeNanosUnsafe() < lease.expiresAt;
+
   const authorized = (id: string, token: string) => {
     if (closed || !/^[A-Za-z0-9_-]{43}$/.test(token)) return undefined;
     const lease = leases.get(id);
     const presented = Buffer.from(token);
-    return lease && timingSafeEqual(lease.secret, presented) ? lease : undefined;
+    return lease && isLive(lease) && timingSafeEqual(lease.secret, presented) ? lease : undefined;
   };
 
   const withLease = <A>(lease: Lease, operation: Effect.Effect<A, PluginMcpFailure>) =>
     Effect.gen(function* () {
-      if (leases.get(lease.id) !== lease || closed)
-        return yield* new PluginMcpFailure("lease_revoked");
+      if (!isLive(lease)) return yield* new PluginMcpFailure("lease_revoked");
       const result = yield* Effect.raceFirst(operation, Deferred.await(lease.revoked)).pipe(
         Effect.result,
       );
-      if (leases.get(lease.id) !== lease || closed)
-        return yield* new PluginMcpFailure("lease_revoked");
+      if (!isLive(lease)) return yield* new PluginMcpFailure("lease_revoked");
       return yield* Effect.fromResult(result);
     });
 
@@ -131,17 +138,19 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
           );
           if (decision === "deny") return yield* new PluginMcpFailure("approval_denied");
           if (decision !== "allow") return yield* new PluginMcpFailure("approval_required");
-          if (closed || leases.get(lease.id) !== lease)
-            return yield* new PluginMcpFailure("lease_revoked");
+          if (!isLive(lease)) return yield* new PluginMcpFailure("lease_revoked");
           if (!connection.healthy()) return yield* new PluginMcpFailure("upstream_unavailable");
           return yield* connection.callTool(name, args);
         }),
       ),
   });
 
-  const origin = yield* listen((id, token) => {
+  const origin = yield* listen((id, token, connection) => {
     const lease = authorized(id, token);
-    return lease && projection(lease);
+    if (!lease || (lease.connection && lease.connection !== connection)) return undefined;
+    // In-process issuance precedes HTTP attachment. The first authenticated connection binds it.
+    lease.connection = connection;
+    return projection(lease);
   }).pipe(Scope.provide(owner));
 
   yield* Effect.addFinalizer(() =>
@@ -154,7 +163,7 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
     ),
   );
 
-  const publishInstallation: PluginMcpBroker["publishInstallation"] = (
+  const publishInstallation: PluginMcpBrokerService["publishInstallation"] = (
     installationId,
     installation,
   ) =>
@@ -177,14 +186,26 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
       ),
     );
 
-  const openLease: PluginMcpBroker["openLease"] = (
+  const revokeLease: PluginMcpBrokerService["revokeLease"] = (id) =>
+    gate.withPermit(
+      Effect.uninterruptible(
+        Effect.suspend(() => {
+          const lease = leases.get(id);
+          return lease ? invalidate([lease]) : Effect.void;
+        }),
+      ),
+    );
+
+  const openLease: PluginMcpBrokerService["openLease"] = (
     requestedScope,
-    approval = () => Effect.succeed("ask"),
+    { approval = () => Effect.succeed("ask" as const), maxLifetimeMs = defaultLifetimeMs } = {},
   ) =>
     gate.withPermit(
       Effect.uninterruptible(
         Effect.gen(function* () {
           if (closed) return yield* new PluginMcpFailure("broker_closed");
+          if (!Number.isSafeInteger(maxLifetimeMs) || maxLifetimeMs <= 0)
+            return yield* new PluginMcpFailure("invalid_configuration");
           const scope = structuredClone(requestedScope);
           const installation = installations.get(scope.installationId);
           if (installation?.generation !== scope.generation || !projectActive(installation, scope))
@@ -206,18 +227,22 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
           const bearerToken = randomBytes(32).toString("base64url");
           const revoked = yield* Deferred.make<never, PluginMcpFailure>();
           entry.refs++;
-          leases.set(id, { id, secret: Buffer.from(bearerToken), scope, entry, revoked, approval });
+          const expiresAt = clock.monotonicTimeNanosUnsafe() + BigInt(maxLifetimeMs) * 1_000_000n;
+          leases.set(id, {
+            id,
+            secret: Buffer.from(bearerToken),
+            scope,
+            entry,
+            revoked,
+            approval,
+            expiresAt,
+          });
+          yield* Effect.raceFirst(Effect.sleep(maxLifetimeMs), Deferred.await(revoked)).pipe(
+            Effect.andThen(revokeLease(id)),
+            Effect.ignore,
+            Effect.forkIn(owner, { startImmediately: true, uninterruptible: false }),
+          );
           return { id, url: origin + leasePath(id), bearerToken };
-        }),
-      ),
-    );
-
-  const revokeLease: PluginMcpBroker["revokeLease"] = (id) =>
-    gate.withPermit(
-      Effect.uninterruptible(
-        Effect.suspend(() => {
-          const lease = leases.get(id);
-          return lease ? invalidate([lease]) : Effect.void;
         }),
       ),
     );
