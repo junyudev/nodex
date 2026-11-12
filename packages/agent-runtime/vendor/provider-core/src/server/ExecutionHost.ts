@@ -73,14 +73,24 @@ export interface HostDesktopTools {
   readonly pluginRoots: readonly string[];
 }
 
-/** What a host contributes to a native thread as it starts, resumes or forks. */
-export interface HostCliShell {
-  readonly taskId: string;
-  readonly profileHome?: string;
-  readonly bin: string;
-  readonly skill: string;
-}
+/** Routing and skill context for the shell that a native provider launches. */
+export const HostCliShell = Schema.Struct({
+  taskId: Schema.String,
+  profileHome: Schema.optionalKey(Schema.String),
+  bin: Schema.String,
+  skill: Schema.String,
+});
+export type HostCliShell = typeof HostCliShell.Type;
 
+/** Context returned by the host after admitting the Turn. */
+export const HostTurnPreparation = Schema.Struct({
+  instructions: Schema.optionalKey(Schema.String),
+  cliShell: Schema.optionalKey(HostCliShell),
+  sourceRoots: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+export type HostTurnPreparation = typeof HostTurnPreparation.Type;
+
+/** What a host contributes to a native thread as it starts, resumes or forks. */
 export interface HostThreadPreparation {
   readonly config?: Readonly<Record<string, unknown>>;
   readonly environment?: HostWorkspaceEnvironment;
@@ -138,16 +148,7 @@ export class ExecutionHost extends Context.Reference<{
   readonly releaseNativeToolCall?: (token: string) => Effect.Effect<void>;
   readonly prepareTurn: (
     identity: HostTurnIdentity,
-  ) => Effect.Effect<
-    {
-      readonly instructions?: string;
-      readonly cliShell?: HostCliShell;
-      readonly identity?: HostTurnIdentity;
-      /** Current Project Sources, resolved by the host after execution admission. */
-      readonly sourceRoots?: readonly string[];
-    },
-    ExecutionHostError
-  >;
+  ) => Effect.Effect<HostTurnPreparation & { readonly identity?: HostTurnIdentity }, ExecutionHostError>;
   /**
    * Provider configuration the host contributes whenever a native thread starts, resumes or
    * forks, such as desktop tools that live outside the execution process, and the environment

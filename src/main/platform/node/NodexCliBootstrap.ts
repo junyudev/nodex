@@ -4,6 +4,7 @@ import { access, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import type { HostCliShell } from "@nodex/agent-runtime/contracts";
 import type { AdditionalContextEntry } from "@nodex/codex-app-server-protocol/v2/AdditionalContextEntry";
 import type { MainConfigValue } from "../../app/MainConfig";
 import { resolveCoreExecutable } from "../../core-client/core-launcher";
@@ -44,7 +45,7 @@ export const nodexCliPaths = (config: MainConfigValue) => ({
 });
 
 /** Providers with shared servers install this routing into the shell they launch. */
-export const nodexCliShellBinding = (config: MainConfigValue, taskId: string) => ({
+export const nodexCliShellBinding = (config: MainConfigValue, taskId: string): HostCliShell => ({
   taskId,
   profileHome: config.nodexHome,
   bin: nodexCliShellPaths(config.nodexHome).bin,

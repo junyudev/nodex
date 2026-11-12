@@ -130,6 +130,12 @@ it.live(
 it.live("awaits the host, forwards exact identity and admits only the accepted Turn", () =>
   Effect.gen(function* () {
     const emitted = yield* Deferred.make<AgentHostRequest>();
+    const cliShell = {
+      taskId: "task:test",
+      profileHome: "/profile",
+      bin: "/profile/cli/bin",
+      skill: "/resources/skills/nodex/SKILL.md",
+    };
     const bridge = yield* make(
       { home: "/runtime", cwd: "/workspace", providers: {}, host: { tools: [] } },
       (notification) =>
@@ -153,11 +159,13 @@ it.live("awaits the host, forwards exact identity and admits only the accepted T
       output: {
         instructions: "Use the admitted Page context.",
         sourceRoots: ["/project/frontend", "/project/backend"],
+        cliShell,
       },
     });
     expect(yield* Fiber.join(pending)).toMatchObject({
       instructions: "Use the admitted Page context.",
       sourceRoots: ["/project/frontend", "/project/backend"],
+      cliShell,
       identity: turn,
     });
     expect(yield* bridge.preparedTurn(turn.threadId)).toEqual(request.identity);

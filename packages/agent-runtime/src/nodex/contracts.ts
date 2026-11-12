@@ -26,7 +26,11 @@ export type {
   ProjectId,
 } from "@nodex/runtime-contracts";
 
-export type { HostDesktopTools } from "@nodex/provider-core/server/ExecutionHost";
+export type {
+  HostCliShell,
+  HostDesktopTools,
+  HostTurnPreparation,
+} from "@nodex/provider-core/server/ExecutionHost";
 export type * from "./Interface.ts";
 export type { AgentRuntimeBootstrap } from "./Bootstrap.ts";
 export {

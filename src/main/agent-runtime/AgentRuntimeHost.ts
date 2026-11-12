@@ -22,6 +22,7 @@ import type {
   AgentNativeSessionAuthority,
   AgentRuntimeConfiguration,
   AgentThreadAuthority,
+  HostTurnPreparation,
 } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -355,7 +356,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         .join("\n\n"),
       sourceRoots,
       ...(cliShell ? { cliShell } : {}),
-    };
+    } satisfies HostTurnPreparation;
   });
 
   const isWslExecution = (instanceId: string, cwd: string | null) =>

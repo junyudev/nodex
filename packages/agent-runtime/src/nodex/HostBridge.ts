@@ -37,21 +37,7 @@ const Result = Schema.Union([
   }),
 ]);
 const decodeResult = Schema.decodeUnknownEffect(Result);
-const decodePrepared = Schema.decodeUnknownEffect(
-  Schema.Struct({
-    instructions: Schema.optional(Schema.String),
-    sourceRoots: Schema.optional(Schema.Array(Schema.String)),
-    cliShell: Schema.optional(
-      Schema.Struct({
-        taskId: Schema.String,
-        profileHome: Schema.optional(Schema.String),
-        turnId: Schema.String,
-        bin: Schema.String,
-        skill: Schema.String,
-      }),
-    ),
-  }),
-);
+const decodePrepared = Schema.decodeUnknownEffect(ExecutionHost.HostTurnPreparation);
 const decodeThreadConfig = Schema.decodeUnknownEffect(
   Schema.Struct({
     config: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
@@ -250,12 +236,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
         identity,
       ),
     );
-    return {
-      identity,
-      ...(result.instructions === undefined ? {} : { instructions: result.instructions }),
-      ...(result.cliShell === undefined ? {} : { cliShell: result.cliShell }),
-      ...(result.sourceRoots === undefined ? {} : { sourceRoots: result.sourceRoots }),
-    };
+    return { ...result, identity };
   });
 
   const desktopSkillRoots = (
