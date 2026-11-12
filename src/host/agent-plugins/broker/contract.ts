@@ -54,6 +54,8 @@ export interface PluginMcpBrokerOptions {
   readonly executableSearchPath: readonly string[];
   readonly connectTimeoutMs?: number;
   readonly requestTimeoutMs?: number;
+  /** Maximum time to drain requests before forcing upstream shutdown. Defaults to 35 seconds. */
+  readonly shutdownGraceMs?: number;
   /** Additional connection attempts per live isolation key, after the first attempt. */
   readonly restartBudget?: number;
 }

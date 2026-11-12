@@ -17,6 +17,8 @@ export const httpFixture = Effect.acquireRelease(
     const seen: IncomingMessage["headers"][] = [];
     const started = latch();
     const disconnected = latch();
+    const reply = latch();
+    const replied = latch();
     const calls: string[] = [];
     const sessionId = "upstream-only";
     const server = createServer(async (request, response) => {
@@ -33,7 +35,9 @@ export const httpFixture = Effect.acquireRelease(
       if (name === "hang") {
         response.once("close", disconnected.resolve);
         started.resolve();
-        return;
+        await Promise.race([reply.promise, disconnected.promise]);
+        if (response.destroyed) return;
+        response.once("finish", replied.resolve);
       }
       const result = method === "initialize"
         ? {
@@ -56,6 +60,7 @@ export const httpFixture = Effect.acquireRelease(
     return {
       url: "http://127.0.0.1:" + address.port + "/mcp",
       server, seen, started: started.promise, disconnected: disconnected.promise, calls,
+      reply: reply.resolve, replied: replied.promise,
     };
   }),
   ({ server }) => Effect.callback<void>((resume) => {

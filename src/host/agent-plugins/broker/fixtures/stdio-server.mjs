@@ -1,6 +1,7 @@
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { setTimeout } from "node:timers/promises";
 
 const [mode, argument] = process.argv.slice(2);
 appendFileSync(join(process.env.PLUGIN_DATA, "starts"), "start\n");
@@ -13,6 +14,12 @@ for await (const line of input) {
   if (!Object.hasOwn(request, "id")) continue;
   const { id, method, params } = request;
   if (method === "tools/call" && params.arguments?.exit) process.exit(1);
+  if (method === "tools/call" && params.arguments?.pause) {
+    const data = process.env.PLUGIN_DATA;
+    appendFileSync(join(data, "started"), "call\n");
+    while (!existsSync(join(data, "release"))) await setTimeout(10);
+    appendFileSync(join(data, "finished"), "call\n");
+  }
   const result = method === "initialize"
     ? {
         protocolVersion: params.protocolVersion,

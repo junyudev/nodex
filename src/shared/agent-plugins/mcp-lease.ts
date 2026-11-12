@@ -32,6 +32,7 @@ export type PluginMcpFailureCode =
   | "upstream_unavailable"
   | "restart_budget_exhausted"
   | "timeout"
+  | "shutdown_timeout"
   | "unknown_tool"
   | "approval_denied"
   | "approval_required";

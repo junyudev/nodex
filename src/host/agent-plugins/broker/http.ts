@@ -25,14 +25,12 @@ type Projection = {
   ) => Effect.Effect<CallToolResult, PluginMcpFailure>;
 };
 
-const unauthorized = JSON.stringify({
-  jsonrpc: "2.0",
-  id: null,
-  error: { code: -32000, message: "Invalid lease", data: { reason: "invalid_lease" } },
-});
-
 export const listen = Effect.fnUntraced(function* (
-  authorize: (id: string, token: string, connection: symbol) => Projection | undefined,
+  authorize: (
+    id: string,
+    token: string,
+    connection: symbol,
+  ) => Projection | PluginMcpFailure | undefined,
 ) {
   // The authenticated HTTP connection must survive idle time between Agent turns.
   const listener = createServer({ keepAliveTimeout: 0 });
@@ -79,14 +77,25 @@ export const listen = Effect.fnUntraced(function* (
       connections.set(request.socket, connection);
     }
     const lease = id && token ? authorize(id, token, connection) : undefined;
-    if (!lease) {
+    if (!lease || lease instanceof PluginMcpFailure) {
+      const reason = lease?.code ?? "invalid_lease";
       response
         .writeHead(401, {
           "content-type": "application/json",
           "www-authenticate": "Bearer",
-          connection: "close",
+          ...(!lease && { connection: "close" }),
         })
-        .end(unauthorized);
+        .end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: null,
+            error: {
+              code: -32000,
+              message: lease ? "Lease revoked" : "Invalid lease",
+              data: { reason },
+            },
+          }),
+        );
       return;
     }
 

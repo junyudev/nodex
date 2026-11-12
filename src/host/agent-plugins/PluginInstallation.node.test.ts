@@ -367,7 +367,7 @@ it.live("revokes an open broker lease when the installation service disables it"
       yield* plugins.setEnabled(installation.id, false);
 
       expect(yield* Effect.flip(broker.listTools(scope, lease))).toMatchObject({
-        code: "invalid_lease",
+        code: "lease_revoked",
       });
       expect(yield* Effect.flip(broker.openLease(scope))).toMatchObject({
         code: "server_inactive",
