@@ -3058,59 +3058,29 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           ...turn,
           hostCliShell: {
             taskId: "task",
-            turnId: turn.runId,
             bin: "/nodex/bin",
             skill: "/nodex/skill",
           },
         });
-        const options = harness.getOpenedOptions()!;
-        const canUseTool = options.canUseTool!;
-        const hook = options.hooks!.PreToolUse!.find(({ matcher }) => matcher === "Bash")!
-          .hooks[0]!;
-        const signal = new AbortController().signal;
+        const canUseTool = harness.getOpenedOptions()!.canUseTool!;
         const input = { command: "npm publish" };
-        const hooked = yield* Effect.promise(() =>
-          Promise.resolve(
-            hook(
-              {
-                hook_event_name: "PreToolUse",
-                tool_name: "Bash",
-                tool_use_id: "publish",
-                tool_input: input,
-                cwd: "/workspace",
-                session_id: WAKE_NATIVE_SESSION,
-                transcript_path: "/tmp/transcript",
-              },
-              "publish",
-              { signal },
-            ),
-          ),
-        );
-        const output = "hookSpecificOutput" in hooked ? hooked.hookSpecificOutput : undefined;
-        assert.deepEqual(output && "updatedInput" in output ? output.updatedInput : input, input);
-        const fileSystem = yield* FileSystem.FileSystem;
-        assert.include(yield* fileSystem.readFileString(options.env!.CLAUDE_ENV_FILE!), turn.runId);
         const result = yield* Effect.promise(() =>
-          canUseTool(
-            "Bash",
-            output && "updatedInput" in output ? (output.updatedInput ?? input) : input,
-            {
-              toolUseID: "publish",
-              requestId: "request-publish",
-              signal: new AbortController().signal,
-              title: "Publish package",
-              decisionReason: "\u001b[33mAn ask rule applies\u001b[0m",
-              matchedAskRule: { source: "userSettings", toolName: "Bash" },
-              suggestions: [
-                {
-                  type: "addRules",
-                  behavior: "allow",
-                  destination: "userSettings",
-                  rules: [{ toolName: "Bash", ruleContent: "npm publish:*" }],
-                },
-              ],
-            },
-          ),
+          canUseTool("Bash", input, {
+            toolUseID: "publish",
+            requestId: "request-publish",
+            signal: new AbortController().signal,
+            title: "Publish package",
+            decisionReason: "\u001b[33mAn ask rule applies\u001b[0m",
+            matchedAskRule: { source: "userSettings", toolName: "Bash" },
+            suggestions: [
+              {
+                type: "addRules",
+                behavior: "allow",
+                destination: "userSettings",
+                rules: [{ toolName: "Bash", ruleContent: "npm publish:*" }],
+              },
+            ],
+          }),
         ).pipe(Effect.forkScoped);
         const event = yield* Queue.take(harness.approvalReceipts);
         assert.equal(event.turnItem.type, "approval_request");
@@ -9864,13 +9834,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           return { ...input, hostExecutionIdentity: identity };
         };
         const first = makeInput("native-mcp-first", 1);
-        const cli = (turnId: string) => ({
+        const cli = () => ({
           taskId: "task",
-          turnId,
           bin: "/nodex/bin",
           skill: "/nodex/skill",
         });
-        yield* harness.runtime.startTurn({ ...first, hostCliShell: cli(first.runId) });
+        yield* harness.runtime.startTurn({ ...first, hostCliShell: cli() });
         const hook = harness.getOpenedOptions()?.hooks?.PreToolUse?.[0]?.hooks[0];
         assert.isFunction(hook);
         const hookInput = (
@@ -9887,16 +9856,6 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           ...(agentId === undefined ? {} : { agent_id: agentId }),
         });
         const signal = new AbortController().signal;
-        const bashHook = harness
-          .getOpenedOptions()!
-          .hooks!.PreToolUse!.find(({ matcher }) => matcher === "Bash")!.hooks[0]!;
-        const bash = (id: string, child?: string) => ({
-          ...hookInput(id, child),
-          tool_name: "Bash",
-          tool_input: { command: "nodex context" },
-        });
-        const beforeBash = (id: string, child?: string) =>
-          Effect.promise(() => Promise.resolve(bashHook(bash(id, child), id, { signal })));
         const rootCall = yield* Effect.promise(() =>
           Promise.resolve(hook!(hookInput("root-first"), "root-first", { signal })),
         );
@@ -9969,45 +9928,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             uuid: "child-start",
           }),
         );
-        assert.deepEqual(yield* beforeBash("first-child", "background-child"), {});
         yield* harness.offerAndWait(
           makeResultFrame({ uuid: "first-completed", result: "Root completed" }),
         );
         yield* Queue.take(harness.terminalReceipts);
         const second = makeInput("native-mcp-second", 2);
-        yield* harness.runtime.startTurn({ ...second, hostCliShell: cli(second.runId) });
-        assert.nestedPropertyVal(
-          yield* beforeBash("stale-child", "background-child"),
-          "hookSpecificOutput.permissionDecision",
-          "deny",
-        );
-        assert.nestedPropertyVal(
-          yield* beforeBash("pending-root"),
-          "hookSpecificOutput.permissionDecision",
-          "deny",
-        );
-        const postBash = harness
-          .getOpenedOptions()!
-          .hooks!.PostToolUse!.find(({ matcher }) => matcher === "Bash")!.hooks[0]!;
-        yield* Effect.promise(() =>
-          Promise.resolve(
-            postBash(
-              {
-                ...bash("first-child"),
-                hook_event_name: "PostToolUse",
-                tool_response: {},
-              },
-              "first-child",
-              { signal },
-            ),
-          ),
-        );
-        assert.deepEqual(yield* beforeBash("current-root"), {});
-        const fileSystem = yield* FileSystem.FileSystem;
-        assert.include(
-          yield* fileSystem.readFileString(harness.getOpenedOptions()!.env!.CLAUDE_ENV_FILE!),
-          second.runId,
-        );
+        yield* harness.runtime.startTurn({ ...second, hostCliShell: cli() });
         yield* Effect.promise(() =>
           Promise.resolve(
             hook!(hookInput("child-after-next", "background-child"), "child-after-next", {

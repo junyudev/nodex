@@ -75,7 +75,6 @@ export interface HostDesktopTools {
 
 /** What a host contributes to a native thread as it starts, resumes or forks. */
 export interface HostCliShell {
-  readonly turnId: string;
   readonly taskId: string;
   readonly profileHome?: string;
   readonly bin: string;

@@ -215,22 +215,11 @@ pub(crate) fn execute_with_presentation(
     });
     let agent_endpoint = env::var_os(AGENT_ENDPOINT_ENV);
     let agent_credential = env::var_os(AGENT_CREDENTIAL_ENV);
-    let pinned_turn = env::var_os("NODEX_CLI_TURN_ID");
     let scoped_agent = !different_home
         && (agent_endpoint.is_some()
             || agent_credential.is_some()
-            || pinned_turn.is_some()
             || env::var_os("NODEX_CLI_TASK_ID").is_some()
             || env::var_os("NODEX_AGENT_SHELL").is_some());
-    if scoped_agent
-        && let Some(turn) = pinned_turn
-        && env::var_os("NODEX_BOUND_TURN").as_ref() != Some(&turn)
-    {
-        return Err(CliError::new(
-            CliErrorCode::AgentTurnEnded,
-            "This shell belongs to an ended Agent Turn. Run nodex from a shell in the active Turn.",
-        ));
-    }
     if scoped_agent && (cli.remote_connection.is_some() || !agent_content_command(&cli.command)) {
         return Err(CliError::new(
             CliErrorCode::InvalidInput,

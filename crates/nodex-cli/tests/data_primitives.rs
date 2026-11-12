@@ -1452,7 +1452,6 @@ fn explicit_alternate_profile_ignores_inherited_agent_markers() {
         let mut cmd = cli_command();
         cmd.args(["--json", "context"])
             .env("NODEX_AGENT_SHELL", "1")
-            .env("NODEX_CLI_TURN_ID", "expired")
             .env(
                 "NODEX_AGENT_PROFILE_HOME",
                 directory.path().join("outer-profile"),

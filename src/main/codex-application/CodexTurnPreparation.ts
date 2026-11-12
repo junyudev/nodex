@@ -606,7 +606,6 @@ export const make: Effect.Effect<
         threadId: input.threadId,
         hostId: executionHostId,
         scopedConnection,
-        turnId: clientUserMessageId,
       });
       const additionalContext = {
         ...prepared.additionalContext,

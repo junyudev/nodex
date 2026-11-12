@@ -7,7 +7,7 @@ import * as Effect from "effect/Effect";
 import { expect, test, vi } from "vite-plus/test";
 import { environment, source, withSkills } from "./NativeExecutionPlugin.ts";
 
-test("each OpenCode shell tool execution pins the Run and restores the original command", async () => {
+test("each OpenCode shell tool execution routes to the task binding and restores the original command", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nodex-opencode-shell-"));
   vi.stubEnv("NODEX_OPENCODE_CLI_ROUTING", directory);
   vi.stubEnv("NODEX_AGENT_PROFILE_HOME", "/profile");
@@ -30,8 +30,8 @@ test("each OpenCode shell tool execution pins the Run and restores the original 
       } },
     });
     const command = "nodex context";
-    for (const [tool, turnId] of [["shell", "run-one"], ["shell", "run-two"], ["bash", "run-three"]]) {
-      await writeFile(join(directory, "session"), JSON.stringify({ taskId: "task", bin: "/bin/nodex", turnId }));
+    for (const tool of ["shell", "bash"]) {
+      await writeFile(join(directory, "session"), JSON.stringify({ taskId: "task", bin: "/bin/nodex" }));
       const toolEvent = { tool: tool!, sessionID: "session", input: { command } };
       await execute(toolEvent);
       const shellEvent = { command: toolEvent.input.command, env: { PATH: "/bin" } };
@@ -42,7 +42,6 @@ test("each OpenCode shell tool execution pins the Run and restores the original 
         NODEX_AGENT_SHELL: "1",
         NODEX_AGENT_PROFILE_HOME: "/profile",
         NODEX_CLI_TASK_ID: "task",
-        NODEX_CLI_TURN_ID: turnId,
       });
     }
     const unboundTool = { tool: "shell", sessionID: "unbound", input: { command } };

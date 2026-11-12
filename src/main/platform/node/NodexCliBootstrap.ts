@@ -19,7 +19,6 @@ import type { ScopedAgentCoreConnection } from "../../../host/ScopedAgentCore";
 export interface NodexCliTaskContext {
   readonly threadId: string;
   readonly hostId: string;
-  readonly turnId?: string;
   readonly scopedConnection?: ScopedAgentCoreConnection;
 }
 
@@ -45,8 +44,7 @@ export const nodexCliPaths = (config: MainConfigValue) => ({
 });
 
 /** Providers with shared servers install this routing into the shell they launch. */
-export const nodexCliShellBinding = (config: MainConfigValue, taskId: string, turnId: string) => ({
-  turnId,
+export const nodexCliShellBinding = (config: MainConfigValue, taskId: string) => ({
   taskId,
   profileHome: config.nodexHome,
   bin: nodexCliShellPaths(config.nodexHome).bin,
@@ -88,7 +86,6 @@ export const buildNodexCliBootstrap = (
         threadId: task.threadId,
         executable: paths.executable,
         scopedConnection,
-        turnId: task.turnId,
       });
       return {
         kind: "application" as const,

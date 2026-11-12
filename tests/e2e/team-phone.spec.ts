@@ -30,7 +30,6 @@ test("Bob's phone retains only Bob's Turns while the team host runs with Alice's
     NODEX_AGENT_ENDPOINT: undefined,
     NODEX_AGENT_CREDENTIAL: undefined,
     NODEX_CLI_TASK_ID: undefined,
-    NODEX_CLI_TURN_ID: undefined,
     NODEX_AGENT_SHELL: undefined,
     NODE_ENV: "test",
     NODEX_CORE_BINARY: path.resolve("target/debug/nodex-core"),

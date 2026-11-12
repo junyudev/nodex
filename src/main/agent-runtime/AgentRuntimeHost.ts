@@ -332,10 +332,9 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
           threadId: taskId,
           hostId: "local",
           scopedConnection,
-          turnId: proof.runId,
         }).pipe(Effect.orElseSucceed(() => null))
       : null;
-    const cliShell = cli?.routed ? nodexCliShellBinding(config, taskId, proof.runId) : undefined;
+    const cliShell = cli?.routed ? nodexCliShellBinding(config, taskId) : undefined;
     const coordinator = yield* core.workspace.read({ kind: "read_coordinator" }, undefined, null);
     const managed = yield* core.workspace.read(
       { kind: "read_managed_session", session_id: sessionId },

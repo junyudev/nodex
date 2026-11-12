@@ -85,15 +85,14 @@ test("the Agent CLI retains live Run attribution across Core restarts and wrappe
       };
       const taskId = "scoped-cli-fixture";
       await prepareNodexCliShell(scenario.profile.nodexHome);
-      const bind = (scopedConnection: typeof connection, turnId: string) =>
+      const bind = (scopedConnection: typeof connection) =>
         bindNodexCliShell({
           nodexHome: scenario.profile.nodexHome,
           threadId: taskId,
           executable: binary,
           scopedConnection,
-          turnId,
         });
-      await bind(connection, "run:one");
+      await bind(connection);
       const wrapperDir = scenario.profile.runRoot;
       const shell = process.platform === "win32" ? "cmd.exe" : "/bin/sh";
       const prefix = process.platform === "win32" ? ["/d", "/c"] : [];
@@ -103,7 +102,7 @@ test("the Agent CLI retains live Run attribution across Core restarts and wrappe
         process.platform === "win32" ? "@nodex %*\r\n" : '#!/bin/sh\nexec nodex "$@"\n',
         { mode: 0o700 },
       );
-      const viaWrapper = (args: readonly string[], turn: string) =>
+      const viaWrapper = (args: readonly string[]) =>
         exec(
           process.platform === "win32" ? shell : join(wrapperDir, wrapper),
           process.platform === "win32" ? [...prefix, wrapper, ...args] : args,
@@ -116,12 +115,11 @@ test("the Agent CLI retains live Run attribution across Core restarts and wrappe
               ),
               NODEX_HOME: scenario.profile.nodexHome,
               NODEX_CLI_TASK_ID: taskId,
-              NODEX_CLI_TURN_ID: turn,
             },
             timeout: 10_000,
           },
         );
-      const context = JSON.parse((await viaWrapper(["--json", "context"], "run:one")).stdout);
+      const context = JSON.parse((await viaWrapper(["--json", "context"])).stdout);
       expect(context.result).toMatchObject({
         actor: {
           type: "agent",
@@ -161,7 +159,7 @@ test("the Agent CLI retains live Run attribution across Core restarts and wrappe
       // Restore the wrapper's first Turn before exercising its other commands.
       connection = await issue();
       env.NODEX_AGENT_CREDENTIAL = connection.credential;
-      await bind(connection, "run:one");
+      await bind(connection);
       const explicit = JSON.parse(
         (
           await cli([
@@ -276,25 +274,21 @@ test("the Agent CLI retains live Run attribution across Core restarts and wrappe
       });
       active = true;
       const replacement = await issue("run:two");
-      await bind(replacement, "run:two");
-      await expect(viaWrapper(["--json", "context"], "run:one")).rejects.toMatchObject({
-        code: 2,
-        stdout: expect.stringContaining("AGENT_TURN_ENDED"),
-      });
-      const laterRename = JSON.parse((await viaWrapper(rename, "run:two")).stdout).result;
+      await bind(replacement);
+      // A shell started under the earlier Turn follows the binding that is active now.
+      const followed = JSON.parse((await viaWrapper(["--json", "context"])).stdout).result;
+      expect(followed.actor).toMatchObject({ run_id: "run:two" });
+      const laterRename = JSON.parse((await viaWrapper(rename)).stdout).result;
       expect(laterRename).toEqual({ ...firstRename, duplicate: true });
       const otherProject = await scenario.seed.createProject({ name: "CLI override", sources: [] });
-      const selected = await viaWrapper(
-        [
-          "--json",
-          "--expect-profile",
-          scenario.runtime.identity.profileId,
-          "--project",
-          otherProject.id,
-          "context",
-        ],
-        "run:two",
-      );
+      const selected = await viaWrapper([
+        "--json",
+        "--expect-profile",
+        scenario.runtime.identity.profileId,
+        "--project",
+        otherProject.id,
+        "context",
+      ]);
       expect(JSON.parse(selected.stdout).result).toMatchObject({
         project: { id: otherProject.id },
         project_source: "flag",
@@ -311,22 +305,19 @@ test("the Agent CLI retains live Run attribution across Core restarts and wrappe
         return result.value.value;
       };
       const { revision } = await readInventory();
-      await viaWrapper(
-        [
-          "--json",
-          "page",
-          "file",
-          "put",
-          pageId,
-          "--path",
-          "report.txt",
-          "--from",
-          "report.txt",
-          "--if-manifest",
-          String(revision),
-        ],
-        "run:two",
-      );
+      await viaWrapper([
+        "--json",
+        "page",
+        "file",
+        "put",
+        pageId,
+        "--path",
+        "report.txt",
+        "--from",
+        "report.txt",
+        "--if-manifest",
+        String(revision),
+      ]);
       const inventory = await readInventory();
       expect(
         inventory.files.find((item) => item.logical_path === "report.txt")?.attachment,

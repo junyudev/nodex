@@ -153,8 +153,6 @@ describe("dev launcher", () => {
         NODEX_AGENT_SHELL: "1",
         NODEX_AGENT_PROFILE_HOME: "/outer",
         NODEX_CLI_TASK_ID: "outer",
-        NODEX_CLI_TURN_ID: "outer-turn",
-        NODEX_BOUND_TURN: "outer-turn",
         // The Host composes this with the machine's own separators.
         PATH: [path.join("/outer", "runtime", "agent-cli", "bin"), "/usr/bin"].join(path.delimiter),
       },
@@ -164,8 +162,6 @@ describe("dev launcher", () => {
     });
     expect(plan.environment.NODEX_AGENT_SHELL).toBeUndefined();
     expect(plan.environment.NODEX_CLI_TASK_ID).toBeUndefined();
-    expect(plan.environment.NODEX_CLI_TURN_ID).toBeUndefined();
-    expect(plan.environment.NODEX_BOUND_TURN).toBeUndefined();
     expect(plan.environment.PATH).toBe("/usr/bin");
     expect(plan.mode).toBe("hmr");
     expect(plan.preparation).toContainEqual(

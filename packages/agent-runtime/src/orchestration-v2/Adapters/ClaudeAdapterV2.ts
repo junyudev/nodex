@@ -126,7 +126,6 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
-import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
@@ -9437,76 +9436,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             }),
           );
 
-        const cliShellHooks = Effect.fnUntraced(function* (
-          userEnvironmentFile: string | undefined,
-        ) {
-          const file = yield* fileSystem
-            .makeTempFileScoped({ prefix: "nodex-claude-shell-" })
-            .pipe(Scope.provide(sessionScope));
-          const mutex = yield* Semaphore.make(1);
-          const pending = new Map<string, string>();
-          let installedPin: string | undefined;
-          const shellValue = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-          const startup =
-            userEnvironmentFile === undefined ? "" : `. ${shellValue(userEnvironmentFile)}\n`;
-          const deny = (reason: string) => ({
-            hookSpecificOutput: {
-              hookEventName: "PreToolUse" as const,
-              permissionDecision: "deny" as const,
-              permissionDecisionReason: reason,
-            },
-          });
-          const hook: HookCallback = (input, _toolUseId, options) =>
-            runPromise(
-              mutex.withPermit(
-                Effect.gen(function* () {
-                  if (
-                    input.hook_event_name === "PostToolUse" ||
-                    input.hook_event_name === "PostToolUseFailure" ||
-                    input.hook_event_name === "PermissionDenied"
-                  ) {
-                    pending.delete(input.tool_use_id);
-                    return {};
-                  }
-                  if (input.hook_event_name !== "PreToolUse" || input.tool_name !== "Bash")
-                    return {};
-                  const active = (yield* Ref.get(activeTurn))?.input.hostCliShell?.turnId;
-                  const owner =
-                    input.agent_id === undefined
-                      ? active
-                      : (yield* Ref.get(sessionSubagentsByTaskId)).get(input.agent_id)
-                          ?.hostExecutionIdentity?.runId;
-                  if (
-                    options.signal.aborted ||
-                    owner === undefined ||
-                    (active !== undefined && active !== owner)
-                  )
-                    return deny("This Bash call does not belong to the active Nodex Run.");
-                  // Claude reads its environment file when the shell starts, after permission
-                  // checks. Keep the pin while any earlier call could still be waiting to start.
-                  if (pending.size >= 256 || (pending.size > 0 && installedPin !== owner))
-                    return deny(
-                      "A Bash call from a previous Nodex Run is still settling. Retry after it finishes.",
-                    );
-                  if (installedPin !== owner) {
-                    const result = yield* Effect.result(
-                      fileSystem.writeFileString(
-                        file,
-                        `${startup}export NODEX_CLI_TURN_ID=${shellValue(owner)}\n`,
-                      ),
-                    );
-                    if (Result.isFailure(result))
-                      return deny("Nodex could not prepare the Bash environment.");
-                    installedPin = owner;
-                  }
-                  pending.set(input.tool_use_id, owner);
-                  return {};
-                }),
-              ),
-            );
-          return { file, hooks: [{ matcher: "Bash", hooks: [hook] }] };
-        });
-
         // The environment the workspace's setup prepared reaches every command the session runs.
         const prepareThread = (turnInput: ProviderAdapter.ProviderAdapterV2TurnInput) =>
           executionHost.prepareThread === undefined
@@ -9711,9 +9640,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           );
           const profileHome =
             cliShell?.profileHome ?? adapterOptions.environment?.NODEX_AGENT_PROFILE_HOME;
-          const shell =
-            cliShell === undefined ? undefined : yield* cliShellHooks(environment?.CLAUDE_ENV_FILE);
-          const shellHooks = shell?.hooks ?? [];
           const queryOptions = {
             ...makeClaudeQueryOptions({
               modelCatalog: subagentModelCatalog,
@@ -9746,8 +9672,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                         ? {}
                         : { NODEX_AGENT_PROFILE_HOME: profileHome }),
                       NODEX_CLI_TASK_ID: cliShell.taskId,
-                      NODEX_CLI_TURN_ID: "no-active-turn",
-                      ...(shell === undefined ? {} : { CLAUDE_ENV_FILE: shell.file }),
                       PATH: [cliShell.bin, environment?.PATH ?? process.env.PATH]
                         .filter(Boolean)
                         .join(process.platform === "win32" ? ";" : ":"),
@@ -9762,17 +9686,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               hooks: {
                 PreToolUse: [
                   { matcher: CLAUDE_NODEX_APP_TOOL_MATCHER, hooks: [nativeMcpCallHook] },
-                  ...shellHooks,
                 ],
                 PostToolUse: [
                   { matcher: CLAUDE_NODEX_APP_TOOL_MATCHER, hooks: [nativeMcpCallHook] },
-                  ...shellHooks,
                 ],
                 PostToolUseFailure: [
                   { matcher: CLAUDE_NODEX_APP_TOOL_MATCHER, hooks: [nativeMcpCallHook] },
-                  ...shellHooks,
                 ],
-                PermissionDenied: shellHooks,
               },
               onElicitation,
               onUserDialog,

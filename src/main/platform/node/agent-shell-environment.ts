@@ -19,8 +19,6 @@ export function withoutAgentShell(environment: NodeJS.ProcessEnv): NodeJS.Proces
     "NODEX_AGENT_SHELL",
     "NODEX_AGENT_PROFILE_HOME",
     "NODEX_CLI_TASK_ID",
-    "NODEX_CLI_TURN_ID",
-    "NODEX_BOUND_TURN",
     "CODEX_THREAD_ID",
     "CODEX_SESSION_ID",
     "BASH_FUNC_nodex%%",

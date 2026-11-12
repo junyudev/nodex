@@ -482,15 +482,14 @@ The dispatcher reads a private, atomically replaced binding for its Session or
 native task. Each CLI process presents that Turn's gateway grant for its whole
 invocation. The gateway rechecks the exact execution before forwarding and
 retires the previous grant when a Turn replaces it. Calls between Turns fail.
-Claude and locally launched OpenCode pin the shell to the originating Run
-before it can spawn a background job. Codex's shell environment identifies
-the task only. Its dispatcher's lifetime check applies to the CLI process, so a
-new CLI invocation from an earlier Turn's detached shell can acquire the
-current grant while a later Turn of the same task is active. Core still
-attributes the operation to that Session and its eligible Member. Native Codex
-CLI grants are Session-scoped and carry no Run ID. With no active Turn, the
-gateway refuses the call. Process ancestry cannot establish a Turn after the
-operating system reparents a detached shell.
+No provider shell carries a Turn pin, and nothing in the shell holds or refuses
+an ordinary command for attribution. A detached shell that outlives its Turn
+therefore acquires the task's current grant while a later Turn of that task is
+active; Core still attributes the operation to that Session and its eligible
+Member. Background work is attributed per Session and task, not per Turn.
+Native CLI grants are Session-scoped and carry no Run ID. With no active Turn,
+the gateway refuses the call. Process ancestry cannot establish a Turn after
+the operating system reparents a detached shell.
 The Host can reconnect and obtain new Core credentials for the same live Run
 after a Core restart if the Profile, Library and Store epoch still match. An
 invocation already connected to the old generation must reconnect explicitly

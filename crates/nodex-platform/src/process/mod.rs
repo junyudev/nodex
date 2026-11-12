@@ -18,8 +18,6 @@ pub fn clear_agent_shell_environment(command: &mut Command) -> &mut Command {
         "NODEX_AGENT_SHELL",
         "NODEX_AGENT_PROFILE_HOME",
         "NODEX_CLI_TASK_ID",
-        "NODEX_CLI_TURN_ID",
-        "NODEX_BOUND_TURN",
         "CODEX_THREAD_ID",
         "CODEX_SESSION_ID",
     ] {

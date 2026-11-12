@@ -69,7 +69,6 @@ export async function prepareNodexCliShell(
           ? [
               "  $env:NODEX_AGENT_ENDPOINT = $null",
               "  $env:NODEX_AGENT_CREDENTIAL = $null",
-              "  $env:NODEX_BOUND_TURN = $null",
               `  & '${executable.replaceAll("'", "''")}' @cliArgs`,
               "  exit $LASTEXITCODE",
             ]
@@ -89,7 +88,6 @@ export async function prepareNodexCliShell(
         "if (!$binding.executable) { Unbound }",
         "$env:NODEX_AGENT_ENDPOINT = $binding.agentEndpoint",
         "$env:NODEX_AGENT_CREDENTIAL = $binding.agentCredential",
-        "$env:NODEX_BOUND_TURN = $binding.turnId",
         "& $binding.executable @args",
         "exit $LASTEXITCODE",
         "",
@@ -137,7 +135,7 @@ export async function prepareNodexCliShell(
       "unbound() {",
       ...(executable
         ? [
-            "  unset NODEX_AGENT_ENDPOINT NODEX_AGENT_CREDENTIAL NODEX_BOUND_TURN",
+            "  unset NODEX_AGENT_ENDPOINT NODEX_AGENT_CREDENTIAL",
             `  exec ${shellQuote(executable)} "$@"`,
           ]
         : [
@@ -332,7 +330,6 @@ export async function bindNodexCliShell(input: {
   threadId: string;
   platform?: string;
   executable: string;
-  turnId?: string;
   scopedConnection: ScopedAgentCoreConnection;
 }): Promise<void> {
   const file = bindingPath(input.nodexHome, input.threadId);
@@ -342,7 +339,6 @@ export async function bindNodexCliShell(input: {
       file,
       JSON.stringify({
         executable: input.executable,
-        turnId: input.turnId,
         agentEndpoint: input.scopedConnection.endpoint,
         agentCredential: input.scopedConnection.credential,
       }),
@@ -356,9 +352,6 @@ export async function bindNodexCliShell(input: {
       `export NODEX_AGENT_PROFILE_HOME=${shellQuote(input.nodexHome)}`,
       `export NODEX_AGENT_ENDPOINT=${shellQuote(input.scopedConnection.endpoint)}`,
       `export NODEX_AGENT_CREDENTIAL=${shellQuote(input.scopedConnection.credential)}`,
-      input.turnId
-        ? `export NODEX_BOUND_TURN=${shellQuote(input.turnId)}`
-        : "unset NODEX_BOUND_TURN",
       `exec ${shellQuote(input.executable)} "$@"`,
       "",
     ].join("\n"),

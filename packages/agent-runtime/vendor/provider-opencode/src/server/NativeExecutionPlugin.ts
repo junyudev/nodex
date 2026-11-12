@@ -28,7 +28,6 @@ const markAgentShell = (env) => {
 const bind = (env, binding) => {
   if (binding.profileHome) env.NODEX_AGENT_PROFILE_HOME = binding.profileHome;
   env.NODEX_CLI_TASK_ID = binding.taskId;
-  env.NODEX_CLI_TURN_ID = binding.turnId;
   env.PATH = [binding.bin, env.PATH ?? process.env.PATH].filter(Boolean).join(delimiter);
 };
 `;
