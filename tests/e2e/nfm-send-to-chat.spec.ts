@@ -250,10 +250,13 @@ respect_system_proxy = false
         await expect(page.getByText("Sent Page to new chat", { exact: true })).toBeVisible({
           timeout: 30_000,
         });
+        // The scenario harness also leaves a blank "New chat" in My Project; the chat this send
+        // started is the other one, titled from its prompt.
         await page
           .locator(
             `[data-app-action-sidebar-thread-id]:not([data-app-action-sidebar-thread-id="${firstThreadId}"])`,
           )
+          .filter({ hasNotText: /^New chat$/u })
           .click();
         await expect(page.getByText(`${reply} 2`, { exact: true }).last()).toBeVisible({
           timeout: 30_000,
