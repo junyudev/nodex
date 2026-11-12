@@ -217,7 +217,7 @@
     "package:win:prepared": "tsx scripts/desktop-build.ts package-prepared win32"
   },
   "dependencies": {
-    "@sentry/electron": "8.3.0",
+    "@sentry/electron": "8.4.0",
     "node-pty": "1.1.0",
     "sharp": "0.35.5"
   },
@@ -259,7 +259,7 @@
     "@playwright/test": "1.65.0",
     "@prettier/plugin-xml": "3.4.2",
     "@rolldown/plugin-babel": "0.2.4",
-    "@sentry/react": "11.9.0",
+    "@sentry/react": "11.10.0",
     "@sentry/vite-plugin": "11.9.0",
     "@statsig/js-client": "3.33.8",
     "@streamdown/cjk": "1.0.4",
