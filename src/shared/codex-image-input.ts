@@ -9,9 +9,13 @@ export function codexImageFileIdFromSource(source: string): string | null {
   return normalized.slice(FILE_SOURCE_PREFIX.length) || null;
 }
 
+export function codexHostedFileSource(fileId: string): string {
+  return `${FILE_SOURCE_PREFIX}${fileId}`;
+}
+
 export function codexImageInputSource(
   input: Extract<UserInput, { type: "image" | "localImage" }>,
 ): string {
   if (input.type === "localImage") return input.path;
-  return "url" in input ? input.url : `${FILE_SOURCE_PREFIX}${input.fileId}`;
+  return "url" in input ? input.url : codexHostedFileSource(input.fileId);
 }

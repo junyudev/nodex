@@ -43,6 +43,7 @@ export type { GetConversationSummaryResponse } from "./GetConversationSummaryRes
 export type { GitDiffToRemoteParams } from "./GitDiffToRemoteParams";
 export type { GitDiffToRemoteResponse } from "./GitDiffToRemoteResponse";
 export type { GitSha } from "./GitSha";
+export type { GuardianAssessmentOutcome } from "./GuardianAssessmentOutcome";
 export type { ImageDetail } from "./ImageDetail";
 export type { ImageGenerationFailure } from "./ImageGenerationFailure";
 export type { ImageGenerationInputImage } from "./ImageGenerationInputImage";

@@ -72,6 +72,7 @@ export const CLIENT_REQUEST_METHODS = {
   "thread/turns/list": "thread/turns/list",
   "thread/items/list": "thread/items/list",
   "thread/items/read": "thread/items/read",
+  "thread/guardianReview": "thread/guardianReview",
   "thread/inject_items": "thread/inject_items",
   "skills/list": "skills/list",
   "skills/extraRoots/set": "skills/extraRoots/set",
@@ -218,6 +219,7 @@ export const SERVER_NOTIFICATION_METHODS = {
   "thread/reverted": "thread/reverted",
   "skills/changed": "skills/changed",
   "thread/name/updated": "thread/name/updated",
+  "thread/section/changed": "thread/section/changed",
   "thread/attachment/updated": "thread/attachment/updated",
   "thread/goal/updated": "thread/goal/updated",
   "thread/prediction/updated": "thread/prediction/updated",
@@ -370,6 +372,7 @@ export interface ClientRequestParamsByMethod {
   readonly "thread/turns/list": CodexSchema.V2ThreadTurnsListParams;
   readonly "thread/items/list": CodexSchema.V2ThreadItemsListParams;
   readonly "thread/items/read": CodexSchema.V2ThreadItemsReadParams;
+  readonly "thread/guardianReview": CodexSchema.V2ThreadGuardianReviewParams;
   readonly "thread/inject_items": CodexSchema.V2ThreadInjectItemsParams;
   readonly "skills/list": CodexSchema.V2SkillsListParams;
   readonly "skills/extraRoots/set": CodexSchema.V2SkillsExtraRootsSetParams;
@@ -559,6 +562,7 @@ export interface ClientRequestResponsesByMethod {
   readonly "thread/turns/list": CodexSchema.V2ThreadTurnsListResponse;
   readonly "thread/items/list": CodexSchema.V2ThreadItemsListResponse;
   readonly "thread/items/read": CodexSchema.V2ThreadItemsReadResponse;
+  readonly "thread/guardianReview": CodexSchema.V2ThreadGuardianReviewResponse;
   readonly "thread/inject_items": CodexSchema.V2ThreadInjectItemsResponse;
   readonly "skills/list": CodexSchema.V2SkillsListResponse;
   readonly "skills/extraRoots/set": CodexSchema.V2SkillsExtraRootsSetResponse;
@@ -719,6 +723,7 @@ export interface ServerNotificationParamsByMethod {
   readonly "thread/reverted": CodexSchema.V2ThreadRevertedNotification;
   readonly "skills/changed": CodexSchema.V2SkillsChangedNotification;
   readonly "thread/name/updated": CodexSchema.V2ThreadNameUpdatedNotification;
+  readonly "thread/section/changed": CodexSchema.V2ThreadSectionChangedNotification;
   readonly "thread/attachment/updated": CodexSchema.V2ThreadAttachmentUpdatedNotification;
   readonly "thread/goal/updated": CodexSchema.V2ThreadGoalUpdatedNotification;
   readonly "thread/prediction/updated": CodexSchema.V2ThreadPredictionUpdatedNotification;
@@ -866,6 +871,7 @@ export const CLIENT_REQUEST_PARAMS = {
   "thread/turns/list": CodexSchema.V2ThreadTurnsListParams,
   "thread/items/list": CodexSchema.V2ThreadItemsListParams,
   "thread/items/read": CodexSchema.V2ThreadItemsReadParams,
+  "thread/guardianReview": CodexSchema.V2ThreadGuardianReviewParams,
   "thread/inject_items": CodexSchema.V2ThreadInjectItemsParams,
   "skills/list": CodexSchema.V2SkillsListParams,
   "skills/extraRoots/set": CodexSchema.V2SkillsExtraRootsSetParams,
@@ -1060,6 +1066,7 @@ export const CLIENT_REQUEST_RESPONSES = {
   "thread/turns/list": CodexSchema.V2ThreadTurnsListResponse,
   "thread/items/list": CodexSchema.V2ThreadItemsListResponse,
   "thread/items/read": CodexSchema.V2ThreadItemsReadResponse,
+  "thread/guardianReview": CodexSchema.V2ThreadGuardianReviewResponse,
   "thread/inject_items": CodexSchema.V2ThreadInjectItemsResponse,
   "skills/list": CodexSchema.V2SkillsListResponse,
   "skills/extraRoots/set": CodexSchema.V2SkillsExtraRootsSetResponse,
@@ -1223,6 +1230,7 @@ export const SERVER_NOTIFICATION_PARAMS = {
   "thread/reverted": CodexSchema.V2ThreadRevertedNotification,
   "skills/changed": CodexSchema.V2SkillsChangedNotification,
   "thread/name/updated": CodexSchema.V2ThreadNameUpdatedNotification,
+  "thread/section/changed": CodexSchema.V2ThreadSectionChangedNotification,
   "thread/attachment/updated": CodexSchema.V2ThreadAttachmentUpdatedNotification,
   "thread/goal/updated": CodexSchema.V2ThreadGoalUpdatedNotification,
   "thread/prediction/updated": CodexSchema.V2ThreadPredictionUpdatedNotification,

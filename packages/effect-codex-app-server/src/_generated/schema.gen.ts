@@ -82,6 +82,7 @@ export type ClientRequest__InitializeCapabilities = {
   readonly mcpServerOpenaiFormElicitation?: boolean;
   readonly optOutNotificationMethods?: ReadonlyArray<string> | null;
   readonly requestAttestation?: boolean;
+  readonly requiredHumanApproval?: boolean;
 } & { readonly [x: string]: CodexJsonExtension };
 export const ClientRequest__InitializeCapabilities = Schema.StructWithRest(
   Schema.Struct({
@@ -124,6 +125,12 @@ export const ClientRequest__InitializeCapabilities = Schema.StructWithRest(
       Schema.Boolean.annotate({
         description: "Opt into `attestation/generate` requests for upstream `x-oai-attestation`.",
         default: false,
+      }),
+    ),
+    requiredHumanApproval: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Present `humanCommand` approvals to a person and return only a one-time decision. Requires `experimentalApi`. Pending requests can be replayed to compatible clients.",
       }),
     ),
   }),
@@ -1460,6 +1467,18 @@ export const ClientRequest__ThreadItemsReadParams = Schema.StructWithRest(
 ).annotate({
   description: "EXPERIMENTAL - retrieve a bounded set of persisted items from one turn.",
   identifier: "ClientRequest__ThreadItemsReadParams",
+});
+
+export type ClientRequest__ThreadGuardianReviewParams = { readonly threadId: string } & {
+  readonly [x: string]: CodexJsonExtension;
+};
+export const ClientRequest__ThreadGuardianReviewParams = Schema.StructWithRest(
+  Schema.Struct({ threadId: Schema.String }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description:
+    "Calling `thread/guardianReview` subscribes the connection to the thread. The subscription remains after the review completes, keeping the thread loaded until the client calls `thread/unsubscribe` or disconnects.",
+  identifier: "ClientRequest__ThreadGuardianReviewParams",
 });
 
 export type ClientRequest__ThreadInjectItemsParams = {
@@ -3120,11 +3139,18 @@ export const CommandExecutionRequestApprovalParams__NetworkPolicyRuleAction = Sc
 
 export type CommandExecutionRequestApprovalParams__CommandExecutionApprovalKind =
   | "command"
-  | "writeStdin";
-export const CommandExecutionRequestApprovalParams__CommandExecutionApprovalKind = Schema.Literals([
-  "command",
-  "writeStdin",
-]).annotate({
+  | "writeStdin"
+  | "humanCommand";
+export const CommandExecutionRequestApprovalParams__CommandExecutionApprovalKind = Schema.Union(
+  [
+    Schema.Literals(["command", "writeStdin"]),
+    Schema.Literal("humanCommand").annotate({
+      description:
+        "A managed checkpoint requiring a fresh human decision. Only `accept`, `decline`, and `cancel` are valid. Requires the `requiredHumanApproval` initialize capability. This prompt does not itself start a command execution item.",
+    }),
+  ],
+  { mode: "oneOf" },
+).annotate({
   description: "Distinguishes a command approval from input sent to an existing terminal.",
   identifier: "CommandExecutionRequestApprovalParams__CommandExecutionApprovalKind",
 });
@@ -4140,6 +4166,26 @@ export const ServerNotification__ThreadNameUpdatedNotification = Schema.StructWi
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ServerNotification__ThreadNameUpdatedNotification" });
+
+export type ServerNotification__ThreadSectionChangedNotification = {
+  readonly sectionId: string | null;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__ThreadSectionChangedNotification = Schema.StructWithRest(
+  Schema.Struct({
+    sectionId: Schema.Union([
+      Schema.String.annotate({
+        description: "Destination section, or `null` when the thread was removed from its section.",
+      }),
+      Schema.Null,
+    ]),
+    threadId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "Broadcast after a successful move into, within, or out of a section.",
+  identifier: "ServerNotification__ThreadSectionChangedNotification",
+});
 
 export type ServerNotification__ThreadAttachmentOperation = "created" | "deleted";
 export const ServerNotification__ThreadAttachmentOperation = Schema.Literals([
@@ -5616,11 +5662,17 @@ export const ServerRequest__NetworkPolicyRuleAction = Schema.Literals(["allow", 
   identifier: "ServerRequest__NetworkPolicyRuleAction",
 });
 
-export type ServerRequest__CommandExecutionApprovalKind = "command" | "writeStdin";
-export const ServerRequest__CommandExecutionApprovalKind = Schema.Literals([
-  "command",
-  "writeStdin",
-]).annotate({
+export type ServerRequest__CommandExecutionApprovalKind = "command" | "writeStdin" | "humanCommand";
+export const ServerRequest__CommandExecutionApprovalKind = Schema.Union(
+  [
+    Schema.Literals(["command", "writeStdin"]),
+    Schema.Literal("humanCommand").annotate({
+      description:
+        "A managed checkpoint requiring a fresh human decision. Only `accept`, `decline`, and `cancel` are valid. Requires the `requiredHumanApproval` initialize capability. This prompt does not itself start a command execution item.",
+    }),
+  ],
+  { mode: "oneOf" },
+).annotate({
   description: "Distinguishes a command approval from input sent to an existing terminal.",
   identifier: "ServerRequest__CommandExecutionApprovalKind",
 });
@@ -5906,6 +5958,7 @@ export type V1InitializeParams__InitializeCapabilities = {
   readonly mcpServerOpenaiFormElicitation?: boolean;
   readonly optOutNotificationMethods?: ReadonlyArray<string> | null;
   readonly requestAttestation?: boolean;
+  readonly requiredHumanApproval?: boolean;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V1InitializeParams__InitializeCapabilities = Schema.StructWithRest(
   Schema.Struct({
@@ -5948,6 +6001,12 @@ export const V1InitializeParams__InitializeCapabilities = Schema.StructWithRest(
       Schema.Boolean.annotate({
         description: "Opt into `attestation/generate` requests for upstream `x-oai-attestation`.",
         default: false,
+      }),
+    ),
+    requiredHumanApproval: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Present `humanCommand` approvals to a person and return only a one-time decision. Requires `experimentalApi`. Pending requests can be replayed to compatible clients.",
       }),
     ),
   }),
@@ -12652,6 +12711,45 @@ export const V2ThreadGoalUpdatedNotification__ThreadGoalStatus = Schema.Literals
   "budgetLimited",
   "complete",
 ]).annotate({ identifier: "V2ThreadGoalUpdatedNotification__ThreadGoalStatus" });
+
+export type V2ThreadGuardianReviewResponse__GuardianAssessmentOutcome = "allow" | "deny";
+export const V2ThreadGuardianReviewResponse__GuardianAssessmentOutcome = Schema.Literals([
+  "allow",
+  "deny",
+]).annotate({
+  description: "Final allow/deny outcome returned by the guardian reviewer.",
+  identifier: "V2ThreadGuardianReviewResponse__GuardianAssessmentOutcome",
+});
+
+export type V2ThreadGuardianReviewResponse__GuardianRiskLevel =
+  | "low"
+  | "medium"
+  | "high"
+  | "critical";
+export const V2ThreadGuardianReviewResponse__GuardianRiskLevel = Schema.Literals([
+  "low",
+  "medium",
+  "high",
+  "critical",
+]).annotate({
+  description: "[UNSTABLE] Risk level assigned by approval auto-review.",
+  identifier: "V2ThreadGuardianReviewResponse__GuardianRiskLevel",
+});
+
+export type V2ThreadGuardianReviewResponse__GuardianUserAuthorization =
+  | "unknown"
+  | "low"
+  | "medium"
+  | "high";
+export const V2ThreadGuardianReviewResponse__GuardianUserAuthorization = Schema.Literals([
+  "unknown",
+  "low",
+  "medium",
+  "high",
+]).annotate({
+  description: "[UNSTABLE] Authorization level assigned by approval auto-review.",
+  identifier: "V2ThreadGuardianReviewResponse__GuardianUserAuthorization",
+});
 
 export type V2ThreadItemsListParams__ThreadItemsListAnchor = {
   readonly itemId: string;
@@ -24505,7 +24603,10 @@ export type ClientRequest__ContentItem =
       readonly type: "input_image";
       readonly file_id: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly audio_url: string; readonly type: "input_audio" } & {
+  | ({ readonly type: "input_audio"; readonly audio_url: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly type: "input_audio"; readonly file_id: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
   | ({
@@ -24541,13 +24642,28 @@ export const ClientRequest__ContentItem = Schema.Union(
         [Schema.Record(Schema.String, CodexJsonExtension)],
       ).annotate({ title: "FileIdContentItem" }),
     ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        audio_url: Schema.String,
-        type: Schema.Literal("input_audio").annotate({ title: "InputAudioContentItemType" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("input_audio").annotate({ title: "InputAudioContentItemType" }),
+          audio_url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "AudioUrlContentItem",
+        description: "Inline audio data or an uploaded file loaded by the Responses API.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "InputAudioContentItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("input_audio").annotate({ title: "InputAudioContentItemType" }),
+          file_id: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdContentItem",
+        description: "Inline audio data or an uploaded file loaded by the Responses API.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         annotations: Schema.optionalKey(
@@ -24665,6 +24781,7 @@ export type ClientRequest__ThreadSampleParams = {
   readonly disableMcp?: boolean;
   readonly effort?: ClientRequest__ReasoningEffort | null;
   readonly expectedTurnId: string;
+  readonly interruptOnCancel?: boolean | null;
   readonly prompt: string;
   readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
   readonly threadId: string;
@@ -24689,6 +24806,15 @@ export const ClientRequest__ThreadSampleParams = Schema.StructWithRest(
       description:
         "The loaded source's latest completed, failed, or interrupted turn. Stale or active sources are rejected.",
     }),
+    interruptOnCancel: Schema.optionalKey(
+      Schema.Union([
+        Schema.Boolean.annotate({
+          description:
+            "Override upstream interruption on cancellation for this sample; otherwise inherit the parent.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     prompt: Schema.String,
     responsesapiClientMetadata: Schema.optionalKey(
       Schema.Union([
@@ -32772,7 +32898,10 @@ export type V2RawResponseItemCompletedNotification__ContentItem =
       readonly type: "input_image";
       readonly file_id: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly audio_url: string; readonly type: "input_audio" } & {
+  | ({ readonly type: "input_audio"; readonly audio_url: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly type: "input_audio"; readonly file_id: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
   | ({
@@ -32812,13 +32941,28 @@ export const V2RawResponseItemCompletedNotification__ContentItem = Schema.Union(
         [Schema.Record(Schema.String, CodexJsonExtension)],
       ).annotate({ title: "FileIdContentItem" }),
     ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        audio_url: Schema.String,
-        type: Schema.Literal("input_audio").annotate({ title: "InputAudioContentItemType" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("input_audio").annotate({ title: "InputAudioContentItemType" }),
+          audio_url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "AudioUrlContentItem",
+        description: "Inline audio data or an uploaded file loaded by the Responses API.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "InputAudioContentItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("input_audio").annotate({ title: "InputAudioContentItemType" }),
+          file_id: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdContentItem",
+        description: "Inline audio data or an uploaded file loaded by the Responses API.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         annotations: Schema.optionalKey(
@@ -34265,6 +34409,22 @@ export const V2ThreadGoalUpdatedNotification__ThreadGoal = Schema.StructWithRest
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadGoalUpdatedNotification__ThreadGoal" });
+
+export type V2ThreadGuardianReviewResponse__ThreadGuardianAssessment = {
+  readonly outcome: V2ThreadGuardianReviewResponse__GuardianAssessmentOutcome;
+  readonly rationale: string;
+  readonly riskLevel: V2ThreadGuardianReviewResponse__GuardianRiskLevel;
+  readonly userAuthorization: V2ThreadGuardianReviewResponse__GuardianUserAuthorization;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadGuardianReviewResponse__ThreadGuardianAssessment = Schema.StructWithRest(
+  Schema.Struct({
+    outcome: V2ThreadGuardianReviewResponse__GuardianAssessmentOutcome,
+    rationale: Schema.String,
+    riskLevel: V2ThreadGuardianReviewResponse__GuardianRiskLevel,
+    userAuthorization: V2ThreadGuardianReviewResponse__GuardianUserAuthorization,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ThreadGuardianReviewResponse__ThreadGuardianAssessment" });
 
 export type V2ThreadItemsListParams__ThreadItemsListCursor =
   | string
@@ -37389,7 +37549,10 @@ export type V2ThreadResumeParams__ContentItem =
       readonly type: "input_image";
       readonly file_id: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly audio_url: string; readonly type: "input_audio" } & {
+  | ({ readonly type: "input_audio"; readonly audio_url: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly type: "input_audio"; readonly file_id: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
   | ({
@@ -37429,13 +37592,28 @@ export const V2ThreadResumeParams__ContentItem = Schema.Union(
         [Schema.Record(Schema.String, CodexJsonExtension)],
       ).annotate({ title: "FileIdContentItem" }),
     ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        audio_url: Schema.String,
-        type: Schema.Literal("input_audio").annotate({ title: "InputAudioContentItemType" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("input_audio").annotate({ title: "InputAudioContentItemType" }),
+          audio_url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "AudioUrlContentItem",
+        description: "Inline audio data or an uploaded file loaded by the Responses API.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "InputAudioContentItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("input_audio").annotate({ title: "InputAudioContentItemType" }),
+          file_id: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdContentItem",
+        description: "Inline audio data or an uploaded file loaded by the Responses API.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         annotations: Schema.optionalKey(
@@ -44754,6 +44932,9 @@ export type ClientRequest__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -44805,13 +44986,22 @@ export const ClientRequest__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -45854,6 +46044,9 @@ export type ServerNotification__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -45905,13 +46098,22 @@ export const ServerNotification__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -46857,6 +47059,7 @@ export type V2ConfigRequirementsReadResponse__OtelRequirements = {
   readonly exporter?: V2ConfigRequirementsReadResponse__OtelExporter | null;
   readonly log_agent_responses?: boolean | null;
   readonly log_guardian_assessments?: boolean | null;
+  readonly log_sse_deltas?: boolean | null;
   readonly log_user_prompt?: boolean | null;
   readonly metrics_exporter?: V2ConfigRequirementsReadResponse__OtelExporter | null;
   readonly span_attributes?: { readonly [x: string]: string } | null;
@@ -46872,6 +47075,7 @@ export const V2ConfigRequirementsReadResponse__OtelRequirements = Schema.StructW
     ),
     log_agent_responses: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
     log_guardian_assessments: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+    log_sse_deltas: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
     log_user_prompt: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
     metrics_exporter: Schema.optionalKey(
       Schema.Union([V2ConfigRequirementsReadResponse__OtelExporter, Schema.Null]),
@@ -47262,6 +47466,9 @@ export type V2ItemCompletedNotification__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -47319,13 +47526,22 @@ export const V2ItemCompletedNotification__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -47463,6 +47679,9 @@ export type V2ItemStartedNotification__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -47520,13 +47739,22 @@ export const V2ItemStartedNotification__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -48106,6 +48334,9 @@ export type V2ReviewStartResponse__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -48161,13 +48392,22 @@ export const V2ReviewStartResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -48318,6 +48558,9 @@ export type V2ThreadForkResponse__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -48373,13 +48616,22 @@ export const V2ThreadForkResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -48439,6 +48691,9 @@ export type V2ThreadItemsListResponse__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -48496,13 +48751,22 @@ export const V2ThreadItemsListResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -48562,6 +48826,9 @@ export type V2ThreadItemsReadResponse__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -48619,13 +48886,22 @@ export const V2ThreadItemsReadResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -48731,6 +49007,9 @@ export type V2ThreadListResponse__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -48786,13 +49065,22 @@ export const V2ThreadListResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -48902,6 +49190,9 @@ export type V2ThreadMetadataUpdateResponse__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -48959,13 +49250,22 @@ export const V2ThreadMetadataUpdateResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -49025,6 +49325,9 @@ export type V2ThreadQueueAddParams__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -49082,13 +49385,22 @@ export const V2ThreadQueueAddParams__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -49138,6 +49450,9 @@ export type V2ThreadQueueAddResponse__UserInput =
       readonly type: "localImage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({ readonly type: "audio"; readonly url: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
   | ({ readonly path: string; readonly type: "localAudio" } & {
@@ -49197,13 +49512,22 @@ export const V2ThreadQueueAddResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -49253,6 +49577,9 @@ export type V2ThreadQueueListResponse__UserInput =
       readonly type: "localImage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({ readonly type: "audio"; readonly url: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
   | ({ readonly path: string; readonly type: "localAudio" } & {
@@ -49312,13 +49639,22 @@ export const V2ThreadQueueListResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -49393,6 +49729,9 @@ export type V2ThreadQueueStartResponse__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -49450,13 +49789,22 @@ export const V2ThreadQueueStartResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -49516,6 +49864,9 @@ export type V2ThreadQueueUpdateParams__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -49573,13 +49924,22 @@ export const V2ThreadQueueUpdateParams__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -49629,6 +49989,9 @@ export type V2ThreadQueueUpdateResponse__UserInput =
       readonly type: "localImage";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({ readonly type: "audio"; readonly url: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
   | ({ readonly path: string; readonly type: "localAudio" } & {
@@ -49688,13 +50051,22 @@ export const V2ThreadQueueUpdateResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -49792,6 +50164,9 @@ export type V2ThreadReadResponse__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -49847,13 +50222,22 @@ export const V2ThreadReadResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -49959,6 +50343,9 @@ export type V2ThreadResumeResponse__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -50016,13 +50403,22 @@ export const V2ThreadResumeResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -50151,6 +50547,9 @@ export type V2ThreadRevertResponse__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -50208,13 +50607,22 @@ export const V2ThreadRevertResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -50320,6 +50728,9 @@ export type V2ThreadSearchResponse__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -50377,13 +50788,22 @@ export const V2ThreadSearchResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -50520,6 +50940,9 @@ export type V2ThreadStartedNotification__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -50577,13 +51000,22 @@ export const V2ThreadStartedNotification__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -50689,6 +51121,9 @@ export type V2ThreadStartResponse__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -50744,13 +51179,22 @@ export const V2ThreadStartResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -50810,6 +51254,9 @@ export type V2ThreadTimelineListResponse__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -50867,13 +51314,22 @@ export const V2ThreadTimelineListResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -50979,6 +51435,9 @@ export type V2ThreadTurnsListResponse__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -51036,13 +51495,22 @@ export const V2ThreadTurnsListResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -51148,6 +51616,9 @@ export type V2ThreadUnarchiveResponse__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -51205,13 +51676,22 @@ export const V2ThreadUnarchiveResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -51294,6 +51774,9 @@ export type V2TurnCompletedNotification__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -51351,13 +51834,22 @@ export const V2TurnCompletedNotification__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -51440,6 +51932,9 @@ export type V2TurnStartedNotification__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -51497,13 +51992,22 @@ export const V2TurnStartedNotification__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -51575,6 +52079,9 @@ export type V2TurnStartParams__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -51626,13 +52133,22 @@ export const V2TurnStartParams__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -51715,6 +52231,9 @@ export type V2TurnStartResponse__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -51766,13 +52285,22 @@ export const V2TurnStartResponse__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -51832,6 +52360,9 @@ export type V2TurnSteerParams__UserInput =
   | ({ readonly type: "audio"; readonly url: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
+  | ({ readonly type: "audio"; readonly fileId: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
   | ({ readonly path: string; readonly type: "localAudio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
@@ -51883,13 +52414,22 @@ export const V2TurnSteerParams__UserInput = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "LocalImageUserInput" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-        url: Schema.String,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "AudioUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         path: Schema.String,
@@ -85087,6 +85627,11 @@ export type ClientRequest =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
+      readonly method: "thread/guardianReview";
+      readonly params: ClientRequest__ThreadGuardianReviewParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
       readonly method: "thread/inject_items";
       readonly params: ClientRequest__ThreadInjectItemsParams;
     } & { readonly [x: string]: CodexJsonExtension })
@@ -86296,6 +86841,19 @@ export const ClientRequest = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "Thread/items/readRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("thread/guardianReview").annotate({
+          title: "Thread/guardianReviewRequestMethod",
+        }),
+        params: ClientRequest__ThreadGuardianReviewParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "Thread/guardianReviewRequest",
+      description: "Review the idle thread's final injected exec_command without executing it.",
+    }),
     Schema.StructWithRest(
       Schema.Struct({
         id: ClientRequest__RequestId,
@@ -88227,6 +88785,11 @@ export type ServerNotification =
       readonly emittedAtMs?: number;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly method: "thread/section/changed";
+      readonly params: ServerNotification__ThreadSectionChangedNotification;
+      readonly emittedAtMs?: number;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
       readonly method: "thread/attachment/updated";
       readonly params: ServerNotification__ThreadAttachmentUpdatedNotification;
       readonly emittedAtMs?: number;
@@ -88772,6 +89335,22 @@ export const ServerNotification = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "Thread/name/updatedNotification" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        method: Schema.Literal("thread/section/changed").annotate({
+          title: "Thread/section/changedNotificationMethod",
+        }),
+        params: ServerNotification__ThreadSectionChangedNotification,
+        emittedAtMs: Schema.optionalKey(
+          Schema.Number.annotate({
+            description:
+              "Unix timestamp (in milliseconds) when app-server emitted this notification.",
+            format: "int64",
+          }).check(Schema.isInt().annotate({ expected: "an integer" })),
+        ),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Thread/section/changedNotification" }),
     Schema.StructWithRest(
       Schema.Struct({
         method: Schema.Literal("thread/attachment/updated").annotate({
@@ -95590,6 +96169,35 @@ export const V2ThreadGoalUpdatedNotification = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ThreadGoalUpdatedNotification" });
 
+export type V2ThreadGuardianReviewParams = { readonly threadId: string } & {
+  readonly [x: string]: CodexJsonExtension;
+};
+export const V2ThreadGuardianReviewParams = Schema.StructWithRest(
+  Schema.Struct({ threadId: Schema.String }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  title: "ThreadGuardianReviewParams",
+  description:
+    "Calling `thread/guardianReview` subscribes the connection to the thread. The subscription remains after the review completes, keeping the thread loaded until the client calls `thread/unsubscribe` or disconnects.",
+});
+
+export type V2ThreadGuardianReviewResponse = {
+  readonly assessment?: V2ThreadGuardianReviewResponse__ThreadGuardianAssessment | null;
+  readonly callId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadGuardianReviewResponse = Schema.StructWithRest(
+  Schema.Struct({
+    assessment: Schema.optionalKey(
+      Schema.Union([
+        V2ThreadGuardianReviewResponse__ThreadGuardianAssessment,
+        Schema.Null,
+      ]).annotate({ description: "Null when exec policy skips approval." }),
+    ),
+    callId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ThreadGuardianReviewResponse" });
+
 export type V2ThreadIncrementElicitationParams = { readonly threadId: string } & {
   readonly [x: string]: CodexJsonExtension;
 };
@@ -97157,6 +97765,7 @@ export type V2ThreadSampleParams = {
   readonly disableMcp?: boolean;
   readonly effort?: V2ThreadSampleParams__ReasoningEffort | null;
   readonly expectedTurnId: string;
+  readonly interruptOnCancel?: boolean | null;
   readonly prompt: string;
   readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
   readonly threadId: string;
@@ -97181,6 +97790,15 @@ export const V2ThreadSampleParams = Schema.StructWithRest(
       description:
         "The loaded source's latest completed, failed, or interrupted turn. Stale or active sources are rejected.",
     }),
+    interruptOnCancel: Schema.optionalKey(
+      Schema.Union([
+        Schema.Boolean.annotate({
+          description:
+            "Override upstream interruption on cancellation for this sample; otherwise inherit the parent.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     prompt: Schema.String,
     responsesapiClientMetadata: Schema.optionalKey(
       Schema.Union([
@@ -97408,6 +98026,26 @@ export const V2ThreadSearchResponse = Schema.StructWithRest(
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ThreadSearchResponse" });
+
+export type V2ThreadSectionChangedNotification = {
+  readonly sectionId: string | null;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadSectionChangedNotification = Schema.StructWithRest(
+  Schema.Struct({
+    sectionId: Schema.Union([
+      Schema.String.annotate({
+        description: "Destination section, or `null` when the thread was removed from its section.",
+      }),
+      Schema.Null,
+    ]),
+    threadId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  title: "ThreadSectionChangedNotification",
+  description: "Broadcast after a successful move into, within, or out of a section.",
+});
 
 export type V2ThreadSectionCreateParams = {
   readonly appearance?: V2ThreadSectionCreateParams__ThreadSectionAppearance | null;

@@ -42,3 +42,23 @@ it("keeps an opaque generated image visible to import admission without inventin
     { id: "image", media: "image", resource: null },
   ]);
 });
+
+it("keeps hosted audio visible to import admission without treating its file ID as a URL", () => {
+  const item = {
+    type: "userMessage",
+    id: "message",
+    clientId: null,
+    content: [
+      { type: "audio", fileId: "opaque-audio" },
+      { type: "audio", url: "https://example.invalid/audio.wav" },
+    ],
+  } satisfies ThreadItem;
+  assert.deepEqual(nativeSessionMediaResources(item), [
+    { id: "input:0", media: "audio", resource: null },
+    {
+      id: "input:1",
+      media: "audio",
+      resource: { name: "Attached audio", source: "https://example.invalid/audio.wav" },
+    },
+  ]);
+});

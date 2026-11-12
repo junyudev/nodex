@@ -21,4 +21,8 @@ responsesapiClientMetadata?: { [key in string]?: string } | null,
 /**
  * Disable MCP servers when the inherited window uses incremental tools on Responses Lite.
  */
-disableMcp?: boolean, };
+disableMcp?: boolean,
+/**
+ * Override upstream interruption on cancellation for this sample; otherwise inherit the parent.
+ */
+interruptOnCancel?: boolean | null, };

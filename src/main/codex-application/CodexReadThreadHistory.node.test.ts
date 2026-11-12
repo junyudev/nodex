@@ -176,6 +176,7 @@ test("output budget does not truncate user/assistant input and structured output
         content: [
           { type: "localImage", path: "/image.png" },
           { type: "image", fileId: "file-123" },
+          { type: "audio", fileId: "file-456" },
         ],
       },
       false,
@@ -187,6 +188,7 @@ test("output budget does not truncate user/assistant input and structured output
     content: [
       { type: "localImage", path: "/image.png" },
       { type: "image", fileId: "file-123" },
+      { type: "audio", fileId: "file-456" },
     ],
   });
 });

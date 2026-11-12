@@ -70,12 +70,11 @@ function userInput(input: UserInput): Record<string, unknown> {
       };
     }
     case "image":
+    case "audio":
       return {
         type: input.type,
         ...("url" in input ? { url: input.url } : { fileId: input.fileId }),
       };
-    case "audio":
-      return { type: input.type, url: input.url };
     case "localImage":
     case "localAudio":
       return { type: input.type, path: input.path };
