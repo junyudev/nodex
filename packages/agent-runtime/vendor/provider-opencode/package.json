@@ -18,7 +18,7 @@
     "typecheck": "tsc-rs --noEmit"
   },
   "dependencies": {
-    "@opencode-ai/sdk": "1.19.4",
+    "@opencode-ai/sdk": "1.19.5",
     "@opencode/client": "2.1.4",
     "@opencode/protocol": "2.1.4",
     "@opencode/schema": "2.1.4",
