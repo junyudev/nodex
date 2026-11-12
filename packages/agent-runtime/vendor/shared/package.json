@@ -78,7 +78,7 @@
     "@nodex/runtime-contracts": "workspace:*",
     "effect": "4.0.6",
     "jose": "6.2.13",
-    "mdast-util-directive": "3.1.1",
+    "mdast-util-directive": "3.2.0",
     "micromark-extension-directive": "4.0.0",
     "micromark-util-character": "2.1.1",
     "rehype-raw": "7.0.0",
