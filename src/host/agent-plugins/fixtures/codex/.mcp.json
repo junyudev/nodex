@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "review": {
+      "type": "http",
+      "url": "https://example.com/mcp",
+      "http_headers": { "X-Client": "example" },
+      "oauth_resource": "https://example.com/review",
+      "extensions": { "com.openai": { "auth": { "type": "oauth", "vendorField": true } } }
+    }
+  }
+}

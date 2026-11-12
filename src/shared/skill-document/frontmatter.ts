@@ -25,6 +25,7 @@ export interface SkillHeader {
   readonly fields: Readonly<Record<FieldName, Field>>;
   readonly reason?: string;
   readonly patchReason?: string;
+  readonly formatIssues?: readonly { readonly field: string; readonly message: string }[];
 }
 
 export function readSkillHeader(text: string): SkillHeader {
@@ -79,7 +80,35 @@ export function readSkillHeader(text: string): SkillHeader {
       : field;
   }
 
-  return { bodyStart, fields, patchReason };
+  const formatIssues = [];
+  for (const key of ["license", "compatibility", "allowed-tools", "metadata"]) {
+    if (!map.has(key)) continue;
+    const value = map.get(key, true);
+    const node = isAlias(value) ? value.resolve(document) : value;
+    if (key === "metadata") {
+      if (
+        !isMap(node) ||
+        !node.items.every(({ key, value }) => {
+          const resolved = isAlias(value) ? value.resolve(document) : value;
+          return (
+            isScalar(key) &&
+            typeof key.value === "string" &&
+            isScalar(resolved) &&
+            typeof resolved.value === "string"
+          );
+        })
+      )
+        formatIssues.push({ field: key, message: "Expected a mapping of strings to strings." });
+      continue;
+    }
+    if (!isScalar(node) || typeof node.value !== "string") {
+      formatIssues.push({ field: key, message: "Expected a string." });
+      continue;
+    }
+    if (key === "compatibility" && (!node.value.trim() || !/^.{1,500}$/su.test(node.value)))
+      formatIssues.push({ field: key, message: "Expected 1–500 characters." });
+  }
+  return { bodyStart, fields, patchReason, formatIssues };
 }
 
 export function patchSkillHeader(

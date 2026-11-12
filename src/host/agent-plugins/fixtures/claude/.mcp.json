@@ -1,0 +1,3 @@
+{
+  "summary": { "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/summary.js"] }
+}

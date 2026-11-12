@@ -1,0 +1,5 @@
+{
+  "name": "claude-toolkit",
+  "skills": "./skills/",
+  "hooks": "./ignored.json"
+}

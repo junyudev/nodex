@@ -1,0 +1,3 @@
+{
+  "apps": { "documents": { "id": "connector_example", "optional": true } }
+}

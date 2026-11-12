@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      { "matcher": "review", "hooks": [{ "type": "command", "command": "review-document --check" }] }
+    ]
+  }
+}
