@@ -178,6 +178,28 @@ resolution before launch and requires an observed TLS SNI handshake for the
 hostname, so a DNS lookup or connection failure cannot satisfy the proof. The
 emulator has no name for its host's loopback, so Android proves the address routes.
 
+## Share to the Inbox
+
+`withShareTargets.cjs` generates the iOS Share extension and **Add to Nodex Inbox**
+action, plus the Android intent filters for text, links and images. Both iOS
+extensions stage the share in an App Group and open `nodex-mobile-dev://expo-sharing`
+in development or `nodex-mobile://expo-sharing` in production.
+
+For a signed build, enable App Groups for the app and both extension App IDs and
+assign them to the same group. The app ID is `app.jyu.nodex.mobile.dev` for
+development or `app.jyu.nodex.mobile` for production. The extension IDs append
+`.expo-sharing-extension` and `.NodexAction` to that ID. The App Group is
+`group.<app ID>`.
+
+From the repository root, run the generated-project checks:
+
+```sh
+vp test run --config config/vitest.node.config.ts packages/mobile/src/native-tests
+```
+
+On a device build, share text, a Safari page and up to six photos. On iOS, try
+both the app row and the action row and confirm that each opens the Inbox composer.
+
 ## iOS encrypted notifications
 
 `withNotificationDecryption.cjs` recreates the `NotificationService` target and embeds it in the

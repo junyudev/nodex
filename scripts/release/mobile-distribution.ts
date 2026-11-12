@@ -306,19 +306,43 @@ export function buildIosDistribution(options: MobileBuildOptions): MobileBuildMa
   }
 }
 
-/** The app and its notification extension carry the release's identity and the Nodex team. */
+/** Verifies the signed app and each extension's distribution entitlements. */
 function verifyIpa(ipa: string, identity: BuildIdentity, work: string): void {
   const payload = join(work, "payload");
   run("/usr/bin/ditto", ["-x", "-k", ipa, payload], work, process.env);
   const app = join(payload, "Payload/Nodex.app");
-  const extension = join(app, "PlugIns/NotificationService.appex");
   const expected = mobileAppFor("ios", identity);
-  const pushKeychainGroup = `${APPLE_TEAM_IDENTIFIER}.${MOBILE_APP_ID}.push`;
+  const pushKeychain = {
+    "keychain-access-groups": `${APPLE_TEAM_IDENTIFIER}.${MOBILE_APP_ID}.push`,
+  };
+  const appGroup = { "com.apple.security.application-groups": `group.${MOBILE_APP_ID}` };
   run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app], work, process.env);
-  for (const [bundle, id] of [
-    [app, MOBILE_APP_ID],
-    [extension, `${MOBILE_APP_ID}.NotificationService`],
-  ] as const) {
+  for (const { bundle, id, groups, values } of [
+    {
+      bundle: app,
+      id: MOBILE_APP_ID,
+      groups: { ...pushKeychain, ...appGroup },
+      values: { "aps-environment": "production" },
+    },
+    {
+      bundle: join(app, "PlugIns/NotificationService.appex"),
+      id: `${MOBILE_APP_ID}.NotificationService`,
+      groups: pushKeychain,
+      values: {},
+    },
+    {
+      bundle: join(app, "PlugIns/expo-sharing-extension.appex"),
+      id: `${MOBILE_APP_ID}.expo-sharing-extension`,
+      groups: appGroup,
+      values: {},
+    },
+    {
+      bundle: join(app, "PlugIns/NodexAction.appex"),
+      id: `${MOBILE_APP_ID}.NodexAction`,
+      groups: appGroup,
+      values: {},
+    },
+  ]) {
     const plist = join(bundle, "Info.plist");
     if (
       plistValue(plist, "CFBundleIdentifier") !== id ||
@@ -340,13 +364,14 @@ function verifyIpa(ipa: string, identity: BuildIdentity, work: string): void {
     const entitlements = JSON.parse(
       output("/usr/bin/plutil", ["-convert", "json", "-o", "-", "-"], { input: signature.stdout }),
     ) as Record<string, unknown>;
-    const keychainGroups = entitlements["keychain-access-groups"];
     if (
       entitlements["application-identifier"] !== `${APPLE_TEAM_IDENTIFIER}.${id}` ||
       entitlements["get-task-allow"] !== false ||
-      !Array.isArray(keychainGroups) ||
-      !keychainGroups.includes(pushKeychainGroup) ||
-      (id === MOBILE_APP_ID && entitlements["aps-environment"] !== "production")
+      Object.entries(values).some(([key, value]) => entitlements[key] !== value) ||
+      Object.entries(groups).some(([key, group]) => {
+        const actual = entitlements[key];
+        return !Array.isArray(actual) || !actual.includes(group);
+      })
     )
       throw new Error(`${id} is missing the App Store distribution entitlements.`);
   }

@@ -34,3 +34,12 @@ magick "$scratch/mono.png" -background none -gravity center -extent 1024x1024 \
   -strip "$assets/adaptive-monochrome.png"
 
 magick "$scratch/mark.png" -resize 384x384 -strip "$assets/splash.png"
+
+# The iOS share sheet tints a 40-point outline for the Add to Nodex Inbox action.
+for scale in 1 2 3; do
+  suffix=""
+  if ((scale > 1)); then suffix="@${scale}x"; fi
+  size=$((40 * scale))
+  rsvg-convert -w "$size" -h "$size" "$layers/nodex-lines.svg" \
+    -o "$assets/NodexActionIcon${suffix}.png"
+done
