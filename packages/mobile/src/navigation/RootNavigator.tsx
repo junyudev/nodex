@@ -24,6 +24,7 @@ import {
   ScopePickerScreen,
 } from "../features/pickers/PickerScreens";
 import { SettingsScreen } from "../features/settings/SettingsScreen";
+import { useSharedContent } from "../features/share/use-shared-content";
 import { activateHost, useHosts } from "../runtime";
 import type { NotificationTarget } from "../runtime/notification-payload";
 import { useNotificationRouting } from "../features/notifications/notification-routing";
@@ -109,6 +110,7 @@ export const RootNavigator = () => {
   const [ready, setReady] = useState(false);
   const paired = hosts.length > 0;
   useIncomingPairing(ready);
+  useSharedContent(ready);
   // A tap names the Space and Member that sent it. Another Space remounts the stack below, so its
   // chat or Page opens once that Space is current; a Space removed from this phone opens nothing.
   const pendingTarget = useRef<NotificationTarget | null>(null);
