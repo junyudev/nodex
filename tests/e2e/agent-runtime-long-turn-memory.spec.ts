@@ -88,8 +88,10 @@ test("a long running Turn holds a bounded window and reads its released history 
     await composer.fill("Verify long turn");
     await composer.press("Enter");
 
+    // The opening reply may also appear in a Readback card outside the transcript.
+    const transcript = page.locator('[data-local-conversation-transcript="true"]');
     const reply = (index: number) =>
-      page.getByText(`Long turn reply ${index}`, { exact: true }).filter({ visible: true });
+      transcript.getByText(`Long turn reply ${index}`, { exact: true });
     const runBatch = async (batch: number, replies = BATCH_REPLIES, newest = replies - 1) => {
       writeFileSync(signal(`go-${batch}`), String(replies));
       await expect
@@ -142,7 +144,7 @@ test("a long running Turn holds a bounded window and reads its released history 
     expect(rendererErrors).toEqual([]);
 
     writeFileSync(signal("finish"), "");
-    await expect(page.getByText("Long turn finished", { exact: true })).toHaveCount(1, {
+    await expect(transcript.getByText("Long turn finished", { exact: true })).toHaveCount(1, {
       timeout: 120_000,
     });
   } finally {
