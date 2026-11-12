@@ -40,7 +40,7 @@ overrides:
   "@excalidraw/excalidraw@0.18.1>@radix-ui/react-tabs": 1.2.1
   remark-breaks: 4.0.0
   "@types/node": 24.19.2
-  "@babel/core": 7.29.7
+  "@babel/core": 7.29.13
   # Expo 58.0.20 supports React Native 0.88.0. Later Core builds use 0.88.1 symbols.
   "expo@58.0.20>expo-modules-core": 58.0.27
   # plist omits the MIME type required by xmldom 0.9; keep its patched 0.8 API.
