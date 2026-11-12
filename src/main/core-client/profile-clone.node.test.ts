@@ -95,10 +95,11 @@ print(json.dumps({'integrity':c.execute('PRAGMA integrity_check').fetchone()[0],
 };
 
 const clone = async (source: string, target: string, signal: AbortSignal) => {
+  // Both clone cases are local administration of the disposable source Profile.
   const { stdout } = await exec(
     requiredNativeExecutable("cli"),
     ["--json", "profile", "clone", "--from", source, "--to", target],
-    { signal, maxBuffer: 1024 * 1024 },
+    { signal, maxBuffer: 1024 * 1024, env: { ...process.env, NODEX_HOME: source } },
   );
   return JSON.parse(stdout).result;
 };
