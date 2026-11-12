@@ -20,12 +20,14 @@ import {
   resolveCustomizeSelection,
   type CustomizeSelection,
 } from "../model/customize-selection";
+import { describeInstallation } from "../model/plugin-installation-presentation";
 import { InstalledPluginActionsMenu } from "./installed-plugin-actions-menu";
 import { useOpenPluginDetail } from "./plugin-browse-context";
 import { pluginLogoSource, PluginLogoImage } from "./plugin-logo";
 
+const CODEX_HOME_LABEL = describeInstallation({ source: "codex-home" }).sourceLabel;
 const SEARCH_FIELD_ID = "customize-installed-search";
-const SEARCH_LABEL = "Search installed plugins";
+const SEARCH_LABEL = "Search Codex-home plugins";
 
 /** One row: a 30px pill whose leading 16px icon and label sit 8px apart. */
 const CUSTOMIZE_ROW_CLASS =
@@ -162,12 +164,12 @@ function InstalledPluginsList({
   if (rows.length === 0) {
     return (
       <div role="status" className="p-2 text-sm text-token-text-secondary">
-        {searchQuery.trim().length > 0 ? "No matching plugins" : "No installed plugins"}
+        {searchQuery.trim().length > 0 ? "No matching plugins" : "No Codex-home plugins installed"}
       </div>
     );
   }
   return (
-    <div role="list" aria-label="Installed" className="flex flex-col gap-px">
+    <div role="list" aria-label={CODEX_HOME_LABEL} className="flex flex-col gap-px">
       {rows.map((row) => (
         <InstalledPluginRow
           key={row.stableIdentity}
@@ -291,7 +293,9 @@ export function CustomizeSidebar({
           </div>
           <div className="flex flex-col gap-1">
             <div className="flex min-h-(--height-token-nav-row) items-center justify-between gap-2 ps-2 pe-1.5">
-              <div className="min-w-0 flex-1 text-base font-medium text-tertiary">Installed</div>
+              <div className="min-w-0 flex-1 text-base font-medium text-tertiary">
+                {CODEX_HOME_LABEL}
+              </div>
             </div>
             <InstalledPluginsList
               navigation={navigation}

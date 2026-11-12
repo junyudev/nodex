@@ -46,6 +46,7 @@ import { PluginLogoImage, pluginLogoSource } from "./plugin-logo";
 import { PluginMentionChip } from "./plugin-mention-chip";
 import { PluginOriginBadge } from "./plugin-origin-badge";
 import { PluginCategoryTitle } from "./plugins-directory-page";
+import { describeInstallation } from "../model/plugin-installation-presentation";
 import { usePluginRowActions } from "./use-plugin-row-actions";
 
 /** "Plugins › {category} › {plugin}" in the titlebar, leading back to the directory view. */
@@ -124,6 +125,10 @@ function PluginDetailHero({
     view == null
       ? null
       : pluginDeveloperSubtitle(view.summary.interface?.developerName, pluginTagline(view));
+  const installation = view?.row.summary.installed
+    ? describeInstallation({ source: "codex-home" }).sourceLabel
+    : null;
+  const detailLine = [installation, subtitle].filter(Boolean).join(" · ");
   return (
     <DetailHeader
       asset={
@@ -153,8 +158,8 @@ function PluginDetailHero({
       subtitle={
         view == null ? (
           <div className="h-3 w-3/5 rounded bg-text/10" />
-        ) : subtitle == null ? null : (
-          <TruncatedLine id="plugin-description">{subtitle}</TruncatedLine>
+        ) : detailLine.length === 0 ? null : (
+          <TruncatedLine id="plugin-description">{detailLine}</TruncatedLine>
         )
       }
       actions={actions}

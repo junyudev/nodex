@@ -29,6 +29,12 @@ export interface PluginInstallationRecord {
   readonly package: AgentPluginPackage;
 }
 
+export type PluginWriterStatus = "clear" | "busy" | "stale";
+
+export type PluginCleanupWarning =
+  | { readonly kind: "generation" | "data"; readonly installationId: string }
+  | { readonly kind: "writer-lock" };
+
 export interface PluginRegistry {
   readonly format: 1;
   readonly revision: number;

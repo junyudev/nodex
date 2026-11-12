@@ -296,12 +296,23 @@ it.live("reclaims a dead writer without disturbing a live owner", () =>
       await mkdir(lock, { recursive: true });
       await writeFile(liveOwner, "");
     });
+    expect(yield* plugins.writerStatus).toBe("busy");
+    expect(yield* Effect.flip(plugins.repairWriter)).toEqual({ code: "store-busy" });
     expect(yield* Effect.flip(plugins.install(source, digest))).toEqual({ code: "store-busy" });
     const { stdout } = yield* Effect.promise(() =>
       promisify(execFile)(process.execPath, ["-p", "process.pid"]),
     );
     yield* Effect.promise(async () => {
       await rm(liveOwner);
+      await writeFile(join(lock, stdout.trim() + "-" + randomUUID()), "");
+    });
+    expect(yield* plugins.writerStatus).toBe("stale");
+    yield* plugins.repairWriter;
+    expect(yield* plugins.writerStatus).toBe("clear");
+
+    // A later interrupted write is still reclaimed on the next mutation.
+    yield* Effect.promise(async () => {
+      await mkdir(lock);
       await writeFile(join(lock, stdout.trim() + "-" + randomUUID()), "");
     });
     const { installation } = yield* plugins.install(source, digest);

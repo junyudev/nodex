@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Review and install local Agent Plugin folders in Customize → Plugins. See the package’s skills, MCP commands and endpoints, hooks, and app mappings before confirming. Manage the installed copy in your Nodex Profile and record which Projects should use it. Agent delivery will come in a later release.
+
 - Set anything in your Inbox aside with **Later** when it can wait. Choose a time and the message or the work waiting on you leaves your Inbox, then comes back with a notification when that time arrives; if it needs you for a new reason before then, it shows at once. The new Later view lists everything you set aside in the order it returns, and Nodex can suggest Later for a message that says when the work should wait until. It works on the phone too.
 - Share to Nodex from other apps on your phone. Nodex now appears when you share a photo, a link, a web page or text on iPhone and Android, and what you share opens in your Inbox Composer, ready to send or to add a note to first. On iPhone, the share sheet also offers **Add to Nodex Inbox** among its actions.
 - Save a thought that asks for no work with **Save to Notes**. Each Project, and the Inbox itself, gets a Notes page; a saved message becomes a page beneath it, off the Board, where you can arrange notes into sections. Nodex suggests it for references and can file a note under a section you already have.

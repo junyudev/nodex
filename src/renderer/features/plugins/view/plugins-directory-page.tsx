@@ -21,6 +21,7 @@ import {
   type PluginRow,
 } from "../plugin-management";
 import { buildPluginDirectoryPath, type PluginDirectoryTab } from "../plugins-routes";
+import { AgentPluginInstallations } from "./agent-plugin-installations";
 import { AddMarketplaceDialog } from "./add-marketplace-dialog";
 import { CustomizeHeaderActions } from "./customize-header-actions";
 import { usePluginHelperActions } from "./use-plugin-helper-actions";
@@ -182,6 +183,12 @@ export function PluginsDirectoryPage({
         }
       >
         <div className="-mx-2 flex min-h-0 flex-1 flex-col gap-8">
+          {overrideContent == null ? (
+            <AgentPluginInstallations
+              defaultProjectId={context.projectId}
+              projects={navigation.agentPluginProjects}
+            />
+          ) : null}
           <PluginBrowseContext value={{ tab, category, search }}>
             {overrideContent ??
               (tab === "personal" ? (

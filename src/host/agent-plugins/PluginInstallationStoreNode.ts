@@ -20,12 +20,12 @@ import {
   PLUGIN_REGISTRY_DIRECTORY,
   pluginDataDirectory,
   pluginPackageDirectory,
+  type PluginCleanupWarning,
   type PluginRegistry,
 } from "../../shared/agent-plugins/installation-registry";
 import type { AgentPluginRejectionReason } from "../../shared/agent-plugins/types";
 import { canonicalPackageRoot, copyPackageToStage } from "./PackageFilesNode";
 import type {
-  PluginCleanupWarning,
   PluginInstallationStore,
   PluginPackageRejected,
   PluginStoreError,
@@ -174,28 +174,36 @@ function processIsGone(pid: number): boolean {
   }
 }
 
-async function reclaimWriter(lock: string) {
-  if (!(await directoryAt(lock))) return;
+async function observeWriter(lock: string) {
+  if (!(await directoryAt(lock))) return { status: "clear" } as const;
   const owners = await readdir(lock).catch((cause: unknown) => {
     if (!hasCode(cause, "ENOENT")) throw cause;
-    return [];
+    return null;
   });
-  if (owners.length > 0) {
-    const [owner] = owners;
-    const pid = Number(/^([1-9]\d*)-[a-f0-9-]{36}$/.exec(owner ?? "")?.[1]);
-    if (
-      !owner ||
-      owners.length !== 1 ||
-      !Number.isSafeInteger(pid) ||
-      pid > 0x7fffffff ||
-      !processIsGone(pid)
-    )
-      throw new StoreFailure({ code: "store-busy" });
-    // Remove only the observed owner. A replacement lock always contains its own marker.
-    await unlink(path.join(lock, owner)).catch((cause: unknown) => {
+  if (owners === null) return { status: "clear" } as const;
+  if (owners.length === 0) return { status: "stale", owner: undefined } as const;
+  const [owner] = owners;
+  const pid = Number(/^([1-9]\d*)-[a-f0-9-]{36}$/.exec(owner ?? "")?.[1]);
+  if (
+    !owner ||
+    owners.length !== 1 ||
+    !Number.isSafeInteger(pid) ||
+    pid > 0x7fffffff ||
+    !processIsGone(pid)
+  )
+    return { status: "busy" } as const;
+  return { status: "stale", owner } as const;
+}
+
+async function reclaimWriter(lock: string) {
+  const writer = await observeWriter(lock);
+  if (writer.status === "clear") return;
+  if (writer.status === "busy") throw new StoreFailure({ code: "store-busy" });
+  // Remove only the observed owner. A replacement lock always contains its own marker.
+  if (writer.owner)
+    await unlink(path.join(lock, writer.owner)).catch((cause: unknown) => {
       if (!hasCode(cause, "ENOENT")) throw cause;
     });
-  }
   await rmdir(lock).catch((cause: unknown) => {
     if (!hasCode(cause, "ENOENT") && !hasCode(cause, "ENOTEMPTY") && !hasCode(cause, "EEXIST"))
       throw cause;
@@ -240,6 +248,17 @@ export function makePluginInstallationStoreNode(profileHome: string): PluginInst
   const rootAt = (profile: string) => path.join(profile, PLUGIN_REGISTRY_DIRECTORY);
 
   const read = io("read", async () => readRegistry(rootAt(await home())));
+  const withWriterPath = <A>(operation: string, run: (lock: string) => Promise<A>) =>
+    io(operation, async () => {
+      const root = rootAt(await home());
+      await directoryAt(root);
+      return run(path.join(root, ".writer"));
+    });
+  const writerStatus = withWriterPath(
+    "observe-writer",
+    async (lock) => (await observeWriter(lock)).status,
+  );
+  const repairWriter = withWriterPath("repair-writer", reclaimWriter);
   const createStage = io("create-stage", async () => {
     const root = rootAt(await home());
     await directoryAt(root, true);
@@ -341,5 +360,14 @@ export function makePluginInstallationStoreNode(profileHome: string): PluginInst
       return warnings;
     }).pipe(Effect.uninterruptible);
 
-  return { read, canonicalSource, createStage, copyToStage, discardStage, compareAndSwap };
+  return {
+    read,
+    writerStatus,
+    repairWriter,
+    canonicalSource,
+    createStage,
+    copyToStage,
+    discardStage,
+    compareAndSwap,
+  };
 }

@@ -1,3 +1,4 @@
+import * as AgentPluginsIpc from "../ipc/handlers/AgentPluginsIpc";
 import { formatAppVersion } from "../../shared/app-version";
 import {
   parsePageDeepLink,
@@ -66,6 +67,23 @@ export const live = Layer.effectDiscard(
       {
         idleTimeToLive: Infinity,
       },
+    );
+    yield* Layer.build(
+      AgentPluginsIpc.live({
+        personalSpaceId: spaces.personalSpaceId,
+        projectIsActive: ({ spaceId, projectId }) =>
+          Effect.gen(function* () {
+            const projects =
+              spaceId === spaces.personalSpaceId
+                ? personalProjects
+                : Context.get(
+                    yield* Effect.scoped(desktops.contextEffect(spaceId)),
+                    RemoteSpaceDesktop.RemoteSpaceDesktop,
+                  ).projects;
+            const project = yield* projects.getProject(projectId);
+            return project?.lifecycle === "active";
+          }),
+      }),
     );
     yield* links.configureSpaces({
       personalSpaceId: spaces.personalSpaceId,
@@ -139,7 +157,9 @@ export const live = Layer.effectDiscard(
           }
           return yield* personal(bound.args);
         }
-        if (DEVICE_CAPABILITY_CHANNELS.includes(channel)) return yield* personal(bound.args);
+        // Plugin packages live in the desktop Profile. Activation still checks the bound Space's Project.
+        if (channel.startsWith("agent-plugins:") || DEVICE_CAPABILITY_CHANNELS.includes(channel))
+          return yield* personal(bound.args);
         if (bound.spaceId === spaces.personalSpaceId) return yield* personal(bound.args);
         const context = yield* Effect.scoped(desktops.contextEffect(bound.spaceId));
         return yield* Context.get(context, RemoteSpaceDesktop.RemoteSpaceDesktop).invoke(

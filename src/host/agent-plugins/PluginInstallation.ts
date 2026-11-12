@@ -8,16 +8,17 @@ import {
   setPluginProjectEnabled,
   uninstallPluginInstallation,
   type EffectivePluginContributions,
+  type PluginCleanupWarning,
+  type PluginWriterStatus,
   type PluginInstallationRecord,
   type PluginInstallationSource,
   type PluginProject,
   type PluginRegistry,
   type PluginTransitionError,
 } from "../../shared/agent-plugins/installation-registry";
-import type { AgentPluginPackage } from "../../shared/agent-plugins/types";
+import type { AgentPluginPackage, AgentPluginReadResult } from "../../shared/agent-plugins/types";
 import type { AgentPluginReaderService } from "./AgentPluginReader";
 import type {
-  PluginCleanupWarning,
   PluginInstallationStore,
   PluginPackageRejected,
   PluginStoreError,
@@ -37,6 +38,9 @@ export interface PluginInstallationMutation {
 
 export interface PluginInstallationService {
   readonly list: Effect.Effect<PluginRegistry, PluginStoreError>;
+  readonly writerStatus: Effect.Effect<PluginWriterStatus, PluginStoreError>;
+  readonly repairWriter: Effect.Effect<void, PluginStoreError>;
+  readonly preview: (directory: string) => Effect.Effect<AgentPluginReadResult, PluginStoreError>;
   readonly install: (
     source: PluginInstallationSource,
     previewDigest: string,
@@ -187,6 +191,17 @@ export function makePluginInstallation(
 
   return PluginInstallation.of({
     list: store.read,
+    writerStatus: store.writerStatus,
+    repairWriter: store.repairWriter,
+    preview: (directory) =>
+      store.canonicalSource(directory).pipe(
+        Effect.flatMap(reader.read),
+        Effect.catch((error) =>
+          error.code === "package-rejected"
+            ? Effect.succeed({ status: "rejected", reasons: error.reasons } as const)
+            : Effect.fail(error),
+        ),
+      ),
     install,
     reload,
     setEnabled: (id, enabled) =>

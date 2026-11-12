@@ -5,7 +5,7 @@
 The initial release covers installing, reviewing, enabling, disabling, and
 uninstalling plugins. The Plugins page shows Nodex-installed plugins alongside
 [Codex-home plugins](plugins-behavior.md), with the source visible in the list
-and details. Nodex manages its own installations in the current Profile.
+and details. Nodex manages its own installations in the current Profile on this device.
 Codex-home actions apply to the active local Codex home.
 
 ### Install and review
@@ -29,11 +29,16 @@ its declared manifest version. The review shows:
 Confirm to install a copy of the reviewed package. If the staged bytes differ
 from the preview, review the updated package before confirming again. Installing the same source
 folder again updates that installation after review. A failed update keeps the
-previous copy and its settings.
+previous copy and its settings. Reload reads the installation's source folder
+again and replaces the managed copy while preserving its Project selections.
+
+When a registry writer exits before releasing its lock, the Nodex-installed
+section offers **Repair lock**. Repair leaves a live writer's lock in place.
 
 ### Enable, disable, and uninstall
 
-Enable an installed plugin explicitly for each Project that should use it.
+Select a Project in the Nodex-installed section and enable each plugin that
+the Project should use.
 Project selections are independent. Stage 1 records them for future delivery.
 The Plugins page shows that Agent delivery is unavailable. Installation and
 activation are review-only in this release. Agents keep their existing

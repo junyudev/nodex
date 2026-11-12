@@ -10,8 +10,8 @@ The Codex-home actions described here apply to the active local Codex home.
 
 ## Customize pages
 
-The rail's Plugins entry opens Customize. Its sidebar has a search over installed plugins,
-the Plugins and Skills pages, and the installed plugins, each with a More actions menu
+The rail's Plugins entry opens Customize. Its sidebar has a search over installed Codex-home
+plugins, the Plugins and Skills pages, and the Codex-home plugins, each with a More actions menu
 (Try now, Manage, Uninstall). The gear on every Customize page opens Settings › Plugins.
 
 - **Plugin page.** Any plugin row opens it. The titlebar breadcrumb reads Plugins, then the

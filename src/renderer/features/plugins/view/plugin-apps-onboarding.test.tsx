@@ -35,6 +35,7 @@ const navigation: CustomizeNavigation = {
   onNavigate: vi.fn(),
   onStartChat: vi.fn(),
   onOpenSettings: vi.fn(),
+  agentPluginProjects: [],
   onOpenHooksSettings: vi.fn(),
 };
 
