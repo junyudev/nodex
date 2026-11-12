@@ -30,6 +30,12 @@ use nodex_core_protocol::client::{ClientError, CoreClient, connect_or_launch};
 /// Host gateway connection supplied by the managed shell dispatcher.
 pub const AGENT_ENDPOINT_ENV: &str = "NODEX_AGENT_ENDPOINT";
 pub const AGENT_CREDENTIAL_ENV: &str = "NODEX_AGENT_CREDENTIAL";
+
+/// An agent marker exported with an empty value is unset: shells commonly carry
+/// such placeholders, and treating them as present would scope ordinary commands.
+fn env_marker(name: &str) -> Option<std::ffi::OsString> {
+    env::var_os(name).filter(|value| !value.is_empty())
+}
 use nodex_core_protocol::{
     DatabaseReadResponse, LibraryReadResponse, ProjectWorkspaceReadResponse, ResponseEnvelope,
     StoreAdministrationApplyResponse, StoreAdministrationReadResponse,
@@ -207,19 +213,19 @@ pub(crate) fn execute_with_presentation(
         .or(environment_home.as_deref())
         .filter(|value| !value.is_empty() && !value.to_string_lossy().trim().is_empty())
         .map(|path| cwd.join(path));
-    let bound_home = env::var_os("NODEX_AGENT_PROFILE_HOME").map(PathBuf::from);
+    let bound_home = env_marker("NODEX_AGENT_PROFILE_HOME").map(PathBuf::from);
     let different_home = explicit_home.as_ref().is_some_and(|home| {
         bound_home
             .as_ref()
             .is_none_or(|bound| !same_profile_home(home, bound))
     });
-    let agent_endpoint = env::var_os(AGENT_ENDPOINT_ENV);
-    let agent_credential = env::var_os(AGENT_CREDENTIAL_ENV);
+    let agent_endpoint = env_marker(AGENT_ENDPOINT_ENV);
+    let agent_credential = env_marker(AGENT_CREDENTIAL_ENV);
     let scoped_agent = !different_home
         && (agent_endpoint.is_some()
             || agent_credential.is_some()
-            || env::var_os("NODEX_CLI_TASK_ID").is_some()
-            || env::var_os("NODEX_AGENT_SHELL").is_some());
+            || env_marker("NODEX_CLI_TASK_ID").is_some()
+            || env_marker("NODEX_AGENT_SHELL").is_some());
     if scoped_agent && (cli.remote_connection.is_some() || !agent_content_command(&cli.command)) {
         return Err(CliError::new(
             CliErrorCode::InvalidInput,

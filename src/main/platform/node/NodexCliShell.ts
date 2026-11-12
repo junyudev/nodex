@@ -76,7 +76,7 @@ export async function prepareNodexCliShell(
               "  Refuse AGENT_GENERATION_CHANGED 'The Agent CLI binding is unavailable. Resume the Session in Nodex.'",
             ]),
         "}",
-        "$id = $env:NODEX_CLI_TASK_ID; if ($null -eq $id) { $id = $env:CODEX_THREAD_ID }",
+        "$id = $env:NODEX_CLI_TASK_ID; if ([string]::IsNullOrEmpty($id)) { $id = $env:CODEX_THREAD_ID }",
         executable
           ? "if ($id -notmatch '^[a-zA-Z0-9_-]+$') { Unbound }"
           : "if ($id -notmatch '^[a-zA-Z0-9_-]+$') { Refuse AGENT_BINDING_MALFORMED 'No valid task binding. Use plain nodex from the active Turn.' }",
@@ -142,7 +142,7 @@ export async function prepareNodexCliShell(
             '  refuse AGENT_GENERATION_CHANGED "The Agent CLI binding is unavailable. Resume the Session in Nodex." "$@"',
           ]),
       "}",
-      "id=${NODEX_CLI_TASK_ID-${CODEX_THREAD_ID-}}",
+      "id=${NODEX_CLI_TASK_ID:-${CODEX_THREAD_ID-}}",
       'case "$id" in',
       executable
         ? '  ""|*[!a-zA-Z0-9_-]*) unbound "$@" ;;'
@@ -151,7 +151,7 @@ export async function prepareNodexCliShell(
       `binding=${shellQuote(paths.bindings)}/"$id"`,
       // The pinned runtime sets CODEX_SESSION_ID to the root task ID for subagents,
       // including resumed children. An explicit child binding (also denial) wins.
-      'if [ ! -e "$binding" ] && [ -z "${NODEX_CLI_TASK_ID+x}" ]; then',
+      'if [ ! -e "$binding" ] && [ -z "${NODEX_CLI_TASK_ID:-}" ]; then',
       '  case "${CODEX_SESSION_ID-}" in',
       '    ""|*[!a-zA-Z0-9_-]*) ;;',
       `    *) binding=${shellQuote(paths.bindings)}/"$CODEX_SESSION_ID" ;;`,

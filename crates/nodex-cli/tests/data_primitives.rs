@@ -1488,6 +1488,35 @@ fn explicit_alternate_profile_ignores_inherited_agent_markers() {
 }
 
 #[test]
+fn empty_agent_markers_do_not_scope_an_ordinary_profile_command() {
+    // Shells can export agent markers with empty values; an empty marker is unset.
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
+    let client = connect_or_launch(&home, "empty-marker-unset", Some(&core_binary)).unwrap();
+    let _guard = CoreGuard(client.handshake.generation.pid);
+    let output = cli_command()
+        .args(["--json", "context", "--home"])
+        .arg(&home)
+        .env("NODEX_AGENT_PROFILE_HOME", &home)
+        .env("NODEX_AGENT_SHELL", "")
+        .env("NODEX_CLI_TASK_ID", "")
+        .env("NODEX_AGENT_ENDPOINT", "")
+        .env("NODEX_AGENT_CREDENTIAL", "")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["result"]["actor"]["type"], "member");
+}
+
+#[test]
 fn retry_key_requires_a_value_and_accepts_hyphens_with_equals() {
     use clap::Parser as _;
     use nodex_cli::cli::Cli;
