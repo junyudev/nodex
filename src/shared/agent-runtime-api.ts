@@ -82,6 +82,19 @@ export interface AgentRuntimeLaunch {
   readonly coordinator?: boolean;
 }
 
+/**
+ * Launch fields that Main sets while it admits a message. A window or a remote client cannot author
+ * them: the boundary schema omits them, so a payload that carries one is rejected.
+ */
+export type AgentRuntimeHostLaunchField =
+  | "automationExecution"
+  | "coordinator"
+  | "messageFingerprint"
+  | "messageOrigin"
+  | "modeLimit"
+  | "resources"
+  | "sender";
+
 const AGENT_EXECUTION_THREAD_PREFIX = "nodex:thread:";
 
 /** Agent execution names a chat's root Thread itself; native Codex Threads are UUIDs. */

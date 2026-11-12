@@ -1,7 +1,12 @@
 import { ProjectSessionPlacementSchema } from "./session-order";
 import { PROMPT_TURN_READ_LIMIT } from "../prompt-turn";
 import { z } from "zod";
-import type { AgentRuntimeLaunch, AgentRuntimeMessage, RuntimeMode } from "../agent-runtime-api";
+import type {
+  AgentRuntimeHostLaunchField,
+  AgentRuntimeLaunch,
+  AgentRuntimeMessage,
+  RuntimeMode,
+} from "../agent-runtime-api";
 import { AGENT_RUNTIME_CONTROL_EVENT_TYPES } from "../agent-runtime-api";
 import { CodexTurnPresentationTicketSchema } from "../nodex-app-tools/turn-presentation";
 
@@ -101,6 +106,7 @@ export const AgentRuntimeLaunchSchema = z
     projectId: id.nullable(),
     title: z.string().trim().min(1).max(2_000),
     initialPageIds: z.array(id).max(16).optional(),
+    workPage: z.object({ pageId: id, onlyIfAgentWork: z.boolean().optional() }).strict().optional(),
     presentationTicket: CodexTurnPresentationTicketSchema.optional(),
     modelSelection: AgentRuntimeModelSelectionSchema,
     runtimeMode: AgentRuntimeModeSchema.optional(),
@@ -125,7 +131,18 @@ export const AgentRuntimeLaunchSchema = z
     worktreePath: id.nullable().optional(),
     message: AgentRuntimeMessageSchema,
   })
-  .strict() satisfies z.ZodType<AgentRuntimeLaunch>;
+  .strict() satisfies z.ZodType<RendererAgentRuntimeLaunch>;
+
+/** Every launch field a window or a remote client may author; Main-only fields are excluded. */
+type RendererAgentRuntimeLaunch = Omit<AgentRuntimeLaunch, AgentRuntimeHostLaunchField>;
+type LaunchFieldMismatch =
+  | Exclude<keyof RendererAgentRuntimeLaunch, keyof z.infer<typeof AgentRuntimeLaunchSchema>>
+  | Exclude<keyof z.infer<typeof AgentRuntimeLaunchSchema>, keyof RendererAgentRuntimeLaunch>;
+// A launch field the schema omits would be rejected by `.strict()` at runtime, and an added one
+// would go unvalidated. Either mismatch fails the build here instead.
+const launchSchemaMatchesRendererFields: [LaunchFieldMismatch] extends [never] ? true : false =
+  true;
+void launchSchemaMatchesRendererFields;
 export const AgentRuntimeMessageInputSchema = AgentRuntimeTargetSchema.extend({
   message: AgentRuntimeMessageSchema,
   intent: z.enum(["auto", "steer", "restart"]).optional(),
