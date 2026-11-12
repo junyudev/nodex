@@ -1,0 +1,20 @@
+{
+  "appServerRuntimeVersion": "0.167.2",
+  "browserPluginVersion": "26.1103.60933",
+  "browserRuntimeVersions": {
+    "codexCli": "0.167.0-alpha.3.2",
+    "cuaRuntime": "local",
+    "node": "24.22.1",
+    "peerAuthorization": "sha256:4cb95598d578fc19f6ad5d10a163a18e33ad9660ef4aacabd5f3d58687a5be41"
+  },
+  "computerUse": {
+    "appCount": 11,
+    "status": "available"
+  },
+  "foreignAccessHostConnections": 0,
+  "mode": "conformance",
+  "nativePipeMethods": ["getInfo"],
+  "nodeReplResult": "{\"backendType\":\"iab\",\"browserId\":\"1\",\"documentationLength\":35155,\"rootNodeRepl\":{\"fetchAvailable\":false,\"keys\":[\"cwd\",\"emitImage\",\"env\",\"homeDir\",\"requestMeta\",\"rpc\",\"tmpDir\",\"write\"],\"requestMetaAvailable\":true,\"rpcAvailable\":true}}",
+  "targetArch": "arm64",
+  "targetPlatform": "darwin"
+}
