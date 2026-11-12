@@ -28,10 +28,10 @@ supportedArchitectures:
 
 overrides:
   # Electron and React must share one Sentry SDK version for renderer initialization.
-  "@sentry/electron>@sentry/browser": 11.9.0
-  "@sentry/electron>@sentry/core": 11.9.0
-  "@sentry/electron>@sentry/node": 11.9.0
-  "@sentry/electron>@sentry/server-utils": 11.9.0
+  "@sentry/electron>@sentry/browser": 11.10.0
+  "@sentry/electron>@sentry/core": 11.10.0
+  "@sentry/electron>@sentry/node": 11.10.0
+  "@sentry/electron>@sentry/server-utils": 11.10.0
   "@opencode/protocol>effect": 4.0.6
   "@opencode/schema>effect": 4.0.6
   # Trees uses the shared color API; theming 1.0.2 also supports Diffs' Theme 2.
