@@ -451,6 +451,40 @@ fn own_device_link_preserves_personal_member_identity_and_records_actor() {
     assert!(phone.link_device(listener_info()).is_err());
 }
 #[test]
+fn administration_audits_mint_bounded_identities_long_after_the_legacy_window() {
+    // A Profile that has run for more than a retention window only accepts Core-minted
+    // bounded identities; administration must never present a legacy-format one.
+    let space = Space::new();
+    space
+        .store
+        .writer()
+        .call(|connection| {
+            connection.execute(
+                "UPDATE operational_journal_state \
+                 SET operation_identity_cutover_at = strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 days') \
+                 WHERE id = 1",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let offer = space.membership.link_device(listener_info()).unwrap();
+    let device = space.membership.enroll(enrollment(offer.code)).unwrap();
+    let invite = space.invite();
+    space
+        .membership
+        .rename(RenameSpaceRequest {
+            name: "Renamed".into(),
+        })
+        .unwrap();
+    space
+        .membership
+        .revoke(device.device_id)
+        .expect("revocation audits after the legacy window");
+    assert!(space.membership.enroll(enrollment(invite.code)).is_ok());
+}
+
+#[test]
 fn member_administration_is_current_role_and_device_scoped() {
     let space = Space::new();
     let (member, device) = remote(&space, space.invite().code);

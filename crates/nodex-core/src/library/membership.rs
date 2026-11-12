@@ -296,7 +296,9 @@ impl LibraryMembership {
             editor_history_owner: None,
             agent_attribution: None,
         };
-        let id = secret()?;
+        let id = crate::infrastructure::module_receipts::mint_operation_id(&format!(
+            "store-administration.{operation}"
+        ))?;
         let at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let digest = hash(operation);
         let _result = durable_mutation::run(

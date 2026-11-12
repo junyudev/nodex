@@ -29,6 +29,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Bash commands in Claude chats no longer stop with "still settling" after an earlier command was cut short. Nodex no longer holds a command back to check which Run started its shell, so every command runs. A background command that outlives its Run is credited to the chat's current Run.
+- Linking a phone or inviting a Member works again on Spaces that have been in use for more than a week. Creating a link, redeeming one, and changing Space or Member administration no longer fail with "legacy operation identity".
 - Local images load more reliably on Windows.
 - A new Windows host can start a team Space. Nodex protects its settings encryption key with native Windows permissions when it creates the key.
 - A chat's composer no longer disappears. Opening a chat that finished in the background could show its messages with nothing below them while it reconnected, after its connection failed, or after its worktree was cleaned up. The composer now stays with your draft, and a line above it says what is holding the next message and offers the fix, such as Retry or Restore worktree. A chat that failed to connect also tries again on its own when you come back to it.

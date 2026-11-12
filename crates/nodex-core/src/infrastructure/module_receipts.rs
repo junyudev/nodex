@@ -508,6 +508,25 @@ fn validate_missing_operation_identity(
     Ok(())
 }
 
+/// Mints a fresh bounded identity for a mutation Core authors itself. Its window opens now,
+/// so it is always replayable-or-expired by Core's own clock rather than rejected as legacy.
+pub(crate) fn mint_operation_id(scope: &str) -> Result<String, StoreError> {
+    let issued_at_ms = chrono::Utc::now().timestamp_millis();
+    let expires_at_ms = issued_at_ms
+        .checked_add(RECEIPT_RETENTION_MS)
+        .ok_or_else(|| corrupt("Core operation identity expiry overflowed"))?;
+    let entropy = crate::domain::identity::random_uuid_v7().map_err(|_| {
+        StoreError::new(
+            StoreErrorCode::Internal,
+            "Operation entropy is unavailable",
+            false,
+        )
+    })?;
+    Ok(format!(
+        "nodexop:v1:{issued_at_ms}:{expires_at_ms}:{scope}:{entropy}"
+    ))
+}
+
 /// Only explicitly admitted retries use a caller-stable receipt fingerprint.
 pub(crate) fn is_admitted_retry(operation_id: &str) -> bool {
     operation_id.starts_with("nodexop:v1:") && operation_id.split(':').nth(4) == Some("app.retry")
