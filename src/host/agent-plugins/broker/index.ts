@@ -14,6 +14,7 @@ import {
   type PluginMcpApproval,
   type PluginMcpBrokerService,
   type PluginMcpBrokerOptions,
+  type PluginMcpLeaseOptions,
   type PluginMcpInstallation,
 } from "./contract";
 import { leasePath, listen } from "./http";
@@ -61,7 +62,9 @@ type Credential = {
   readonly secret: Buffer;
   readonly key: string;
   readonly expiresAt: bigint;
+  readonly httpBinding: "mcp-session" | undefined;
   connection?: symbol;
+  sessionId?: string;
   lease?: Lease;
 };
 type Lease = {
@@ -236,14 +239,21 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
       ),
   );
 
-  const origin = yield* listen((id, token, connection) => {
+  const origin = yield* listen((id, token, connection, sessionId) => {
     const credential = authenticate(id, token);
-    if (!credential || (credential.connection && credential.connection !== connection))
-      return undefined;
+    if (!credential) return undefined;
+    if (credential.httpBinding === "mcp-session") {
+      if (sessionId !== credential.sessionId) return undefined;
+      if (!credential.lease) return new PluginMcpFailure("lease_revoked");
+      if (credential.sessionId !== undefined) return { projection: projection(credential.lease) };
+      // Pooled clients can change sockets. Only the first attachment receives the session ID.
+      credential.sessionId = randomBytes(32).toString("base64url");
+      return { projection: projection(credential.lease), sessionId: credential.sessionId };
+    }
+    if (credential.connection && credential.connection !== connection) return undefined;
     if (!credential.lease) return new PluginMcpFailure("lease_revoked");
-    // In-process issuance precedes HTTP attachment. The first authenticated connection binds it.
     credential.connection = connection;
-    return projection(credential.lease);
+    return { projection: projection(credential.lease) };
   }).pipe(Scope.provide(owner));
 
   const publishInstallation: PluginMcpBrokerService["publishInstallation"] = (
@@ -287,7 +297,11 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
 
   const openLease: PluginMcpBrokerService["openLease"] = (
     requestedScope,
-    { approval = () => Effect.succeed("ask" as const), maxLifetimeMs = defaultLifetimeMs } = {},
+    {
+      approval = () => Effect.succeed("ask" as const),
+      maxLifetimeMs = defaultLifetimeMs,
+      httpBinding,
+    }: PluginMcpLeaseOptions = {},
   ) =>
     gate.withPermit(
       Effect.uninterruptible(
@@ -326,7 +340,12 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
           entry.refs++;
           const expiresAt = clock.monotonicTimeNanosUnsafe() + BigInt(maxLifetimeMs) * 1_000_000n;
           // Retain only authenticated credential metadata until its original expiry.
-          const credential: Credential = { secret: Buffer.from(bearerToken), key, expiresAt };
+          const credential: Credential = {
+            secret: Buffer.from(bearerToken),
+            key,
+            expiresAt,
+            httpBinding,
+          };
           credential.lease = { credential, scope, entry, revoked, approval };
           credentials.set(id, credential);
           yield* Effect.sleep(maxLifetimeMs).pipe(

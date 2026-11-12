@@ -62,6 +62,8 @@ export interface PluginMcpBrokerOptions {
 
 export interface PluginMcpLeaseOptions {
   readonly approval?: PluginMcpApproval;
+  /** Bind a client that pools HTTP sockets to one MCP session issued on its first connection. */
+  readonly httpBinding?: "mcp-session";
   /** Maximum lifetime in milliseconds from issuance. Defaults to eight hours. */
   readonly maxLifetimeMs?: number;
 }

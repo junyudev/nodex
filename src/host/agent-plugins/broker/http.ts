@@ -30,7 +30,11 @@ export const listen = Effect.fnUntraced(function* (
     id: string,
     token: string,
     connection: symbol,
-  ) => Projection | PluginMcpFailure | undefined,
+    sessionId: string | undefined,
+  ) =>
+    | { readonly projection: Projection; readonly sessionId?: string }
+    | PluginMcpFailure
+    | undefined,
 ) {
   // The authenticated HTTP connection must survive idle time between Agent turns.
   const listener = createServer({ keepAliveTimeout: 0 });
@@ -76,14 +80,18 @@ export const listen = Effect.fnUntraced(function* (
       connection = Symbol();
       connections.set(request.socket, connection);
     }
-    const lease = id && token ? authorize(id, token, connection) : undefined;
-    if (!lease || lease instanceof PluginMcpFailure) {
-      const reason = lease?.code ?? "invalid_lease";
+    const sessionId = request.headers["mcp-session-id"];
+    const access =
+      id && token && !Array.isArray(sessionId)
+        ? authorize(id, token, connection, sessionId)
+        : undefined;
+    if (!access || access instanceof PluginMcpFailure) {
+      const reason = access?.code ?? "invalid_lease";
       response
         .writeHead(401, {
           "content-type": "application/json",
           "www-authenticate": "Bearer",
-          ...(!lease && { connection: "close" }),
+          ...(!access && { connection: "close" }),
         })
         .end(
           JSON.stringify({
@@ -91,7 +99,7 @@ export const listen = Effect.fnUntraced(function* (
             id: null,
             error: {
               code: -32000,
-              message: lease ? "Lease revoked" : "Invalid lease",
+              message: access ? "Lease revoked" : "Invalid lease",
               data: { reason },
             },
           }),
@@ -99,6 +107,8 @@ export const listen = Effect.fnUntraced(function* (
       return;
     }
 
+    if (access.sessionId) response.setHeader("mcp-session-id", access.sessionId);
+    const lease = access.projection;
     const server = new Server(
       { name: "Nodex Plugin Tools", version: "1" },
       { capabilities: { tools: {} } },

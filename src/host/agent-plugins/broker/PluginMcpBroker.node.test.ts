@@ -310,6 +310,54 @@ it.live("rejects replay of a bound bearer on a different HTTP connection", () =>
   }),
 );
 
+it.live("binds a pooled HTTP client to its issued MCP session across sockets", () =>
+  Effect.gen(function* () {
+    const fixture = yield* httpFixture;
+    const broker = yield* make();
+    yield* broker.publishInstallation(scope.installationId, httpInstallation(fixture.url));
+    const lease = yield* broker.openLease(scope, { httpBinding: "mcp-session" });
+    const post = (method: string, sessionId?: string, params?: unknown) =>
+      Effect.promise(() =>
+        fetch(lease.url, {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + lease.bearerToken,
+            Accept: "application/json, text/event-stream",
+            "Content-Type": "application/json",
+            Connection: "close",
+            ...(sessionId ? { "Mcp-Session-Id": sessionId } : {}),
+          },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+        }),
+      );
+
+    const initialized = yield* post("initialize", undefined, {
+      protocolVersion: "2025-03-26",
+      capabilities: {},
+      clientInfo: { name: "test", version: "1" },
+    });
+    expect(initialized.status).toBe(200);
+    const sessionId = initialized.headers.get("Mcp-Session-Id");
+    if (!sessionId) return yield* Effect.die("The initialized lease must issue an MCP session ID.");
+    yield* Effect.promise(() => initialized.text());
+
+    for (const replay of [undefined, "another-session"]) {
+      const response = yield* post("tools/list", replay);
+      expect(response.status).toBe(401);
+      yield* Effect.promise(() => response.text());
+    }
+    const listed = yield* post("tools/list", sessionId);
+    expect(listed.status).toBe(200);
+    expect(yield* Effect.promise(() => listed.json())).toMatchObject({
+      result: { tools: expect.arrayContaining([expect.objectContaining({ name: "inspect" })]) },
+    });
+    yield* broker.revokeLease(lease.id);
+    const revoked = yield* post("tools/list", sessionId);
+    expect(revoked.status).toBe(401);
+    yield* Effect.promise(() => revoked.text());
+  }).pipe(Effect.scoped),
+);
+
 it.effect("expires leases after the default and per-lease maximum lifetimes", () =>
   Effect.gen(function* () {
     const fixture = yield* httpFixture;
