@@ -100,6 +100,21 @@ test("rejects a foreign native image before publishing the runtime", async () =>
   expect(existsSync(join(input.options.outputPath, "agent-runtime"))).toBe(false);
 });
 
+test("derives upstream metadata without the Windows build host's CRT", async () => {
+  const input = fixture("x64");
+  writeFileSync(
+    join(input.source, "codex-path/rg.exe"),
+    windowsPeFixture(0x8664, ["vcruntime140.dll"]),
+  );
+
+  const candidate = await stageCodexRuntimeCandidate(input.options);
+
+  expect(candidate.metadata.artifacts.map(({ path }) => path)).toContain("codex-path/rg.exe");
+  expect(
+    existsSync(join(input.options.outputPath, "agent-runtime/codex-path/vcruntime140.dll")),
+  ).toBe(false);
+});
+
 test("rejects metadata that is not bound by the Windows release lock", async () => {
   const input = fixture("x64");
   await expect(stageCodexRuntime(input.options)).rejects.toThrow(
