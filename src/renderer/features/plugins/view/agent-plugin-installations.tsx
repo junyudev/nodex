@@ -179,9 +179,6 @@ export function AgentPluginInstallations({
           {picking ? "Reviewing folder…" : "Install from folder"}
         </NodexButton>
       </div>
-      <p className="text-sm text-token-text-secondary">
-        Installed in this Profile. Agent delivery is not yet available.
-      </p>
       {data?.writerStatus === "stale" ? (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span role="status">The plugin registry has a stale lock.</span>

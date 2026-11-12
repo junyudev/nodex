@@ -115,7 +115,6 @@ afterEach(cleanup);
 
 it("reviews declarations before sending the reviewed digest for installation", async () => {
   const invoke = setup();
-  expect(screen.getByText(/Agent delivery is not yet available/)).toBeTruthy();
   await screen.findByText("No Nodex plugins installed");
   await click(screen.getByRole("button", { name: "Install from folder" }));
 
