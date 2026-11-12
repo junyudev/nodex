@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { randomUUID } from "node:crypto";
@@ -278,6 +280,29 @@ it.effect(
         yield* Effect.promise(() => stat(data).catch((error: NodeJS.ErrnoException) => error.code)),
       ).toBe("ENOENT");
     }).pipe(Effect.scoped),
+);
+
+it.live("reclaims a dead writer without disturbing a live owner", () =>
+  Effect.gen(function* () {
+    const { home, source, plugins } = yield* testProfile;
+    const digest = yield* previewDigest(source.locator);
+    const lock = join(home, PLUGIN_REGISTRY_DIRECTORY, ".writer");
+    const liveOwner = join(lock, process.pid + "-" + randomUUID());
+    yield* Effect.promise(async () => {
+      await mkdir(lock, { recursive: true });
+      await writeFile(liveOwner, "");
+    });
+    expect(yield* Effect.flip(plugins.install(source, digest))).toEqual({ code: "store-busy" });
+    const { stdout } = yield* Effect.promise(() =>
+      promisify(execFile)(process.execPath, ["-p", "process.pid"]),
+    );
+    yield* Effect.promise(async () => {
+      await rm(liveOwner);
+      await writeFile(join(lock, stdout.trim() + "-" + randomUUID()), "");
+    });
+    const { installation } = yield* plugins.install(source, digest);
+    expect((yield* plugins.list).installations).toEqual([installation]);
+  }),
 );
 
 it.effect("rejects a stale compare-and-swap across store instances", () =>

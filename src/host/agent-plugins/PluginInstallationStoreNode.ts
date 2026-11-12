@@ -1,7 +1,19 @@
 import * as Effect from "effect/Effect";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, mkdtemp, open, realpath, rename, rm, rmdir } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  readdir,
+  realpath,
+  rename,
+  rm,
+  rmdir,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import {
   emptyPluginRegistry,
@@ -153,6 +165,70 @@ function nextPublication(
   return { stage: stage.directory, relative: pluginPackageDirectory(installation) };
 }
 
+function processIsGone(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (cause) {
+    return hasCode(cause, "ESRCH");
+  }
+}
+
+async function reclaimWriter(lock: string) {
+  if (!(await directoryAt(lock))) return;
+  const owners = await readdir(lock).catch((cause: unknown) => {
+    if (!hasCode(cause, "ENOENT")) throw cause;
+    return [];
+  });
+  if (owners.length > 0) {
+    const [owner] = owners;
+    const pid = Number(/^([1-9]\d*)-[a-f0-9-]{36}$/.exec(owner ?? "")?.[1]);
+    if (
+      owners.length !== 1 ||
+      !Number.isSafeInteger(pid) ||
+      pid > 0x7fffffff ||
+      !processIsGone(pid)
+    )
+      throw new StoreFailure({ code: "store-busy" });
+    // Remove only the observed owner. A replacement lock always contains its own marker.
+    await unlink(path.join(lock, owner!)).catch((cause: unknown) => {
+      if (!hasCode(cause, "ENOENT")) throw cause;
+    });
+  }
+  await rmdir(lock).catch((cause: unknown) => {
+    if (!hasCode(cause, "ENOENT") && !hasCode(cause, "ENOTEMPTY") && !hasCode(cause, "EEXIST"))
+      throw cause;
+  });
+}
+
+async function acquireWriter(root: string) {
+  const lock = path.join(root, ".writer");
+  const owner = process.pid + "-" + randomUUID();
+  const candidate = await mkdtemp(path.join(root, ".writer-"));
+  const claim = async () =>
+    rename(candidate, lock).catch(async (cause: unknown) => {
+      if (!(await directoryAt(lock))) throw cause;
+      return false;
+    });
+  try {
+    // Publish the owner and lock atomically so an interrupted claimant never leaves an empty lock.
+    await writeFile(path.join(candidate, owner), "", { flag: "wx", mode: 0o600 });
+    if ((await claim()) === false) {
+      await reclaimWriter(lock);
+      if ((await claim()) === false) throw new StoreFailure({ code: "store-busy" });
+    }
+  } finally {
+    await rm(candidate, { force: true, recursive: true });
+  }
+  return async () => {
+    await unlink(path.join(lock, owner));
+    await rmdir(lock).catch((cause: unknown) => {
+      if (!hasCode(cause, "ENOENT") && !hasCode(cause, "ENOTEMPTY") && !hasCode(cause, "EEXIST"))
+        throw cause;
+    });
+  };
+}
+
 export function makePluginInstallationStoreNode(profileHome: string): PluginInstallationStore {
   const home = () => realpath(profileHome);
   const rootAt = (profile: string) => path.join(profile, PLUGIN_REGISTRY_DIRECTORY);
@@ -185,12 +261,7 @@ export function makePluginInstallationStoreNode(profileHome: string): PluginInst
       const profile = await home();
       const root = rootAt(profile);
       await directoryAt(root, true);
-      // Fence CAS across Hosts using the same Profile. An abandoned lock fails closed.
-      const lock = path.join(root, ".writer");
-      await mkdir(lock, { mode: 0o700 }).catch((cause: unknown) => {
-        if (hasCode(cause, "EEXIST")) throw new StoreFailure({ code: "store-busy" });
-        throw cause;
-      });
+      const releaseWriter = await acquireWriter(root);
 
       const warnings: PluginCleanupWarning[] = [];
       const temporary = path.join(root, ".registry-" + randomUUID());
@@ -234,7 +305,7 @@ export function makePluginInstallationStoreNode(profileHome: string): PluginInst
       } finally {
         if (published) await rm(published, { force: true, recursive: true }).catch(() => undefined);
         await rm(temporary, { force: true }).catch(() => undefined);
-        await rmdir(lock).catch(() => warnings.push({ kind: "writer-lock" }));
+        await releaseWriter().catch(() => warnings.push({ kind: "writer-lock" }));
       }
       return warnings;
     }).pipe(Effect.uninterruptible);
