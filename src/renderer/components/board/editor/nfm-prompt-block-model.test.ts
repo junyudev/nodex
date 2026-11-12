@@ -3,8 +3,11 @@ import {
   describeNfmPromptSend,
   describeNfmPromptTurnState,
   findNfmPromptBlockAtCaret,
+  matchesNodexAgentMention,
   nfmPromptStartsNewTurn,
+  resolveNfmPromptSendAnchor,
   resolveNfmPromptSentPresentation,
+  turnCaretBlockIntoPrompt,
 } from "./nfm-prompt-block-model";
 
 describe("Prompt block model", () => {
@@ -79,5 +82,54 @@ describe("Prompt block model", () => {
         content: [{ type: "link", content: [{ type: "agentConfig", props: {} }] }],
       }),
     ).toBe(true);
+  });
+});
+
+describe("Prompt send anchor", () => {
+  const line = { left: 0, right: 300, top: 40, bottom: 60 };
+
+  test("follows the last line of text while that line has room for the button", () => {
+    expect(resolveNfmPromptSendAnchor({ lastLine: line, width: 400 })).toEqual({
+      placement: "inline",
+      left: 304,
+      top: 38,
+    });
+  });
+
+  test("takes a row beneath the text when the last line is full", () => {
+    expect(resolveNfmPromptSendAnchor({ lastLine: line, width: 320 })).toEqual({
+      placement: "below",
+      left: 0,
+      top: 64,
+    });
+  });
+
+  test("sits at the start of the column before any text is measured", () => {
+    expect(resolveNfmPromptSendAnchor({ lastLine: null, width: 400 })).toEqual({
+      placement: "inline",
+      left: 0,
+      top: 0,
+    });
+  });
+});
+
+describe("Prompt turn and Nodex agent mention", () => {
+  test("turns the caret's block into a Prompt, keeping the block in place", () => {
+    const calls: unknown[][] = [];
+    turnCaretBlockIntoPrompt({
+      getTextCursorPosition: () => ({ block: { id: "b1" } }),
+      updateBlock: (...args: unknown[]) => {
+        calls.push(args);
+        return undefined;
+      },
+    });
+    expect(calls).toEqual([["b1", { type: "prompt" }]]);
+  });
+
+  test("offers Nodex for an empty query or a prefix of its name, and not for other text", () => {
+    expect(matchesNodexAgentMention("")).toBe(true);
+    expect(matchesNodexAgentMention("no")).toBe(true);
+    expect(matchesNodexAgentMention("Agent")).toBe(true);
+    expect(matchesNodexAgentMention("landing")).toBe(false);
   });
 });

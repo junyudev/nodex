@@ -1,4 +1,5 @@
 import {
+  AskAiIcon,
   CodeIcon,
   NfmCalloutBlockIcon,
   NfmSideMenuBulletedListBlockIcon,
@@ -10,7 +11,6 @@ import {
   NfmSideMenuToggleListBlockIcon,
   TextActionEquationIcon,
 } from "@/components/shared/icons";
-import { CornerDownRight } from "@/components/shared/icons/generic-icons";
 import type { NFM_TURN_INTO_DEFINITIONS } from "@/lib/nfm-turn-into-targets";
 
 export type NfmTurnIntoBlockKey = (typeof NFM_TURN_INTO_DEFINITIONS)[number]["key"];
@@ -56,7 +56,7 @@ export function NfmTurnIntoBlockIcon({ targetKey, className }: NfmTurnIntoBlockI
     return <NfmCalloutBlockIcon className={className} />;
   }
   if (targetKey === "prompt") {
-    return <CornerDownRight className={className ?? "size-5"} />;
+    return <AskAiIcon className={className ?? "size-5"} />;
   }
   return <NfmSideMenuTextBlockIcon className={className} />;
 }

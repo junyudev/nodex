@@ -35,8 +35,11 @@ invalid query closes the session and preserves the typed text. Amounts, shell
 variables without a matching skill, escaped dollars, double-dollar math, and
 code stay literal. The trigger is inactive with an empty skill inventory.
 
-The broad `@` menu adds Skills after the existing sections, with a separate
-budget of three rows for an empty query and four for a search. The
+The broad `@` menu offers Nodex first when the query is empty or starts `nodex`
+or `agent`; choosing it turns the caret's block into a
+[Prompt](nfm-editor-prompt-block-behavior.md). The `@` menu adds Skills after the
+existing sections, with a separate budget of three rows for an empty query and four
+for a search. The
 [skill mention specification](nfm-editor-skill-mention-behavior.md) defines
 which skills a Page offers and how mentions open.
 

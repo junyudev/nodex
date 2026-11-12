@@ -113,3 +113,61 @@ export function findNfmPromptBlockAtCaret(editor: PromptTreeEditor): string | nu
   }
   return null;
 }
+
+/** The send button's square, and the gap between it and the text it follows. */
+export const NFM_PROMPT_SEND_SIZE = 24;
+export const NFM_PROMPT_SEND_GAP = 4;
+
+/** A line of the Prompt's text, measured relative to the Prompt's text column. */
+export interface NfmPromptLineBox {
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+  readonly bottom: number;
+}
+
+export type NfmPromptSendAnchor =
+  | { readonly placement: "inline"; readonly left: number; readonly top: number }
+  | { readonly placement: "below"; readonly left: 0; readonly top: number };
+
+/**
+ * Where the send button sits. It follows the last line of text when that line has room for it,
+ * and otherwise takes a row of its own beneath the text. Only the horizontal room decides, so the
+ * row reserved for the lower placement cannot change which placement applies.
+ */
+export function resolveNfmPromptSendAnchor(input: {
+  readonly lastLine: NfmPromptLineBox | null;
+  readonly width: number;
+}): NfmPromptSendAnchor {
+  const { lastLine } = input;
+  if (!lastLine) return { placement: "inline", left: 0, top: 0 };
+  const left = lastLine.right + NFM_PROMPT_SEND_GAP;
+  if (left + NFM_PROMPT_SEND_SIZE <= input.width) {
+    const lineHeight = lastLine.bottom - lastLine.top;
+    return {
+      placement: "inline",
+      left,
+      top: lastLine.top + (lineHeight - NFM_PROMPT_SEND_SIZE) / 2,
+    };
+  }
+  return { placement: "below", left: 0, top: lastLine.bottom + NFM_PROMPT_SEND_GAP };
+}
+
+/** The Page editor surface a Prompt turns its caret block into. */
+interface PromptTurnEditor {
+  getTextCursorPosition: () => { block: { id: string } };
+  updateBlock: (blockId: string, update: { type: "prompt" }) => unknown;
+}
+
+/** Turns the block holding the caret into a Prompt, keeping its text and children. */
+export function turnCaretBlockIntoPrompt(editor: PromptTurnEditor): void {
+  editor.updateBlock(editor.getTextCursorPosition().block.id, { type: "prompt" });
+}
+
+export const NODEX_AGENT_MENTION_TITLE = "Nodex";
+
+/** `@` offers Nodex for an empty query or one that starts its name, so `@no` and `@age` find it. */
+export function matchesNodexAgentMention(query: string): boolean {
+  const term = query.trim().toLowerCase();
+  return !term || "nodex".startsWith(term) || "agent".startsWith(term);
+}

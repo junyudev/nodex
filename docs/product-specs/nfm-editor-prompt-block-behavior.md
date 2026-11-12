@@ -1,7 +1,7 @@
 # Page Editor Prompt Block Behavior
 
 Status: Active
-Last updated: 2026-10-31
+Last updated: 2026-11-13
 
 ## Purpose
 
@@ -20,14 +20,17 @@ Storage, Nodex Markdown syntax and send-time projection are defined in
 A Prompt is an enclosed container: a rich first line followed by any child
 Blocks, inside one hairline-bounded surface.
 
-- A leading `↳` marker identifies it. When the Prompt has children, the marker
-  becomes a disclosure under the pointer: it folds the children away or shows
-  them again. A folded Prompt always shows the disclosure.
+- A leading Nodex mark identifies it, the same mark an action that asks Nodex for
+  something uses. When the Prompt has children, the mark becomes a disclosure under
+  the pointer: it folds the children away or shows them again. A folded Prompt
+  always shows the disclosure.
 - The empty first line reads `Write a prompt to send to a chat`.
-- The trailing send button uses the Composer's send glyph. It appears while the
-  pointer is over the Prompt or the caret is inside it, and stays visible while a
-  send is in flight. An empty Prompt cannot be sent.
-- After a send, a status chip sits before the send button. It follows the Turn
+- The send button uses the Composer's send glyph. It sits right after the last
+  line of the Prompt's text, so a short Prompt never stretches across the Page.
+  When that line has no room for it, the button takes a row of its own beneath the
+  text. It appears while the pointer is over the Prompt or the caret is inside it,
+  and stays visible while a send is in flight. An empty Prompt has no send button.
+- After a send, a status chip sits at the Prompt's trailing edge. It follows the Turn
   that this Prompt's message started, or was delivered into, and nothing else the
   chat does: `Queued`, `Working…`, `Needs you`, `Answered`, `Failed` or `Stopped`.
   A send record without a known message only says `Sent 5m ago`.
@@ -111,6 +114,9 @@ virtualized list and reduced-motion policy.
 - `/prompt` inserts a Prompt.
 - `Turn into → Prompt` converts selected Blocks, and the text selection menu's
   block type list includes Prompt.
+- `@Nodex` in the `@` menu turns the block holding the caret into a Prompt, keeping
+  its text and children. The menu offers it first for an empty query and for a
+  query that starts `nodex` or `agent`, so `@no` finds it.
 
 ## Verification
 

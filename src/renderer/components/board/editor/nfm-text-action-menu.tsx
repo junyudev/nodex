@@ -41,7 +41,7 @@ import {
   TextActionUnderlineIcon,
   UpArrowIcon,
 } from "@/components/shared/icons";
-import { CornerDownRight, MessageCirclePlusIcon } from "@/components/shared/icons/generic-icons";
+import { MessageCirclePlusIcon } from "@/components/shared/icons/generic-icons";
 import {
   NodexDropdownContent,
   NodexDropdownItem,
@@ -569,7 +569,7 @@ function BlockTypeIcon({ item }: { item: TextActionBlockTypeItem | null }) {
   if (item.key === "todo-list") return <NfmSideMenuCheckListBlockIcon />;
   if (item.key === "toggle-list") return <NfmSideMenuToggleListBlockIcon />;
   if (item.key === "code") return <CodeIcon />;
-  if (item.key === "prompt") return <CornerDownRight className="size-5" />;
+  if (item.key === "prompt") return <AskAiIcon className="size-5" />;
 
   return <NfmSideMenuTextBlockIcon />;
 }

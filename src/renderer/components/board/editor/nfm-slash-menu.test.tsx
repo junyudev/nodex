@@ -9,6 +9,7 @@ import {
   buildDateMentionInlineContent,
   buildDateMentionSuggestionItems,
   buildNfmPageMentionCreateSuggestionItems,
+  buildNfmNodexAgentSuggestionItems,
   buildNfmSlashMenuItems,
   buildNfmSkillMentionSuggestionItems,
   buildNfmThreadMentionInlineContent,
@@ -1430,4 +1431,17 @@ test("keeps grouped Skills after existing sections and gives them a separate bud
     { updateSelection: true },
   );
   expect(buildNfmSkillMentionSuggestionItems(editor, candidates, "5", "dollar")).toEqual([]);
+});
+
+test("offers Nodex in the @ menu, turning the caret's block into a Prompt", () => {
+  const updateBlock = vi.fn();
+  const editor = {
+    getTextCursorPosition: () => ({ block: { id: "block-1" } }),
+    updateBlock,
+  };
+  const [nodex] = buildNfmNodexAgentSuggestionItems(editor, "no");
+  expect(nodex?.key).toBe("agent:nodex");
+  nodex?.onItemClick();
+  expect(updateBlock).toHaveBeenCalledWith("block-1", { type: "prompt" });
+  expect(buildNfmNodexAgentSuggestionItems(editor, "landing")).toEqual([]);
 });

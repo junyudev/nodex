@@ -1,7 +1,11 @@
 import { createReactBlockSpec, useEditorState } from "@blocknote/react";
-import { useEffect, useState, type MouseEvent } from "react";
-import { ActivitySpinnerIcon, ChevronRightIcon, UpArrowIcon } from "@/components/shared/icons";
-import { CornerDownRight } from "@/components/shared/icons/generic-icons";
+import { useCallback, useEffect, useState, type MouseEvent } from "react";
+import {
+  ActivitySpinnerIcon,
+  AskAiIcon,
+  ChevronRightIcon,
+  UpArrowIcon,
+} from "@/components/shared/icons";
 import { PageChatActivityGlyph } from "@/components/shared/page-chat-activity-glyph";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { NodexButton } from "@/components/ui/button";
@@ -22,11 +26,13 @@ import {
   findNfmPromptBlockAtCaret,
   nfmPromptStartsNewTurn,
   resolveNfmPromptSentPresentation,
+  type NfmPromptSendAnchor,
 } from "./nfm-prompt-block-model";
 import { NfmEditorPopoverContent } from "./nfm-editor-popover-content";
 import { NfmChatSendTooltip } from "./nfm-chat-send-tooltip";
 import { useNfmPromptCollapsed, writeNfmPromptCollapsed } from "./nfm-prompt-collapse-store";
 import { useNfmPromptRuntime } from "./nfm-prompt-runtime";
+import { useNfmPromptSendAnchor } from "./nfm-prompt-send-anchor";
 import { resolveNfmSendToThreadTitle } from "./nfm-send-to-thread-menu-model";
 import { useThreadMentionRuntime } from "./thread-mention-chip";
 
@@ -53,7 +59,7 @@ function PromptMarker({
   collapsed: boolean;
   onToggle: () => void;
 }) {
-  const glyph = <CornerDownRight className="size-4" aria-hidden="true" />;
+  const glyph = <AskAiIcon className="size-4" aria-hidden="true" />;
   if (!hasChildren) {
     return (
       <span
@@ -204,14 +210,14 @@ function PromptSendButton({
   label,
   sessionId,
   startsNewTurn,
-  disabled,
+  anchor,
   visible,
   onSend,
 }: {
   label: string;
   sessionId: string | null;
   startsNewTurn: boolean;
-  disabled: boolean;
+  anchor: NfmPromptSendAnchor;
   visible: boolean;
   onSend: () => Promise<void>;
 }) {
@@ -233,12 +239,17 @@ function PromptSendButton({
         contentEditable={false}
         aria-label={label}
         aria-busy={pending || undefined}
-        disabled={disabled || pending}
+        disabled={pending}
         data-nfm-prompt-send=""
+        data-placement={anchor.placement}
+        style={{ left: anchor.left, top: anchor.top }}
         className={cn(
-          "flex size-6 shrink-0 cursor-interaction select-none items-center justify-center rounded-full bg-composer-primary text-composer-primary transition-opacity duration-150",
+          "absolute flex size-6 cursor-interaction select-none items-center justify-center rounded-full bg-composer-primary text-composer-primary transition-opacity duration-150",
           "disabled:cursor-default disabled:opacity-40",
-          visible || pending ? "opacity-100" : "opacity-0 group-hover/prompt:opacity-100",
+          // Hidden, the button must not take clicks meant for the text beneath it.
+          visible || pending
+            ? "opacity-100"
+            : "pointer-events-none opacity-0 group-hover/prompt:pointer-events-auto group-hover/prompt:opacity-100",
           "focus-visible:opacity-100",
         )}
         onMouseDown={keepEditorSelection}
@@ -274,6 +285,17 @@ export const createPromptBlockSpec = createReactBlockSpec(promptBlockConfig, {
     const isEmpty = !hasChildren && (!Array.isArray(block.content) || block.content.length === 0);
     const sentSessionId = block.props.sentSessionId;
     const destination = editor.isEditable ? runtime.destination : null;
+    // BlockNote hands the content slot over as a callback ref, so the measured nodes live in state.
+    const [column, setColumn] = useState<HTMLDivElement | null>(null);
+    const [content, setContent] = useState<HTMLDivElement | null>(null);
+    const setContentSlot = useCallback(
+      (node: HTMLDivElement | null) => {
+        setContent(node);
+        contentRef(node);
+      },
+      [contentRef],
+    );
+    const anchor = useNfmPromptSendAnchor(column, content);
 
     return (
       <div
@@ -286,9 +308,24 @@ export const createPromptBlockSpec = createReactBlockSpec(promptBlockConfig, {
           collapsed={collapsed}
           onToggle={() => writeNfmPromptCollapsed(block.id, !collapsed)}
         />
-        <div ref={contentRef} className="min-w-0 flex-1" />
-        <div contentEditable={false} className="flex h-6 shrink-0 items-center gap-1">
-          {sentSessionId ? (
+        <div
+          ref={setColumn}
+          className={cn("relative min-w-0 flex-1", anchor.placement === "below" && "pb-7")}
+        >
+          <div ref={setContentSlot} />
+          {destination && !isEmpty ? (
+            <PromptSendButton
+              label={describeNfmPromptSend(destination, Boolean(sentSessionId))}
+              sessionId={destination.kind === "beside" ? destination.sessionId : null}
+              startsNewTurn={nfmPromptStartsNewTurn(block)}
+              anchor={anchor}
+              visible={caretWithin}
+              onSend={() => runtime.send(block.id)}
+            />
+          ) : null}
+        </div>
+        {sentSessionId ? (
+          <div contentEditable={false} className="flex h-6 shrink-0 items-center">
             <PromptSentRecord
               promptBlockId={block.id}
               sessionId={sentSessionId}
@@ -296,18 +333,8 @@ export const createPromptBlockSpec = createReactBlockSpec(promptBlockConfig, {
               sentAt={block.props.sentAt}
               editable={editor.isEditable}
             />
-          ) : null}
-          {destination ? (
-            <PromptSendButton
-              label={describeNfmPromptSend(destination, Boolean(sentSessionId))}
-              sessionId={destination.kind === "beside" ? destination.sessionId : null}
-              startsNewTurn={nfmPromptStartsNewTurn(block)}
-              disabled={isEmpty}
-              visible={caretWithin}
-              onSend={() => runtime.send(block.id)}
-            />
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
     );
   },

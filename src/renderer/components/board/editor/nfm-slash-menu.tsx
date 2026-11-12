@@ -4,6 +4,11 @@ import {
   type PageSkillMention,
 } from "@/features/skills/use-page-skill-mentions";
 import { useSkillMentionPresentation } from "./skill-mention-chip";
+import {
+  matchesNodexAgentMention,
+  NODEX_AGENT_MENTION_TITLE,
+  turnCaretBlockIntoPrompt,
+} from "./nfm-prompt-block-model";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   startTransition,
@@ -58,6 +63,7 @@ import {
 } from "./nfm-blocknote-floating-ui";
 import { formatThreadMentionShortUuid } from "@/lib/editor-model/thread-mention-display";
 import {
+  AskAiIcon,
   ChatIcon,
   BellIcon,
   CalendarIcon,
@@ -1604,6 +1610,27 @@ export function useNfmMentionGetItems({
 
 const EMPTY_SKILLS: readonly PageSkillMention[] = [];
 
+/** `@Nodex` turns the caret's block into a Prompt, so its own text is the message to send. */
+export function buildNfmNodexAgentSuggestionItems(
+  editor: unknown,
+  query: string,
+): NfmSuggestionItem[] {
+  if (!matchesNodexAgentMention(query)) return [];
+  return [
+    {
+      key: "agent:nodex",
+      title: NODEX_AGENT_MENTION_TITLE,
+      subtext: "Make this block a Prompt for Nodex",
+      group: "Agent",
+      aliases: ["agent", "prompt"],
+      hint: null,
+      icon: <AskAiIcon className="size-4" />,
+      onItemClick: () =>
+        turnCaretBlockIntoPrompt(editor as Parameters<typeof turnCaretBlockIntoPrompt>[0]),
+    },
+  ];
+}
+
 export function buildNfmSkillMentionSuggestionItems(
   editor: unknown,
   skills: readonly PageSkillMention[],
@@ -1734,25 +1761,35 @@ function MentionMenu({
       families: new Set([...(current.query === query ? current.families : []), family]),
     }));
   }, []);
+  // Only `@` names an agent; `+` and `[[` keep to pages.
+  const agentItems = useCallback(
+    (query: string) =>
+      controller.triggerCharacter === "@" ? buildNfmNodexAgentSuggestionItems(editor, query) : [],
+    [controller.triggerCharacter, editor],
+  );
   const getItems = useCallback(
     async (query: string) => {
       const [nonPageItems, pageResults] = await Promise.all([
         controller.profile.entry === "broad" ? getNonPageItems(query) : Promise.resolve([]),
         allowPageReferences ? pageItems.getItems(query) : Promise.resolve([]),
       ]);
-      return selectNfmPageMentionSuggestionItems(
-        query,
-        [...pageResults, ...nonPageItems, ...getSkillItems(query)],
-        controller.profile,
-        buildCreateItems(query),
-        {
-          expandedFamilies:
-            sectionExpansion.query === query ? sectionExpansion.families : undefined,
-          onExpandSection: (family) => expandSection(query, family),
-        },
-      );
+      return [
+        ...agentItems(query),
+        ...selectNfmPageMentionSuggestionItems(
+          query,
+          [...pageResults, ...nonPageItems, ...getSkillItems(query)],
+          controller.profile,
+          buildCreateItems(query),
+          {
+            expandedFamilies:
+              sectionExpansion.query === query ? sectionExpansion.families : undefined,
+            onExpandSection: (family) => expandSection(query, family),
+          },
+        ),
+      ];
     },
     [
+      agentItems,
       allowPageReferences,
       buildCreateItems,
       controller.profile,
@@ -1764,8 +1801,9 @@ function MentionMenu({
     ],
   );
   const getImmediateItems = useCallback(
-    (query: string) =>
-      selectNfmPageMentionSuggestionItems(
+    (query: string) => [
+      ...agentItems(query),
+      ...selectNfmPageMentionSuggestionItems(
         query,
         [
           ...(allowPageReferences ? pageItems.getImmediateItems(query) : []),
@@ -1779,7 +1817,9 @@ function MentionMenu({
           onExpandSection: (family) => expandSection(query, family),
         },
       ),
+    ],
     [
+      agentItems,
       allowPageReferences,
       buildCreateItems,
       controller.profile,
