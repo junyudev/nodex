@@ -1,6 +1,6 @@
 # Agent Plugins behavior
 
-## Stage 1 — local installation and review
+## Local installation and review
 
 The initial release covers installing, reviewing, enabling, disabling, and
 uninstalling plugins. The Plugins page shows Nodex-installed plugins alongside
@@ -38,11 +38,7 @@ section offers **Repair lock**. Repair leaves a live writer's lock in place.
 ### Enable, disable, and uninstall
 
 Select a Project in the Nodex-installed section and enable each plugin that
-the Project should use.
-Project selections are independent. Stage 1 records them for future delivery.
-The Plugins page shows that Agent delivery is unavailable. Installation and
-activation are review-only in this release. Agents keep their existing
-inventories, and Nodex leaves the installed plugin's MCP servers disconnected.
+the Project should use. Project selections are independent.
 
 Disabling removes the selected Project's activation and keeps the installation,
 its local data, and the other Projects' activations. Uninstalling removes the
@@ -50,19 +46,23 @@ Nodex-managed package copy and its activations in every Project. The person
 chooses whether to keep or delete any plugin data stored by Nodex. The source
 folder, Codex-home installations, and existing chat history remain in place.
 
-## Stage 2 — planned delivery to Codex and Claude Code
+## Codex delivery
 
-In a Project where a plugin is enabled, Codex and Claude Code Agents can discover
-its available skills and call its connected MCP tools. Skills also appear in the
-Project's skill picker and can be suggested for Inbox work in that Project.
-New, resumed, forked, and delegated Sessions use the current activation for their
-execution Project. Each Session's normal permission and approval rules still
-apply.
+In a Project where a Plugin is enabled, Codex can discover its skills and call
+its connected MCP tools. New, resumed, and forked Sessions use the activation
+for their execution Project. A native Codex duplicate is suppressed for the
+Session. If Nodex cannot safely suppress the duplicate, the Session reports
+the conflict before starting. Normal permissions and approval rules apply.
 
-Disabling a plugin cuts off further calls through its existing connections in
-that Project. By the next turn the plugin's skills and tools are gone from that
-Project's Agent and picker inventories. Uninstalling applies the same withdrawal
-in every Project. Text and tool results from earlier turns stay in chat history.
+Disabling, uninstalling, or reloading a Plugin revokes the affected tool
+connections. An archived Project also loses its connections and skill access.
+Codex uses the current skills and tools after its Project process goes idle and
+recycles. Earlier messages and tool results remain in the conversation.
+
+## Planned delivery
+
+Claude Code delivery, the Project skill picker, and skill suggestions for Inbox
+work are planned separately.
 
 Hook execution and opening a plugin's MCP App from an entry point are later
 capabilities. App mappings remain listed as OpenAI-hosted dependencies.

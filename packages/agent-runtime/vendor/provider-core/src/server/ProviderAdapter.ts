@@ -410,6 +410,11 @@ export const ProviderAdapterV2Error = Schema.Union([
 export type ProviderAdapterV2Error = typeof ProviderAdapterV2Error.Type;
 
 export interface ProviderAdapterV2OpenSessionInput {
+  readonly codexPluginProject?: {
+    readonly projectId: string;
+    readonly revision: string | null;
+    readonly rootThreadFor: (threadId: ThreadId) => Effect.Effect<ThreadId, unknown>;
+  };
   /** Commit this session's roster. False means the provider thread is not bound yet. */
   readonly reportBackgroundTasks?: (
     providerThread: OrchestrationV2ProviderThread,
@@ -669,6 +674,8 @@ export interface ProviderAdapterV2SessionRuntime {
   readonly nativeGeneration?: number;
   /** A native cancellation ended this incarnation; the manager must retire its credentials and scope. */
   readonly nativeSessionRetired?: Effect.Effect<boolean>;
+  /** A stale Project app-server drains its existing work before recycling. */
+  readonly codexPluginDeliveryStale?: Effect.Effect<boolean>;
   /** An unavailable captured session must fail instead of silently replacing its native identity. */
   readonly nativeResumeFailurePolicy?: "fail" | "portable-context";
   readonly instanceId: ProviderInstanceId;

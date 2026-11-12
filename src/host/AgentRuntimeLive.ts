@@ -1,3 +1,5 @@
+import { live as pluginInstallation } from "./agent-plugins/PluginInstallationLive";
+import { CodexPluginDelivery } from "./agent-plugins/CodexPluginDelivery";
 import { SessionFolders } from "../main/agent-backend/SessionFolders";
 import { makeSessionReader } from "./RuntimeNotificationSessions";
 import { ReadbackRuntime } from "./ReadbackRuntime";
@@ -175,6 +177,7 @@ class HostActivation extends Context.Service<
 const supervisor = Layer.effectContext(
   Effect.gen(function* () {
     const config = yield* MainConfig;
+    const plugins = yield* CodexPluginDelivery;
     const platform = yield* CodexPlatform;
     const codexLaunch = yield* CodexLocalLaunch;
     const settings = yield* ApplicationSettings;
@@ -638,7 +641,7 @@ const supervisor = Layer.effectContext(
         automaticWorkAtOnce: snapshot.agentRuntime.automaticWorkAtOnce,
         pausedThreadIds: yield* heldThreadIds(modules),
         modelPolicy: snapshot.modelPolicy,
-        host: { tools: appToolCatalog },
+        host: { tools: appToolCatalog, codexPlugins: true },
       };
       for (const [id, provider] of Object.entries(providers)) drivers.set(id, provider.driver);
       return { configuration, environment, executable };
@@ -683,6 +686,7 @@ const supervisor = Layer.effectContext(
         if (!configuration) return Effect.fail(new Error("Execution configuration is unavailable"));
         return makeHost(connection, {
           desktop,
+          plugins,
           workspaceEnvironment: workspace.environment,
           presentation,
           projectlessId,
@@ -866,7 +870,7 @@ const supervisor = Layer.effectContext(
 
 /** Execution lifecycle depends only on Core and native filesystem capabilities. */
 export const runtime = supervisor.pipe(
-  Layer.provideMerge(Layer.mergeAll(promptImagesLayer, sessionWorkspaceLayer)),
+  Layer.provideMerge(Layer.mergeAll(promptImagesLayer, sessionWorkspaceLayer, pluginInstallation)),
 );
 
 /** Product tool semantics activate after Session, Workbench and automation Modules exist. */

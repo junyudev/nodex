@@ -1,3 +1,4 @@
+import type { CodexPluginDelivery } from "../../host/agent-plugins/CodexPluginDelivery";
 import { createHash } from "node:crypto";
 import { parseDesktopIdentifier, parseDesktopToolActivity } from "@nodex/agent-runtime/contracts";
 import type { RuntimeDesktopActivitySource } from "../host-runtime/RemoteHostedPipRuntime";
@@ -94,6 +95,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     readonly providers: AgentRuntimeConfiguration["providers"];
     readonly providerDriver?: (instanceId: string) => string | undefined;
     readonly execute: AgentRuntimeHostToolExecutor;
+    readonly plugins?: CodexPluginDelivery["Service"];
     readonly desktop?: Pick<
       AgentRuntimeDesktopTools,
       "threadConfig" | "desktopTools" | "observeNativeTurn" | "pip"
@@ -122,9 +124,12 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
   const authorizeExecution = yield* makeRuntimeAuthority;
   const { runtimeId, runtimeGeneration: leaseId } = connection.identity;
   let open = true;
+  const pluginThreads = new Set<string>();
   yield* Effect.addFinalizer(() =>
     Effect.gen(function* () {
       open = false;
+      if (options.plugins)
+        yield* Effect.forEach(pluginThreads, options.plugins.release, { discard: true });
       options.presentation?.finishRuntimeLease(runtimeId, leaseId);
       yield* options.desktop?.pip?.retireRuntimeLease(runtimeId, leaseId) ?? Effect.void;
     }),
@@ -385,6 +390,47 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
 
   const execute = Effect.fn("AgentRuntimeHost.execute")(
     function* (request: AgentHostRequest) {
+      if (request.operation === "codex.plugins") {
+        if (!isCurrentLease(request.identity)) return yield* unavailable(request.operation);
+        const input = request.request;
+        const plugins = options.plugins;
+        if (!plugins) return { revision: null, delivery: null };
+        if (input.action === "release") {
+          const key = leaseId + ":" + input.attachmentId;
+          pluginThreads.delete(key);
+          yield* plugins.release(key);
+          return { revision: null, delivery: null };
+        }
+        if (input.projectId === options.projectlessId) return { revision: null, delivery: null };
+        const project = { spaceId: coreAuthority.identity.libraryId, projectId: input.projectId };
+        if (!(yield* plugins.hasContributions(project))) return { revision: null, delivery: null };
+        const snapshot = yield* core.workspace
+          .read({ kind: "project", project_id: project.projectId }, undefined, project.projectId)
+          .pipe(Effect.provideService(CoreApplicationAgent, null));
+        const active =
+          snapshot.value.kind === "project" && snapshot.value.project.lifecycle === "active";
+        const revision = yield* plugins.status(project, active);
+        if (input.action === "status" || revision === null) return { revision, delivery: null };
+        const owner = yield* core.workspace
+          .read(
+            {
+              kind: "agent_runtime_session_binding_by_execution",
+              runtime_id: runtimeId,
+              runtime_thread_id: input.rootThreadId,
+            },
+            undefined,
+            project.projectId,
+          )
+          .pipe(Effect.provideService(CoreApplicationAgent, null));
+        const binding =
+          owner.value.kind === "agent_runtime_session_binding" ? owner.value.binding : null;
+        if (!binding || binding.project_id !== project.projectId || !open)
+          return yield* unavailable(request.operation);
+        const key = leaseId + ":" + input.attachmentId;
+        pluginThreads.add(key);
+        const delivery = yield* plugins.attach(project, binding.session_id, key, revision);
+        return { revision: delivery?.revision ?? null, delivery };
+      }
       if (request.operation === "turn.prepare") return yield* prepare(request.identity);
       if (request.operation === "desktop.skill-roots") {
         if (!isCurrentLease(request.identity)) return yield* unavailable(request.operation);

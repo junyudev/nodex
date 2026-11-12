@@ -1,3 +1,4 @@
+import { codexProjectSessionId } from "./CodexPluginSession.ts";
 import { DesktopTools } from "../desktopTools/DesktopTools.ts";
 import * as DesktopToolsLive from "../desktopTools/Layer.ts";
 import { RuntimeApprovals } from "./RuntimeApprovals.ts";
@@ -331,6 +332,7 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
       readonly providerSessionId: ProviderSessionId;
       readonly initialProviderItemIdentityVersion?: 2;
     }) => Effect.Effect<void>;
+    readonly codexPluginDeliveryStale?: Effect.Effect<boolean>;
     readonly hasPendingBackgroundWork?: Effect.Effect<boolean>;
     readonly hasPendingBackgroundWorkForThread?: Effect.Effect<boolean>;
     readonly hangSessionScopeClose?: boolean;
@@ -441,6 +443,9 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
               )
             : Stream.fromQueue(events),
           nativeSessionRetired: options.isTransportRetired ?? Ref.get(nativeSessionRetired),
+          ...(options.codexPluginDeliveryStale
+            ? { codexPluginDeliveryStale: options.codexPluginDeliveryStale }
+            : {}),
           ...(options.hasPendingBackgroundWork === undefined
             ? {}
             : { hasPendingBackgroundWork: options.hasPendingBackgroundWork }),
@@ -520,6 +525,7 @@ function layerTest(input: {
     readonly armed: Ref.Ref<boolean>;
     readonly paused: Deferred.Deferred<void>;
   };
+  readonly codexPluginDeliveryStale?: Effect.Effect<boolean>;
   readonly hasPendingBackgroundWork?: Effect.Effect<boolean>;
   readonly hasPendingBackgroundWorkForThread?: Effect.Effect<boolean>;
   readonly hangSessionScopeClose?: boolean;
@@ -565,6 +571,9 @@ function layerTest(input: {
       ...(input.capabilities === undefined ? {} : { capabilities: input.capabilities }),
       ...(input.mcpConfigs === undefined ? {} : { mcpConfigs: input.mcpConfigs }),
       ...(input.beforeOpen === undefined ? {} : { beforeOpen: input.beforeOpen }),
+      ...(input.codexPluginDeliveryStale
+        ? { codexPluginDeliveryStale: input.codexPluginDeliveryStale }
+        : {}),
       ...(input.hasPendingBackgroundWork === undefined
         ? {}
         : { hasPendingBackgroundWork: input.hasPendingBackgroundWork }),
@@ -3107,6 +3116,78 @@ it.effect("ProviderSessionManagerV2 persists release when session scope close ha
 
     yield* effect.pipe(
       Effect.provide(layerTest({ state, idleTimeoutMs: 1000, hangSessionScopeClose: true })),
+    );
+  }),
+);
+
+it.effect("recycles only stale Codex Plugin delivery after the Project drains", () =>
+  Effect.gen(function* () {
+    const state = yield* Ref.make(emptyState);
+    const stale = yield* Ref.make(false);
+    const pending = yield* Ref.make(true);
+    yield* Effect.gen(function* () {
+      const eventSink = yield* EventSink.EventSinkV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+      const threadId = ThreadId.make("codex-plugin-recycle");
+      const projectId = ProjectId.make("codex-plugin-project");
+      const otherProjectId = ProjectId.make("other-codex-project");
+      const sibling = ThreadId.make("codex-plugin-sibling");
+      const outside = ThreadId.make("codex-plugin-outside");
+      const providerSessionId = codexProjectSessionId(modelSelection.instanceId, projectId);
+      const now = yield* DateTime.now;
+      yield* eventSink.write({
+        events: [
+          yield* makeThreadCreatedEvent({ idAllocator, threadId, projectId, now }),
+          yield* makeThreadCreatedEvent({ idAllocator, threadId: sibling, projectId, now }),
+          yield* makeThreadCreatedEvent({
+            idAllocator,
+            threadId: outside,
+            projectId: otherProjectId,
+            now,
+          }),
+        ],
+      });
+      const open = manager.open({ threadId, providerSessionId, modelSelection, runtimePolicy });
+      yield* open;
+      yield* manager.open({ threadId: sibling, providerSessionId, modelSelection, runtimePolicy });
+      assert.equal((yield* Ref.get(state)).openCount, 1);
+      assert.isTrue(
+        Exit.isFailure(
+          yield* Effect.exit(
+            manager.open({ threadId: outside, providerSessionId, modelSelection, runtimePolicy }),
+          ),
+        ),
+      );
+      yield* TestClock.adjust("1 second");
+      assert.equal((yield* Ref.get(state)).closeCount, 0);
+      yield* Ref.set(stale, true);
+      yield* TestClock.adjust("1 second");
+      assert.isTrue(Option.isSome(yield* manager.get(providerSessionId)));
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(open)));
+      yield* Ref.set(pending, false);
+      yield* TestClock.adjust("1 second");
+      assert.isTrue(Option.isNone(yield* manager.get(providerSessionId)));
+      assert.equal((yield* Ref.get(state)).closeCount, 1);
+      yield* Ref.set(stale, false);
+      yield* open;
+      assert.isTrue(Option.isSome(yield* manager.get(providerSessionId)));
+    }).pipe(
+      Effect.provide(
+        layerTest({
+          state,
+          idleTimeoutMs: 30_000,
+          codexPluginDeliveryStale: Ref.get(stale),
+          hasPendingBackgroundWork: Ref.get(pending),
+        }).pipe(
+          Layer.provide(
+            Layer.succeed(ExecutionHost.ExecutionHost, {
+              prepareTurn: () => Effect.succeed({}),
+              codexPlugins: () => Effect.succeed({ revision: "test-revision", delivery: null }),
+            }),
+          ),
+        ),
+      ),
     );
   }),
 );

@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { isCodexProjectSession } from "../CodexPluginSession.ts";
+import { codexPluginServerConfig, decideCodexNativePluginOverrides } from "./CodexPluginConfig.ts";
 import { codexDesktopToolItemActivity } from "@nodex/provider-core/server/desktopToolActivity";
 import type { DesktopTurnObservation } from "@nodex/provider-core/server/ExecutionHost";
 import { makeProviderEventBuffer } from "../ProviderEventBuffer.ts";
@@ -339,8 +342,10 @@ const decodeCodexBackgroundTerminalTerminateResponse = Schema.decodeUnknownEffec
 const decodeCodexBackgroundTerminalsListResponse = Schema.decodeUnknownEffect(
   CodexBackgroundTerminalsListResponse,
 );
+// ADR 0086: Codex 0.167.2 gates thread/start.selectedCapabilityRoots on this opt-in.
+const CODEX_EXPERIMENTAL_CAPABILITY_ROOTS = { experimentalApi: true } as const;
 const CODEX_CLIENT_CAPABILITIES = {
-  experimentalApi: true,
+  ...CODEX_EXPERIMENTAL_CAPABILITY_ROOTS,
   optOutNotificationMethods: ["turn/diff/updated"],
   // Declares MCP Apps support (SEP-1724 extension negotiation), so servers
   // attach their UI resources and Codex reports them on tool call items.
@@ -2035,10 +2040,11 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
       ),
     );
   const { clientFactory, crypto, fileSystem, idAllocator, serverConfig } = adapterOptions;
+  const path = yield* Path.Path;
   const keepPictureCopy = keepViewedImage({
     attachmentsDir: serverConfig.attachmentsDir,
     fileSystem,
-    path: yield* Path.Path,
+    path,
   });
   const continuationRequests = adapterOptions.continuationRequests;
 
@@ -2071,6 +2077,151 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           settings: resolvedRuntime?.config ?? adapterOptions.settings,
           environment: resolvedRuntime?.environment ?? adapterOptions.environment,
         });
+        const pluginProject = input.codexPluginProject;
+        const plugins = executionHost.codexPlugins;
+        const pluginAttachments = new Map<
+          ThreadId,
+          {
+            key: string;
+            prepared?: {
+              root: string | null;
+              expiresAt: number | null;
+              config: Readonly<Record<string, Schema.Json>>;
+            };
+          }
+        >();
+        const releasePlugins = Effect.fnUntraced(function* (threadId: ThreadId) {
+          const attachment = pluginAttachments.get(threadId);
+          if (!attachment || !plugins) return;
+          pluginAttachments.delete(threadId);
+          yield* plugins({ action: "release", attachmentId: attachment.key }).pipe(Effect.ignore);
+        });
+        if (pluginProject && plugins) {
+          yield* Scope.addFinalizer(
+            scope,
+            Effect.suspend(() =>
+              Effect.forEach([...pluginAttachments.keys()], releasePlugins, { discard: true }),
+            ),
+          );
+        }
+        const pluginDeliveryStale =
+          pluginProject && plugins
+            ? plugins({ action: "status", projectId: pluginProject.projectId }).pipe(
+                Effect.map(
+                  ({ revision }) =>
+                    revision !== pluginProject.revision ||
+                    [...pluginAttachments.values()].some(
+                      ({ prepared }) =>
+                        prepared?.expiresAt != null && prepared.expiresAt <= Date.now(),
+                    ),
+                ),
+                Effect.orElseSucceed(() => true),
+              )
+            : undefined;
+        const assertPluginDeliveryCurrent = Effect.gen(function* () {
+          if (yield* pluginDeliveryStale ?? Effect.succeed(false)) {
+            return yield* toProtocolError(
+              "Codex Plugin delivery is stale. Retry after this Project's app-server recycles.",
+            );
+          }
+        });
+        const pluginRuntimeParams = Effect.fnUntraced(function* (
+          method: "start" | "resume" | "fork",
+          threadId: ThreadId | null,
+          options: Parameters<typeof threadRuntimeParams>[1],
+        ) {
+          const base = yield* threadRuntimeParams(threadId, options);
+          if (!pluginProject || !plugins || !threadId) return base;
+          yield* assertPluginDeliveryCurrent;
+          if (pluginProject.revision === null) return base;
+
+          const prepare = Effect.gen(function* () {
+            const rootThreadId = yield* pluginProject.rootThreadFor(threadId);
+            yield* releasePlugins(threadId);
+            const key = randomUUID();
+            pluginAttachments.set(threadId, { key });
+            const { delivery } = yield* plugins({
+              action: "attach",
+              projectId: pluginProject.projectId,
+              rootThreadId,
+              attachmentId: key,
+            });
+            if (!delivery || delivery.revision !== pluginProject.revision)
+              return yield* toProtocolError(
+                "Codex Plugin delivery changed during thread preparation.",
+              );
+            const native = yield* client
+              .request("plugin/installed", {
+                ...(base.cwd ? { cwds: [base.cwd] } : {}),
+              })
+              .pipe(
+                Effect.mapError((cause) =>
+                  toProtocolError(
+                    "Codex Plugin conflict: native installations could not be checked.",
+                    cause,
+                  ),
+                ),
+              );
+            if ((native.marketplaceLoadErrors?.length ?? 0) > 0)
+              return yield* toProtocolError(
+                "Codex Plugin conflict: a native marketplace could not be read.",
+              );
+            const decision = decideCodexNativePluginOverrides(
+              delivery.identities,
+              native.marketplaces.flatMap((entry) => entry.plugins),
+            );
+            if (decision.status === "conflict")
+              return yield* toProtocolError(
+                `Codex Plugin conflict: cannot disable the native copy of ${decision.identity} for this thread.`,
+              );
+            const prepared = {
+              root: delivery.root,
+              expiresAt: delivery.expiresAt,
+              config: { ...decision.overrides, ...codexPluginServerConfig(delivery.servers) },
+            };
+            pluginAttachments.set(threadId, { key, prepared });
+            return prepared;
+          }).pipe(
+            Effect.onExit((exit) =>
+              exit._tag === "Success" ? Effect.void : releasePlugins(threadId),
+            ),
+          );
+
+          // A warm resume rejoins the loaded native thread and ignores replacement config.
+          const previous =
+            method === "resume" ? pluginAttachments.get(threadId)?.prepared : undefined;
+          const { root, config } = previous ?? (yield* prepare);
+          // The pinned resume/fork requests have no selectedCapabilityRoots field.
+          // Their current skills come from the same projection, scoped to this Project process.
+          if (method !== "start" && root) {
+            yield* client.request("skills/extraRoots/set", {
+              extraRoots: [path.join(root, "skills")],
+            });
+          }
+          return {
+            ...base,
+            config: { ...base.config, ...config },
+            ...(method === "start" && root
+              ? {
+                  selectedCapabilityRoots: [
+                    {
+                      id: "nodex-project-plugins",
+                      location: {
+                        type: "environment" as const,
+                        environmentId: "local",
+                        path: root,
+                      },
+                    },
+                  ],
+                }
+              : {}),
+          };
+        });
+        const assertPluginHistoryScope = (thread: OrchestrationV2ProviderThread) =>
+          isCodexProjectSession(thread.providerSessionId) &&
+          thread.providerSessionId !== input.providerSessionId
+            ? toProtocolError("This Codex conversation carries Plugin skills from another Project.")
+            : Effect.void;
         const additionalContextByThread = yield* Ref.make(
           new Map<string, NonNullable<CodexTurnStartParams["additionalContext"]>>(),
         );
@@ -7930,6 +8081,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 ),
               }),
           nativeSessionRetired: Ref.get(nativeSessionRetired),
+          ...(pluginDeliveryStale ? { codexPluginDeliveryStale: pluginDeliveryStale } : {}),
           codexNative: {
             initialize: ensureInitialized.pipe(
               Effect.map(() => ({ userAgent: nativeUserAgent })),
@@ -8201,7 +8353,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             }),
           ensureThread: (threadInput) =>
             ensureInitialized.pipe(
-              Effect.andThen(threadRuntimeParams(threadInput.threadId, threadInput)),
+              Effect.andThen(pluginRuntimeParams("start", threadInput.threadId, threadInput)),
               Effect.flatMap((params) =>
                 client.request("thread/start", {
                   ...params,
@@ -8231,12 +8383,15 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             ),
           resumeThread: (threadInput) =>
             Effect.gen(function* () {
+              yield* assertPluginHistoryScope(threadInput.providerThread);
+              yield* ensureInitialized;
               const nativeThreadId = yield* getNativeThreadId(threadInput.providerThread);
               // excludeTurns is not in the generated request schema yet.
               const resume = client.raw.request("thread/resume", {
                 threadId: nativeThreadId,
                 excludeTurns: true,
-                ...(yield* threadRuntimeParams(
+                ...(yield* pluginRuntimeParams(
+                  "resume",
                   threadInput.threadId ?? threadInput.providerThread.appThreadId,
                   threadInput,
                 )),
@@ -8432,6 +8587,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 ? parseCodexGoalCommand(turnInput.message.text)
                 : null;
             return Effect.gen(function* () {
+              yield* assertPluginDeliveryCurrent;
               // Inject after inherited history and before the first new request. This
               // changes model context without adding a user Run to the side chat.
               if (
@@ -8561,6 +8717,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               voiceNativeThreads.delete(nativeThreadId);
               sessionApprovals.delete(nativeThreadId);
               yield* client.request("thread/unsubscribe", { threadId: nativeThreadId });
+              if (unloadInput.providerThread.appThreadId)
+                yield* releasePlugins(unloadInput.providerThread.appThreadId);
             }).pipe(
               Effect.mapError((cause) =>
                 cause._tag === "ProviderAdapterProtocolError"
@@ -9311,10 +9469,15 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               // process. After a restart or idle release, load it the same way
               // the next turn would before reverting.
               if (!loaded) {
+                yield* assertPluginHistoryScope(threadInput.providerThread);
                 yield* client.raw.request("thread/resume", {
                   threadId,
                   excludeTurns: true,
-                  ...(yield* threadRuntimeParams(threadInput.providerThread.appThreadId, input)),
+                  ...(yield* pluginRuntimeParams(
+                    "resume",
+                    threadInput.providerThread.appThreadId,
+                    input,
+                  )),
                 });
               }
               const boundaryOrdinal =
@@ -9367,6 +9530,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             ),
           forkThread: (threadInput) =>
             Effect.gen(function* () {
+              yield* assertPluginHistoryScope(threadInput.sourceProviderThread);
+              yield* ensureInitialized;
               const threadId = yield* getNativeThreadId(threadInput.sourceProviderThread);
               const boundary = yield* resolveCodexForkBoundary(threadInput);
               const response = yield* ensureInitialized.pipe(
@@ -9377,7 +9542,11 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                     ...(boundary.lastTurnId === undefined
                       ? {}
                       : { lastTurnId: boundary.lastTurnId }),
-                    ...(yield* threadRuntimeParams(threadInput.targetThreadId, threadInput)),
+                    ...(yield* pluginRuntimeParams(
+                      "fork",
+                      threadInput.targetThreadId,
+                      threadInput,
+                    )),
                     // Forks only need identity and live metadata; paginated history stays on demand.
                     excludeTurns: true,
                     ...(threadInput.ephemeral ? { ephemeral: true } : {}),

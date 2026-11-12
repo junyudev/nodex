@@ -39,9 +39,12 @@ The Host supervises each installed plugin MCP server through a broker. The broke
 owns local process launch or remote connections, credentials, and shutdown. It
 can share an upstream where the installation revision, server, Project scope,
 and credential principal permit it. Each Agent Session or MCP App view gets
-its own authenticated, revocable Plugin server lease. The first authenticated
-HTTP connection binds the bearer. A lease expires after eight hours by default,
-with a maximum lifetime configurable at issuance. The broker derives access
+its own authenticated, revocable lease for each Plugin server. The first
+authenticated HTTP connection binds the bearer. Codex uses multiple sockets
+during one MCP session. For Codex, the broker issues an MCP session ID to the
+first bearer holder and requires both credentials on later requests. A lease
+expires after eight hours by default, with a maximum lifetime configurable at
+issuance. The broker derives access
 from the verified caller and current Plugin activation. Disabling or uninstalling
 revokes affected leases before runtime cleanup, so a cached tool list cannot
 authorize a new call. An MCP App view can use this authority without an Agent Session.
@@ -51,23 +54,26 @@ fail, and results from in-flight calls are withheld from the revoked Session.
 
 ### Codex delivery
 
-The Agent Runtime uses one Nodex-managed app-server per Project for plugin
-delivery. It passes Nodex-managed skill projections via
-`thread/start.selectedCapabilityRoots`. In the pinned Codex **0.167.2**, this
-field is gated by `capabilities.experimentalApi` at initialization. The team
-accepts this experimental dependency and the cost of a process per active
-Project. The adapter supplies current broker endpoints through
-`mcp_servers.<key>` on start, cold resume, and ordinary fork. See the
+The Agent Runtime keys the app-server by Project and Codex provider instance
+when a Project has enabled Nodex Plugins. The Host projects only the current
+approved skill directories outside the Codex home. The adapter selects the
+projection with `thread/start.selectedCapabilityRoots`. Codex **0.167.2**
+requires `capabilities.experimentalApi` at initialization for this field.
+Cold resume and ordinary fork have no corresponding field, so they register
+the current projection through `skills/extraRoots/set` in the Project process.
+The adapter sends broker URLs and authorization headers through per-thread
+`mcp_servers.<key>` config on start, cold resume, and ordinary fork. Codex
+applies the Session's native MCP approval policy before dispatch. See the
 [Codex app-server protocol](https://developers.openai.com/codex/app-server.md#experimental-api-opt-in).
 
-Selected roots can persist in saved threads and be inherited on fork. For
-revocation, Nodex withdraws the affected Project's skill projections and unloads
-the affected thread or recycles the Project's app-server before admitting its
-next turn. Omitting roots on resume or recycling the process alone cannot clear
-a saved root. A fork must preserve the owning Project's scope or materialize
-fresh capabilities for its destination. Every Codex upgrade must rerun the
-delivery proof, including discovery, supporting-file access, Project isolation,
-start/resume/fork, and revocation in previously loaded and cold threads.
+Codex can persist and inherit selected roots. On Plugin withdrawal or generation
+replacement, the Host removes the obsolete projection and revokes its leases.
+The Runtime marks the Project process stale, drains in-flight work, and recycles
+it when idle. Removing the root is necessary because the saved selection survives
+recycling. Resume and native fork verify that inherited Plugin capabilities
+belong to the current Project. Every Codex upgrade must rerun the delivery proof,
+including discovery, supporting-file access, Project isolation, start/resume/fork,
+and revocation in previously loaded and cold threads.
 
 ### Claude Code delivery
 

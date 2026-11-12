@@ -125,6 +125,24 @@ export class ExecutionHostError extends Schema.TaggedError<ExecutionHostError>()
   },
 ) {}
 
+export const CodexPluginDelivery = Schema.Struct({
+  revision: Schema.String,
+  root: Schema.NullOr(Schema.String),
+  identities: Schema.Array(Schema.String),
+  servers: Schema.Array(Schema.Struct({
+    key: Schema.String,
+    url: Schema.String,
+    authorization: Schema.String,
+  })),
+  expiresAt: Schema.NullOr(Schema.Number),
+});
+export type CodexPluginDelivery = typeof CodexPluginDelivery.Type;
+
+export type CodexPluginRequest =
+  | { readonly action: "status"; readonly projectId: string }
+  | { readonly action: "attach"; readonly projectId: string; readonly rootThreadId: string; readonly attachmentId: string }
+  | { readonly action: "release"; readonly attachmentId: string };
+
 /** A host may admit a Turn and supply trusted CLI/skill context before native execution. */
 export class ExecutionHost extends Context.Reference<{
   /** Physical host generation fences persisted observations across process restarts. */
@@ -160,6 +178,10 @@ export class ExecutionHost extends Context.Reference<{
     readonly nativeDriver: import("@nodex/runtime-contracts").ProviderDriverKind;
     readonly cwd: string | null;
   }) => Effect.Effect<HostThreadPreparation, ExecutionHostError>;
+  readonly codexPlugins?: (request: CodexPluginRequest) => Effect.Effect<
+    { readonly revision: string | null; readonly delivery: CodexPluginDelivery | null },
+    ExecutionHostError
+  >;
   /** Desktop activity is addressed by its captured execution and opaque Desktop Turn. */
   readonly observeNativeTurn?: (input: HostTurnIdentityReport) => Effect.Effect<void>;
 }>("@nodex/provider-core/server/ExecutionHost", {

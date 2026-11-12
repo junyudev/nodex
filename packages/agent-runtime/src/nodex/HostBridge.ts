@@ -257,6 +257,31 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
     );
   };
 
+  const codexPlugins = Effect.fn("AgentRuntime.codexPlugins")(function* (
+    request: ExecutionHost.CodexPluginRequest,
+  ) {
+    const output = yield* exchange({
+      type: "host.request",
+      operation: "codex.plugins",
+      identity: { runtimeId, runtimeGeneration },
+      request,
+    });
+    return yield* Schema.decodeUnknownEffect(
+      Schema.Struct({
+        revision: Schema.NullOr(Schema.String),
+        delivery: Schema.NullOr(ExecutionHost.CodexPluginDelivery),
+      }),
+    )(output).pipe(
+      Effect.mapError(
+        () =>
+          new ExecutionHost.ExecutionHostError({
+            operation: "codex.plugins",
+            message: "The host returned invalid Codex Plugin delivery.",
+          }),
+      ),
+    );
+  });
+
   const prepareThread = Effect.fn("AgentRuntime.prepareHostThread")(function* (input: {
     readonly threadId: string;
     readonly providerInstanceId: string;
@@ -502,6 +527,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
     prepareTurn,
     registerNativeSession,
     prepareThread,
+    ...(configuration.host?.codexPlugins ? { codexPlugins } : {}),
     desktopSkillRoots,
     observeNativeTurn,
     onNativeSessionClose: (
@@ -634,6 +660,7 @@ export const layerExecutionHost = Layer.effect(
       releaseNativeToolCall: bridge.releaseNativeToolCall,
       registerNativeSession: bridge.registerNativeSession,
       prepareThread: bridge.prepareThread,
+      ...(bridge.codexPlugins ? { codexPlugins: bridge.codexPlugins } : {}),
       observeNativeTurn: bridge.observeNativeTurn,
       toolAvailability: { browser: false, device: false },
       orchestrationInstructions: ORCHESTRATION_INSTRUCTIONS,

@@ -1,3 +1,4 @@
+import { CodexPluginDelivery } from "./CodexPluginDelivery";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { it } from "@effect/vitest";
@@ -383,6 +384,81 @@ it.live("revokes an open broker lease when the installation service disables it"
       expect(yield* Effect.flip(broker.openLease(scope))).toMatchObject({
         code: "server_inactive",
       });
+    }).pipe(
+      Effect.provide(pluginInstallationLive.pipe(Layer.provide(mainConfig({ nodexHome: home })))),
+    );
+  }),
+);
+
+it.live("projects only active skills and withdraws replaced generations and their leases", () =>
+  Effect.gen(function* () {
+    const { home, source } = yield* testProfile;
+    const digest = yield* previewDigest(source.locator);
+    yield* Effect.gen(function* () {
+      const plugins = yield* PluginInstallation;
+      const delivery = yield* CodexPluginDelivery;
+      const { installation } = yield* plugins.install(source, digest);
+      expect(yield* delivery.status(project, true)).toBeNull();
+      yield* plugins.setProjectEnabled(installation.id, project, true);
+
+      const attach = Effect.gen(function* () {
+        const revision = yield* delivery.status(project, true);
+        if (!revision) return yield* Effect.die("Expected a delivery revision");
+        const prepared = yield* delivery.attach(project, "session", "thread", revision);
+        if (!prepared?.root || !prepared.servers[0])
+          return yield* Effect.die("Expected a skill and MCP lease");
+        return { revision, root: prepared.root, server: prepared.servers[0] };
+      });
+      const first = yield* attach;
+      expect(yield* Effect.promise(() => readdir(first.root))).toEqual(["skills"]);
+      const skills = yield* Effect.promise(() =>
+        readdir(join(first.root, "skills"), { recursive: true }),
+      );
+      expect(skills.filter((file) => file.endsWith("SKILL.md"))).toEqual([
+        join(installation.id + "-0", "organize", "SKILL.md"),
+      ]);
+      expect(skills.some((file) => file.endsWith("categories.txt"))).toBe(true);
+      expect(yield* delivery.status({ ...project, projectId: "other-project" }, true)).toBeNull();
+
+      yield* updateManifest(source.locator, { name: "sample.organizer", version: "2.0.0" });
+      yield* plugins.reload(installation.id);
+      const second = yield* attach;
+      expect(second.root).not.toBe(first.root);
+      expect(second.revision).not.toBe(first.revision);
+      const withdrawn = (root: string, server: typeof first.server) =>
+        Effect.gen(function* () {
+          expect(
+            yield* Effect.promise(() =>
+              stat(root).then(
+                () => true,
+                () => false,
+              ),
+            ),
+          ).toBe(false);
+          const response = yield* Effect.promise(() =>
+            fetch(server.url, {
+              method: "POST",
+              headers: { Authorization: server.authorization },
+            }),
+          );
+          expect(response.status).toBe(401);
+          yield* Effect.promise(() => response.body?.cancel() ?? Promise.resolve());
+        });
+      yield* withdrawn(first.root, first.server);
+
+      yield* delivery.status(project, false);
+      yield* withdrawn(second.root, second.server);
+      const reactivated = yield* attach;
+      expect(reactivated.revision).not.toBe(second.revision);
+      yield* plugins.setEnabled(installation.id, false);
+      yield* withdrawn(reactivated.root, reactivated.server);
+      expect(yield* delivery.status(project, true)).toBeNull();
+
+      yield* plugins.setEnabled(installation.id, true);
+      const reenabled = yield* attach;
+      yield* plugins.uninstall(installation.id);
+      yield* withdrawn(reenabled.root, reenabled.server);
+      expect(yield* delivery.status(project, true)).toBeNull();
     }).pipe(
       Effect.provide(pluginInstallationLive.pipe(Layer.provide(mainConfig({ nodexHome: home })))),
     );

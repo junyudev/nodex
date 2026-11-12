@@ -133,6 +133,22 @@ const hostToolIdentitySchema = z.union([
     .passthrough(),
 ]);
 const hostRequestSchema = z.discriminatedUnion("operation", [
+  z.object({
+    type: z.literal("host.request"),
+    id: z.string().min(1),
+    operation: z.literal("codex.plugins"),
+    identity: hostIdentitySchema,
+    request: z.discriminatedUnion("action", [
+      z.object({ action: z.literal("status"), projectId: z.string().min(1) }),
+      z.object({
+        action: z.literal("attach"),
+        projectId: z.string().min(1),
+        rootThreadId: z.string().min(1),
+        attachmentId: z.string().min(1),
+      }),
+      z.object({ action: z.literal("release"), attachmentId: z.string().min(1) }),
+    ]),
+  }),
   z
     .object({
       type: z.literal("host.request"),
@@ -447,7 +463,12 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     pausedThreadIds: options.configuration.pausedThreadIds,
     providers: options.configuration.providers,
     modelPolicy: options.configuration.modelPolicy,
-    ...(options.configuration.host ? { hostTools: options.configuration.host.tools } : {}),
+    ...(options.configuration.host
+      ? {
+          hostTools: options.configuration.host.tools,
+          hostCodexPlugins: options.configuration.host.codexPlugins,
+        }
+      : {}),
   } satisfies AgentRuntimeBootstrap);
   const launch = agentProcessLaunch(
     options.executable,

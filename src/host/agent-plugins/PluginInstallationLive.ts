@@ -1,3 +1,5 @@
+import * as Context from "effect/Context";
+import { CodexPluginDelivery, makeCodexPluginDelivery } from "./CodexPluginDelivery";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { randomUUID } from "node:crypto";
@@ -38,24 +40,35 @@ const broker = Layer.effect(
   ),
 );
 
-export const live = Layer.effect(
-  PluginInstallation,
+export const live = Layer.effectContext(
   Effect.gen(function* () {
     const { nodexHome } = yield* MainConfig;
     const broker = yield* PluginMcpBroker;
+    const delivery = yield* makeCodexPluginDelivery(nodexHome, broker).pipe(
+      Effect.mapError(
+        (cause) =>
+          new MainApplicationError({
+            phase: "startup",
+            operation: "codex-plugin-projection",
+            cause,
+          }),
+      ),
+    );
     const publish: PublishPluginInstallation = (id, installation) =>
-      broker.publishInstallation(
-        id,
-        installation?.enabled
-          ? {
-              generation: installation.activeGeneration,
-              packageRoot: join(nodexHome, pluginPackageDirectory(installation)),
-              dataRoot: join(nodexHome, pluginDataDirectory(id)),
-              activeProjects: installation.projects,
-              servers: installation.package.mcpServers,
-            }
-          : null,
-      );
+      broker
+        .publishInstallation(
+          id,
+          installation?.enabled
+            ? {
+                generation: installation.activeGeneration,
+                packageRoot: join(nodexHome, pluginPackageDirectory(installation)),
+                dataRoot: join(nodexHome, pluginDataDirectory(id)),
+                activeProjects: installation.projects,
+                servers: installation.package.mcpServers,
+              }
+            : null,
+        )
+        .pipe(Effect.andThen(delivery.publish(id, installation)));
     const service = makePluginInstallation(
       makeAgentPluginReader(packageFilesNode),
       makePluginInstallationStoreNode(nodexHome),
@@ -70,6 +83,8 @@ export const live = Layer.effect(
         Effect.logWarning("Could not load Agent Plugin installations", error),
       ),
     );
-    return service;
+    return Context.make(PluginInstallation, service).pipe(
+      Context.add(CodexPluginDelivery, delivery),
+    );
   }),
 ).pipe(Layer.provideMerge(broker));

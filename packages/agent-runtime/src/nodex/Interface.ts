@@ -126,7 +126,10 @@ export interface AgentRuntimeConfiguration {
   readonly cwd: string;
   readonly modelPolicy?: ModelPolicy;
   readonly providers: Readonly<Record<string, AgentWire<ProviderInstanceConfig>>>;
-  readonly host?: { readonly tools: ReadonlyArray<AgentHostTool> };
+  readonly host?: {
+    readonly tools: ReadonlyArray<AgentHostTool>;
+    readonly codexPlugins?: true;
+  };
 }
 
 export interface AgentRuntimeIdentity {
@@ -983,6 +986,13 @@ export type AgentHostToolIdentity = AgentHostExecutionIdentity & {
   readonly requestMetadata?: Readonly<Record<string, unknown>>;
 };
 export type AgentHostRequest =
+  | {
+      readonly type: "host.request";
+      readonly id: string;
+      readonly operation: "codex.plugins";
+      readonly identity: { readonly runtimeId: string; readonly runtimeGeneration: string };
+      readonly request: import("@nodex/provider-core/server/ExecutionHost").CodexPluginRequest;
+    }
   | {
       readonly type: "host.request";
       readonly id: string;

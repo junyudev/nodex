@@ -1,3 +1,4 @@
+import { codexProjectSessionId, isCodexProjectSession } from "./CodexPluginSession.ts";
 import { DesktopTools } from "../desktopTools/DesktopTools.ts";
 import type { McpProviderSessionConfig } from "@nodex/provider-core/server/mcpSession";
 import { RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
@@ -2863,47 +2864,93 @@ export const layerWithOptions = (
                   });
                 }
               }
+              const codexPlugins = executionHost.codexPlugins;
+              const isProjectSession = isCodexProjectSession(input.providerSessionId);
+              const projectId = isProjectSession
+                ? yield* projectionStore.getThread(input.threadId).pipe(
+                    Effect.map((thread) => thread.projectId),
+                    Effect.mapError(
+                      (cause) =>
+                        new ProviderSessionOpenError({
+                          instanceId: input.modelSelection.instanceId,
+                          providerSessionId: input.providerSessionId,
+                          cause,
+                        }),
+                    ),
+                  )
+                : undefined;
+              if (
+                projectId !== undefined &&
+                (!codexPlugins ||
+                  codexProjectSessionId(input.modelSelection.instanceId, projectId) !==
+                    input.providerSessionId)
+              ) {
+                return yield* new ProviderSessionOpenError({
+                  instanceId: input.modelSelection.instanceId,
+                  providerSessionId: input.providerSessionId,
+                  cause: "Codex Plugin delivery belongs to another Project or is unavailable.",
+                });
+              }
               const key = sessionKey(input.providerSessionId);
               const existing = (yield* Ref.get(sessions)).get(key);
               const retired =
                 existing?.runtime.nativeSessionRetired === undefined
                   ? false
                   : yield* existing.runtime.nativeSessionRetired;
+              const pluginStale = yield* (
+                existing?.runtime.codexPluginDeliveryStale ?? Effect.succeed(false)
+              );
               const policyChanged =
                 existing !== undefined &&
                 !existing.runtime.providerSession.capabilities.sessions
                   .supportsRuntimeModeSwitchInSession &&
                 existing.openedRuntimeMode !== input.runtimePolicy.runtimeMode;
               const pendingBackground =
-                policyChanged && existing.runtime.hasPendingBackgroundWork !== undefined
+                (policyChanged || pluginStale) &&
+                existing?.runtime.hasPendingBackgroundWork !== undefined
                   ? yield* existing.runtime.hasPendingBackgroundWork
                   : false;
-              if (policyChanged && (existing.busyTurns.size > 0 || pendingBackground)) {
+              if (
+                existing !== undefined &&
+                (policyChanged || pluginStale) &&
+                (existing.busyTurns.size > 0 || pendingBackground)
+              ) {
                 return yield* new ProviderSessionOpenError({
                   instanceId: input.modelSelection.instanceId,
                   providerSessionId: input.providerSessionId,
-                  cause: "The provider session is still running with its previous runtime mode.",
+                  cause: pluginStale
+                    ? "Codex Plugin delivery changed. This Project is waiting for Codex to go idle."
+                    : "The provider session is still running with its previous runtime mode.",
                 });
               }
-              if (existing !== undefined && (retired || policyChanged)) {
+              if (existing !== undefined && (retired || policyChanged || pluginStale)) {
                 yield* releaseEntry({
                   providerSessionId: input.providerSessionId,
                   reason: "manual_shutdown",
                   expectedRuntime: existing.runtime,
-                  ...(policyChanged ? { onlyIfIdleGeneration: existing.idleGeneration } : {}),
-                  detail: policyChanged
-                    ? "Runtime mode changed before the next turn."
-                    : "Native session incarnation ended before reuse.",
+                  ...(policyChanged || pluginStale
+                    ? { onlyIfIdleGeneration: existing.idleGeneration }
+                    : {}),
+                  detail: pluginStale
+                    ? "Codex Plugin delivery changed."
+                    : policyChanged
+                      ? "Runtime mode changed before the next turn."
+                      : "Native session incarnation ended before reuse.",
                 });
               }
-              if (policyChanged && (yield* Ref.get(sessions)).get(key) === existing) {
+              if (
+                (policyChanged || pluginStale) &&
+                (yield* Ref.get(sessions)).get(key) === existing
+              ) {
                 return yield* new ProviderSessionOpenError({
                   instanceId: input.modelSelection.instanceId,
                   providerSessionId: input.providerSessionId,
-                  cause: "The provider session became active before its runtime mode could change.",
+                  cause: pluginStale
+                    ? "The Project's Codex session became active before Plugin delivery could refresh."
+                    : "The provider session became active before its runtime mode could change.",
                 });
               }
-              if (existing !== undefined && !retired && !policyChanged) {
+              if (existing !== undefined && !retired && !policyChanged && !pluginStale) {
                 const attached = existing.attachedThreadIds.has(input.threadId);
                 if (!attached && !existing.supportsMultipleProviderThreads) {
                   return yield* new ProviderSessionOpenError({
@@ -2943,6 +2990,43 @@ export const layerWithOptions = (
                     }),
                 ),
               );
+              const codexPluginProject =
+                projectId !== undefined && codexPlugins
+                  ? yield* Effect.gen(function* () {
+                      yield* confirmPhysicalClose(input.providerSessionId);
+                      const { revision } = yield* codexPlugins({
+                        action: "status",
+                        projectId,
+                      });
+                      return {
+                        projectId,
+                        revision,
+                        rootThreadFor: (threadId: ThreadId) =>
+                          projectionStore
+                            .getThread(threadId)
+                            .pipe(
+                              Effect.flatMap((target) =>
+                                target.projectId === projectId
+                                  ? Effect.succeed(target.lineage.rootThreadId)
+                                  : Effect.fail(
+                                      new Error(
+                                        "Codex Plugin delivery belongs to another Project.",
+                                      ),
+                                    ),
+                              ),
+                            ),
+                      };
+                    }).pipe(
+                      Effect.mapError(
+                        (cause) =>
+                          new ProviderSessionOpenError({
+                            instanceId: input.modelSelection.instanceId,
+                            providerSessionId: input.providerSessionId,
+                            cause,
+                          }),
+                      ),
+                    )
+                  : undefined;
               const prepared = yield* prepareMcpSession(
                 input.threadId,
                 input.modelSelection.instanceId,
@@ -3018,6 +3102,7 @@ export const layerWithOptions = (
                   threadId: input.threadId,
                   providerSessionId: input.providerSessionId,
                   reportBackgroundTasks,
+                  ...(codexPluginProject ? { codexPluginProject } : {}),
                   modelSelection: input.modelSelection,
                   runtimePolicy: input.runtimePolicy,
                   ...(input.resumeFromSession === undefined
@@ -3151,6 +3236,34 @@ export const layerWithOptions = (
                       }),
                 ),
               );
+              const deliveryStale = runtime.codexPluginDeliveryStale;
+              if (deliveryStale) {
+                yield* Effect.gen(function* () {
+                  while (true) {
+                    yield* Effect.sleep("1 second");
+                    const current = (yield* Ref.get(sessions)).get(key);
+                    if (current?.runtime !== runtime) return;
+                    if (!(yield* deliveryStale)) continue;
+                    if (
+                      current.busyTurns.size > 0 ||
+                      (yield* runtime.hasPendingBackgroundWork ?? Effect.succeed(false))
+                    )
+                      continue;
+                    yield* sessionOpen
+                      .withLock(
+                        input.providerSessionId,
+                        releaseEntry({
+                          providerSessionId: input.providerSessionId,
+                          expectedRuntime: runtime,
+                          onlyIfIdleGeneration: current.idleGeneration,
+                          reason: "manual_shutdown",
+                          detail: "Codex Plugin delivery changed.",
+                        }),
+                      )
+                      .pipe(logReleaseFailure(input.providerSessionId));
+                  }
+                }).pipe(Effect.forkIn(layerScope));
+              }
               yield* startEventPump(entry);
               yield* scheduleIdleRelease(input.providerSessionId);
               return exposedRuntime;
