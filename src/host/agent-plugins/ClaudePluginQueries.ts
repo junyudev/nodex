@@ -102,6 +102,7 @@ export const makeClaudePluginQueries = Effect.fn("ClaudePluginQueries.make")(fun
               );
             return {
               ...projection,
+              identities: current.plugins.map(({ identity }) => identity),
               servers,
               renewAfter: servers.length === 0 ? null : startedAt + leaseLifetimeMs - 60_000,
             };

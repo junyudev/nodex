@@ -144,6 +144,7 @@ export type CodexPluginRequest =
   | { readonly action: "attach"; readonly projectId: string; readonly rootThreadId: string; readonly attachmentId: string }
   | { readonly action: "release"; readonly attachmentId: string };
 export const HostClaudePlugins = Schema.Struct({
+  identities: Schema.Array(Schema.String),
   roots: Schema.Array(Schema.String),
   skills: Schema.Array(Schema.Struct({
     name: Schema.String,

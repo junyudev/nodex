@@ -177,6 +177,7 @@ export function uninstallPluginInstallation(
 }
 
 export interface EffectivePluginContributions {
+  readonly identity: string;
   readonly installationId: string;
   readonly generation: string;
   readonly packageDirectory: string;
@@ -204,6 +205,7 @@ export function effectivePluginContributions(
     const pkg = installation.package;
     return [
       {
+        identity: pkg.identity.name,
         installationId: installation.id,
         generation: installation.activeGeneration,
         packageDirectory: directory,

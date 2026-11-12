@@ -97,8 +97,10 @@ See the [Claude Agent SDK reference](https://code.claude.com/docs/en/agent-sdk/t
 ### Duplicate native installations
 
 The Nodex copy takes precedence inside Nodex threads. Nodex disables the native
-copy for that thread when the backend can do so safely. Otherwise Nodex shows
-the conflict and lets the person choose.
+copy for that thread when the backend can do so safely. Claude Code applies the
+marketplace entry's `enabledPlugins` override in the SDK query settings. The
+override is scoped to the query and respects managed policy. If suppression
+cannot be established, Nodex shows the conflict before opening the query.
 
 ### Deferred contributions
 

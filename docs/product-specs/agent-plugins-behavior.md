@@ -59,10 +59,19 @@ connections. An archived Project also loses its connections and skill access.
 Codex uses the current skills and tools after its Project process goes idle and
 recycles. Earlier messages and tool results remain in the conversation.
 
+## Claude Code delivery
+
+Claude Code Sessions load the Project's enabled plugin skills and connect to its
+MCP tools. If a native marketplace plugin has the same manifest name, the Nodex
+copy takes precedence for that query. When a native duplicate cannot be safely
+disabled, such as a managed installation, the Session reports the conflict
+before starting. Changing the Project's activation refreshes the query before
+the next prompt.
+
 ## Planned delivery
 
-Claude Code delivery, the Project skill picker, and skill suggestions for Inbox
-work are planned separately.
+The Project skill picker and skill suggestions for Inbox work are planned
+separately.
 
 Hook execution and opening a plugin's MCP App from an entry point are later
 capabilities. App mappings remain listed as OpenAI-hosted dependencies.

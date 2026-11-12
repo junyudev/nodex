@@ -1,3 +1,4 @@
+import { decideClaudeNativePluginOverrides } from "./ClaudePluginConfig.ts";
 import {
   restrictions as claudeModelRestrictions,
   verifyClaudeModelPolicy,
@@ -486,6 +487,15 @@ export class ClaudeBackgroundWorkBlocksQueryReplacementError extends Schema.Tagg
 ) {
   override get message(): string {
     return "Claude is still running background agents or commands, and this model or setting change would end them. Wait for them to finish, or press Stop, then send the message again.";
+  }
+}
+
+class ClaudeNativePluginConflict extends Schema.TaggedError<ClaudeNativePluginConflict>()(
+  "ClaudeNativePluginConflict",
+  { identity: Schema.String },
+) {
+  override get message(): string {
+    return `Claude Code and Nodex both enable the Plugin "${this.identity}". Disable one copy before retrying.`;
   }
 }
 
@@ -3963,6 +3973,110 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
       Effect.flatMap(decodeClaudePermissionSettingsJson),
       Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed({})),
     );
+  const readInstalledPlugins = Schema.decodeUnknownEffect(
+    fromLenientJson(
+      Schema.Struct({
+        plugins: Schema.Record(
+          Schema.String,
+          Schema.Array(Schema.Struct({ installPath: Schema.String })),
+        ),
+      }),
+    ),
+  );
+  const nativePluginSettings = Effect.fnUntraced(function* (
+    identities: readonly string[],
+    cwd: string | null,
+    environment: NodeJS.ProcessEnv,
+  ) {
+    if (identities.length === 0) return undefined;
+    const flags = parseCliArgs(adapterOptions.settings.launchArgs).flags;
+    const configDir = environment.CLAUDE_CONFIG_DIR?.trim();
+    const userHome = environment.HOME ?? environment.USERPROFILE;
+    const configHome = configDir
+      ? path.resolve(cwd ?? ".", configDir)
+      : userHome
+        ? path.join(userHome, ".claude")
+        : homePath;
+    const sourceFlag = flags["setting-sources"]?.split(",");
+    const loads = (source: "user" | "project" | "local") =>
+      sourceFlag?.includes(source) ?? !adapterOptions.settings.isolated;
+    const user = loads("user")
+      ? yield* readPermissionSettings(path.join(configHome, "settings.json"))
+      : {};
+    const remote = yield* readPermissionSettings(path.join(configHome, "remote-settings.json"));
+    const resolveSettings =
+      adapterOptions.resolveSettings ?? (yield* Effect.promise(loadClaudeAgentSdk)).resolveSettings;
+    const resolved = yield* Effect.tryPromise(() =>
+      resolveSettings({
+        ...(cwd === null ? {} : { cwd }),
+        settingSources: (["project", "local"] as const).filter(loads),
+        serverManagedSettings: claudeSdkPermissionSettings(remote),
+      }),
+    );
+    const launchValue = flags.settings?.trim();
+    const launch =
+      launchValue === undefined
+        ? {}
+        : yield* decodeClaudePermissionSettingsJson(
+            launchValue.startsWith("{")
+              ? launchValue
+              : yield* fileSystem.readFileString(path.resolve(cwd ?? ".", launchValue)),
+          );
+    const managed = resolved.sources.filter(({ source }) => source === "managed");
+    const pluginEntries = (value: unknown) =>
+      typeof value === "object" && value !== null && !Array.isArray(value)
+        ? Object.entries(value)
+        : [];
+    const enabled = new Map([
+      ...pluginEntries(field(user, "enabledPlugins")),
+      ...resolved.sources
+        .filter(({ source }) => source !== "managed")
+        .flatMap(({ settings }) => pluginEntries(settings.enabledPlugins)),
+      ...pluginEntries(field(launch, "enabledPlugins")),
+      ...managed.flatMap(({ settings }) => pluginEntries(settings.enabledPlugins)),
+    ]);
+    const activeIds = Array.from(enabled).flatMap(([id, value]) =>
+      value === false || value == null ? [] : [id],
+    );
+    if (activeIds.length === 0) return undefined;
+    const installed = yield* fileSystem
+      .readFileString(path.join(configHome, "plugins", "installed_plugins.json"))
+      .pipe(
+        Effect.flatMap(readInstalledPlugins),
+        Effect.catchReason("PlatformError", "NotFound", () =>
+          Effect.succeed({ plugins: {} as Record<string, readonly { installPath: string }[]> }),
+        ),
+      );
+    const nativePlugins = yield* Effect.forEach(
+      activeIds,
+      Effect.fnUntraced(function* (id) {
+        // Marketplace entry names can differ from the manifest name used for identity.
+        const names = yield* Effect.forEach(installed.plugins[id] ?? [], ({ installPath }) =>
+          readPermissionSettings(path.join(installPath, ".claude-plugin", "plugin.json")).pipe(
+            Effect.map((manifest) => text(field(manifest, "name")) ?? id.split("@")[0]!),
+          ),
+        );
+        const locked = managed.some(({ settings }) =>
+          pluginEntries(settings.enabledPlugins).some(([key]) => key === id),
+        );
+        return (names.length === 0 ? [id.split("@")[0]!] : names).map((name) => ({
+          id,
+          name,
+          enabled: true,
+          managed: locked,
+        }));
+      }),
+    );
+    const decision = decideClaudeNativePluginOverrides(
+      identities,
+      nativePlugins.flat(),
+      launchValue !== undefined,
+    );
+    if (decision.status === "conflict")
+      return yield* new ClaudeNativePluginConflict({ identity: decision.identity });
+    if (Object.keys(decision.overrides).length === 0) return undefined;
+    return { enabledPlugins: decision.overrides } satisfies ClaudeSdkSettings;
+  });
   const queryPolicyForTurn = Effect.fnUntraced(function* (
     runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
   ) {
@@ -9723,6 +9837,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   Effect.onError(() => releasePlugins),
                 )
               : null;
+          const sdkSettings = yield* nativePluginSettings(
+            plugins?.identities ?? [],
+            turnInput.runtimePolicy.cwd,
+            environment,
+          ).pipe(Effect.onError(() => releasePlugins));
           const queryOptions = {
             ...makeClaudeQueryOptions({
               modelCatalog: subagentModelCatalog,
@@ -9739,6 +9858,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               cwd: turnInput.runtimePolicy.cwd,
               attachmentsDir,
               settings: adapterOptions.settings,
+              ...(sdkSettings === undefined ? {} : { sdkSettings }),
               environment:
                 cliShell === undefined
                   ? {

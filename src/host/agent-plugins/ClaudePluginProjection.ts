@@ -28,6 +28,7 @@ export function planClaudePluginProjection(registry: PluginRegistry, project: Pl
         skills.set(skill.name, skill);
     }
     return {
+      identity: installation.identity,
       installationId: installation.installationId,
       generation: installation.generation,
       packageDirectory: installation.packageDirectory,

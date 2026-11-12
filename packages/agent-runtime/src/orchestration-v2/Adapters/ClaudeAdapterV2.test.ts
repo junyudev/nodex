@@ -2156,6 +2156,7 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
             bearerToken: "plugin-credential",
           },
         ],
+        identities: ["fixture"],
         renewAfter: 60_000,
       };
       for (const plugins of [null, plugin]) {
