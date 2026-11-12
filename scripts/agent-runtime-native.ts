@@ -15,6 +15,7 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { delimiter, dirname, join, relative } from "node:path";
+import { nativeBuildScratchDirectory } from "./native-build-scratch";
 import { assertStandaloneNodeRuntime } from "./standalone-node-runtime";
 import { verifyWindowsArchitectureClosure } from "./windows-pe.mjs";
 import { agentRuntimeNativeDigest } from "./agent-runtime-native-inventory.mjs";
@@ -217,10 +218,15 @@ export function materializeAgentRuntimeNative(root: string): AgentRuntimeNative 
   }
   mkdirSync(dirname(target), { recursive: true });
   const temporary = mkdtempSync(join(dirname(target), ".build-"));
-  const source = join(temporary, "source");
   const output = join(temporary, "output");
   const builtPackage = join(output, "node_modules/node-pty");
   const previous = join(temporary, "previous");
+  // node-gyp compiles from a space-free copy, so the checkout path never reaches its Makefile.
+  const compileScratch =
+    node.platform === "win32"
+      ? null
+      : mkdtempSync(join(nativeBuildScratchDirectory(root), "agent-runtime-"));
+  const source = compileScratch ? join(compileScratch, "source") : join(temporary, "source");
   try {
     if (node.platform === "win32") {
       mkdirSync(builtPackage, { recursive: true });
@@ -257,7 +263,7 @@ export function materializeAgentRuntimeNative(root: string): AgentRuntimeNative 
           "--dist-url=https://nodejs.org/download/release",
           `--target=${node.version}`,
           `--arch=${node.architecture}`,
-          `--devdir=${join(root, ".generated/agent-runtime-native/headers")}`,
+          `--devdir=${join(nativeBuildScratchDirectory(root), "node-gyp-headers")}`,
         ],
         {
           cwd: source,
@@ -309,5 +315,6 @@ export function materializeAgentRuntimeNative(root: string): AgentRuntimeNative 
     return { packageRoot: outputPackage, manifestPath, identity, artifactDigest, node };
   } finally {
     rmSync(temporary, { recursive: true, force: true });
+    if (compileScratch) rmSync(compileScratch, { recursive: true, force: true });
   }
 }

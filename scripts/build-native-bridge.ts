@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -16,6 +17,7 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { nativeBuildScratchDirectory } from "./native-build-scratch";
 import { verifyOwnedNativeBridgePlatform } from "./native-bridge-platform-contract";
 import {
   NATIVE_RUNTIME_MINIMUM_MACOS,
@@ -39,6 +41,13 @@ const digest = (file: string): string => digestBytes(readFileSync(file));
 // Build normally in those environments instead of guessing their dependency closure.
 const customBuildEnvironment =
   /^(?:(?:CC|CXX|CPP|AR|LD|LINK)(?:_host|_target)?|MAKE|MAKEFLAGS|MFLAGS|MAKEFILES|CFLAGS|CXXFLAGS|CPPFLAGS|LDFLAGS|ARCHFLAGS|CPATH|C_INCLUDE_PATH|CPLUS_INCLUDE_PATH|LIBRARY_PATH|PYTHON|PYTHONPATH|NODE_GYP_FORCE_PYTHON|GYP_.*|npm_package_config_node_gyp_.*|npm_config_(?:python|nodedir|node_gyp|disturl|devdir|tarball|make|debug|arch|target|runtime|force_process_config))$/iu;
+
+/** Copies a file across the scratch boundary, then renames it into place so readers see it whole. */
+function publishFile(source: string, destination: string): void {
+  const staged = `${destination}.${process.pid}.tmp`;
+  copyFileSync(source, staged);
+  renameSync(staged, destination);
+}
 
 function toolchainIdentity(environment: NodeJS.ProcessEnv): readonly string[] | null {
   if (Object.keys(environment).some((key) => environment[key] && customBuildEnvironment.test(key)))
@@ -144,7 +153,12 @@ export function buildNativeBridge(input: NativeBridgeBuild): "built" | "reused" 
     }
   }
 
-  const buildParent = path.join(repositoryRoot, ".generated", `${name}-native-build`, architecture);
+  // node-gyp compiles in a space-free scratch directory; only the verified outputs return to the checkout.
+  const buildParent = path.join(
+    nativeBuildScratchDirectory(repositoryRoot),
+    `${name}-native-build`,
+    architecture,
+  );
   mkdirSync(buildParent, { recursive: true });
   const buildRoot = mkdtempSync(path.join(buildParent, "build-"));
   try {
@@ -170,8 +184,8 @@ export function buildNativeBridge(input: NativeBridgeBuild): "built" | "reused" 
     const stagedStamp = path.join(buildRoot, "stamp.json");
     if (identity !== null) writeFileSync(stagedStamp, `${JSON.stringify({ identity, sha256 })}\n`);
     mkdirSync(output, { recursive: true });
-    renameSync(binary, outputBinary);
-    if (identity !== null) renameSync(stagedStamp, stampPath);
+    publishFile(binary, outputBinary);
+    if (identity !== null) publishFile(stagedStamp, stampPath);
     else rmSync(stampPath, { force: true });
     return "built";
   } finally {

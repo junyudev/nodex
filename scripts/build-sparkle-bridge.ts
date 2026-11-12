@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
 import { readSparkleReleaseLock, resolveSparkleReleaseLockPath } from "./sparkle-release-lock";
 import { materializeSparkleRuntime, verifySparkleToolchain } from "./materialize-sparkle-runtime";
+import { nativeBuildScratchDirectory } from "./native-build-scratch";
 import { verifyOwnedNativeBridgePlatform } from "./native-bridge-platform-contract";
 import { NATIVE_RUNTIME_MINIMUM_MACOS } from "./native-runtime-manifest";
 
@@ -139,12 +140,10 @@ export async function buildSparkleBridge(
   verifySparkleToolchain(toolchainPath, lock);
 
   const nativeSourceRoot = path.join(projectRoot, "native", "macos-sparkle");
-  const nativeBuildRoot = path.join(
-    projectRoot,
-    ".generated",
-    "sparkle-native-build",
-    options.architecture,
-  );
+  // node-gyp compiles in a space-free scratch directory, so neither the source nor the framework path
+  // can contain the checkout's whitespace.
+  const scratchRoot = nativeBuildScratchDirectory(projectRoot);
+  const nativeBuildRoot = path.join(scratchRoot, "sparkle-native-build", options.architecture);
   rmSync(path.join(nativeSourceRoot, "build"), { force: true, recursive: true });
   rmSync(nativeBuildRoot, { force: true, recursive: true });
   mkdirSync(path.join(nativeBuildRoot, "src"), { recursive: true });
@@ -156,7 +155,13 @@ export async function buildSparkleBridge(
     path.join(nativeSourceRoot, "src", "nodex_sparkle.mm"),
     path.join(nativeBuildRoot, "src", "nodex_sparkle.mm"),
   );
-  const frameworkParent = toolchainPath;
+  const frameworkParent = path.join(scratchRoot, "sparkle-toolchain", options.architecture);
+  rmSync(frameworkParent, { force: true, recursive: true });
+  mkdirSync(frameworkParent, { recursive: true });
+  execFileSync("/usr/bin/ditto", [
+    path.join(toolchainPath, "Sparkle.framework"),
+    path.join(frameworkParent, "Sparkle.framework"),
+  ]);
   const electronVersion = (
     JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8")) as {
       devDependencies?: Record<string, string>;
