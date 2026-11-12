@@ -13,6 +13,32 @@ const result = (exitCode = 0) => ({ exitCode, signal: null, durationMs: 1 });
 const root = path.resolve(".");
 
 describe("test execution", () => {
+  test("does not hand an ambient Agent shell binding to the test processes", async () => {
+    const commands: Command[] = [];
+    await runTests(parseTestSelection(["main", CODEX_SCALE_TEST]), {
+      repositoryRoot: root,
+      env: {
+        NODEX_AGENT_SHELL: "1",
+        NODEX_AGENT_ENDPOINT: "http://agent.invalid",
+        NODEX_AGENT_CREDENTIAL: "secret",
+        NODEX_CLI_TASK_ID: "task",
+        NODEX_AGENT_PROFILE_HOME: "/profile",
+      },
+      signal: new AbortController().signal,
+      prepare: async () => ({ executables: {} }),
+      execute: async (command) => {
+        commands.push(command);
+        return result();
+      },
+    });
+    const env = commands[0]?.env ?? {};
+    expect(env.NODEX_AGENT_SHELL).toBeUndefined();
+    expect(env.NODEX_AGENT_ENDPOINT).toBeUndefined();
+    expect(env.NODEX_AGENT_CREDENTIAL).toBeUndefined();
+    expect(env.NODEX_CLI_TASK_ID).toBeUndefined();
+    expect(env.NODEX_AGENT_PROFILE_HOME).toBeUndefined();
+  });
+
   test("prepares Electron before focused discovery resolves its runtime", async () => {
     const events: string[] = [];
     await runTests(parseTestSelection(["main", CODEX_SCALE_TEST]), {

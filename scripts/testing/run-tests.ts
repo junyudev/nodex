@@ -13,6 +13,7 @@ import {
 } from "../../config/test-suites.ts";
 import { resolveVitestTestTier, type VitestTestTier } from "../../config/vitest-test-tier.ts";
 import { runCommand, withCommandSignal, type Command } from "../tooling/process.ts";
+import { withoutAgentShell } from "../../src/main/platform/node/agent-shell-environment.ts";
 import { prepareNativeArtifacts, preparedNativeEnvironment } from "./native-artifacts.ts";
 import { discoverSuite, vitestCommand } from "./runtime.ts";
 import { prepareElectronRuntime } from "../prepare-electron-runtime.ts";
@@ -71,7 +72,11 @@ export async function runTests(
     readonly prepareElectron?: typeof prepareElectronRuntime;
   },
 ): Promise<number> {
-  const environment: NodeJS.ProcessEnv = { ...context.env, NODEX_TEST_TIER: selection.tier };
+  // Tests run as independent Nodex processes: an Agent shell that launched the run must not leak its CLI binding.
+  const environment: NodeJS.ProcessEnv = {
+    ...withoutAgentShell(context.env),
+    NODEX_TEST_TIER: selection.tier,
+  };
   const commandContext: Pick<Command, "cwd" | "env" | "signal"> = {
     cwd: context.repositoryRoot,
     env: environment,
