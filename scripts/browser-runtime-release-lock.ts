@@ -36,17 +36,10 @@ export type BrowserRuntimeReleaseAsset =
   | MacBrowserRuntimeReleaseAsset
   | WindowsBrowserRuntimeReleaseAsset;
 
-export type BrowserRuntimeReleaseLock = {
-  assets: {
-    "darwin-arm64": MacBrowserRuntimeReleaseAsset;
-    "win32-arm64": WindowsBrowserRuntimeReleaseAsset | null;
-    "win32-x64": WindowsBrowserRuntimeReleaseAsset | null;
-  };
+export type BrowserRuntimeReleaseIdentity = {
   browserPluginVersion: string;
   codexCompatibilityVersion: string;
   repository: string;
-  runtimeFamily: "browser";
-  schemaVersion: 2;
   source: {
     buildNumber: string;
     desktopBuild: string;
@@ -54,6 +47,24 @@ export type BrowserRuntimeReleaseLock = {
   };
   tag: string;
 };
+
+export type BrowserRuntimeReleaseLock = BrowserRuntimeReleaseIdentity & {
+  assets: {
+    "darwin-arm64": MacBrowserRuntimeReleaseAsset;
+    "win32-arm64": WindowsBrowserRuntimeReleaseAsset | null;
+    "win32-x64": WindowsBrowserRuntimeReleaseAsset | null;
+  };
+  runtimeFamily: "browser";
+  schemaVersion: 2;
+  windowsRelease?: BrowserRuntimeReleaseIdentity;
+};
+
+export function browserRuntimeReleaseForTarget(
+  lock: BrowserRuntimeReleaseLock,
+  target: BrowserRuntimeTargetKey,
+): BrowserRuntimeReleaseIdentity {
+  return target === "darwin-arm64" ? lock : (lock.windowsRelease ?? lock);
+}
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 export const BROWSER_RUNTIME_RELEASE_TARGETS = [
@@ -191,12 +202,40 @@ function parseAsset(
   return { ...common, runtimeVersions, sourcePackage, appServer };
 }
 
+function parseReleaseIdentity(value: unknown, label: string): BrowserRuntimeReleaseIdentity {
+  if (!isObject(value) || !isObject(value.source) || value.source.product !== "chatgpt-desktop") {
+    throw new Error(`Invalid Browser runtime release lock ${label}.source`);
+  }
+  const repository = requireString(value.repository, `${label}.repository`);
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repository)) {
+    throw new Error(`Invalid Browser runtime release lock ${label}.repository`);
+  }
+  const tag = requireString(value.tag, `${label}.tag`);
+  if (!/^[A-Za-z0-9._-]+$/u.test(tag)) {
+    throw new Error(`Invalid Browser runtime release lock ${label}.tag`);
+  }
+  return {
+    browserPluginVersion: requireString(
+      value.browserPluginVersion,
+      `${label}.browserPluginVersion`,
+    ),
+    codexCompatibilityVersion: requireString(
+      value.codexCompatibilityVersion,
+      `${label}.codexCompatibilityVersion`,
+    ),
+    repository,
+    source: {
+      buildNumber: requireString(value.source.buildNumber, `${label}.source.buildNumber`),
+      desktopBuild: requireString(value.source.desktopBuild, `${label}.source.desktopBuild`),
+      product: value.source.product,
+    },
+    tag,
+  };
+}
+
 export function parseBrowserRuntimeReleaseLock(value: unknown): BrowserRuntimeReleaseLock {
   if (!isObject(value) || value.schemaVersion !== 2 || value.runtimeFamily !== "browser") {
     throw new Error("Invalid Browser runtime release lock header");
-  }
-  if (!isObject(value.source) || value.source.product !== "chatgpt-desktop") {
-    throw new Error("Invalid Browser runtime release lock source");
   }
   if (!isObject(value.assets)) {
     throw new Error("Invalid Browser runtime release lock assets");
@@ -207,25 +246,24 @@ export function parseBrowserRuntimeReleaseLock(value: unknown): BrowserRuntimeRe
       "Browser runtime release lock must contain exactly darwin-arm64, win32-arm64 and win32-x64 entries",
     );
   }
-
-  const repository = requireString(value.repository, "repository");
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repository)) {
-    throw new Error("Invalid Browser runtime release lock repository");
-  }
-  const tag = requireString(value.tag, "tag");
-  if (!/^[A-Za-z0-9._-]+$/u.test(tag)) {
-    throw new Error("Invalid Browser runtime release lock tag");
-  }
-  const desktopBuild = requireString(value.source.desktopBuild, "source.desktopBuild");
-  const assets = {
-    "darwin-arm64": parseAsset(value.assets["darwin-arm64"], "darwin-arm64"),
-    "win32-arm64": parseAsset(value.assets["win32-arm64"], "win32-arm64"),
-    "win32-x64": parseAsset(value.assets["win32-x64"], "win32-x64"),
+  const lock: BrowserRuntimeReleaseLock = {
+    ...parseReleaseIdentity(value, "release"),
+    assets: {
+      "darwin-arm64": parseAsset(value.assets["darwin-arm64"], "darwin-arm64"),
+      "win32-arm64": parseAsset(value.assets["win32-arm64"], "win32-arm64"),
+      "win32-x64": parseAsset(value.assets["win32-x64"], "win32-x64"),
+    },
+    runtimeFamily: value.runtimeFamily,
+    schemaVersion: value.schemaVersion,
+    ...(value.windowsRelease === undefined
+      ? {}
+      : { windowsRelease: parseReleaseIdentity(value.windowsRelease, "windowsRelease") }),
   };
   for (const target of BROWSER_RUNTIME_RELEASE_TARGETS) {
-    const asset = assets[target];
+    const asset = lock.assets[target];
     if (!asset) continue;
-    const expectedName = `nodex-browser-runtime-${desktopBuild}-${target}.tar.gz`;
+    const { source, repository, tag } = browserRuntimeReleaseForTarget(lock, target);
+    const expectedName = `nodex-browser-runtime-${source.desktopBuild}-${target}.tar.gz`;
     if (asset.assetName !== expectedName) {
       throw new Error(`Browser runtime release lock ${target} asset name must be ${expectedName}`);
     }
@@ -236,24 +274,7 @@ export function parseBrowserRuntimeReleaseLock(value: unknown): BrowserRuntimeRe
       );
     }
   }
-
-  return {
-    assets,
-    browserPluginVersion: requireString(value.browserPluginVersion, "browserPluginVersion"),
-    codexCompatibilityVersion: requireString(
-      value.codexCompatibilityVersion,
-      "codexCompatibilityVersion",
-    ),
-    repository,
-    runtimeFamily: value.runtimeFamily,
-    schemaVersion: value.schemaVersion,
-    source: {
-      buildNumber: requireString(value.source.buildNumber, "source.buildNumber"),
-      desktopBuild,
-      product: value.source.product,
-    },
-    tag,
-  };
+  return lock;
 }
 
 export function readBrowserRuntimeReleaseLock(lockPath: string): BrowserRuntimeReleaseLock {

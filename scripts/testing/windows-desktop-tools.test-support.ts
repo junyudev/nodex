@@ -14,6 +14,7 @@ import {
   type TestedBrowserAppServerPair,
 } from "../../src/shared/browser-app-server-compatibility";
 import {
+  browserRuntimeReleaseForTarget,
   readBrowserRuntimeReleaseLock,
   resolveBrowserRuntimeReleaseLockPath,
 } from "../browser-runtime-release-lock";
@@ -38,12 +39,13 @@ export function windowsDesktopToolConformanceCandidate(
   if (arch !== "x64" && arch !== "arm64")
     throw new Error(`Unsupported Windows Desktop Tool architecture: ${arch}`);
   const lock = readBrowserRuntimeReleaseLock(resolveBrowserRuntimeReleaseLockPath(repositoryRoot));
-  const asset = lock.assets[`win32-${arch}`];
+  const target = `win32-${arch}` as const;
+  const asset = lock.assets[target];
   if (!asset) throw new Error(`Desktop Tool runtime is unavailable for win32-${arch}`);
   const pair = {
     appServer: asset.appServer,
     browser: {
-      browserPluginVersion: lock.browserPluginVersion,
+      browserPluginVersion: browserRuntimeReleaseForTarget(lock, target).browserPluginVersion,
       manifestSha256: asset.manifestSha256,
       peerCliVersion: asset.runtimeVersions.codexCli,
       targetArch: arch,

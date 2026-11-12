@@ -1,0 +1,20 @@
+{
+  "candidatePair": {
+    "appServer": {
+      "entrypointSha256": "841746deb80cc07bce00d19d4d046070f8a89ef818518c454fb5fbbde0633dca",
+      "protocolSchemaFingerprint": "6fa0fe27be2847f726cb5b4a361bf2033455ee22e52124751e7e18d079b0c4fd",
+      "runtimeVersion": "0.167.2",
+      "sourceCommit": "ce21072c90d32c40af7a55b60b2fb35c84a43a6a",
+      "targetArch": "arm64",
+      "targetPlatform": "win32"
+    },
+    "browser": {
+      "browserPluginVersion": "26.1027.51404",
+      "manifestSha256": "ff73b2c5f103c0ac648e926a0bc387c6af9a226bbf1dc5d65dbabb278380b1e6",
+      "peerCliVersion": "0.166.0-alpha.5.1",
+      "targetArch": "arm64",
+      "targetPlatform": "win32"
+    }
+  },
+  "report": { "status": "passed", "signedImages": 19, "processesClosed": 10 }
+}

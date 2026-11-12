@@ -3,7 +3,9 @@
 Nodex builds consume the Browser runtime exclusively through
 `browser-runtime.lock.json`. Each target pins an immutable archive by byte size
 and SHA-256, plus the manifest digest, source desktop build, Browser plugin
-version and component versions. Local Windows candidates have a null URL and
+version and component versions. When Windows uses a separately published
+closure, `windowsRelease` identifies the release and source build for both
+Windows archives. Local Windows candidates have a null URL and
 can be materialized from a local archive for worker verification. A null Windows
 asset entry records that the target has no conformance-tested Browser runtime.
 Nodex builds omit Browser and Computer Use on that target and keep the locked
@@ -66,7 +68,8 @@ Updating the runtime is an explicit maintainer workflow:
 
 4. Record the local archive identity with a null URL. For publication, prepare
    a reviewed copy of the lock containing each approved archive's final
-   immutable release URL.
+   immutable release URL. Give the publisher a candidate lock for that single
+   release. Keep any separately published Windows pins in the build lock.
 5. Create and push the dedicated annotated tag at the exact reviewed Nodex
    source commit chosen to own this runtime release. The guarded publisher
    requires the remote tag to exist and will not infer a target from a moving

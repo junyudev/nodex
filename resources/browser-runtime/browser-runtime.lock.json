@@ -24,7 +24,66 @@
         "peerAuthorization": "sha256:4cb95598d578fc19f6ad5d10a163a18e33ad9660ef4aacabd5f3d58687a5be41"
       }
     },
-    "win32-arm64": null,
-    "win32-x64": null
+    "win32-arm64": {
+      "archiveSha256": "3c6dfc88c3b09356b3cc672d8eb350347b1b193649b5ecb8711e446aeb4dedc8",
+      "archiveSize": 321351987,
+      "assetName": "nodex-browser-runtime-26.1027.51404-win32-arm64.tar.gz",
+      "manifestSha256": "ff73b2c5f103c0ac648e926a0bc387c6af9a226bbf1dc5d65dbabb278380b1e6",
+      "runtimeVersions": {
+        "codexCli": "0.166.0-alpha.5.1",
+        "cuaRuntime": "0.0.35/20261022235854-0e24579b4572",
+        "node": "24.22.1"
+      },
+      "sourcePackage": {
+        "name": "OpenAI.Codex",
+        "publisher": "CN=50BDFD77-8903-4850-9FFE-6E8522F64D5B",
+        "version": "26.1027.6604.0"
+      },
+      "url": "https://github.com/junyudev/nodex/releases/download/browser-runtime-v26.1027.51404.1/nodex-browser-runtime-26.1027.51404-win32-arm64.tar.gz",
+      "appServer": {
+        "entrypointSha256": "841746deb80cc07bce00d19d4d046070f8a89ef818518c454fb5fbbde0633dca",
+        "protocolSchemaFingerprint": "6fa0fe27be2847f726cb5b4a361bf2033455ee22e52124751e7e18d079b0c4fd",
+        "runtimeVersion": "0.167.2",
+        "sourceCommit": "ce21072c90d32c40af7a55b60b2fb35c84a43a6a",
+        "targetArch": "arm64",
+        "targetPlatform": "win32"
+      }
+    },
+    "win32-x64": {
+      "archiveSha256": "387e63fde832bc66937a62d53581ea63d3b1fc68a86c862cdff58c9d6fc1c686",
+      "archiveSize": 290851965,
+      "assetName": "nodex-browser-runtime-26.1027.51404-win32-x64.tar.gz",
+      "manifestSha256": "e6ce0450de8b15bb90f82adbf79298c79e5ebe47ba5c0af7d90ab96f7c603896",
+      "runtimeVersions": {
+        "codexCli": "0.166.0-alpha.5.1",
+        "cuaRuntime": "0.0.35/20261022235854-0e24579b4572",
+        "node": "24.22.1"
+      },
+      "sourcePackage": {
+        "name": "OpenAI.Codex",
+        "publisher": "CN=50BDFD77-8903-4850-9FFE-6E8522F64D5B",
+        "version": "26.1027.6604.0"
+      },
+      "url": "https://github.com/junyudev/nodex/releases/download/browser-runtime-v26.1027.51404.1/nodex-browser-runtime-26.1027.51404-win32-x64.tar.gz",
+      "appServer": {
+        "entrypointSha256": "6f65c42e3769209976cce097a400720b5d877e1d24ec8bb6272bf0f02d5e0fd7",
+        "protocolSchemaFingerprint": "6fa0fe27be2847f726cb5b4a361bf2033455ee22e52124751e7e18d079b0c4fd",
+        "runtimeVersion": "0.167.2",
+        "sourceCommit": "ce21072c90d32c40af7a55b60b2fb35c84a43a6a",
+        "targetArch": "x64",
+        "targetPlatform": "win32"
+      }
+    }
+  },
+  "windowsRelease": {
+    "repository": "junyudev/nodex",
+    "tag": "browser-runtime-v26.1027.51404.1",
+    "source": {
+      "product": "chatgpt-desktop",
+      "desktopBuild": "26.1027.51404",
+      "buildNumber": "23880"
+    },
+    "browserPluginVersion": "26.1027.51404",
+    "codexCompatibilityVersion": "0.166.0-alpha.5.1"
   }
 }

@@ -37,9 +37,11 @@ without a download URL reports `skipped: candidate assets` in the job summary.
 A null Windows asset entry reports that no conformance-tested runtime is available.
 Neither case exercises the vendor runtime.
 
-Before publication, run the same staged vendor check on each matching Windows
-worker with the approved local candidate archive. In a disposable checkout,
-substitute the native CPU and archive path below.
+Before publishing a Windows archive or admitting a new app-server pair, run
+the same staged vendor check on each matching Windows worker with the approved
+local archive. In a disposable checkout, substitute the native CPU and archive
+path below. When using a Windows VM, run the probe from the signed-in console.
+Use an interactive-logon scheduled task when connecting over SSH.
 
 ```powershell
 $arch = 'x64' # Use 'arm64' on the native arm64 worker.

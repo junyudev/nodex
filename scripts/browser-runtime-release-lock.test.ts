@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vite-plus/test";
 import {
   BROWSER_RUNTIME_RELEASE_TARGETS,
+  browserRuntimeReleaseForTarget,
   parseBrowserRuntimeReleaseLock,
   readBrowserRuntimeReleaseLock,
   resolveBrowserRuntimeReleaseLockPath,
@@ -77,6 +78,30 @@ describe("parseBrowserRuntimeReleaseLock", () => {
     expect(parsed.assets["darwin-arm64"].url).not.toBeNull();
   });
 
+  test("binds Windows archives to their own published release", () => {
+    const lock = makeLock();
+    const desktopBuild = "26.726.40816";
+    const tag = `browser-runtime-v${desktopBuild}.1`;
+    lock.windowsRelease = {
+      browserPluginVersion: desktopBuild,
+      codexCompatibilityVersion: "0.144.4",
+      repository: "example/nodex",
+      source: { buildNumber: "6066", desktopBuild, product: "chatgpt-desktop" },
+      tag,
+    };
+    const assets = lock.assets as Record<string, unknown>;
+    Object.assign(assets, windowsBrowserRuntimeLockFixture(desktopBuild));
+    const arm64 = assets["win32-arm64"] as Record<string, unknown>;
+    arm64.url = `https://github.com/example/nodex/releases/download/${tag}/${arm64.assetName}`;
+
+    const parsed = parseBrowserRuntimeReleaseLock(lock);
+    expect(browserRuntimeReleaseForTarget(parsed, "win32-arm64").tag).toBe(tag);
+    expect(browserRuntimeReleaseForTarget(parsed, "darwin-arm64").tag).toBe(lock.tag);
+
+    arm64.url = String(arm64.url).replace(tag, String(lock.tag));
+    expect(() => parseBrowserRuntimeReleaseLock(lock)).toThrow("win32-arm64 URL does not match");
+  });
+
   test("rejects non-HTTPS release assets", () => {
     const lock = makeLock();
     const assets = lock.assets as Record<string, Record<string, unknown>>;
@@ -109,7 +134,8 @@ describe("parseBrowserRuntimeReleaseLock", () => {
         targetPlatform,
       };
       const browser = {
-        browserPluginVersion: browserLock.browserPluginVersion,
+        browserPluginVersion: browserRuntimeReleaseForTarget(browserLock, target)
+          .browserPluginVersion,
         manifestSha256: asset.manifestSha256,
         peerCliVersion: asset.runtimeVersions.codexCli,
         targetArch,

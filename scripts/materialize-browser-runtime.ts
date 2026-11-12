@@ -9,10 +9,11 @@ import {
   type BrowserRuntimeManifest,
 } from "../src/shared/browser-runtime-metadata";
 import {
+  browserRuntimeReleaseForTarget,
   readBrowserRuntimeReleaseLock,
   resolveBrowserRuntimeReleaseLockPath,
   type BrowserRuntimeReleaseAsset,
-  type BrowserRuntimeReleaseLock,
+  type BrowserRuntimeReleaseIdentity,
   type BrowserRuntimeTargetArch,
   type BrowserRuntimeTargetPlatform,
 } from "./browser-runtime-release-lock";
@@ -65,13 +66,13 @@ function assertNoLinksOrSpecialFiles(rootPath: string, currentPath = rootPath): 
 
 function assertManifestMatchesLock(input: {
   asset: BrowserRuntimeReleaseAsset;
-  lock: BrowserRuntimeReleaseLock;
+  release: BrowserRuntimeReleaseIdentity;
   manifest: BrowserRuntimeManifest;
   manifestPath: string;
   targetArch: BrowserRuntimeTargetArch;
   targetPlatform: BrowserRuntimeTargetPlatform;
 }): void {
-  const { asset, lock, manifest, manifestPath, targetArch, targetPlatform } = input;
+  const { asset, release, manifest, manifestPath, targetArch, targetPlatform } = input;
   const manifestSha256 = readBrowserRuntimeFileSha256(manifestPath);
   if (manifestSha256 !== asset.manifestSha256) {
     throw new Error(
@@ -80,10 +81,10 @@ function assertManifestMatchesLock(input: {
     );
   }
   if (
-    manifest.browserPlugin.version !== lock.browserPluginVersion ||
-    manifest.codexCompatibilityVersion !== lock.codexCompatibilityVersion ||
-    manifest.desktopBuild !== lock.source.desktopBuild ||
-    manifest.desktopBuildNumber !== (asset.sourcePackage?.version ?? lock.source.buildNumber) ||
+    manifest.browserPlugin.version !== release.browserPluginVersion ||
+    manifest.codexCompatibilityVersion !== release.codexCompatibilityVersion ||
+    manifest.desktopBuild !== release.source.desktopBuild ||
+    manifest.desktopBuildNumber !== (asset.sourcePackage?.version ?? release.source.buildNumber) ||
     (manifest.targetPlatform === "win32" &&
       JSON.stringify(manifest.sourcePackage) !== JSON.stringify(asset.sourcePackage)) ||
     manifest.targetArch !== targetArch ||
@@ -96,7 +97,7 @@ function assertManifestMatchesLock(input: {
 
 function readVerifiedSource(input: {
   asset: BrowserRuntimeReleaseAsset;
-  lock: BrowserRuntimeReleaseLock;
+  release: BrowserRuntimeReleaseIdentity;
   sourceRoot: string;
   targetArch: BrowserRuntimeTargetArch;
   targetPlatform: BrowserRuntimeTargetPlatform;
@@ -119,7 +120,7 @@ function readVerifiedSource(input: {
 
 function readReusableSource(input: {
   asset: BrowserRuntimeReleaseAsset;
-  lock: BrowserRuntimeReleaseLock;
+  release: BrowserRuntimeReleaseIdentity;
   outputPath: string;
   targetArch: BrowserRuntimeTargetArch;
   targetPlatform: BrowserRuntimeTargetPlatform;
@@ -229,10 +230,11 @@ export async function materializeBrowserRuntime(
   if (!targetKey) throw new Error("Unsupported Desktop Tool release target");
   const asset = lock.assets[targetKey];
   if (!asset) throw new Error(`Desktop Tool runtime is unavailable for ${targetKey}`);
+  const release = browserRuntimeReleaseForTarget(lock, targetKey);
   const outputPath = path.resolve(options.outputPath);
   const reusable = readReusableSource({
     asset,
-    lock,
+    release,
     outputPath,
     targetArch: options.targetArch,
     targetPlatform: options.targetPlatform,
@@ -298,7 +300,7 @@ export async function materializeBrowserRuntime(
         validate: (sourceRoot) => {
           readVerifiedSource({
             asset,
-            lock,
+            release,
             sourceRoot,
             targetArch: options.targetArch,
             targetPlatform: options.targetPlatform,
@@ -309,7 +311,7 @@ export async function materializeBrowserRuntime(
     );
     const manifest = readVerifiedSource({
       asset,
-      lock,
+      release,
       sourceRoot: extractedRoot,
       targetArch: options.targetArch,
       targetPlatform: options.targetPlatform,

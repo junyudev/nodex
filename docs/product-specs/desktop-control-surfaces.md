@@ -4,7 +4,7 @@ Nodex presents Browser Use, control of supported browser profiles, and Computer 
 
 ## Availability
 
-The built-in Browser is available to local Agents on Apple silicon Macs when the verified runtime and its transport are ready. Browser and Computer Use are unavailable on Windows x64 and arm64 pending native conformance of the bundled runtime. Control of an existing browser profile additionally requires a supported browser family, the installed native host, and a connected allowed extension instance. Browser Settings reports the live provider state as checking, unavailable, not registered, registered elsewhere, needs repair, waiting for extension, or ready. Agents can select the existing-browser backend only in the ready state.
+The built-in Browser is available to local Agents on macOS and on Windows x64 and arm64 when the verified runtime and its transport are ready. Control of an existing browser profile additionally requires a supported browser family, the installed native host, and a connected allowed extension instance. Browser Settings reports the live provider state as checking, unavailable, not registered, registered elsewhere, needs repair, waiting for extension, or ready. Agents can select the existing-browser backend only in the ready state.
 
 On macOS, the installed app registers the host for the personal Profile and repairs registrations
 whose host executable has disappeared. A registration pointing to another
