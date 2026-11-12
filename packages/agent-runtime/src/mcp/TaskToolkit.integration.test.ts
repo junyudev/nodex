@@ -945,6 +945,8 @@ describe("task tools", () => {
             }),
           ).pipe(Effect.orDie);
           expect(followUp.taskId).not.toBe(started.taskId);
+          // The conversation stays addressable through the original task.
+          expect(followUp.conversationTaskId).toBe(started.taskId);
           expect(followUp.delivery).toBe("started");
           const followUpRetry = yield* decodeTaskSend(
             yield* call("task_send", {

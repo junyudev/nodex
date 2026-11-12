@@ -475,8 +475,10 @@ export const OrchestratorMcpThreadSendResult = Schema.Struct({
   threadId: ThreadId,
   messageId: MessageId,
   runId: RunId,
-  /** Fresh task for a follow-up to an app-owned child; the previous task stays terminal. */
+  /** The task that carries this message's result: a new task for a started or queued follow-up, or the task that owns the running Run a steered message joined. */
   taskId: Schema.optional(NodeId),
+  /** The delegated task that names the whole child conversation; it stays valid for reads and follow-ups. */
+  conversationTaskId: Schema.optional(NodeId),
   status: OrchestrationV2RunStatus,
   delivery: Schema.Literals(["started", "queued", "steered", "restarted"]),
 });

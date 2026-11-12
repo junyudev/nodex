@@ -1089,11 +1089,16 @@ it.effect("carries a follow-up queued behind an unfinished task with its own tas
       message: "Also check the appendix",
       mode: "queue",
       idempotencyKey: "queued-behind-unfinished-task",
-    })).structuredContent as { readonly taskId: string; readonly status: string };
+    })).structuredContent as {
+      readonly taskId: string;
+      readonly conversationTaskId: string;
+      readonly status: string;
+    };
     expect(sent).toMatchObject({
       status: "queued",
       delivery: "queued",
       taskId: expect.any(String),
+      conversationTaskId: f.task.id,
     });
     expect(sent.taskId).not.toBe(f.task.id);
     const runs = (yield* f.projections.getThreadRecords(f.task.childThreadId!, ["runs"])).runs;

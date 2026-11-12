@@ -138,6 +138,10 @@ const TaskSendInput = Schema.Struct({
   idempotencyKey: Schema.optional(OrchestratorMcpIdempotencyKey),
 });
 export const TaskSendResult = Schema.Struct({
+  conversationTaskId: NodeId.annotate({
+    description:
+      "The delegated task that names the whole child conversation. It stays valid for task_status, task_wait, task_send and task_cancel, and reports the conversation's latest result.",
+  }),
   taskId: Schema.NullOr(NodeId).annotate({
     description:
       "The task that carries this message's result: a new task for a started or queued follow-up, or the task owning the running turn a steered message joined. Null only when the message joined a Run that no delegated task owns.",
@@ -302,7 +306,7 @@ const TaskWaitTool = Tool.make("task_wait", {
 
 const TaskSendTool = Tool.make("task_send", {
   description:
-    "Send a follow-up to a delegated task's own conversation. A follow-up that starts a turn is carried by a new task (the returned taskId) whose completion wakes you; the addressed task's result stays unchanged, even while it is still running. A message steered into a running turn joins that turn and returns the task that turn belongs to. For an independent round, call delegate_task again with the full context instead.",
+    "Send a follow-up to a delegated task's own conversation. The delegated task names the whole child conversation: its taskId (returned as conversationTaskId) keeps working for reads, follow-ups and cancellation. A follow-up that starts a turn is carried by its own task (the returned taskId), whose completion wakes you; every task's result stays unchanged, even while the conversation is still running. A message steered into a running turn joins that turn and returns the task that turn belongs to. For an independent round, call delegate_task again with the full context instead.",
   parameters: TaskSendInput,
   success: TaskSendResult,
   failure: OrchestratorMcpFailure,

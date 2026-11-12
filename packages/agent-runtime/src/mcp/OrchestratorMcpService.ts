@@ -1902,6 +1902,12 @@ export const make = Effect.gen(function* () {
                 input.idempotencyKey,
                 idempotencyArguments ?? input,
               );
+        // A delegated child's conversation is named by the task it was forked from.
+        const forkedFrom = target.thread.forkedFrom;
+        const conversationTaskId =
+          target.thread.lineage.relationshipToParent === "subagent" && forkedFrom?.type === "node"
+            ? forkedFrom.nodeId
+            : null;
         const messageId = stableOperationMessageId({
           scope,
           requestKey: key,
@@ -1939,6 +1945,7 @@ export const make = Effect.gen(function* () {
           ...(result.run.delegatedTaskId === undefined
             ? {}
             : { taskId: result.run.delegatedTaskId }),
+          ...(conversationTaskId === null ? {} : { conversationTaskId }),
           status: result.run.status,
           delivery: result.delivery,
         } satisfies OrchestratorMcpThreadSendResult;

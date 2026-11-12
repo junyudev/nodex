@@ -1064,7 +1064,9 @@ their native process remains live.
 
 Every follow-up that starts a Run in a delegated child is carried by a task of its own, whether the
 addressed task is still running, queued behind other work, or settled. `task_send` returns that
-task's taskId, and the addressed task's result is never replaced. A message steered into a running
+task's taskId as `taskId` and the conversation's delegated task as `conversationTaskId`; the
+conversation task remains a valid handle for reads, follow-ups and cancellation. No task's result is
+replaced by a later follow-up. A message steered into a running
 Run joins that Run and returns the task that Run belongs to; a message that joins a Run no delegated
 task owns returns no taskId. A restart keeps the interrupted Run's task, which carries the restarted Run.
 
