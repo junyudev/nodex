@@ -32,6 +32,9 @@ const BUILT_IN_PROPERTY_IDS: [&str; 11] = [
 ];
 pub(crate) const STATUS_OPTION_IDS: [&str; 6] =
     ["triage", "plan", "doing", "review", "done", "canceled"];
+/// Lists lead with active work; the Board keeps the pipeline order above.
+pub(crate) const LIST_STATUS_OPTION_IDS: [&str; 6] =
+    ["review", "doing", "plan", "triage", "done", "canceled"];
 const ESTIMATE_OPTION_IDS: [&str; 5] = ["xs", "s", "m", "l", "xl"];
 const MAX_OPTION_NAME_LENGTH: usize = 256;
 const MAX_OPTION_COLOR_LENGTH: usize = 128;

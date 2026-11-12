@@ -858,6 +858,9 @@ fn property_option_ids(
     let Some((value_type, config_json)) = property else {
         return Ok(Vec::new());
     };
+    if !matches!(value_type.as_str(), "select" | "multi_select") {
+        return Ok(Vec::new());
+    }
     Ok(super::property_semantics::option_config_from_storage(
         property_id,
         &value_type,
@@ -869,41 +872,56 @@ fn property_option_ids(
     .collect())
 }
 
-fn configured_list_group_paths(
+/// The Source's option order for the List's group and subgroup Properties.
+/// Properties without an option registry yield no order of their own.
+struct ListGroupOptionOrder {
+    groups: Vec<String>,
+    subgroups: Vec<String>,
+}
+
+fn list_group_option_order(
     connection: &Connection,
     view: &ResolvedView,
-) -> Result<Vec<ListGroupPath>, StoreError> {
-    if !view.config.presentation.display.show_empty_groups {
-        return Ok(Vec::new());
-    }
-    let Some(group) = &view.config.presentation.group else {
-        return Ok(Vec::new());
-    };
-    let groups = property_option_ids(connection, &view.data_source_id, &group.property_id)?;
-    if groups.is_empty() {
-        return Ok(Vec::new());
-    }
-    let subgroups = match &view.config.presentation.subgroup {
-        Some(subgroup) => {
-            property_option_ids(connection, &view.data_source_id, &subgroup.property_id)?
+) -> Result<ListGroupOptionOrder, StoreError> {
+    let option_ids = |group: &Option<ViewGroup>| match group {
+        Some(group) if group.property_id == super::property_semantics::STATUS_PROPERTY_ID => {
+            Ok(super::property_semantics::LIST_STATUS_OPTION_IDS
+                .iter()
+                .map(|id| (*id).to_owned())
+                .collect())
         }
-        None => Vec::new(),
+        Some(group) => property_option_ids(connection, &view.data_source_id, &group.property_id),
+        None => Ok(Vec::new()),
     };
+    Ok(ListGroupOptionOrder {
+        groups: option_ids(&view.config.presentation.group)?,
+        subgroups: option_ids(&view.config.presentation.subgroup)?,
+    })
+}
+
+/// Every finite group path of a List that shows empty groups.
+fn configured_list_group_paths(
+    view: &ResolvedView,
+    options: &ListGroupOptionOrder,
+) -> Vec<ListGroupPath> {
+    if !view.config.presentation.display.show_empty_groups {
+        return Vec::new();
+    }
     let mut paths = Vec::new();
-    for group_key in groups {
-        if subgroups.is_empty() {
+    for group_key in &options.groups {
+        if options.subgroups.is_empty() {
             paths.push(ListGroupPath {
-                group_key: Some(group_key),
+                group_key: Some(group_key.clone()),
                 subgroup_key: None,
             });
         } else {
-            for subgroup_key in &subgroups {
+            for subgroup_key in &options.subgroups {
                 paths.push(ListGroupPath {
                     group_key: Some(group_key.clone()),
                     subgroup_key: Some(subgroup_key.clone()),
                 });
                 if paths.len() >= MAX_VIEW_GROUP_SUMMARIES {
-                    return Ok(paths);
+                    return paths;
                 }
             }
         }
@@ -911,7 +929,7 @@ fn configured_list_group_paths(
             break;
         }
     }
-    Ok(paths)
+    paths
 }
 
 fn list_node_order_key(node: &ListProjectionNode, nested_child: bool) -> (String, usize, String) {
@@ -1112,36 +1130,56 @@ fn flatten_list_path(
     Ok(output)
 }
 
+/// Orders List group paths by the Source's option order, so a group's place
+/// never depends on which Page the row sort happens to reach first. Keys
+/// outside the option registry, including the empty value, follow in the order
+/// the sorted rows first reach them. Direction reverses groups, not subgroups.
 fn ordered_list_paths(
     configured: Vec<ListGroupPath>,
     encountered: &[ListGroupPath],
-    grouped: bool,
+    options: &ListGroupOptionOrder,
     direction: SortDirection,
 ) -> Vec<ListGroupPath> {
+    fn rank<'a>(ranks: &mut HashMap<Option<&'a str>, usize>, key: &'a Option<String>) -> usize {
+        let next = ranks.len();
+        *ranks.entry(key.as_deref()).or_insert(next)
+    }
+    fn option_ranks(options: &[String]) -> HashMap<Option<&str>, usize> {
+        options
+            .iter()
+            .enumerate()
+            .map(|(index, id)| (Some(id.as_str()), index))
+            .collect()
+    }
+
     let mut seen = BTreeSet::new();
     let paths = configured
         .into_iter()
         .chain(encountered.iter().cloned())
         .filter(|path| seen.insert(path.clone()))
         .collect::<Vec<_>>();
-    if !grouped || matches!(direction, SortDirection::Asc) {
-        return paths;
-    }
-    let mut group_order = Vec::<Option<String>>::new();
-    let mut paths_by_group = BTreeMap::<Option<String>, Vec<ListGroupPath>>::new();
-    for path in paths {
-        if !paths_by_group.contains_key(&path.group_key) {
-            group_order.push(path.group_key.clone());
-        }
-        paths_by_group
-            .entry(path.group_key.clone())
-            .or_default()
-            .push(path);
-    }
-    group_order.reverse();
-    group_order
+    let mut group_ranks = option_ranks(&options.groups);
+    let mut subgroup_ranks = option_ranks(&options.subgroups);
+    let mut ranked = paths
+        .iter()
+        .map(|path| {
+            (
+                rank(&mut group_ranks, &path.group_key),
+                rank(&mut subgroup_ranks, &path.subgroup_key),
+                path,
+            )
+        })
+        .collect::<Vec<_>>();
+    ranked.sort_by_key(|(group, subgroup, _)| {
+        let group = match direction {
+            SortDirection::Asc => *group as isize,
+            SortDirection::Desc => -(*group as isize),
+        };
+        (group, *subgroup)
+    });
+    ranked
         .into_iter()
-        .flat_map(|group_key| paths_by_group.remove(&group_key).unwrap_or_default())
+        .map(|(_, _, path)| path.clone())
         .collect()
 }
 
@@ -1162,10 +1200,11 @@ fn flatten_list_projection(
     let subgrouped = view.config.presentation.subgroup.is_some();
     let nested = view.config.presentation.hierarchy.show_sub_pages
         && view.config.presentation.hierarchy.nested_sub_pages;
+    let option_order = list_group_option_order(connection, view)?;
     let paths = ordered_list_paths(
-        configured_list_group_paths(connection, view)?,
+        configured_list_group_paths(view, &option_order),
         encountered_paths,
-        grouped,
+        &option_order,
         view.config.presentation.group_direction,
     );
     let mut flattened_paths = Vec::with_capacity(paths.len());

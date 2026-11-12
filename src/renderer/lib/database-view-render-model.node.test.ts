@@ -13,6 +13,7 @@ import {
 import { testPropertySemantics } from "../../shared/testing/database-property-record";
 import { upgradeDatabaseViewConfigV2 } from "../../shared/database-view-presentation";
 import {
+  buildDatabaseViewColumns,
   buildDatabaseViewRenderModel,
   projectDataSourcePageRowToDatabaseViewRenderRow,
   databaseViewConditionalColorForOption,
@@ -284,11 +285,18 @@ describe("Database View render model", () => {
     const query = snapshot.value.value;
     const workflowPropertyId = parseDataSourcePropertyId("p_AAAAAAAA");
     const doingOptionId = "o_AAAAAAAA";
+    const todoOptionId = "o_BBBBBBBB";
     const workflowProperty = {
       ...query.properties[0]!,
       propertyId: workflowPropertyId,
       name: "Workflow",
-      config: { options: [{ id: doingOptionId, name: "Doing" }] },
+      config: {
+        options: [
+          { id: todoOptionId, name: "Todo" },
+          { id: doingOptionId, name: "Doing" },
+          { id: "o_CCCCCCCC", name: "Done" },
+        ],
+      },
     };
     const properties = [workflowProperty, ...query.properties.slice(1)];
     const model = buildDatabaseViewRenderModel({
@@ -324,9 +332,39 @@ describe("Database View render model", () => {
         },
       },
     });
-    expect(model.columns[0]?.id).toBe(doingOptionId);
-    expect(model.columns[0]?.name).toBe("Doing");
-    expect(model.columns[0]?.rows[0]?.pageId).toBe("page-1");
+    const doing = model.columns.find((column) => column.id === doingOptionId);
+    expect(doing?.name).toBe("Doing");
+    expect(doing?.rows[0]?.pageId).toBe("page-1");
+
+    // Populated groups follow option order, not the order rows reach them.
+    const row = model.query.rows[0]!;
+    const columns = buildDatabaseViewColumns(
+      {
+        ...model.query,
+        rows: [
+          row,
+          { ...row, effectiveGroupKey: null },
+          { ...row, effectiveGroupKey: todoOptionId },
+        ],
+      },
+      workflowPropertyId,
+      false,
+    );
+    expect(columns.map((column) => column.groupKey)).toEqual([todoOptionId, doingOptionId, null]);
+  });
+
+  test("orders Status columns by pipeline on a Board and active work first in a List", () => {
+    const snapshot = makeSnapshot({ primary: true });
+    if (snapshot.value.kind !== "query") throw new Error("Missing query fixture");
+    const query = snapshot.value.value;
+    const statusIds = (layout: "board" | "list") =>
+      buildDatabaseViewColumns(
+        { ...query, view: { ...query.view, layout } },
+        statusPropertyId,
+        true,
+      ).map((column) => column.groupKey);
+    expect(statusIds("board")).toEqual(["triage", "plan", "doing", "review", "done", "canceled"]);
+    expect(statusIds("list")).toEqual(["review", "doing", "plan", "triage", "done", "canceled"]);
   });
 
   test("preserves a filtered default View in the shared runtime", () => {

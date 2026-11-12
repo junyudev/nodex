@@ -1,3 +1,5 @@
+import type { DatabaseViewLayout } from "./database-kernel";
+
 export const WORKFLOW_STATUS_ORDER = [
   "triage",
   "plan",
@@ -8,6 +10,23 @@ export const WORKFLOW_STATUS_ORDER = [
 ] as const;
 
 export type WorkflowStatus = (typeof WORKFLOW_STATUS_ORDER)[number];
+
+// Lists lead with active work so the next thing to do is never below Done or Canceled.
+export const LIST_WORKFLOW_STATUS_ORDER = [
+  "review",
+  "doing",
+  "plan",
+  "triage",
+  "done",
+  "canceled",
+] as const satisfies readonly WorkflowStatus[];
+
+/** A Board reads the pipeline left to right; a List reads active work first. */
+export function workflowStatusOrderForLayout(
+  layout: DatabaseViewLayout,
+): readonly WorkflowStatus[] {
+  return layout === "list" ? LIST_WORKFLOW_STATUS_ORDER : WORKFLOW_STATUS_ORDER;
+}
 
 // Seeds new Databases and labels cross-Data-Source filters; scoped surfaces use Source option names.
 export const DEFAULT_WORKFLOW_STATUS_LABELS: Record<WorkflowStatus, string> = {

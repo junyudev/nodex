@@ -4,10 +4,10 @@ import {
   type DatabasePromotionReadEvidence,
 } from "./database-promotion-read-evidence";
 import {
-  WORKFLOW_STATUS_ORDER,
   resolveWorkflowStatusName,
   DEFAULT_WORKFLOW_STATUS,
   isWorkflowStatus,
+  workflowStatusOrderForLayout,
 } from "../../shared/workflow-status";
 import type {
   DatabaseModuleReadSnapshotV2,
@@ -339,9 +339,11 @@ export const buildDatabaseViewColumns = (
     }
     const options = readDatabasePropertyOptions(groupProperty);
     const optionNames = new Map(options.map((option) => [option.id, option.name]));
+    // Option order places groups; row order only places keys outside the registry.
+    const rowGroupKeys = new Set(rows.map(({ row }) => row.effectiveGroupKey));
     const configuredGroupKeys = [
-      ...(showEmptyGroups ? options.map((option) => option.id) : []),
-      ...rows.map(({ row }) => row.effectiveGroupKey),
+      ...options.map((option) => option.id).filter((id) => showEmptyGroups || rowGroupKeys.has(id)),
+      ...rowGroupKeys,
     ].filter((key, index, all): key is string | null => all.indexOf(key) === index);
     const groupKeys = configuredGroupKeys.length > 0 ? configuredGroupKeys : [null];
     const groupName = (key: string | null): string => {
@@ -377,7 +379,7 @@ export const buildDatabaseViewColumns = (
 
   const statusProperty = propertyById(query.properties, "status");
   const options = statusProperty ? readDatabasePropertyOptions(statusProperty) : [];
-  const allWorkflowColumns = WORKFLOW_STATUS_ORDER.map((id) => ({
+  const allWorkflowColumns = workflowStatusOrderForLayout(query.view.layout).map((id) => ({
     id,
     name: resolveWorkflowStatusName(id, options),
   }));

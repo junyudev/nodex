@@ -4005,6 +4005,102 @@ mod tests {
     }
 
     #[test]
+    fn list_status_groups_lead_with_active_work_whatever_the_row_order() {
+        let directory = tempdir().expect("Profile");
+        let home = directory.path().canonicalize().expect("absolute Profile");
+        let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
+        let row = |page_id, value_json, rank_key| GroupRowSpec {
+            page_id,
+            title: page_id,
+            value_json: Some(value_json),
+            rank_key: Some(rank_key),
+        };
+        let module = seed_grouped_fixture(
+            &kernel,
+            vec![
+                row("page:canceled", "\"canceled\"", "a0"),
+                row("page:doing", "\"doing\"", "a1"),
+                row("page:done", "\"done\"", "a2"),
+                row("page:plan", "\"plan\"", "a3"),
+                row("page:triage", "\"triage\"", "a4"),
+            ],
+        );
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:status-list".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::PutView {
+                        database_id: DATABASE_ID.to_owned(),
+                        data_source_id: SOURCE_ID.to_owned(),
+                        view_id: VIEW_ID.to_owned(),
+                        expected_revision: 1,
+                        name: "Status List".to_owned(),
+                        layout: DatabaseViewLayout::List,
+                        definition: view_definition(view_config(
+                            json!({ "kind": "group", "operator": "and", "children": [] }),
+                            Some("status"),
+                            &["status"],
+                        )),
+                        is_default: true,
+                        before_view_id: None,
+                    }],
+                },
+            )
+            .expect("group the List by Status");
+        let group_keys = |window: &nodex_core_contracts::database::DatabaseListWindow| {
+            window
+                .rows
+                .items
+                .iter()
+                .filter_map(|row| match row {
+                    DatabaseListProjectionRow::Group { group_key, .. } => group_key.clone(),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let ascending = read_list_window(&module, 20, None).expect("status List window");
+        assert_eq!(
+            group_keys(&ascending),
+            ["doing", "plan", "triage", "done", "canceled"]
+        );
+
+        let descending = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::ListWindow {
+                        target: DatabaseViewReadTarget::PresentedView {
+                            view_id: VIEW_ID.to_owned(),
+                            preferences_override: Box::new(preferences_override(
+                                DatabaseViewPresentationOverrideInput {
+                                    group_direction: Some(DatabaseViewSortDirectionInput::Desc),
+                                    ..Default::default()
+                                },
+                            )),
+                        },
+                        window: CollectionWindowRequest {
+                            after: None,
+                            first: Some(20),
+                        },
+                    },
+                },
+            )
+            .expect("read descending group order");
+        let DatabaseReadValue::ListWindow { value: descending } = descending.value else {
+            panic!("descending List window");
+        };
+        assert_eq!(
+            group_keys(&descending),
+            ["canceled", "done", "triage", "plan", "doing"]
+        );
+    }
+
+    #[test]
     fn deleting_the_default_view_selects_a_fallback_and_rejects_the_last_view() {
         const SECOND_VIEW_ID: &str = "018f1000-0000-7000-8000-000000000099";
         let directory = tempdir().expect("Profile");

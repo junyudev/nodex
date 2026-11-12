@@ -199,6 +199,13 @@ disappearing, while each populated Status column retains the full-width
 `New page` launcher. Historical Table, top-level Toggle List, and Calendar layouts
 migrate to List; inline `pageRef` and toggle-list Blocks remain editor features.
 
+A Board reads Status in pipeline order (Triage, Todo, In Progress, In Review,
+Done, Canceled). A List reads active work first (In Review, In Progress, Todo,
+Triage, Done, Canceled), so the next thing to do is never below finished work.
+Other option-backed grouping Properties follow their option order. Values outside
+the options, including the empty value, follow. Group direction reverses the
+sequence in both layouts, and the order of the Pages inside never moves a group.
+
 Grouped Views page independently per group and show the canonical total even
 when only one window is loaded. Flat Views use one cursor window. Refresh after
 a mutation preserves the loaded span where possible, and an expired cursor
