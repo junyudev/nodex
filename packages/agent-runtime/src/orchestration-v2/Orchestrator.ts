@@ -5949,7 +5949,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           const questions = pendingTaskQuestions(child.runtimeRequests, items);
           if (questions.length === 0) continue;
           openQuestionDetails.push(
-            `Task ${taskId} still has open questions:\n${questions.map((q) => `${q.requestId}: ${q.preview}`).join("\n")}\nUse task_question respond or dismiss. Answering starts a follow-up turn of the task; its result will wake you.`,
+            `Task ${taskId} still has open questions:\n${questions.map((q) => `${q.requestId}: ${q.preview}`).join("\n")}\nUse task_question respond or dismiss. Answering starts a follow-up task when it needs a new turn; that task's result will wake you.`,
           );
         }
       }
@@ -8059,9 +8059,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     },
   );
 
-  // A follow-up is new requested work in the same child conversation. Give it
-  // its own task so results, acknowledgments, Stop, and recovery use the same
-  // lifecycle as a fresh delegation without replacing the original result.
+  // Every Run that a follow-up starts in a delegated child conversation is
+  // carried by a task of its own, whether the earlier task is still running,
+  // queued behind other work, or already settled. The task owns that Run's
+  // result, acknowledgment, Stop, and recovery, so no result is replaced and no
+  // Run is left without a task to wake the parent. A message steered into a
+  // running Run adds no Run and therefore no task.
   const recordSubagentFollowup = Effect.fnUntraced(function* (
     command: Extract<OrchestrationV2Command, { readonly type: "message.dispatch" }>,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
@@ -8110,14 +8113,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         taskId: child.forkedFrom.nodeId,
       })
       .pipe(mapDispatchError(command));
+    // The overview is filtered to the chain's first task, which names the parent
+    // Run that owns the conversation. Its progress does not gate a follow-up.
     const original = [...tasks.active.items, ...tasks.terminal.items][0];
     // A Session-only or human follow-up retains the task's original owner, never a foreground guess.
-    if (
-      original?.origin !== "app_owned" ||
-      original.childThreadId !== child.id ||
-      !original.resultAvailable
-    )
-      return;
+    if (original?.origin !== "app_owned" || original.childThreadId !== child.id) return;
     const ownerRunId =
       command.createdBy === "agent" ? (command.senderRunId ?? original.runId) : original.runId;
     if (ownerRunId === null) return;

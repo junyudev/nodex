@@ -30,6 +30,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- A follow-up sent to a delegated task while it is still working now wakes the Agent that sent it. Before, a follow-up queued behind the task's unfinished work could complete without ever reporting back, and the reply named the task that had not run it. Each follow-up now gets its own task, and the task ID it returns is the one that reports the result.
 - Bash commands in Claude chats no longer stop with "still settling" after an earlier command was cut short. Nodex no longer holds a command back to check which Run started its shell, so every command runs. A background command that outlives its Run is credited to the chat's current Run.
 - Linking a phone or inviting a Member works again on Spaces that have been in use for more than a week. Creating a link, redeeming one, and changing Space or Member administration no longer fail with "legacy operation identity".
 - Local images load more reliably on Windows.

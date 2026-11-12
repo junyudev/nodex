@@ -1728,10 +1728,12 @@ export const make = Effect.gen(function* () {
           respondedBy,
         })
         .pipe(Effect.provideService(DispatchModeLimit, defaults), Effect.mapError(dispatchFailure));
+      // A follow-up task shares the addressed task's child conversation; other task updates in the dispatch do not.
       const followUp = result.storedEvents.find(
         ({ event }) =>
           event.type === "subagent.updated" &&
           event.payload.origin === "app_owned" &&
+          event.payload.childThreadId === threadId &&
           event.payload.id !== input.taskId &&
           event.threadId === caller.thread.threadId,
       )?.event;
@@ -1742,7 +1744,7 @@ export const make = Effect.gen(function* () {
             ? {
                 taskId: followUp.payload.id,
                 message:
-                  "The answer started a follow-up turn of the task. Its result will wake you; the original task's result stays unchanged.",
+                  "The answer started a follow-up task. Its result will wake you; the original task's result stays unchanged.",
               }
             : null,
       };

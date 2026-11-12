@@ -1062,6 +1062,12 @@ the caller's own conversation. Ordinary Session creation goes through the Host's
 transaction before execution. Background tools retain their captured execution identity while
 their native process remains live.
 
+Every follow-up that starts a Run in a delegated child is carried by a task of its own, whether the
+addressed task is still running, queued behind other work, or settled. `task_send` returns that
+task's taskId, and the addressed task's result is never replaced. A message steered into a running
+Run joins that Run and returns the task that Run belongs to; a message that joins a Run no delegated
+task owns returns no taskId. A restart keeps the interrupted Run's task, which carries the restarted Run.
+
 `delegate_task`, `task_send` and `task_cancel` accept optional `idempotencyKey`, an opaque
 1–128-character string. Omit it for a first attempt; reuse it with identical arguments only
 when the previous outcome was not observed. The execution store atomically binds the calling
@@ -1078,7 +1084,7 @@ question-response command. `dismiss` drops a pending asynchronous question throu
 permissions and approvals cannot be answered through this tool. Live questions resume
 the waiting provider, while asynchronous questions send answers into the child's conversation.
 Answered or dismissed requests cannot be answered again through the tool. The answer is
-attributed to the coordinating Thread, including its asynchronous answer message or dismissal. Answering after the child Run finishes creates a follow-up task with the same ownership and completion delivery as `task_send`. The response identifies that task and explains that its result will wake the coordinator; the original result remains unchanged.
+attributed to the coordinating Thread, including its asynchronous answer message or dismissal. An answer that needs a new Run in the child creates a follow-up task with the same ownership and completion delivery as `task_send`. The response identifies that task and explains that its result will wake the coordinator; the original result remains unchanged.
 
 Each pending question in an application-owned delegated task has one current answerer:
 its immediate delegating Agent, until the Runtime hands it to the person. A person can
@@ -1152,7 +1158,7 @@ starting. Once dispatched, retries preserve the message's text and result covera
 later siblings use a successor delivery. Agents can continue from inlined results
 and need `task_status` only when the wake requests it. Completion wakes also list still-open
 questions by requestId and short text, explaining that answering starts a follow-up task whose
-result will wake the coordinator.
+result will wake the coordinator when the answer needs a new Run.
 
 Completion wakes can reach an active Codex, Claude Code or OpenCode Run at its next
 native tool or sampling boundary without interrupting running tools. Agents without

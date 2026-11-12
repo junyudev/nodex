@@ -1081,6 +1081,36 @@ it.effect(
     }).pipe(Effect.provide(layerTest)),
 );
 
+it.effect("carries a follow-up queued behind an unfinished task with its own task", () =>
+  Effect.gen(function* () {
+    const f = yield* setup();
+    const sent = (yield* f.invoke("task_send", {
+      taskId: f.task.id,
+      message: "Also check the appendix",
+      mode: "queue",
+      idempotencyKey: "queued-behind-unfinished-task",
+    })).structuredContent as { readonly taskId: string; readonly status: string };
+    expect(sent).toMatchObject({
+      status: "queued",
+      delivery: "queued",
+      taskId: expect.any(String),
+    });
+    expect(sent.taskId).not.toBe(f.task.id);
+    const runs = (yield* f.projections.getThreadRecords(f.task.childThreadId!, ["runs"])).runs;
+    expect(runs.at(-1)?.delegatedTaskId).toBe(sent.taskId);
+    expect(
+      (yield* f.projections.getThreadRecords(parentId, ["subagents"])).subagents.find(
+        (task) => task.id === sent.taskId,
+      ),
+    ).toMatchObject({ childThreadId: f.task.childThreadId, completionWake: "always" });
+    expect(
+      (yield* f.projections.getThreadRecords(parentId, ["subagents"])).subagents.find(
+        (task) => task.id === f.task.id,
+      )?.result,
+    ).toBeNull();
+  }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect("answers asynchronous questions after the delegated child finishes", () =>
   Effect.gen(function* () {
     const f = yield* setup();
@@ -1108,7 +1138,7 @@ it.effect("answers asynchronous questions after the delegated child finishes", (
     });
     expect(answered.isError).not.toBe(true);
     expect(answered.structuredContent).toMatchObject({
-      followUp: { taskId: expect.any(String), message: expect.stringContaining("follow-up turn") },
+      followUp: { taskId: expect.any(String), message: expect.stringContaining("follow-up task") },
     });
     const followUp = (yield* f.projections.getThreadRecords(parentId, [
       "subagents",
@@ -1567,7 +1597,7 @@ it.effect("completion wakes remind the coordinator about still-open questions", 
       `${question.payload.id}: Which format?`,
     );
     expect(messages.messages.find((message) => message.id === messageId)?.text).toContain(
-      "Answering starts a follow-up turn",
+      "Answering starts a follow-up task",
     );
   }).pipe(Effect.provide(layerTest)),
 );

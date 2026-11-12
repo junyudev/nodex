@@ -67,16 +67,16 @@ address product Sessions by sessionId. The Runtime's task tools select delegated
 taskId only; canonical history retains source Thread provenance without granting target selection
 by those source identities.
 
-| Tool                | Purpose                                                                            |
-| ------------------- | ---------------------------------------------------------------------------------- |
-| `list_agent_models` | Provider instances, models and options a task can run, and what it inherits        |
-| `delegate_task`     | Start a child task (`async` by default; `wait` blocks up to `timeoutMs`)           |
-| `task_status`       | Read status and result; reading a settled result acknowledges its wake             |
-| `task_wait`         | Wait for a task to settle within a bounded budget                                  |
-| `task_send`         | Follow up in a task's conversation; after it finished, the follow-up is a new task |
-| `task_read`         | Page a task's conversation, or the caller's own when `taskId` is omitted           |
-| `task_cancel`       | Stop a task like a user Stop, including the tasks it delegated                     |
-| `stop_workflow`     | Stop a Claude workflow the caller's own conversation started                       |
+| Tool                | Purpose                                                                          |
+| ------------------- | -------------------------------------------------------------------------------- |
+| `list_agent_models` | Provider instances, models and options a task can run, and what it inherits      |
+| `delegate_task`     | Start a child task (`async` by default; `wait` blocks up to `timeoutMs`)         |
+| `task_status`       | Read status and result; reading a settled result acknowledges its wake           |
+| `task_wait`         | Wait for a task to settle within a bounded budget                                |
+| `task_send`         | Follow up in a task's conversation; a follow-up that starts a turn is a new task |
+| `task_read`         | Page a task's conversation, or the caller's own when `taskId` is omitted         |
+| `task_cancel`       | Stop a task like a user Stop, including the tasks it delegated                   |
+| `stop_workflow`     | Stop a Claude workflow the caller's own conversation started                     |
 
 Task tools resolve a taskId to its conversation through the indexed task owner, then reuse the
 conversation read, send and acknowledgement logic. Mutations keep stable command identities

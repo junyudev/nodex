@@ -61,7 +61,8 @@ const handlers = {
           { threadId, ...message },
           { taskId, ...message },
         );
-        return { taskId: sent.taskId ?? taskId, status: sent.status, delivery: sent.delivery };
+        // The carrying task comes from the Run that received the message, never from the addressed task.
+        return { taskId: sent.taskId ?? null, status: sent.status, delivery: sent.delivery };
       }),
     ),
   ),

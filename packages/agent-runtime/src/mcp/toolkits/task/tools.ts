@@ -138,9 +138,9 @@ const TaskSendInput = Schema.Struct({
   idempotencyKey: Schema.optional(OrchestratorMcpIdempotencyKey),
 });
 export const TaskSendResult = Schema.Struct({
-  taskId: NodeId.annotate({
+  taskId: Schema.NullOr(NodeId).annotate({
     description:
-      "The task that carries this message's result: a new taskId when the original task had already finished.",
+      "The task that carries this message's result: a new task for a started or queued follow-up, or the task owning the running turn a steered message joined. Null only when the message joined a Run that no delegated task owns.",
   }),
   status: OrchestrationV2RunStatus,
   delivery: Schema.Literals(["started", "queued", "steered", "restarted"]),
@@ -302,7 +302,7 @@ const TaskWaitTool = Tool.make("task_wait", {
 
 const TaskSendTool = Tool.make("task_send", {
   description:
-    "Send a follow-up to a delegated task's own conversation. After the task finished, the follow-up becomes a new task whose completion wakes you; the original result stays unchanged. For an independent round, call delegate_task again with the full context instead.",
+    "Send a follow-up to a delegated task's own conversation. A follow-up that starts a turn is carried by a new task (the returned taskId) whose completion wakes you; the addressed task's result stays unchanged, even while it is still running. A message steered into a running turn joins that turn and returns the task that turn belongs to. For an independent round, call delegate_task again with the full context instead.",
   parameters: TaskSendInput,
   success: TaskSendResult,
   failure: OrchestratorMcpFailure,
