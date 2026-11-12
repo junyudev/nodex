@@ -3292,7 +3292,7 @@ test.describe("parallel functional Electron smoke", () => {
   // This is the native source-gesture smoke. High-pressure tests below remain on
   // the direct typed transfer boundary because they test transaction convergence,
   // not the handle-to-dragover pipeline exercised here.
-  test("moves a Block into Board and List views with native DnD @dnd-smoke", async () => {
+  test("moves a Block into Board and List views with native DnD @dnd-smoke @automatic", async () => {
     const harness = await ElectronScenarioHarness.create({ label: "native-dnd" });
     const workspace = harness.profile.projectsDirectory;
     try {
@@ -3691,7 +3691,7 @@ test.describe("parallel functional Electron smoke", () => {
     }
   });
 
-  test("cuts and pastes a clicked image Block across Windows at sibling depth with stable File identity @page-file-placement", async () => {
+  test("cuts and pastes a clicked image Block across Windows at sibling depth with stable File identity @page-file-placement @automatic", async () => {
     const harness = await ElectronScenarioHarness.create({ label: "page-file-exclusive-move" });
     const workspace = harness.profile.projectsDirectory;
     try {

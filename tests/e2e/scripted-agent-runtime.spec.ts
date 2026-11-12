@@ -158,7 +158,8 @@ for (const { rendererCpuRate, unversioned } of [
   { rendererCpuRate: 12, unversioned: false },
   { rendererCpuRate: 1, unversioned: true },
 ]) {
-  test(`restores a durable Thread after quitting Electron and continues the same conversation (CPU ×${rendererCpuRate}${unversioned ? ", unversioned host" : ""})`, async ({}, testInfo) => {
+  const tag = rendererCpuRate === 1 && !unversioned ? " @automatic" : "";
+  test(`restores a durable Thread after quitting Electron and continues the same conversation (CPU ×${rendererCpuRate}${unversioned ? ", unversioned host" : ""})${tag}`, async ({}, testInfo) => {
     test.setTimeout(150_000);
     const token = randomUUID();
     const firstPrompt = `Remember the restart marker ${token}`;
@@ -314,7 +315,7 @@ for (const { rendererCpuRate, unversioned } of [
   });
 }
 
-test("runs a real shell tool through the scripted model boundary", async () => {
+test("runs a real shell tool through the scripted model boundary @automatic", async () => {
   const token = randomUUID();
   const promptMarker = `SCRIPTED_FILE_PROMPT_${token}`;
   const finalMarker = `SCRIPTED_FILE_OK_${token}`;

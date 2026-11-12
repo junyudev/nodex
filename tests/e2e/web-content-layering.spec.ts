@@ -25,7 +25,7 @@ async function expectAboveWebContent(overlay: Locator, name: string) {
   expect(hit.topmost, `${name} wins the hit test above the Browser page`).toBe("overlay");
 }
 
-test("App surfaces that overlap a Browser page sit above its content", async () => {
+test("App surfaces that overlap a Browser page sit above its content @automatic", async () => {
   const title = "Web content layering fixture";
   const site = await startBrowserHttpFixture(title);
   try {

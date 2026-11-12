@@ -13,9 +13,10 @@ import {
 import { DOCUMENT_SYNC_RECOVERY_SCENARIO_ID } from "../../scripts/scenarios/scenarios/document-sync-recovery";
 import { openBoardPageFromCard } from "./support/open-board-page";
 import { dragBlockFromEditorWithMouse } from "./support/drag-block-with-mouse";
+import { invokeIpc } from "./support/editor-scenario";
 import { selectEditorBlockRange } from "./support/select-editor-block-range";
 
-test("editing, native reorder and cancelled structural waits recover through Electron and Core", async () => {
+test("editing, native reorder and cancelled structural waits recover through Electron and Core @automatic", async () => {
   test.setTimeout(180_000);
   test.skip(
     process.platform === "win32",
@@ -175,34 +176,39 @@ test("editing, native reorder and cancelled structural waits recover through Ele
       ).toContain("remains independent");
 
       // Fault fixture: preserve a real engine snapshot containing edits Core has never seen.
-      const retainedBytes = await page.evaluate(async (documentId) => {
-        const database = await new Promise<IDBDatabase>((resolve, reject) => {
-          const request = indexedDB.open("nodex-document-cache");
-          request.onsuccess = () => resolve(request.result);
-          request.addEventListener("error", () => reject(request.error), { once: true });
-        });
-        try {
-          return await new Promise<number[]>((resolve, reject) => {
-            const request = database
-              .transaction("document-checkpoints", "readonly")
-              .objectStore("document-checkpoints")
-              .getAll();
+      const { spaceId, memberId } = await invokeIpc(page, "spaces:context");
+      const databaseName = JSON.stringify(["space", spaceId, memberId, "nodex-document-cache"]);
+      const retainedBytes = await page.evaluate(
+        async ({ databaseName, documentId }) => {
+          const database = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open(databaseName);
+            request.onsuccess = () => resolve(request.result);
             request.addEventListener("error", () => reject(request.error), { once: true });
-            request.onsuccess = () => {
-              const row = request.result.find(
-                (value: { documentId: string }) => value.documentId === documentId,
-              );
-              if (!row) {
-                reject(new Error("Checkpoint not found"));
-                return;
-              }
-              resolve(Array.from(new Uint8Array(row.state)));
-            };
           });
-        } finally {
-          database.close();
-        }
-      }, manifest.entityIdsByKey!.sourceDocument!);
+          try {
+            return await new Promise<number[]>((resolve, reject) => {
+              const request = database
+                .transaction("document-checkpoints", "readonly")
+                .objectStore("document-checkpoints")
+                .getAll();
+              request.addEventListener("error", () => reject(request.error), { once: true });
+              request.onsuccess = () => {
+                const row = request.result.find(
+                  (value: { documentId: string }) => value.documentId === documentId,
+                );
+                if (!row) {
+                  reject(new Error("Checkpoint not found"));
+                  return;
+                }
+                resolve(Array.from(new Uint8Array(row.state)));
+              };
+            });
+          } finally {
+            database.close();
+          }
+        },
+        { databaseName, documentId: manifest.entityIdsByKey!.sourceDocument! },
+      );
       // Checkpoints contain local deltas, so hydrate their canonical dependencies
       // before authoring an independent offline edit in this fault fixture.
       const canonicalBytes = await page.evaluate(
@@ -244,9 +250,9 @@ test("editing, native reorder and cancelled structural waits recover through Ele
       expect(retainedState.length).toBeGreaterThan(70_000);
       retainedDocument.destroy();
       await page.evaluate(
-        async ({ documentId, retainedState }) => {
+        async ({ databaseName, documentId, retainedState }) => {
           const database = await new Promise<IDBDatabase>((resolve, reject) => {
-            const request = indexedDB.open("nodex-document-cache");
+            const request = indexedDB.open(databaseName);
             request.onsuccess = () => resolve(request.result);
             request.addEventListener("error", () => reject(request.error), { once: true });
           });
@@ -265,7 +271,7 @@ test("editing, native reorder and cancelled structural waits recover through Ele
                 }
                 store.put({
                   ...row,
-                  state: new Uint8Array(retainedState),
+                  state: new Uint8Array(retainedState).buffer,
                   submissions: [
                     {
                       documentId,
@@ -290,7 +296,7 @@ test("editing, native reorder and cancelled structural waits recover through Ele
             database.close();
           }
         },
-        { documentId: manifest.entityIdsByKey!.sourceDocument!, retainedState },
+        { databaseName, documentId: manifest.entityIdsByKey!.sourceDocument!, retainedState },
       );
       await page.reload();
       const review = page.getByRole("button", { name: "Review", exact: true });

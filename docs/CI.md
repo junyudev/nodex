@@ -199,11 +199,12 @@ ci:verify-ignored-rust-tests` prevents silent drift.
 
 ## Electron E2E
 
-`vp run test:e2e:nightly` rebuilds and runs the shared curated selection in
-Nightly CI and locally. The job stages the locked runtime for scripted Agent
-tests, uses one worker, retains failure traces and error contexts in
-`test-results/`, and uploads failure diagnostics and command timings. Selection
-and admission criteria live in [development documentation](development.md).
+`vp run test:e2e:nightly` rebuilds and runs individual cases tagged `@automatic`
+in Nightly CI and locally. It uses one worker and excludes paid Agent and
+performance cases. The job stages the locked runtime for scripted Agent tests,
+retains failure traces and error contexts in `test-results/`, and uploads failure
+diagnostics and command timings. See [development documentation](development.md)
+for admission criteria and the [E2E triage table](../tests/e2e/TRIAGE.md) for other cases.
 
 `vp run test:e2e` and `vp run test:e2e:performance` remain local diagnostics for
 the production Electron/preload/Main/Core composition. PR, Main, Performance,

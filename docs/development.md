@@ -1080,10 +1080,11 @@ The test commands follow production boundaries:
   `vp run test:e2e:nightly` runs the curated deterministic set used by Nightly CI
   on a standard `macos-26` runner. The build stages the locked Agent runtime for
   scripted loopback-model tests; Nightly fixes one worker to isolate native
-  clipboard and window interactions. Add specs to `NIGHTLY_E2E_SPECS` in
-  `scripts/run-playwright-e2e.ts`, the shared selection for local and CI runs.
-  Choose reliable core product workflows with disposable Profiles and no paid
-  Agent calls; keep the complete local rebuild and run near or below 20 minutes.
+  clipboard and window interactions. Tag individual cases with `@automatic` when
+  they protect a distinct cross-process behavior that cheaper tests cannot cover.
+  Each case must set up its own disposable Profile and pass independently. Aim
+  for 3–5 minutes of Playwright execution for the set. Consult the
+  [E2E triage table](../tests/e2e/TRIAGE.md) before changing untagged cases.
   Paid-agent and `@performance` tests stay excluded. PR, Main, Performance, and
   release certification do not run Electron E2E; the full suite remains available
   for deliberate local/agent diagnostics.

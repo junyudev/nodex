@@ -7,6 +7,7 @@ import {
   readBoundedElectronRuntimeLogs,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
+import { invokeIpc } from "./support/editor-scenario";
 import { openNewChatDraft } from "./support/new-chat-draft";
 
 const repositoryRoot = process.cwd();
@@ -264,6 +265,47 @@ const readThreadStartParams = (logPath: string): Record<string, unknown> | null 
   const entry = readRpcEntries(logPath).find((candidate) => candidate.method === "thread/start");
   return entry?.params ?? null;
 };
+
+test(
+  "admits a New Chat draft as one durable first user message",
+  { tag: "@automatic" },
+  async () => {
+    const harness = await createHarness("new-chat-first-message");
+    const prompt = "Save the first message from this draft";
+    try {
+      const page = await harness.launch();
+      const scene = await openNewChatDraft(page);
+      const owner = await scene.getAttribute("data-workbench-scene-owner");
+      if (!owner?.startsWith("session:")) throw new Error("Draft Scene has no Session identity");
+      const sessionId = owner.slice("session:".length);
+      const composer = scene.locator('[data-codex-composer="true"][aria-label="Do anything"]');
+      await composer.fill(prompt);
+      await composer.press("Enter");
+
+      const message = scene.locator("[data-user-message-bubble='true']", { hasText: prompt });
+      await expect(message).toHaveCount(1);
+      await expect(message).toBeVisible();
+
+      // Read through Main to check the original draft's binding and admitted message.
+      await expect
+        .poll(async () => {
+          const session = await invokeIpc(page, "project-sessions:get", sessionId);
+          const threadId = session?.executionRef?.threadId;
+          if (!threadId) return [];
+          const { snapshot } = await invokeIpc(page, "agent-runtime:session:read", {
+            sessionId,
+            threadId,
+          });
+          return snapshot.projection.messages
+            .filter((message) => message.role === "user")
+            .map((message) => message.text);
+        })
+        .toEqual([prompt]);
+    } finally {
+      await harness.close();
+    }
+  },
+);
 
 for (const submission of ["keyboard", "pointer"] as const) {
   test(`${submission} submission atomically moves a New Chat draft into its first user message`, async ({}, testInfo) => {

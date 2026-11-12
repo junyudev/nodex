@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { ownedTestCandidates, verifyTestInventory } from "./verify-test-inventory";
+import { ownedTestCandidates, verifyE2eTriage, verifyTestInventory } from "./verify-test-inventory";
 
 const file = "src/main/new-application/behavior.node.test.ts";
 
@@ -57,5 +57,32 @@ describe("actual test inventory", () => {
     expect(() =>
       verifyTestInventory([live], [{ suite: "agent-runtime", tier: "default", files: [live] }]),
     ).toThrow("expected agent-runtime:live");
+  });
+});
+
+describe("Electron E2E triage", () => {
+  const files = ["automatic.spec.ts", "mixed.spec.ts", "manual.spec.ts"];
+  const automaticOnly = new Set(["automatic.spec.ts"]);
+  const table = [
+    "| Spec | Recommendation | Pointer |",
+    "| --- | --- | --- |",
+    "| `mixed.spec.ts` | move down | Would need a renderer test for keyboard focus. |",
+    "| `manual.spec.ts` | keep manual | Run when Window restoration changes. |",
+  ].join("\n");
+
+  test("accepts recommendations for manual and mixed specs", () => {
+    expect(() => verifyE2eTriage(files, automaticOnly, table)).not.toThrow();
+  });
+
+  test("requires a row for a spec with any manual case", () => {
+    expect(() =>
+      verifyE2eTriage(files, automaticOnly, table.split("\n").slice(0, 2).join("\n")),
+    ).toThrow("mixed.spec.ts: missing triage row");
+  });
+
+  test("rejects stale rows after a spec is removed", () => {
+    expect(() => verifyE2eTriage(files.slice(0, 2), automaticOnly, table)).toThrow(
+      "manual.spec.ts: triage row names a missing spec",
+    );
   });
 });

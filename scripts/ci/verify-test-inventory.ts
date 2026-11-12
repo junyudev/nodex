@@ -1,7 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import type { JSONReport, JSONReportSuite } from "@playwright/test/reporter";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
+import { resolveElectronE2eGrepInvert } from "../../config/playwright.e2e.config.ts";
 import {
   APP_TEST_SUITES,
   STANDARD_TEST_SUITES,
@@ -68,6 +71,85 @@ export function verifyTestInventory(
   if (problems.length) throw new Error("Test inventory failed:\n" + problems.join("\n"));
 }
 
+/** Every spec with manual cases needs a recommendation, including mixed specs. */
+export function verifyE2eTriage(
+  specFiles: readonly string[],
+  automaticOnly: ReadonlySet<string>,
+  triage: string,
+): void {
+  const rows = new Set<string>();
+  const specs = new Set(specFiles);
+  const problems: string[] = [];
+  const row =
+    /^\|\s*`([^`]+)`\s*\|\s*(?:keep manual|move down|merge|delete)\s*\|\s*[^|\s][^|]*\|\s*$/u;
+  for (const line of triage.split("\n")) {
+    if (!line.startsWith("|") || /^\|\s*(?:Spec\s*\||-)/u.test(line)) continue;
+    const file = row.exec(line)?.[1];
+    if (!file) {
+      problems.push(`Invalid triage row: ${line}`);
+      continue;
+    }
+    if (!specs.has(file)) problems.push(`${file}: triage row names a missing spec`);
+    if (rows.has(file)) problems.push(`${file}: duplicate triage row`);
+    rows.add(file);
+  }
+  for (const file of specs) {
+    if (!automaticOnly.has(file) && !rows.has(file)) {
+      problems.push(`${file}: missing triage row`);
+    }
+  }
+  if (problems.length) throw new Error("Electron E2E triage failed:\n" + problems.join("\n"));
+}
+
+function verifyRepositoryE2eTriage(root: string): void {
+  const directory = path.join(root, "tests/e2e");
+  const specFiles = readdirSync(directory).filter((file) => file.endsWith(".spec.ts"));
+  const playwrightCli = createRequire(import.meta.url).resolve("@playwright/test/cli");
+  const output = execFileSync(
+    process.execPath,
+    [
+      playwrightCli,
+      "test",
+      "--config",
+      "config/playwright.e2e.config.ts",
+      "--list",
+      "--reporter=json",
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+      // Collect performance cases as well so a mixed spec still needs a triage row.
+      env: {
+        ...process.env,
+        NODEX_E2E_INCLUDE_PERFORMANCE: "1",
+        PLAYWRIGHT_JSON_OUTPUT_FILE: "",
+        PLAYWRIGHT_JSON_OUTPUT_NAME: "",
+      },
+    },
+  );
+  const report = JSON.parse(output) as JSONReport;
+  const excluded = resolveElectronE2eGrepInvert(false);
+  const automaticByFile = new Map<string, boolean>();
+  const collect = (suite: JSONReportSuite): void => {
+    for (const spec of suite.specs) {
+      const automatic =
+        spec.tags.includes("automatic") &&
+        !excluded.test(spec.tags.map((tag) => `@${tag}`).join(" "));
+      automaticByFile.set(spec.file, (automaticByFile.get(spec.file) ?? true) && automatic);
+    }
+    suite.suites?.forEach(collect);
+  };
+  report.suites.forEach(collect);
+  const automaticOnly = new Set(
+    [...automaticByFile].filter(([, automatic]) => automatic).map(([file]) => file),
+  );
+  verifyE2eTriage(
+    specFiles,
+    automaticOnly,
+    readFileSync(path.join(directory, "TRIAGE.md"), "utf8"),
+  );
+}
+
 export async function verifyRepositoryTestInventory(
   root: string,
   signal: AbortSignal,
@@ -82,6 +164,7 @@ export async function verifyRepositoryTestInventory(
   )
     .split("\0")
     .filter((file) => file && existsSync(path.join(root, file)));
+  verifyRepositoryE2eTriage(root);
   const candidates = ownedTestCandidates(files);
   const discovered: DiscoveredSuite[] = [];
   for (const tier of ["default", "stress", "live"] as const) {

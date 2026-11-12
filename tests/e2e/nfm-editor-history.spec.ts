@@ -12,7 +12,7 @@ import {
 import { openBoardPageFromCard } from "./support/open-board-page";
 import { selectEditorBlockRange } from "./support/select-editor-block-range";
 
-test("undoes later typing before a native Subpage cut and restores the same owned Document", async () => {
+test("undoes later typing before a native Subpage cut and restores the same owned Document @automatic", async () => {
   test.setTimeout(180_000);
   const harness = await ElectronScenarioHarness.create({ label: "chronological-editor-history" });
   const mod = process.platform === "darwin" ? "Meta" : "Control";

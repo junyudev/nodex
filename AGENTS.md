@@ -197,7 +197,7 @@ Each runtime has its own runner; the wrong one fails, or passes, for the wrong r
 
 ### Blind spots
 
-- Only the curated Nightly set runs Electron E2E automatically, so other specs drift silently. When you rename, move, or remove a UI surface, accessible name, or `data-*` hook, `git grep` `tests/e2e/` and update the specs that use it; run them when the change could plausibly break them.
+- Nightly selects individual Electron E2E cases tagged `@automatic`. Before changing any other case, follow its spec’s row in [tests/e2e/TRIAGE.md](tests/e2e/TRIAGE.md), moving the behavior down, merging it, or deleting it when indicated. When you rename, move, or remove a UI surface, accessible name, or `data-*` hook, `git grep` `tests/e2e/` and update the specs that use it; run them when the change could plausibly break them.
 - Pushing to `main` without a pull request skips Main CI's static repository contracts (version surface, workflows, ownership, dependency audits); `vp run verify:static` covers them.
 - CI fails on lint warnings above the per-file baseline and on new React Compiler bailouts. After removing some, `vp run lint:baseline` or `vp run react-compiler:baseline` records the lower counts. Never raise a baseline to admit new ones; mark a deliberate lint exception with `oxlint-disable-next-line <rule> -- <reason>`.
 

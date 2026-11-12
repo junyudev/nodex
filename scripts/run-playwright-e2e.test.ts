@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { resolveElectronE2eGrepInvert } from "../config/playwright.e2e.config";
-import { NIGHTLY_E2E_SPECS, resolvePlaywrightE2eInvocation } from "./run-playwright-e2e";
+import { resolvePlaywrightE2eInvocation } from "./run-playwright-e2e";
 
 describe("Playwright E2E runner arguments", () => {
   test("rejects an npm-style standalone separator before doing any work", () => {
@@ -31,14 +31,23 @@ describe("Playwright E2E runner arguments", () => {
   });
 
   test("runs the curated Nightly selection serially and overrides performance opt-ins", () => {
-    expect(resolvePlaywrightE2eInvocation(["nightly"])).toEqual({
+    const invocation = resolvePlaywrightE2eInvocation(["nightly"]);
+    expect(invocation).toEqual({
       scriptName: "test:e2e:nightly",
       config: "config/playwright.e2e.config.ts",
-      fixedArguments: [...NIGHTLY_E2E_SPECS, "--workers=1"],
+      fixedArguments: ["--grep", expect.any(String), "--workers=1"],
       additionalArguments: [],
       environment: { NODEX_E2E_INCLUDE_PERFORMANCE: "0" },
       exclusive: false,
     });
+  });
+
+  test("matches the automatic tag as a whole token", () => {
+    const [, grep] = resolvePlaywrightE2eInvocation(["nightly"]).fixedArguments;
+    const filter = new RegExp(grep!, "u");
+    expect(filter.test("file.spec.ts case @automatic @another")).toBe(true);
+    expect(filter.test("file.spec.ts case @automatic-preview")).toBe(false);
+    expect(filter.test("file.spec.ts another case in the same file")).toBe(false);
   });
 
   test("never admits paid Agent cases through an ordinary E2E mode", () => {
