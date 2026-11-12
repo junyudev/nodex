@@ -29,7 +29,8 @@ import { mapWithConcurrency } from "../../lib/map-with-concurrency";
 import { queryKeys } from "../../lib/query-keys";
 import { useProjectionRegistration } from "../../lib/projection-invalidation-context";
 import type { ProjectionInvalidationCause } from "../../lib/projection-invalidation-registry";
-import { DatabaseViewTabSurface } from "./workbench-db-view-panel";
+import { DatabaseViewTabContent, DatabaseViewTabSurface } from "./workbench-db-view-panel";
+import { databaseViewLayoutIcon } from "./database-settings/database-settings-rail";
 import type { Project } from "@/lib/types";
 import type { OpenPageInNewChatInput, SendPageToChatInput } from "@/lib/page-chat-actions";
 import { useDatabaseViewMutationHistory } from "./database-view-mutation-history";
@@ -505,43 +506,58 @@ export function WorkbenchDatabaseViewSurface({
           </div>
         ) : model ? (
           <DatabaseViewTabSurface
-            workbenchContent={
-              workbenchPresentation
-                ? {
-                    presentation: workbenchPresentation,
-                    preferencesRevision: null,
-                    preferencesPending: false,
-                    loading: query.isFetching,
-                  }
-                : undefined
-            }
-            model={model}
-            canonicalReadGeneration={queryClient.getQueryState(queryKey)?.dataUpdateCount ?? 0}
-            groupPagination={groupPagination}
-            onLoadMoreGroup={loadMoreGroup}
-            activeSearchQuery={searchQuery}
-            taskSearchOpen={searchOpen}
-            searchShortcutLabel={searchShortcutLabel}
-            taskSearchInputRef={searchInputRef}
-            onSearchQueryChange={setSearchQuery}
-            onOpenTaskSearch={openSearch}
-            onCloseTaskSearch={() => setSearchOpen(false)}
-            onOpenPage={onOpenPage}
-            pageActionPort={pageActionPort}
-            keyboardSurface={keyboardSurface}
-            presentedPageIds={presentedPageIds}
-            initialSelectedPageIds={selectedPageIds}
-            onSelectedPageIdsChange={setSelectedPageIds}
-            mutationHistory={mutationHistory}
-            onCommitted={async (cursor) => {
-              if (cursor && cursor.storeEpoch === model.storeEpoch)
-                requiredMinimumCommitSeqRef.current = Math.max(
-                  requiredMinimumCommitSeqRef.current,
-                  cursor.commitSeq,
-                );
-              await query.refetch({ throwOnError: true });
+            toolbar={{
+              items: [
+                {
+                  id: model.databaseViewId,
+                  label: model.viewName,
+                  icon: databaseViewLayoutIcon(model.query.view.layout),
+                  active: true,
+                  onSelect: () => undefined,
+                },
+              ],
+              activeSearchQuery: searchQuery,
+              taskSearchOpen: searchOpen,
+              searchShortcutLabel,
+              taskSearchInputRef: searchInputRef,
+              onSearchQueryChange: setSearchQuery,
+              onOpenTaskSearch: openSearch,
+              onCloseTaskSearch: () => setSearchOpen(false),
             }}
-          />
+          >
+            <DatabaseViewTabContent
+              workbenchContent={
+                workbenchPresentation
+                  ? {
+                      presentation: workbenchPresentation,
+                      preferencesRevision: null,
+                      preferencesPending: false,
+                      loading: query.isFetching,
+                    }
+                  : undefined
+              }
+              model={model}
+              canonicalReadGeneration={queryClient.getQueryState(queryKey)?.dataUpdateCount ?? 0}
+              groupPagination={groupPagination}
+              onLoadMoreGroup={loadMoreGroup}
+              activeSearchQuery={searchQuery}
+              onOpenPage={onOpenPage}
+              pageActionPort={pageActionPort}
+              keyboardSurface={keyboardSurface}
+              presentedPageIds={presentedPageIds}
+              initialSelectedPageIds={selectedPageIds}
+              onSelectedPageIdsChange={setSelectedPageIds}
+              mutationHistory={mutationHistory}
+              onCommitted={async (cursor) => {
+                if (cursor && cursor.storeEpoch === model.storeEpoch)
+                  requiredMinimumCommitSeqRef.current = Math.max(
+                    requiredMinimumCommitSeqRef.current,
+                    cursor.commitSeq,
+                  );
+                await query.refetch({ throwOnError: true });
+              }}
+            />
+          </DatabaseViewTabSurface>
         ) : null}
       </div>
     </div>

@@ -30,7 +30,7 @@ import { testPropertySemantics } from "../../../shared/testing/database-property
 import { upgradeDatabaseViewConfigV2 } from "../../../shared/database-view-presentation";
 import { render as renderDom, settleAsyncRender } from "../../test/dom";
 import { databaseViewMutationErrorMessage, DatabaseViewSurface } from "./database-view-surface";
-import { DatabaseViewTabSurface } from "./workbench-db-view-panel";
+import { DatabaseViewTabContent, DatabaseViewTabSurface } from "./workbench-db-view-panel";
 import { handleWorkbenchShortcut } from "@/lib/use-workbench-shortcuts";
 import { readFocusedHistory } from "@/lib/focused-history";
 import { createMaitaiStore } from "@/lib/maitai";
@@ -2728,16 +2728,23 @@ function DatabaseViewTabHarness() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   return (
     <DatabaseViewTabSurface
-      model={model}
-      activeSearchQuery={query}
-      taskSearchOpen={searchOpen}
-      searchShortcutLabel="Ctrl+F"
-      taskSearchInputRef={searchInputRef}
-      onSearchQueryChange={setQuery}
-      onOpenTaskSearch={() => setSearchOpen(true)}
-      onCloseTaskSearch={() => setSearchOpen(false)}
-      onOpenPage={() => undefined}
-    />
+      toolbar={{
+        items: [{ id: model.databaseViewId, label: model.viewName, onSelect: () => undefined }],
+        activeSearchQuery: query,
+        taskSearchOpen: searchOpen,
+        searchShortcutLabel: "Ctrl+F",
+        taskSearchInputRef: searchInputRef,
+        onSearchQueryChange: setQuery,
+        onOpenTaskSearch: () => setSearchOpen(true),
+        onCloseTaskSearch: () => setSearchOpen(false),
+      }}
+    >
+      <DatabaseViewTabContent
+        model={model}
+        activeSearchQuery={query}
+        onOpenPage={() => undefined}
+      />
+    </DatabaseViewTabSurface>
   );
 }
 
@@ -2748,16 +2755,9 @@ function NestedDatabaseListHarness({
 }) {
   const [collapsedKeys, setCollapsedKeys] = useState<readonly string[]>([]);
   return (
-    <DatabaseViewTabSurface
+    <DatabaseViewTabContent
       model={nestedListModel()}
-      presentationLayout="list"
       activeSearchQuery=""
-      taskSearchOpen={false}
-      searchShortcutLabel="Ctrl+F"
-      taskSearchInputRef={{ current: null }}
-      onSearchQueryChange={() => undefined}
-      onOpenTaskSearch={() => undefined}
-      onCloseTaskSearch={() => undefined}
       onOpenPage={() => undefined}
       collapsedOccurrenceKeys={collapsedKeys}
       onOccurrenceDisclosureChange={(target, collapsed) => {
@@ -2773,24 +2773,17 @@ function NestedDatabaseListHarness({
   );
 }
 
-describe("DatabaseViewTabSurface", () => {
+describe("Database View tab", () => {
   test("uses the effective presentation as the only layout authority", () => {
     const screen = render(
-      <DatabaseViewTabSurface
-        model={model}
-        presentationLayout="board"
+      <DatabaseViewTabContent
+        model={boardModel()}
         effectivePresentation={{
           layout: "list",
           rules: model.query.view.config.rules,
           presentation: model.query.view.config.presentation,
         }}
         activeSearchQuery=""
-        taskSearchOpen={false}
-        searchShortcutLabel="Ctrl+F"
-        taskSearchInputRef={{ current: null }}
-        onSearchQueryChange={() => undefined}
-        onOpenTaskSearch={() => undefined}
-        onCloseTaskSearch={() => undefined}
         onOpenPage={() => undefined}
       />,
     );
@@ -2800,23 +2793,16 @@ describe("DatabaseViewTabSurface", () => {
 
   test("renders every Board layout through the canonical Database Board", () => {
     const screen = render(
-      <DatabaseViewTabSurface
-        model={model}
-        presentationLayout="board"
+      <DatabaseViewTabContent
+        model={boardModel()}
         activeSearchQuery=""
-        taskSearchOpen={false}
-        searchShortcutLabel="Ctrl+F"
-        taskSearchInputRef={{ current: null }}
-        onSearchQueryChange={() => undefined}
-        onOpenTaskSearch={() => undefined}
-        onCloseTaskSearch={() => undefined}
         onOpenPage={() => undefined}
       />,
     );
 
-    expect(screen.getByRole("article").getAttribute("data-database-view-page-id")).toBe(
-      "page-focused",
-    );
+    expect(
+      screen.getAllByRole("article").map((card) => card.getAttribute("data-database-view-page-id")),
+    ).toEqual(["page-focused", "page-next"]);
   });
 
   test("uses the DB View tab toolbar to search the shared Database surface", async () => {
@@ -2864,18 +2850,11 @@ describe("DatabaseViewTabSurface", () => {
   test("names status groups by their Data Source and routes header creation to that status", () => {
     const onRequestCreatePage = vi.fn();
     const screen = render(
-      <DatabaseViewTabSurface
+      <DatabaseViewTabContent
         model={groupedListModel()}
-        presentationLayout="list"
         activeSearchQuery=""
-        taskSearchOpen={false}
-        searchShortcutLabel="Ctrl+F"
-        taskSearchInputRef={{ current: null }}
         pageCreateSurfaceId="surface-list"
         onRequestCreatePage={onRequestCreatePage}
-        onSearchQueryChange={() => undefined}
-        onOpenTaskSearch={() => undefined}
-        onCloseTaskSearch={() => undefined}
         onOpenPage={() => undefined}
       />,
     );

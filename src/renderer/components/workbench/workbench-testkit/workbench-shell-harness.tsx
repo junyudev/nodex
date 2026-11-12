@@ -1927,23 +1927,27 @@ vi.mock("@/features/local-conversation", () => ({
 }));
 
 let boardDataReady: Promise<void> | null = null;
+let boardDataReadyByViewId: Readonly<Record<string, Promise<void>>> = {};
 export const LIBRARY_INBOX_TEST_DATABASE_ID = "database:library-inbox";
 let inboxDataReady: Promise<void> | null = null;
 
 vi.mock("@/lib/use-board", () => ({
   useBoard: (options?: { projectId?: string; databaseViewId?: string }) => {
-    const [dataReady, setDataReady] = useState(boardDataReady === null);
+    const projectId = options?.projectId ?? "alpha";
+    const databaseViewId = options?.databaseViewId ?? `view-${projectId}-primary`;
+    const pendingData = boardDataReadyByViewId[databaseViewId] ?? boardDataReady;
+    const [readyData, setReadyData] = useState<Promise<void> | null>(null);
+    const dataReady = pendingData === null || readyData === pendingData;
     useEffect(() => {
-      if (!boardDataReady) return;
+      if (!pendingData) return;
       let mounted = true;
-      void boardDataReady.then(() => {
-        if (mounted) setDataReady(true);
+      void pendingData.then(() => {
+        if (mounted) setReadyData(pendingData);
       });
       return () => {
         mounted = false;
       };
-    }, []);
-    const projectId = options?.projectId ?? "alpha";
+    }, [pendingData]);
     const cards =
       projectId === "beta"
         ? {
@@ -1976,7 +1980,6 @@ vi.mock("@/lib/use-board", () => ({
             },
           ];
     const visibleCards = Array.isArray(cards) ? cards : [cards];
-    const databaseViewId = options?.databaseViewId ?? `view-${projectId}-primary`;
     const isListView = databaseViewId === `database-view:${projectId}:primary-list`;
     const viewLayout = isListView ? "list" : "board";
     const viewName = isListView ? "List" : "Board";
@@ -2500,6 +2503,7 @@ export function renderWorkbench({
   sessionGetOverride,
   applicationReadiness,
   initialBoardDataReady,
+  initialBoardDataReadyByViewId = {},
   initialInboxDataReady,
   ownershipPathsByPage = {},
   clockAutomations = [],
@@ -2532,6 +2536,7 @@ export function renderWorkbench({
   sessionGetOverride?: (sessionId: string) => Promise<ProjectSession | null>;
   applicationReadiness?: ComponentProps<typeof ApplicationReadinessRoot>["readiness"];
   initialBoardDataReady?: Promise<void>;
+  initialBoardDataReadyByViewId?: Readonly<Record<string, Promise<void>>>;
   /** Holds every Inbox window read until it resolves. */
   initialInboxDataReady?: Promise<void>;
   ownershipPathsByPage?: Record<
@@ -2553,6 +2558,7 @@ export function renderWorkbench({
   onCreateProject?: ComponentProps<typeof WorkbenchShell>["onCreateProject"];
 } = {}) {
   boardDataReady = initialBoardDataReady ?? null;
+  boardDataReadyByViewId = initialBoardDataReadyByViewId;
   inboxDataReady = initialInboxDataReady ?? null;
   const resolvedInitialSelectedSessionId =
     initialSelectedSessionId === undefined

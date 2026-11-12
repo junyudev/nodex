@@ -9,6 +9,7 @@ import type { ThreadStageActions } from "@/features/local-conversation/thread-st
 import { __getNodexToastSnapshotForTests } from "@/components/ui/toast";
 import { parseDatabaseId, parseDatabaseViewId } from "../../../shared/database-identities";
 import type { LibraryDatabaseNavigationNode } from "../../../shared/library-module";
+import { deferred } from "./agent-instance-settings.test-fixtures";
 import {
   makeAttachedSession,
   makeBlankSession,
@@ -474,19 +475,33 @@ describe("workbench session shell / routes-threads", () => {
   });
 
   test("switches Board and List as durable View identities in the current Session tab", async () => {
-    const screen = renderWorkbench();
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    await act(async () => {
-      const dbToolbarTabList = screen.getByRole("tablist", { name: "Database views" });
-      fireEvent.mouseDown(within(dbToolbarTabList).getByRole("tab", { name: "List" }), {
-        button: 0,
-        ctrlKey: false,
-      });
-      fireEvent.click(within(dbToolbarTabList).getByRole("tab", { name: "List" }));
-      await Promise.resolve();
+    const listViewId = "database-view:alpha:primary-list";
+    const listData = deferred<void>();
+    const screen = renderWorkbench({
+      initialBoardDataReadyByViewId: { [listViewId]: listData.promise },
     });
+    await settleAsyncRender();
+    await settleAsyncRender();
+    const tabList = screen.getByRole("tablist", { name: "Database views" });
+    const board = within(tabList).getByRole("tab", { name: "Board" });
+    const list = within(tabList).getByRole("tab", { name: "List" });
+
+    try {
+      await act(async () => {
+        fireEvent.mouseDown(list, { button: 0, ctrlKey: false });
+        fireEvent.click(list);
+        await Promise.resolve();
+      });
+      const pendingTabs = screen.getByRole("tablist", { name: "Database views" });
+      expect(within(pendingTabs).getByRole("tab", { name: "Board" })).toBe(board);
+      expect(within(pendingTabs).getByRole("tab", { name: "List", selected: true })).toBe(list);
+      expect(screen.queryByRole("grid", { name: "Database List" })).toBeNull();
+    } finally {
+      await act(async () => {
+        listData.resolve();
+        await listData.promise;
+      });
+    }
     await settleAsyncRender();
 
     expect(
@@ -495,13 +510,11 @@ describe("workbench session shell / routes-threads", () => {
           call[0] === "window-session-view:tab-update" &&
           call[1] === "session:alpha:database-view:db" &&
           (call[2] as { config?: { databaseViewId?: string } }).config?.databaseViewId ===
-            "database-view:alpha:primary-list",
+            listViewId,
       ),
     ).toBe(true);
     const dbToolbarTabList = screen.getByRole("tablist", { name: "Database views" });
-    expect(
-      within(dbToolbarTabList).getByRole("tab", { name: "List" }).getAttribute("aria-selected"),
-    ).toBe("true");
+    expect(within(dbToolbarTabList).getByRole("tab", { name: "List", selected: true })).toBe(list);
     expect(screen.getByRole("grid", { name: "Database List" })).toBeTruthy();
     const preferenceWrite = invokeCalls.find(
       (call) =>

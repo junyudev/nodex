@@ -63,7 +63,8 @@ vi.mock("../../lib/board-store", async (importOriginal) => {
   };
 });
 vi.mock("./workbench-db-view-panel", () => ({
-  DatabaseViewTabSurface: (props: Record<string, unknown>) => {
+  DatabaseViewTabSurface: ({ children }: { children: import("react").ReactNode }) => children,
+  DatabaseViewTabContent: (props: Record<string, unknown>) => {
     presenter.props = props;
     return (
       <button

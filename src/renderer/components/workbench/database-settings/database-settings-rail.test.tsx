@@ -88,6 +88,7 @@ const property = {
 const source = { dataSource, properties: [property] };
 const descriptor = { database, dataSources: [dataSource], views: [view] };
 const runtime: DatabaseSettingsRuntime = {
+  database: descriptor,
   authority: {
     snapshot: {
       projectId: "project",

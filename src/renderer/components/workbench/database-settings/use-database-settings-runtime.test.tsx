@@ -1,6 +1,16 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vite-plus/test";
+import { emptyDatabaseViewConfig } from "@/lib/database-view-authoring";
 import type { DatabaseSettingsAuthority } from "@/lib/database-settings-runtime";
+import {
+  parseDatabaseId,
+  parseDatabaseViewId,
+  parseDataSourceId,
+} from "../../../../shared/database-identities";
+import type {
+  DatabaseContainerDescriptorV2,
+  DatabaseModuleReadSnapshotV2,
+} from "../../../../shared/database-module-v2";
 import { deferred } from "../agent-instance-settings.test-fixtures";
 import { useDatabaseSettingsRuntime } from "./use-database-settings-runtime";
 
@@ -19,6 +29,72 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 const input = { projectId: "project", databaseId: "database", activeViewId: "view" };
+
+test("keeps the Database's View list during a sibling switch, even before its settings load", () => {
+  const databaseId = parseDatabaseId(input.databaseId);
+  const defaultViewId = parseDatabaseViewId(input.activeViewId);
+  const timestamp = "2026-01-01T00:00:00.000Z";
+  const descriptor: DatabaseContainerDescriptorV2 = {
+    database: {
+      databaseId,
+      libraryId: "library",
+      name: "Tasks",
+      lifecycle: "active",
+      defaultViewId,
+      metadataRevision: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
+    dataSources: [],
+    views: [defaultViewId, parseDatabaseViewId("sibling")].map((viewId) => ({
+      viewId,
+      databaseId,
+      dataSourceId: parseDataSourceId("source"),
+      name: viewId,
+      lifecycle: "active",
+      layout: "list",
+      config: emptyDatabaseViewConfig(),
+      isDefault: viewId === defaultViewId,
+      revision: 1,
+      rankKey: viewId,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })),
+  };
+  const snapshot: DatabaseModuleReadSnapshotV2 = {
+    projectId: input.projectId,
+    libraryId: descriptor.database.libraryId,
+    storeEpoch: "epoch",
+    commitSeq: 1,
+    value: { kind: "database", value: descriptor },
+  };
+  const first = deferred<DatabaseSettingsAuthority>();
+  const sibling = deferred<DatabaseSettingsAuthority>();
+  reads.authority
+    .mockImplementationOnce(({ onReadDatabase }) => {
+      onReadDatabase(descriptor, snapshot);
+      return first.promise;
+    })
+    .mockReturnValueOnce(sibling.promise);
+  const { result, rerender } = renderHook(useDatabaseSettingsRuntime, {
+    initialProps: { ...input, databaseId: input.databaseId as string | null },
+  });
+  expect(result.current.database).toBe(descriptor);
+  expect(result.current.authority).toBeNull();
+
+  // On a cold switch the View body has not resolved its Database yet.
+  rerender({ ...input, databaseId: null, activeViewId: "sibling" });
+  expect(result.current.database).toBe(descriptor);
+  expect(result.current.authority).toBeNull();
+  expect(reads.authority).toHaveBeenLastCalledWith(
+    expect.objectContaining({ databaseId, preferredViewId: "sibling" }),
+  );
+
+  rerender({ ...input, databaseId: null, activeViewId: "unrelated-view" });
+  expect(result.current.database).toBeNull();
+  rerender({ ...input, databaseId: null, activeViewId: "sibling", projectId: "other-project" });
+  expect(result.current.database).toBeNull();
+});
 
 test("an older read cannot release the loading state of a newer refresh", async () => {
   const first = deferred<DatabaseSettingsAuthority>();

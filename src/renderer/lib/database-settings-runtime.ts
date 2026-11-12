@@ -77,6 +77,10 @@ export const readDatabaseSettingsAuthority = async (input: {
   readonly databaseId: string;
   readonly preferredViewId?: string | null;
   readonly minimumCommitSeq?: number;
+  readonly onReadDatabase?: (
+    database: DatabaseContainerDescriptorV2,
+    snapshot: DatabaseModuleReadSnapshotV2,
+  ) => void;
   readonly dependencies?: DatabaseSettingsRuntimeDependencies;
 }): Promise<DatabaseSettingsAuthority> => {
   const dependencies = input.dependencies ?? defaultDependencies;
@@ -93,6 +97,7 @@ export const readDatabaseSettingsAuthority = async (input: {
     throw new DatabaseSettingsReadError("Database settings returned the wrong descriptor", false);
   }
   const database = databaseSnapshot.value.value;
+  input.onReadDatabase?.(database, databaseSnapshot);
   const activeViews = database.views.filter((view) => view.lifecycle === "active");
   const preferredView = input.preferredViewId
     ? activeViews.find((view) => view.viewId === parseDatabaseViewId(input.preferredViewId))
@@ -115,7 +120,7 @@ export const readDatabaseSettingsAuthority = async (input: {
     {
       target: { kind: "data_source", dataSourceId: dataSource.dataSourceId },
       mode: "data_source",
-      ...(input.minimumCommitSeq === undefined ? {} : { minimumCommitSeq: input.minimumCommitSeq }),
+      minimumCommitSeq: databaseSnapshot.commitSeq,
     },
     dependencies,
   );
@@ -127,7 +132,7 @@ export const readDatabaseSettingsAuthority = async (input: {
     throw new DatabaseSettingsReadError("Database and Source settings did not converge", true);
   }
   return {
-    snapshot: sourceSnapshot,
+    snapshot: databaseSnapshot,
     database,
     view: selectedView,
     dataSource,

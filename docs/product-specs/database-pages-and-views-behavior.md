@@ -336,7 +336,8 @@ inline; a centered Database manager is not part of this workflow. The rail is
 local to the Database surface and never replaces the Workbench's user-controlled
 global side panel.
 
-The inline View strip is also the direct View-management surface. Selecting an
+The inline View strip is also the direct View-management surface. The Database's
+tabs stay in place while the selected View loads its content and settings. Selecting an
 inactive tab changes the active durable View; selecting the active tab again,
 or right-clicking any tab, opens that exact View's action menu. The menu offers
 Rename, a personal **Display as** choice for text/icon presentation, Edit view,

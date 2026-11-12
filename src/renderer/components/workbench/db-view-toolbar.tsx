@@ -295,7 +295,7 @@ export function DbViewToolbar({
     });
   };
 
-  if (!activeItem) return null;
+  if (!activeItem) return <div className="h-10 shrink-0" aria-hidden />;
 
   const hasActiveSearchQuery = activeSearchQuery.trim().length > 0;
   const showSearchField = showSearchControls && (taskSearchOpen || hasActiveSearchQuery);

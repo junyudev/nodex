@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -17,7 +18,6 @@ import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
 import type {
   DatabaseViewConditionalColorRule,
   DatabaseViewField,
-  DatabaseViewLayout,
   DatabaseViewRules,
   EffectiveDatabaseView,
 } from "../../../shared/database-kernel";
@@ -109,54 +109,41 @@ const EMPTY_DATABASE_VIEW_RULES: DatabaseViewRules = Object.freeze({
   sorts: [],
 });
 
-const durableDatabaseToolbarItem = (
-  model: DatabaseViewRenderModel,
-  presentationLayout: DatabaseViewLayout = model.query.view.layout,
-): DbViewToolbarItem => {
-  const presentationId = presentationLayout;
-  return {
-    id: model.databaseViewId,
-    label: model.viewName,
-    icon: databaseViewLayoutIcon(presentationId),
-    active: true,
-    onSelect: () => undefined,
-  };
-};
-
 export function DatabaseViewTabSurface({
-  ...props
-}: Parameters<typeof DatabaseViewTabSurfaceContent>[0]) {
+  toolbar,
+  children,
+}: {
+  readonly toolbar: ComponentProps<typeof DbViewToolbar>;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="relative flex h-full min-h-0 flex-col bg-token-main-surface-primary">
+      <DbViewToolbar {...toolbar} />
+      {children}
+    </div>
+  );
+}
+
+export function DatabaseViewTabContent(props: Parameters<typeof DatabaseViewTabBody>[0]) {
   return (
     <DatabasePageChatActivityBoundary model={props.model}>
-      <DatabaseViewTabSurfaceContent {...props} />
+      <DatabaseViewTabBody {...props} />
     </DatabasePageChatActivityBoundary>
   );
 }
 
-function DatabaseViewTabSurfaceContent({
+function DatabaseViewTabBody({
   workbenchContent,
   model,
   canonicalModel,
   canonicalReadGeneration,
-  presentationLayout: suppliedPresentationLayout,
   effectivePresentation,
-  toolbarItems,
-  destinationItems,
   groupPagination,
   onLoadMoreGroup,
   activeSearchQuery,
-  taskSearchOpen,
-  searchShortcutLabel,
-  taskSearchInputRef,
-  managementControl,
-  databaseViewControls,
   rulesBar,
   overlay,
   settingsRail,
-  onSearchQueryChange,
-  onOpenTaskSearch,
-  onCloseTaskSearch,
-  onReorderViews,
   onOpenPage,
   onPrepareOpenPage,
   pageActionPort,
@@ -176,28 +163,13 @@ function DatabaseViewTabSurfaceContent({
   readonly model: DatabaseViewRenderModel;
   readonly canonicalModel?: DatabaseViewRenderModel;
   readonly canonicalReadGeneration?: number;
-  readonly presentationLayout?: DatabaseViewLayout;
   readonly effectivePresentation?: EffectiveDatabaseView;
-  readonly toolbarItems?: DbViewToolbarItem[];
-  readonly destinationItems?: DbViewToolbarItem[];
   readonly groupPagination?: ReadonlyMap<string, ColumnPaginationState>;
   readonly onLoadMoreGroup?: (scopeKey: string) => Promise<void> | void;
   readonly activeSearchQuery: string;
-  readonly taskSearchOpen: boolean;
-  readonly searchShortcutLabel: string;
-  readonly taskSearchInputRef: RefObject<HTMLInputElement | null>;
-  readonly managementControl?: ReactNode;
-  readonly databaseViewControls?: ReactNode;
   readonly rulesBar?: ReactNode;
   readonly overlay?: ReactNode;
   readonly settingsRail?: ReactNode;
-  readonly onSearchQueryChange: (value: string) => void;
-  readonly onOpenTaskSearch: (selectQuery?: boolean) => void;
-  readonly onCloseTaskSearch: () => void;
-  readonly onReorderViews?: (
-    movedViewId: string,
-    orderedViewIds: readonly string[],
-  ) => boolean | Promise<boolean>;
   readonly onOpenPage: DatabaseViewPageOpenHandler;
   /** A pointer pressed on a Page row or card: warm what its Page Stage will need. */
   readonly onPrepareOpenPage?: (pageId: string) => void;
@@ -223,100 +195,78 @@ function DatabaseViewTabSurfaceContent({
   readonly onRequestCreatePage?: (groupKey: string) => void;
   readonly mutationHistory?: DatabaseViewMutationHistory;
 }) {
-  const presentationLayout =
-    suppliedPresentationLayout === undefined ? model.query.view.layout : suppliedPresentationLayout;
   const pageChatRuntime = useDatabasePageChatActivityRuntime();
   const mutationHistory = useDatabaseViewMutationHistory(model, providedMutationHistory);
   const presentation = effectivePresentation ?? {
-    layout: presentationLayout,
+    layout: model.query.view.layout,
     rules: model.query.view.config.rules,
     presentation: model.query.view.config.presentation,
   };
-  const activeToolbarItems = toolbarItems ?? [
-    durableDatabaseToolbarItem(model, presentation.layout),
-  ];
   return (
-    <div className="relative flex h-full min-h-0 flex-col bg-token-main-surface-primary">
-      <DbViewToolbar
-        items={activeToolbarItems}
-        destinationItems={destinationItems}
-        activeSearchQuery={activeSearchQuery}
-        taskSearchOpen={taskSearchOpen}
-        showSearchControls
-        searchShortcutLabel={searchShortcutLabel}
-        taskSearchInputRef={taskSearchInputRef}
-        managementControl={managementControl}
-        databaseViewControls={databaseViewControls}
-        onSearchQueryChange={onSearchQueryChange}
-        onOpenTaskSearch={onOpenTaskSearch}
-        onCloseTaskSearch={onCloseTaskSearch}
-        onReorderViews={onReorderViews}
-      />
-      <div className="relative flex min-h-0 flex-1">
-        <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-          {rulesBar}
-          <div
-            className="relative min-h-0 flex-1 overflow-hidden"
-            onPointerDownCapture={(event) => {
-              if (event.button !== 0 || !onPrepareOpenPage) return;
-              const target = event.target instanceof Element ? event.target : null;
-              const pageId = target
-                ?.closest<HTMLElement>("[data-database-view-page-id]")
-                ?.getAttribute("data-database-view-page-id");
-              if (pageId) onPrepareOpenPage(pageId);
-            }}
-          >
-            {overlay}
-            {presentation.layout === "list" ? (
-              <DatabaseList
-                workbenchContent={workbenchContent}
-                model={model}
-                effectivePresentation={presentation}
-                groupPagination={groupPagination}
-                onLoadMoreGroup={onLoadMoreGroup}
-                searchQuery={activeSearchQuery}
-                onOpenPage={onOpenPage}
-                pageActionPort={pageActionPort}
-                onCommitted={onCommitted}
-                presentedPageIds={presentedPageIds}
-                initialSelectedPageIds={initialSelectedPageIds}
-                onSelectedPageIdsChange={onSelectedPageIdsChange}
-                collapsedOccurrenceKeys={collapsedOccurrenceKeys}
-                onOccurrenceDisclosureChange={onOccurrenceDisclosureChange}
-                forcedDisplayField={forcedDisplayField}
-                pageCreateSurfaceId={pageCreateSurfaceId}
-                onRequestCreatePage={onRequestCreatePage}
-                scrollStateKey={`database-view:${model.databaseViewId}:list`}
-                mutationHistory={mutationHistory}
-                pageChatActivityByPageId={pageChatRuntime.activityByPageId}
-                onRemovePageChatRelation={pageChatRuntime.removeRelation}
-              />
-            ) : (
-              <DatabaseViewSurface
-                workbenchContent={workbenchContent}
-                model={model}
-                canonicalModel={canonicalModel}
-                canonicalReadGeneration={canonicalReadGeneration}
-                effectivePresentation={presentation}
-                groupPagination={groupPagination}
-                onLoadMoreGroup={onLoadMoreGroup}
-                searchQuery={activeSearchQuery}
-                onOpenPage={onOpenPage}
-                pageActionPort={pageActionPort}
-                onCommitted={onCommitted}
-                keyboardSurface={keyboardSurface}
-                presentedPageIds={presentedPageIds}
-                initialSelectedPageIds={initialSelectedPageIds}
-                onSelectedPageIdsChange={onSelectedPageIdsChange}
-                pageCreateSurfaceId={pageCreateSurfaceId}
-                onRequestCreatePage={onRequestCreatePage}
-                mutationHistory={mutationHistory}
-              />
-            )}
-          </div>
+    <div className="relative flex min-h-0 flex-1">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        {rulesBar}
+        <div
+          className="relative min-h-0 flex-1 overflow-hidden"
+          onPointerDownCapture={(event) => {
+            if (event.button !== 0 || !onPrepareOpenPage) return;
+            const target = event.target instanceof Element ? event.target : null;
+            const pageId = target
+              ?.closest<HTMLElement>("[data-database-view-page-id]")
+              ?.getAttribute("data-database-view-page-id");
+            if (pageId) onPrepareOpenPage(pageId);
+          }}
+        >
+          {overlay}
+          {presentation.layout === "list" ? (
+            <DatabaseList
+              workbenchContent={workbenchContent}
+              model={model}
+              effectivePresentation={presentation}
+              groupPagination={groupPagination}
+              onLoadMoreGroup={onLoadMoreGroup}
+              searchQuery={activeSearchQuery}
+              onOpenPage={onOpenPage}
+              pageActionPort={pageActionPort}
+              onCommitted={onCommitted}
+              presentedPageIds={presentedPageIds}
+              initialSelectedPageIds={initialSelectedPageIds}
+              onSelectedPageIdsChange={onSelectedPageIdsChange}
+              collapsedOccurrenceKeys={collapsedOccurrenceKeys}
+              onOccurrenceDisclosureChange={onOccurrenceDisclosureChange}
+              forcedDisplayField={forcedDisplayField}
+              pageCreateSurfaceId={pageCreateSurfaceId}
+              onRequestCreatePage={onRequestCreatePage}
+              scrollStateKey={`database-view:${model.databaseViewId}:list`}
+              mutationHistory={mutationHistory}
+              pageChatActivityByPageId={pageChatRuntime.activityByPageId}
+              onRemovePageChatRelation={pageChatRuntime.removeRelation}
+            />
+          ) : (
+            <DatabaseViewSurface
+              workbenchContent={workbenchContent}
+              model={model}
+              canonicalModel={canonicalModel}
+              canonicalReadGeneration={canonicalReadGeneration}
+              effectivePresentation={presentation}
+              groupPagination={groupPagination}
+              onLoadMoreGroup={onLoadMoreGroup}
+              searchQuery={activeSearchQuery}
+              onOpenPage={onOpenPage}
+              pageActionPort={pageActionPort}
+              onCommitted={onCommitted}
+              keyboardSurface={keyboardSurface}
+              presentedPageIds={presentedPageIds}
+              initialSelectedPageIds={initialSelectedPageIds}
+              onSelectedPageIdsChange={onSelectedPageIdsChange}
+              pageCreateSurfaceId={pageCreateSurfaceId}
+              onRequestCreatePage={onRequestCreatePage}
+              mutationHistory={mutationHistory}
+            />
+          )}
         </div>
-        {settingsRail}
       </div>
+      {settingsRail}
     </div>
   );
 }
@@ -817,11 +767,10 @@ export function DbViewSessionTab({
   }, []);
 
   const openSettingsForView = useCallback(
-    (viewId: string, route?: DatabaseSettingsRoute) => {
-      if (!databaseView) return;
+    (databaseId: string, viewId: string, route?: DatabaseSettingsRoute) => {
       const root: DatabaseSettingsRoute = {
         kind: "root",
-        databaseId: parseDatabaseId(databaseView.databaseId),
+        databaseId: parseDatabaseId(databaseId),
         viewId: parseDatabaseViewId(viewId),
       };
       setSettingsRouteStack(
@@ -830,12 +779,12 @@ export function DbViewSessionTab({
           : openDatabaseSettingsRoute(root),
       );
     },
-    [databaseView],
+    [],
   );
   const openSettings = useCallback(
     (route?: DatabaseSettingsRoute) => {
       if (!databaseView) return;
-      openSettingsForView(databaseView.databaseViewId, route);
+      openSettingsForView(databaseView.databaseId, databaseView.databaseViewId, route);
     },
     [databaseView, openSettingsForView],
   );
@@ -878,118 +827,103 @@ export function DbViewSessionTab({
     databaseView && effectiveFilter && effectivePresentation && durableEffectivePresentation,
   );
   useApplicationPending(isActivePanelTab && !contentReady && !runtime.error);
-  if (
-    !databaseView ||
-    !effectiveFilter ||
-    !effectivePresentation ||
-    !durableEffectivePresentation
-  ) {
-    return (
-      <div className="flex h-full items-center justify-center px-6 text-sm text-token-description-foreground">
-        {runtime.error ?? "Opening Database…"}
-      </div>
-    );
-  }
-
-  const activeViews =
-    settings.authority?.database.views.filter((view) => view.lifecycle === "active") ?? [];
-  const tabDisplayMode =
-    databaseViewTabs.displayModeByDatabaseId[databaseView.databaseId] ?? "icon_and_text";
+  const activeViews = settings.database?.views.filter((view) => view.lifecycle === "active") ?? [];
+  const activeView = activeViews.find((view) => view.viewId === databaseViewId);
+  const tabDisplayMode = activeView
+    ? (databaseViewTabs.displayModeByDatabaseId[activeView.databaseId] ?? "icon_and_text")
+    : "icon_and_text";
   const selectTargetView = (view: DatabaseViewRecordV2): void => {
-    if (view.viewId === databaseView.databaseViewId) return;
+    if (view.viewId === databaseViewId) return;
     onSelectDatabaseView?.(view.viewId, view.name);
   };
   const openTargetViewSettings = (view: DatabaseViewRecordV2, focusName = false): void => {
     selectTargetView(view);
-    openSettingsForView(view.viewId);
+    openSettingsForView(view.databaseId, view.viewId);
     if (focusName) setViewNameFocusRequest((request) => request + 1);
   };
-  const toolbarItems = settings.authority?.database.views
-    .filter((view) => view.lifecycle === "active")
-    .map((view): DbViewToolbarItem => ({
-      id: view.viewId,
-      label: view.name,
-      icon: databaseViewLayoutIcon(view.layout),
-      active: view.viewId === databaseView.databaseViewId,
-      onSelect: () => selectTargetView(view),
-      actionMenu: {
-        viewId: view.viewId,
-        viewName: view.name,
-        viewIcon: databaseViewLayoutIcon(view.layout),
-        dataSourceName:
-          settings.authority?.database.dataSources.find(
-            (source) => source.dataSourceId === view.dataSourceId,
-          )?.name ?? "Data source",
-        displayMode: tabDisplayMode,
-        busy: settings.pendingKey !== null,
-        canDelete: activeViews.length > 1,
-        onRename: () => openTargetViewSettings(view, true),
-        onEdit: () => openTargetViewSettings(view),
-        onOpenSource: () => {
-          selectTargetView(view);
-          const root: DatabaseSettingsRoute = {
-            kind: "root",
-            databaseId: parseDatabaseId(databaseView.databaseId),
-            viewId: view.viewId,
-          };
-          setSettingsRouteStack(
-            pushDatabaseSettingsRoute(openDatabaseSettingsRoute(root), {
-              kind: "source_properties",
-              dataSourceId: view.dataSourceId,
-            }),
-          );
-        },
-        onCopyLink: async () => {
-          const copied = await writeTextToClipboard(
-            writePortableMarkdown([
-              {
-                type: "databaseViewRef",
-                props: { databaseViewId: view.viewId, displayHint: view.name },
-                children: [],
-              },
-            ]).markdown,
-          );
-          if (copied) toast.success("Copied exact View link");
-          else toast.danger("Couldn’t copy the View link");
-        },
-        onDuplicate: async () => {
-          const viewId = parseDatabaseViewId(createUuidV7());
-          const next = await settings.mutate({
-            pendingKey: `duplicate-view:${view.viewId}`,
-            preferredViewId: viewId,
-            buildOperations: (authority) => {
-              const current = authority.database.views.find(
-                (candidate) => candidate.lifecycle === "active" && candidate.viewId === view.viewId,
-              );
-              return current ? [duplicateDatabaseViewOperation({ view: current, viewId })] : [];
-            },
-          });
-          const duplicate = next?.database.views.find((candidate) => candidate.viewId === viewId);
-          if (!duplicate) return;
-          onSelectDatabaseView?.(duplicate.viewId, duplicate.name);
-          openSettingsForView(duplicate.viewId);
-          setViewNameFocusRequest((request) => request + 1);
-          void runtime.refresh();
-        },
-        onRequestDelete: () => setDeleteViewRequest({ viewId: view.viewId, viewName: view.name }),
-        onDisplayModeChange: (mode) => setDatabaseViewTabDisplayMode(databaseView.databaseId, mode),
+  const toolbarItems = activeViews.map((view): DbViewToolbarItem => ({
+    id: view.viewId,
+    label: view.name,
+    icon: databaseViewLayoutIcon(view.layout),
+    active: view.viewId === databaseViewId,
+    onSelect: () => selectTargetView(view),
+    actionMenu: {
+      viewId: view.viewId,
+      viewName: view.name,
+      viewIcon: databaseViewLayoutIcon(view.layout),
+      dataSourceName:
+        settings.database?.dataSources.find((source) => source.dataSourceId === view.dataSourceId)
+          ?.name ?? "Data source",
+      displayMode: tabDisplayMode,
+      busy: settings.pendingKey !== null,
+      canDelete: activeViews.length > 1,
+      onRename: () => openTargetViewSettings(view, true),
+      onEdit: () => openTargetViewSettings(view),
+      onOpenSource: () => {
+        selectTargetView(view);
+        const root: DatabaseSettingsRoute = {
+          kind: "root",
+          databaseId: view.databaseId,
+          viewId: view.viewId,
+        };
+        setSettingsRouteStack(
+          pushDatabaseSettingsRoute(openDatabaseSettingsRoute(root), {
+            kind: "source_properties",
+            dataSourceId: view.dataSourceId,
+          }),
+        );
       },
-    })) ?? [durableDatabaseToolbarItem(databaseView, effectivePresentation.layout)];
+      onCopyLink: async () => {
+        const copied = await writeTextToClipboard(
+          writePortableMarkdown([
+            {
+              type: "databaseViewRef",
+              props: { databaseViewId: view.viewId, displayHint: view.name },
+              children: [],
+            },
+          ]).markdown,
+        );
+        if (copied) toast.success("Copied exact View link");
+        else toast.danger("Couldn’t copy the View link");
+      },
+      onDuplicate: async () => {
+        const viewId = parseDatabaseViewId(createUuidV7());
+        const next = await settings.mutate({
+          pendingKey: `duplicate-view:${view.viewId}`,
+          preferredViewId: viewId,
+          buildOperations: (authority) => {
+            const current = authority.database.views.find(
+              (candidate) => candidate.lifecycle === "active" && candidate.viewId === view.viewId,
+            );
+            return current ? [duplicateDatabaseViewOperation({ view: current, viewId })] : [];
+          },
+        });
+        const duplicate = next?.database.views.find((candidate) => candidate.viewId === viewId);
+        if (!duplicate) return;
+        onSelectDatabaseView?.(duplicate.viewId, duplicate.name);
+        openSettingsForView(duplicate.databaseId, duplicate.viewId);
+        setViewNameFocusRequest((request) => request + 1);
+        void runtime.refresh();
+      },
+      onRequestDelete: () => setDeleteViewRequest({ viewId: view.viewId, viewName: view.name }),
+      onDisplayModeChange: (mode) => setDatabaseViewTabDisplayMode(view.databaseId, mode),
+    },
+  }));
   const activeViewActionMenu = toolbarItems.find((item) => item.active)?.actionMenu;
   const reorderViews = async (
     movedViewId: string,
     orderedViewIds: readonly string[],
   ): Promise<boolean> => {
-    if (!settings.authority || settings.pendingKey !== null) return false;
+    if (!settings.database || settings.pendingKey !== null) return false;
     const operation = reorderDatabaseViewOperation(
-      settings.authority.database.views,
+      settings.database.views,
       movedViewId,
       orderedViewIds,
     );
     if (!operation) return false;
     const next = await settings.mutate({
       pendingKey: `reorder-view:${movedViewId}`,
-      preferredViewId: databaseView.databaseViewId,
+      preferredViewId: databaseViewId,
       buildOperations: (authority) => {
         const current = reorderDatabaseViewOperation(
           authority.database.views,
@@ -1021,187 +955,205 @@ export function DbViewSessionTab({
   return (
     <>
       <DatabaseViewTabSurface
-        workbenchContent={
-          workbenchPresentation
-            ? {
-                presentation: workbenchPresentation,
-                preferencesRevision: personalPreference.preferencesRevision,
-                preferencesPending:
-                  personalPreference.loading ||
-                  personalPreference.saving ||
-                  publishingPresentation ||
-                  personalPreference.error !== null ||
-                  conditionalColorPreview !== null,
-                loading: runtime.loading,
-              }
-            : undefined
-        }
-        model={databaseView}
-        canonicalModel={runtime.canonicalDatabaseView ?? undefined}
-        canonicalReadGeneration={runtime.canonicalReadGeneration}
-        presentationLayout={effectivePresentation.layout}
-        effectivePresentation={effectivePresentation}
-        toolbarItems={toolbarItems}
-        onReorderViews={reorderViews}
-        destinationItems={[
-          {
-            id: "new-database-view",
-            label: "New view",
-            icon: PlusIcon,
-            onSelect: () =>
-              openSettings({
-                kind: "create_view",
-                databaseId: parseDatabaseId(databaseView.databaseId),
-                dataSourceId: databaseView.dataSourceId,
-              }),
-          },
-          {
-            id: "primary-canvas",
-            label: "Canvas",
-            icon: CanvasIcon,
-            onSelect: () => {
-              void onOpenCanvasStage(projectId, primaryCanvasBlockId(projectId), "Canvas", {
-                targetPanelId: tab.panelId,
-                targetLeafId,
+        toolbar={{
+          items: toolbarItems,
+          onReorderViews: reorderViews,
+          destinationItems: activeView
+            ? [
+                {
+                  id: "new-database-view",
+                  label: "New view",
+                  icon: PlusIcon,
+                  onSelect: () =>
+                    openSettingsForView(activeView.databaseId, activeView.viewId, {
+                      kind: "create_view",
+                      databaseId: activeView.databaseId,
+                      dataSourceId: activeView.dataSourceId,
+                    }),
+                },
+                {
+                  id: "primary-canvas",
+                  label: "Canvas",
+                  icon: CanvasIcon,
+                  onSelect: () => {
+                    void onOpenCanvasStage(projectId, primaryCanvasBlockId(projectId), "Canvas", {
+                      targetPanelId: tab.panelId,
+                      targetLeafId,
+                    });
+                  },
+                },
+              ]
+            : [],
+          activeSearchQuery: searchQuery,
+          taskSearchOpen,
+          searchShortcutLabel,
+          taskSearchInputRef,
+          onSearchQueryChange: (value) => setSearchQuery(projectId, value),
+          onOpenTaskSearch: openTaskSearch,
+          onCloseTaskSearch: () => setTaskSearchOpen(false),
+          managementControl: activeView ? (
+            <div ref={settingsTriggerRef}>
+              <NodexIconButton
+                icon={SlidersHorizontal}
+                size="sm"
+                active={settingsRouteStack !== null}
+                ariaLabel="Database settings"
+                title="Database settings"
+                onClick={() =>
+                  settingsRouteStack
+                    ? closeSettings()
+                    : openSettingsForView(activeView.databaseId, activeView.viewId)
+                }
+              />
+            </div>
+          ) : null,
+          databaseViewControls: databaseView ? (
+            <>
+              <DatabaseViewRuleToolbarControls
+                controller={rulesController}
+                properties={databaseView.query.properties}
+              />
+              <NodexIconButton
+                icon={SlidersHorizontal}
+                size="sm"
+                active={settingsRouteStack?.at(-1)?.kind === "view_display"}
+                ariaLabel="Display options"
+                title="Display options"
+                onClick={() =>
+                  openSettings({
+                    kind: "view_display",
+                    viewId: parseDatabaseViewId(databaseView.databaseViewId),
+                  })
+                }
+              />
+            </>
+          ) : null,
+        }}
+      >
+        {databaseView &&
+        effectiveFilter &&
+        effectivePresentation &&
+        durableEffectivePresentation ? (
+          <DatabaseViewTabContent
+            workbenchContent={
+              workbenchPresentation
+                ? {
+                    presentation: workbenchPresentation,
+                    preferencesRevision: personalPreference.preferencesRevision,
+                    preferencesPending:
+                      personalPreference.loading ||
+                      personalPreference.saving ||
+                      publishingPresentation ||
+                      personalPreference.error !== null ||
+                      conditionalColorPreview !== null,
+                    loading: runtime.loading,
+                  }
+                : undefined
+            }
+            model={databaseView}
+            canonicalModel={runtime.canonicalDatabaseView ?? undefined}
+            canonicalReadGeneration={runtime.canonicalReadGeneration}
+            effectivePresentation={effectivePresentation}
+            groupPagination={runtime.groupPagination}
+            onLoadMoreGroup={runtime.loadMoreGroup}
+            activeSearchQuery={searchQuery}
+            rulesBar={
+              <DatabaseViewRulesBar
+                controller={rulesController}
+                config={databaseView.query.view.config}
+                properties={databaseView.query.properties}
+                optionRegistries={ruleOptionRegistries.options}
+                onRequestPropertyOptions={ruleOptionRegistries.requestOptions}
+                routingContext={databaseView.routingContext}
+              />
+            }
+            settingsRail={
+              settingsRouteStack ? (
+                <DatabaseSettingsRail
+                  runtime={settings}
+                  routeStack={settingsRouteStack}
+                  model={databaseView}
+                  effectivePresentation={effectivePresentation}
+                  durablePresentation={durableEffectivePresentation}
+                  viewNameFocusRequest={viewNameFocusRequest}
+                  viewActionMenu={activeViewActionMenu}
+                  presentationActivity={presentationActivity}
+                  presentationError={personalPreference.error}
+                  optionRegistries={ruleOptionRegistries.options}
+                  onRequestPropertyOptions={ruleOptionRegistries.requestOptions}
+                  onChangePresentation={updateEffectivePresentation}
+                  onResetPresentation={() => void personalPreference.setPresentationOverride(null)}
+                  onPublishPresentation={publishEffectivePresentation}
+                  onPreviewConditionalColors={previewConditionalColors}
+                  onPublishConditionalColors={publishConditionalColors}
+                  onProjectionCommitted={runtime.refresh}
+                  onSelectView={(viewId, title) => onSelectDatabaseView?.(viewId, title)}
+                  onPush={(route) =>
+                    setSettingsRouteStack((current) =>
+                      current ? pushDatabaseSettingsRoute(current, route) : current,
+                    )
+                  }
+                  onReplace={(route) =>
+                    setSettingsRouteStack((current) =>
+                      current ? replaceDatabaseSettingsRoute(current, route) : current,
+                    )
+                  }
+                  onBack={() =>
+                    setSettingsRouteStack((current) => {
+                      if (!current) return null;
+                      const next = backDatabaseSettingsRoute(current);
+                      if (next) return next;
+                      window.requestAnimationFrame(() => {
+                        settingsTriggerRef.current?.querySelector<HTMLElement>("button")?.focus();
+                      });
+                      return null;
+                    })
+                  }
+                  onClose={closeSettings}
+                />
+              ) : null
+            }
+            onPrepareOpenPage={prefetchPageDetail}
+            onOpenPage={(pageId, titleSnapshot, openMode) => {
+              void onOpenPageTab(projectId, pageId, titleSnapshot, {
+                placement: { kind: "adjacent-right", sourceSurfaceId: tab.id },
+                openMode,
               });
-            },
-          },
-        ]}
-        groupPagination={runtime.groupPagination}
-        onLoadMoreGroup={runtime.loadMoreGroup}
-        activeSearchQuery={searchQuery}
-        taskSearchOpen={taskSearchOpen}
-        searchShortcutLabel={searchShortcutLabel}
-        taskSearchInputRef={taskSearchInputRef}
-        managementControl={
-          <div ref={settingsTriggerRef}>
-            <NodexIconButton
-              icon={SlidersHorizontal}
-              size="sm"
-              active={settingsRouteStack !== null}
-              ariaLabel="Database settings"
-              title="Database settings"
-              onClick={() => (settingsRouteStack ? closeSettings() : openSettings())}
-            />
-          </div>
-        }
-        databaseViewControls={
-          <>
-            <DatabaseViewRuleToolbarControls
-              controller={rulesController}
-              properties={databaseView.query.properties}
-            />
-            <NodexIconButton
-              icon={SlidersHorizontal}
-              size="sm"
-              active={settingsRouteStack?.at(-1)?.kind === "view_display"}
-              ariaLabel="Display options"
-              title="Display options"
-              onClick={() =>
-                openSettings({
-                  kind: "view_display",
-                  viewId: parseDatabaseViewId(databaseView.databaseViewId),
-                })
-              }
-            />
-          </>
-        }
-        rulesBar={
-          <DatabaseViewRulesBar
-            controller={rulesController}
-            config={databaseView.query.view.config}
-            properties={databaseView.query.properties}
-            optionRegistries={ruleOptionRegistries.options}
-            onRequestPropertyOptions={ruleOptionRegistries.requestOptions}
-            routingContext={databaseView.routingContext}
+            }}
+            pageActionPort={pageActionPort}
+            onCommitted={runtime.refreshCanonicalDatabaseView}
+            keyboardSurface={{ surfaceId, presentationId: tab.id }}
+            presentedPageIds={presentedPageIds}
+            initialSelectedPageIds={selectedPageIds}
+            onSelectedPageIdsChange={setSelectedPageIds}
+            collapsedOccurrenceKeys={personalPreference.collapsedOccurrenceKeys}
+            onOccurrenceDisclosureChange={(target, collapsed) => {
+              void personalPreference.setOccurrenceDisclosure(target, collapsed);
+            }}
+            pageCreateSurfaceId={surfaceId}
+            onRequestCreatePage={requestListPageCreate}
+            mutationHistory={mutationHistory}
           />
-        }
-        settingsRail={
-          settingsRouteStack ? (
-            <DatabaseSettingsRail
-              runtime={settings}
-              routeStack={settingsRouteStack}
-              model={databaseView}
-              effectivePresentation={effectivePresentation}
-              durablePresentation={durableEffectivePresentation}
-              viewNameFocusRequest={viewNameFocusRequest}
-              viewActionMenu={activeViewActionMenu}
-              presentationActivity={presentationActivity}
-              presentationError={personalPreference.error}
-              optionRegistries={ruleOptionRegistries.options}
-              onRequestPropertyOptions={ruleOptionRegistries.requestOptions}
-              onChangePresentation={updateEffectivePresentation}
-              onResetPresentation={() => void personalPreference.setPresentationOverride(null)}
-              onPublishPresentation={publishEffectivePresentation}
-              onPreviewConditionalColors={previewConditionalColors}
-              onPublishConditionalColors={publishConditionalColors}
-              onProjectionCommitted={runtime.refresh}
-              onSelectView={(viewId, title) => onSelectDatabaseView?.(viewId, title)}
-              onPush={(route) =>
-                setSettingsRouteStack((current) =>
-                  current ? pushDatabaseSettingsRoute(current, route) : current,
-                )
-              }
-              onReplace={(route) =>
-                setSettingsRouteStack((current) =>
-                  current ? replaceDatabaseSettingsRoute(current, route) : current,
-                )
-              }
-              onBack={() =>
-                setSettingsRouteStack((current) => {
-                  if (!current) return null;
-                  const next = backDatabaseSettingsRoute(current);
-                  if (next) return next;
-                  window.requestAnimationFrame(() => {
-                    settingsTriggerRef.current?.querySelector<HTMLElement>("button")?.focus();
-                  });
-                  return null;
-                })
-              }
-              onClose={closeSettings}
-            />
-          ) : null
-        }
-        onSearchQueryChange={(value) => setSearchQuery(projectId, value)}
-        onOpenTaskSearch={openTaskSearch}
-        onCloseTaskSearch={() => setTaskSearchOpen(false)}
-        onPrepareOpenPage={prefetchPageDetail}
-        onOpenPage={(pageId, titleSnapshot, openMode) => {
-          void onOpenPageTab(projectId, pageId, titleSnapshot, {
-            placement: { kind: "adjacent-right", sourceSurfaceId: tab.id },
-            openMode,
-          });
-        }}
-        pageActionPort={pageActionPort}
-        onCommitted={runtime.refreshCanonicalDatabaseView}
-        keyboardSurface={{ surfaceId, presentationId: tab.id }}
-        presentedPageIds={presentedPageIds}
-        initialSelectedPageIds={selectedPageIds}
-        onSelectedPageIdsChange={setSelectedPageIds}
-        collapsedOccurrenceKeys={personalPreference.collapsedOccurrenceKeys}
-        onOccurrenceDisclosureChange={(target, collapsed) => {
-          void personalPreference.setOccurrenceDisclosure(target, collapsed);
-        }}
-        pageCreateSurfaceId={surfaceId}
-        onRequestCreatePage={requestListPageCreate}
-        mutationHistory={mutationHistory}
-      />
+        ) : (
+          <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-sm text-token-description-foreground">
+            {runtime.error ?? "Opening Database…"}
+          </div>
+        )}
+      </DatabaseViewTabSurface>
       {deleteViewRequest ? (
         <DatabaseViewDeleteConfirmationDialog
           viewName={deleteViewRequest.viewName}
           busy={settings.pendingKey !== null}
           onClose={() => setDeleteViewRequest(null)}
           onConfirm={async () => {
-            const target = settings.authority?.database.views.find(
-              (view) => view.lifecycle === "active" && view.viewId === deleteViewRequest.viewId,
-            );
+            const target = activeViews.find((view) => view.viewId === deleteViewRequest.viewId);
             if (!target || activeViews.length <= 1) {
               setDeleteViewRequest(null);
               return;
             }
             const next = await settings.mutate({
               pendingKey: `delete-view:${target.viewId}`,
-              preferredViewId: databaseView.databaseViewId,
+              preferredViewId: databaseViewId,
               buildOperations: (authority) => {
                 const current = authority.database.views.find(
                   (view) => view.lifecycle === "active" && view.viewId === target.viewId,
