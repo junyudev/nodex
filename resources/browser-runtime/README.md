@@ -4,7 +4,10 @@ Nodex builds consume the Browser runtime exclusively through
 `browser-runtime.lock.json`. Each target pins an immutable archive by byte size
 and SHA-256, plus the manifest digest, source desktop build, Browser plugin
 version and component versions. Local Windows candidates have a null URL and
-can be materialized from a local archive for worker verification. Runtime admission never infers compatibility from semver order or
+can be materialized from a local archive for worker verification. A null Windows
+asset entry records that the target has no conformance-tested Browser runtime.
+Nodex builds omit Browser and Computer Use on that target and keep the locked
+Codex app-server. Runtime admission never infers compatibility from semver order or
 requires the independently supplied Browser peer CLI and primary app-server to
 have equal versions. The runtime must instead match one exact,
 conformance-tested app-server/Browser artifact identity committed in
@@ -79,7 +82,8 @@ Updating the runtime is an explicit maintainer workflow:
    ```
 
    Include `--win32-x64 <archive>` and `--win32-arm64 <archive>` for their
-   respective published targets.
+   respective conformance-tested targets. Set the whole Windows asset entry to
+   null when no conformance-tested archive can be published.
 
    The publisher proves the local archive against that lock in a fresh temporary
    extraction, so shared runtime caches cannot substitute for upload verification.

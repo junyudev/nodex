@@ -6,7 +6,7 @@ const fixture = () => {
   const marker = `NODEX_PTY_${randomUUID()}`;
   return {
     failures: [],
-    desktopTools: { status: "skipped: candidate assets" },
+    desktopTools: { status: "skipped: no published runtime" },
     evidence: {},
     normalQuit: {},
     upgrade: {},

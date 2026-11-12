@@ -221,7 +221,7 @@ async function main(): Promise<void> {
   let installationEvidence: unknown;
   let desktopTools:
     | Awaited<ReturnType<typeof probeWindowsDesktopTools>>
-    | { status: "skipped: candidate assets" }
+    | { status: "skipped: no published runtime" }
     | undefined;
   let upgradeEvidence: unknown;
   let updateHandoffEvidence: unknown;
@@ -406,9 +406,9 @@ async function main(): Promise<void> {
     const desktopToolsRoot = join(installRoot, "resources/browser-runtime");
     const asset = readBrowserRuntimeReleaseLock(resolveBrowserRuntimeReleaseLockPath(process.cwd()))
       .assets[target.key];
-    if ((asset.url !== null) !== existsSync(desktopToolsRoot))
+    if (Boolean(asset?.url) !== existsSync(desktopToolsRoot))
       throw new Error("Installed Desktop Tool presence does not match the release lock");
-    if (asset.url !== null) {
+    if (asset?.url) {
       restorePackagedBrowserRuntimeClosure({
         sourceBrowserRoot: desktopToolsRoot,
         packagedBrowserRoot: desktopToolsRoot,
@@ -435,7 +435,7 @@ async function main(): Promise<void> {
           boundary: installRoot,
           launcher: core,
         })
-      : { status: "skipped: candidate assets" };
+      : { status: "skipped: no published runtime" };
     const expectedCoreSha256 = readCoreArtifactDigest(
       core,
       join(installRoot, "resources/bin/rust-core-runtime.json"),

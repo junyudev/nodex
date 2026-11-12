@@ -10,11 +10,10 @@ All notable changes to this project will be documented in this file.
 - Share to Nodex from other apps on your phone. Nodex now appears when you share a photo, a link, a web page or text on iPhone and Android, and what you share opens in your Inbox Composer, ready to send or to add a note to first. On iPhone, the share sheet also offers **Add to Nodex Inbox** among its actions.
 - Save a thought that asks for no work with **Save to Notes**. Each Project, and the Inbox itself, gets a Notes page; a saved message becomes a page beneath it, off the Board, where you can arrange notes into sections. Nodex suggests it for references and can file a note under a section you already have.
 - Agents can set properties on many Pages in one step. Ask a chat to mark a batch of cards Done or re-prioritize a Board and it commits the whole change together and reports each card's resulting values, instead of editing cards one at a time. On the command line, `nodex page properties set NODEX-4 NODEX-8 --set Status=done --set Priority=p1-high` does the same, `nodex page create` takes `--set`, and `nodex page move` moves several Pages at once.
-- Agents running locally on Windows can use Nodex’s in-app Browser, with the same site access approvals as on macOS.
-- Computer Use can control desktop apps on Windows. Manage availability and saved app approvals in Computer use settings.
 
 ### Changed
 
+- Browser and Computer Use are available on Apple silicon Macs. Windows availability is pending native verification of the bundled runtime.
 - The Inbox and the Board now agree about every message. A message waits in your Inbox while its card is in Triage and yours to decide, so moving the card on the Board handles it, and moving it back to Triage brings it back. **Keep** is now **Add to Todo**, and a card appears in the Inbox once, whether it waits to be routed or needs your answer or review. In a shared Space, each person's Inbox shows the messages they own.
 - Stable updates reach you sooner with the same build already tested on Nightly. Both channels show app versions as `x.y.z`, and you can choose your channel in Settings.
 - Opening `N more properties` on a Page now lists its empty properties by name instead of a column of rows that say Empty. Choose one and it joins the list with its editor already open, and it stays there while the Page is open. Hidden properties that hold a value still open as rows.

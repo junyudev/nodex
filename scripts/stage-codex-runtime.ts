@@ -650,6 +650,9 @@ async function stageCodexRuntimeClosure(
           `win32-${target.targetArch}`
         ]
       : undefined;
+  if (windowsReleaseAsset === null) {
+    throw new Error(`Desktop Tool runtime is unavailable for win32-${target.targetArch}`);
+  }
   const platformContractVerifier =
     options.agentRuntimePlatformContractVerifier ?? verifyAgentRuntimeMacosPlatformContract;
   const build = lock.builds[target.targetKey];

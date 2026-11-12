@@ -78,7 +78,7 @@ export function assertWindowsInstalledProbe(
         !(desktop.signedImages! > 0) ||
         !Number.isSafeInteger(desktop.processesClosed) ||
         !(desktop.processesClosed! >= 2)
-      : desktop?.status !== "skipped: candidate assets"
+      : desktop?.status !== "skipped: no published runtime"
   )
     throw new Error("Windows installed-app probe did not certify the selected Desktop Tool state.");
   const pty = assertPackagedPtyReceipt(probe.packagedPty);
@@ -174,7 +174,12 @@ export function buildWindowsDistribution(options: {
   const browserTarget = `win32-${options.architecture}` as const;
   const browserAsset = readBrowserRuntimeReleaseLock(browserLockPath).assets[browserTarget];
   const browserRoot = join(resources, "browser-runtime");
-  const desktopTools = existsSync(browserRoot)
+  if (Boolean(browserAsset?.url) !== existsSync(browserRoot)) {
+    throw new Error(
+      "Windows Desktop Tool payload presence does not match the published release lock.",
+    );
+  }
+  const desktopTools = browserAsset?.url
     ? (() => {
         const manifestSha256 = sha256File(join(browserRoot, BROWSER_RUNTIME_MANIFEST_FILENAME));
         const manifest = readBrowserRuntimeSourceManifest(browserRoot);
@@ -189,11 +194,6 @@ export function buildWindowsDistribution(options: {
         return { target: browserTarget, manifestSha256, archiveSha256: browserAsset.archiveSha256 };
       })()
     : null;
-  if ((desktopTools === null) !== (browserAsset.url === null)) {
-    throw new Error(
-      "Windows Desktop Tool payload presence does not match the published release lock.",
-    );
-  }
 
   // A failed installed-app probe never produces a distributable architecture bundle.
   task(

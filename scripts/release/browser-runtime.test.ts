@@ -1,4 +1,3 @@
-import { windowsBrowserRuntimeLockFixture } from "../testing/browser-runtime-lock-fixture";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -132,7 +131,8 @@ function makePublishFixture(): BrowserRuntimePublishOptions {
     `${JSON.stringify(
       {
         assets: {
-          ...windowsBrowserRuntimeLockFixture(arm64Manifest.desktopBuild),
+          "win32-x64": null,
+          "win32-arm64": null,
           "darwin-arm64": {
             archiveSha256: arm64Archive.archiveSha256,
             archiveSize: arm64Archive.archiveSize,
@@ -167,6 +167,9 @@ test.skipIf(process.platform === "win32")(
     const options = makePublishFixture();
 
     await expect(verifyBrowserRuntimePublishInput(options)).resolves.toBeUndefined();
+    await expect(
+      verifyBrowserRuntimePublishInput({ ...options, windowsX64Path: options.arm64Path }),
+    ).rejects.toThrow("runtime is unavailable for win32-x64");
     await expect(
       verifyBrowserRuntimePublishInput({ ...options, repo: "example/wrong-repository" }),
     ).rejects.toThrow("does not match its release lock");

@@ -87,8 +87,11 @@ const readBrowserRuntimeRelease = (
   return pages.flat().find((release) => release.tag_name === tag) ?? null;
 };
 
+const defaultReleaseNotes = "Immutable Browser runtime closure consumed by Nodex release locks.";
+
 export function browserRuntimeReleaseArguments(options: {
   readonly arm64Path: string;
+  readonly notes?: string;
   readonly repo: string;
   readonly tag: string;
 }): readonly string[] {
@@ -112,7 +115,7 @@ export function browserRuntimeReleaseArguments(options: {
     "--title",
     `Nodex Browser runtime ${options.tag.replace("browser-runtime-v", "")}`,
     "--notes",
-    "Immutable Browser runtime closure consumed by Nodex release locks.",
+    options.notes ?? defaultReleaseNotes,
   ];
 }
 
@@ -148,10 +151,10 @@ export async function verifyBrowserRuntimePublishInput(
     for (const archive of localBrowserRuntimeArchives(options)) {
       const asset = lock.assets[archive.target];
       if (!archive.path) {
-        if (asset.url !== null)
-          throw new Error(`Missing local Browser runtime asset ${asset.assetName}.`);
+        if (asset?.url) throw new Error(`Missing local Browser runtime asset ${asset.assetName}.`);
         continue;
       }
+      if (!asset) throw new Error(`Desktop Tool runtime is unavailable for ${archive.target}`);
       const archivePath = resolve(archive.path);
       if (basename(archivePath) !== asset.assetName) {
         throw new Error("Browser runtime archive names do not match their release lock.");
@@ -179,8 +182,7 @@ export async function publishBrowserRuntime(options: BrowserRuntimePublishOption
   for (const archive of localBrowserRuntimeArchives(options)) {
     const asset = lock.assets[archive.target];
     if (!archive.path) continue;
-    if (asset.url === null)
-      throw new Error(`Desktop Tool asset ${archive.target} is a local candidate.`);
+    if (!asset?.url) throw new Error(`Desktop Tool asset ${archive.target} is a local candidate.`);
     expected.set(asset.assetName, { sha256: asset.archiveSha256, size: asset.archiveSize });
     pathsByName.set(asset.assetName, resolve(archive.path));
   }
@@ -196,11 +198,17 @@ export async function publishBrowserRuntime(options: BrowserRuntimePublishOption
     );
   }
 
+  const unavailableWindowsTargets = localBrowserRuntimeArchives(options)
+    .filter(({ platform, target }) => platform === "win32" && lock.assets[target] === null)
+    .map(({ arch }) => arch);
+  const notes = unavailableWindowsTargets.length
+    ? `${defaultReleaseNotes}\n\nBrowser and Computer Use are unavailable on Windows (${unavailableWindowsTargets.join(", ")}) pending native conformance.`
+    : defaultReleaseNotes;
   const readPlan = () =>
     planBrowserRuntimePublication(readBrowserRuntimeRelease(options.repo, options.tag), expected);
   let plan = readPlan();
   if (plan.kind === "create") {
-    gh(browserRuntimeReleaseArguments(options));
+    gh(browserRuntimeReleaseArguments({ ...options, notes }));
     plan = await awaitBrowserRuntimePublicationPlan(readPlan, (next) => next.kind !== "create");
     if (plan.kind === "create") {
       throw new Error("The created Browser runtime draft is not visible yet; rerun to resume.");
@@ -233,7 +241,7 @@ export async function publishBrowserRuntime(options: BrowserRuntimePublishOption
       "--title",
       `Nodex Browser runtime ${options.tag.replace("browser-runtime-v", "")}`,
       "--notes",
-      "Immutable Browser runtime closure consumed by Nodex release locks.",
+      notes,
     ]);
   }
 

@@ -224,6 +224,7 @@ test.each(["x64", "arm64"] as const)(
     await expect(materializeBrowserRuntime({ ...options, archivePath })).resolves.toEqual(manifest);
     const runtimeRoot = path.join(root, "staged");
     const windowsReleaseAsset = readBrowserRuntimeReleaseLock(lockPath).assets[`win32-${arch}`];
+    if (!windowsReleaseAsset) throw new Error("Missing Windows test asset");
     const stageOptions = {
       windowsReleaseAsset,
       runtimeRoot,

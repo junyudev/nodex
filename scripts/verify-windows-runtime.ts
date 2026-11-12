@@ -19,10 +19,12 @@ const desktopToolsRoot = [
 ].find(existsSync);
 if (desktopToolsRoot) {
   const lock = readBrowserRuntimeReleaseLock(resolveBrowserRuntimeReleaseLockPath(process.cwd()));
+  const asset = lock.assets[target.key];
+  if (!asset?.url) throw new Error("Unexpected Windows Desktop Tool payload");
   restorePackagedBrowserRuntimeClosure({
     packagedBrowserRoot: desktopToolsRoot,
     sourceBrowserRoot: desktopToolsRoot,
-    expectedManifestSha256: lock.assets[target.key].manifestSha256,
+    expectedManifestSha256: asset.manifestSha256,
     windowsArch: target.arch,
     restore: false,
   });

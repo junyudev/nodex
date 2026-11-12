@@ -39,8 +39,8 @@ export type BrowserRuntimeReleaseAsset =
 export type BrowserRuntimeReleaseLock = {
   assets: {
     "darwin-arm64": MacBrowserRuntimeReleaseAsset;
-    "win32-arm64": WindowsBrowserRuntimeReleaseAsset;
-    "win32-x64": WindowsBrowserRuntimeReleaseAsset;
+    "win32-arm64": WindowsBrowserRuntimeReleaseAsset | null;
+    "win32-x64": WindowsBrowserRuntimeReleaseAsset | null;
   };
   browserPluginVersion: string;
   codexCompatibilityVersion: string;
@@ -102,8 +102,12 @@ function parseAsset(value: unknown, target: "darwin-arm64"): MacBrowserRuntimeRe
 function parseAsset(
   value: unknown,
   target: "win32-x64" | "win32-arm64",
-): WindowsBrowserRuntimeReleaseAsset;
-function parseAsset(value: unknown, target: BrowserRuntimeTargetKey): BrowserRuntimeReleaseAsset {
+): WindowsBrowserRuntimeReleaseAsset | null;
+function parseAsset(
+  value: unknown,
+  target: BrowserRuntimeTargetKey,
+): BrowserRuntimeReleaseAsset | null {
+  if (value === null && target !== "darwin-arm64") return null;
   const label = `assets.${target}`;
   if (!isObject(value)) {
     throw new Error(`Invalid Browser runtime release lock ${label}`);
@@ -200,7 +204,7 @@ export function parseBrowserRuntimeReleaseLock(value: unknown): BrowserRuntimeRe
   const actualTargetKeys = Object.keys(value.assets).sort();
   if (JSON.stringify(actualTargetKeys) !== JSON.stringify(BROWSER_RUNTIME_RELEASE_TARGETS)) {
     throw new Error(
-      "Browser runtime release lock must contain exactly darwin-arm64, win32-arm64 and win32-x64 assets",
+      "Browser runtime release lock must contain exactly darwin-arm64, win32-arm64 and win32-x64 entries",
     );
   }
 
@@ -220,6 +224,7 @@ export function parseBrowserRuntimeReleaseLock(value: unknown): BrowserRuntimeRe
   };
   for (const target of BROWSER_RUNTIME_RELEASE_TARGETS) {
     const asset = assets[target];
+    if (!asset) continue;
     const expectedName = `nodex-browser-runtime-${desktopBuild}-${target}.tar.gz`;
     if (asset.assetName !== expectedName) {
       throw new Error(`Browser runtime release lock ${target} asset name must be ${expectedName}`);
