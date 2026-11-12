@@ -49,7 +49,11 @@ import { stageBrowserRuntime } from "./stage-browser-runtime";
 import { BROWSER_RUNTIME_BUNDLE_DIRECTORY } from "../src/shared/browser-runtime-metadata";
 import { desktopBuildTarget, type DesktopArchitecture } from "./desktop-build-target";
 import { stageWindowsVcRuntime } from "./windows-vc-runtime.mjs";
-import { verifyWindowsArchitectureClosure } from "./windows-pe.mjs";
+import {
+  assertPeArchitecture,
+  listWindowsPeImages,
+  verifyWindowsArchitectureClosure,
+} from "./windows-pe.mjs";
 import type { BrowserRuntimePlatformArtifactVerifier } from "../src/main/codex/browser-runtime-bundle";
 import { projectBundledAppServerRuntimeIdentity } from "../src/shared/browser-app-server-compatibility";
 import {
@@ -629,7 +633,7 @@ function validateNotice(input: {
 
 async function stageCodexRuntimeClosure(
   options: StageAgentRuntimeOptions,
-  verifyMetadataSha256: boolean,
+  production: boolean,
 ): Promise<{
   metadata: BundledAgentRuntimeMetadata;
   metadataSha256: string;
@@ -760,21 +764,27 @@ async function stageCodexRuntimeClosure(
         `Staged agent runtime entrypoint is not executable: ${packageManifest.entrypoint}`,
       );
     }
-    if (verifyMetadataSha256 && entrypoint.sha256 !== build.entrypointSha256) {
+    if (production && entrypoint.sha256 !== build.entrypointSha256) {
       throw new Error(
         `Staged agent runtime entrypoint does not match the release lock for ${target.targetKey}: ${entrypoint.sha256}`,
       );
     }
-    // The canonical inventory binds the upstream release; Windows CRT supplements
-    // are regenerated from the build toolchain after that immutable inventory.
-    if (target.targetPlatform === "win32")
-      stageWindowsVcRuntime(tempRuntimeRoot, target.targetArch);
-    verifyPlatformRuntime(
-      target,
-      tempRuntimeRoot,
-      lock.requiredArtifacts,
-      platformContractVerifier,
-    );
+    if (target.targetPlatform === "win32" && !production) {
+      // Relocking binds the upstream files. The Windows build toolchain supplies
+      // app-local CRT dependencies only when staging for production.
+      for (const image of listWindowsPeImages(tempRuntimeRoot)) {
+        assertPeArchitecture(join(tempRuntimeRoot, image), target.targetArch);
+      }
+    } else {
+      if (target.targetPlatform === "win32")
+        stageWindowsVcRuntime(tempRuntimeRoot, target.targetArch);
+      verifyPlatformRuntime(
+        target,
+        tempRuntimeRoot,
+        lock.requiredArtifacts,
+        platformContractVerifier,
+      );
+    }
 
     const metadata: BundledAgentRuntimeMetadata = {
       releaseAsset: {
@@ -804,7 +814,7 @@ async function stageCodexRuntimeClosure(
     };
 
     const metadataSha256 = bundledAgentRuntimeMetadataSha256(metadata);
-    if (verifyMetadataSha256 && metadataSha256 !== build.runtimeMetadataSha256) {
+    if (production && metadataSha256 !== build.runtimeMetadataSha256) {
       throw new Error(
         `Staged agent runtime metadata does not match the release lock for ${target.targetKey}: ${metadataSha256}`,
       );
@@ -840,8 +850,8 @@ export async function stageCodexRuntime(
 }
 
 /**
- * Builds the same canonical closure as production staging while returning the
- * candidate metadata digest before that digest is committed to the release lock.
+ * Derives the candidate digest from the upstream closure. Production staging also
+ * supplies the Windows CRT and verifies the complete Windows dependency closure.
  */
 export function stageCodexRuntimeCandidate(
   options: StageAgentRuntimeOptions,
