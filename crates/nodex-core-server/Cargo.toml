@@ -45,6 +45,7 @@ tungstenite = "0.29"
 rusqlite.workspace = true
 nodex-platform = { workspace = true, features = ["test-support"] }
 tempfile = "3.27.0"
+tokio = { workspace = true, features = ["test-util"] }
 tower = { version = "0.5.3", features = ["util"] }
 
 [target.'cfg(unix)'.dev-dependencies]
