@@ -630,7 +630,10 @@ one exact action:
   suggestions choose models, a new chat may also name what it runs on: an
   Agent, model and effort. When another model clearly suits part of the work,
   an addition says so to the chat's Agent, which decides whether and how to
-  delegate it; a suggestion never plans subtasks or steps.
+  delegate it; a suggestion never plans subtasks or steps. A new chat runs in
+  its message's Page worktree unless the Inbox's **New chats use a worktree**
+  setting is off or the decision picks **Local** beside its Agent; either way it
+  stays linked to that Page.
 - **Send to chat:** send a prompt, with its additions, to an existing chat.
 - **Move to Project:** file the message Page in another Project's Database.
 

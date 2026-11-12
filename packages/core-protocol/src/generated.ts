@@ -11618,6 +11618,11 @@ export interface components {
         readonly ProjectWorkspaceInboxExecutionSelection: {
             readonly interaction_mode: components["schemas"]["ProjectWorkspaceInboxInteractionMode"];
             readonly model_selection: components["schemas"]["ProjectWorkspaceInboxModelSelection"];
+            /**
+             * @description Whether the chat runs in its Page's worktree, or in the Project's checkout. Selections
+             *     frozen before this choice existed ran in worktrees, so they keep doing so.
+             */
+            readonly worktree?: boolean;
         };
         /** @enum {string} */
         readonly ProjectWorkspaceInboxFailureKind: "rejected" | "unavailable" | "unknown";

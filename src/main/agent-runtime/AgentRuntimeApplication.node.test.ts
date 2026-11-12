@@ -8122,6 +8122,27 @@ it.effect("a Page chat starts at once in the checkout its Page already has", () 
   ),
 );
 
+it.effect("a Page chat kept out of its Page's workspace runs in the Project's checkout", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = setup({
+        pageWorkspaces: {
+          claim: () =>
+            Effect.die("A chat that keeps its checkout never joins the Page's workspace"),
+          prepare: () => Effect.die("A chat that keeps its checkout never prepares a worktree"),
+        },
+      });
+      const owner = yield* fixture.owner;
+      const result = yield* owner.launch({
+        ...launch,
+        workPage: { pageId: "page:work", joinsWorkspace: false },
+      });
+      const thread = fixture.snapshots.get(result.threadId)!.projection.thread;
+      assert.notEqual(thread.worktreePath, "/page-workspace");
+    }),
+  ),
+);
+
 it.effect("opening a chat while it launches waits for the launch's own Thread", () =>
   Effect.scoped(
     Effect.gen(function* () {

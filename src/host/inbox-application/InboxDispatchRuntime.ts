@@ -256,7 +256,11 @@ export const make = Effect.gen(function* () {
         title: session.displayTitle,
         modelSelection: selection.modelSelection,
         interactionMode: selection.interactionMode,
-        workPage: work.page_ids[0] ? { pageId: work.page_ids[0] } : undefined,
+        // The chat stays linked to its Page either way; the choice decides only whether it joins
+        // the Page's worktree.
+        workPage: work.page_ids[0]
+          ? { pageId: work.page_ids[0], joinsWorkspace: selection.worktree }
+          : undefined,
         message,
       });
       return yield* inbox.completeDispatch(work, threadId, unavailableSkills);

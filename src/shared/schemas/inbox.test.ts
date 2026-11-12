@@ -4,6 +4,7 @@ import { agentRuntimeProviderId } from "../agent-runtime-provider";
 import { decodeInboxAgentBinding, encodeInboxAgentBinding } from "../inbox";
 import {
   InboxEditInputSchema,
+  InboxExecutionSelectionSchema,
   InboxPreparedConfirmationSchema,
   InboxSendInputSchema,
   InboxSuggestionRequestInputSchema,
@@ -26,6 +27,23 @@ describe("Inbox boundary contracts", () => {
     expect(UpdateInboxSettingsInputSchema.safeParse({ showPageBesideNewChats: null }).success).toBe(
       false,
     );
+  });
+
+  it("accepts an optional worktree choice for a new chat, and reads a selection without one as a worktree", () => {
+    expect(UpdateInboxSettingsInputSchema.parse({ newChatsUseWorktrees: false })).toEqual({
+      newChatsUseWorktrees: false,
+    });
+    const modelSelection = { instanceId: "codex", model: "reviewed-model" };
+    expect(
+      InboxExecutionSelectionSchema.parse({ modelSelection, interactionMode: "default" }).worktree,
+    ).toBe(true);
+    expect(
+      InboxExecutionSelectionSchema.parse({
+        modelSelection,
+        interactionMode: "default",
+        worktree: false,
+      }).worktree,
+    ).toBe(false);
   });
 
   it("keeps an already prepared confirmation unchanged when replayed", () => {

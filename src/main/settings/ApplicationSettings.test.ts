@@ -713,6 +713,7 @@ describe("ApplicationSettings", () => {
           suggestionsChooseModels: true,
           useModelGuide: true,
           showPageBesideNewChats: true,
+          newChatsUseWorktrees: true,
         });
         const chosen = {
           instanceId: "codex",
@@ -749,6 +750,7 @@ describe("ApplicationSettings", () => {
             suggestionsChooseModels: false,
             useModelGuide: false,
             showPageBesideNewChats: false,
+            newChatsUseWorktrees: false,
           },
         });
         assert.deepInclude(
@@ -758,6 +760,7 @@ describe("ApplicationSettings", () => {
             suggestionsChooseModels: false,
             useModelGuide: false,
             showPageBesideNewChats: false,
+            newChatsUseWorktrees: false,
           },
         );
         assert.notProperty(server, "inbox_chat_model");

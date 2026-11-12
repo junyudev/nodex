@@ -220,6 +220,16 @@ export function InboxSettingsPage() {
           />
         </SettingRow>
         <SettingRow
+          label="New chats use a worktree"
+          description="A chat the Inbox starts for a message works in its Page’s worktree, apart from your checkout. Off, it runs in the Project’s checkout. Each message can still choose."
+        >
+          <NodexSwitch
+            ariaLabel="New chats use a worktree"
+            checked={settings.newChatsUseWorktrees}
+            onCheckedChange={(newChatsUseWorktrees) => save({ newChatsUseWorktrees })}
+          />
+        </SettingRow>
+        <SettingRow
           label="Suggestions choose models"
           description="Each suggestion picks its new chat's Agent, model and effort, weighing what each does well and how much of each weekly budget is left. When another model suits part of the work, its prompt says so."
         >

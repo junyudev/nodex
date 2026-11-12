@@ -2672,6 +2672,7 @@ fn selection() -> nodex_core_contracts::inbox::ProjectWorkspaceInboxExecutionSel
             options: None,
         },
         interaction_mode: ProjectWorkspaceInboxInteractionMode::Default,
+        worktree: true,
     }
 }
 fn pages_basis(

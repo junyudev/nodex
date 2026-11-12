@@ -678,6 +678,14 @@ pub enum ProjectWorkspaceInboxInteractionMode {
 pub struct ProjectWorkspaceInboxExecutionSelection {
     pub model_selection: ProjectWorkspaceInboxModelSelection,
     pub interaction_mode: ProjectWorkspaceInboxInteractionMode,
+    /// Whether the chat runs in its Page's worktree, or in the Project's checkout. Selections
+    /// frozen before this choice existed ran in worktrees, so they keep doing so.
+    #[serde(default = "worktree_by_default")]
+    pub worktree: bool,
+}
+
+fn worktree_by_default() -> bool {
+    true
 }
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -791,4 +799,20 @@ pub struct ChatMessageInbound {
 pub struct HandbackMessage {
     pub text: String,
     pub files: Vec<crate::library::LibraryFileChange>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ProjectWorkspaceInboxExecutionSelection;
+
+    #[test]
+    fn a_selection_frozen_before_the_worktree_choice_still_runs_in_a_worktree() {
+        let selection: ProjectWorkspaceInboxExecutionSelection =
+            serde_json::from_value(serde_json::json!({
+                "model_selection": { "instanceId": "codex", "model": "gpt" },
+                "interaction_mode": "default"
+            }))
+            .expect("a selection frozen before the worktree choice still parses");
+        assert!(selection.worktree);
+    }
 }

@@ -47928,6 +47928,10 @@
           },
           "model_selection": {
             "$ref": "#/components/schemas/ProjectWorkspaceInboxModelSelection"
+          },
+          "worktree": {
+            "type": "boolean",
+            "description": "Whether the chat runs in its Page's worktree, or in the Project's checkout. Selections\nfrozen before this choice existed ran in worktrees, so they keep doing so."
           }
         },
         "additionalProperties": false

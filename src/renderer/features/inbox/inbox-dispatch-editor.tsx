@@ -13,7 +13,11 @@ import type { Project } from "../../../shared/types";
 import { messageTextOf } from "../../../shared/message-content";
 import { NodexButton } from "@/components/ui/button";
 import { NodexOptionPicker } from "@/components/ui/dropdown";
-import { CompactChevronDownIcon } from "@/components/shared/icons";
+import {
+  CompactChevronDownIcon,
+  LocalStatusIcon,
+  WorktreeStatusIcon,
+} from "@/components/shared/icons";
 import {
   LIBRARY_INBOX,
   inboxActionSkills,
@@ -87,6 +91,8 @@ export interface InboxDispatchDraft {
   readonly droppedSkillNames?: readonly string[];
   /** What a new chat runs on when chosen for this decision; the Inbox's own when unset. */
   readonly agent?: InboxAgentChoice | null;
+  /** Whether a new chat runs in its Page's worktree; the Inbox's setting when unset. */
+  readonly worktree?: boolean | null;
   /** The immutable decision being reviewed, independent of its originating Automation. */
   readonly decisionId?: string | null;
   /** Present for an automation's waiting run, which can run its task. */
@@ -133,6 +139,7 @@ export function draftFromAction(
         prompt: inboxPromptWithAdditions(action.prompt, action.additions),
         ...(action.skills?.length ? { skills: action.skills } : {}),
         agent: action.agent,
+        worktree: action.worktree ?? null,
       };
     case "send_to_chat":
       return {
@@ -212,6 +219,7 @@ export function actionFromDraft(draft: InboxDispatchDraft): InboxDispatchAction 
             projectId: draft.projectId,
             prompt,
             agent: draft.agent ?? null,
+            worktree: draft.worktree ?? null,
             additions: [],
             ...(draft.skills?.length ? { skills: draft.skills } : {}),
           }
@@ -330,6 +338,7 @@ export function InboxDispatchEditor({
               : current.projectId,
     }));
   const action = actionFromDraft(draft);
+  const worktreeOn = draft.worktree ?? agents.settings.newChatsUseWorktrees;
   const skillAvailability = useInboxSkillAvailability(draft.proposal, action);
   const droppedSkillNames = [
     ...new Set([...(draft.droppedSkillNames ?? []), ...skillAvailability.unavailable]),
@@ -541,6 +550,38 @@ export function InboxDispatchEditor({
                     ? null
                     : next,
               }))
+            }
+          />
+        ) : null}
+        {draft.type === "new_chat" && (draft.worktree != null || agents.settingsReady) ? (
+          // Whether the chat joins its Page's worktree sits beside the Agent it runs on.
+          <NodexOptionPicker
+            value={worktreeOn ? "worktree" : "local"}
+            options={[
+              {
+                value: "worktree",
+                label: "Worktree",
+                leftSlot: <WorktreeStatusIcon className="icon-xs shrink-0" />,
+              },
+              {
+                value: "local",
+                label: "Local",
+                leftSlot: <LocalStatusIcon className="icon-xs shrink-0" />,
+              },
+            ]}
+            onValueChange={(value) =>
+              setDraft((current) => {
+                const worktree = value === "worktree";
+                return {
+                  ...current,
+                  worktree: worktree === agents.settings.newChatsUseWorktrees ? null : worktree,
+                };
+              })
+            }
+            triggerButton={
+              <PickerTrigger label="Where it runs">
+                {worktreeOn ? "Worktree" : "Local"}
+              </PickerTrigger>
             }
           />
         ) : null}

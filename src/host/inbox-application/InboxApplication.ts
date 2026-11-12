@@ -667,19 +667,25 @@ export const make = Effect.gen(function* () {
       }
     }
     const needsDefault = action.type === "plan" && action.steps.some((step) => step.agent === null);
-    // Freeze the Inbox default for null plan selections as well as new chats.
+    // Freeze the Inbox defaults for null plan selections as well as new chats.
+    const inbox = (yield* settings.snapshot().pipe(Effect.mapError(fail("prepare-confirmation"))))
+      .inbox;
     const modelSelection =
       action.type === "new_chat" || needsDefault
         ? yield* resolveInboxModel(
             runtime,
-            (action.type === "new_chat" ? action.agent : null) ??
-              (yield* settings.snapshot().pipe(Effect.mapError(fail("prepare-confirmation")))).inbox
-                .chatAgent,
+            (action.type === "new_chat" ? action.agent : null) ?? inbox.chatAgent,
           ).pipe(Effect.mapError(fail("prepare-confirmation")))
         : null;
+    // A decision's own choice of worktree wins; otherwise the Inbox's setting, frozen here.
     const executionSelection =
       (action.type === "new_chat" || action.type === "plan") && modelSelection
-        ? { modelSelection, interactionMode: "default" as const }
+        ? {
+            modelSelection,
+            interactionMode: "default" as const,
+            worktree:
+              (action.type === "new_chat" ? action.worktree : null) ?? inbox.newChatsUseWorktrees,
+          }
         : null;
     const proposedSkills = inboxActionSkills(storedAction);
     const droppedNames = new Set(draft.kind === "proposal" ? (draft.droppedSkillNames ?? []) : []);

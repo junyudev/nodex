@@ -229,6 +229,42 @@ describe("Inbox destination and Agent selection", () => {
         projectId: null,
         prompt: "Compare both",
         agent: { instanceId: "codex", model: null, reasoningEffort: "high", serviceTier: null },
+        worktree: null,
+        additions: [],
+      },
+      null,
+    );
+  });
+
+  test("a hand-written new chat says whether it runs in a worktree, and sends its own choice", async () => {
+    const onSubmit = vi.fn(async () => true);
+    renderQuery(
+      <InboxDispatchEditor
+        initial={draftFromAction(
+          { type: "new_chat", additions: [], projectId: null, prompt: "Compare both", agent: null },
+          "Compare both",
+        )}
+        projects={[]}
+        agents={inboxAgentsFixture({
+          settings: { ...DEFAULT_INBOX_SETTINGS, newChatsUseWorktrees: false },
+        })}
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+      />,
+    );
+    // The Inbox's setting is what the chat runs in until this message chooses otherwise.
+    expect(screen.getByRole("button", { name: "Where it runs" }).textContent).toBe("Local");
+    await click("Where it runs");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Worktree" }));
+    expect(screen.getByRole("button", { name: "Where it runs" }).textContent).toBe("Worktree");
+    await click("Start chat");
+    expect(onSubmit).toHaveBeenCalledWith(
+      {
+        type: "new_chat",
+        projectId: null,
+        prompt: "Compare both",
+        agent: null,
+        worktree: true,
         additions: [],
       },
       null,
@@ -253,7 +289,14 @@ describe("Inbox destination and Agent selection", () => {
     expect(screen.queryByRole("button", { name: /^Runs on/u })).toBeNull();
     await click("Start chat");
     expect(onSubmit).toHaveBeenCalledWith(
-      { type: "new_chat", projectId: null, prompt: "Compare both", agent: null, additions: [] },
+      {
+        type: "new_chat",
+        projectId: null,
+        prompt: "Compare both",
+        agent: null,
+        worktree: null,
+        additions: [],
+      },
       null,
     );
   });

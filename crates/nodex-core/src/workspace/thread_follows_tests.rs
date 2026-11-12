@@ -557,6 +557,7 @@ fn intake_deduplicates_discovery_and_dispatch_follows_its_origin_without_automat
                     options: None,
                 },
                 interaction_mode: ProjectWorkspaceInboxInteractionMode::Default,
+                worktree: true,
             }),
             proposal_id: "proposal".into(),
             page_ids: vec![page.clone()],

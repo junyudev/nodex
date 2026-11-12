@@ -196,6 +196,7 @@ export const inboxExecutionSelectionToCore = (
     ? {
         model_selection: selection.modelSelection,
         interaction_mode: selection.interactionMode,
+        worktree: selection.worktree,
       }
     : null;
 export const inboxExecutionSelectionFromCore = (
@@ -204,6 +205,7 @@ export const inboxExecutionSelectionFromCore = (
   InboxExecutionSelectionSchema.parse({
     modelSelection: selection.model_selection,
     interactionMode: selection.interaction_mode,
+    worktree: selection.worktree,
   });
 
 export const inboxScopeToCore = (scope: InboxScope): CoreInboxScope =>

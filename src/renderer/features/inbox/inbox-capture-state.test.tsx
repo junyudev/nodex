@@ -605,6 +605,7 @@ describe("Inbox capture ownership", () => {
         executionSelection: {
           modelSelection: { instanceId: "codex", model: "frozen-model" },
           interactionMode: "default",
+          worktree: true,
         },
       }));
       vi.mocked(dispatchInboxEntries)

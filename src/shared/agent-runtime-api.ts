@@ -62,7 +62,15 @@ export interface AgentRuntimeLaunch {
   readonly projectId: string | null;
   readonly title: string;
   readonly initialPageIds?: readonly string[];
-  readonly workPage?: { readonly pageId: string; readonly onlyIfAgentWork?: boolean };
+  /**
+   * The Page the chat works. It joins the Page's Workspace unless `joinsWorkspace` is false, which
+   * keeps the link and runs the chat in the Project's checkout.
+   */
+  readonly workPage?: {
+    readonly pageId: string;
+    readonly onlyIfAgentWork?: boolean;
+    readonly joinsWorkspace?: boolean;
+  };
   readonly presentationTicket?: import("./nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
   readonly sourceRoot?: string;
   readonly modelSelection: CreateThread["modelSelection"];

@@ -195,6 +195,7 @@ fn dispatch(
                 }]),
             },
             interaction_mode: ProjectWorkspaceInboxInteractionMode::Default,
+            worktree: true,
         }),
         proposal_id: "relocation-proposal".into(),
         page_ids: vec![page.into()],

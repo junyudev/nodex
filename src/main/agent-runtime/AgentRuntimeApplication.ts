@@ -1556,13 +1556,20 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               ),
             )
           : null;
-        const workPage =
+        const linkedPageId =
           sessionWorkPage?.value.kind === "session_work_page" && sessionWorkPage.value.page_id
-            ? { pageId: sessionWorkPage.value.page_id }
+            ? sessionWorkPage.value.page_id
             : workLaunch?.value.kind === "page_work_launch" &&
                 workLaunch.value.launch?.session_id === input.sessionId
-              ? { pageId: workLaunch.value.launch.page_id }
-              : input.workPage;
+              ? workLaunch.value.launch.page_id
+              : null;
+        // A retried launch keeps the workspace choice it was first admitted with.
+        const workPage = linkedPageId
+          ? {
+              pageId: linkedPageId,
+              ...(input.workPage?.joinsWorkspace === false ? { joinsWorkspace: false } : {}),
+            }
+          : input.workPage;
         if (
           workPage &&
           (yield* effectiveHolds(core, { kind: "page", page_id: workPage.pageId })).length
@@ -1571,7 +1578,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         // Joining the Page's Workspace is admission: it reads Git and writes Core, and creates
         // nothing, so the Thread exists moments after the Session is bound.
         const pageWorkspace =
-          workPage && options.pageWorkspaces
+          workPage && options.pageWorkspaces && workPage.joinsWorkspace !== false
             ? yield* options.pageWorkspaces
                 .claim({
                   sessionId: input.sessionId,

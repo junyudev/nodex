@@ -71,6 +71,8 @@ export type InboxDispatchAction =
       readonly prompt: string;
       /** What the chat runs on when chosen for this decision; the Inbox's own when null. */
       readonly agent: InboxAgentChoice | null;
+      /** Whether the chat runs in its Page's worktree; the Inbox's setting when unset. */
+      readonly worktree?: boolean | null;
       readonly additions: readonly string[];
       readonly skills?: readonly InboxSuggestedSkill[];
     }
@@ -475,11 +477,12 @@ export interface InboxDispatchInput {
 
 /**
  * Frozen by Main before the first confirmation is submitted. A new chat runs on its action's
- * Agent, or else the Inbox's own.
+ * Agent, or else the Inbox's own, and in its Page's worktree or the Project's checkout as chosen.
  */
 export interface InboxExecutionSelection {
   readonly modelSelection: AgentRuntimeLaunch["modelSelection"];
   readonly interactionMode: AgentRuntimeLaunch["interactionMode"];
+  readonly worktree: boolean;
 }
 
 /** What the user reviewed before deciding. */
@@ -797,6 +800,11 @@ export interface InboxSettings {
   readonly useModelGuide: boolean;
   /** Show the message's Page in the right panel of a new chat started by the Inbox. */
   readonly showPageBesideNewChats: boolean;
+  /**
+   * Whether a new chat the Inbox starts for a Page runs in that Page's worktree. Off, it runs in
+   * the Project's checkout and stays linked to the Page.
+   */
+  readonly newChatsUseWorktrees: boolean;
 }
 
 export type UpdateInboxSettingsInput = Partial<InboxSettings>;
@@ -823,6 +831,7 @@ export const DEFAULT_INBOX_SETTINGS: InboxSettings = {
   suggestionsChooseModels: true,
   useModelGuide: true,
   showPageBesideNewChats: true,
+  newChatsUseWorktrees: true,
 };
 
 export const encodeInboxAgentBinding = (binding: InboxAgentBinding): string => binding.instanceId;

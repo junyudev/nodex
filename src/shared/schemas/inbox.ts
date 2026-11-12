@@ -154,6 +154,7 @@ export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
       projectId: id.nullable(),
       prompt,
       agent: InboxAgentChoiceSchema.nullable().default(null),
+      worktree: z.boolean().nullable().optional(),
       additions,
       skills: InboxSuggestedSkillsSchema.default([]),
     })
@@ -190,6 +191,8 @@ export const InboxExecutionSelectionSchema = z
   .object({
     modelSelection: AgentRuntimeModelSelectionSchema,
     interactionMode: z.enum(["default", "plan"]),
+    // A selection frozen before the choice existed ran in a worktree, as it still does.
+    worktree: z.boolean().default(true),
   })
   .strict() satisfies z.ZodType<InboxExecutionSelection>;
 
@@ -388,6 +391,7 @@ export const UpdateInboxSettingsInputSchema = z
     suggestionsChooseModels: z.boolean().optional(),
     useModelGuide: z.boolean().optional(),
     showPageBesideNewChats: z.boolean().optional(),
+    newChatsUseWorktrees: z.boolean().optional(),
   })
   .strict() satisfies z.ZodType<UpdateInboxSettingsInput>;
 

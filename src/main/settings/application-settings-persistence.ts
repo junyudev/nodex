@@ -188,6 +188,7 @@ interface ServerTomlConfig {
   inbox_suggestions_choose_models?: boolean;
   inbox_use_model_guide?: boolean;
   inbox_show_page_beside_new_chats?: boolean;
+  inbox_new_chats_use_worktrees?: boolean;
   diagnostics_enabled?: boolean;
   diagnostics_dsn?: string;
   diagnostics_environment?: string;
@@ -1371,6 +1372,10 @@ function inboxSettingsFromConfig(config: ServerTomlConfig): InboxSettings {
       typeof config.inbox_show_page_beside_new_chats === "boolean"
         ? config.inbox_show_page_beside_new_chats
         : DEFAULT_INBOX_SETTINGS.showPageBesideNewChats,
+    newChatsUseWorktrees:
+      typeof config.inbox_new_chats_use_worktrees === "boolean"
+        ? config.inbox_new_chats_use_worktrees
+        : DEFAULT_INBOX_SETTINGS.newChatsUseWorktrees,
   };
 }
 
@@ -1395,6 +1400,7 @@ export function updateInboxSettings(
     inbox_suggestions_choose_models: next.suggestionsChooseModels,
     inbox_use_model_guide: next.useModelGuide,
     inbox_show_page_beside_new_chats: next.showPageBesideNewChats,
+    inbox_new_chats_use_worktrees: next.newChatsUseWorktrees,
   };
   delete server.inbox_suggestions_enabled;
   writeInboxChoice(server, "inbox_suggestion_model", next.suggestionAgent.model);

@@ -50,6 +50,7 @@ const settings: InboxSettings = {
   suggestionsChooseModels: true,
   useModelGuide: true,
   showPageBesideNewChats: true,
+  newChatsUseWorktrees: true,
 };
 const provider = (binding: InboxAgentBinding = { instanceId: "codex" }): Provider => ({
   instanceId: binding.instanceId,
@@ -726,6 +727,42 @@ it.effect("starts an Inbox chat where this host runs the Project's work", () =>
     assert.deepEqual(asked, [["project:one", "new"]]);
     assert.strictEqual(launches[0]?.projectId, "project:one");
     assert.strictEqual(complete.mock.calls.length, 1);
+  }),
+);
+
+it.effect("keeps an Inbox chat in the Project's checkout when its selection chose so", () =>
+  Effect.gen(function* () {
+    const launches: AgentRuntimeLaunch[] = [];
+    const confirmed = work();
+    const { drain } = yield* delivery({
+      session: () => session(),
+      runtime: {
+        executionWorkspace: () =>
+          Effect.sync(() => ({ available: true, workspaceRoot: "/project", sourceRoots: [] })),
+        launch: (input) =>
+          Effect.sync(() => {
+            launches.push(input);
+            return { threadId: "thread:one" } as never;
+          }),
+      },
+      inbox: {
+        outbox: () =>
+          Effect.succeed(
+            launches.length === 0
+              ? [
+                  {
+                    ...confirmed,
+                    execution_selection: { ...confirmed.execution_selection!, worktree: false },
+                  },
+                ]
+              : [],
+          ),
+        completeDispatch: vi.fn(() => Effect.void),
+      },
+    });
+    yield* drain;
+    // The chat stays linked to its Page; only its workspace is left out.
+    assert.deepEqual(launches[0]?.workPage, { pageId: "page:one", joinsWorkspace: false });
   }),
 );
 

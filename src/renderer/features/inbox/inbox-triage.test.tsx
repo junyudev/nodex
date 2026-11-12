@@ -714,6 +714,7 @@ describe("InboxTriage", () => {
           projectId: "project:nodex",
           prompt: "Only list the trade-offs.",
           agent: null,
+          worktree: null,
           additions: [],
         },
         null,

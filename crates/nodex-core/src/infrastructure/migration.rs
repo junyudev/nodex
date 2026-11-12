@@ -10462,9 +10462,14 @@ mod tests {
             let decoded_selection = encoded_selection.as_deref().map(|encoded| {
                 serde_json::from_str::<ProjectWorkspaceInboxExecutionSelection>(encoded).unwrap()
             });
+            // A selection frozen before the worktree choice is read back as a worktree.
+            let decoded_expectation = expected_selection.map(|mut expected| {
+                expected["worktree"] = json!(true);
+                expected
+            });
             assert_eq!(
                 decoded_selection.map(|value| serde_json::to_value(value).unwrap()),
-                expected_selection
+                decoded_expectation
             );
             assert_eq!(final_text, "Reviewed prompt with delegation advice");
             assert_eq!(launch_id, format!("launch:{state}"));
