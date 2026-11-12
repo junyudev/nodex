@@ -11,6 +11,10 @@ and can change the part that belongs to them.
 | Your instructions    | This Profile's person | Settings > Agents > Your instructions                 | Yes                   |
 | Chat context         | Nodex, per chat       | Named in the same panel; generated when a chat starts | No                    |
 | Native configuration | The Agent's own home  | Each provider's own settings                          | Through that provider |
+| Codex desktop app    | Codex, per thread     | Full Nodex instructions, as a representative thread   | Through Codex         |
+
+Codex desktop app instructions are the developer text Codex app threads receive. Nodex shows a
+representative thread, because each thread's text depends on its tools and workspace.
 
 Nodex guidance covers the `nodex_app` tools, Automations and heartbeats. It is attached to
 chats that have Nodex tools. Chat context covers runtime details, the Nodex CLI and the

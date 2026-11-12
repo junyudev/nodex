@@ -3,7 +3,10 @@ import { act } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, it, vi } from "vite-plus/test";
 import { TestQueryProvider } from "@/test/query";
-import { StandingInstructionsRow } from "./agent-instructions-settings-control";
+import {
+  EffectiveInstructionsRow,
+  StandingInstructionsRow,
+} from "./agent-instructions-settings-control";
 
 const saved = vi.hoisted(() =>
   vi.fn(async (_client: unknown, input: AgentRuntimeSettings) => input),
@@ -61,4 +64,15 @@ it("does not save when the field loses focus unchanged", async () => {
     await Promise.resolve();
   });
   expect(saved).not.toHaveBeenCalled();
+});
+
+it("shows the Codex desktop app instructions beside the Nodex guidance", async () => {
+  render(<EffectiveInstructionsRow />, { wrapper: TestQueryProvider });
+  const toggle = await screen.findByRole("button", { name: /Full Nodex instructions/ });
+  await act(async () => {
+    fireEvent.click(toggle);
+    await Promise.resolve();
+  });
+  expect(await screen.findByRole("heading", { name: "Nodex guidance" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Codex desktop app" })).toBeTruthy();
 });

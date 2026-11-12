@@ -11,6 +11,7 @@ import {
   type ArtifactOpeningPolicy,
 } from "../../../shared/agent-instructions-settings";
 import { DEFAULT_AGENT_RUNTIME_SETTINGS } from "../../../shared/agent-runtime-settings";
+import { buildCodexDesktopDeveloperInstructions } from "../../../shared/codex-developer-instructions";
 import { NodexOptionPicker, NodexSettingsDropdownTrigger } from "@/components/ui/dropdown";
 import { NodexSettingsExpandableRow, NodexSettingsRow } from "@/components/ui/settings";
 import {
@@ -93,8 +94,21 @@ export function ArtifactOpeningSettingRow() {
   );
 }
 
+/**
+ * A representative Codex desktop thread with every app tool on and default Git settings. Each
+ * thread's text varies with its own tools and workspace, so this is a view, not a fixed payload.
+ */
+const REPRESENTATIVE_CODEX_THREAD = {
+  threadToolsEnabled: true,
+  sidebarSectionToolsEnabled: true,
+  workspaceDependenciesEnabled: true,
+  heartbeatEnabled: true,
+  includeProseDetailLevelInstructions: false,
+  isNonGitWorkspace: false,
+} as const;
+
 const instructionBlockClass =
-  "whitespace-pre-wrap break-words rounded-lg border-[0.5px] border-token-border bg-token-input-background px-3 py-2.5 font-mono text-xs leading-relaxed text-token-text-secondary";
+  "max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg border-[0.5px] border-token-border bg-token-input-background px-3 py-2.5 font-mono text-xs leading-relaxed text-token-text-secondary";
 
 /** The standing text, opened for editing and saved when the field loses focus. */
 export function StandingInstructionsRow() {
@@ -160,6 +174,16 @@ export function EffectiveInstructionsRow() {
         <section className="flex flex-col gap-1.5">
           <h3 className="text-xs font-medium text-token-text-primary">Your instructions</h3>
           <pre className={instructionBlockClass}>{renderPersonalInstructions(value)}</pre>
+        </section>
+        <section className="flex flex-col gap-1.5">
+          <h3 className="text-xs font-medium text-token-text-primary">Codex desktop app</h3>
+          <pre className={instructionBlockClass}>
+            {buildCodexDesktopDeveloperInstructions(REPRESENTATIVE_CODEX_THREAD)}
+          </pre>
+          <p className="text-xs text-token-description-foreground">
+            Shown for a representative Codex app thread with its tools on and default Git settings.
+            Each thread’s text varies with its tools and workspace.
+          </p>
         </section>
         <p className="text-xs text-token-description-foreground">
           Each chat also receives its runtime details, the Nodex CLI and any coordinator or managed
