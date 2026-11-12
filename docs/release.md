@@ -106,8 +106,12 @@ for Nightly and Rehearsal:
 - **iOS** builds on `macos-26`. Xcode archives with an ad hoc signature to
   preserve the target entitlements. The App Store Connect key authorizes
   cloud-managed App Store signing during export. The IPA must carry the
-  release's versions and the Nodex team for the app and its notification
-  extension, along with production push and the shared push keychain group.
+  release's versions and the Nodex team for the app and its notification, share,
+  and action extensions. The app needs production push, the app and notification
+  extension need the shared push keychain group, and the app and both share
+  targets need `group.app.jyu.nodex.mobile`. Register that App Group with the
+  Nodex team before export. Cloud-managed signing with `-allowProvisioningUpdates`
+  provisions the extension App IDs.
   The bundle certifies it under `testflight/` without publishing it.
 
 After a stable release is published, the direct `testflight` job uploads exactly

@@ -78,6 +78,7 @@ export default {
   plugins: [
     // Xcode mods run in reverse order; copy the app's final build settings after the other plugins.
     "./plugins/withNotificationDecryption.cjs",
+    ["./plugins/withShareTargets.cjs", { enabled: variant !== "tls-proof" }],
     "./plugins/withAndroidReleaseSigning.cjs",
     [
       "expo-build-properties",
