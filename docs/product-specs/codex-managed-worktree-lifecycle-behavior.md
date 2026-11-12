@@ -232,14 +232,18 @@ surface explains that disabling it transfers disk-usage management to the
 user, while enabling it prunes older managed worktrees only after snapshots
 make them restorable.
 
+Managed worktrees live under the Nodex home's `worktrees` directory by default.
+Every checkout is `<worktree root>/<id>/<repository>`. The checkout directory
+keeps the repository's name, so the project stays recognizable from the
+working directory; the short `<id>` directory above it is what Nodex allocates
+and cleans up. Worktrees created in earlier layouts remain managed.
+
 One inventory refresh sends one worker request for the selected host's current
-root. The worker recognizes legacy four-hex allocation parents and current
-`YYMMDD-HHMM-xxxxxxxx` allocation directories. Unrelated and symlinked
-two-level directories are ignored. A correctly named entry remains visible
-when its Git metadata is missing or damaged; its source repository is unknown
-so the user can still identify and remove residue. A missing or unreadable root
-produces an empty inventory, while an unexpected host/worker failure uses the
-surface's retryable load failure.
+root. Unrelated and symlinked directories are ignored. A correctly named entry
+remains visible when its Git metadata is missing or damaged. Its source
+repository is unknown so the user can still identify and remove residue. A
+missing or unreadable root produces an empty inventory, while an unexpected
+host/worker failure uses the surface's retryable load failure.
 
 The inventory groups physical worktrees by source repository and lists every
 associated Chat using bounded consumer metadata. Permanent Project roots

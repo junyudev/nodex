@@ -77,7 +77,7 @@ const makeFixture = (
       managedRoot: "/managed",
       handoffStagingRoot: "/handoffs",
       repositoryRoots: ["/repo"],
-      capabilities: ["prepare-handoff", "rollback-handoff"] as const,
+      capabilities: ["git-root", "prepare-handoff", "rollback-handoff"] as const,
       supportsFileTransfer: true,
     };
     const host: ExecutionHost = {
@@ -86,6 +86,7 @@ const makeFixture = (
       request: ((request: CodexWorktreeWorkerRequest) =>
         Effect.gen(function* () {
           requests.push(request);
+          if (request.operation === "git-root") return { root: "/repo" };
           if (options.failWorker)
             return yield* new ExecutionHostRuntimeError({
               operation: request.operation,
@@ -212,13 +213,17 @@ it.effect("waits for the durable allocation checkpoint before the worker can mov
         )
         .pipe(Effect.forkChild);
       const allocated = yield* Deferred.await(checkpoint);
-      assert.deepEqual(fixture.requests, []);
+      assert.match(allocated, /^\/managed\/[0-9a-f]{12}\/repo$/u);
+      assert.deepEqual(
+        fixture.requests.map((request) => request.operation),
+        ["git-root"],
+      );
       assert.strictEqual(fixture.newborns.size, 0);
       yield* Deferred.succeed(persisted, undefined);
       const prepared = yield* Fiber.join(preparing);
       assert.strictEqual(prepared.destination.managedWorktreePath, allocated);
       assert.isTrue(fixture.newborns.has(allocated));
-      assert.strictEqual(fixture.requests[0]?.operation, "prepare-handoff");
+      assert.strictEqual(fixture.requests[1]?.operation, "prepare-handoff");
     }),
   ),
 );
@@ -232,9 +237,9 @@ it.effect("uses the journal's Runtime title without acquiring native Thread meta
         threadId: "runtime-root",
         threadTitle: "Runtime conversation",
       });
-      assert.equal(f.requests[0]?.operation, "prepare-handoff");
-      if (f.requests[0]?.operation === "prepare-handoff")
-        assert.equal(f.requests[0].input.threadTitle, "Runtime conversation");
+      assert.equal(f.requests[1]?.operation, "prepare-handoff");
+      if (f.requests[1]?.operation === "prepare-handoff")
+        assert.equal(f.requests[1].input.threadTitle, "Runtime conversation");
     }),
   ),
 );
@@ -255,7 +260,10 @@ it.effect("a failed allocation checkpoint never dispatches a mutating worker", (
         .pipe(Effect.result);
       assert.strictEqual(result._tag, "Failure");
       if (result._tag === "Failure") assert.isTrue(result.failure.preparationRestored);
-      assert.deepEqual(fixture.requests, []);
+      assert.deepEqual(
+        fixture.requests.map((request) => request.operation),
+        ["git-root"],
+      );
       assert.strictEqual(fixture.newborns.size, 0);
     }),
   ),

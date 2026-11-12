@@ -27,7 +27,7 @@ import {
 import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
 import { ManagedWorktreeRetentionRuntime } from "./ManagedWorktreeRetentionRuntime";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
-import { allocateManagedWorktreePath } from "../codex/codex-managed-worktree-allocation";
+import { allocateHandoffWorktreePath } from "../codex/codex-managed-worktree-allocation";
 import { WorktreeWorkerError } from "../host-runtime/WorktreeWorkerRuntime";
 
 export interface ManagedWorktreeHandoffPreparation {
@@ -343,10 +343,31 @@ export const live: Layer.Layer<
           }
           const localSourcePrimary =
             entry.source.workspaceRoots[0] ?? entry.source.managedWorktreePath ?? checkoutRoot;
-          const allocatedWorktreePath = entry.source.managedWorktreePath
-            ? null
-            : allocateManagedWorktreePath(destinationHost.descriptor.managedRoot);
-          if (allocatedWorktreePath) {
+          let allocatedWorktreePath: string | null = null;
+          if (!entry.source.managedWorktreePath) {
+            const { root } = yield* destinationHost
+              .request({
+                operation: "git-root",
+                input: {
+                  requestId: `${entry.operationId}:source-root`,
+                  hostId: destinationHostId,
+                  cwd: localSourcePrimary,
+                },
+              })
+              .pipe(
+                Effect.mapError((cause) => error("resolve-source-root", entry.threadId, cause)),
+              );
+            if (!root) {
+              return yield* error(
+                "resolve-source-root",
+                entry.threadId,
+                new Error("The task has no source Git repository"),
+              );
+            }
+            allocatedWorktreePath = allocateHandoffWorktreePath(
+              destinationHost.descriptor.managedRoot,
+              root,
+            );
             yield* onProgress({
               phase: "create-new-worktree",
               status: "running",

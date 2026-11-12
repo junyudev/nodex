@@ -245,7 +245,7 @@ export async function exportCrossHostThreadHandoff(
   }
 }
 
-async function resolveDestinationRepository(
+export async function resolveHandoffDestinationRepository(
   candidates: readonly string[],
   sourceIdentity: CodexRepositoryIdentity,
   signal?: AbortSignal,
@@ -279,7 +279,7 @@ export async function importCrossHostThreadHandoff(
 ): Promise<CodexWorktreeWorkerImportHandoffResult> {
   const transferId = transferToken(input.transferId);
   const destinationRef = `${DESTINATION_REF_PREFIX}${transferId}`;
-  const repositoryPath = await resolveDestinationRepository(
+  const repositoryPath = await resolveHandoffDestinationRepository(
     input.candidateRepositoryPaths,
     input.repositoryIdentity,
     options.signal,

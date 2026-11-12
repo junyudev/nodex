@@ -27,6 +27,7 @@ import {
   cleanupCrossHostThreadHandoff,
   exportCrossHostThreadHandoff,
   importCrossHostThreadHandoff,
+  resolveHandoffDestinationRepository,
 } from "./codex-cross-host-thread-handoff-git";
 import {
   createCodexRequestCanceledError,
@@ -418,6 +419,17 @@ export async function executeCodexWorktreeWorkerOperation(
       return {
         operation: "export-handoff",
         value: await exportCrossHostThreadHandoff(request.input, options),
+      };
+    case "resolve-handoff-repository":
+      return {
+        operation: "resolve-handoff-repository",
+        value: {
+          repositoryPath: await resolveHandoffDestinationRepository(
+            request.input.candidateRepositoryPaths,
+            request.input.repositoryIdentity,
+            options.signal,
+          ),
+        },
       };
     case "import-handoff":
       return {

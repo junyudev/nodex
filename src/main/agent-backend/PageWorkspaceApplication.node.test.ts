@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, mkdir, writeFile, rm, realpath, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import * as Effect from "effect/Effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { fileURLToPath } from "node:url";
@@ -170,6 +171,7 @@ async function fixture(gitRepository = true, symlinkedRoot = false) {
               attach: () => Effect.void,
             };
           expect(workspace?.lifecycle).toBe("preparing");
+          expect(input.pageWorkspace?.worktreePath).toBe(workspace?.worktree_path);
           if (failCreation) {
             failCreation = false;
             throw new Error("Branch is checked out elsewhere");
@@ -436,14 +438,21 @@ it.effect("joins chats at launch without creating anything, then prepares one ch
       const f = yield* acquireFixture();
       const owner = yield* f.owner;
       // Admission records the intended checkout and returns: nothing waits on Git.
-      expect((yield* f.claim(owner))?.lease).toBeNull();
-      expect((yield* f.claim(owner, "two"))?.lease).toBeNull();
+      const claimed = yield* f.claim(owner);
+      expect(claimed?.lease).toBeNull();
+      const { workspace_id, worktree_path } = claimed!.workspace;
+      const id = createHash("sha256").update(workspace_id).digest("hex").slice(0, 12);
+      expect(worktree_path).toBe(join(dirname(f.repository), "trees", id, basename(f.repository)));
+      const joined = yield* f.claim(owner, "two");
+      expect(joined?.lease).toBeNull();
+      expect(joined?.workspace.worktree_path).toBe(worktree_path);
       expect(f.workspace?.lifecycle).toBe("preparing");
       expect(f.creations).toBe(0);
       const first = yield* owner.prepare(f.consumer());
       const second = yield* owner.prepare(f.consumer("two"));
       expect(f.workspace?.lifecycle).toBe("ready");
-      expect(second?.location.cwd).toBe(first?.location.cwd);
+      expect(first?.location.cwd).toBe(worktree_path);
+      expect(second?.location.cwd).toBe(worktree_path);
       expect(f.creations).toBe(1);
       // A later chat finds the checkout at admission.
       expect((yield* f.claim(owner, "three"))?.lease?.location.cwd).toBe(first?.location.cwd);

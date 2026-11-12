@@ -87,7 +87,12 @@ const makeHost = (input: {
       managedRoot: path.join(input.root, "worktrees"),
       handoffStagingRoot: stagingRoot,
       repositoryRoots: [input.repository],
-      capabilities: ["export-handoff", "import-handoff", "cleanup-transfer-handoff"],
+      capabilities: [
+        "export-handoff",
+        "resolve-handoff-repository",
+        "import-handoff",
+        "cleanup-transfer-handoff",
+      ],
       supportsFileTransfer: true,
     },
     request: workerRequest(input.id),
@@ -126,7 +131,7 @@ const relaySelectedRollout = (selection: "shared-home" | "account-home") =>
     );
     const bare = path.join(root, "origin.git");
     const source = path.join(root, "source", "repository");
-    const destination = path.join(root, "destination", "repository");
+    const destination = path.join(root, "destination", "renamed-repository");
     yield* Effect.tryPromise(() =>
       Promise.all([
         mkdir(path.dirname(source), { recursive: true }),
@@ -298,6 +303,12 @@ const relaySelectedRollout = (selection: "shared-home" | "account-home") =>
     }
     const prepared = yield* handoff.prepare(input);
 
+    const [allocation, name, ...nested] = path
+      .relative(path.join(root, "destination", "worktrees"), prepared.managedWorktreePath)
+      .split(path.sep);
+    assert.match(allocation!, /^[0-9a-f]{12}$/u);
+    assert.strictEqual(name, "renamed-repository");
+    assert.deepEqual(nested, []);
     assert.strictEqual(prepared.sourceRollout.path, sourceRolloutPath);
     assert.strictEqual(
       prepared.destinationRollout.path,

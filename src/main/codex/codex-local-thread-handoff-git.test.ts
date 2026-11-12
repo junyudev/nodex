@@ -141,7 +141,11 @@ describe("local thread handoff Git transaction", { timeout: GIT_TRANSACTION_BUDG
         sourceCwd: fixture.root,
         sourceWorkspaceRoot: fixture.root,
         sourceManagedWorktreePath: null,
-        allocatedWorktreePath: path.join(fixture.managedRoot, "260930-1200-deadbeef"),
+        allocatedWorktreePath: path.join(
+          fixture.managedRoot,
+          "deadbeef1234",
+          path.basename(fixture.root),
+        ),
         destinationCheckoutRoot: null,
       },
       {
@@ -214,7 +218,11 @@ describe("local thread handoff Git transaction", { timeout: GIT_TRANSACTION_BUDG
         sourceCwd: fixture.root,
         sourceWorkspaceRoot: fixture.root,
         sourceManagedWorktreePath: null,
-        allocatedWorktreePath: path.join(fixture.managedRoot, "260930-1200-deadbeef"),
+        allocatedWorktreePath: path.join(
+          fixture.managedRoot,
+          "deadbeef1234",
+          path.basename(fixture.root),
+        ),
         destinationCheckoutRoot: null,
       },
       options(),
@@ -286,7 +294,11 @@ describe("local thread handoff Git transaction", { timeout: GIT_TRANSACTION_BUDG
         sourceCwd: fixture.root,
         sourceWorkspaceRoot: fixture.root,
         sourceManagedWorktreePath: null,
-        allocatedWorktreePath: path.join(fixture.managedRoot, "260930-1200-deadbeef"),
+        allocatedWorktreePath: path.join(
+          fixture.managedRoot,
+          "deadbeef1234",
+          path.basename(fixture.root),
+        ),
         destinationCheckoutRoot: null,
       },
       options(),
@@ -334,7 +346,7 @@ describe("local thread handoff Git transaction", { timeout: GIT_TRANSACTION_BUDG
     const fixture = createRepository();
     dirtyRepository(fixture.root);
     git(fixture.root, "checkout", "--detach");
-    const destination = path.join(fixture.managedRoot, "260930-1200-deadbeef");
+    const destination = path.join(fixture.managedRoot, "deadbeef1234", path.basename(fixture.root));
     await expect(
       prepareLocalThreadHandoff(
         {
@@ -361,7 +373,7 @@ describe("local thread handoff Git transaction", { timeout: GIT_TRANSACTION_BUDG
   test("interrupted restoration keeps recovery uncertain and retains the destination", async () => {
     const fixture = createRepository();
     dirtyRepository(fixture.root);
-    const destination = path.join(fixture.managedRoot, "260930-1200-deadbeef");
+    const destination = path.join(fixture.managedRoot, "deadbeef1234", path.basename(fixture.root));
     const controller = new AbortController();
     await expect(
       prepareLocalThreadHandoff(
@@ -394,7 +406,7 @@ describe("local thread handoff Git transaction", { timeout: GIT_TRANSACTION_BUDG
   test("an error after applying changes never deletes the only prepared working copy", async () => {
     const fixture = createRepository();
     dirtyRepository(fixture.root);
-    const destination = path.join(fixture.managedRoot, "260930-1200-deadbeef");
+    const destination = path.join(fixture.managedRoot, "deadbeef1234", path.basename(fixture.root));
     const result = await prepareLocalThreadHandoff(
       {
         requestId: "after-apply",

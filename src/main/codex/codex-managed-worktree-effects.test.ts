@@ -6,16 +6,20 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import {
   inspectManagedWorktree,
-  isCurrentManagedWorktreeDirectory,
-  isLegacyManagedWorktreeParent,
   listManagedWorktreesOnHost,
-  managedWorktreeGitRootContaining,
   removeRetainedManagedWorktree,
   resolveManagedWorktreeId,
   resolveManagedWorktreeSnapshotRef,
   restoreManagedWorktree,
   snapshotManagedWorktree,
 } from "./codex-managed-worktree-effects";
+
+import {
+  allocateHandoffWorktreePath,
+  isManagedWorktreeAllocationId,
+  isSupersededFlatWorktreeDirectory,
+  managedWorktreeGitRootContaining,
+} from "./codex-managed-worktree-allocation";
 
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];
@@ -67,44 +71,47 @@ function snapshotInput(input: Awaited<ReturnType<typeof fixture>>) {
 
 describe("managed worktree data-safety effects", () => {
   test("recognizes only the two supported allocation layouts", () => {
-    expect(isLegacyManagedWorktreeParent("a1B2")).toBe(true);
-    expect(isLegacyManagedWorktreeParent("a1b23")).toBe(false);
-    expect(isCurrentManagedWorktreeDirectory("260829-1430-a1B2c3D4")).toBe(true);
-    expect(isCurrentManagedWorktreeDirectory("20260829-1430-a1b2c3d4")).toBe(false);
-    expect(isCurrentManagedWorktreeDirectory("260829-143-a1b2c3d4")).toBe(false);
+    expect(isManagedWorktreeAllocationId("a1B2")).toBe(true);
+    expect(isManagedWorktreeAllocationId("abcdef01234A")).toBe(true);
+    expect(isManagedWorktreeAllocationId("a1b23")).toBe(false);
+    expect(isSupersededFlatWorktreeDirectory("260829-1430-a1B2c3D4")).toBe(true);
+    expect(isSupersededFlatWorktreeDirectory("20260829-1430-a1b2c3d4")).toBe(false);
+    expect(isSupersededFlatWorktreeDirectory("260829-143-a1b2c3d4")).toBe(false);
   });
 
-  test("finds the allocation that contains a working directory", () => {
-    expect(
-      managedWorktreeGitRootContaining(
-        path.resolve("/managed"),
-        path.resolve("/managed/260829-1430-a1b2c3d4/app"),
-      ),
-    ).toBe(path.resolve("/managed/260829-1430-a1b2c3d4"));
-    expect(
-      managedWorktreeGitRootContaining(
-        path.resolve("/managed"),
-        path.resolve("/managed/a1b2/repository/app"),
-      ),
-    ).toBe(path.resolve("/managed/a1b2/repository"));
-    expect(
-      managedWorktreeGitRootContaining(path.resolve("/managed"), path.resolve("/managed")),
-    ).toBeNull();
-    expect(
-      managedWorktreeGitRootContaining(path.resolve("/managed"), path.resolve("/managed/a1b2")),
-    ).toBeNull();
-    expect(
-      managedWorktreeGitRootContaining(
-        path.resolve("/managed"),
-        path.resolve("/managed/notes/app"),
-      ),
-    ).toBeNull();
-    expect(
-      managedWorktreeGitRootContaining(
-        path.resolve("/managed"),
-        path.resolve("/elsewhere/260829-1430-a1b2c3d4"),
-      ),
-    ).toBeNull();
+  test.each([
+    ["260829-1430-a1b2c3d4/app", "260829-1430-a1b2c3d4"],
+    ["a1b2/repository-0123456789ab/app", "a1b2/repository-0123456789ab"],
+    ["a1b2/repository/app", "a1b2/repository"],
+    ["abcdef012345/repository/packages/app", "abcdef012345/repository"],
+    ["", null],
+    ["a1b2", null],
+    ["a1b23/repository/app", null],
+    ["notes/app", null],
+    ["../elsewhere/260829-1430-a1b2c3d4", null],
+  ])("finds the managed checkout containing %s", (location, expected) => {
+    const managedRoot = path.resolve("/managed");
+    expect(managedWorktreeGitRootContaining(managedRoot, path.resolve(managedRoot, location))).toBe(
+      expected === null ? null : path.join(managedRoot, expected),
+    );
+  });
+
+  test("constructs handoff paths using each execution host's path syntax", () => {
+    const winRoot = String.raw`D:\Nodex home\worktrees`;
+    const winRepository = String.raw`C:\projects\renamed repo`;
+    const windows = path.win32.relative(
+      winRoot,
+      allocateHandoffWorktreePath(winRoot, winRepository),
+    );
+    const posix = path.posix.relative(
+      "/managed",
+      allocateHandoffWorktreePath("/managed", winRepository),
+    );
+    expect(windows.split(path.win32.sep)).toEqual([
+      expect.stringMatching(/^[0-9a-f]{12}$/u),
+      "renamed repo",
+    ]);
+    expect(posix.split("/")).toEqual([expect.stringMatching(/^[0-9a-f]{12}$/u), "renamed repo"]);
   });
 
   test("snapshots the final materialized tree without mutating the real index", async () => {
@@ -304,16 +311,23 @@ describe("managed worktree data-safety effects", () => {
     ).toContain(resolveManagedWorktreeSnapshotRef(failing.worktreeGitRoot));
   });
 
-  test("lists only supported two-level layouts and retains unresolved residue", async () => {
+  test("lists current and superseded layouts and retains unresolved residue", async () => {
     const input = await fixture();
     await mkdir(path.join(input.managedRoot, "token", "not-a-repository"), {
       recursive: true,
     });
-    const legacyResidue = path.join(input.managedRoot, "c0de", "damaged");
-    const currentResidue = path.join(input.managedRoot, "bucket", "260829-1430-a1b2c3d4");
-    await mkdir(legacyResidue, { recursive: true });
-    await mkdir(currentResidue, { recursive: true });
-    await symlink(legacyResidue, path.join(input.managedRoot, "c0de", "linked-residue"), "dir");
+    const oldWorkspace = path.join(input.managedRoot, "c0de", "repo-abcdef012345");
+    const flatWorktree = path.join(input.managedRoot, "260829-1430-a1b2c3d4");
+    const pageWorkspace = path.join(input.managedRoot, "123456abcdef", "repo");
+    for (const entry of [
+      oldWorkspace,
+      flatWorktree,
+      pageWorkspace,
+      path.join(input.managedRoot, "a1b23", "repo"),
+    ]) {
+      await mkdir(entry, { recursive: true });
+    }
+    await symlink(oldWorkspace, path.join(input.managedRoot, "c0de", "linked-residue"), "dir");
     const result = await listManagedWorktreesOnHost({
       requestId: "list:1",
       hostId: "local",
@@ -327,17 +341,22 @@ describe("managed worktree data-safety effects", () => {
           ownerThreadId: null,
           ownerReadFailed: false,
         }),
-        expect.objectContaining({ worktreeGitRoot: legacyResidue, repositoryPath: null }),
-        expect.objectContaining({ worktreeGitRoot: currentResidue, repositoryPath: null }),
+        expect.objectContaining({ worktreeGitRoot: oldWorkspace, repositoryPath: null }),
+        expect.objectContaining({ worktreeGitRoot: flatWorktree, repositoryPath: null }),
+        expect.objectContaining({ worktreeGitRoot: pageWorkspace, repositoryPath: null }),
       ]),
     );
-    expect(result.entries).toHaveLength(3);
+    expect(result.entries).toHaveLength(4);
   });
 
-  test("removes an exact unresolved residue under best-effort policy", async () => {
+  test.each([
+    ["123456abcdef/repo", "123456abcdef"],
+    ["c0de/repo-abcdef012345", "c0de"],
+    ["260829-1234-deadbeef", null],
+  ])("removes unresolved residue at %s under best-effort policy", async (relative, allocation) => {
     const root = await mkdtemp(path.join(tmpdir(), "nodex-managed-residue-remove-"));
     roots.push(root);
-    const worktreeGitRoot = path.join(root, "bucket", "260829-1234-deadbeef");
+    const worktreeGitRoot = path.join(root, relative);
     await mkdir(worktreeGitRoot, { recursive: true });
     await writeFile(path.join(worktreeGitRoot, "partial.txt"), "incomplete creation");
 
@@ -354,6 +373,12 @@ describe("managed worktree data-safety effects", () => {
     expect(result.snapshot).toBeNull();
     expect(result.warnings.length).toBeGreaterThan(0);
     await expect(statDirectory(worktreeGitRoot)).rejects.toMatchObject({ code: "ENOENT" });
+    if (allocation) {
+      await expect(statDirectory(path.join(root, allocation))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    }
+    await expect(statDirectory(root)).resolves.toBe(true);
   });
 
   test("treats a missing current root as an empty inventory", async () => {

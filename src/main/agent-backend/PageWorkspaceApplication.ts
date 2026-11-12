@@ -11,10 +11,8 @@ import { createOperationId, createStableOperationId } from "../core-runtime/oper
 import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { ManagedWorktreeRuntime } from "../codex-application/ManagedWorktreeRuntime";
 import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
-import {
-  pageWorkspaceWorktreePath,
-  resolveManagedWorktreeDefaultStartingState,
-} from "../codex/git-worktree-service";
+import { pageWorkspaceWorktreePath } from "../codex/codex-managed-worktree-allocation";
+import { resolveManagedWorktreeDefaultStartingState } from "../codex/git-worktree-service";
 import { readGhPrStatus } from "../github-pr-service";
 import { readActionableErrorMessage } from "../actionable-error-message";
 import { NativeSessionWorkspace } from "./NativeSessionWorkspace";
@@ -179,7 +177,9 @@ export const make = Effect.gen(function* () {
               title: page.title,
             }),
           base_commit_oid: base,
-          worktree_path: pageWorkspaceWorktreePath(host.descriptor.managedRoot, root, workspaceId),
+          worktree_path:
+            known?.worktree_path ??
+            pageWorkspaceWorktreePath(host.descriptor.managedRoot, root, workspaceId),
         },
         // A repeated launch claims once; a later preparation of the same Workspace claims anew.
         launch
@@ -226,7 +226,7 @@ export const make = Effect.gen(function* () {
     const claimed = joined.workspace;
     if (claimed.lifecycle === "ready" && claimed.worktree_path)
       return yield* lease(consumer, joined, claimed.worktree_path);
-    if (claimed.lifecycle !== "preparing")
+    if (claimed.lifecycle !== "preparing" || !claimed.worktree_path)
       return yield* new PageWorkspaceError({ cause: new Error("Page Workspace is unavailable") });
     const created = yield* native
       .prepare({
@@ -243,6 +243,7 @@ export const make = Effect.gen(function* () {
           operationId: claimed.allocation_operation_id,
           branchName: claimed.branch_name,
           baseCommitOid: claimed.base_commit_oid,
+          worktreePath: claimed.worktree_path,
         },
       })
       .pipe(
@@ -376,6 +377,10 @@ export const make = Effect.gen(function* () {
       if (value.lifecycle === "preparing") {
         yield* Effect.scoped(
           Effect.gen(function* () {
+            if (!value.worktree_path)
+              return yield* new PageWorkspaceError({
+                cause: new Error("Page Workspace has no claimed checkout path"),
+              });
             const page = (yield* readPage(value.page_id)).page;
             const lease = yield* native.prepare({
               projectId: value.project_id,
@@ -386,12 +391,12 @@ export const make = Effect.gen(function* () {
               sourceRoots: [value.repository_root],
               runInTarget: "newWorktree",
               operationId: value.allocation_operation_id,
-              pageWorkspacePath: value.worktree_path!,
               pageWorkspace: {
                 workspaceId: value.workspace_id,
                 operationId: value.allocation_operation_id,
                 branchName: value.branch_name,
                 baseCommitOid: value.base_commit_oid,
+                worktreePath: value.worktree_path,
               },
             });
             if (!lease.branchName || !lease.location.managedWorktreePath)

@@ -30,7 +30,7 @@ import {
   CODEX_WORKTREE_WORKER_OPERATIONS,
 } from "../codex/codex-worktree-worker-protocol";
 
-export const CODEX_WORKTREE_WORKER_PROTOCOL_VERSION = 8 as const;
+export const CODEX_WORKTREE_WORKER_PROTOCOL_VERSION = 9 as const;
 
 export type CodexWorktreeWorkerHostMessage =
   | {
@@ -176,10 +176,12 @@ function isCreateInput(value: unknown): value is CodexWorktreeWorkerCreateInput 
           "operationId",
           "branchName",
           "baseCommitOid",
+          "worktreePath",
         ]) &&
         isNonEmptyString(value.pageWorkspace.workspaceId, 512) &&
         isNonEmptyString(value.pageWorkspace.operationId, 512) &&
         isNonEmptyString(value.pageWorkspace.branchName, 256) &&
+        isAbsolutePath(value.pageWorkspace.worktreePath) &&
         typeof value.pageWorkspace.baseCommitOid === "string" &&
         /^[a-f0-9]{40,64}$/.test(value.pageWorkspace.baseCommitOid))) &&
     (value.mode === undefined || value.mode === "autoBranch" || value.mode === "detachedHead") &&
@@ -535,6 +537,22 @@ function isRequest(value: unknown): value is CodexWorktreeWorkerRequest {
       return isCleanupHandoffInput(value.input);
     case "export-handoff":
       return isExportHandoffInput(value.input);
+    case "resolve-handoff-repository": {
+      const input = value.input;
+      return (
+        isRecord(input) &&
+        hasOnlyKeys(input, [
+          "requestId",
+          "hostId",
+          "repositoryIdentity",
+          "candidateRepositoryPaths",
+        ]) &&
+        isIdentity(input) &&
+        isRepositoryIdentity(input.repositoryIdentity) &&
+        isCandidateRepositoryPaths(input.candidateRepositoryPaths) &&
+        input.candidateRepositoryPaths.length > 0
+      );
+    }
     case "import-handoff":
       return isImportHandoffInput(value.input);
     case "cleanup-transfer-handoff":
@@ -762,6 +780,8 @@ function isSuccess(
         Number.isSafeInteger(result.bundle.size) &&
         Number(result.bundle.size) >= 0
       );
+    case "resolve-handoff-repository":
+      return isRecord(result) && isExecutionHostAbsolutePath(result.repositoryPath);
     case "import-handoff":
       return (
         isRecord(result) &&

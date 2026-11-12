@@ -61,6 +61,7 @@ const WORKTREE_CAPABILITIES = [
   "rollback-handoff",
   "cleanup-handoff",
   "export-handoff",
+  "resolve-handoff-repository",
   "import-handoff",
   "cleanup-transfer-handoff",
 ] as const satisfies readonly CodexWorktreeWorkerOperation[];

@@ -17,6 +17,7 @@ export const CODEX_WORKTREE_WORKER_OPERATIONS = [
   "rollback-handoff",
   "cleanup-handoff",
   "export-handoff",
+  "resolve-handoff-repository",
   "import-handoff",
   "cleanup-transfer-handoff",
 ] as const;
@@ -79,6 +80,7 @@ export interface CodexWorktreeWorkerCreateInput extends CodexWorktreeWorkerReque
     readonly operationId: string;
     readonly branchName: string;
     readonly baseCommitOid: string;
+    readonly worktreePath: string;
   };
   readonly mode?: WorktreeStartMode;
   readonly startingState: CodexPendingWorktreeStartingState | null;
@@ -297,6 +299,11 @@ export interface CodexWorktreeWorkerExportHandoffResult {
   readonly bundle: CodexExecutionHostFileDescriptor;
 }
 
+export interface CodexWorktreeWorkerResolveHandoffRepositoryInput extends CodexWorktreeWorkerRequestIdentity {
+  readonly repositoryIdentity: CodexRepositoryIdentity;
+  readonly candidateRepositoryPaths: readonly string[];
+}
+
 export interface CodexWorktreeWorkerImportHandoffInput extends CodexWorktreeWorkerRequestIdentity {
   readonly transferId: string;
   readonly bundlePath: string;
@@ -370,6 +377,10 @@ export type CodexWorktreeWorkerRequest =
       readonly input: CodexWorktreeWorkerExportHandoffInput;
     }
   | {
+      readonly operation: "resolve-handoff-repository";
+      readonly input: CodexWorktreeWorkerResolveHandoffRepositoryInput;
+    }
+  | {
       readonly operation: "import-handoff";
       readonly input: CodexWorktreeWorkerImportHandoffInput;
     }
@@ -397,6 +408,10 @@ export type CodexWorktreeWorkerSuccess =
       readonly value: CodexWorktreeWorkerCleanupHandoffResult;
     }
   | { readonly operation: "export-handoff"; readonly value: CodexWorktreeWorkerExportHandoffResult }
+  | {
+      readonly operation: "resolve-handoff-repository";
+      readonly value: { readonly repositoryPath: string };
+    }
   | { readonly operation: "import-handoff"; readonly value: CodexWorktreeWorkerImportHandoffResult }
   | {
       readonly operation: "cleanup-transfer-handoff";

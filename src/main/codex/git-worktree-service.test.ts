@@ -136,7 +136,7 @@ describe("managed worktree process ownership", () => {
       await vi.importActual<typeof import("./codex-git-command")>("./codex-git-command");
     const { repositoryPath, root } = await createRepository();
     const managedRoot = path.join(root, "managed");
-    const allocatedWorktreePath = path.join(managedRoot, "owned", "repository");
+    const allocatedWorktreePath = path.join(managedRoot, "cafe", "repository");
     const failure = new Error("Worktree add acknowledgement failed", {
       cause: new WindowsProcessTreeReleaseError(1234, new Error("Native wait failed")),
     });
@@ -599,6 +599,8 @@ describe("createManagedWorktree starting state", () => {
     const { repositoryPath, root } = await createRepository();
     const nodexHome = path.join(root, "server-uuid-path");
     await mkdir(path.join(nodexHome, "worktrees", "a1b2", "repository"), { recursive: true });
+    const sibling = path.join(nodexHome, "worktrees", "c3d4", "another-repository");
+    await mkdir(sibling, { recursive: true });
     cryptoBoundary.randomUUID
       .mockReturnValueOnce("a1b2c3d4-1111-4111-8111-111111111111")
       .mockReturnValueOnce("c3d4e5f6-2222-4222-8222-222222222222");
@@ -613,6 +615,8 @@ describe("createManagedWorktree starting state", () => {
     });
 
     expect(result.worktreeGitRoot).toBe(path.join(nodexHome, "worktrees", "c3d4", "repository"));
+    await removeManagedWorktree(result.worktreeGitRoot);
+    expect(existsSync(sibling)).toBe(true);
   });
 
   test("publishes allocated roots before Git creation and cleans them when canceled", async () => {
@@ -1325,52 +1329,66 @@ describe("createManagedWorktree cancellation", () => {
 });
 
 describe("Page Workspaces", () => {
-  test("creates a clean attached branch, avoids collisions, rejoins preparation and restores the same branch", async () => {
-    const { repositoryPath, root } = await createRepository();
-    const base = (await runCommand("git", ["rev-parse", "HEAD"], repositoryPath)).stdout.trim();
-    await runCommand("git", ["branch", "nodex-12-fix-login"], repositoryPath);
-    await writeFile(path.join(repositoryPath, "README.md"), "dirty source\n");
-    const input = {
-      repositoryPath,
-      nodexHome: path.join(root, "home"),
-      managedRoot: path.join(root, "trees"),
-      projectId: "project",
-      targetId: "one",
-      threadTitle: "Fix login",
-      mode: "detachedHead" as const,
-      pageWorkspace: {
-        workspaceId: "workspace:one",
-        operationId: "allocation:one",
-        branchName: "nodex-12-fix-login",
-        baseCommitOid: base,
-      },
-    };
-    const created = await createManagedWorktree(input);
-    expect(created.branchName).toBe("nodex-12-fix-login-2");
-    expect(
-      (
-        await runCommand("git", ["branch", "--show-current"], created.worktreeGitRoot)
-      ).stdout.trim(),
-    ).toBe(created.branchName);
-    expect(await readFile(path.join(created.worktreeGitRoot, "README.md"), "utf8")).toBe("base\n");
-    const retry = await createManagedWorktree(input);
-    expect(retry).toEqual(created);
-    await writeFile(path.join(created.worktreeGitRoot, "feature.txt"), "work\n");
-    await runCommand("git", ["add", "feature.txt"], created.worktreeGitRoot);
-    await runCommand("git", ["commit", "-m", "feat: work"], created.worktreeGitRoot);
-    const tip = (
-      await runCommand("git", ["rev-parse", "HEAD"], created.worktreeGitRoot)
-    ).stdout.trim();
-    await removeManagedWorktree(created.worktreeGitRoot);
-    const reopened = await createManagedWorktree({
-      ...input,
-      pageWorkspace: { ...input.pageWorkspace, branchName: created.branchName! },
-    });
-    expect(reopened.branchName).toBe(created.branchName);
-    expect(
-      (await runCommand("git", ["rev-parse", "HEAD"], reopened.worktreeGitRoot)).stdout.trim(),
-    ).toBe(tip);
-  });
+  test.each([
+    ["current", "abcdef012345", "repository"],
+    ["older", "c0de", "repository-abcdef012345"],
+  ])(
+    "prepares and reopens a claimed %s checkout with the same branch",
+    async (_layout, id, name) => {
+      const { repositoryPath, root } = await createRepository();
+      const base = (await runCommand("git", ["rev-parse", "HEAD"], repositoryPath)).stdout.trim();
+      await runCommand("git", ["branch", "nodex-12-fix-login"], repositoryPath);
+      await writeFile(path.join(repositoryPath, "README.md"), "dirty source\n");
+      const managedRoot = path.join(root, "trees");
+      const worktreePath = path.join(managedRoot, id, name);
+      const input = {
+        repositoryPath,
+        nodexHome: path.join(root, "home"),
+        managedRoot,
+        projectId: "project",
+        targetId: "one",
+        threadTitle: "Fix login",
+        mode: "detachedHead" as const,
+        pageWorkspace: {
+          workspaceId: "workspace:one",
+          operationId: "allocation:one",
+          branchName: "nodex-12-fix-login",
+          baseCommitOid: base,
+          worktreePath,
+        },
+      };
+      const created = await createManagedWorktree(input);
+      expect(created.worktreeGitRoot).toBe(worktreePath);
+      expect(created.branchName).toBe("nodex-12-fix-login-2");
+      expect(
+        (
+          await runCommand("git", ["branch", "--show-current"], created.worktreeGitRoot)
+        ).stdout.trim(),
+      ).toBe(created.branchName);
+      expect(await readFile(path.join(created.worktreeGitRoot, "README.md"), "utf8")).toBe(
+        "base\n",
+      );
+      const retry = await createManagedWorktree(input);
+      expect(retry).toEqual(created);
+      await writeFile(path.join(created.worktreeGitRoot, "feature.txt"), "work\n");
+      await runCommand("git", ["add", "feature.txt"], created.worktreeGitRoot);
+      await runCommand("git", ["commit", "-m", "feat: work"], created.worktreeGitRoot);
+      const tip = (
+        await runCommand("git", ["rev-parse", "HEAD"], created.worktreeGitRoot)
+      ).stdout.trim();
+      await removeManagedWorktree(created.worktreeGitRoot);
+      expect(existsSync(path.dirname(worktreePath))).toBe(false);
+      const reopened = await createManagedWorktree({
+        ...input,
+        pageWorkspace: { ...input.pageWorkspace, branchName: created.branchName! },
+      });
+      expect(reopened.worktreeGitRoot).toBe(worktreePath);
+      expect(reopened.branchName).toBe(created.branchName);
+      expect(
+        (await runCommand("git", ["rev-parse", "HEAD"], reopened.worktreeGitRoot)).stdout.trim(),
+      ).toBe(tip);
+    },
+  );
 
   test("reconciles a crash after atomic branch reservation and before checkout", async () => {
     const { repositoryPath, root } = await createRepository();
@@ -1387,6 +1405,7 @@ describe("Page Workspaces", () => {
         operationId: "allocation:crash",
         branchName: "nodex-42-retry",
         baseCommitOid: base,
+        worktreePath: path.join(root, "trees", "012345abcdef", "repository"),
       },
     };
     const command = vi.mocked(runCodexGitCommand);

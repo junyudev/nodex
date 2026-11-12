@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -31,7 +31,7 @@ async function fixture(): Promise<{
   readonly source: string;
   readonly destination: string;
 }> {
-  const root = await mkdtemp(path.join(tmpdir(), "nodex-cross-host-handoff-"));
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), "nodex-cross-host-handoff-")));
   roots.push(root);
   const bare = path.join(root, "origin.git");
   const source = path.join(root, "source host", "repo");
@@ -98,7 +98,12 @@ describe("cross-host thread handoff Git transaction", () => {
         repositoryIdentity: exported.repositoryIdentity,
         candidateRepositoryPaths: [destination],
         managedRoot: path.join(root, "destination worktrees"),
-        allocatedWorktreePath: path.join(root, "destination worktrees", "260930-1200-deadbeef"),
+        allocatedWorktreePath: path.join(
+          root,
+          "destination worktrees",
+          "deadbeef1234",
+          path.basename(destination),
+        ),
         nodexHome: path.join(root, "destination nodex"),
         projectId: "project",
         threadId: "thread",
@@ -165,6 +170,9 @@ describe("cross-host thread handoff Git transaction", () => {
     await expect(
       git(destination, "rev-parse", "--verify", imported.temporaryRef),
     ).rejects.toThrow();
+    await expect(
+      readFile(path.join(imported.managedWorktreePath, "tracked.txt")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
     await expect(readFile(imported.destinationRolloutPath)).rejects.toMatchObject({
       code: "ENOENT",
     });
@@ -207,7 +215,7 @@ describe("cross-host thread handoff Git transaction", () => {
           repositoryIdentity: exported.repositoryIdentity,
           candidateRepositoryPaths: [unrelated],
           managedRoot: path.join(root, "worktrees"),
-          allocatedWorktreePath: path.join(root, "worktrees", "260930-1200-deadbeef"),
+          allocatedWorktreePath: path.join(root, "worktrees", "deadbeef1234", "unrelated"),
           nodexHome: path.join(root, "nodex"),
           projectId: "project",
           threadId: "thread",

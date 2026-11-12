@@ -29,6 +29,11 @@ import {
 import { readWorktreeEnvironmentDefinition } from "./worktree-environment-service";
 import { runCodexWorktreeCleanupScript } from "./codex-worktree-shell-environment";
 
+import {
+  isManagedWorktreeAllocationId,
+  isSupersededFlatWorktreeDirectory,
+} from "./codex-managed-worktree-allocation";
+
 const SNAPSHOT_REF_PREFIX = "refs/codex/snapshots/";
 const LOCAL_ENVIRONMENT_CONFIG_KEY = "codex.localEnvironmentConfigPath";
 const NO_LOCAL_ENVIRONMENT = "__none__";
@@ -63,32 +68,6 @@ export function resolveManagedWorktreeSnapshotRef(worktreePath: string): string 
   return `${SNAPSHOT_REF_PREFIX}${resolveManagedWorktreeId(worktreePath)}`;
 }
 
-const LEGACY_MANAGED_PARENT_PATTERN = /^[0-9a-f]{4}$/iu;
-const CURRENT_MANAGED_WORKTREE_PATTERN = /^\d{6}-\d{4}-[0-9a-f]{8}$/iu;
-
-export function isLegacyManagedWorktreeParent(name: string): boolean {
-  return LEGACY_MANAGED_PARENT_PATTERN.test(name);
-}
-
-export function isCurrentManagedWorktreeDirectory(name: string): boolean {
-  return CURRENT_MANAGED_WORKTREE_PATTERN.test(name);
-}
-
-/** The managed worktree that contains `location`, read from the managed root's layout. */
-export function managedWorktreeGitRootContaining(
-  managedRoot: string,
-  location: string,
-): string | null {
-  const relative = path.relative(path.resolve(managedRoot), path.resolve(location));
-  if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`)) return null;
-  if (path.isAbsolute(relative)) return null;
-  const [first, second] = relative.split(path.sep);
-  if (isCurrentManagedWorktreeDirectory(first!)) return path.join(managedRoot, first!);
-  if (second && isLegacyManagedWorktreeParent(first!))
-    return path.join(managedRoot, first!, second);
-  return null;
-}
-
 function assertExactManagedWorktreePath(worktreeGitRoot: string): string {
   const resolvedWorktreeRoot = path.resolve(worktreeGitRoot.trim());
   const filesystemRoot = path.parse(resolvedWorktreeRoot).root;
@@ -98,8 +77,8 @@ function assertExactManagedWorktreePath(worktreeGitRoot: string): string {
   const parentName = path.basename(path.dirname(resolvedWorktreeRoot));
   const targetName = path.basename(resolvedWorktreeRoot);
   if (
-    !isLegacyManagedWorktreeParent(parentName) &&
-    !isCurrentManagedWorktreeDirectory(targetName)
+    !isManagedWorktreeAllocationId(parentName) &&
+    !isSupersededFlatWorktreeDirectory(targetName)
   ) {
     throw new Error("Managed worktree target does not match an allocation layout");
   }
@@ -510,46 +489,50 @@ export async function listManagedWorktreesOnHost(
   signal?: AbortSignal,
 ): Promise<CodexWorktreeWorkerListResult> {
   const managedRoot = path.resolve(input.managedRoot);
-  const tokenEntries = await readdir(managedRoot, { withFileTypes: true }).catch(() => []);
+  const rootEntries = await readdir(managedRoot, { withFileTypes: true }).catch(() => []);
   const entries: CodexWorktreeWorkerListResult["entries"][number][] = [];
-  for (const tokenEntry of tokenEntries) {
-    if (!tokenEntry.isDirectory() || tokenEntry.isSymbolicLink()) continue;
-    const tokenPath = path.join(managedRoot, tokenEntry.name);
-    const worktreeEntries = await readdir(tokenPath, { withFileTypes: true }).catch(() => []);
-    for (const worktreeEntry of worktreeEntries) {
-      throwIfCodexRequestAborted(signal);
-      if (!worktreeEntry.isDirectory() || worktreeEntry.isSymbolicLink()) continue;
-      if (
-        !isLegacyManagedWorktreeParent(tokenEntry.name) &&
-        !isCurrentManagedWorktreeDirectory(worktreeEntry.name)
-      ) {
-        continue;
-      }
-      if (entries.length >= MAX_LISTED_WORKTREES) {
-        throw new Error("Managed worktree inventory exceeds its host bound");
-      }
-      const worktreeGitRoot = path.join(tokenPath, worktreeEntry.name);
-      const [repositoryPath, metadata, owner] = await joinCodexGitOperations([
-        resolveRepositoryPath(worktreeGitRoot, signal).catch((error) => {
+
+  const append = async (worktreeGitRoot: string) => {
+    throwIfCodexRequestAborted(signal);
+    if (entries.length >= MAX_LISTED_WORKTREES) {
+      throw new Error("Managed worktree inventory exceeds its host bound");
+    }
+    const [repositoryPath, metadata, owner] = await joinCodexGitOperations([
+      resolveRepositoryPath(worktreeGitRoot, signal).catch((error) => {
+        throwIfCodexGitRecoveryUnsafe(error, signal);
+        return null;
+      }),
+      stat(worktreeGitRoot).catch(() => null),
+      readManagedWorktreeOwnerThread(worktreeGitRoot, signal).then(
+        (ownerThreadId) => ({ ownerThreadId, ownerReadFailed: false }),
+        (error) => {
           throwIfCodexGitRecoveryUnsafe(error, signal);
-          return null;
-        }),
-        stat(worktreeGitRoot).catch(() => null),
-        readManagedWorktreeOwnerThread(worktreeGitRoot, signal).then(
-          (ownerThreadId) => ({ ownerThreadId, ownerReadFailed: false }),
-          (error) => {
-            throwIfCodexGitRecoveryUnsafe(error, signal);
-            return { ownerThreadId: null, ownerReadFailed: true };
-          },
-        ),
-      ]);
-      entries.push({
-        worktreeGitRoot,
-        repositoryPath,
-        createdAtMs: metadata?.birthtimeMs ?? null,
-        ownerThreadId: owner.ownerThreadId,
-        ownerReadFailed: owner.ownerReadFailed,
-      });
+          return { ownerThreadId: null, ownerReadFailed: true };
+        },
+      ),
+    ]);
+    entries.push({
+      worktreeGitRoot,
+      repositoryPath,
+      createdAtMs: metadata?.birthtimeMs ?? null,
+      ownerThreadId: owner.ownerThreadId,
+      ownerReadFailed: owner.ownerReadFailed,
+    });
+  };
+
+  for (const rootEntry of rootEntries) {
+    throwIfCodexRequestAborted(signal);
+    if (!rootEntry.isDirectory() || rootEntry.isSymbolicLink()) continue;
+    const entryPath = path.join(managedRoot, rootEntry.name);
+    if (isSupersededFlatWorktreeDirectory(rootEntry.name)) {
+      await append(entryPath);
+      continue;
+    }
+    if (!isManagedWorktreeAllocationId(rootEntry.name)) continue;
+    const worktrees = await readdir(entryPath, { withFileTypes: true }).catch(() => []);
+    for (const worktree of worktrees) {
+      if (!worktree.isDirectory() || worktree.isSymbolicLink()) continue;
+      await append(path.join(entryPath, worktree.name));
     }
   }
   return { entries };

@@ -101,6 +101,31 @@ describe("worktree worker protocol", () => {
     expect(isCodexWorktreeWorkerHostMessage(createRequest())).toBe(true);
   });
 
+  test("requires an absolute claimed checkout path in a Page Workspace create request", () => {
+    const message = createRequest();
+    const pageWorkspace = {
+      workspaceId: "workspace",
+      operationId: "claim",
+      branchName: "nodex-12",
+      baseCommitOid: "a".repeat(40),
+    };
+    for (const [worktreePath, valid] of [
+      ["/nodex-home/worktrees/abcdef012345/repo", true],
+      ["worktrees/abcdef012345/repo", false],
+      [undefined, false],
+    ] as const) {
+      expect(
+        isCodexWorktreeWorkerHostMessage({
+          ...message,
+          request: {
+            ...message.request,
+            input: { ...message.request.input, pageWorkspace: { ...pageWorkspace, worktreePath } },
+          },
+        }),
+      ).toBe(valid);
+    }
+  });
+
   test("rejects absolute and escaping environment selections", () => {
     for (const localEnvironmentConfigPath of [
       "/repo/.codex/environments/environment.toml",
@@ -367,7 +392,7 @@ describe("worktree worker protocol", () => {
           },
           candidateRepositoryPaths: ["/remote/src/repo"],
           managedRoot: "/remote/.nodex/worktrees",
-          allocatedWorktreePath: "/remote/.nodex/worktrees/260930-1200-deadbeef",
+          allocatedWorktreePath: "/remote/.nodex/worktrees/deadbeef1234/repo",
           nodexHome: "/remote/.nodex",
           projectId: "project",
           threadId: "thread",
@@ -375,6 +400,24 @@ describe("worktree worker protocol", () => {
         },
       },
     } as const;
+    const { hostId, repositoryIdentity, candidateRepositoryPaths } = importRequest.request.input;
+    const resolutionRequest = {
+      ...importRequest,
+      request: {
+        operation: "resolve-handoff-repository",
+        input: { requestId: "resolve:1", hostId, repositoryIdentity, candidateRepositoryPaths },
+      },
+    };
+    expect(isCodexWorktreeWorkerHostMessage(resolutionRequest)).toBe(true);
+    expect(
+      isCodexWorktreeWorkerHostMessage({
+        ...resolutionRequest,
+        request: {
+          ...resolutionRequest.request,
+          input: { ...resolutionRequest.request.input, candidateRepositoryPaths: [] },
+        },
+      }),
+    ).toBe(false);
     expect(isCodexWorktreeWorkerHostMessage(importRequest)).toBe(true);
     expect(
       isCodexWorktreeWorkerHostMessage({

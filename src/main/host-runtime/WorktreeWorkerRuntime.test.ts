@@ -140,7 +140,7 @@ const prepareInput = (threadTitle: string): CodexWorktreeWorkerPrepareHandoffInp
   requestId: `proof:${threadTitle}`,
   hostId: "local",
   managedRoot: "/managed",
-  allocatedWorktreePath: "/managed/260930-1200-deadbeef",
+  allocatedWorktreePath: "/managed/deadbeef1234/repo",
   nodexHome: "/nodex",
   projectId: "project",
   threadId: "thread",

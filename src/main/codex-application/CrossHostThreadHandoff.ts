@@ -21,7 +21,7 @@ import {
   type ExecutionHostRuntimeError,
 } from "./ExecutionHostRuntime";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
-import { allocateManagedWorktreePath } from "../codex/codex-managed-worktree-allocation";
+import { allocateHandoffWorktreePath } from "../codex/codex-managed-worktree-allocation";
 
 export interface PrepareCrossHostThreadHandoffInput {
   readonly operationId: string;
@@ -582,8 +582,26 @@ export const live = (options: {
               { concurrency: "unbounded" },
             ).pipe(mapHostError("upload", input.sourceHostId, input.destinationHostId));
             yield* onProgress({ phase: "transfer-state", status: "success" });
-            const allocatedWorktreePath = allocateManagedWorktreePath(
+            const { repositoryPath } = yield* destination
+              .request({
+                operation: "resolve-handoff-repository",
+                input: {
+                  requestId: `${input.operationId}:destination-repository`,
+                  hostId: input.destinationHostId,
+                  repositoryIdentity: exported.repositoryIdentity,
+                  candidateRepositoryPaths: input.destinationRepositoryPaths,
+                },
+              })
+              .pipe(
+                mapHostError(
+                  "resolve-destination-repository",
+                  input.sourceHostId,
+                  input.destinationHostId,
+                ),
+              );
+            const allocatedWorktreePath = allocateHandoffWorktreePath(
               destination.descriptor.managedRoot,
+              repositoryPath,
             );
             yield* onProgress({
               phase: "create-new-worktree",

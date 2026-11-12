@@ -17,7 +17,7 @@ import {
   persistCodexWorktreeShellEnvironmentAtGitPath,
   type CodexStoredShellEnvironment,
 } from "../codex/codex-worktree-shell-environment";
-import { managedWorktreeGitRootContaining } from "../codex/codex-managed-worktree-effects";
+import { managedWorktreeGitRootContaining } from "../codex/codex-managed-worktree-allocation";
 import { readManagedWorktreeOwnerThread } from "../codex/git-worktree-service";
 
 export interface NativeSessionWorkspaceInput {
@@ -31,7 +31,6 @@ export interface NativeSessionWorkspaceInput {
   readonly worktreeStartingState?: CodexPendingWorktreeStartingState | null;
   readonly localEnvironmentConfigPath?: string | null;
   readonly operationId: string;
-  readonly pageWorkspacePath?: string;
   readonly reusePageWorkspace?: { readonly worktreeGitRoot: string; readonly branchName: string };
   readonly pageWorkspace?: import("../codex/codex-worktree-worker-protocol").CodexWorktreeWorkerCreateInput["pageWorkspace"];
 }
@@ -270,8 +269,9 @@ export const make = Effect.gen(function* () {
               hostId: "local",
               repositoryPath: sourceCwd,
               nodexHome: config.nodexHome,
-              managedRoot: input.pageWorkspacePath
-                ? path.dirname(path.dirname(path.resolve(input.pageWorkspacePath)))
+              // A Page Workspace keeps its claimed root across settings changes.
+              managedRoot: input.pageWorkspace
+                ? path.dirname(path.dirname(input.pageWorkspace.worktreePath))
                 : host.descriptor.managedRoot,
               projectId: input.projectId,
               targetId: input.targetId,

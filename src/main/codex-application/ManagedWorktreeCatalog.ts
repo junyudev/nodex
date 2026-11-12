@@ -1,3 +1,4 @@
+import { managedWorktreeGitRootContaining } from "../codex/codex-managed-worktree-allocation";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -17,7 +18,6 @@ import type {
   DesktopManagedWorktreeWindow,
 } from "../core-client/project-workspace-adapter";
 import {
-  managedWorktreeGitRootContaining,
   normalizeWorktreePathForIdentity,
   resolveWorktreePathComparisonKey,
 } from "../codex/codex-managed-worktree-effects";

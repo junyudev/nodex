@@ -1,5 +1,5 @@
 import { hasWindowsProcessTreeReleaseFailure } from "../process-tree";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import {
   copyFile,
@@ -8,9 +8,9 @@ import {
   mkdir,
   mkdtemp,
   readFile,
-  readdir,
   realpath,
   rm,
+  rmdir,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -29,6 +29,13 @@ import {
   throwIfCodexRequestAborted as throwIfRequestAborted,
   type CodexGitCommandOutputStream as GitCommandOutputStream,
 } from "./codex-git-command";
+import {
+  allocateChatWorktreePath,
+  isManagedWorktreeAllocationId,
+  managedWorktreeGitRootContaining,
+  pageWorkspaceIdentity,
+} from "./codex-managed-worktree-allocation";
+import type { CodexWorktreeWorkerCreateInput } from "./codex-worktree-worker-protocol";
 
 const MAX_STARTING_DIFF_BYTES = 64 * 1024 * 1024;
 const MAX_AUTO_BRANCH_NAME_ATTEMPTS = 100;
@@ -1021,23 +1028,18 @@ async function resolveWorktreeRepositoryPath(worktreePath: string): Promise<stri
   return path.dirname(resolvedGitDir);
 }
 
-async function cleanupEmptyWorktreeTokenDir(worktreePath: string): Promise<void> {
-  const tokenDir = path.dirname(worktreePath);
-  const entries = await readdir(tokenDir).catch(() => null);
-  if (!entries || entries.length > 0) return;
+async function cleanupEmptyWorktreeAllocation(worktreePath: string): Promise<void> {
+  const allocation = path.dirname(worktreePath);
+  if (!isManagedWorktreeAllocationId(path.basename(allocation))) return;
 
-  await rm(tokenDir, { recursive: true, force: true }).catch(() => undefined);
+  // Nonrecursive removal leaves any sibling or concurrent checkout intact.
+  await rmdir(allocation).catch(() => undefined);
 }
 
 export type ManagedWorktreeStartingState = CodexPendingWorktreeStartingState;
 
 export interface CreateManagedWorktreeInput {
-  pageWorkspace?: {
-    readonly workspaceId: string;
-    readonly operationId: string;
-    readonly branchName: string;
-    readonly baseCommitOid: string;
-  };
+  pageWorkspace?: CodexWorktreeWorkerCreateInput["pageWorkspace"];
   repositoryPath: string;
   nodexHome: string;
   managedRoot?: string;
@@ -1148,14 +1150,14 @@ export async function removeManagedWorktree(worktreePath: string): Promise<void>
   const resolvedPath = path.resolve(normalizedPath);
   const existing = await stat(resolvedPath).catch(() => null);
   if (!existing?.isDirectory()) {
-    await cleanupEmptyWorktreeTokenDir(resolvedPath);
+    await cleanupEmptyWorktreeAllocation(resolvedPath);
     return;
   }
 
   const repositoryPath = await resolveWorktreeRepositoryPath(resolvedPath);
   if (!repositoryPath) {
     await rm(resolvedPath, { recursive: true, force: true });
-    await cleanupEmptyWorktreeTokenDir(resolvedPath);
+    await cleanupEmptyWorktreeAllocation(resolvedPath);
     return;
   }
 
@@ -1177,7 +1179,7 @@ export async function removeManagedWorktree(worktreePath: string): Promise<void>
     throwIfCodexGitRecoveryUnsafe(error);
     return undefined;
   });
-  await cleanupEmptyWorktreeTokenDir(resolvedPath);
+  await cleanupEmptyWorktreeAllocation(resolvedPath);
 }
 
 export async function createManagedWorktree(
@@ -1201,7 +1203,6 @@ export async function createManagedWorktree(
   const baseRef =
     detachedStartingState?.startingRef ??
     (await resolveDefaultBaseRef(sourceGitRoot, input.preferredBaseBranch, signal));
-  const worktreePathLeaf = path.basename(sourceGitRoot);
   const worktreesRoot = input.managedRoot?.trim()
     ? path.resolve(input.managedRoot)
     : path.join(nodexHome, "worktrees");
@@ -1226,8 +1227,7 @@ export async function createManagedWorktree(
 
   for (let attempt = 0; attempt < 10; attempt += 1) {
     throwIfRequestAborted(signal);
-    const token = randomUUID().slice(0, 4);
-    const worktreeGitRoot = allocatedPath ?? path.join(worktreesRoot, token, worktreePathLeaf);
+    const worktreeGitRoot = allocatedPath ?? allocateChatWorktreePath(worktreesRoot, sourceGitRoot);
     const worktreeWorkspaceRoot = resolveWorktreeWorkspaceRoot(
       worktreeGitRoot,
       sourceWorkspace.workspacePrefix,
@@ -1359,19 +1359,6 @@ export async function createManagedWorktree(
   throw new Error("Could not allocate a unique worktree path");
 }
 
-export function pageWorkspaceWorktreePath(
-  managedRoot: string,
-  repositoryRoot: string,
-  workspaceId: string,
-): string {
-  const identity = createHash("sha256").update(workspaceId).digest("hex");
-  return path.join(
-    managedRoot,
-    identity.slice(0, 4),
-    `${path.basename(repositoryRoot)}-${identity.slice(4, 16)}`,
-  );
-}
-
 /** A retained operation record proves ownership; a same-named branch alone never does. */
 async function createPageManagedWorktree(
   input: CreateManagedWorktreeInput,
@@ -1380,12 +1367,14 @@ async function createPageManagedWorktree(
   const signal = input.signal;
   const source = await resolveSourceWorkspace(input.repositoryPath, signal);
   const root = path.resolve(input.managedRoot ?? path.join(input.nodexHome, "worktrees"));
-  const identity = createHash("sha256").update(workspace.workspaceId).digest("hex");
-  const worktreeGitRoot = pageWorkspaceWorktreePath(
-    root,
-    source.sourceGitRoot,
-    workspace.workspaceId,
-  );
+  const worktreeGitRoot = workspace.worktreePath;
+  if (
+    !path.isAbsolute(worktreeGitRoot) ||
+    managedWorktreeGitRootContaining(root, worktreeGitRoot) !== worktreeGitRoot
+  ) {
+    throw new Error("Page Workspace checkout path does not match its managed root");
+  }
+  const identity = pageWorkspaceIdentity(workspace.workspaceId);
   const worktreeWorkspaceRoot = resolveWorktreeWorkspaceRoot(
     worktreeGitRoot,
     source.workspacePrefix,
