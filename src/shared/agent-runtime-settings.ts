@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { AgentRuntimeModeSchema } from "./schemas/agent-runtime-api";
+import {
+  AgentInstructionsSettingsSchema,
+  DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
+} from "./agent-instructions-settings";
 
 export const AgentRuntimeTitleModelSchema = z
   .object({ instanceId: z.string().min(1), model: z.string().min(1) })
@@ -12,6 +16,8 @@ export const AgentRuntimeSettingsSchema = z
     defaultRuntimeMode: AgentRuntimeModeSchema,
     /** Titles chats a person starts; null leaves it to each chat's own model. */
     titleModel: AgentRuntimeTitleModelSchema.nullable(),
+    /** The person's own instructions, sent with every Agent turn. */
+    instructions: AgentInstructionsSettingsSchema,
   })
   .strict();
 export type AgentRuntimeSettings = z.infer<typeof AgentRuntimeSettingsSchema>;
@@ -24,4 +30,5 @@ export const DEFAULT_AGENT_RUNTIME_SETTINGS: AgentRuntimeSettings = {
   defaultRuntimeMode: "full-access",
   automaticWorkAtOnce: 4,
   titleModel: null,
+  instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
 };

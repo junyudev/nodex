@@ -8,6 +8,7 @@ import path from "node:path";
 import { assert, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
+import { DEFAULT_AGENT_INSTRUCTIONS_SETTINGS } from "../../../shared/agent-instructions-settings";
 import { AgentRuntimeProviderConfiguration } from "../../agent-runtime/AgentRuntimeProviderConfiguration";
 import { ApplicationMenuRuntime } from "../../host-runtime/ApplicationMenuRuntime";
 import { DictationRuntime } from "../../host-runtime/DictationRuntime";
@@ -287,10 +288,16 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       automaticWorkAtOnce: 4,
       defaultRuntimeMode: "full-access",
       titleModel: null,
+      instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
     });
     assert.deepEqual(
       yield* handlers.get("settings:agent-runtime:update")!(event, { defaultRuntimeMode: "auto" }),
-      { automaticWorkAtOnce: 4, defaultRuntimeMode: "auto", titleModel: null },
+      {
+        automaticWorkAtOnce: 4,
+        defaultRuntimeMode: "auto",
+        titleModel: null,
+        instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
+      },
     );
     assert.strictEqual(providerRefreshes, 1);
     assert.equal(

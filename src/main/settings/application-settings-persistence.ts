@@ -29,6 +29,11 @@ import {
 } from "../../shared/agent-runtime-settings";
 import { AgentRuntimeModeSchema } from "../../shared/schemas/agent-runtime-api";
 import {
+  AgentInstructionsSettingsSchema,
+  DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
+  type AgentInstructionsSettings,
+} from "../../shared/agent-instructions-settings";
+import {
   UsageMeterSettingsSchema,
   DEFAULT_USAGE_METER_SETTINGS,
   type UsageMeterSettings,
@@ -159,6 +164,7 @@ interface ServerTomlConfig {
   composer_predictions_enabled?: boolean;
   default_runtime_mode?: AgentRuntimeSettings["defaultRuntimeMode"];
   title_model?: AgentRuntimeTitleModel;
+  agent_instructions?: Partial<AgentInstructionsSettings>;
   usage_meters?: Partial<UsageMeterSettings>;
   model_policy?: ModelPolicy;
   open_link_in_target?: LinkOpeningSettings["openLinkInTarget"];
@@ -1442,6 +1448,24 @@ export function getAgentRuntimeSettings(
       AgentRuntimeModeSchema.safeParse(config.default_runtime_mode).data ??
       DEFAULT_AGENT_RUNTIME_SETTINGS.defaultRuntimeMode,
     titleModel: AgentRuntimeTitleModelSchema.safeParse(config.title_model).data ?? null,
+    instructions: readAgentInstructionsSettings(config.agent_instructions),
+  };
+}
+
+/** Each field stands alone, so one damaged instruction never resets the others. */
+function readAgentInstructionsSettings(stored: unknown): AgentInstructionsSettings {
+  const record = (typeof stored === "object" && stored !== null ? stored : {}) as Record<
+    string,
+    unknown
+  >;
+  const { shape } = AgentInstructionsSettingsSchema;
+  return {
+    artifactOpening:
+      shape.artifactOpening.safeParse(record.artifactOpening).data ??
+      DEFAULT_AGENT_INSTRUCTIONS_SETTINGS.artifactOpening,
+    standingInstructions:
+      shape.standingInstructions.safeParse(record.standingInstructions).data ??
+      DEFAULT_AGENT_INSTRUCTIONS_SETTINGS.standingInstructions,
   };
 }
 
@@ -1460,6 +1484,7 @@ export function updateAgentRuntimeSettings(
   };
   if (settings.titleModel) server.title_model = settings.titleModel;
   else delete server.title_model;
+  server.agent_instructions = settings.instructions;
   writeProfileServerTomlConfig(source, server);
   return settings;
 }

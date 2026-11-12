@@ -33,6 +33,7 @@ import {
 } from "./ApplicationSettings";
 import { SETTINGS_DOCUMENT_MAX_BYTES } from "./settings-document";
 import { INBOX_SUGGESTION_MODES, type UpdateInboxSettingsInput } from "../../shared/inbox";
+import { DEFAULT_AGENT_INSTRUCTIONS_SETTINGS } from "../../shared/agent-instructions-settings";
 
 const roots: string[] = [];
 
@@ -975,6 +976,7 @@ it.effect("persists the Profile's default native execution mode and rejects inva
       defaultRuntimeMode: "full-access",
       automaticWorkAtOnce: 4,
       titleModel: null,
+      instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
     });
     for (const defaultRuntimeMode of ["auto", "approval-required", "full-access"] as const) {
       yield* settings.update({ type: "update-agent-runtime", input: { defaultRuntimeMode } });
@@ -1011,6 +1013,7 @@ it.effect("keeps the chat title model and permission mode independent", () =>
       automaticWorkAtOnce: 4,
       defaultRuntimeMode: "auto",
       titleModel,
+      instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
     });
 
     yield* settings.update({ type: "update-agent-runtime", input: { titleModel: null } });
@@ -1018,6 +1021,7 @@ it.effect("keeps the chat title model and permission mode independent", () =>
       automaticWorkAtOnce: 4,
       defaultRuntimeMode: "auto",
       titleModel: null,
+      instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
     });
     assert.deepEqual(parseToml(readFileSync(settingsPath, "utf8")).plugin, { name: "keep" });
 
@@ -1029,8 +1033,52 @@ it.effect("keeps the chat title model and permission mode independent", () =>
       automaticWorkAtOnce: 4,
       defaultRuntimeMode: "auto",
       titleModel: null,
+      instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
     });
   }),
+);
+
+it.effect(
+  "persists the Profile's Agent instructions and keeps one damaged field from resetting the other",
+  () =>
+    Effect.gen(function* () {
+      const { root, settingsPath } = fixture('[plugin]\nname = "keep"\n');
+      const source = { environment: {}, hostHomeDirectory: root, settingsPath };
+      const settings = yield* makeApplicationSettings(source);
+      const instructions = {
+        artifactOpening: "ask-first",
+        standingInstructions: "Write the test first.\n\nKeep replies short.",
+      } as const;
+      yield* settings.update({ type: "update-agent-runtime", input: { instructions } });
+      assert.deepEqual(
+        (yield* (yield* makeApplicationSettings(source)).snapshot()).agentRuntime.instructions,
+        instructions,
+      );
+      assert.deepEqual(parseToml(readFileSync(settingsPath, "utf8")).plugin, { name: "keep" });
+
+      writeFileSync(
+        settingsPath,
+        '[server.agent_instructions]\nartifactOpening = "sometimes"\nstandingInstructions = "Keep replies short."\n',
+      );
+      assert.deepEqual(
+        (yield* (yield* makeApplicationSettings(source)).snapshot()).agentRuntime.instructions,
+        { artifactOpening: "when-helpful", standingInstructions: "Keep replies short." },
+      );
+
+      const before = readFileSync(settingsPath, "utf8");
+      assert.equal(
+        (yield* settings
+          .update({
+            type: "update-agent-runtime",
+            input: {
+              instructions: { artifactOpening: "unknown" as never, standingInstructions: "" },
+            },
+          })
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
+      assert.equal(readFileSync(settingsPath, "utf8"), before);
+    }),
 );
 
 it.effect(
@@ -1050,6 +1098,7 @@ it.effect(
           defaultRuntimeMode: "approval-required",
           automaticWorkAtOnce,
           titleModel: null,
+          instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
         });
       }
       const before = readFileSync(settingsPath, "utf8");
