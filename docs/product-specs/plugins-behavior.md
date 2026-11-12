@@ -4,6 +4,10 @@ Customize manages plugins and marketplaces in the active local Codex home. The l
 inventory also covers Claude Profiles and Project source folders. Native Agent directories and
 configuration remain the authority for skill files and availability.
 
+The Plugins page also lists [Nodex-installed plugins](agent-plugins-behavior.md).
+Those installations belong to the Nodex Profile and are enabled per Project.
+The Codex-home actions described here apply to the active local Codex home.
+
 ## Customize pages
 
 The rail's Plugins entry opens Customize. Its sidebar has a search over installed plugins,

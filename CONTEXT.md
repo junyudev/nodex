@@ -319,6 +319,36 @@ with its own process lock, SQLite store, browser session, and preferences. Each
 Profile owns exactly one Library. Profile is not a Block and is not inferred
 from any Project.
 
+### Plugin package
+
+A Plugin package is a folder with a manifest that can supply skills and MCP
+servers. Its manifest identifies the package independently of its source folder
+and any Plugin installation.
+
+### Plugin installation
+
+A Plugin installation is the Profile's managed copy of a reviewed Plugin
+package on its execution Host. It retains its identity when the package is
+updated from the same source.
+
+### Plugin activation
+
+A Plugin activation is the explicit enablement of a Plugin installation for
+one Project. Each Project has its own activation for that installation.
+
+### Plugin server lease
+
+A Plugin server lease is a revocable connection from one Agent Session or MCP
+App view to a plugin MCP server through Nodex. It is scoped to the caller and
+the Plugin activation that authorizes it.
+
+### Entry point
+
+An Entry point is an action exposed by an MCP App's declaring tool that opens
+the app on request. A global Entry point opens a full-size app, a thread Entry
+point opens a panel beside a chat, and a file Entry point opens an app for a
+file of a declared type.
+
 ### Nodex Account Connection
 
 A Nodex Account Connection is a Profile's optional connection to a verified

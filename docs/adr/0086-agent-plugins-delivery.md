@@ -1,0 +1,119 @@
+# ADR 0086: Nodex owns Agent Plugin installation and delivery
+
+- Status: Accepted
+- Date: 2026-11-13
+- Owners: Nodex maintainers
+
+## Context
+
+A person should be able to install one Plugin package and use its skills and tools
+in the supported Agents for a Project. The installation also needs to support
+future MCP App views that a person can open without an Agent Session. Native
+backend installations have their own configuration, discovery, and process
+lifetimes, so they cannot supply this shared authority.
+
+## Decision
+
+### Packages and activation
+
+Nodex is a client of the open [Agent Plugins 1.0.0 specification](https://agent-plugins.org/specification).
+It reads the portable layout with a root `plugin.json`, optional `skills/` and
+`mcp.json`, the Codex compatibility layout with `.codex-plugin/plugin.json`,
+and the Claude-style layout with `.claude-plugin/plugin.json` for skills and
+MCP servers only. Portable readers are version-specific and reject unsupported
+manifest schema versions. Invalid components are diagnosed at their own boundary.
+Nodex-specific extensions use `app.jyu.nodex`, the application bundle identifier.
+Unrecognized extension namespaces are inert.
+
+The Host owns Plugin installations in a host-local registry in the Profile.
+Source paths, approved package digests, and credentials are facts about the
+machine that runs the plugin. Core remains the authority for shared product
+records and keeps no mirror of those install facts. The Host publishes a
+reviewed package copy and records Plugin activation explicitly per Project.
+Any future shared activation policy can live in Core while the Host retains
+installation and execution authority. Codex-home plugins retain native ownership.
+
+### MCP server supervision
+
+The Host supervises each installed plugin MCP server through a broker. The broker
+owns local process launch or remote connections, credentials, and shutdown. It
+can share an upstream where the installation revision, server, Project scope,
+and credential principal permit it. Each Agent Session or MCP App view gets
+its own authenticated, revocable Plugin server lease. The broker derives access
+from the verified caller and current Plugin activation. Disabling or uninstalling
+revokes affected leases before runtime cleanup, so a cached tool list cannot
+authorize a new call. An MCP App view can use this authority without an Agent Session.
+
+### Codex delivery
+
+The Agent Runtime uses one Nodex-managed app-server per Project for plugin
+delivery. It passes Nodex-managed skill projections via
+`thread/start.selectedCapabilityRoots`. In the pinned Codex **0.167.2**, this
+field is gated by `capabilities.experimentalApi` at initialization. The team
+accepts this experimental dependency and the cost of a process per active
+Project. The adapter supplies current broker endpoints through
+`mcp_servers.<key>` on start, cold resume, and ordinary fork. See the
+[Codex app-server protocol](https://developers.openai.com/codex/app-server.md#experimental-api-opt-in).
+
+Selected roots can persist in saved threads and be inherited on fork. For
+revocation, Nodex withdraws the affected Project's skill projections and unloads
+the affected thread or recycles the Project's app-server before admitting its
+next turn. Omitting roots on resume or recycling the process alone cannot clear
+a saved root. A fork must preserve the owning Project's scope or materialize
+fresh capabilities for its destination. Every Codex upgrade must rerun the
+delivery proof, including discovery, supporting-file access, Project isolation,
+start/resume/fork, and revocation in previously loaded and cold threads.
+
+### Claude Code delivery
+
+The Agent Runtime supplies a generated local skills-only plugin for each SDK
+query. Its manifest and skill tree are assembled from approved contributions,
+so package-level hooks and native MCP declarations stay outside the projection.
+The adapter registers broker endpoints through the SDK's `setMcpServers` control
+channel. On revocation, Nodex revokes the leases and resumes the Session in a
+fresh query with the current Project's skills and servers before the next turn.
+See the [Claude Agent SDK reference](https://code.claude.com/docs/en/agent-sdk/typescript).
+
+### Deferred contributions
+
+Nodex reads supported hook declarations for review. Hook execution is deferred
+until it has a reviewed execution policy and backend-specific lifecycle semantics.
+OpenAI-hosted app mappings describe dependencies on OpenAI services. MCP App
+entry point launches use the broker and are a later capability.
+
+## Consequences
+
+- One installation can serve multiple Projects and Agent backends. Changes to
+  activation affect only the selected Project.
+- The Host owns cleanup of server processes, leases, and temporary skill
+  projections. A Codex app-server recycle can affect other threads in its Project.
+- Revocation controls plugin discovery and live tool access. Conversation history
+  can retain earlier skill text and tool results. Filesystem access still follows
+  native execution permissions.
+- The Codex 0.166.0 and Claude Agent SDK 0.3.322 probes demonstrate specific
+  skill discovery, MCP attachment, and lifecycle behaviors. The 0.167.2 schema
+  establishes the Codex field and its gate. Full broker integration, revocation
+  across running Nodex Sessions, and Agent Plugins and MCP Apps conformance
+  require separate verification.
+
+## Related decisions
+
+- [ADR 0064](0064-native-application-mcp.md) supplies the native MCP attachment
+  pattern and caller identity boundary. Plugin server leases carry their own
+  Project scope. The `nodex_app` application tools retain Profile-wide access.
+- [ADR 0068](0068-agent-runtime-execution-authority.md) keeps Session execution,
+  provider bindings, and history in the Agent Runtime. The Host supplies the
+  current activation and broker leases to that execution owner.
+- [ADR 0074](0074-content-access-and-native-execution-permissions.md) retains
+  per-Session native permissions and approval behavior. Plugin activation
+  authorizes delivery within a Project and leaves those permissions in force.
+- [ADR 0048](0048-effect-main-application-kernel.md) governs scoped Host resource
+  lifetimes in Main. Plugin supervision and leases join that graph, while the
+  Agent Runtime owns the provider connections under ADR 0068.
+- [ADR 0082](0082-automations-replace-scheduled-tasks.md) remains the authority
+  for any future Automation created from a plugin template, including its
+  Owner and mode.
+
+These decisions retain their existing authority. The
+[Agent Plugins behavior specification](../product-specs/agent-plugins-behavior.md)
+defines the release scope.

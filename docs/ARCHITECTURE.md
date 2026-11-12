@@ -50,6 +50,10 @@ context selects the Skill and a task-bound shell entrypoint for the current
 executable, Profile, and content placement. See [Agent Interface Behavior](product-specs/agent-interface-behavior.md)
 and [ADR 0064](adr/0064-native-application-mcp.md).
 
+The Host owns the Profile's Plugin installations, Project activation, and brokered MCP
+server leases. The Agent Runtime consumes those capabilities through the current Session
+binding. See [ADR 0086](adr/0086-agent-plugins-delivery.md).
+
 The Main-owned Workspace Dependency Runtime exposes verified host document dependencies.
 Its Node Adapter validates the packaged distribution; it owns no Project content or user
 environment and does not install dependencies during application-tool discovery. Distribution
