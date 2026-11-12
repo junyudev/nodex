@@ -2,6 +2,11 @@ import type { CodexPluginDelivery } from "../../host/agent-plugins/CodexPluginDe
 import { makeClaudePluginQueries } from "../../host/agent-plugins/ClaudePluginQueries";
 import { createHash } from "node:crypto";
 import { parseDesktopIdentifier, parseDesktopToolActivity } from "@nodex/agent-runtime/contracts";
+import { renderPersonalInstructions } from "@nodex/agent-runtime/instructions";
+import {
+  DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
+  type AgentInstructionsSettings,
+} from "../../shared/agent-instructions-settings";
 import type { RuntimeDesktopActivitySource } from "../host-runtime/RemoteHostedPipRuntime";
 import { win32 } from "node:path";
 import { isWslWorkspacePath } from "../../shared/codex-workspace-paths";
@@ -101,6 +106,8 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     readonly providerDriver?: (instanceId: string) => string | undefined;
     readonly execute: AgentRuntimeHostToolExecutor;
     readonly codexPlugins?: CodexPluginDelivery["Service"];
+    /** The Profile's own instructions, read at each turn so edits apply to the next turn. */
+    readonly agentInstructions?: Effect.Effect<AgentInstructionsSettings>;
     readonly desktop?: Pick<
       AgentRuntimeDesktopTools,
       "threadConfig" | "desktopTools" | "observeNativeTurn" | "pip"
@@ -363,6 +370,9 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     );
     if (managed.value.kind === "read_managed_session" && managed.value.managed)
       yield* bindInbound(proof, sessionId, true);
+    const personal = renderPersonalInstructions(
+      yield* options.agentInstructions ?? Effect.succeed(DEFAULT_AGENT_INSTRUCTIONS_SETTINGS),
+    );
     const role =
       coordinator.value.kind === "read_coordinator" && coordinator.value.session_id === sessionId
         ? COORDINATOR_INSTRUCTIONS
@@ -370,7 +380,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
           ? MANAGED_SESSION_INSTRUCTIONS
           : null;
     return {
-      instructions: [base, driver === "opencode" ? null : cli?.value, role]
+      instructions: [base, driver === "opencode" ? null : cli?.value, role, personal]
         .filter(Boolean)
         .join("\n\n"),
       sourceRoots,

@@ -698,6 +698,10 @@ const supervisor = Layer.effectContext(
           providers: configuration.providers,
           providerDriver: (id) => drivers.get(id),
           execute,
+          agentInstructions: settings.snapshot().pipe(
+            Effect.map((snapshot) => snapshot.agentRuntime.instructions),
+            Effect.orDie,
+          ),
         }).pipe(
           Effect.tap(() =>
             userInputAutoResolution

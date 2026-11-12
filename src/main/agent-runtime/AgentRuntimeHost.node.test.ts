@@ -36,6 +36,11 @@ import {
 import { resolveAppToolCallingSession } from "../app-tools/AppToolCallingSession";
 import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-authorization";
 import { make } from "./AgentRuntimeHost";
+import { renderPersonalInstructions } from "@nodex/agent-runtime/instructions";
+import {
+  DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
+  type AgentInstructionsSettings,
+} from "../../shared/agent-instructions-settings";
 import {
   COORDINATOR_INSTRUCTIONS,
   MANAGED_SESSION_INSTRUCTIONS,
@@ -102,6 +107,7 @@ const fixture = Effect.gen(function* () {
   const coreReads: ProjectWorkspaceRead[] = [];
   const coreWrites: ProjectWorkspaceApplyInput[] = [];
   const recordedRuns: RecordAgentRunRequest[] = [];
+  let agentInstructions: AgentInstructionsSettings = DEFAULT_AGENT_INSTRUCTIONS_SETTINGS;
   const attributions: AgentAttributionRequest[] = [];
   const live = new Map<string, ReturnType<typeof proofOf>>();
   const bind = (identity: AgentHostTurnIdentity | AgentHostNativeSessionIdentity) =>
@@ -244,6 +250,7 @@ const fixture = Effect.gen(function* () {
       caller = captured;
       return Effect.succeed({ content: [] });
     },
+    agentInstructions: Effect.sync(() => agentInstructions),
   }).pipe(
     Scope.provide(scope),
     Effect.provideService(CoreModules, {
@@ -312,6 +319,9 @@ const fixture = Effect.gen(function* () {
     },
     setManaged: (value: boolean) => {
       managed = value;
+    },
+    setAgentInstructions: (value: AgentInstructionsSettings) => {
+      agentInstructions = value;
     },
     unbind: () => {
       bound = false;
@@ -655,6 +665,34 @@ it.effect("standing instructions follow the verified Session role on each turn",
     f.setCoordinator("session");
     assert.include(yield* prepare, COORDINATOR_INSTRUCTIONS);
     assert.notInclude(yield* prepare, MANAGED_SESSION_INSTRUCTIONS);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("the Profile's Agent instructions end every turn's instructions, read per turn", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const prepare = Effect.gen(function* () {
+      const response = yield* f.execute(prepareTurn());
+      return (response as { instructions: string }).instructions;
+    });
+    const defaults = yield* prepare;
+    assert.isTrue(
+      defaults.endsWith(renderPersonalInstructions(DEFAULT_AGENT_INSTRUCTIONS_SETTINGS)),
+    );
+    f.setAgentInstructions({
+      artifactOpening: "never",
+      standingInstructions: "Keep answers short.",
+    });
+    const edited = yield* prepare;
+    assert.include(edited, "Keep answers short.");
+    assert.isTrue(
+      edited.endsWith(
+        renderPersonalInstructions({
+          artifactOpening: "never",
+          standingInstructions: "Keep answers short.",
+        }),
+      ),
+    );
   }).pipe(Effect.scoped),
 );
 
