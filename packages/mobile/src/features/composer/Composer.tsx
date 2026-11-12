@@ -13,7 +13,7 @@ import { Icon } from "../../ui/icons";
 import { Chip, Field, IconButton, Tap, lightTap } from "../../ui/primitives";
 import { showFailure, showSnack } from "../../ui/snackbar";
 import { primaryControl } from "./primary-control";
-import { useDraft, useHomeState } from "../home/home-state";
+import { composerDraftKey, useDraft, useHomeState } from "../home/home-state";
 
 const assetToImage = (asset: ImagePicker.ImagePickerAsset, index: number): LocalImage => ({
   uri: asset.uri,
@@ -92,7 +92,7 @@ export const Composer = ({
   readonly canAttach?: boolean;
 }) => {
   const { activeHostId } = useHosts();
-  const draftKey = JSON.stringify([activeHostId, composerKey]);
+  const draftKey = composerDraftKey(activeHostId, composerKey);
   const draft = useDraft(draftKey);
   const setDraft = useHomeState((state) => state.setDraft);
   const clearDraft = useHomeState((state) => state.clearDraft);

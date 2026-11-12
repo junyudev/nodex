@@ -12,6 +12,10 @@ export interface ComposerDraft {
 
 const EMPTY_DRAFT: ComposerDraft = { text: "", images: [] };
 
+/** A draft belongs to one Composer of one Space and Member: `inbox`, `new-chat`, or a chat. */
+export const composerDraftKey = (spaceKey: string | null, composer: string): string =>
+  JSON.stringify([spaceKey, composer]);
+
 /** The Turn the Inbox Composer answers instead of capturing a new thought. */
 export interface ReplyTarget {
   readonly spaceKey?: string | null;
