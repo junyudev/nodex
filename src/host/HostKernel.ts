@@ -14,6 +14,7 @@ import {
   live as maintenance,
 } from "../main/host-runtime/StoreAdministrationSchedulerRuntime";
 import * as GitHubPlatform from "../main/platform/node/GitHubSourcePlatform";
+import { live as pluginInstallation } from "./agent-plugins/PluginInstallationLive";
 import * as Automation from "./automation-application/AutomationExecution";
 import * as Coordinator from "./coordinator/CoordinatorSession";
 import * as CoordinatorDelivery from "./coordinator/CoordinatorDeliveryRuntime";
@@ -83,10 +84,11 @@ const schedules = maintenance({}).pipe(Layer.provideMerge(clock));
 const coordinator = Layer.merge(Coordinator.live, notificationIntents).pipe(
   Layer.provideMerge(schedules),
 );
-export const applications = Layer.mergeAll(GitHubSource.live, GitHubChannel.live).pipe(
-  Layer.provide(GitHubPlatform.live),
-  Layer.provideMerge(coordinator),
-);
+export const applications = Layer.mergeAll(
+  GitHubSource.live,
+  GitHubChannel.live,
+  pluginInstallation,
+).pipe(Layer.provide(GitHubPlatform.live), Layer.provideMerge(coordinator));
 
 const workers = Layer.mergeAll(
   ThreadDelivery.live,

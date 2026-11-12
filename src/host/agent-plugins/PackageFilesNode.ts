@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 import { createHash } from "node:crypto";
 import { constants, type BigIntStats } from "node:fs";
-import { lstat, open, opendir, readlink, realpath } from "node:fs/promises";
+import { lstat, mkdir, open, opendir, readlink, realpath, symlink } from "node:fs/promises";
 import path from "node:path";
 import type {
   AgentPluginDiagnostic,
@@ -168,7 +168,7 @@ async function readFile(root: string, key: string, stat: BigIntStats, signal: Ab
   }
 }
 
-async function openPackage(directory: string, signal: AbortSignal): Promise<PackageFiles> {
+async function canonicalRoot(directory: string): Promise<string> {
   const root = await realpath(directory).catch((cause: unknown) => {
     if (
       cause &&
@@ -181,6 +181,11 @@ async function openPackage(directory: string, signal: AbortSignal): Promise<Pack
   });
   if (!(await lstat(root)).isDirectory())
     fail("invalid-root", "The package root must be a directory.");
+  return root;
+}
+
+async function openPackage(directory: string, signal: AbortSignal): Promise<PackageFiles> {
+  const root = await canonicalRoot(directory);
   const { entries, children } = await inventory(root, signal);
   const inspect = (relative: string) => resolve(root, entries, relative);
   const read = (key: string) =>
@@ -240,3 +245,39 @@ async function openPackage(directory: string, signal: AbortSignal): Promise<Pack
 export const packageFilesNode: PackageFilesPort = {
   open: (root) => io((signal) => openPackage(root, signal)),
 };
+
+export const canonicalPackageRoot = (directory: string) => io(() => canonicalRoot(directory));
+
+/** Use the same bounded, no-follow file reads as the package reader. */
+export function copyPackageToStage(root: string, stage: string) {
+  return io(async (signal) => {
+    const { entries } = await inventory(root, signal);
+    for (const [key, entry] of entries) {
+      if (key === ".") continue;
+      const destination = path.join(stage, key);
+      if (entry.kind === "directory") {
+        await mkdir(destination, { mode: 0o700 });
+        continue;
+      }
+      if (entry.kind === "file") {
+        const bytes = await readFile(root, key, entry.stat, signal);
+        const handle = await open(destination, "wx", 0o600);
+        try {
+          await handle.writeFile(bytes);
+          // Preserve executable bits without copying special permission bits.
+          await handle.chmod(0o600 | (Number(entry.stat.mode) & 0o111));
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+        continue;
+      }
+      if (entry.kind !== "link" || path.isAbsolute(entry.target))
+        fail("unsafe-path", "The package contains an entry that cannot be relocated safely.", key);
+      const target = resolve(root, entries, key);
+      if (target.kind !== "file" && target.kind !== "directory")
+        fail("unsafe-path", "The package contains a link that cannot be staged safely.", key);
+      await symlink(entry.target, destination, target.kind === "directory" ? "dir" : "file");
+    }
+  }).pipe(Effect.uninterruptible);
+}
