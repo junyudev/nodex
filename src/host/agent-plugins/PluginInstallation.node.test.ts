@@ -50,6 +50,12 @@ const testProfile = Effect.acquireRelease(
   ),
 );
 
+const previewDigest = Effect.fnUntraced(function* (locator: string) {
+  const preview = yield* reader.read(locator);
+  if (preview.status === "rejected") throw new Error("Expected a valid preview");
+  return preview.package.digest;
+});
+
 function updateManifest(locator: string, identity: { name: string; version: string }) {
   return Effect.promise(() =>
     writeFile(
@@ -62,7 +68,10 @@ function updateManifest(locator: string, identity: { name: string; version: stri
 it.effect("publishes verified bytes and exposes them only to the activated Project", () =>
   Effect.gen(function* () {
     const { home, source, plugins } = yield* testProfile;
-    const { installation, cleanupWarnings } = yield* plugins.install(source);
+    const { installation, cleanupWarnings } = yield* plugins.install(
+      source,
+      yield* previewDigest(source.locator),
+    );
     expect(cleanupWarnings).toEqual([]);
     expect(installation).toMatchObject({
       admission: "admitted",
@@ -101,14 +110,16 @@ it.effect(
       yield* Effect.promise(() =>
         writeFile(join(source.locator, "plugin.json"), '{"$schema":"unknown","name":"sample"}'),
       );
-      expect(yield* Effect.flip(plugins.install(source))).toMatchObject({
+      expect(yield* Effect.flip(plugins.install(source, ""))).toMatchObject({
         code: "package-rejected",
         reasons: [{ code: "unsupported-version", path: "plugin.json", field: "$schema" }],
       });
       expect((yield* plugins.list).installations).toEqual([]);
       expect(yield* Effect.promise(() => readdir(home))).toEqual([]);
       expect(
-        yield* Effect.flip(plugins.install({ kind: "git", locator: "https://example.com/plugin" })),
+        yield* Effect.flip(
+          plugins.install({ kind: "git", locator: "https://example.com/plugin" }, ""),
+        ),
       ).toEqual({ code: "unsupported-source", kind: "git" });
     }).pipe(Effect.scoped),
 );
@@ -116,7 +127,7 @@ it.effect(
 it.effect("discards staging on a failed publish and leaves the old generation active", () =>
   Effect.gen(function* () {
     const { home, source, store, plugins } = yield* testProfile;
-    const { installation } = yield* plugins.install(source);
+    const { installation } = yield* plugins.install(source, yield* previewDigest(source.locator));
     yield* plugins.setProjectEnabled(installation.id, project, true);
     yield* updateManifest(source.locator, { name: "sample.organizer", version: "2.0.0" });
     const contents = () => readdir(join(home, PLUGIN_REGISTRY_DIRECTORY));
@@ -144,6 +155,22 @@ it.effect("discards staging on a failed publish and leaves the old generation ac
   }).pipe(Effect.scoped),
 );
 
+it.effect("rejects bytes changed since the confirmed preview", () =>
+  Effect.gen(function* () {
+    const { source, plugins } = yield* testProfile;
+    const expected = yield* previewDigest(source.locator);
+    yield* updateManifest(source.locator, { name: "sample.organizer", version: "2.0.0" });
+    const actual = yield* previewDigest(source.locator);
+    expect(actual).not.toBe(expected);
+    expect(yield* Effect.flip(plugins.install(source, expected))).toEqual({
+      code: "staged-digest-mismatch",
+      expected,
+      actual,
+    });
+    expect((yield* plugins.list).installations).toEqual([]);
+  }).pipe(Effect.scoped),
+);
+
 it.effect("does not publish a staged copy with different bytes", () =>
   Effect.gen(function* () {
     const { source, store, plugins } = yield* testProfile;
@@ -164,7 +191,9 @@ it.effect("does not publish a staged copy with different bytes", () =>
       },
       randomUUID,
     );
-    expect(yield* Effect.flip(tampered.install(source))).toMatchObject({
+    expect(
+      yield* Effect.flip(tampered.install(source, yield* previewDigest(source.locator))),
+    ).toMatchObject({
       code: "staged-digest-mismatch",
     });
     expect((yield* plugins.list).installations).toEqual([]);
@@ -176,11 +205,17 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const { home, source, plugins } = yield* testProfile;
-      const { installation: first } = yield* plugins.install(source);
+      const { installation: first } = yield* plugins.install(
+        source,
+        yield* previewDigest(source.locator),
+      );
       yield* plugins.setProjectEnabled(first.id, project, true);
       yield* updateManifest(source.locator, { name: "sample.organizer", version: "2.0.0" });
       expect((yield* plugins.list).installations[0]?.activeGeneration).toBe(first.activeGeneration);
-      const { installation: second } = yield* plugins.install(source);
+      const { installation: second } = yield* plugins.install(
+        source,
+        yield* previewDigest(source.locator),
+      );
       expect(second.id).toBe(first.id);
       expect(second.activeGeneration).not.toBe(first.activeGeneration);
       expect(second.package.identity.version).toBe("2.0.0");
@@ -203,7 +238,7 @@ it.effect(
 it.effect("refuses to reload when the source manifest changes identity", () =>
   Effect.gen(function* () {
     const { source, plugins } = yield* testProfile;
-    const { installation } = yield* plugins.install(source);
+    const { installation } = yield* plugins.install(source, yield* previewDigest(source.locator));
     yield* updateManifest(source.locator, { name: "sample.renamed", version: "2.0.0" });
     expect(yield* Effect.flip(plugins.reload(installation.id))).toMatchObject({
       code: "identity-changed",
@@ -218,7 +253,7 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const { home, source, plugins } = yield* testProfile;
-      const { installation } = yield* plugins.install(source);
+      const { installation } = yield* plugins.install(source, yield* previewDigest(source.locator));
       yield* plugins.setProjectEnabled(installation.id, project, true);
       const data = join(home, pluginDataDirectory(installation.id));
       yield* Effect.promise(async () => {
@@ -235,7 +270,7 @@ it.effect(
       );
       expect(removed).toBe("ENOENT");
 
-      yield* plugins.install(source);
+      yield* plugins.install(source, yield* previewDigest(source.locator));
       expect(
         (yield* plugins.uninstall(installation.id, { data: "delete" })).cleanupWarnings,
       ).toEqual([]);
@@ -249,7 +284,7 @@ it.effect("rejects a stale compare-and-swap across store instances", () =>
   Effect.gen(function* () {
     const { home, store, source, plugins } = yield* testProfile;
     const snapshot = yield* store.read;
-    yield* plugins.install(source);
+    yield* plugins.install(source, yield* previewDigest(source.locator));
     const otherStore = makePluginInstallationStoreNode(home);
     expect(
       yield* Effect.flip(
@@ -268,14 +303,16 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const { home, source, plugins } = yield* testProfile;
-      yield* plugins.install(source);
+      yield* plugins.install(source, yield* previewDigest(source.locator));
       const file = join(home, PLUGIN_REGISTRY_DIRECTORY, "registry.json");
       const corrupt = '{"format":1,"revision":1,"installations":[{"id":"../../outside"}]}';
       yield* Effect.promise(() => writeFile(file, corrupt));
       expect(yield* Effect.flip(plugins.contributions(project))).toEqual({
         code: "invalid-registry",
       });
-      expect(yield* Effect.flip(plugins.install(source))).toEqual({ code: "invalid-registry" });
+      expect(
+        yield* Effect.flip(plugins.install(source, yield* previewDigest(source.locator))),
+      ).toEqual({ code: "invalid-registry" });
       expect(yield* Effect.promise(() => readFile(file, "utf8"))).toBe(corrupt);
     }).pipe(Effect.scoped),
 );

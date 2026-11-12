@@ -26,7 +26,8 @@ its declared manifest version. The review shows:
   labeled as requiring OpenAI-hosted services.
 - Package diagnostics, including reasons why reported contributions are invalid.
 
-Confirm to install a copy of the reviewed package. Installing the same source
+Confirm to install a copy of the reviewed package. If the staged bytes differ
+from the preview, review the updated package before confirming again. Installing the same source
 folder again updates that installation after review. A failed update keeps the
 previous copy and its settings.
 

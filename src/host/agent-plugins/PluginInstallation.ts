@@ -39,6 +39,7 @@ export interface PluginInstallationService {
   readonly list: Effect.Effect<PluginRegistry, PluginStoreError>;
   readonly install: (
     source: PluginInstallationSource,
+    previewDigest: string,
   ) => Effect.Effect<PluginInstallationMutation, PluginInstallationError>;
   readonly reload: (
     id: string,
@@ -84,16 +85,17 @@ export function makePluginInstallation(
   const publish = Effect.fnUntraced(function* (
     registry: PluginRegistry,
     directory: string,
-    reloadId?: string,
+    intent: { readonly previewDigest: string } | { readonly reloadId: string },
   ): Effect.fn.Return<PluginInstallationMutation, PluginInstallationError> {
     const locator = yield* store.canonicalSource(directory);
     const source = { kind: "local", locator } as const;
     const original = yield* readPackage(locator);
+    const expectedDigest = "previewDigest" in intent ? intent.previewDigest : original.digest;
     const generation = yield* Effect.sync(newGeneration);
     const transition = (pkg: AgentPluginPackage) =>
-      reloadId === undefined
-        ? publishPluginInstallation(registry, source, pkg, generation)
-        : reloadPluginInstallation(registry, reloadId, source, pkg, generation);
+      "reloadId" in intent
+        ? reloadPluginInstallation(registry, intent.reloadId, source, pkg, generation)
+        : publishPluginInstallation(registry, source, pkg, generation);
     const proposed = transition(original);
     if (!proposed.ok) return yield* Effect.fail(proposed.error);
 
@@ -104,10 +106,10 @@ export function makePluginInstallation(
       ): Effect.fn.Return<PluginInstallationMutation, PluginInstallationError> {
         yield* store.copyToStage(locator, stage);
         const verified = yield* readPackage(stage);
-        if (verified.digest !== original.digest)
+        if (verified.digest !== expectedDigest)
           return yield* Effect.fail({
             code: "staged-digest-mismatch",
-            expected: original.digest,
+            expected: expectedDigest,
             actual: verified.digest,
           } as const);
         const next = transition(verified);
@@ -130,11 +132,12 @@ export function makePluginInstallation(
 
   const install = Effect.fn("PluginInstallation.install")(function* (
     source: PluginInstallationSource,
+    previewDigest: string,
   ): Effect.fn.Return<PluginInstallationMutation, PluginInstallationError> {
     if (source.kind !== "local")
       return yield* Effect.fail({ code: "unsupported-source", kind: source.kind } as const);
     const registry = yield* store.read;
-    return yield* publish(registry, source.locator);
+    return yield* publish(registry, source.locator, { previewDigest });
   });
 
   const reload = Effect.fn("PluginInstallation.reload")(function* (
@@ -143,7 +146,7 @@ export function makePluginInstallation(
     const registry = yield* store.read;
     const installation = registry.installations.find((entry) => entry.id === id);
     if (!installation) return yield* Effect.fail({ code: "not-installed", id } as const);
-    return yield* publish(registry, installation.source.locator, id);
+    return yield* publish(registry, installation.source.locator, { reloadId: id });
   });
 
   const changeEnablement = Effect.fnUntraced(function* (
