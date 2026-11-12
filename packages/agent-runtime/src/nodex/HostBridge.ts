@@ -36,6 +36,12 @@ const Result = Schema.Union([
     error: Schema.Struct({ message: Schema.String }),
   }),
 ]);
+const pluginError = () =>
+  new ExecutionHost.ExecutionHostError({
+    operation: "claude.plugins.open",
+    message: "Could not open the Project’s Claude plugins.",
+  });
+
 const decodeResult = Schema.decodeUnknownEffect(Result);
 const decodePrepared = Schema.decodeUnknownEffect(ExecutionHost.HostTurnPreparation);
 const decodeThreadConfig = Schema.decodeUnknownEffect(
@@ -279,6 +285,34 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
             message: "The host returned invalid Codex Plugin delivery.",
           }),
       ),
+    );
+  });
+  const openClaudePlugins = Effect.fn("AgentRuntime.openClaudePlugins")(function* (
+    turn: ExecutionHost.HostTurnIdentity,
+    key: string,
+  ) {
+    const queryId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+    const identity = { ...turn, runtimeId, runtimeGeneration };
+    yield* Effect.addFinalizer(() =>
+      exchange({
+        type: "host.request",
+        operation: "claude.plugins.close",
+        queryId,
+        identity: { runtimeId, runtimeGeneration },
+      }).pipe(Effect.timeout("5 seconds"), Effect.interruptible, Effect.ignore),
+    );
+    const output = yield* exchange({
+      type: "host.request",
+      operation: "claude.plugins.open",
+      identity,
+      queryId,
+      key,
+    }).pipe(
+      Effect.timeout("30 seconds"),
+      Effect.mapError(() => pluginError()),
+    );
+    return yield* Schema.decodeUnknownEffect(ExecutionHost.HostClaudePlugins)(output).pipe(
+      Effect.mapError(() => pluginError()),
     );
   });
 
@@ -528,6 +562,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
     registerNativeSession,
     prepareThread,
     ...(configuration.host?.codexPlugins ? { codexPlugins } : {}),
+    openClaudePlugins,
     desktopSkillRoots,
     observeNativeTurn,
     onNativeSessionClose: (
@@ -661,6 +696,7 @@ export const layerExecutionHost = Layer.effect(
       registerNativeSession: bridge.registerNativeSession,
       prepareThread: bridge.prepareThread,
       ...(bridge.codexPlugins ? { codexPlugins: bridge.codexPlugins } : {}),
+      openClaudePlugins: bridge.openClaudePlugins,
       observeNativeTurn: bridge.observeNativeTurn,
       toolAvailability: { browser: false, device: false },
       orchestrationInstructions: ORCHESTRATION_INSTRUCTIONS,

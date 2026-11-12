@@ -22,6 +22,8 @@ interface Field {
 
 export interface SkillHeader {
   readonly bodyStart: number;
+  readonly disableModelInvocation?: boolean;
+  readonly userInvocable?: boolean;
   readonly fields: Readonly<Record<FieldName, Field>>;
   readonly reason?: string;
   readonly patchReason?: string;
@@ -108,7 +110,16 @@ export function readSkillHeader(text: string): SkillHeader {
     if (key === "compatibility" && (!node.value.trim() || !/^.{1,500}$/su.test(node.value)))
       formatIssues.push({ field: key, message: "Expected 1–500 characters." });
   }
-  return { bodyStart, fields, patchReason, formatIssues };
+  const disableModelInvocation: unknown = map.get("disable-model-invocation");
+  const userInvocable: unknown = map.get("user-invocable");
+  return {
+    bodyStart,
+    fields,
+    patchReason,
+    formatIssues,
+    ...(disableModelInvocation === true ? { disableModelInvocation: true } : {}),
+    ...(userInvocable === false ? { userInvocable: false } : {}),
+  };
 }
 
 export function patchSkillHeader(

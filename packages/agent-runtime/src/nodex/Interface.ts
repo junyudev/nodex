@@ -996,6 +996,21 @@ export type AgentHostRequest =
   | {
       readonly type: "host.request";
       readonly id: string;
+      readonly operation: "claude.plugins.open";
+      readonly identity: AgentHostTurnIdentity;
+      readonly queryId: string;
+      readonly key: string;
+    }
+  | {
+      readonly type: "host.request";
+      readonly id: string;
+      readonly operation: "claude.plugins.close";
+      readonly queryId: string;
+      readonly identity: { readonly runtimeId: string; readonly runtimeGeneration: string };
+    }
+  | {
+      readonly type: "host.request";
+      readonly id: string;
       readonly operation: "turn.prepare";
       readonly identity: AgentHostTurnIdentity;
     }

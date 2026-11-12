@@ -2054,6 +2054,24 @@ function makeFakeClaudeCli(answerSetServers = true) {
   return { spawn, spawns, controlRequests, closed };
 }
 
+describe("Claude plugin query lifetime", () => {
+  it("replaces a query on activation, removal, generation change or lease expiry", () => {
+    const decide = ClaudeAdapterV2.claudePluginQueryDecision;
+    assert.equal(decide(null, "generation-a", 0), "open");
+    assert.equal(decide({ key: null, renewAfter: null }, "generation-a", 0), "revoke-and-reopen");
+    assert.equal(decide({ key: "generation-a", renewAfter: 10 }, "generation-a", 9), "reuse");
+    assert.equal(
+      decide({ key: "generation-a", renewAfter: 10 }, "generation-a", 10),
+      "revoke-and-reopen",
+    );
+    assert.equal(
+      decide({ key: "generation-a", renewAfter: null }, "generation-b", 0),
+      "revoke-and-reopen",
+    );
+    assert.equal(decide({ key: "generation-a", renewAfter: null }, null, 0), "revoke-and-reopen");
+  });
+});
+
 describe("ClaudeAdapterV2 MCP credential channel", () => {
   const nodexAppMcpServer = {
     type: "http" as const,
@@ -2063,6 +2081,7 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
   const openWith = (
     cli: ReturnType<typeof makeFakeClaudeCli>,
     sdkSettings?: Parameters<typeof ClaudeAdapterV2.makeClaudeQueryOptions>[0]["sdkSettings"],
+    pluginOptions?: ReturnType<typeof ClaudeAdapterV2.withClaudePluginQueryOptions>,
   ) =>
     Effect.gen(function* () {
       const runner = yield* ClaudeAdapterV2.ClaudeAgentSdkQueryRunner;
@@ -2076,7 +2095,7 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
             resume: false,
             cwd: null,
             environment: { PATH: "/usr/bin" },
-            mcpServers: { nodex_app: nodexAppMcpServer },
+            ...(pluginOptions ?? { mcpServers: { nodex_app: nodexAppMcpServer } }),
             ...(sdkSettings === undefined ? {} : { sdkSettings }),
           }),
           pathToClaudeCodeExecutable: "/opt/claude/cli.js",
@@ -2105,6 +2124,68 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
       const spawned = JSON.stringify(cli.spawns);
       assert.notInclude(spawned, "--mcp-config");
       assert.notInclude(spawned, "dummy-mcp-credential");
+    }),
+  );
+
+  it.effect("keeps Desktop Tool roots and nodex_app when registering a plugin lease", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("thread-claude-plugin-options");
+      const base = ClaudeAdapterV2.claudeMcpQueryOverrides({
+        mcpSession: {
+          environmentId: EnvironmentId.make("environment-claude-plugin-options"),
+          threadId,
+          providerSessionId: "mcp-session-claude-plugin-options",
+          providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+          endpoint: "http://127.0.0.1:43123/mcp",
+          authorizationHeader: "Bearer application-credential",
+          browserToolsAvailable: true,
+          desktopTools: {
+            endpoint: "http://127.0.0.1:43124/mcp",
+            pluginRoots: ["/managed/desktop-tools"],
+            skills: [],
+          },
+        },
+      });
+      const plugin = {
+        roots: ["/managed/agent-plugins/skills"],
+        skills: [],
+        servers: [
+          {
+            name: "nodex-fixture-gauge",
+            url: "http://127.0.0.1:43125/plugin-mcp/lease",
+            bearerToken: "plugin-credential",
+          },
+        ],
+        renewAfter: 60_000,
+      };
+      for (const plugins of [null, plugin]) {
+        const options = ClaudeAdapterV2.withClaudePluginQueryOptions(base, plugins);
+        const cli = makeFakeClaudeCli();
+        const session = yield* openWith(cli, undefined, options);
+        yield* session.close;
+        assert.deepInclude(cli.controlRequests, {
+          subtype: "mcp_set_servers",
+          servers: {
+            ...base.mcpServers,
+            ...(plugins === null
+              ? {}
+              : {
+                  "nodex-fixture-gauge": {
+                    type: "http",
+                    url: plugin.servers[0]!.url,
+                    headers: { Authorization: "Bearer plugin-credential" },
+                  },
+                }),
+          },
+        });
+        assert.isDefined(options.mcpServers?.nodex_app);
+        const spawned = JSON.stringify(cli.spawns);
+        assert.include(spawned, "/managed/desktop-tools");
+        if (plugins !== null) assert.include(spawned, plugin.roots[0]!);
+        else assert.notInclude(spawned, plugin.roots[0]!);
+        assert.notInclude(spawned, "plugin-credential");
+        assert.notInclude(spawned, "application-credential");
+      }
     }),
   );
 

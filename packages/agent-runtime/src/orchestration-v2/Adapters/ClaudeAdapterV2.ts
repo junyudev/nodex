@@ -114,6 +114,7 @@ import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Hex from "effect/encoding/Hex";
+import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -1437,6 +1438,52 @@ export function claudeMcpQueryOverrides(input: {
   };
 }
 
+export function claudePluginQueryDecision(
+  live: { readonly key: string | null; readonly renewAfter: number | null } | null,
+  key: string | null,
+  now: number,
+): "open" | "reuse" | "revoke-and-reopen" {
+  if (live === null) return "open";
+  if (live.key !== key || (live.renewAfter !== null && now >= live.renewAfter))
+    return "revoke-and-reopen";
+  return "reuse";
+}
+
+export function withClaudePluginQueryOptions(
+  base: ReturnType<typeof claudeMcpQueryOverrides>,
+  plugins: ExecutionHost.HostClaudePlugins | null,
+): ReturnType<typeof claudeMcpQueryOverrides> {
+  if (plugins === null) return base;
+  return {
+    ...base,
+    ...(plugins.roots.length === 0
+      ? {}
+      : {
+          plugins: [
+            ...(base.plugins ?? []),
+            ...plugins.roots.map((path) => ({
+              type: "local" as const,
+              path,
+              skipMcpDiscovery: true,
+            })),
+          ],
+        }),
+    ...(plugins.servers.length === 0
+      ? {}
+      : {
+          mcpServers: {
+            ...base.mcpServers,
+            ...Object.fromEntries(
+              plugins.servers.map(({ name, url, bearerToken }) => [
+                name,
+                { type: "http" as const, url, headers: { Authorization: `Bearer ${bearerToken}` } },
+              ]),
+            ),
+          },
+        }),
+  };
+}
+
 function providerSession(input: {
   readonly providerSessionId: OrchestrationV2ProviderSession["id"];
   readonly providerInstanceId: ProviderInstanceId;
@@ -1780,24 +1827,27 @@ function withClaudeSideChatBoundary(message: SDKUserMessage): SDKUserMessage {
   };
 }
 
-const makeClaudeUserMessageWithAttachments = Effect.fnUntraced(function* (input: {
+type ClaudePromptSkills = Pick<
+  Parameters<typeof makeClaudeUserMessage>[0],
+  "skillNames" | "optionalSkills"
+>;
+
+const prepareClaudeUserMessage = Effect.fnUntraced(function* (input: {
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
   readonly priority?: SDKUserMessage["priority"];
   readonly uuid?: SDKUserMessage["uuid"];
   readonly attachmentsDir: string;
   readonly fileSystem: FileSystem.FileSystem;
-  readonly skillNames?: ReadonlySet<string>;
-  readonly optionalSkills?: readonly string[];
 }) {
   if (input.attachments.length === 0) {
-    return makeClaudeUserMessage({
-      text: input.text,
-      ...(input.skillNames === undefined ? {} : { skillNames: input.skillNames }),
-      ...(input.optionalSkills === undefined ? {} : { optionalSkills: input.optionalSkills }),
-      ...(input.priority === undefined ? {} : { priority: input.priority }),
-      ...(input.uuid === undefined ? {} : { uuid: input.uuid }),
-    });
+    return (skills: ClaudePromptSkills) =>
+      makeClaudeUserMessage({
+        text: input.text,
+        ...skills,
+        ...(input.priority === undefined ? {} : { priority: input.priority }),
+        ...(input.uuid === undefined ? {} : { uuid: input.uuid }),
+      });
   }
 
   // The model's tools cannot dereference inlined pixels. Appending the
@@ -1810,15 +1860,7 @@ const makeClaudeUserMessageWithAttachments = Effect.fnUntraced(function* (input:
       resolveAttachmentPath({ attachmentsDir: input.attachmentsDir, attachment }),
   });
 
-  const dispatch =
-    input.skillNames === undefined
-      ? undefined
-      : planClaudeSkillDispatch(textWithAttachmentPaths, input.skillNames, input.optionalSkills);
-  const content: Array<ClaudeUserContentBlock> = [];
-  if (dispatch?.leadingText !== undefined) {
-    content.push({ type: "text", text: dispatch.leadingText });
-  }
-
+  const images: ClaudeUserContentBlock[] = [];
   for (const attachment of input.attachments) {
     if (attachment.type === "file") {
       continue;
@@ -1851,7 +1893,7 @@ const makeClaudeUserMessageWithAttachments = Effect.fnUntraced(function* (input:
           }),
       ),
     );
-    content.push({
+    images.push({
       type: "image",
       source: {
         type: "base64",
@@ -1861,24 +1903,34 @@ const makeClaudeUserMessageWithAttachments = Effect.fnUntraced(function* (input:
     });
   }
 
-  // Images go before the command block: a text block after them still
-  // expands, a command block followed by an image does not.
-  if (dispatch) {
-    content.push({ type: "text", text: dispatch.commandText });
-  } else if (textWithAttachmentPaths.length > 0) {
-    content.push({ type: "text", text: textWithAttachmentPaths });
-  }
-
-  return {
-    type: "user",
-    message: {
-      role: "user",
-      content,
-    },
-    parent_tool_use_id: null,
-    ...(input.priority === undefined ? {} : { priority: input.priority }),
-    ...(input.uuid === undefined ? {} : { uuid: input.uuid }),
-  } satisfies SDKUserMessage;
+  return (skills: ClaudePromptSkills): SDKUserMessage => {
+    const dispatch =
+      skills.skillNames === undefined
+        ? undefined
+        : planClaudeSkillDispatch(
+            textWithAttachmentPaths,
+            skills.skillNames,
+            skills.optionalSkills,
+          );
+    const content: ClaudeUserContentBlock[] = [];
+    if (dispatch?.leadingText !== undefined) {
+      content.push({ type: "text", text: dispatch.leadingText });
+    }
+    // Images go before the command block: a text block after them still expands.
+    content.push(...images);
+    if (dispatch) {
+      content.push({ type: "text", text: dispatch.commandText });
+    } else if (textWithAttachmentPaths.length > 0) {
+      content.push({ type: "text", text: textWithAttachmentPaths });
+    }
+    return {
+      type: "user",
+      message: { role: "user", content },
+      parent_tool_use_id: null,
+      ...(input.priority === undefined ? {} : { priority: input.priority }),
+      ...(input.uuid === undefined ? {} : { uuid: input.uuid }),
+    };
+  };
 });
 
 const sha256Hex = Effect.fnUntraced(function* (crypto: Crypto.Crypto, value: string) {
@@ -3271,6 +3323,10 @@ interface ClaudeLiveQueryContext {
   readonly cwd: string | null;
   readonly query: ClaudeAgentSdkQuerySession;
   readonly queryPolicyKey: string;
+  readonly pluginKey: string | null;
+  readonly pluginRenewAfter: number | null;
+  readonly pluginSkills: ExecutionHost.HostClaudePlugins["skills"];
+  readonly releasePlugins: Effect.Effect<void>;
   readonly cliShellKey: string | null;
   // Choices the process was launched with; a change needs a new process.
   readonly launchKey: string;
@@ -3974,9 +4030,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
   const skillDispatch = Effect.fnUntraced(function* (
     turn: ProviderAdapter.ProviderAdapterV2TurnInput,
     requested: ProviderAdapter.ProviderAdapterV2TurnMessage["skillInvocations"],
+    pluginSkills: ExecutionHost.HostClaudePlugins["skills"],
   ) {
     const cwd = turn.runtimePolicy.cwd;
-    const skills = yield* userInvocableSkills(cwd);
+    const skills = [
+      ...(yield* userInvocableSkills(cwd)),
+      ...pluginSkills.filter(({ userInvocable }) => userInvocable),
+    ];
     const desktop = (yield* mcpSessions.read(turn.threadId))?.desktopTools;
     const optionalSkills = (requested ?? []).flatMap((invocation) =>
       selectedDesktopSkill(desktop, invocation, adapterOptions.instanceId) ||
@@ -9567,12 +9627,20 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           ) {
             return existing;
           }
+          const identity = turnInput.hostExecutionIdentity;
+          const pluginKey = turnInput.hostClaudePluginKey ?? null;
+          const pluginDecision = claudePluginQueryDecision(
+            existing && { key: existing.pluginKey, renewAfter: existing.pluginRenewAfter },
+            pluginKey,
+            yield* Clock.currentTimeMillis,
+          );
           yield* endChatGrantsOnModeChange(turnInput, nativeThreadId);
           if (
             existing !== null &&
             existing.nativeThreadId === nativeThreadId &&
             existing.cwd === turnInput.runtimePolicy.cwd &&
             existing.queryPolicyKey === queryPolicyKey &&
+            pluginDecision === "reuse" &&
             existing.cliShellKey === cliShellKey &&
             existing.launchKey === compiledSelection.launchIdentity &&
             (yield* applyLiveSelection(existing, compiledSelection.live))
@@ -9595,12 +9663,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           // Background agents and shells run inside the CLI process, so a new
           // launch choice would kill them and lose their results. Refuse until
           // they finish or the user presses Stop, which closes the process.
+          // An out-of-date plugin set cannot admit a prompt, even with background work.
           // Another native thread on this session is one the app thread has
           // left (Claude sessions serve one app thread), so it is replaced.
           if (
             existing !== null &&
             existing.nativeThreadId === nativeThreadId &&
             !existing.stopping &&
+            pluginDecision !== "revoke-and-reopen" &&
             (yield* liveProcessRunsBackgroundWork(existing))
           ) {
             return yield* new ClaudeBackgroundWorkBlocksQueryReplacementError();
@@ -9613,6 +9683,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           // the replacement open succeeds or fails below.
           const closedExistingNativeThreadId = existing !== null ? existing.nativeThreadId : null;
           if (existing !== null) {
+            yield* existing.releasePlugins;
             yield* existing.query.close.pipe(Effect.ignore);
             if (existing.nativeThreadId !== nativeThreadId) {
               yield* clearWakeStateForNativeThread(existing.nativeThreadId);
@@ -9640,6 +9711,18 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           );
           const profileHome =
             cliShell?.profileHome ?? adapterOptions.environment?.NODEX_AGENT_PROFILE_HOME;
+          const pluginScope =
+            identity && pluginKey && executionHost.openClaudePlugins
+              ? yield* Scope.fork(sessionScope)
+              : null;
+          const releasePlugins = pluginScope ? Scope.close(pluginScope, Exit.void) : Effect.void;
+          const plugins =
+            identity && pluginKey && pluginScope && executionHost.openClaudePlugins
+              ? yield* executionHost.openClaudePlugins(identity, pluginKey).pipe(
+                  Scope.provide(pluginScope),
+                  Effect.onError(() => releasePlugins),
+                )
+              : null;
           const queryOptions = {
             ...makeClaudeQueryOptions({
               modelCatalog: subagentModelCatalog,
@@ -9677,7 +9760,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                         .join(process.platform === "win32" ? ";" : ":"),
                     },
               tools: queryPolicy.tools ?? CLAUDE_CODE_PRESET_TOOLS,
-              ...mcpOverrides,
+              ...withClaudePluginQueryOptions(mcpOverrides, plugins),
               permissionMode: queryPolicy.permissionMode,
               ...(queryPolicy.allowDangerouslySkipPermissions === undefined
                 ? {}
@@ -9707,6 +9790,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               options: queryOptions,
             })
             .pipe(
+              Effect.onError(() => releasePlugins),
               // An interrupted open leaves the old process just as dead.
               Effect.onError(() =>
                 // Same-native-thread replacement: the old process is already
@@ -9750,6 +9834,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             cwd: turnInput.runtimePolicy.cwd,
             query: querySession,
             queryPolicyKey,
+            pluginKey,
+            pluginRenewAfter: plugins?.renewAfter ?? null,
+            pluginSkills: plugins?.skills ?? [],
+            releasePlugins,
             cliShellKey,
             launchKey: compiledSelection.launchIdentity,
             confirmedLiveSelection: compiledSelection.live,
@@ -9815,7 +9903,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 }
               }),
             ),
-            Effect.ensuring(Deferred.succeed(closed, undefined)),
+            Effect.ensuring(
+              releasePlugins.pipe(Effect.ensuring(Deferred.succeed(closed, undefined))),
+            ),
             Effect.forkIn(sessionScope),
           );
           return context;
@@ -9912,10 +10002,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             // of prompting it again: drain the buffered wake messages into this
             // turn and let any still-streaming messages follow live. Its message
             // text never reaches the CLI.
-            const userMessage =
+            const preparePrompt =
               promptUuid === null
                 ? null
-                : yield* makeClaudeUserMessageWithAttachments({
+                : yield* prepareClaudeUserMessage({
                     text: providerPromptForInteraction(
                       turnInput.message.text,
                       turnInput.runtimePolicy.interactionMode,
@@ -9923,19 +10013,27 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     attachments: turnInput.message.attachments,
                     attachmentsDir,
                     fileSystem,
-                    ...(yield* skillDispatch(turnInput, turnInput.message.skillInvocations)),
                     uuid: promptUuid,
-                  }).pipe(
-                    Effect.map((message) =>
-                      turnInput.appThread.sideChat?.nativeFork &&
-                      !turnInput.appThread.sideChat.contextCleared &&
-                      turnInput.providerThread.forkedFrom !== null &&
-                      turnInput.providerTurnOrdinal === 1
-                        ? withClaudeSideChatBoundary(message)
-                        : message,
+                  });
+            const querySession = yield* openQuery(turnInput, nativeThreadId);
+            const prompt =
+              preparePrompt === null
+                ? null
+                : preparePrompt(
+                    yield* skillDispatch(
+                      turnInput,
+                      turnInput.message.skillInvocations,
+                      querySession.pluginSkills,
                     ),
                   );
-            const querySession = yield* openQuery(turnInput, nativeThreadId);
+            const userMessage =
+              prompt !== null &&
+              turnInput.appThread.sideChat?.nativeFork &&
+              !turnInput.appThread.sideChat.contextCleared &&
+              turnInput.providerThread.forkedFrom !== null &&
+              turnInput.providerTurnOrdinal === 1
+                ? withClaudeSideChatBoundary(prompt)
+                : prompt;
             if (userMessage !== null)
               yield* syncHostPermissions(
                 querySession,
@@ -10203,7 +10301,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               turnInput.delivery === "boundary"
                 ? yield* crypto.randomUUIDv4().pipe(Effect.filterOrFail(isClaudePromptUuid))
                 : undefined;
-            const userMessage = yield* makeClaudeUserMessageWithAttachments({
+            const preparePrompt = yield* prepareClaudeUserMessage({
               text: providerPromptForInteraction(
                 turnInput.message.text,
                 currentTurn.input.runtimePolicy.interactionMode,
@@ -10213,8 +10311,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               ...(boundaryUuid === undefined ? {} : { uuid: boundaryUuid }),
               attachmentsDir,
               fileSystem,
-              ...(yield* skillDispatch(currentTurn.input, turnInput.message.skillInvocations)),
             });
+            const userMessage = preparePrompt(
+              yield* skillDispatch(
+                currentTurn.input,
+                turnInput.message.skillInvocations,
+                existing.pluginSkills,
+              ),
+            );
             if (boundaryUuid === undefined) {
               yield* Ref.update(steeredTurns, (current) =>
                 new Set(current).add(turnInput.providerTurnId),

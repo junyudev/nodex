@@ -14,6 +14,7 @@ import {
   realpath,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -31,6 +32,10 @@ import { testLayer as mainConfig } from "../../main/app/MainConfig";
 import { makePluginInstallation, PluginInstallation } from "./PluginInstallation";
 import { live as pluginInstallationLive } from "./PluginInstallationLive";
 import { PluginMcpBroker } from "./broker";
+import {
+  materializeClaudePluginProjection,
+  planClaudePluginProjection,
+} from "./ClaudePluginProjection";
 import { makePluginInstallationStoreNode } from "./PluginInstallationStoreNode";
 
 const reader = makeAgentPluginReader(packageFilesNode);
@@ -463,4 +468,83 @@ it.live("projects only active skills and withdraws replaced generations and thei
       Effect.provide(pluginInstallationLive.pipe(Layer.provide(mainConfig({ nodexHome: home })))),
     );
   }),
+);
+it.effect("projects only activated skills and their current generation for Claude", () =>
+  Effect.gen(function* () {
+    const { home, source, plugins } = yield* testProfile;
+    const sourceSkill = join(source.locator, "skills", "organize", "SKILL.md");
+    const updateSkill = (nonce: string) =>
+      Effect.promise(() =>
+        writeFile(
+          sourceSkill,
+          [
+            "---",
+            "name: organize",
+            "description: Organize a fixture.",
+            "hooks: { SessionStart: [] }",
+            "allowed-tools: Bash",
+            "disable-model-invocation: true",
+            "---",
+            nonce,
+          ].join("\n"),
+        ),
+      );
+    yield* updateSkill("FIRST-SKILL");
+    yield* Effect.promise(async () => {
+      await mkdir(join(source.locator, "hooks"));
+      await writeFile(join(source.locator, "hooks", "hooks.json"), "{}");
+      await writeFile(join(source.locator, "shared.txt"), "Shared supporting file");
+      await symlink("../../shared.txt", join(source.locator, "skills", "organize", "shared.txt"));
+    });
+    const { installation } = yield* plugins.install(source, yield* previewDigest(source.locator));
+    const readPlan = () =>
+      Effect.map(plugins.list, (registry) => planClaudePluginProjection(registry, project));
+    expect((yield* readPlan()).plugins).toEqual([]);
+    yield* plugins.setProjectEnabled(installation.id, project, true);
+    const plan = yield* readPlan();
+    expect(
+      planClaudePluginProjection(yield* plugins.list, { ...project, projectId: "other" }).plugins,
+    ).toEqual([]);
+
+    const otherProject = { ...project, projectId: "other" };
+    yield* plugins.setProjectEnabled(installation.id, otherProject, true);
+    expect(planClaudePluginProjection(yield* plugins.list, otherProject).key).not.toBe(plan.key);
+    expect((yield* readPlan()).key).toBe(plan.key);
+
+    const first = yield* materializeClaudePluginProjection(home, plan);
+    const root = first.roots[0]!;
+    const slug = plan.plugins[0]!.name;
+    expect(slug).toMatch(/^nodex-[a-f0-9]+$/u);
+    expect(first.skills[0]?.name).toBe(`${slug}:organize`);
+    expect(yield* Effect.promise(() => readdir(root))).toEqual([".claude-plugin", "skills"]);
+    expect(
+      yield* Effect.promise(() => readFile(join(root, ".claude-plugin", "plugin.json"), "utf8")),
+    ).toBe(JSON.stringify({ name: slug }));
+    const readSkill = (root: string) =>
+      Effect.promise(() => readFile(join(root, "skills", "organize", "SKILL.md"), "utf8"));
+    const skill = yield* readSkill(root);
+    expect(skill).toContain("FIRST-SKILL");
+    expect(skill).toContain("disable-model-invocation: true");
+    expect(skill).not.toMatch(/hooks:|allowed-tools:/u);
+    expect(
+      yield* Effect.promise(() =>
+        readFile(join(root, "skills", "organize", "categories.txt"), "utf8"),
+      ),
+    ).toContain("Supplies");
+
+    expect(
+      yield* Effect.promise(() => readFile(join(root, "skills", "organize", "shared.txt"), "utf8")),
+    ).toBe("Shared supporting file");
+
+    yield* updateSkill("SECOND-SKILL");
+    yield* plugins.reload(installation.id);
+    const next = yield* readPlan();
+    expect(next.key).not.toBe(plan.key);
+    expect(next.plugins[0]?.name).toBe(slug);
+    const second = yield* materializeClaudePluginProjection(home, next);
+    expect(yield* readSkill(second.roots[0]!)).toContain("SECOND-SKILL");
+    expect(yield* readSkill(root)).toContain("FIRST-SKILL");
+    yield* plugins.setEnabled(installation.id, false);
+    expect((yield* materializeClaudePluginProjection(home, yield* readPlan())).roots).toEqual([]);
+  }).pipe(Effect.scoped),
 );

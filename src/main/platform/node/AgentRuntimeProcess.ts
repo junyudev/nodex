@@ -149,6 +149,23 @@ const hostRequestSchema = z.discriminatedUnion("operation", [
       z.object({ action: z.literal("release"), attachmentId: z.string().min(1) }),
     ]),
   }),
+  z.object({
+    type: z.literal("host.request"),
+    id: z.string().min(1),
+    operation: z.literal("claude.plugins.open"),
+    identity: hostIdentitySchema
+      .extend({ threadId: z.string().min(1), runId: z.string().min(1) })
+      .passthrough(),
+    queryId: z.uuid(),
+    key: z.string().regex(/^[0-9a-f]{64}$/u),
+  }),
+  z.object({
+    type: z.literal("host.request"),
+    id: z.string().min(1),
+    operation: z.literal("claude.plugins.close"),
+    queryId: z.uuid(),
+    identity: hostIdentitySchema,
+  }),
   z
     .object({
       type: z.literal("host.request"),

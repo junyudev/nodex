@@ -2332,6 +2332,9 @@ export const layerWithOptions = (
                                         .filter(Boolean)
                                         .join("\n\n"),
                                     }),
+                                ...(host.claudePluginKey === undefined
+                                  ? {}
+                                  : { hostClaudePluginKey: host.claudePluginKey }),
                                 ...(host.cliShell === undefined
                                   ? {}
                                   : { hostCliShell: host.cliShell }),

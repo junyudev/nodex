@@ -1,4 +1,3 @@
-import { live as pluginInstallation } from "./agent-plugins/PluginInstallationLive";
 import { CodexPluginDelivery } from "./agent-plugins/CodexPluginDelivery";
 import { SessionFolders } from "../main/agent-backend/SessionFolders";
 import { makeSessionReader } from "./RuntimeNotificationSessions";
@@ -54,6 +53,9 @@ import {
   type AgentRuntimeApplicationConnection,
 } from "../main/agent-runtime/AgentRuntimeApplication";
 import { AgentChatWorktrees } from "../main/codex-application/AgentChatWorktrees";
+import { PluginInstallation } from "./agent-plugins/PluginInstallation";
+import { live as pluginInstallation } from "./agent-plugins/PluginInstallationLive";
+import { PluginMcpBroker } from "./agent-plugins/broker";
 import { make as makeHost } from "../main/agent-runtime/AgentRuntimeHost";
 import { HostDesktopTools } from "./HostDesktopTools";
 import {
@@ -177,7 +179,7 @@ class HostActivation extends Context.Service<
 const supervisor = Layer.effectContext(
   Effect.gen(function* () {
     const config = yield* MainConfig;
-    const plugins = yield* CodexPluginDelivery;
+    const codexPlugins = yield* CodexPluginDelivery;
     const platform = yield* CodexPlatform;
     const codexLaunch = yield* CodexLocalLaunch;
     const settings = yield* ApplicationSettings;
@@ -195,6 +197,8 @@ const supervisor = Layer.effectContext(
     );
     const conversations = Option.getOrUndefined(yield* Effect.serviceOption(CodexConversations));
     const desktop = yield* HostDesktopTools;
+    const installations = yield* PluginInstallation;
+    const broker = yield* PluginMcpBroker;
     const pip = desktop.pip;
     const appToolCatalog = yield* HostAppToolCatalog;
     const hostPolicy = Option.getOrUndefined(yield* Effect.serviceOption(HostAgentPolicy));
@@ -685,8 +689,9 @@ const supervisor = Layer.effectContext(
         const configuration = prepared.get(connection.identity);
         if (!configuration) return Effect.fail(new Error("Execution configuration is unavailable"));
         return makeHost(connection, {
+          claudePlugins: { installations, broker },
+          codexPlugins,
           desktop,
-          plugins,
           workspaceEnvironment: workspace.environment,
           presentation,
           projectlessId,
@@ -868,7 +873,7 @@ const supervisor = Layer.effectContext(
   ),
 ).pipe(Layer.provide(NodeServices.layer));
 
-/** Execution lifecycle depends only on Core and native filesystem capabilities. */
+/** Execution and its Host-owned capabilities acquire before product tools activate. */
 export const runtime = supervisor.pipe(
   Layer.provideMerge(Layer.mergeAll(promptImagesLayer, sessionWorkspaceLayer, pluginInstallation)),
 );

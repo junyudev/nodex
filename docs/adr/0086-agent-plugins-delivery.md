@@ -77,12 +77,21 @@ and revocation in previously loaded and cold threads.
 
 ### Claude Code delivery
 
-The Agent Runtime supplies a generated local skills-only plugin for each SDK
-query. Its manifest and skill tree are assembled from approved contributions,
-so package-level hooks and native MCP declarations stay outside the projection.
-The adapter registers broker endpoints through the SDK's `setMcpServers` control
-channel. On revocation, Nodex revokes the leases and resumes the Session in a
-fresh query with the current Project's skills and servers before the next turn.
+The Host builds a Project-scoped local Claude plugin for each enabled installation
+with skills. Each SDK query gets immutable roots at the current generations.
+The manifest name derives from the installation identity and qualifies each
+skill's slash name. The projection copies the approved skill text and supporting
+files and emits only descriptive and invocation frontmatter. Package hooks,
+skill hooks, tool pre-approvals, commands, agents, and native MCP declarations
+stay outside Claude's projected capabilities.
+
+The adapter registers one lease per enabled server for each query through the
+SDK's `setMcpServers` control channel. The Host scopes each lease to the Project
+and verified Session, and Claude applies its normal per-Session tool permission
+policy. Closing the query releases its leases and projection. Before the next
+prompt after an activation or generation change, the adapter releases the old
+query's leases and resumes the native conversation in a fresh query with the
+current set.
 See the [Claude Agent SDK reference](https://code.claude.com/docs/en/agent-sdk/typescript).
 
 ### Duplicate native installations

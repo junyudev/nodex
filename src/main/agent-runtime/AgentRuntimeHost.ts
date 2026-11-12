@@ -1,4 +1,5 @@
 import type { CodexPluginDelivery } from "../../host/agent-plugins/CodexPluginDelivery";
+import { makeClaudePluginQueries } from "../../host/agent-plugins/ClaudePluginQueries";
 import { createHash } from "node:crypto";
 import { parseDesktopIdentifier, parseDesktopToolActivity } from "@nodex/agent-runtime/contracts";
 import type { RuntimeDesktopActivitySource } from "../host-runtime/RemoteHostedPipRuntime";
@@ -91,11 +92,15 @@ function launchesWsl(config: unknown): boolean {
 export const make = Effect.fn("AgentRuntimeHost.make")(function* (
   connection: AgentRuntimeProcessConnection,
   options: {
+    readonly claudePlugins?: Pick<
+      Parameters<typeof makeClaudePluginQueries>[0],
+      "installations" | "broker"
+    >;
     readonly projectlessId: string;
     readonly providers: AgentRuntimeConfiguration["providers"];
     readonly providerDriver?: (instanceId: string) => string | undefined;
     readonly execute: AgentRuntimeHostToolExecutor;
-    readonly plugins?: CodexPluginDelivery["Service"];
+    readonly codexPlugins?: CodexPluginDelivery["Service"];
     readonly desktop?: Pick<
       AgentRuntimeDesktopTools,
       "threadConfig" | "desktopTools" | "observeNativeTurn" | "pip"
@@ -123,13 +128,16 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
   if (Option.isSome(hostPolicy) && !scopedCore) return yield* unavailable("scoped-agent-core");
   const authorizeExecution = yield* makeRuntimeAuthority;
   const { runtimeId, runtimeGeneration: leaseId } = connection.identity;
+  const claudePlugins = options.claudePlugins
+    ? yield* makeClaudePluginQueries({ home: config.nodexHome, ...options.claudePlugins })
+    : null;
   let open = true;
   const pluginThreads = new Set<string>();
   yield* Effect.addFinalizer(() =>
     Effect.gen(function* () {
       open = false;
-      if (options.plugins)
-        yield* Effect.forEach(pluginThreads, options.plugins.release, { discard: true });
+      if (options.codexPlugins)
+        yield* Effect.forEach(pluginThreads, options.codexPlugins.release, { discard: true });
       options.presentation?.finishRuntimeLease(runtimeId, leaseId);
       yield* options.desktop?.pip?.retireRuntimeLease(runtimeId, leaseId) ?? Effect.void;
     }),
@@ -295,6 +303,12 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       backend,
     });
     const driver = driverOf(proof.providerInstanceId);
+    const pluginPlan =
+      claudePlugins && driver === "claudeAgent" && context.actorProjectId !== null
+        ? yield* claudePlugins
+            .plan({ spaceId: context.libraryId, projectId: context.actorProjectId })
+            .pipe(Effect.mapError(() => unavailable("claude.plugins")))
+        : null;
     const nativeId =
       identity.nativeThreadRef?.driver === "codex" ? identity.nativeThreadRef.nativeId : null;
     const taskId = nativeId ?? shellTaskId(proof.threadId);
@@ -360,6 +374,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         .filter(Boolean)
         .join("\n\n"),
       sourceRoots,
+      ...(pluginPlan?.plugins.length ? { claudePluginKey: pluginPlan.key } : {}),
       ...(cliShell ? { cliShell } : {}),
     } satisfies HostTurnPreparation;
   });
@@ -393,7 +408,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       if (request.operation === "codex.plugins") {
         if (!isCurrentLease(request.identity)) return yield* unavailable(request.operation);
         const input = request.request;
-        const plugins = options.plugins;
+        const plugins = options.codexPlugins;
         if (!plugins) return { revision: null, delivery: null };
         if (input.action === "release") {
           const key = leaseId + ":" + input.attachmentId;
@@ -430,6 +445,25 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         pluginThreads.add(key);
         const delivery = yield* plugins.attach(project, binding.session_id, key, revision);
         return { revision: delivery?.revision ?? null, delivery };
+      }
+      if (request.operation === "claude.plugins.close") {
+        if (!isCurrentLease(request.identity)) return yield* unavailable(request.operation);
+        yield* claudePlugins?.close(request.queryId) ?? Effect.void;
+        return {};
+      }
+      if (request.operation === "claude.plugins.open") {
+        if (!claudePlugins) return yield* unavailable(request.operation);
+        const { context, sessionId, proof } = yield* authorize(request.identity);
+        if (driverOf(proof.providerInstanceId) !== "claudeAgent" || context.actorProjectId === null)
+          return yield* unavailable(request.operation);
+        return yield* claudePlugins
+          .open(
+            { spaceId: context.libraryId, projectId: context.actorProjectId },
+            sessionId,
+            request.queryId,
+            request.key,
+          )
+          .pipe(Effect.mapError(() => unavailable(request.operation)));
       }
       if (request.operation === "turn.prepare") return yield* prepare(request.identity);
       if (request.operation === "desktop.skill-roots") {

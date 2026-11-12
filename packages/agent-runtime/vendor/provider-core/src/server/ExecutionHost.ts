@@ -87,6 +87,7 @@ export const HostTurnPreparation = Schema.Struct({
   instructions: Schema.optionalKey(Schema.String),
   cliShell: Schema.optionalKey(HostCliShell),
   sourceRoots: Schema.optionalKey(Schema.Array(Schema.String)),
+  claudePluginKey: Schema.optionalKey(Schema.String),
 });
 export type HostTurnPreparation = typeof HostTurnPreparation.Type;
 
@@ -142,6 +143,21 @@ export type CodexPluginRequest =
   | { readonly action: "status"; readonly projectId: string }
   | { readonly action: "attach"; readonly projectId: string; readonly rootThreadId: string; readonly attachmentId: string }
   | { readonly action: "release"; readonly attachmentId: string };
+export const HostClaudePlugins = Schema.Struct({
+  roots: Schema.Array(Schema.String),
+  skills: Schema.Array(Schema.Struct({
+    name: Schema.String,
+    path: Schema.String,
+    userInvocable: Schema.Boolean,
+  })),
+  servers: Schema.Array(Schema.Struct({
+    name: Schema.String,
+    url: Schema.String,
+    bearerToken: Schema.String,
+  })),
+  renewAfter: Schema.NullOr(Schema.Number),
+});
+export type HostClaudePlugins = typeof HostClaudePlugins.Type;
 
 /** A host may admit a Turn and supply trusted CLI/skill context before native execution. */
 export class ExecutionHost extends Context.Reference<{
@@ -182,6 +198,10 @@ export class ExecutionHost extends Context.Reference<{
     { readonly revision: string | null; readonly delivery: CodexPluginDelivery | null },
     ExecutionHostError
   >;
+  readonly openClaudePlugins?: (
+    identity: HostTurnIdentity,
+    key: string,
+  ) => Effect.Effect<HostClaudePlugins, ExecutionHostError, Scope.Scope>;
   /** Desktop activity is addressed by its captured execution and opaque Desktop Turn. */
   readonly observeNativeTurn?: (input: HostTurnIdentityReport) => Effect.Effect<void>;
 }>("@nodex/provider-core/server/ExecutionHost", {
