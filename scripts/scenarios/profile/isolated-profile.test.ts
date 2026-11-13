@@ -117,26 +117,23 @@ describe("isolated scenario Profile", () => {
   });
 
   test("removes its owned root when credential materialization fails", async () => {
-    const tempParent = process.platform === "darwin" ? "/tmp" : os.tmpdir();
+    // A private parent keeps other runs' scenario roots out of this count.
+    const tempParent = await mkdtemp(path.join(os.tmpdir(), "ndx-codex-parent-"));
     const source = await mkdtemp(path.join(os.tmpdir(), "ndx-codex-incomplete-"));
     await writeFile(path.join(source, "config.toml"), 'model = "gpt-test"\n');
-    const before = new Set(
-      (await readdir(tempParent)).filter((entry) => entry.startsWith("ndx-scn-")),
-    );
     try {
       await expect(
         createIsolatedProfile({
           label: "missing-auth",
           codex: "copy-auth-and-config",
           sourceCodexHome: source,
+          tempParent,
         }),
       ).rejects.toMatchObject({ code: "ENOENT" });
-      const leaked = (await readdir(tempParent)).filter(
-        (entry) => entry.startsWith("ndx-scn-") && !before.has(entry),
-      );
-      expect(leaked).toEqual([]);
+      expect(await readdir(tempParent)).toEqual([]);
     } finally {
       await rm(source, { recursive: true, force: true });
+      await rm(tempParent, { recursive: true, force: true });
     }
   });
 

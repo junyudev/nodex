@@ -23,6 +23,8 @@ export interface IsolatedProfileOptions {
   readonly retention?: IsolatedProfileRetention;
   readonly label: string;
   readonly sourceCodexHome?: string;
+  /** Directory that receives the owned root; the scenario temporary directory by default. */
+  readonly tempParent?: string;
 }
 
 export interface IsolatedProfile {
@@ -106,7 +108,15 @@ export const waitForCoreRuntimeRemoval = async (
   throw new Error(`Core runtime evidence remained after shutdown: ${remaining.join(", ")}`);
 };
 
-const ensureOwnedRootShape = async (profile: IsolatedProfile): Promise<void> => {
+/** Where a root may live: the scenario temporary directory unless a caller created it elsewhere. */
+export interface OwnedRootScope {
+  readonly tempParent: string;
+}
+
+const ensureOwnedRootShape = async (
+  profile: IsolatedProfile,
+  scope: OwnedRootScope = { tempParent: scenarioTempParent() },
+): Promise<void> => {
   if (!path.isAbsolute(profile.runRoot)) {
     throw new Error("Isolated scenario Profile root must be absolute");
   }
@@ -118,7 +128,7 @@ const ensureOwnedRootShape = async (profile: IsolatedProfile): Promise<void> => 
   if (actualRoot !== profile.runRoot) {
     throw new Error("Isolated scenario Profile root changed identity");
   }
-  const tempRoot = await realpath(scenarioTempParent());
+  const tempRoot = await realpath(scope.tempParent);
   if (path.dirname(actualRoot) !== tempRoot || !path.basename(actualRoot).startsWith(ROOT_PREFIX)) {
     throw new Error("Isolated scenario Profile root is outside the owned temp namespace");
   }
@@ -169,7 +179,10 @@ export const createIsolatedProfile = async (
 ): Promise<IsolatedProfile> => {
   const repositoryRealpath = await realpath(process.cwd());
   const label = sanitizedLabel(options.label);
-  const tempParent = await realpath(scenarioTempParent());
+  const tempParentScope = {
+    tempParent: await realpath(options.tempParent ?? scenarioTempParent()),
+  };
+  const tempParent = tempParentScope.tempParent;
   const runRoot = await mkdtemp(path.join(tempParent, ROOT_PREFIX));
   const manifest: IsolatedProfileManifest = {
     version: 1,
@@ -217,10 +230,10 @@ export const createIsolatedProfile = async (
     }
     return profile;
   } catch (error) {
-    const cleanup = await cleanupIsolatedProfile({
-      ...profile,
-      retention: "dispose",
-    });
+    const cleanup = await cleanupIsolatedProfile(
+      { ...profile, retention: "dispose" },
+      tempParentScope,
+    );
     if (cleanup.status === "unsafe") {
       throw new AggregateError(
         [error, new Error(cleanup.reason)],
@@ -256,10 +269,11 @@ export const resumeIsolatedProfile = async (runRoot: string): Promise<IsolatedPr
 
 export const cleanupIsolatedProfile = async (
   profile: IsolatedProfile,
+  scope?: OwnedRootScope,
 ): Promise<IsolatedProfileCleanupResult> => {
   if (profile.retention === "keep") return { status: "kept" };
   try {
-    await ensureOwnedRootShape(profile);
+    await ensureOwnedRootShape(profile, scope);
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return { status: "already_missing" };
