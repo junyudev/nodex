@@ -204,8 +204,8 @@ overrides:
   vitest: 5.0.5
   yaml: 2.9.1
   '@modelcontextprotocol/sdk': 1.32.2
-  '@modelcontextprotocol/sdk>hono': 4.13.14
-  '@modelcontextprotocol/sdk>@hono/node-server': 2.1.5
+  '@modelcontextprotocol/sdk>hono': 4.13.16
+  '@modelcontextprotocol/sdk>@hono/node-server': 2.1.6
   js-yaml@<5: 4.3.2
   katex: 0.19.1
   '@vitest/expect@^5.0.0': 5.0.5
@@ -3144,8 +3144,8 @@ packages:
       prosemirror-state: ^1.0.0
       prosemirror-view: 1.42.8
 
-  '@hono/node-server@2.1.5':
-    resolution: {integrity: sha512-MgP/I06GdvsilDspMk/qmRzpk8LOUStP6jFAbSRi40W09DhoyUn+Mj7eyKICPqeYKybOjVFLVIAQzvu1bfIa7Q==}
+  '@hono/node-server@2.1.6':
+    resolution: {integrity: sha512-p/KH9MnfNcsm3sR6x4lNgm5j+QN4Et8srKredl9DZfXiyZ1UQ3aQ2YVpFLbqktYN5JI+DB+VZFKM2PqE5hLKjQ==}
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4 || ^5.0.0-0
@@ -8550,8 +8550,8 @@ packages:
   hermes-parser@0.36.1:
     resolution: {integrity: sha512-GApNk4zLHi2UWoWZZkx7LNCOSzLSc5lB55pZ/PhK7ycFeg7u5LcF88p/WbpIi1XUDtE0MpHE3uRR3u3KB7TjSQ==}
 
-  hono@4.13.14:
-    resolution: {integrity: sha512-yhRLQ21U6qa9Hsu2N7Qcbh8tE+WKEcoErjIo56LeSGiGXGp9sA7UpE86Ui9uexb61KakiGwuHMn2QdV7w6i6kQ==}
+  hono@4.13.16:
+    resolution: {integrity: sha512-AOLOEhvrV+iH92xXCnFr/5+3KjPKcI3xP63XJtX5spAnkznPdHijlIsUTpi7/9EhWqrTCekw5c5zh1K+YsVw7A==}
     engines: {node: '>=16.9.0'}
 
   hosted-git-info@4.1.0:
@@ -13750,9 +13750,9 @@ snapshots:
       prosemirror-transform: 1.12.5
       prosemirror-view: 1.42.8(patch_hash=76f963e8b097c73ce4c166572f1bbaab9d5aca1e321f5974069edd9bd78fecef)
 
-  '@hono/node-server@2.1.5(hono@4.13.14)':
+  '@hono/node-server@2.1.6(hono@4.13.16)':
     dependencies:
-      hono: 4.13.14
+      hono: 4.13.16
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -13986,7 +13986,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.32.2(supports-color@10.2.2)(zod@4.6.7)':
     dependencies:
-      '@hono/node-server': 2.1.5(hono@4.13.14)
+      '@hono/node-server': 2.1.6(hono@4.13.16)
       ajv: 8.20.0
       ajv-formats: 3.0.1
       content-type: 1.0.5
@@ -13996,7 +13996,7 @@ snapshots:
       eventsource-parser: 3.1.1
       express: 5.2.1(supports-color@10.2.2)
       express-rate-limit: 8.7.0(express@5.2.1(supports-color@10.2.2))(supports-color@10.2.2)
-      hono: 4.13.14
+      hono: 4.13.16
       jose: 6.2.17
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -18995,7 +18995,7 @@ snapshots:
     dependencies:
       hermes-estree: 0.36.1
 
-  hono@4.13.14: {}
+  hono@4.13.16: {}
 
   hosted-git-info@4.1.0:
     dependencies:

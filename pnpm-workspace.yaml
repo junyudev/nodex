@@ -75,8 +75,8 @@ overrides:
   vitest: 5.0.5
   yaml: 2.9.1
   "@modelcontextprotocol/sdk": 1.32.2
-  "@modelcontextprotocol/sdk>hono": 4.13.14
-  "@modelcontextprotocol/sdk>@hono/node-server": 2.1.5
+  "@modelcontextprotocol/sdk>hono": 4.13.16
+  "@modelcontextprotocol/sdk>@hono/node-server": 2.1.6
   # Legacy tool APIs (including Redocly Schema.extend) still require YAML 4.
   "js-yaml@<5": 4.3.2
   # Keep transitive math renderers on the security-patched release.
