@@ -40,21 +40,21 @@ export function createRendererCompilerOptions(
   } satisfies PluginOptions;
 }
 
-/** Share Babel parsing, preset filters and client selection with standalone coverage checks. */
+/**
+ * Share Babel parsing, the compiler plugin and client selection with standalone coverage checks.
+ * The compiler plugin is referenced directly: the plugin-react preset resolves it through
+ * `import.meta.resolve`, which tsx's CommonJS transform of ESM dependencies does not provide.
+ */
 export async function createRendererCompilerBabelPlugin(
   root: string,
   options: PluginOptions,
   observers: PluginItem[] = [],
 ): Promise<Plugin> {
-  // Preserve native ESM imports when tsx invokes this factory from a CommonJS entrypoint.
-  const [{ default: babel }, { reactCompilerPreset }] = await Promise.all([
-    import("@rolldown/plugin-babel"),
-    import("@vitejs/plugin-react"),
-  ]);
+  const { default: babel } = await import("@rolldown/plugin-babel");
+  const compilerPlugin = createRequire(import.meta.url).resolve("babel-plugin-react-compiler");
   return (await babel({
     include: (id) => !!id && isRendererCompilerSource(id, root),
-    plugins: observers,
-    presets: [reactCompilerPreset(options)],
+    plugins: [...observers, [compilerPlugin, options]],
   })) as unknown as Plugin;
 }
 

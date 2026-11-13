@@ -81,7 +81,7 @@ It supplies Vite's optional peer so workspace test helpers and the root runner
 resolve one Vitest instance.
 
 The renderer uses the React plugin's native JSX and Fast Refresh transforms.
-React Compiler runs through `@rolldown/plugin-babel` and `reactCompilerPreset`,
+React Compiler runs through `@rolldown/plugin-babel` with `babel-plugin-react-compiler` referenced directly,
 with first-party source filtering and a separate development transform cache.
 Resolve the asynchronous Babel plugin before returning configuration to Electron Vite.
 Keep Babel's mutable native hook filter attached when wrapping its transform.
