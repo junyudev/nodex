@@ -171,6 +171,7 @@ export function makePreviewWorkbenchTabProjection(
         config: draft.config,
         browserTabId: null,
       } as ProjectSessionPreviewTab;
+    case "plugin_app":
     case "side_chat":
     case "skill":
       throw new Error(`A ${draft.kind} opens as a durable tab, never as a preview`);
@@ -249,6 +250,7 @@ export function makePinnedPreviewTabCreateInput(
         kind: previewTab.kind,
         config: previewTab.config,
       };
+    case "plugin_app":
     case "side_chat":
     case "skill":
       throw new Error(`A ${previewTab.kind} opens as a durable tab, never as a preview`);

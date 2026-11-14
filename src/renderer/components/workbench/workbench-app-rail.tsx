@@ -1,3 +1,9 @@
+import {
+  selectPluginAppEntries,
+  type PluginAppBinding,
+} from "../../../shared/agent-plugins/app-entrypoints";
+import { usePluginAppCatalogChanges, usePluginAppEntries } from "@/lib/plugin-app-adapter";
+import { PluginAppLogo } from "@/features/plugins/view/plugin-logo";
 import { Fragment, type ReactNode } from "react";
 import { PluginsIcon } from "@/components/shared/icons";
 import {
@@ -27,6 +33,9 @@ export function WorkbenchRailDivider() {
 export interface WorkbenchAppRailProps {
   contentOnly?: boolean;
   destination: WorkbenchPrimaryDestination;
+  pluginProjectId?: string | null;
+  activePlugin?: Extract<PluginAppBinding, { kind: "global" }>;
+  onOpenPluginApp?: (binding: Extract<PluginAppBinding, { kind: "global" }>, title: string) => void;
   onHome: () => void;
   onSpace: () => void;
   onAutomations: () => void;
@@ -48,6 +57,9 @@ interface WorkbenchRailEntry {
 
 export function WorkbenchAppRail({
   destination,
+  pluginProjectId,
+  activePlugin,
+  onOpenPluginApp,
   onHome,
   onSpace,
   onAutomations,
@@ -121,7 +133,7 @@ export function WorkbenchAppRail({
           {index > 0 ? <WorkbenchRailDivider /> : null}
           <div className="flex flex-col items-center gap-2">
             {entries.map(({ id, label, peekArea, icon, onSelect }) => {
-              const active = destination === id;
+              const active = !activePlugin && destination === id;
               return (
                 <NodexTooltip key={id} tooltipContent={label} side="right">
                   <NodexButton
@@ -146,7 +158,74 @@ export function WorkbenchAppRail({
           </div>
         </Fragment>
       ))}
+      {!contentOnly && pluginProjectId !== undefined && onOpenPluginApp && (
+        <PluginAppRailEntries
+          projectId={pluginProjectId}
+          activePlugin={activePlugin}
+          onOpen={onOpenPluginApp}
+        />
+      )}
       {footer}
     </nav>
+  );
+}
+
+function PluginAppRailEntries({
+  projectId,
+  activePlugin,
+  onOpen,
+}: {
+  readonly projectId: string | null;
+  readonly activePlugin: WorkbenchAppRailProps["activePlugin"];
+  readonly onOpen: NonNullable<WorkbenchAppRailProps["onOpenPluginApp"]>;
+}) {
+  usePluginAppCatalogChanges();
+  const pluginEntries = selectPluginAppEntries(usePluginAppEntries(projectId), { kind: "global" });
+  if (pluginEntries.length === 0) return null;
+  // Plugin apps form their own group below the built-in destinations.
+  const buttons = pluginEntries.map(({ pluginId, entry, ...presentation }) => {
+    const label = pluginEntries.some(
+      (item) => item.pluginId === pluginId && item.entry.id !== entry.id,
+    )
+      ? `${presentation.pluginName} · ${entry.title}`
+      : presentation.pluginName;
+    const active =
+      activePlugin?.pluginId === pluginId &&
+      activePlugin.entryId === entry.id &&
+      activePlugin.projectId === projectId;
+    return (
+      <NodexTooltip key={JSON.stringify([pluginId, entry.id])} tooltipContent={label} side="right">
+        <NodexButton
+          aria-label={label}
+          aria-current={active ? "page" : undefined}
+          variant="ghostSecondary"
+          size="icon"
+          className={cn(
+            WORKBENCH_RAIL_BUTTON_CLASS,
+            "group",
+            active &&
+              "bg-(--color-background-secondary-ghost-hover) text-(--color-text-secondary-ghost-hover)",
+          )}
+          onClick={() =>
+            onOpen({ kind: "global", pluginId, entryId: entry.id, projectId, presentation }, label)
+          }
+        >
+          <span
+            className={cn(
+              "icon-sm",
+              !active && "grayscale opacity-75 group-hover:grayscale-0 group-hover:opacity-100",
+            )}
+          >
+            <PluginAppLogo presentation={presentation} composer className="icon-sm" />
+          </span>
+        </NodexButton>
+      </NodexTooltip>
+    );
+  });
+  return (
+    <>
+      <WorkbenchRailDivider />
+      <div className="flex flex-col items-center gap-2">{buttons}</div>
+    </>
   );
 }

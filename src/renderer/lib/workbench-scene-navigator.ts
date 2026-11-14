@@ -1,3 +1,4 @@
+import type { PluginAppBinding } from "../../shared/agent-plugins/app-entrypoints";
 import type { WorkbenchSkillSurfaceConfig } from "../../shared/schemas/workbench-skill";
 import { resolveBrowserTabTitle } from "../../shared/browser-url";
 import {
@@ -88,6 +89,11 @@ export type WorkbenchSurfaceOpenRequest =
       readonly kind: "review";
       readonly config: WorkbenchReviewSurfaceConfig;
       readonly titleSnapshot?: string;
+    }
+  | {
+      readonly kind: "plugin_app";
+      readonly config: Exclude<PluginAppBinding, { kind: "global" }>;
+      readonly titleSnapshot: string;
     }
   | {
       readonly kind: "files";
@@ -374,6 +380,13 @@ function makeSurfaceDescriptor(
         titleSnapshot: request.titleSnapshot ?? "Review",
         config: request.config,
       };
+    case "plugin_app":
+      return {
+        ...common,
+        kind: request.kind,
+        titleSnapshot: request.titleSnapshot,
+        config: request.config,
+      };
     case "files":
       return applyFileReveal(
         {
@@ -643,13 +656,16 @@ export function createWorkbenchSceneNavigator(
     const unavailable = validateSceneSurfaceRequest(port, input);
     if (unavailable) return unavailable;
 
-    if (input.request.kind === "page_file" && input.target.placement?.kind === "same-group") {
+    if (
+      (input.request.kind === "page_file" || input.request.kind === "plugin_app") &&
+      input.target.placement?.kind === "same-group"
+    ) {
       input = { ...input, target: { ...input.target, afterSource: true } };
-      // A File opened from a preview Page keeps that Page beside it.
+      // A related durable tab keeps its preview source beside it.
       const source = port.preview
         ?.list(input.owner)
         .find((entry) => entry.surface.id === input.target.placement?.sourceSurfaceId);
-      if (source?.surface.kind === "page_stage")
+      if (source?.surface.kind === (input.request.kind === "page_file" ? "page_stage" : "files"))
         pinPreview({
           owner: input.owner,
           panelId: source.panelId,
@@ -658,7 +674,11 @@ export function createWorkbenchSceneNavigator(
         });
     }
     const candidate = makeSurfaceDescriptor(input.request, identities);
-    if (input.mode === "preview" && input.request.kind !== "skill") {
+    if (
+      input.mode === "preview" &&
+      input.request.kind !== "skill" &&
+      input.request.kind !== "plugin_app"
+    ) {
       return presentPreviewSurface(port, input, candidate);
     }
     return port.presentDurable(input, candidate);

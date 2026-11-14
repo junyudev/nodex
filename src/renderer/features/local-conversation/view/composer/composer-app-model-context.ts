@@ -253,3 +253,20 @@ export function useComposerAppModelContextRecipient(target: ComposerAppModelCont
     [registry, target],
   );
 }
+
+/** Read a committed Composer from a sibling surface in the same conversation route. */
+export function useReadRouteComposerAppModelContext() {
+  const route = useScopeHandle(RouteScope);
+  return useCallback(
+    (target: ComposerAppModelContextTarget) =>
+      route
+        .get(recipientsAtom)
+        .find(
+          (entry) =>
+            entry.target.hostId === target.hostId &&
+            entry.target.threadId === target.threadId &&
+            entry.isCurrent(),
+        ) ?? null,
+    [route],
+  );
+}

@@ -36,7 +36,7 @@ import { httpFixture } from "./fixtures/http-server.testkit";
 afterEach(() => vi.unstubAllEnvs());
 
 const scope = {
-  installationId: "installed",
+  pluginId: "installed",
   generation: "v1",
   serverKey: "fixture",
   project: { spaceId: "space-1", projectId: "project-a" },
@@ -235,7 +235,7 @@ it.live(
         (request: Parameters<PluginMcpBrokerOptions["resolveHeaders"]>[0]) =>
           Effect.succeed({
             Authorization: "Bearer from-host-secret-port",
-            "x-project": request.scope.project.projectId,
+            "x-project": request.scope.project.projectId ?? "",
           }),
       );
       const broker = yield* make({ resolveHeaders });
@@ -614,9 +614,9 @@ it.live("serves only current Project skills and contains and bounds package read
           return { result, value: JSON.parse(content!.text) as unknown };
         }),
       );
-    const selection = { installationId: "enabled", skill: skill.directory };
+    const selection = { pluginId: "enabled", skill: skill.directory };
     expect((yield* call("list_plugin_skills")).value).toMatchObject({
-      skills: [{ installationId: "enabled", generation: "v1" }],
+      skills: [{ pluginId: "enabled", generation: "v1" }],
       nextOffset: null,
     });
     expect((yield* call("read_plugin_skill", selection)).value).toMatchObject({
@@ -629,10 +629,10 @@ it.live("serves only current Project skills and contains and bounds package read
     for (const file of ["../../../secret", "escape.txt", "oversize.txt"]) {
       expect((yield* call("read_plugin_skill", { ...selection, file })).result.isError).toBe(true);
     }
-    for (const installationId of ["disabled", "other-project"]) {
-      expect(
-        (yield* call("read_plugin_skill", { ...selection, installationId })).result.isError,
-      ).toBe(true);
+    for (const pluginId of ["disabled", "other-project"]) {
+      expect((yield* call("read_plugin_skill", { ...selection, pluginId })).result.isError).toBe(
+        true,
+      );
     }
     authorized = false;
     yield* Effect.promise(() => expect(client.listTools()).rejects.toThrow("lease_revoked"));

@@ -1,3 +1,4 @@
+import type { PluginAppBinding } from "./agent-plugins/app-entrypoints";
 import type { WorkbenchSessionViewSnapshot } from "./workbench-session-view";
 import type {
   WorkbenchSceneKey,
@@ -273,6 +274,12 @@ export type WorkbenchSceneLocation =
 export type WorkbenchStableLocation =
   | WorkbenchSceneLocation
   | {
+      readonly kind: "plugin_app";
+      readonly binding: Extract<PluginAppBinding, { kind: "global" }>;
+      readonly title: string;
+      readonly returnTo: WorkbenchSceneLocation;
+    }
+  | {
       readonly kind: "automations";
       readonly path: string;
       readonly returnTo: WorkbenchSceneLocation;
@@ -307,7 +314,7 @@ export type WorkbenchLocationV9 =
 /** Home remembers its own routes; Space, Automations, Customize and Insights restore their own state. */
 export type WorkbenchHomeLocation = Exclude<
   WorkbenchStableLocation,
-  { readonly kind: "library" | "automations" | "plugins" | "insights" }
+  { readonly kind: "library" | "automations" | "plugins" | "insights" | "plugin_app" }
 >;
 
 /** Rail destinations. Insights shares Home's sidebar; the others own a contextual sidebar. */
@@ -438,6 +445,7 @@ export function getWorkbenchHomeLocation(
     location.kind === "library" ||
     location.kind === "automations" ||
     location.kind === "plugins" ||
+    location.kind === "plugin_app" ||
     location.kind === "insights" ||
     location.kind === "pending-worktree"
   ) {
@@ -478,6 +486,8 @@ export function getWorkbenchSceneReturnLocationV8(
 export function getWorkbenchActiveSessionId(
   layout: Pick<WorkbenchLayoutSnapshot, "location">,
 ): string | null {
+  const stable = layout.location.kind === "settings" ? layout.location.returnTo : layout.location;
+  if (stable.kind === "plugin_app") return null;
   const location = getWorkbenchSceneReturnLocation(layout.location);
   return location.kind === "session" ? location.sessionId : null;
 }

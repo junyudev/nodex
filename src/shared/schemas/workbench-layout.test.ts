@@ -7,6 +7,7 @@ import {
   createDefaultWorkbenchLayoutSnapshotV6,
   createDefaultWorkbenchLayoutSnapshotV7,
   createDefaultWorkbenchLayoutSnapshot,
+  getWorkbenchActiveSessionId,
   type WorkbenchLayoutSnapshot,
   type WorkbenchLayoutSnapshotV7,
 } from "../workbench-layout";
@@ -823,4 +824,29 @@ describe("WorkbenchLayoutSnapshotSchema locations", () => {
       }).success,
     ).toBe(false);
   });
+});
+
+test("restores a global plugin app and its Settings return without an active Session", () => {
+  const app = {
+    kind: "plugin_app",
+    title: "Field Notes",
+    binding: {
+      kind: "global",
+      projectId: "field",
+      pluginId: "workbench-field-notes@nodex-local",
+      entryId: '["notes","open_notes","global"]',
+    },
+    returnTo: { kind: "session", sessionId: "previous", projectContextId: "field" },
+  } as const;
+  const snapshot = createDefaultWorkbenchLayoutSnapshot();
+  for (const location of [
+    app,
+    { kind: "settings", path: "/settings/general", returnTo: app },
+  ] as const) {
+    const restored = WorkbenchLayoutSnapshotSchema.parse(
+      JSON.parse(JSON.stringify({ ...snapshot, location })),
+    );
+    expect(restored.location).toEqual(location);
+    expect(getWorkbenchActiveSessionId(restored)).toBeNull();
+  }
 });

@@ -1,3 +1,4 @@
+import type { PluginAppPresentation } from "../../shared/agent-plugins/app-entrypoints";
 import { compareExactSemanticVersions } from "../../shared/codex-app-server-version";
 import { createHash } from "node:crypto";
 import { lstat, readdir, realpath } from "node:fs/promises";
@@ -141,6 +142,7 @@ export const makeInstalledPluginCache = Effect.fn("PluginCatalog.makePackageCach
 export interface CatalogPlugin {
   readonly id: string;
   readonly scope: PluginProjectScope;
+  readonly presentation?: Omit<PluginAppPresentation, "entryTitle">;
   readonly root: string | null;
   readonly package: AgentPluginPackage | null;
 }

@@ -1,0 +1,11 @@
+{
+  "name": "workbench-field-notes",
+  "version": "1.0.0",
+  "interface": {
+    "displayName": "Field Notes",
+    "shortDescription": "Read and browse field notes",
+    "logo": "./logo.png",
+    "composerIcon": "./logo.png"
+  },
+  "mcpServers": "./.mcp.json"
+}

@@ -10,6 +10,9 @@ const { api, connections } = vi.hoisted(() => ({
     runWidgetCode: vi.fn(async function* (_input: unknown) {
       yield { type: "environment_status", status: 2 };
     }),
+    notifyMcpAppsToolInput: vi.fn(async (_input: unknown) => undefined),
+    notifyMcpAppsToolResult: vi.fn(async (_input: unknown) => undefined),
+    notifyMcpAppsMcpNotification: vi.fn(async (_input: unknown) => undefined),
     notifyMcpAppsHostContext: vi.fn(async (_input: unknown) => undefined),
     requestMcpAppsResourceTeardown: vi.fn(async (_input: unknown) => undefined),
     setTheme: vi.fn(async (_input: unknown) => undefined),
@@ -202,6 +205,92 @@ test("sends resolved host styles initially and refreshes an attached App when on
       await Promise.resolve();
     });
     expect(api.notifyMcpAppsHostContext).toHaveBeenCalledTimes(notifications);
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+test("a plugin file app receives its launch input and file capability through the sandbox", async () => {
+  const toolInput = {
+    file: { name: "weather.fieldnote", resourceUri: "host-resource://lease-file" },
+  };
+  const request = vi.fn(async () => ({ contents: [] }));
+  const runtime = new McpAppRuntime({
+    capabilityId: "file-view",
+    resource: {
+      uri: "ui://notes/view",
+      mode: "html",
+      html: "<main />",
+      mimeType: "text/html",
+      metadata: resolveMcpWidgetMetadata(null),
+    },
+    toolInput,
+    toolResult: { content: [] },
+    pluginApp: { originKey: "field-notes", fileResource: true, request },
+  });
+  document.body.append(runtime.element);
+  try {
+    await vi.waitFor(() =>
+      expect(api.notifyMcpAppsToolInput).toHaveBeenCalledWith({ arguments: toolInput }),
+    );
+    expect(api.runWidgetCode.mock.calls[0]?.[0]).toMatchObject({
+      toolInput,
+      mcpApps: { hostCapabilities: { experimental: { "openai/resource": {} } } },
+    });
+    const params = { uri: toolInput.file.resourceUri };
+    await expect(connections[0]!.callMcp({ method: "resources/read", params })).resolves.toEqual({
+      contents: [],
+    });
+    expect(request).toHaveBeenCalledWith("resources/read", params);
+    runtime.notifyPluginResourceUpdated(params.uri);
+    expect(api.notifyMcpAppsMcpNotification).toHaveBeenCalledWith({
+      method: "notifications/resources/updated",
+      params,
+    });
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+test("a thread app routes text and context to its conversation callbacks", async () => {
+  const sendFollowUpMessage = vi.fn(async () => {});
+  const update = vi.fn(() => ({ updateId: "context-1" }));
+  const request = vi.fn(async () => ({}));
+  const runtime = new McpAppRuntime({
+    capabilityId: "thread-view",
+    resource: {
+      uri: "ui://notes/thread",
+      mode: "html",
+      html: "<main />",
+      mimeType: "text/html",
+      metadata: resolveMcpWidgetMetadata(null),
+    },
+    toolInput: {},
+    toolResult: { content: [] },
+    pluginApp: { originKey: "notes", fileResource: false, request },
+    sendFollowUpMessage,
+    modelContext: { identity: "chat", isCurrent: () => true, update },
+  });
+  document.body.append(runtime.element);
+  try {
+    await vi.waitFor(() => expect(runtime.getSnapshot().status).toBe("ready"));
+    const { callMcp } = connections[0]!;
+    const message = { role: "user", content: [{ type: "text", text: "Read this" }] };
+    await expect(callMcp({ method: "ui/message", params: message })).resolves.toEqual({});
+    expect(sendFollowUpMessage).toHaveBeenCalledWith({ prompt: "Read this", send: true });
+    await expect(
+      callMcp({
+        method: "ui/message",
+        params: { ...message, _meta: { "openai/message": { target: "new" } } },
+      }),
+    ).rejects.toMatchObject({ code: -32602 });
+    const context = { content: [{ type: "text", text: "Selected note" }] };
+    await expect(callMcp({ method: "ui/update-model-context", params: context })).resolves.toEqual({
+      _meta: { "openai/modelContext": { updateId: "context-1" } },
+    });
+    expect(update).toHaveBeenCalledWith(context);
+    expect(sendFollowUpMessage).toHaveBeenCalledTimes(1);
+    expect(request).not.toHaveBeenCalled();
   } finally {
     await runtime.dispose();
   }

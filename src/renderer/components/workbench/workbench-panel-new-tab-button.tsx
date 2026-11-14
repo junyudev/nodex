@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { SidePanelPlusIcon } from "@/components/shared/icons";
 import {
   NodexDropdownFlyoutSubmenuItem,
@@ -27,6 +27,7 @@ import {
 } from "@/lib/workbench-toolbar-control-styles";
 
 interface WorkbenchPanelNewTabButtonProps {
+  readonly additionalActions?: ReactNode;
   readonly actions: readonly PanelNewTabAction[];
   readonly projects: readonly Project[];
   readonly panelId: PanelId;
@@ -44,6 +45,7 @@ interface WorkbenchPanelNewTabButtonProps {
  * menu instead. The menu owns its transient open state and delegates choices to the host.
  */
 export function WorkbenchPanelNewTabButton({
+  additionalActions,
   actions,
   projects,
   panelId,
@@ -168,6 +170,7 @@ export function WorkbenchPanelNewTabButton({
           </div>
         );
       })}
+      {additionalActions}
     </NodexDropdownMenu>
   );
 }

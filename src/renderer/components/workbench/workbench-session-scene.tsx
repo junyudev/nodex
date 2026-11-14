@@ -1,3 +1,5 @@
+import { WorkbenchThreadAppMenu } from "./workbench-thread-app-menu";
+import type { PluginAppBinding } from "../../../shared/agent-plugins/app-entrypoints";
 import {
   type ComponentProps,
   type Dispatch,
@@ -72,6 +74,10 @@ interface WorkbenchSessionSceneProps {
   readonly panelGroupTabs: PanelGroupTabsByPanel;
   readonly panelLifecycle: PanelLifecycle;
   readonly panelCommands: PanelCommands;
+  readonly onOpenPluginApp?: (
+    binding: Extract<PluginAppBinding, { kind: "thread" }>,
+    leafId: string,
+  ) => Promise<void>;
   /** How the Conversation and content panel share the Scene; the Chat tab leads full view. */
   readonly workspace: {
     readonly presentation: SessionWorkspacePresentation;
@@ -132,6 +138,7 @@ export function WorkbenchSessionScene({
   panelGroupTabs,
   panelLifecycle,
   panelCommands,
+  onOpenPluginApp,
   workspace,
   layout,
   chrome,
@@ -184,6 +191,17 @@ export function WorkbenchSessionScene({
         tabItemsByLeafId={panelGroupTabs[panelId].itemsByLeafId}
         activeTabIdsByLeafId={panelGroupTabs[panelId].activeTabIdsByLeafId}
         availableActions={availableActions}
+        renderAdditionalActions={
+          panelId === "right" && onOpenPluginApp
+            ? (leafId) => (
+                <WorkbenchThreadAppMenu
+                  projectId={session.projectId}
+                  sessionId={session.id}
+                  onOpen={(binding) => void onOpenPluginApp(binding, leafId)}
+                />
+              )
+            : undefined
+        }
         projects={projects}
         isMac={chrome.isMac}
         commandKeymapState={chrome.commandKeymapState}

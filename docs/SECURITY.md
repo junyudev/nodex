@@ -1257,3 +1257,9 @@ A plugin change or attachment close revokes those leases, including calls alread
 The Host keeps broker credentials on the private Runtime bridge and passes them to provider
 transports in headers or the stdio bridge environment. Codex retains its own OAuth credentials
 and connected app sign-in.
+
+Plugin app views use a separate broker lease for each view, bound to the Space and
+Project and, for chat apps, the owning Session. The renderer receives a view ID.
+The Host revokes the view when its plugin is disabled, removed or leaves scope.
+The file resource bridge accepts only the opaque URI issued to that view for the
+selected file, and refuses writes.

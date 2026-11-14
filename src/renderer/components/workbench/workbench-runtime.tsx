@@ -1,3 +1,5 @@
+import { PluginAppBreadcrumb, PluginAppView } from "@/features/plugins/view/plugin-app-view";
+import type { PluginAppBinding } from "../../../shared/agent-plugins/app-entrypoints";
 import { localProjectSourceRoots } from "../../../shared/project-sources";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { isHostedChat } from "@/lib/hosted-chat";
@@ -622,6 +624,11 @@ export function WorkbenchRuntime({
   );
   const appHandle = useScopeHandle(appScope);
   const workbenchWindow = useWorkbenchWindowState(initialWindowLayoutSnapshot);
+  const stableLocation =
+    workbenchWindow.location.kind === "settings"
+      ? workbenchWindow.location.returnTo
+      : workbenchWindow.location;
+  const activePlugin = stableLocation.kind === "plugin_app" ? stableLocation.binding : undefined;
   const sceneLocation = getWorkbenchSceneReturnLocation(workbenchWindow.location);
   const activeProjectId =
     sceneLocation.kind === "project"
@@ -629,7 +636,8 @@ export function WorkbenchRuntime({
       : sceneLocation.kind === "session"
         ? sceneLocation.projectContextId
         : null;
-  const activeSessionId = sceneLocation.kind === "session" ? sceneLocation.sessionId : null;
+  const activeSessionId =
+    !activePlugin && sceneLocation.kind === "session" ? sceneLocation.sessionId : null;
   const searchByProject = workbenchWindow.databaseSearchByProject;
   const activeSearchQuery = activeProjectId ? (searchByProject[activeProjectId] ?? "") : "";
   const setSearchQuery = useCallback(
@@ -1817,7 +1825,7 @@ export function WorkbenchRuntime({
     threadSummaryPanelLayoutMode,
   } = useWorkbenchChromeLayout({
     activeSessionId: activeSession?.id ?? null,
-    destinationRouteOpen: Boolean(automationsPath ?? pluginsPath ?? insightsPath),
+    destinationRouteOpen: Boolean(activePlugin ?? automationsPath ?? pluginsPath ?? insightsPath),
     bottomPanelOpen,
     bottomPanelRequestedHeight: bottomPanel?.size.heightPx ?? null,
     headerLeftWidth,
@@ -2460,10 +2468,14 @@ export function WorkbenchRuntime({
   } = sidebarController;
 
   useEffect(() => {
-    if (activeProjectId !== null && !projects.some((project) => project.id === activeProjectId)) {
+    if (
+      !activePlugin &&
+      activeProjectId !== null &&
+      !projects.some((project) => project.id === activeProjectId)
+    ) {
       workbenchWindow.selectProject(null);
     }
-  }, [activeProjectId, projects, workbenchWindow]);
+  }, [activePlugin, activeProjectId, projects, workbenchWindow]);
 
   const panelLifecycle = useWorkbenchPanelLifecycle({
     executeSceneCommand,
@@ -2727,6 +2739,26 @@ export function WorkbenchRuntime({
     windowSessionId,
   });
 
+  const openPluginFile = (
+    owner: WorkbenchSceneOwner,
+    panelId: PanelId,
+    sourceSurfaceId: string,
+    binding: Extract<PluginAppBinding, { kind: "file" }>,
+    title: string,
+  ) => {
+    void sceneNavigator
+      .presentPanelSurface({
+        owner,
+        request: { kind: "plugin_app", config: binding, titleSnapshot: title },
+        target: { panelId, placement: { kind: "same-group", sourceSurfaceId } },
+        mode: "durable",
+        navigation: "background",
+      })
+      .then((result) => {
+        if (result.status !== "presented") toast.danger("The plugin viewer could not be opened.");
+      })
+      .catch(() => toast.danger("The plugin viewer could not be opened."));
+  };
   const presentOwnedSceneFile: FileReferenceRouterPort["openWorkspaceFileTab"] = async (input) => {
     if (!activeOwnedSceneOwner) return false;
     const location = getWorkbenchSceneReturnLocation(workbenchWindow.location);
@@ -3227,7 +3259,8 @@ export function WorkbenchRuntime({
           reserveContent:
             !rightActiveRenderableTab ||
             !("kind" in rightActiveRenderableTab) ||
-            rightActiveRenderableTab.kind !== "browser",
+            (rightActiveRenderableTab.kind !== "browser" &&
+              rightActiveRenderableTab.kind !== "plugin_app"),
           title: activeSession.displayTitle,
           menuItems: [
             {
@@ -3305,6 +3338,19 @@ export function WorkbenchRuntime({
         setSearchQuery,
         taskSearchOpenTick,
         onSearchInFiles: () => openCommandPalette({ mode: "text" }),
+        onOpenPlugins: openPlugins,
+        onOpenPluginFile: isRemoteSpace()
+          ? undefined
+          : (panelId, sourceSurfaceId, binding, title) => {
+              if (isRemoteSpace() || activeRenderSession?.projectId !== binding.projectId) return;
+              openPluginFile(
+                { kind: "session", sessionId: activeRenderSession.id },
+                panelId,
+                sourceSurfaceId,
+                binding,
+                title,
+              );
+            },
       },
       conversation: {
         composerEnterBehavior,
@@ -4172,10 +4218,11 @@ export function WorkbenchRuntime({
   ) : null;
 
   const showFloatingSidebar =
+    !activePlugin &&
     sidebarLogicalCollapsed &&
     !realSidebarMounted &&
     (peekArea !== null || floatingSidebarResizing);
-  const showInlineSidebar = realSidebarMounted;
+  const showInlineSidebar = !activePlugin && realSidebarMounted;
 
   const floatingSidebarOuterClassName =
     getCodexSidebarFloatingOuterClassName(applicationMenuBarEnabled);
@@ -4326,7 +4373,19 @@ export function WorkbenchRuntime({
     },
   });
   // Automations, Customize and Insights are page routes over the Scene; they own the title row.
-  const destinationRouteShell = automationsRouteShell ?? pluginsRouteShell ?? insightsRouteShell;
+  const pluginAppRouteShell =
+    workbenchWindow.location.kind === "plugin_app" ? (
+      <WorkbenchSessionScopePath
+        thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
+        route={{ routeKey: "/plugin-app", kind: "plugin-app" }}
+        selected
+      >
+        <PluginAppBreadcrumb binding={workbenchWindow.location.binding} />
+        <PluginAppView binding={workbenchWindow.location.binding} onOpenPlugins={openPlugins} />
+      </WorkbenchSessionScopePath>
+    ) : null;
+  const destinationRouteShell =
+    pluginAppRouteShell ?? automationsRouteShell ?? pluginsRouteShell ?? insightsRouteShell;
   // A full-width Scene panel covers the title row only while its Scene is showing,
   // never under a route such as Automations opened over it.
   const appShellHeaderCoveredByScene = rightPanelFullView && destinationRouteShell == null;
@@ -4434,6 +4493,11 @@ export function WorkbenchRuntime({
         presentationOwnerId={sceneKey}
         project={projects.find((project) => project.id === surface.config.projectId) ?? null}
         onOpenFileTab={openWorkspaceFileTab}
+        onOpenPluginFile={
+          owner.kind === "project" && !isRemoteSpace()
+            ? (binding, title) => openPluginFile(owner, context.panelId, surface.id, binding, title)
+            : undefined
+        }
         onSearchInFiles={() => openCommandPalette({ mode: "text" })}
         onUpdateTabState={(state) => {
           const scene = workbenchWindow.owner.read().windowState.scenesByOwnerKey[sceneKey];
@@ -4792,6 +4856,10 @@ export function WorkbenchRuntime({
       );
     }
 
+    if (surface.kind === "plugin_app")
+      return context.active ? (
+        <PluginAppView binding={surface.config} onOpenPlugins={openPlugins} />
+      ) : null;
     if (surface.kind === "files") return renderOwnedSceneFileSurface(surface, context);
 
     if (surface.kind === "browser") {
@@ -5454,6 +5522,28 @@ export function WorkbenchRuntime({
         panelGroupTabs={panelGroupTabs}
         panelLifecycle={panelLifecycle}
         panelCommands={panelCommands}
+        onOpenPluginApp={
+          isRemoteSpace()
+            ? undefined
+            : async (binding, leafId) => {
+                const result = await sceneNavigator.presentPanelSurface({
+                  owner: { kind: "session", sessionId: binding.sessionId },
+                  request: {
+                    kind: "plugin_app",
+                    config: binding,
+                    titleSnapshot: binding.presentation?.entryTitle ?? "App",
+                  },
+                  target: { panelId: "right", leafId },
+                  mode: "durable",
+                  navigation: "background",
+                });
+                if (result.status !== "presented") {
+                  toast.danger("The app could not be opened.");
+                  return;
+                }
+                moveSessionConversationToSide("left");
+              }
+        }
         workspace={{
           presentation: sessionWorkspace,
           chatTab: sessionChatTab,
@@ -5876,6 +5966,11 @@ export function WorkbenchRuntime({
                       <WorkbenchAppRail
                         contentOnly={isRemoteSpace()}
                         destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}
+                        pluginProjectId={activePlugin ? activePlugin.projectId : activeProjectId}
+                        activePlugin={activePlugin}
+                        onOpenPluginApp={(binding, title) =>
+                          workbenchWindow.openRoute({ kind: "plugin_app", binding, title })
+                        }
                         onHome={workbenchWindow.selectHome}
                         onSpace={workbenchWindow.selectLibrary}
                         onAutomations={() => openAutomations()}
@@ -5909,6 +6004,7 @@ export function WorkbenchRuntime({
                       location={workbenchWindow.location}
                       sidebarMounted={realSidebarMounted}
                       settings={settingsRouteShell}
+                      pluginApp={pluginAppRouteShell}
                       sidebar={
                         <WorkbenchSidebar
                           destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}

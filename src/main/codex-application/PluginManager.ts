@@ -1,3 +1,4 @@
+import { selectorToRouteTarget } from "../../shared/codex-plugin-management-model";
 import * as Option from "effect/Option";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import {
@@ -364,7 +365,26 @@ export const live = (options: {
             readPackage,
           );
           yield* assertCurrent(context);
-          return pluginCatalogSnapshot(entries);
+          const presentation = new Map(rows(inventory).map((row) => [row.nativeId, row]));
+          return pluginCatalogSnapshot(
+            entries.map((entry) => {
+              const row = presentation.get(entry.id);
+              if (!row) return entry;
+              return {
+                ...entry,
+                presentation: {
+                  pluginName:
+                    entry.package?.presentation?.displayName ??
+                    row.summary.interface?.displayName ??
+                    row.summary.name,
+                  composerIconUrl: row.composerIconUrl,
+                  logoUrl: row.logoUrl,
+                  logoDarkUrl: row.logoDarkUrl,
+                  target: selectorToRouteTarget(row),
+                },
+              };
+            }),
+          );
         }),
         {
           capacity: Infinity,

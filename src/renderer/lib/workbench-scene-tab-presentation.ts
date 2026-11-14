@@ -1,3 +1,4 @@
+import { PluginsIcon } from "@/components/shared/icons";
 import { SkillCubeIcon } from "@/components/shared/icons/customize-action-icons";
 import { resolveFileResourceIcon } from "@/components/shared/file-resource-icon";
 import type { ComponentType } from "react";
@@ -22,6 +23,7 @@ export function resolveWorkbenchSceneTabPresentation(
     return { title: surface.titleSnapshot, icon: ImageEditorTabIcon };
   }
 
+  if (surface.kind === "plugin_app") return { title: surface.titleSnapshot, icon: PluginsIcon };
   if (surface.kind === "skill") return { title: surface.titleSnapshot, icon: SkillCubeIcon };
   if (surface.kind === "page_file")
     return {

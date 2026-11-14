@@ -1,14 +1,14 @@
 export type PluginMcpPrincipal =
   | { readonly kind: "agent-session"; readonly id: string }
-  | { readonly kind: "interface-view"; readonly id: string };
+  | { readonly kind: "interface-view"; readonly id: string; readonly sessionId?: string };
 
 export interface PluginMcpProject {
   readonly spaceId: string;
-  readonly projectId: string;
+  readonly projectId: string | null;
 }
 
 export interface PluginMcpLeaseScope {
-  readonly installationId: string;
+  readonly pluginId: string;
   readonly generation: string;
   readonly serverKey: string;
   readonly project: PluginMcpProject;

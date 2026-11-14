@@ -5,6 +5,7 @@ export interface McpAppFollowUpMessage {
   context?: unknown;
   prompt: string;
   title?: string;
+  send?: boolean;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -51,4 +52,21 @@ export function buildMcpAppFollowUpPrompt(message: McpAppFollowUpMessage): strin
   const context = serializeContext(message.context);
   if (context === null) return message.prompt;
   return `${message.prompt}\n\nCurrent widget context (JSON):\n${context}`;
+}
+
+/** OpenAI's message extension keeps the selected chat as the sole recipient. */
+export function parsePluginAppMessage(value: unknown): McpAppFollowUpMessage | null {
+  const message = asRecord(value);
+  if (message?.role !== "user" || !Array.isArray(message.content)) return null;
+  const options = asRecord(asRecord(message._meta)?.["openai/message"]);
+  if (options?.target !== undefined && options.target !== "active") return null;
+  if (options?.send !== undefined && typeof options.send !== "boolean") return null;
+  const parts = message.content.map(asRecord);
+  if (!parts.every((part) => part?.type === "text" && typeof part.text === "string")) return null;
+  const prompt = parts
+    .map((part) => part?.text)
+    .join("\n\n")
+    .trim();
+  if (!prompt || prompt.length > MAX_MCP_APP_FOLLOW_UP_CONTEXT_CHARACTERS) return null;
+  return { prompt, send: options?.send !== false };
 }

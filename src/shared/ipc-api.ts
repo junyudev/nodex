@@ -1,3 +1,4 @@
+import type { PluginAppIpcApi, PluginAppViewEvent } from "./agent-plugins/ipc";
 import type {
   SkillInput,
   SkillResult,
@@ -732,6 +733,7 @@ export interface IpcApi
     AgentRuntimeIpcApi,
     AcpIpcApi,
     PluginManagementIpcApi,
+    PluginAppIpcApi,
     McpAppDataIpcApi,
     SpaceConnectionIpcApi,
     SpaceAdministrationIpcApi {
@@ -3212,6 +3214,7 @@ export interface IpcApi
 export type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"];
 
 export interface IpcEvents {
+  "agent-plugins:app-event": PluginAppViewEvent;
   "skills:changed": SkillsChangedEvent;
   "skills:composer-invalidated": { readonly hostId: string };
   "codex:plugins:changed": [PluginManagementChanged];

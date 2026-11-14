@@ -161,7 +161,8 @@ const connect = Effect.fnUntraced(function* (
       for (const { _meta, execution, ...tool } of page.tools) {
         if (names.has(tool.name) || names.size >= 1024) return yield* unavailable();
         names.add(tool.name);
-        if (execution?.taskSupport !== "required") tools.push(tool);
+        if (execution?.taskSupport !== "required")
+          tools.push(scope.principal.kind === "interface-view" ? { ...tool, _meta } : tool);
       }
       cursor = page.nextCursor;
       if (cursor === undefined) return tools;
@@ -173,6 +174,10 @@ const connect = Effect.fnUntraced(function* (
   return {
     healthy: () => healthy,
     listTools: listTools.pipe(timeout(options.requestTimeoutMs ?? 30_000)),
+    readResource: (uri: string) =>
+      request((signal) => client.readResource({ uri }, { signal })).pipe(
+        timeout(options.requestTimeoutMs ?? 30_000),
+      ),
     callTool: (name: string, args: Record<string, unknown>) =>
       request((signal) =>
         client.callTool({ name, arguments: args }, CallToolResultSchema, { signal }),
@@ -180,7 +185,7 @@ const connect = Effect.fnUntraced(function* (
         Effect.map((value) => {
           // callTool types also include the legacy schema, even when the modern schema is explicit.
           const { _meta, ...result } = CallToolResultSchema.parse(value);
-          return result;
+          return scope.principal.kind === "interface-view" ? { ...result, _meta } : result;
         }),
         timeout(options.requestTimeoutMs ?? 30_000),
       ),

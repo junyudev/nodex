@@ -89,6 +89,7 @@ it.effect(
         });
       expect(yield* market.install(review.preview.stagingId, native)).toEqual({
         pluginId: "example@nodex-local",
+        selector: { marketplacePath: market.catalogPath, pluginName: "example" },
       });
       expect((yield* market.sources).example).toContain("/source");
       yield* Effect.promise(() => fixture(root));

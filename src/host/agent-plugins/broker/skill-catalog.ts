@@ -18,7 +18,7 @@ const listInput = Schema.Struct({
   offset: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 const readInput = Schema.Struct({
-  installationId: boundedPath,
+  pluginId: boundedPath,
   skill: boundedPath,
   file: Schema.optionalKey(boundedPath),
 });
@@ -39,11 +39,11 @@ const tools: readonly Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        installationId: { type: "string", maxLength: maxPathLength },
+        pluginId: { type: "string", maxLength: maxPathLength },
         skill: { type: "string", maxLength: maxPathLength },
         file: { type: "string", maxLength: maxPathLength },
       },
-      required: ["installationId", "skill"],
+      required: ["pluginId", "skill"],
     },
   },
 ];
@@ -79,11 +79,11 @@ export function skillCatalog(source: SkillCatalogSource) {
     function* (args: Record<string, unknown>) {
       const input = Schema.decodeUnknownOption(readInput)(args);
       if (input._tag === "None") return result({ error: "Invalid skill selection." }, true);
-      const { installationId, skill, file } = input.value;
+      const { pluginId, skill, file } = input.value;
       const relative = file === undefined ? "SKILL.md" : packageRelativePath(file);
       if (!relative || relative === ".")
         return result({ error: "Invalid supporting file path." }, true);
-      const installation = source.find(([id]) => id === installationId)?.[1];
+      const installation = source.find(([id]) => id === pluginId)?.[1];
       const directory = installation?.skills?.find(
         (entry) => entry.valid && entry.directory === skill,
       )?.directory;
@@ -119,11 +119,11 @@ export function skillCatalog(source: SkillCatalogSource) {
         const input = Schema.decodeUnknownOption(listInput)(args);
         if (input._tag === "None") return result({ error: "Invalid catalog offset." }, true);
         const offset = input.value.offset ?? 0;
-        const entries = source.flatMap(([installationId, installation]) =>
+        const entries = source.flatMap(([pluginId, installation]) =>
           (installation.skills ?? [])
             .filter((skill) => skill.valid && skill.directory.length <= maxPathLength)
             .map(({ directory, name, description }) => ({
-              installationId,
+              pluginId,
               skill: directory,
               name: name.slice(0, 128),
               description: description.slice(0, 256),

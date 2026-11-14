@@ -176,6 +176,11 @@ it stale; ordinary submission cannot offer it.
 - A worktree start is recovered from the Main-synchronized pending-worktree collection by the bound `projectSessionId`, never from Dock-local memory. Until the exact pending entry resolves to a real Thread, its client identity remains in the same Thread/Composer scope, the target row shows compact setup progress or failure attention, and both composer availability and the action boundary prevent a second start. `View setup details` explicitly opens the existing recovery route; reload, retry, continue, work-locally, and cancellation follow [Codex Worktree Creation Behavior](codex-worktree-creation-behavior.md).
 - Dock target and visibility are persisted Scene presentation but are excluded from Back/Forward history. If exact hydration proves that a bound Session was archived, deleted, or moved to another Project, sending is disabled and the Dock returns safely to its retained new-chat draft. A bounded summary window that does not contain the binding is never sufficient evidence.
 
+Plugin apps opened from the rail are routes over the current Scene. A chat app is a
+durable surface bound to that chat. A file viewer is a durable surface bound to the
+selected workspace file. Restoring an unreachable app keeps its tab or route so the
+person can retry or open Customize.
+
 ### Link opening
 
 The Desktop Profile owns separate web and local URL destinations plus the

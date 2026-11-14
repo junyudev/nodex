@@ -1293,3 +1293,61 @@ test("restores a Skill locator and keeps its selection when cloning the Scene", 
     config: surface.config,
   });
 });
+
+test("round trips a Project's plugin file tab with its host-qualified target", () => {
+  const scene = projectScene();
+  const surface = {
+    id: "plugin-file",
+    kind: "plugin_app",
+    titleSnapshot: "Notes · Field Notes",
+    stateKey: 0,
+    state: null,
+    config: {
+      kind: "file",
+      pluginId: "workbench-field-notes@nodex-local",
+      entryId: '["notes","open_notes","file"]',
+      projectId: "project-1",
+      file: { hostId: "local", path: "/workspace/notes.fieldnote" },
+    },
+  } satisfies WorkbenchSurfaceDescriptor;
+  const next = createWorkbenchSceneSurface(scene, { panelId: "right", surface });
+  const restored = WorkbenchSceneSnapshotSchema.parse(JSON.parse(JSON.stringify(next)));
+  expect(restored.panelSurfacesById[surface.id]).toEqual(surface);
+  expect(
+    WorkbenchSceneSnapshotSchema.safeParse({
+      ...restored,
+      panelSurfacesById: {
+        [surface.id]: { ...surface, config: { ...surface.config, projectId: "other" } },
+      },
+    }).success,
+  ).toBe(false);
+});
+
+test("round trips a thread app and rejects binding it to another chat", () => {
+  const scene = materializeInitialWorkbenchScene({ kind: "session", sessionId: "chat" });
+  const surface = {
+    id: "thread-app",
+    kind: "plugin_app",
+    titleSnapshot: "Field Notes",
+    stateKey: 0,
+    state: null,
+    config: {
+      kind: "thread",
+      pluginId: "workbench-field-notes@nodex-local",
+      entryId: '["notes","open_notes","thread"]',
+      projectId: null,
+      sessionId: "chat",
+    },
+  } satisfies WorkbenchSurfaceDescriptor;
+  const next = createWorkbenchSceneSurface(scene, { panelId: "right", surface });
+  const restored = WorkbenchSceneSnapshotSchema.parse(JSON.parse(JSON.stringify(next)));
+  expect(restored.panelSurfacesById[surface.id]).toEqual(surface);
+  expect(
+    WorkbenchSceneSnapshotSchema.safeParse({
+      ...restored,
+      panelSurfacesById: {
+        [surface.id]: { ...surface, config: { ...surface.config, sessionId: "other" } },
+      },
+    }).success,
+  ).toBe(false);
+});

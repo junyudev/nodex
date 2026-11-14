@@ -174,6 +174,9 @@ export interface RendererTransport {
   subscribeFileSearchEvents: (
     callback: (event: import("../../shared/file-search").FileSearchEvent) => void,
   ) => () => void;
+  subscribePluginAppEvents?: (
+    callback: (event: import("../../shared/agent-plugins/ipc").PluginAppViewEvent) => void,
+  ) => () => void;
   subscribeWorkspaceFileChanges: (
     callback: (event: import("../../shared/types").WorkspaceFileChangedEvent) => void,
   ) => () => void;

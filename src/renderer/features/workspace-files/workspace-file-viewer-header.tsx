@@ -299,6 +299,7 @@ export interface WorkspaceFileControlsProps {
   readonly options: readonly WorkspaceFileViewerOption[];
   readonly open: WorkspaceFileOpenControl | null;
   readonly fileTree: { readonly visible: boolean; readonly onToggle: () => void } | null;
+  readonly pluginActions?: ReactNode;
   readonly editor?: WorkspaceFileEditorControls | null;
 }
 
@@ -307,6 +308,7 @@ function WorkspaceFileControlItems({
   options,
   open,
   fileTree,
+  pluginActions,
   editor,
 }: WorkspaceFileControlsProps) {
   const treeToggle = fileTree ? (
@@ -332,6 +334,7 @@ function WorkspaceFileControlItems({
           <SearchInFilesIcon />
         </ViewerIconButton>
       ) : null}
+      {pluginActions}
       {editor ? (
         <>
           {comparing ? (

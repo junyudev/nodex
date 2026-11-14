@@ -44,6 +44,7 @@ interface WorkbenchPanelHostProps {
   commandKeymapState?: CommandKeymapState | null;
   currentProjectDbViewExists: boolean;
   commands: WorkbenchPanelHostCommands;
+  renderAdditionalActions?: (leafId: string) => ReactNode;
   renderAfterList?: (leafId: string) => ReactNode;
   headerStartInsetPx?: number;
   headerEndInsetPx?: number;
@@ -66,6 +67,7 @@ export function WorkbenchPanelHost({
   commandKeymapState,
   currentProjectDbViewExists,
   commands,
+  renderAdditionalActions,
   renderAfterList,
   headerStartInsetPx,
   headerEndInsetPx,
@@ -84,6 +86,7 @@ export function WorkbenchPanelHost({
       renderAfterTabs={(leafId) =>
         renderNewTab?.(leafId) ?? (
           <WorkbenchPanelNewTabButton
+            additionalActions={renderAdditionalActions?.(leafId)}
             actions={availableActions}
             projects={projects}
             panelId={panelId}

@@ -44,6 +44,7 @@ import {
   WorkbenchSceneSnapshotV3InputSchema,
   WorkbenchSceneSnapshotV4InputSchema,
   validateWorkbenchSceneMapKey,
+  WorkbenchGlobalPluginAppBindingSchema,
 } from "./workbench-scene";
 import {
   createWorkbenchSceneSurface,
@@ -745,6 +746,12 @@ const WorkbenchSceneLocationSchema = z.discriminatedUnion("kind", [
 
 const WorkbenchStableLocationSchema = z.discriminatedUnion("kind", [
   ...WorkbenchSceneLocationSchema.options,
+  z.strictObject({
+    kind: z.literal("plugin_app"),
+    binding: WorkbenchGlobalPluginAppBindingSchema,
+    title: z.string().min(1).max(2000),
+    returnTo: WorkbenchSceneLocationSchema,
+  }),
   z
     .object({
       kind: z.literal("automations"),

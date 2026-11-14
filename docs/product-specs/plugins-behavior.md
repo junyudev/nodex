@@ -99,6 +99,20 @@ Manage, Update from folder for a plugin added from a folder, Uninstall). The gea
   servers for other Agents at once; a call already running finishes, and its result is not
   returned.
 
+### Plugin apps
+
+- Apps declared for global navigation appear after the built-in rail destinations for
+  the current Project. Open one to fill the Workbench. The titlebar shows the plugin
+  name and the app title when they differ.
+- Open the right panel's surface menu in a chat and choose an entry under **Apps** to
+  open it beside that chat. Follow-up messages and model context belong to that chat.
+  Chats without a Project show only apps from plugins that apply to all Projects.
+- Workspace Files offers **Open with <Plugin>** when a plugin declares support for
+  the file extension. The viewer opens in a separate tab and can read that file.
+- Disabling or removing a plugin, or changing which Projects it applies to, removes
+  its entries wherever it no longer applies. An open app shows an unavailable state
+  with **Retry** and **Open in Plugins**.
+
 ## Context and capabilities
 
 Every operation identifies a host and a nullable Project. The initial host is `local`.

@@ -1,3 +1,4 @@
+import { parsePluginAppMessage } from "./mcp-app-follow-up";
 import { parseMcpAppLinkRequest } from "../../../shared/mcp-app/mcp-app-navigation";
 import { openLink } from "../link-opening";
 import type { LinkOpenRequest } from "../../../shared/link-opening";
@@ -78,7 +79,8 @@ export interface McpAppHostDispatcherOptions {
   onNavigation?(value: unknown): void;
   onSecurityPolicyViolation?(value: unknown): void;
   onWidgetState?(value: unknown): void;
-  scope: McpAppScopeSnapshot;
+  scope?: McpAppScopeSnapshot;
+  requestPluginApp?(method: string, params: unknown): Promise<unknown>;
   sendFollowUpMessage?(value: McpAppFollowUpMessage): unknown | Promise<unknown>;
   updateModelContext?(
     value: unknown,
@@ -120,6 +122,7 @@ export class McpAppHostDispatcher {
   }
 
   async #callTool(value: unknown): Promise<unknown> {
+    if (this.#options.requestPluginApp) return this.#callPluginApp("tools/call", value);
     const toolCall = parseToolCall(value);
     const scope = await this.#getScope();
     const tool = requireMcpAppScopedTool(scope, toolCall.name, toolCall.arguments);
@@ -138,6 +141,22 @@ export class McpAppHostDispatcher {
       throw new McpAppRpcError("Invalid MCP proxy request", -32_602);
     }
     const params = request.params;
+    if (this.#options.requestPluginApp && request.method === "ui/message") {
+      if (this.#options.isCurrent?.() === false || !this.#options.sendFollowUpMessage)
+        throw new McpAppRpcError("The chat composer is unavailable.", -32000);
+      const message = parsePluginAppMessage(params);
+      if (!message) throw new McpAppRpcError("Unsupported app message.", -32602);
+      await this.#options.sendFollowUpMessage(message);
+      return {};
+    }
+    if (this.#options.requestPluginApp && request.method !== "ui/update-model-context") {
+      if (request.method === "ping") return {};
+      if (request.method === "tools/list") return { tools: [] };
+      if (request.method === "resources/list") return { resources: [] };
+      if (request.method === "resources/templates/list") return { resourceTemplates: [] };
+      if (request.method === "prompts/list") return { prompts: [] };
+      return this.#callPluginApp(request.method, params);
+    }
     switch (request.method) {
       case "ui/update-model-context": {
         if (!this.#options.updateModelContext)
@@ -214,7 +233,15 @@ export class McpAppHostDispatcher {
     });
   }
 
+  #callPluginApp(method: string, params: unknown): Promise<unknown> {
+    if (this.#options.isCurrent?.() === false || !this.#options.requestPluginApp)
+      throw new McpAppRpcError("The app is inactive", -32_000);
+    return this.#options.requestPluginApp(method, params);
+  }
+
   #getScope(): McpAppScopeSnapshot | Promise<McpAppScopeSnapshot> {
-    return this.#options.getScope?.() ?? this.#options.scope;
+    const scope = this.#options.getScope?.() ?? this.#options.scope;
+    if (!scope) throw new McpAppRpcError("The app has no MCP server scope", -32_000);
+    return scope;
   }
 }

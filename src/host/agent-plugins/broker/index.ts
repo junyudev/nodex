@@ -33,13 +33,14 @@ const DEFAULT_SHUTDOWN_GRACE_MS = 35_000;
 
 const keyFor = (scope: PluginMcpLeaseScope) =>
   JSON.stringify([
-    scope.installationId,
+    scope.pluginId,
     scope.generation,
     scope.serverKey,
     scope.project.spaceId,
     scope.project.projectId,
     scope.principal.kind,
     scope.principal.id,
+    scope.principal.kind === "interface-view" ? scope.principal.sessionId : null,
   ]);
 
 type Upstream = Effect.Success<ReturnType<typeof makeUpstream>>;
@@ -226,9 +227,22 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
   });
 
   const projection = (lease: Lease) => {
-    if (lease.kind === "server") return serverProjection(lease);
+    const awaitRevoked = Deferred.await(lease.revoked);
+    const readResource = (uri: string) =>
+      lease.kind === "server" && lease.scope.principal.kind === "interface-view"
+        ? withLease(
+            lease,
+            dispatch(
+              lease,
+              Effect.flatMap(lease.entry.upstream.get, (client) => client.readResource(uri)),
+            ),
+          )
+        : Effect.fail(new PluginMcpFailure("approval_denied"));
+    if (lease.kind === "server") return { ...serverProjection(lease), awaitRevoked, readResource };
     const catalog = skillCatalog(lease.source);
     return {
+      awaitRevoked,
+      readResource,
       listTools: withLease(lease, catalog.listTools),
       callTool: (name: string, args: Record<string, unknown>) =>
         withLease(lease, catalog.callTool(name, args)),
@@ -391,6 +405,9 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
     openLease,
     openSkillCatalog,
     revokeLease,
+    awaitRevoked: (scope, credential) => use(scope, credential, (lease) => lease.awaitRevoked),
+    readResource: (scope, credential, uri) =>
+      use(scope, credential, (lease) => lease.readResource(uri)),
     listTools: (scope, credential) => use(scope, credential, (lease) => lease.listTools),
     callTool: (scope, credential, name, args = {}) =>
       use(scope, credential, (lease) => lease.callTool(name, args)),

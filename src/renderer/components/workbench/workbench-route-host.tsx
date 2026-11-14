@@ -16,6 +16,7 @@ interface WorkbenchRouteHostProps {
   readonly pendingWorktree: WorkbenchRouteSlot;
   readonly automations: WorkbenchRouteSlot;
   readonly plugins: WorkbenchRouteSlot;
+  readonly pluginApp?: ReactNode;
   readonly insights: WorkbenchRouteSlot;
   /** The selected Scene: a Project, a Session, the Library, the Library Inbox, or empty. */
   readonly session: WorkbenchRouteSlot;
@@ -75,6 +76,7 @@ export function WorkbenchRouteHost({
   pendingWorktree,
   automations,
   plugins,
+  pluginApp,
   insights,
   session,
 }: WorkbenchRouteHostProps) {
@@ -102,6 +104,10 @@ export function WorkbenchRouteHost({
         {automations.afterMain}
       </>
     );
+  }
+
+  if (location.kind === "plugin_app") {
+    return <WorkbenchRouteMain sidebarMounted={false}>{pluginApp}</WorkbenchRouteMain>;
   }
 
   if (location.kind === "plugins") {

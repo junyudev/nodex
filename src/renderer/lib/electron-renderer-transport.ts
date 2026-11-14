@@ -557,6 +557,11 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         callback(event as import("../../shared/file-search").FileSearchEvent);
       });
     },
+    subscribePluginAppEvents(callback) {
+      return bridge.on("agent-plugins:app-event", (event) =>
+        callback(event as import("../../shared/agent-plugins/ipc").PluginAppViewEvent),
+      );
+    },
     subscribeWorkspaceFileChanges(
       callback: (event: import("../../shared/types").WorkspaceFileChangedEvent) => void,
     ) {

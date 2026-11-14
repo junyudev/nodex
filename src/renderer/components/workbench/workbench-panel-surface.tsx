@@ -1,3 +1,5 @@
+import { PluginAppView, ThreadPluginAppView } from "@/features/plugins/view/plugin-app-view";
+import type { PluginAppBinding } from "../../../shared/agent-plugins/app-entrypoints";
 import type { ComponentProps, MutableRefObject, RefObject } from "react";
 import type { MotionValue } from "motion/react";
 import type { PageStageSessionSnapshot } from "@/components/board/page-stage/types";
@@ -86,6 +88,8 @@ export function WorkbenchTabProjectionPanel({
   onCreateTerminalTab,
   onActivateReviewTab,
   onSearchInFiles,
+  onOpenPlugins,
+  onOpenPluginFile,
   onOpenThread,
   pageStageHistoryModal,
   onTogglePageStageHistoryModal,
@@ -162,6 +166,13 @@ export function WorkbenchTabProjectionPanel({
   /** Opens the Session's Review tab; Files offers All changes through it. */
   onActivateReviewTab?: () => Promise<boolean>;
   onSearchInFiles?: () => void;
+  onOpenPlugins?: (path: string) => void;
+  onOpenPluginFile?: (
+    panelId: PanelId,
+    sourceSurfaceId: string,
+    binding: Extract<PluginAppBinding, { kind: "file" }>,
+    title: string,
+  ) => void;
   onOpenThread: (threadId: string) => Promise<void>;
   pageStageHistoryModal: PageStageHistoryModalContext | null;
   onTogglePageStageHistoryModal: (context: PageStageHistoryModalContext) => void;
@@ -527,6 +538,29 @@ export function WorkbenchTabProjectionPanel({
     );
   }
 
+  if (tab.kind === "plugin_app") {
+    if (!isActivePanelTab) return null;
+    if (
+      activeSession.projectId !== tab.config.projectId ||
+      (tab.config.kind === "thread" && activeSession.id !== tab.config.sessionId)
+    )
+      return <PluginAppView binding={tab.config} unavailable onOpenPlugins={onOpenPlugins} />;
+    if (tab.config.kind === "thread")
+      return (
+        <ThreadPluginAppView
+          binding={tab.config}
+          onOpenPlugins={onOpenPlugins}
+          hostId={activeSession.thread?.executionHostId ?? "local"}
+          threadId={
+            activeSession.executionRef?.threadId ??
+            activeSession.thread?.threadId ??
+            activeSession.id
+          }
+        />
+      );
+    return <PluginAppView binding={tab.config} onOpenPlugins={onOpenPlugins} />;
+  }
+
   if (tab.kind === "files") {
     const project = projects.find((item) => item.id === tab.projectId) ?? null;
     const renderPanel = (filesTab: WorkspaceFilesTab, review?: WorkspaceFilesReview) => (
@@ -535,6 +569,11 @@ export function WorkbenchTabProjectionPanel({
         activeSession={activeSession}
         project={project}
         onOpenFileTab={onOpenFileTab}
+        onOpenPluginFile={
+          onOpenPluginFile
+            ? (binding, title) => onOpenPluginFile(tab.panelId, tab.id, binding, title)
+            : undefined
+        }
         onSearchInFiles={onSearchInFiles}
         review={review}
         onUpdateTabState={(state) => {

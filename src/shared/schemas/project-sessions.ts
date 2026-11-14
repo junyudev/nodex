@@ -29,6 +29,7 @@ import {
   WorkbenchDbViewSurfaceConfigSchema,
   WorkbenchPageStageSurfaceConfigSchema,
   WorkbenchCanvasStageSurfaceConfigSchema,
+  WorkbenchPanelPluginAppBindingSchema,
 } from "./workbench-scene";
 import { WorkbenchReviewConfigSchema } from "./workbench-review";
 import { WorkbenchImageEditorSurfaceConfigSchema } from "./workbench-image-editor";
@@ -116,6 +117,7 @@ export function parseWorkbenchProjectionTabConfig<Kind extends WorkbenchTabKind>
   else if (kind === "browser") parsed = WorkbenchProjectionBrowserTabConfigSchema.parse(config);
   else if (kind === "review") parsed = WorkbenchProjectionReviewTabConfigSchema.parse(config);
   else if (kind === "files") parsed = WorkbenchProjectionFilesTabConfigSchema.parse(config);
+  else if (kind === "plugin_app") parsed = WorkbenchPanelPluginAppBindingSchema.parse(config);
   else if (kind === "image_editor") {
     parsed = WorkbenchImageEditorSurfaceConfigSchema.parse(config);
   } else if (kind === "side_chat") {

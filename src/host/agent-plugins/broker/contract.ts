@@ -1,4 +1,4 @@
-import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, ReadResourceResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import type * as Effect from "effect/Effect";
@@ -83,6 +83,15 @@ export interface PluginMcpBrokerService {
     scope: PluginMcpLeaseScope,
     lease: PluginMcpLease,
   ) => Effect.Effect<readonly Tool[], PluginMcpFailure>;
+  readonly awaitRevoked: (
+    scope: PluginMcpLeaseScope,
+    lease: PluginMcpLease,
+  ) => Effect.Effect<never, PluginMcpFailure>;
+  readonly readResource: (
+    scope: PluginMcpLeaseScope,
+    lease: PluginMcpLease,
+    uri: string,
+  ) => Effect.Effect<ReadResourceResult, PluginMcpFailure>;
   readonly callTool: (
     scope: PluginMcpLeaseScope,
     lease: PluginMcpLease,

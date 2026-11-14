@@ -1,3 +1,4 @@
+import * as PluginAppIpc from "../ipc/handlers/PluginAppIpc";
 import * as SpaceAdministrationIpc from "../space-connections/SpaceAdministrationIpc";
 import * as SourcesIpc from "../ipc/handlers/SourcesIpc";
 import * as WorkIpc from "../ipc/handlers/WorkIpc";
@@ -117,6 +118,7 @@ export const live = Layer.mergeAll(
   ComposerAppshotIpc.live,
   CodexApplicationIpc.live,
   PluginManagerIpc.live,
+  PluginAppIpc.live.pipe(Layer.provide(WorkspaceFileQueries.live)),
   SkillInventoryIpc.live,
   McpAppDataIpc.live,
   CodexRendererIpc.live,

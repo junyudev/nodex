@@ -1,3 +1,4 @@
+import { pluginAppBindingKey, type PluginAppBinding } from "./agent-plugins/app-entrypoints";
 import type { WorkbenchSkillSurfaceConfig } from "./schemas/workbench-skill";
 import { resolveBrowserTabTitle } from "./browser-url";
 import { workbenchFilesResourceKey } from "./workbench-resource-identity";
@@ -161,6 +162,7 @@ export type WorkbenchSurfaceKind =
   | "browser"
   | "review"
   | "files"
+  | "plugin_app"
   | "image_editor"
   | "side_chat";
 
@@ -262,6 +264,7 @@ export interface WorkbenchSurfaceConfigByKind {
   readonly browser: WorkbenchBrowserSurfaceConfig;
   readonly review: WorkbenchReviewSurfaceConfig;
   readonly files: WorkbenchFilesSurfaceConfig;
+  readonly plugin_app: Exclude<PluginAppBinding, { kind: "global" }>;
   readonly image_editor: WorkbenchImageEditorSurfaceConfig;
   readonly side_chat: WorkbenchSideChatSurfaceConfig;
 }
@@ -639,7 +642,8 @@ export function isProjectScenePanelSurfaceAllowed(surface: WorkbenchSurfaceDescr
     surface.kind !== "conversation" &&
     surface.kind !== "review" &&
     surface.kind !== "inbox" &&
-    surface.kind !== "side_chat"
+    surface.kind !== "side_chat" &&
+    (surface.kind !== "plugin_app" || surface.config.kind === "file")
   );
 }
 
@@ -647,11 +651,21 @@ export function isWorkbenchScenePanelSurfaceAllowed(
   owner: WorkbenchSceneOwner,
   surface: WorkbenchSurfaceDescriptor,
 ): boolean {
-  if (owner.kind === "project") return isProjectScenePanelSurfaceAllowed(surface);
+  if (owner.kind === "project")
+    return (
+      isProjectScenePanelSurfaceAllowed(surface) &&
+      (surface.kind !== "plugin_app" || surface.config.projectId === owner.projectId)
+    );
   if (owner.kind === "library" || owner.kind === "inbox") {
     return isLibrarySceneSurfaceAllowed(surface);
   }
-  return surface.kind !== "conversation" && surface.kind !== "inbox";
+  return (
+    surface.kind !== "conversation" &&
+    surface.kind !== "inbox" &&
+    (surface.kind !== "plugin_app" ||
+      surface.config.kind !== "thread" ||
+      surface.config.sessionId === owner.sessionId)
+  );
 }
 
 function enforceLibrarySceneInvariants(scene: WorkbenchSceneSnapshot): WorkbenchSceneSnapshot {
@@ -1442,6 +1456,8 @@ export function getWorkbenchSurfaceReuseKey(
       return "review";
     case "files":
       return workbenchFilesResourceKey(surface.config);
+    case "plugin_app":
+      return pluginAppBindingKey(surface.config);
     case "browser":
       return `browser:${surface.config.browserTabId}`;
     case "terminal":

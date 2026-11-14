@@ -1,4 +1,4 @@
-import type { McpResourceReadResponse } from "@nodex/codex-app-server-protocol/v2/McpResourceReadResponse";
+import type { ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
 
 export const MCP_APP_HTML_MAX_BYTES = 10_000_000;
 export const MCP_APP_DEFAULT_HEIGHT = 240;
@@ -282,7 +282,11 @@ function normalizeMimeType(value: string | undefined): string {
   return value?.trim().toLowerCase() ?? "";
 }
 
-function decodeResourceContent(content: McpResourceReadResponse["contents"][number]): string {
+type RenderableResourceContent = Omit<ReadResourceResult["contents"][number], "_meta"> & {
+  readonly _meta?: unknown;
+} & ({ readonly text: string } | { readonly blob: string });
+
+function decodeResourceContent(content: RenderableResourceContent): string {
   if ("text" in content) return content.text;
   if (!("blob" in content)) return "";
 
@@ -306,7 +310,10 @@ export function getMcpAppHtmlByteSize(html: string): number {
 
 export function resolveMcpRenderableResource(
   resourceUri: string,
-  response: McpResourceReadResponse | null,
+  response: {
+    readonly contents: readonly RenderableResourceContent[];
+    readonly originCallId?: string | null;
+  } | null,
   listingMeta?: unknown,
 ): McpRenderableResource | null {
   const contents = response?.contents ?? [];

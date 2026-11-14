@@ -115,7 +115,7 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
                       const lease = yield* Effect.acquireRelease(
                         input.broker.openLease(
                           {
-                            installationId: plugin.id,
+                            pluginId: plugin.id,
                             generation: installation.generation,
                             serverKey: server.key,
                             project,

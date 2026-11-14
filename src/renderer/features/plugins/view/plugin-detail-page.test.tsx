@@ -1,5 +1,6 @@
+import { renderWithQuery } from "@/test/query";
 import type { ReactNode } from "react";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   pluginInterface,
@@ -107,7 +108,7 @@ function renderPage(view: PluginDetailView | Error) {
     projects: [],
     onOpenHooksSettings: vi.fn(),
   };
-  render(
+  renderWithQuery(
     <PluginDetailPage context={context} navigation={navigation} target={target} browse={browse} />,
   );
   return navigation;

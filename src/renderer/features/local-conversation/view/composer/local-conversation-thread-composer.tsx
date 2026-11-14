@@ -1,3 +1,8 @@
+import { useRegisterPluginAppFollowUp } from "@/features/local-conversation/view/plugin-app-conversation";
+import {
+  buildMcpAppFollowUpPrompt,
+  type McpAppFollowUpMessage,
+} from "@/lib/mcp-app/mcp-app-follow-up";
 import { useOpenSkill } from "@/features/skills/open-skill";
 import { useComposerExecutionHold } from "./use-composer-execution-hold";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
@@ -1678,11 +1683,15 @@ function HydratedThreadComposer({
   });
   const appModelContext = useComposerAppModelContext({
     hostId: model.hostId,
-    threadId: model.conversation?.threadId ?? null,
-    enabled: Boolean(
-      model.conversation &&
-      (model.provider === null || model.provider === undefined || model.provider.kind === "codex"),
-    ),
+    threadId: model.conversation?.threadId ?? model.newThreadTarget?.sessionId ?? null,
+    enabled:
+      model.composerChatKey?.kind === "session" ||
+      Boolean(
+        model.conversation &&
+        (model.provider === null ||
+          model.provider === undefined ||
+          model.provider.kind === "codex"),
+      ),
   });
   const imageEditComposerChannelId = imageEditComposerTarget.channelId;
   useEffect(() => {
@@ -3784,6 +3793,61 @@ function HydratedThreadComposer({
     interruptUnavailableReason: model.provider?.interruptUnavailableReason ?? null,
   });
   // Stop stays in place, unavailable and saying why, for work this reader may not stop.
+  const pluginAppSessionId =
+    model.composerChatKey?.kind === "session" && composerVisible
+      ? model.composerChatKey.sessionId
+      : null;
+  useRegisterPluginAppFollowUp(
+    pluginAppSessionId,
+    async (message: McpAppFollowUpMessage, sourceId) => {
+      const text = buildMcpAppFollowUpPrompt(message);
+      if (message.send === false) {
+        setPrompt([readPrompt(), text].filter(Boolean).join("\n\n"));
+        return;
+      }
+      if (sendHeld || busyAction !== null || (!model.conversation && !canStartNewThread))
+        throw new Error("This chat is unable to send now.");
+      const untrustedAppMessage = { source: "mcp_app", sourceId, text } as const;
+      await appModelContext.submit(async (mcpAppModelContextAttachments) => {
+        const promptInput = { text, untrustedAppMessage, mcpAppModelContextAttachments };
+        if (!model.conversation) {
+          const target = model.newThreadTarget;
+          if (
+            !target?.sessionId ||
+            target.sessionId !== pluginAppSessionId ||
+            !actions.onStartThreadForSession
+          )
+            throw new Error("This chat is unavailable.");
+          await intelligenceController.flush();
+          await actions.onStartThreadForSession({
+            projectId: target.projectId,
+            sessionId: target.sessionId,
+            prompt: text,
+            promptInput,
+            runInTarget: target.runInTarget,
+            runInEnvironmentPath: target.runInEnvironmentPath,
+            worktreeStartingState: target.worktreeStartingState,
+          });
+          return;
+        }
+        if (model.isThreadRunning) {
+          if (!model.isQueueingEnabled) throw new Error("This chat is still working.");
+          await actions.onEnqueueQueuedFollowUp(model.conversation.threadId, text, {
+            promptInput,
+            untrustedAppMessage,
+          });
+          return;
+        }
+        await intelligenceController.flush();
+        await actions.onSendPrompt(text, {
+          promptInput,
+          untrustedAppMessage,
+          collaborationMode: model.selectedCollaborationMode,
+          ...intelligenceController.turnOverrides,
+        });
+      });
+    },
+  );
   const stopUnavailableReason = composerActionState.unavailableReason ?? null;
   const submitAnnotation = useEffectEvent(() => {
     selectionDraft.consumeSubmission();

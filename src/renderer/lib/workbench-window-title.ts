@@ -56,6 +56,8 @@ function resolveLocationTitleParts(input: WorkbenchWindowTitleInput): readonly s
       return ["New chat"];
     case "automations":
       return ["Automations"];
+    case "plugin_app":
+      return [location.title];
     case "plugins":
       return ["Plugins"];
     case "insights":

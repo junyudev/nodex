@@ -1,3 +1,4 @@
+import type { PluginAppPresentation } from "../../../../shared/agent-plugins/app-entrypoints";
 import { useState, type ReactNode } from "react";
 import { PluginsIcon } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
@@ -77,5 +78,32 @@ export function PluginLogoTile({
     >
       <PluginLogoImage source={source} className="h-full w-full rounded-2xs" />
     </span>
+  );
+}
+
+export function PluginAppLogo({
+  presentation,
+  className,
+  composer = false,
+}: {
+  readonly presentation?: PluginAppPresentation;
+  readonly className?: string;
+  readonly composer?: boolean;
+}) {
+  const logoUrl = presentation?.logoUrl ?? presentation?.logoDarkUrl ?? null;
+  const source = {
+    logoUrl,
+    logoDarkUrl: presentation?.logoDarkUrl ?? null,
+    name: presentation?.pluginName ?? "",
+  };
+  const logo = <PluginLogoImage source={source} className={className} />;
+  return composer && presentation?.composerIconUrl ? (
+    <PluginLogoImage
+      source={{ ...source, logoUrl: presentation.composerIconUrl, logoDarkUrl: null }}
+      className={className}
+      fallback={logo}
+    />
+  ) : (
+    logo
   );
 }

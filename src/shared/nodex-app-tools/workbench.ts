@@ -1,3 +1,5 @@
+import { pluginAppBindingKey } from "../agent-plugins/app-entrypoints";
+import { WorkbenchPanelPluginAppBindingSchema } from "../schemas/workbench-scene";
 import { WorkbenchSkillSurfaceConfigSchema } from "../schemas/workbench-skill";
 import { contentRoutingContextKey } from "../content-routing-context";
 import { inboxScopeKey } from "../inbox";
@@ -64,6 +66,11 @@ const filePath = WorkbenchAbsoluteFilePathSchema;
 
 /** Closed semantic targets. Saved view state, favicons and image collections never cross here. */
 export const WorkbenchSurfaceReferenceSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    ...referenceBase,
+    kind: z.literal("plugin_app"),
+    config: WorkbenchPanelPluginAppBindingSchema,
+  }),
   z.strictObject({
     ...referenceBase,
     kind: z.literal("conversation"),
@@ -463,6 +470,7 @@ function observedTargetKey(surface: WorkbenchSurfaceReference): string {
     return JSON.stringify([kind, config.hostId, config.skillId, config.projectId]);
   if (kind === "files")
     return JSON.stringify([kind, config.projectId, workbenchFilesResourceKey(config)]);
+  if (kind === "plugin_app") return pluginAppBindingKey(config);
   if (kind === "review") return JSON.stringify([kind, config.projectId]);
   if (kind === "terminal")
     return JSON.stringify([

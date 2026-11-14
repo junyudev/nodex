@@ -778,6 +778,7 @@ export type WorkbenchTabKind =
   | "browser"
   | "review"
   | "files"
+  | "plugin_app"
   | "image_editor"
   | "side_chat";
 
@@ -944,6 +945,10 @@ export interface WorkbenchProjectionTabConfigByKind {
   browser: WorkbenchProjectionBrowserTabConfig;
   review: WorkbenchReviewConfig;
   files: WorkbenchProjectionFilesTabConfig;
+  plugin_app: Exclude<
+    import("./agent-plugins/app-entrypoints").PluginAppBinding,
+    { kind: "global" }
+  >;
   image_editor: WorkbenchImageEditorSurfaceConfig;
   side_chat: WorkbenchSideChatSurfaceConfig;
 }

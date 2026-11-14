@@ -355,6 +355,8 @@ export function updateSessionTab(
     updatedAt,
   };
   switch (tab.kind) {
+    case "plugin_app":
+      return { ...tab, ...common };
     case "skill":
       return {
         ...tab,

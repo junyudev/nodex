@@ -21,25 +21,41 @@ import { connectMcpAppSandbox, type ConnectedMcpAppSandbox } from "./mcp-app-por
 type McpAppDisplayMode = "inline" | "side-panel" | "fullscreen";
 export type McpAppRuntimeStatus = "error" | "loading" | "ready";
 
-export interface McpAppRuntimeConfig {
+interface McpAppRuntimeBase {
   isFirstParty?: boolean;
   hostId?: string;
   openLink?: (request: LinkOpenRequest) => Promise<boolean>;
   capabilityId: string;
-  currentToolName: string;
   resource: McpRenderableResource;
-  server: string;
   sendFollowUpMessage?: McpAppFollowUpHandler;
   modelContext?: {
     readonly identity: string;
     readonly isCurrent: () => boolean;
-    readonly update: (value: unknown) => { readonly updateId?: string };
+    readonly update: (
+      value: unknown,
+    ) => { readonly updateId?: string } | Promise<{ readonly updateId?: string }>;
   };
-  statuses: ProtocolListMcpServerStatusResponse;
-  threadId: string;
   toolInput: unknown;
   toolResult: unknown;
 }
+
+export interface McpAppRuntimeConfig extends McpAppRuntimeBase {
+  currentToolName: string;
+  server: string;
+  statuses: ProtocolListMcpServerStatusResponse;
+  threadId: string;
+  pluginApp?: undefined;
+}
+
+type PluginAppRuntimeConfig = McpAppRuntimeBase & {
+  pluginApp: {
+    originKey: string;
+    fileResource: boolean;
+    fullscreen?: boolean;
+    request: (method: string, params: unknown) => Promise<unknown>;
+  };
+};
+type RuntimeConfig = McpAppRuntimeConfig | PluginAppRuntimeConfig;
 
 export interface McpAppRuntimeSnapshot {
   diagnostic: { code: string; value: unknown } | null;
@@ -140,7 +156,7 @@ export class McpAppRuntime {
   readonly #abortController = new AbortController();
   readonly #cleanupListeners: Array<() => void> = [];
   readonly #listeners = new Set<() => void>();
-  #config: McpAppRuntimeConfig;
+  #config: RuntimeConfig;
   #connected: ConnectedMcpAppSandbox | null = null;
   #displayMode: McpAppDisplayMode = "inline";
   #disposePromise: Promise<void> | null = null;
@@ -156,8 +172,10 @@ export class McpAppRuntime {
   #widgetId = crypto.randomUUID();
   #widgetState: unknown = null;
 
-  constructor(config: McpAppRuntimeConfig) {
+  constructor(config: RuntimeConfig) {
     this.#config = config;
+    if (config.pluginApp)
+      this.#displayMode = config.pluginApp.fullscreen ? "fullscreen" : "side-panel";
     this.element = document.createElement("div");
     this.element.dataset.mcpAppRuntime = config.capabilityId;
     Object.assign(this.element.style, {
@@ -251,6 +269,15 @@ export class McpAppRuntime {
       .catch(() => undefined);
   }
 
+  notifyPluginResourceUpdated(uri: string): void {
+    void this.#connected?.api
+      .notifyMcpAppsMcpNotification?.({
+        method: "notifications/resources/updated",
+        params: { uri },
+      })
+      .catch(() => undefined);
+  }
+
   dispose(): Promise<void> {
     if (this.#disposePromise) return this.#disposePromise;
     this.#disposePromise = this.#dispose();
@@ -259,36 +286,42 @@ export class McpAppRuntime {
 
   async #start(): Promise<void> {
     try {
+      const config = this.#config;
       const identity = await deriveMcpAppSandboxIdentity({
         locale: navigator.language,
-        originScope: resolveMcpAppSandboxOriginScope({
-          currentToolName: this.#config.currentToolName,
-          instanceFallbackId: this.#config.capabilityId,
-          server: this.#config.server,
-          statuses: this.#config.statuses,
-        }),
-        widgetDomain: this.#config.resource.metadata.domain,
+        originScope: config.pluginApp
+          ? { kind: "mcp_server", server: config.pluginApp.originKey }
+          : resolveMcpAppSandboxOriginScope({
+              currentToolName: config.currentToolName,
+              instanceFallbackId: config.capabilityId,
+              server: config.server,
+              statuses: config.statuses,
+            }),
+        widgetDomain: config.resource.metadata.domain,
       });
       if (this.#abortController.signal.aborted) return;
       this.webview.setAttribute("partition", identity.partition);
       this.element.append(this.webview);
-      const scope = createMcpAppScopeSnapshot({
-        currentToolName: this.#config.currentToolName,
-        originResourceUri: this.#config.resource.uri,
-        server: this.#config.server,
-        statuses: this.#config.statuses,
-        threadId: this.#config.threadId,
-      });
       const dispatcher = new McpAppHostDispatcher({
-        getScope: async () =>
-          createMcpAppScopeSnapshot({
-            currentToolName: this.#config.currentToolName,
-            originResourceUri: this.#config.resource.uri,
-            server: this.#config.server,
-            statuses: await invoke("codex:mcp-server-statuses:list"),
-            threadId: this.#config.threadId,
-          }),
-        scope,
+        ...(config.pluginApp
+          ? { requestPluginApp: config.pluginApp.request }
+          : {
+              scope: createMcpAppScopeSnapshot({
+                currentToolName: config.currentToolName,
+                originResourceUri: config.resource.uri,
+                server: config.server,
+                statuses: config.statuses,
+                threadId: config.threadId,
+              }),
+              getScope: async () =>
+                createMcpAppScopeSnapshot({
+                  currentToolName: config.currentToolName,
+                  originResourceUri: config.resource.uri,
+                  server: config.server,
+                  statuses: await invoke("codex:mcp-server-statuses:list"),
+                  threadId: config.threadId,
+                }),
+            }),
         hostId: this.#config.hostId,
         openLink: (request) => (this.#config.openLink ?? openLink)(request),
         getDisplayMode: () => (this.#displayMode === "fullscreen" ? "modal" : this.#displayMode),
@@ -299,6 +332,8 @@ export class McpAppRuntime {
           if (CSS.supports("color", value)) this.webview.style.backgroundColor = value;
         },
         onDisplayMode: (value) => {
+          if (config.pluginApp)
+            return { mode: config.pluginApp.fullscreen ? "fullscreen" : "inline" };
           const record =
             typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
           const mode = record?.mode;
@@ -365,7 +400,7 @@ export class McpAppRuntime {
       const toolData = resolveToolRuntimeData(this.#config.toolInput, this.#config.toolResult);
       const generator = this.#connected.api.runWidgetCode({
         csp: this.#config.resource.metadata.csp,
-        displayMode: "inline",
+        displayMode: config.pluginApp?.fullscreen ? "fullscreen" : "inline",
         features: ["fullscreen"],
         html: this.#config.resource.html,
         isFirstParty: false,
@@ -375,7 +410,16 @@ export class McpAppRuntime {
         maxWidth: this.element.clientWidth,
         measureWidth: false,
         mcpApps: {
-          forwardedRequestMethods: ["ui/update-model-context"],
+          forwardedRequestMethods: config.pluginApp?.fileResource
+            ? [
+                "resources/read",
+                "resources/subscribe",
+                "resources/unsubscribe",
+                "openai/resources/write",
+              ]
+            : config.pluginApp && config.sendFollowUpMessage
+              ? ["ui/update-model-context", "ui/message"]
+              : ["ui/update-model-context"],
           hostCapabilities: {
             logging: {},
             ...(this.#config.sendFollowUpMessage ? { message: {} } : {}),
@@ -391,8 +435,18 @@ export class McpAppRuntime {
                 }
               : {}),
             openLinks: {},
-            serverResources: {},
-            serverTools: {},
+            ...(config.pluginApp
+              ? config.pluginApp.fileResource
+                ? { serverResources: { subscribe: true }, experimental: { "openai/resource": {} } }
+                : config.sendFollowUpMessage
+                  ? {
+                      experimental: {
+                        "openai/message": {},
+                        ...(config.modelContext && { "openai/modelContext": {} }),
+                      },
+                    }
+                  : {}
+              : { serverResources: {}, serverTools: {} }),
             sandbox: { csp: this.#config.resource.metadata.csp },
           },
           hostContext: hostContext(this.element, this.#displayMode),
@@ -418,11 +472,17 @@ export class McpAppRuntime {
         });
         await Promise.allSettled([
           this.#connected.api.setWidgetView({
-            displayMode: "inline",
+            displayMode: config.pluginApp?.fullscreen ? "fullscreen" : "inline",
             isTombstone: false,
             viewParams: null,
             widgetId: this.#widgetId,
           }),
+          ...(config.pluginApp
+            ? [
+                this.#connected.api.notifyMcpAppsToolInput({ arguments: toolData.toolInput }),
+                this.#connected.api.notifyMcpAppsToolResult(toolData.toolResult),
+              ]
+            : []),
           this.#connected.api.setTheme({ theme }),
           this.#connected.api.setSafeArea({
             safeArea: { insets: { bottom: 0, left: 0, right: 0, top: 0 } },

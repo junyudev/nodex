@@ -1,3 +1,4 @@
+import { PluginAppLogo } from "@/features/plugins/view/plugin-logo";
 import { SkillCubeIcon } from "@/components/shared/icons/customize-action-icons";
 import {
   useEffect,
@@ -175,6 +176,8 @@ interface WorkbenchPanelProjectionInput {
     | "setSearchQuery"
     | "taskSearchOpenTick"
     | "onSearchInFiles"
+    | "onOpenPluginFile"
+    | "onOpenPlugins"
   >;
   readonly conversation: {
     readonly composerEnterBehavior: ComponentProps<
@@ -205,6 +208,7 @@ const SIDE_CHAT_DELETE_CONFIRMATION = {
 };
 
 function getTabIcon(kind: WorkbenchTabProjection["kind"]): ComponentType<{ className?: string }> {
+  if (kind === "plugin_app") return PluginsIcon;
   if (kind === "image_editor") return ImageEditorTabIcon;
   if (kind === "skill") return SkillCubeIcon;
   if (kind === "page_file") return resolveFileResourceIcon();
@@ -422,6 +426,8 @@ export function useWorkbenchPanelProjection({
           <SideChatTabIcon sessionId={null} />
         ) : !transientPanelTab && tab.kind === "side_chat" ? (
           <SideChatTabIcon sessionId={tab.config.sessionId} />
+        ) : !transientPanelTab && tab.kind === "plugin_app" ? (
+          <PluginAppLogo presentation={tab.config.presentation} className="icon-xs" />
         ) : !transientPanelTab && tab.kind === "browser" ? (
           <BrowserTabFavicon
             className="icon-xs"

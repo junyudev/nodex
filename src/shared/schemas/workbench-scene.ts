@@ -1,6 +1,9 @@
+import type { PluginAppBinding } from "../agent-plugins/app-entrypoints";
+
 import { WorkbenchSkillSurfaceConfigSchema } from "./workbench-skill";
 import { z } from "zod";
 import {
+  WorkbenchAbsoluteFilePathSchema,
   WorkbenchFileHostIdSchema,
   WorkbenchSurfaceIdSchema,
 } from "../workbench-resource-identity";
@@ -16,7 +19,7 @@ import {
   WORKBENCH_SCENE_VERSION,
   inboxSurface,
   isLibrarySceneSurfaceAllowed,
-  isProjectScenePanelSurfaceAllowed,
+  isWorkbenchScenePanelSurfaceAllowed,
   makeWorkbenchSceneKey,
   migrateWorkbenchSceneV1ToV4,
   migrateWorkbenchSceneV2ToV4,
@@ -231,6 +234,62 @@ const surfaceBaseSchema = {
   state: z.unknown(),
 } as const;
 
+const pluginAppBindingFields = {
+  pluginId: z
+    .string()
+    .regex(/^[^@\s]+@[^@\s]+$/u)
+    .max(512),
+  presentation: z
+    .strictObject({
+      pluginName: z.string(),
+      entryTitle: z.string(),
+      logoUrl: z.string().nullable().optional(),
+      logoDarkUrl: z.string().nullable().optional(),
+      composerIconUrl: z.string().nullable().optional(),
+      target: z
+        .strictObject({
+          pluginId: z.string(),
+          pluginName: z.string(),
+          marketplace: z.discriminatedUnion("kind", [
+            z.strictObject({ kind: z.literal("local"), marketplacePath: z.string() }),
+            z.strictObject({ kind: z.literal("remote"), remoteMarketplaceName: z.string() }),
+          ]),
+        })
+        .optional(),
+    })
+    .optional(),
+  entryId: z.string().min(1).max(2048),
+};
+export const WorkbenchGlobalPluginAppBindingSchema = z.strictObject({
+  ...pluginAppBindingFields,
+  kind: z.literal("global"),
+  projectId: z.string().min(1).max(512).nullable(),
+}) satisfies z.ZodType<Extract<PluginAppBinding, { kind: "global" }>>;
+export const WorkbenchFilePluginAppBindingSchema = z.strictObject({
+  ...pluginAppBindingFields,
+  kind: z.literal("file"),
+  projectId: z.string().min(1).max(512),
+  file: z.strictObject({
+    hostId: WorkbenchFileHostIdSchema,
+    path: WorkbenchAbsoluteFilePathSchema,
+  }),
+}) satisfies z.ZodType<Extract<PluginAppBinding, { kind: "file" }>>;
+export const WorkbenchThreadPluginAppBindingSchema = z.strictObject({
+  ...pluginAppBindingFields,
+  kind: z.literal("thread"),
+  projectId: z.string().min(1).max(512).nullable(),
+  sessionId: z.string().min(1).max(512),
+}) satisfies z.ZodType<Extract<PluginAppBinding, { kind: "thread" }>>;
+export const WorkbenchPanelPluginAppBindingSchema = z.discriminatedUnion("kind", [
+  WorkbenchFilePluginAppBindingSchema,
+  WorkbenchThreadPluginAppBindingSchema,
+]);
+export const WorkbenchPluginAppBindingSchema = z.discriminatedUnion("kind", [
+  WorkbenchGlobalPluginAppBindingSchema,
+  WorkbenchThreadPluginAppBindingSchema,
+  WorkbenchFilePluginAppBindingSchema,
+]);
+
 export const WorkbenchSurfaceDescriptorSchema = z
   .discriminatedUnion("kind", [
     z
@@ -313,6 +372,11 @@ export const WorkbenchSurfaceDescriptorSchema = z
         config: WorkbenchImageEditorSurfaceConfigSchema,
       })
       .strict(),
+    z.strictObject({
+      ...surfaceBaseSchema,
+      kind: z.literal("plugin_app"),
+      config: WorkbenchPanelPluginAppBindingSchema,
+    }),
     z.strictObject({
       ...surfaceBaseSchema,
       kind: z.literal("side_chat"),
@@ -976,7 +1040,11 @@ export const WorkbenchSceneSnapshotSchema = z.preprocess(
               message: "Project Scene must own Agent Dock view state",
             });
           }
-          if (entries.some(([, surface]) => !isProjectScenePanelSurfaceAllowed(surface))) {
+          if (
+            entries.some(
+              ([, surface]) => !isWorkbenchScenePanelSurfaceAllowed(scene.owner, surface),
+            )
+          ) {
             context.addIssue({
               code: "custom",
               path: ["panelSurfacesById"],
@@ -1053,11 +1121,13 @@ export const WorkbenchSceneSnapshotSchema = z.preprocess(
             message: "Session primary remains in the main plane",
           });
         }
-        if (entries.some(([, surface]) => surface.kind === "conversation")) {
+        if (
+          entries.some(([, surface]) => !isWorkbenchScenePanelSurfaceAllowed(scene.owner, surface))
+        ) {
           context.addIssue({
             code: "custom",
             path: ["panelSurfacesById"],
-            message: "Session Scene contains a duplicate Conversation panel surface",
+            message: "Session Scene contains a surface owned by another route",
           });
         }
       }

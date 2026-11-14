@@ -236,6 +236,7 @@ export function openWorkbenchRoute(
     | { readonly kind: "settings"; readonly path: string }
     | { readonly kind: "automations"; readonly path: string }
     | { readonly kind: "plugins"; readonly path: string }
+    | Omit<Extract<WorkbenchStableLocation, { kind: "plugin_app" }>, "returnTo">
     | { readonly kind: "insights"; readonly path: string }
     | {
         readonly kind: "pending-worktree";

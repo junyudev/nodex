@@ -1,3 +1,4 @@
+import { PluginAppLogo } from "@/features/plugins/view/plugin-logo";
 import type { ReactNode } from "react";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { REMOTE_FILESYSTEM_REASON } from "../../../shared/space-connection";
@@ -136,6 +137,8 @@ function makePanelItems(
               isLoading={browserTabSnapshot?.isLoading ?? false}
               isWaitingForResponse={browserTabSnapshot?.isWaitingForResponse ?? false}
             />
+          ) : surface.kind === "plugin_app" ? (
+            <PluginAppLogo presentation={surface.config.presentation} className="icon-xs" />
           ) : undefined,
         closable: surface.id !== scene.primary?.id,
         preview,

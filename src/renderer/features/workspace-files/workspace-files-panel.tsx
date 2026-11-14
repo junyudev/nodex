@@ -1,3 +1,5 @@
+import type { PluginAppBinding } from "../../../shared/agent-plugins/app-entrypoints";
+import { WorkspaceFilePluginActions } from "./workspace-file-plugin-actions";
 import { localProjectSourceRoots } from "../../../shared/project-sources";
 import { useFileSearch } from "@/lib/use-file-search";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -170,6 +172,7 @@ interface WorkspaceFilesPanelProps {
       mode: "preview" | "durable";
     },
   ) => Promise<unknown>;
+  onOpenPluginFile?: (binding: Extract<PluginAppBinding, { kind: "file" }>, title: string) => void;
   onUpdateTabState?: (state: WorkspaceFilesTabState) => void;
   /** Opens workspace text search; the header omits the control without it. */
   onSearchInFiles?: () => void;
@@ -512,6 +515,7 @@ export function WorkspaceFilesPanel({
   presentationOwnerId,
   project,
   onOpenFileTab,
+  onOpenPluginFile,
   onUpdateTabState,
   onSearchInFiles,
   review,
@@ -1542,6 +1546,16 @@ export function WorkspaceFilesPanel({
               gitHubUrl={gitHubUrl}
               onOpenUrl={openExternalUrl}
               onSearchInFiles={localFile && workspaceRoot ? (onSearchInFiles ?? null) : null}
+              pluginActions={
+                selectedPath && project && onOpenPluginFile ? (
+                  <WorkspaceFilePluginActions
+                    projectId={project.id}
+                    path={selectedPath}
+                    hostId={hostId}
+                    onOpen={onOpenPluginFile}
+                  />
+                ) : null
+              }
               options={options}
               open={openControl}
               fileTree={
