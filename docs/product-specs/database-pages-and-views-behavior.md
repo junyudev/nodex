@@ -857,6 +857,41 @@ revealing placeholder bars only when preparation outlasts a short grace period.
 No loading state invents Property values or changes geometry when the editors
 mount.
 
+The toolbar floats over the top of the Page, so a long Page reads under it. Its
+leading side holds the Page and its body tools; its trailing side holds what sits
+beside the Page:
+
+- **Page actions**, the Page icon with a chevron, opens the Page's one menu:
+  `Rename` (focuses the title with its text selected), `Copy` (ID when the Page
+  has a key, title, and content as Markdown), `Download as Markdown`,
+  `Open on right`, `Open in new window`, the `Full width` and
+  `Show Markdown source` view toggles, `Pause work` or `Resume work`,
+  `Schedule`, and `Delete` where the Page can be deleted. An action the Page's
+  host cannot perform is absent. A nested Page shows its ancestors before the
+  menu; each opens on click.
+- **Editing tools** act on the body's caret without taking its focus.
+  `Text style` sets the line at the caret, or the selected Blocks, to text, a
+  heading, or a list, and marks the current style. `Image` and `Table` insert
+  that Block. `Insert` lists everything else the body's `/` menu offers, with a
+  description of each, grouped as Agent, Pages, Blocks, and Inline. Before the
+  person has placed a caret in the body, an insertion lands at its end. The
+  tools dim while the Page shows its Markdown source.
+- **History** opens the Page's revisions where the Page has them, and stays
+  selected while they are open. **Copy link** copies the Page's deeplink and
+  confirms in place.
+
+In a narrow pane the toolbar gives up labels before controls: `Copy link`
+becomes its icon, and `Text style`, `Image`, and `Table` fold away, leaving
+`Insert`. Downloaded Markdown is portable Markdown named after the Page, with
+the title as its top-level heading; it and `Copy content as Markdown` read the
+open Document, so they include edits that are still saving.
+
+An empty body offers starting shapes under its first line: `Task brief`,
+`Bug report`, `To-do list`, and `Meeting notes`, plus a control that opens the
+`/` menu. Choosing a shape writes its headings and lists and leaves the caret
+where writing begins. The shapes leave as soon as the body holds anything, and
+never move it.
+
 Properties form one label/value list under the title, in Page-layout order, with
 a valid schedule pair presented as one Schedule row; Linked chats and Files
 follow. Rows the layout shows stay visible; everything else waits behind one

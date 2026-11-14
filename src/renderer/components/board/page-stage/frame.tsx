@@ -30,7 +30,8 @@ interface PageStageFrameProps extends Omit<ComponentPropsWithoutRef<"div">, "chi
 
 /**
  * The one Page Stage geometry. Loading and editable states render inside the same frame,
- * so toolbar, gutters, and content width never move when a Page finishes opening.
+ * so toolbar, gutters, and content width never move when a Page finishes opening. The toolbar
+ * floats over the top of the scroll surface, so a long Page reads under it.
  */
 export function PageStageFrame({
   toolbar,
@@ -43,12 +44,12 @@ export function PageStageFrame({
 }: PageStageFrameProps) {
   return (
     <div {...rootProps} className={cn("flex h-full w-full flex-col bg-(--background)", className)}>
-      {toolbar}
       <div
         ref={headingRailPortalRef}
         className="relative min-h-0 flex-1"
         data-page-stage-heading-navigation-portal-target="true"
       >
+        {toolbar}
         <div
           ref={scrollContainerRef}
           className="scrollbar-token h-full min-h-0 overflow-y-auto"
@@ -82,7 +83,8 @@ export function PageStageContentLayout({
 }) {
   return (
     <div className="w-full">
-      <div className="h-toolbar-sm" />
+      {/* Clears the floating toolbar, then the title's own breathing room. */}
+      <div className="h-20" />
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">{title}</div>
         {/* A quiet status renders nothing and must not narrow the title. */}
@@ -152,14 +154,8 @@ export function PageStageLoadingFrame({
         <PageStageToolbar
           saving={false}
           pending={true}
-          historyPanelActive={false}
-          limitMainContentWidth={limitMainContentWidth}
-          showRawContent={false}
-          onCopyDeeplink={() => undefined}
-          onDelete={() => undefined}
-          onToggleContentWidth={() => undefined}
-          onToggleShowRawContent={() => undefined}
-          onToggleHistoryPanel={() => undefined}
+          menu={null}
+          editorCommands={null}
           breadcrumb={breadcrumb}
         />
       }

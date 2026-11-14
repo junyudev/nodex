@@ -13,7 +13,6 @@ export interface PageStageBreadcrumbItem {
 
 export interface PageStageBreadcrumbProps {
   readonly ancestors: readonly PageStageBreadcrumbItem[];
-  readonly currentTitle: string;
   readonly onOpenAncestor: (ancestor: PageStageBreadcrumbItem, ancestorIndex: number) => void;
 }
 
@@ -57,7 +56,7 @@ function PageStageBreadcrumbAncestor({
           disabled={itemDisabled}
           onClick={() => onOpenAncestor(entry.item, entry.index)}
           className={cn(
-            "min-w-0 max-w-36 truncate rounded-md px-1 py-0.5 text-token-text-secondary outline-hidden",
+            "min-w-0 max-w-36 truncate rounded-full px-1.5 py-0.5 text-token-text-secondary outline-hidden",
             "hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:ring-token-focus-border focus-visible:ring-2",
             itemDisabled &&
               "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-token-text-secondary",
@@ -70,11 +69,8 @@ function PageStageBreadcrumbAncestor({
   );
 }
 
-export function PageStageBreadcrumb({
-  ancestors,
-  currentTitle,
-  onOpenAncestor,
-}: PageStageBreadcrumbProps) {
+/** The Pages this Page is nested under, outermost first; each opens on click. */
+export function PageStageBreadcrumb({ ancestors, onOpenAncestor }: PageStageBreadcrumbProps) {
   if (ancestors.length === 0) return null;
 
   const indexedAncestors = ancestors.map((item, index) => ({ item, index }));
@@ -82,12 +78,11 @@ export function PageStageBreadcrumb({
   const leading = hasOverflow ? indexedAncestors.slice(0, 1) : indexedAncestors;
   const overflow = hasOverflow ? indexedAncestors.slice(1, -2) : [];
   const trailing = hasOverflow ? indexedAncestors.slice(-2) : [];
-  const currentLabel = breadcrumbLabel(currentTitle);
 
   return (
     <nav
       aria-label="Page hierarchy"
-      className="min-w-0 flex-1 overflow-hidden text-xs"
+      className="flex h-full min-w-0 items-center overflow-hidden px-1.5 text-sm"
       data-page-stage-breadcrumb="true"
     >
       <ol className="flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap">
@@ -146,18 +141,6 @@ export function PageStageBreadcrumb({
             onOpenAncestor={onOpenAncestor}
           />
         ))}
-
-        <li className="flex min-w-0 flex-1 items-center gap-1">
-          <PageStageBreadcrumbSeparator />
-          <NodexTooltip tooltipContent={currentLabel} side="bottom">
-            <span
-              aria-current="page"
-              className="min-w-0 truncate px-1 py-0.5 text-token-text-primary"
-            >
-              {currentLabel}
-            </span>
-          </NodexTooltip>
-        </li>
       </ol>
     </nav>
   );

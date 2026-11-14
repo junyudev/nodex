@@ -118,7 +118,7 @@ export interface PageStageProps {
   onOpenPage?: (input: ContentPageNavigationTarget) => void | Promise<void>;
   onOpenDatabase?: (databaseId: DatabaseId) => void | Promise<void>;
   onOpenCanvas?: (input: ContentCanvasNavigationTarget) => void | Promise<void>;
-  breadcrumb?: Omit<PageStageBreadcrumbProps, "currentTitle">;
+  breadcrumb?: PageStageBreadcrumbProps;
   onStartNewSessionThreadFromEditor?: (input: {
     projectId: string;
     targetSessionId?: string;

@@ -15,7 +15,7 @@ import { renderWithMaitai as render } from "@/test/thread-maitai";
 import { MaitaiProvider } from "@/lib/maitai/maitai-scope";
 import { createMaitaiStore, disposeMaitaiStore } from "@/lib/maitai/maitai-store";
 import { TestThreadRouteScopePath } from "@/test/maitai-scope-harness";
-import { settleAsyncRender } from "@/test/dom";
+import { openNodexMenu, settleAsyncRender } from "@/test/dom";
 import {
   PAGE_DOCUMENT_SCHEMA_VERSION,
   createPageDocument,
@@ -40,7 +40,6 @@ let lastNfmEditorProps: Record<string, unknown> | null = null;
 let simulateMountedEditor = false;
 let surfacePending = false;
 let lastRawContent: string | null = null;
-let publishCollaborativeTitle: ((title: string) => void) | null = null;
 let surfaceDocument = createPageDocument({
   documentId: "document:page-1",
   initialTitle: "Live title",
@@ -93,7 +92,6 @@ vi.mock("@/components/block-documents/collaborative-page-title", () => ({
     onValueChange?: (title: string) => void;
     onKeyDown?: import("react").KeyboardEventHandler<HTMLDivElement>;
   }) => {
-    publishCollaborativeTitle = onValueChange ?? null;
     useEffect(() => {
       onValueChange?.("Live title");
     }, [onValueChange]);
@@ -245,7 +243,6 @@ describe("page stage", () => {
     simulateMountedEditor = false;
     surfacePending = false;
     lastRawContent = null;
-    publishCollaborativeTitle = null;
     surfaceDocument.document.destroy();
     surfaceDocument = createPageDocument({
       documentId: "document:page-1",
@@ -299,7 +296,7 @@ describe("page stage", () => {
       "Prepared title",
     );
     expect(view.queryByText("Mock collaborative editor")).toBeNull();
-    expect(view.getByRole("button", { name: "History" }).hasAttribute("disabled")).toBe(true);
+    expect(view.getByRole("button", { name: "Page actions" }).hasAttribute("disabled")).toBe(true);
 
     renderStage(page, {}, (ui) => {
       view.rerender(ui);
@@ -483,8 +480,9 @@ describe("page stage", () => {
     );
     try {
       await settleAsyncRender();
+      await openNodexMenu(view.getByRole("button", { name: "Page actions" }));
       await act(async () => {
-        fireEvent.click(view.getByRole("button", { name: "Show raw" }));
+        fireEvent.click(view.getByRole("menuitemcheckbox", { name: "Show Markdown source" }));
         await Promise.resolve();
       });
       await act(async () => {
@@ -502,34 +500,6 @@ describe("page stage", () => {
     }
   });
 
-  test("renders the current breadcrumb item from the live Y.Text title", async () => {
-    const view = renderStage(toStageModel(buildPage()), {
-      breadcrumb: {
-        ancestors: [
-          {
-            projectId: "default",
-            pageId: "parent-page",
-            title: "Parent Page",
-          },
-        ],
-        onOpenAncestor: () => undefined,
-      },
-    });
-
-    await settleAsyncRender();
-    await act(async () => {
-      publishCollaborativeTitle?.("Renamed live title");
-      await Promise.resolve();
-    });
-
-    const breadcrumb = view.getByRole("navigation", {
-      name: "Page hierarchy",
-    });
-    expect(breadcrumb.querySelector('[aria-current="page"]')?.textContent).toBe(
-      "Renamed live title",
-    );
-  });
-
   test("opens a standalone Page without Database controls or delete", async () => {
     const member = toStageModel(buildPage());
     const standalone: PageStagePageModel = {
@@ -541,20 +511,13 @@ describe("page stage", () => {
     expect(getByText("Mock collaborative editor")).toBeTruthy();
     expect(queryByText("Inline property strip")).toBeNull();
 
-    const trigger = getByRole("button", { name: "Page actions" });
-    await act(async () => {
-      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
-      fireEvent.mouseDown(trigger, { button: 0, ctrlKey: false });
-      fireEvent.click(trigger);
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
+    await openNodexMenu(getByRole("button", { name: "Page actions" }));
 
-    expect(queryByRole("menuitem", { name: "Copy deeplink" })).toBeTruthy();
+    expect(queryByRole("menuitem", { name: "Rename" })).toBeTruthy();
     expect(queryByRole("menuitem", { name: "Delete" })).toBeNull();
   });
 
-  test("copies the current Page deeplink from the actions menu", async () => {
+  test("copies the current Page link from the toolbar", async () => {
     const originalClipboard = navigator.clipboard;
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", {
@@ -564,23 +527,15 @@ describe("page stage", () => {
 
     try {
       const { getByRole } = renderStage();
-
-      const trigger = getByRole("button", { name: "Page actions" });
-      await act(async () => {
-        fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
-        fireEvent.mouseDown(trigger, { button: 0, ctrlKey: false });
-        fireEvent.click(trigger);
-        await Promise.resolve();
-      });
-      await settleAsyncRender();
+      const button = getByRole("button", { name: "Copy link" });
 
       await act(async () => {
-        fireEvent.click(getByRole("menuitem", { name: "Copy deeplink" }));
+        fireEvent.click(button);
         await Promise.resolve();
       });
-      await settleAsyncRender();
 
       expect(writeText).toHaveBeenCalledWith("nodex://pages/page-1?spaceId=test-space");
+      await waitFor(() => expect(button.textContent).toBe("Copied"));
     } finally {
       Object.defineProperty(navigator, "clipboard", {
         configurable: true,
@@ -611,11 +566,11 @@ describe("page stage", () => {
     writePageStageShowRawContentPreference(false);
     const { container, getByRole } = renderStage();
     const body = container.querySelector('[data-page-stage-body="true"]');
-    const fullWidthButton = getByRole("button", { name: "Full width" });
 
     expect(body?.getAttribute("data-page-stage-body-width")).toBe("constrained");
+    await openNodexMenu(getByRole("button", { name: "Page actions" }));
     await act(async () => {
-      (fullWidthButton as HTMLButtonElement).click();
+      fireEvent.click(getByRole("menuitemcheckbox", { name: "Full width" }));
       await Promise.resolve();
     });
     expect(body?.getAttribute("data-page-stage-body-width")).toBe("full");

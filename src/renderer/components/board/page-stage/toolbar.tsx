@@ -1,206 +1,150 @@
-import { PageExecutionHoldItem } from "@/components/workbench/execution-hold-controls";
-import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { BackIcon } from "@/components/shared/icons";
 import {
-  AutomationsIcon,
-  BackIcon,
-  ChatActionsIcon,
-  DeleteIcon,
-  PageMenuCopyLinkIcon,
-} from "@/components/shared/icons";
+  ClockArrowRotateCounterclockwise16Glyph,
+  Link16Glyph,
+} from "@/components/shared/icons/outline-glyphs";
+import { CheckmarkMdIcon } from "@/components/shared/icons/plugin-detail-icons";
 import {
-  PageFullWidthIcon,
-  PageHistoryIcon,
-  PageRawContentIcon,
-} from "@/components/shared/icons/page-stage-toolbar-icons";
-import {
-  NodexDropdownItem,
-  NodexDropdownMenu,
-  NodexDropdownSeparator,
-} from "@/components/ui/dropdown";
+  ViewerButton,
+  ViewerCapsule,
+  ViewerHeader,
+  ViewerIconButton,
+} from "@/components/ui/viewer-header";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
-import {
-  TOOLBAR_BUTTON_BASE_CLASS,
-  TOOLBAR_BUTTON_GHOST_CLASS,
-  TOOLBAR_BUTTON_SECONDARY_CLASS,
-} from "@/lib/workbench-toolbar-control-styles";
+import type { NfmEditorCommands } from "../editor/nfm-editor-commands";
 import { PageStageBreadcrumb, type PageStageBreadcrumbProps } from "./breadcrumb";
+import { PageStageInsertTools } from "./insert-tools";
+import { PageStageMenu, type PageStageMenuActions } from "./page-menu";
 
-interface PageStageToolbarProps {
-  pageId?: string;
-  saving: boolean;
-  /** The Page is still opening: actions are inert but keep their resting appearance. */
-  pending?: boolean;
-  historyPanelActive: boolean;
-  limitMainContentWidth: boolean;
-  showRawContent: boolean;
-  onCopyDeeplink: () => void;
-  /** Opens a new automation that follows this Page as its runbook. */
-  onSchedule?: () => void;
-  onDelete: () => void;
-  showDelete?: boolean;
-  onToggleContentWidth: () => void;
-  onToggleShowRawContent: () => void;
-  onToggleHistoryPanel?: () => void;
-  breadcrumb?: PageStageBreadcrumbProps;
-  onNavigateBack?: () => void;
+const COPIED_FEEDBACK_MS = 2000;
+
+export interface PageStageHistoryToggle {
+  readonly active: boolean;
+  readonly onToggle: () => void;
 }
 
-/**
- * Window toolbar chrome. A pending Page disables its actions without dimming them, so the
- * toolbar keeps its resting appearance while the Page opens.
- */
-const pageStageToolbarButtonClass = cn(
-  TOOLBAR_BUTTON_BASE_CLASS,
-  "shrink-0 disabled:pointer-events-none disabled:opacity-100",
-);
+interface PageStageToolbarProps {
+  readonly saving: boolean;
+  /** The Page is still opening: controls are inert but keep their resting appearance. */
+  readonly pending?: boolean;
+  /** Absent while the Page opens. */
+  readonly menu: PageStageMenuActions | null;
+  /** Absent while the body editor is not showing. */
+  readonly editorCommands: NfmEditorCommands | null;
+  /** Absent where the Page has no reachable history. */
+  readonly history?: PageStageHistoryToggle | null;
+  /** Copies the Page's link, resolving whether it reached the clipboard. Absent while it opens. */
+  readonly onCopyLink?: (() => Promise<boolean>) | null;
+  readonly breadcrumb?: PageStageBreadcrumbProps;
+  readonly onNavigateBack?: () => void;
+}
 
-function PageStageToolbarToggle({
-  label,
-  tooltip = label,
-  pressed,
-  disabled,
-  onClick,
-  children,
-}: {
-  label: string;
-  tooltip?: string;
-  pressed: boolean;
-  disabled: boolean;
-  onClick?: () => void;
-  children: ReactNode;
-}) {
+/** The Page's link is how it reaches someone else, so it is the one labelled action. */
+function CopyLinkButton({ onCopy }: { readonly onCopy: () => Promise<boolean> }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timeout = window.setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
+    return () => window.clearTimeout(timeout);
+  }, [copied]);
   return (
-    <NodexTooltip tooltipContent={tooltip} side="bottom" delay={0}>
-      <button
-        type="button"
-        onClick={onClick}
-        aria-pressed={pressed}
-        aria-label={label}
-        disabled={disabled}
-        className={cn(
-          pageStageToolbarButtonClass,
-          pressed ? TOOLBAR_BUTTON_SECONDARY_CLASS : TOOLBAR_BUTTON_GHOST_CLASS,
-        )}
+    <NodexTooltip tooltipContent="Copy link" delayOpen>
+      <ViewerButton
+        aria-label="Copy link"
+        data-tab-preview-pin-exempt="true"
+        onClick={() => {
+          void onCopy().then(setCopied);
+        }}
       >
-        {children}
-      </button>
+        {copied ? <CheckmarkMdIcon /> : <Link16Glyph />}
+        <span className="overflow-hidden whitespace-nowrap" data-viewer-header-collapsible="">
+          {copied ? "Copied" : "Copy link"}
+        </span>
+      </ViewerButton>
     </NodexTooltip>
   );
 }
 
+/**
+ * The Page's floating header. The leading side holds the Page itself (its ancestors and its
+ * menu), then the tools that write into its body; the trailing side holds what is beside the
+ * Page: its history and its link. A Page that is still opening renders the same leading controls.
+ */
 export function PageStageToolbar({
-  pageId,
   saving,
   pending = false,
-  historyPanelActive,
-  limitMainContentWidth,
-  showRawContent,
-  onCopyDeeplink,
-  onSchedule,
-  onDelete,
-  showDelete = true,
-  onToggleContentWidth,
-  onToggleShowRawContent,
-  onToggleHistoryPanel,
+  menu,
+  editorCommands,
+  history,
+  onCopyLink,
   breadcrumb,
   onNavigateBack,
 }: PageStageToolbarProps) {
+  const ancestors = breadcrumb?.ancestors ?? [];
   return (
-    <div className="flex h-11 items-center gap-2 px-3">
-      {onNavigateBack ? (
-        <NodexTooltip tooltipContent="Back to Library" side="bottom" delay={0}>
-          <button
-            type="button"
-            aria-label="Back to Library"
-            onClick={onNavigateBack}
-            className={cn(pageStageToolbarButtonClass, TOOLBAR_BUTTON_GHOST_CLASS)}
-          >
-            <BackIcon className="icon-xs" />
-          </button>
-        </NodexTooltip>
-      ) : null}
-      {breadcrumb ? <PageStageBreadcrumb {...breadcrumb} /> : <div className="min-w-0 flex-1" />}
-
-      <div className="flex shrink-0 items-center gap-1">
-        {saving && <span className="mr-2 text-xs text-(--foreground-tertiary)">Saving...</span>}
-
-        <PageStageToolbarToggle
-          label="Show raw"
-          tooltip={showRawContent ? "Show editor" : "Show raw-format content"}
-          pressed={showRawContent}
-          disabled={pending}
-          onClick={onToggleShowRawContent}
-        >
-          <PageRawContentIcon active={showRawContent} />
-        </PageStageToolbarToggle>
-
-        <PageStageToolbarToggle
-          label="Full width"
-          pressed={!limitMainContentWidth}
-          disabled={pending}
-          onClick={onToggleContentWidth}
-        >
-          <PageFullWidthIcon active={!limitMainContentWidth} />
-        </PageStageToolbarToggle>
-
-        <PageStageToolbarToggle
-          label="History"
-          pressed={historyPanelActive}
-          disabled={pending}
-          onClick={onToggleHistoryPanel}
-        >
-          <PageHistoryIcon active={historyPanelActive} />
-        </PageStageToolbarToggle>
-
-        <NodexDropdownMenu
-          align="end"
-          side="bottom"
-          sideOffset={6}
-          contentWidth="xs"
-          disabled={pending}
-          triggerTooltipContent="Page actions"
-          triggerButton={
-            <button
-              type="button"
-              aria-label="Page actions"
+    <ViewerHeader
+      className="@container/page-toolbar w-full"
+      density="compact"
+      placement="overlay"
+      label="Page"
+      leading={[
+        {
+          id: "page",
+          allowShrink: ancestors.length > 0,
+          content: (
+            <>
+              {onNavigateBack ? (
+                <ViewerIconButton label="Back to Library" onClick={onNavigateBack}>
+                  <BackIcon className="icon-xs" />
+                </ViewerIconButton>
+              ) : null}
+              {breadcrumb && ancestors.length > 0 ? (
+                <ViewerCapsule className="flex min-w-0 items-center">
+                  <PageStageBreadcrumb {...breadcrumb} />
+                </ViewerCapsule>
+              ) : null}
+              <PageStageMenu actions={menu} pending={pending} />
+            </>
+          ),
+        },
+        {
+          id: "editing",
+          collapsePriority: 0,
+          content: <PageStageInsertTools commands={editorCommands} pending={pending} />,
+        },
+        {
+          id: "saving",
+          hidePriority: 0,
+          content: saving ? (
+            <span className="px-1 text-xs text-token-description-foreground" role="status">
+              Saving…
+            </span>
+          ) : null,
+        },
+      ]}
+      trailing={[
+        {
+          id: "history",
+          content: history ? (
+            <ViewerIconButton
+              label="History"
+              variant={history.active ? "selected" : "default"}
+              aria-pressed={history.active}
               data-tab-preview-pin-exempt="true"
               disabled={pending}
-              className={cn(pageStageToolbarButtonClass, TOOLBAR_BUTTON_GHOST_CLASS)}
+              onClick={history.onToggle}
             >
-              <ChatActionsIcon />
-            </button>
-          }
-        >
-          {pageId ? <PageExecutionHoldItem pageId={pageId} /> : null}
-          <NodexDropdownItem
-            leftSlot={<PageMenuCopyLinkIcon className="icon-2xs" />}
-            onSelect={onCopyDeeplink}
-          >
-            Copy deeplink
-          </NodexDropdownItem>
-          {onSchedule ? (
-            <NodexDropdownItem
-              leftSlot={<AutomationsIcon className="icon-2xs" />}
-              onSelect={onSchedule}
-            >
-              Schedule…
-            </NodexDropdownItem>
-          ) : null}
-          {showDelete ? (
-            <>
-              <NodexDropdownSeparator />
-              <NodexDropdownItem
-                leftSlot={<DeleteIcon className="icon-2xs shrink-0" />}
-                onSelect={onDelete}
-                className="text-(--destructive) hover:!bg-(--destructive)/10 focus:!bg-(--destructive)/10"
-              >
-                Delete
-              </NodexDropdownItem>
-            </>
-          ) : null}
-        </NodexDropdownMenu>
-      </div>
-    </div>
+              <ClockArrowRotateCounterclockwise16Glyph />
+            </ViewerIconButton>
+          ) : null,
+        },
+        {
+          id: "link",
+          collapsePriority: 0,
+          content: onCopyLink ? <CopyLinkButton onCopy={onCopyLink} /> : null,
+        },
+      ]}
+    />
   );
 }

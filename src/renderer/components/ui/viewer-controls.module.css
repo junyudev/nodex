@@ -7,6 +7,13 @@
  * The rules live in the components layer so utilities on a control refine them.
  */
 
+/*
+ * A layer's rank is fixed where it is first named. This sheet can load before the app's main
+ * sheet, so it restates the app's order; otherwise `components` would rank below `base` and the
+ * reset there would strip every control's padding.
+ */
+@layer theme, base, components, utilities;
+
 @layer components {
   .header {
     position: relative;

@@ -130,6 +130,8 @@ interface NfmSlashMenuProps {
   executionProjectId: string | null;
   allowPageReferences?: boolean;
   locale?: string;
+  /** Receives a reader of the same catalog, for insert menus outside the editor. */
+  catalogRef?: MutableRefObject<(() => NfmSuggestionItem[]) | null>;
 }
 
 type UnsafeEditor = Parameters<typeof insertOrUpdateBlockForSlashMenu>[0];
@@ -930,6 +932,7 @@ export function getNfmSlashMenuCustomItems(
 }
 
 export function NfmSlashMenu({
+  catalogRef,
   executionProjectId,
   allowPageReferences = true,
   locale: localeProp,
@@ -965,23 +968,19 @@ export function NfmSlashMenu({
     });
   }, [editor]);
 
-  const getItems = useMemo(
-    () => async (query: string) => {
-      return filterSuggestionItems(
-        buildNfmSlashMenuItems(
-          getDefaultReactSlashMenuItems(editor),
-          getNfmSlashMenuCustomItems(editor, {
-            createCanvasAtEmptyParagraph: hostRuntime?.createCanvasAtEmptyParagraph,
-            startMentionFlow: allowPageReferences ? startMentionFlow : undefined,
-            openEmbedPagePicker: allowPageReferences ? openEmbedPagePicker : undefined,
-            openSubpageCreator: hostRuntime?.createSubpageAtEmptyParagraph
-              ? openSubpageCreator
-              : undefined,
-          }),
-        ),
-        query,
-      );
-    },
+  const readCatalog = useMemo(
+    () => () =>
+      buildNfmSlashMenuItems(
+        getDefaultReactSlashMenuItems(editor),
+        getNfmSlashMenuCustomItems(editor, {
+          createCanvasAtEmptyParagraph: hostRuntime?.createCanvasAtEmptyParagraph,
+          startMentionFlow: allowPageReferences ? startMentionFlow : undefined,
+          openEmbedPagePicker: allowPageReferences ? openEmbedPagePicker : undefined,
+          openSubpageCreator: hostRuntime?.createSubpageAtEmptyParagraph
+            ? openSubpageCreator
+            : undefined,
+        }),
+      ),
     [
       allowPageReferences,
       editor,
@@ -992,6 +991,17 @@ export function NfmSlashMenu({
       startMentionFlow,
     ],
   );
+  const getItems = useMemo(
+    () => async (query: string) => filterSuggestionItems(readCatalog(), query),
+    [readCatalog],
+  );
+  useLayoutEffect(() => {
+    if (!catalogRef) return;
+    catalogRef.current = readCatalog;
+    return () => {
+      if (catalogRef.current === readCatalog) catalogRef.current = null;
+    };
+  }, [catalogRef, readCatalog]);
 
   return (
     <NodexFloatingLayerProvider zIndex={NFM_SUGGESTION_MENU_Z_INDEX}>

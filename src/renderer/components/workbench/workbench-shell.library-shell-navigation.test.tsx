@@ -1402,7 +1402,7 @@ describe("workbench session shell / library-shell-navigation", () => {
       within(loadingShell).getByRole("button", { name: "Page actions" }).hasAttribute("disabled"),
     ).toBe(true);
     expect(
-      within(loadingShell).getByRole("button", { name: "History" }).hasAttribute("disabled"),
+      within(loadingShell).getByRole("button", { name: "Insert" }).hasAttribute("disabled"),
     ).toBe(true);
     expect(screen.queryByText("Page not found") === null).toBe(true);
     expect(screen.queryByText("Page:card-1") === null).toBe(true);

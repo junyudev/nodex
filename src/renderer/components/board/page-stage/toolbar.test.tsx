@@ -1,14 +1,61 @@
-import { describe, expect, test } from "vite-plus/test";
-import { fireEvent, within } from "@testing-library/react";
-import { act, useEffect } from "react";
+import { describe, expect, test, vi } from "vite-plus/test";
+import { fireEvent, waitFor, within } from "@testing-library/react";
+import { act, useEffect, type ComponentProps } from "react";
 import { NodexTooltipProvider, dismissNodexTooltips } from "@/components/ui/tooltip";
 import { render, openNodexMenu } from "@/test/dom";
+import type { NfmEditorCommands, NfmInsertItem } from "../editor/nfm-editor-commands";
+import type { PageStageMenuActions } from "./page-menu";
 import { PageStageToolbar } from "./toolbar";
 
+// The Page's hold has its own tests; here it would only reach for a query client.
+vi.mock("@/components/workbench/execution-hold-controls", () => ({
+  PageExecutionHoldItem: () => null,
+}));
+
+const menuActions = (overrides: Partial<PageStageMenuActions> = {}): PageStageMenuActions => ({
+  pageId: "page-1",
+  copyActions: [{ id: "copy-title", label: "Copy title", keywords: [], disabled: false }],
+  onCopy: () => undefined,
+  fullWidth: false,
+  onToggleFullWidth: () => undefined,
+  showMarkdownSource: false,
+  onToggleMarkdownSource: () => undefined,
+  ...overrides,
+});
+
+const insertItem = (key: string, title: string, group: string): NfmInsertItem => ({
+  key,
+  title,
+  group,
+  description: `${title} description`,
+  icon: null,
+  hint: null,
+});
+
+const editorCommands = (overrides: Partial<NfmEditorCommands> = {}): NfmEditorCommands => ({
+  focus: () => undefined,
+  openInsertMenu: () => true,
+  listInsertItems: () => [],
+  insert: () => true,
+  readTurnIntoKey: () => null,
+  turnInto: () => true,
+  isEmpty: () => false,
+  fillEmptyBody: () => true,
+  subscribe: () => () => undefined,
+  ...overrides,
+});
+
+const renderToolbar = (props: Partial<ComponentProps<typeof PageStageToolbar>> = {}) =>
+  render(
+    <NodexTooltipProvider>
+      <PageStageToolbar saving={false} menu={menuActions()} editorCommands={null} {...props} />
+    </NodexTooltipProvider>,
+  );
+
 describe("page stage toolbar", () => {
-  test("history and overflow actions survive capture-phase tooltip dismissal", async () => {
-    let historyCalls = 0;
-    let deleteCalls = 0;
+  test("history and Page actions survive capture-phase tooltip dismissal", async () => {
+    const onToggleHistory = vi.fn();
+    const onDelete = vi.fn();
 
     function ToolbarHarness() {
       useEffect(() => {
@@ -26,18 +73,9 @@ describe("page stage toolbar", () => {
         <NodexTooltipProvider>
           <PageStageToolbar
             saving={false}
-            historyPanelActive={false}
-            limitMainContentWidth={true}
-            showRawContent={false}
-            onCopyDeeplink={() => undefined}
-            onDelete={() => {
-              deleteCalls += 1;
-            }}
-            onToggleContentWidth={() => undefined}
-            onToggleShowRawContent={() => undefined}
-            onToggleHistoryPanel={() => {
-              historyCalls += 1;
-            }}
+            menu={menuActions({ onDelete })}
+            editorCommands={null}
+            history={{ active: false, onToggle: onToggleHistory }}
           />
         </NodexTooltipProvider>
       );
@@ -45,125 +83,163 @@ describe("page stage toolbar", () => {
 
     const view = render(<ToolbarHarness />);
     const historyButton = view.getByRole("button", { name: "History" });
-    const pageActionsButton = view.getByRole("button", { name: "Page actions" });
 
     await act(async () => {
       fireEvent.pointerDown(historyButton);
       fireEvent.click(historyButton);
-      fireEvent.pointerDown(pageActionsButton, { button: 0, ctrlKey: false });
-      fireEvent.mouseDown(pageActionsButton, { button: 0, ctrlKey: false });
-      fireEvent.click(pageActionsButton);
       await Promise.resolve();
     });
+    await openNodexMenu(view.getByRole("button", { name: "Page actions" }));
     await act(async () => {
       fireEvent.click(view.getByRole("menuitem", { name: "Delete" }));
       await Promise.resolve();
     });
 
-    expect(historyCalls).toBe(1);
-    expect(deleteCalls).toBe(1);
+    expect(onToggleHistory).toHaveBeenCalledOnce();
+    expect(onDelete).toHaveBeenCalledOnce();
   });
 
-  test("keeps direct controls concise and groups page actions in the trailing menu", async () => {
-    let copyCalls = 0;
-    const view = render(
-      <NodexTooltipProvider>
-        <PageStageToolbar
-          saving={false}
-          historyPanelActive={false}
-          limitMainContentWidth={true}
-          showRawContent={false}
-          onCopyDeeplink={() => {
-            copyCalls += 1;
-          }}
-          onDelete={() => undefined}
-          onToggleContentWidth={() => undefined}
-          onToggleShowRawContent={() => undefined}
-        />
-      </NodexTooltipProvider>,
-    );
+  test("the Page menu offers only what the Page can do and reports its view state", async () => {
+    const onToggleFullWidth = vi.fn();
+    const view = renderToolbar({
+      menu: menuActions({
+        fullWidth: true,
+        onToggleFullWidth,
+        onOpenInNewWindow: () => undefined,
+      }),
+    });
 
-    const labels = view
-      .getAllByRole("button")
-      .map((button) => button.getAttribute("aria-label"))
-      .filter(Boolean)
-      .join(",");
-    expect(labels).toBe("Show raw,Full width,History,Page actions");
+    await openNodexMenu(view.getByRole("button", { name: "Page actions" }));
 
-    const trigger = view.getByRole("button", { name: "Page actions" });
-    await openNodexMenu(trigger);
-
-    expect(view.getByRole("menuitem", { name: "Copy deeplink" })).toBeTruthy();
-    expect(view.getByRole("menuitem", { name: "Delete" })).toBeTruthy();
+    expect(view.getByRole("menuitem", { name: "Open in new window" })).toBeTruthy();
+    for (const absent of ["Rename", "Download as Markdown", "Open on right", "Delete"]) {
+      expect(view.queryByRole("menuitem", { name: absent })).toBeNull();
+    }
+    const fullWidth = view.getByRole("menuitemcheckbox", { name: "Full width" });
+    expect(fullWidth.getAttribute("aria-checked")).toBe("true");
+    expect(
+      view
+        .getByRole("menuitemcheckbox", { name: "Show Markdown source" })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
 
     await act(async () => {
-      fireEvent.click(view.getByRole("menuitem", { name: "Copy deeplink" }));
+      fireEvent.click(fullWidth);
       await Promise.resolve();
     });
-    expect(copyCalls).toBe(1);
+    expect(onToggleFullWidth).toHaveBeenCalledOnce();
   });
 
-  test("each toggle redraws its glyph for the pressed state", () => {
-    const toolbar = (pressed: boolean) => (
-      <NodexTooltipProvider>
-        <PageStageToolbar
-          saving={false}
-          historyPanelActive={pressed}
-          limitMainContentWidth={!pressed}
-          showRawContent={pressed}
-          onCopyDeeplink={() => undefined}
-          onDelete={() => undefined}
-          onToggleContentWidth={() => undefined}
-          onToggleShowRawContent={() => undefined}
-          onToggleHistoryPanel={() => undefined}
-        />
-      </NodexTooltipProvider>
-    );
-    const toggleNames = ["Show raw", "Full width", "History"] as const;
-    const view = render(toolbar(false));
-    const glyph = (name: string) =>
-      view.getByRole("button", { name }).querySelector("svg")?.innerHTML;
-    const idleGlyphs = toggleNames.map(glyph);
+  test("an opening Page holds its controls in place without acting", () => {
+    const view = renderToolbar({ menu: null, pending: true });
 
-    view.rerender(toolbar(true));
-
-    for (const [index, name] of toggleNames.entries()) {
-      expect(view.getByRole("button", { name }).getAttribute("aria-pressed")).toBe("true");
-      expect(glyph(name)).toBeTruthy();
-      expect(glyph(name)).not.toBe(idleGlyphs[index]);
+    for (const name of ["Page actions", "Text style", "Image", "Table", "Insert"]) {
+      expect(view.getByRole("button", { name }).hasAttribute("disabled")).toBe(true);
     }
   });
 
-  test("renders nested page ancestry as accessible navigation", async () => {
+  test("the editing tools dim while the body editor is not showing", () => {
+    const view = renderToolbar({ editorCommands: null });
+
+    expect(view.getByRole("button", { name: "Page actions" }).hasAttribute("disabled")).toBe(false);
+    expect(view.getByRole("button", { name: "Insert" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  test("Image and Table insert at the caret without taking the body's focus", async () => {
+    const insert = vi.fn(() => true);
+    const view = renderToolbar({ editorCommands: editorCommands({ insert }) });
+    const image = view.getByRole("button", { name: "Image" });
+
+    // A prevented mousedown is what leaves focus, and so the caret, in the body.
+    expect(fireEvent.mouseDown(image)).toBe(false);
+    await act(async () => {
+      fireEvent.click(image);
+      fireEvent.click(view.getByRole("button", { name: "Table" }));
+      await Promise.resolve();
+    });
+
+    expect(insert.mock.calls).toEqual([["image"], ["table"]]);
+  });
+
+  test("a text style applies once its menu has closed", async () => {
+    const turnInto = vi.fn(() => true);
+    const view = renderToolbar({
+      editorCommands: editorCommands({ turnInto }),
+    });
+
+    await openNodexMenu(view.getByRole("button", { name: "Text style" }));
+    await act(async () => {
+      fireEvent.click(view.getByRole("menuitem", { name: "Bulleted list" }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(turnInto).toHaveBeenCalledWith("bullet-list"));
+  });
+
+  test("the Insert menu lists the body's catalog by section, without line styles", async () => {
+    const insert = vi.fn(() => true);
+    const view = renderToolbar({
+      editorCommands: editorCommands({
+        insert,
+        listInsertItems: () => [
+          insertItem("heading", "Heading 1", "Text"),
+          insertItem("emoji", "Emoji", "Text"),
+          insertItem("bullet_list", "Bulleted list", "Lists"),
+          insertItem("divider", "Divider", "Blocks"),
+          insertItem("subpage", "Subpage", "Pages"),
+          insertItem("prompt", "Prompt", "Agent"),
+        ],
+      }),
+    });
+
+    await openNodexMenu(view.getByRole("button", { name: "Insert" }));
+
+    expect(view.getAllByRole("group").map((group) => group.getAttribute("aria-label"))).toEqual([
+      "Page editing tools",
+      "Agent",
+      "Pages",
+      "Blocks",
+      "Inline",
+    ]);
+    expect(view.queryByRole("menuitem", { name: "Heading 1" })).toBeNull();
+    expect(view.queryByRole("menuitem", { name: "Bulleted list" })).toBeNull();
+    const divider = view.getByRole("menuitem", { name: "Divider" });
+    expect(within(divider).getByText("Divider description")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(divider);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(insert).toHaveBeenCalledWith("divider"));
+  });
+
+  test("copying the link confirms in place", async () => {
+    const view = renderToolbar({ onCopyLink: async () => true });
+    const button = view.getByRole("button", { name: "Copy link" });
+
+    expect(button.textContent).toBe("Copy link");
+    await act(async () => {
+      fireEvent.click(button);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(button.textContent).toBe("Copied"));
+  });
+
+  test("renders the Page's ancestors as navigation", async () => {
     const openedPages: Array<{ pageId: string; index: number }> = [];
-    const view = render(
-      <NodexTooltipProvider>
-        <PageStageToolbar
-          saving={false}
-          historyPanelActive={false}
-          limitMainContentWidth={true}
-          showRawContent={false}
-          onCopyDeeplink={() => undefined}
-          onDelete={() => undefined}
-          onToggleContentWidth={() => undefined}
-          onToggleShowRawContent={() => undefined}
-          breadcrumb={{
-            ancestors: [
-              { projectId: "alpha", pageId: "root", title: "Root page" },
-              { projectId: "alpha", pageId: "child", title: "Child page" },
-            ],
-            currentTitle: "Nested page",
-            onOpenAncestor: (ancestor, index) => {
-              openedPages.push({ pageId: ancestor.pageId, index });
-            },
-          }}
-        />
-      </NodexTooltipProvider>,
-    );
+    const view = renderToolbar({
+      breadcrumb: {
+        ancestors: [
+          { projectId: "alpha", pageId: "root", title: "Root page" },
+          { projectId: "alpha", pageId: "child", title: "Child page" },
+        ],
+        onOpenAncestor: (ancestor, index) => {
+          openedPages.push({ pageId: ancestor.pageId, index });
+        },
+      },
+    });
 
     const breadcrumb = view.getByRole("navigation", { name: "Page hierarchy" });
-    expect(breadcrumb.querySelector('[aria-current="page"]')?.textContent).toBe("Nested page");
-
     await act(async () => {
       fireEvent.click(within(breadcrumb).getByRole("button", { name: "Child page" }));
       await Promise.resolve();
@@ -174,41 +250,19 @@ describe("page stage toolbar", () => {
 
   test("keeps overflowed middle ancestors navigable", async () => {
     const openedPages: string[] = [];
-    const view = render(
-      <NodexTooltipProvider>
-        <PageStageToolbar
-          saving={false}
-          historyPanelActive={false}
-          limitMainContentWidth={true}
-          showRawContent={false}
-          onCopyDeeplink={() => undefined}
-          onDelete={() => undefined}
-          onToggleContentWidth={() => undefined}
-          onToggleShowRawContent={() => undefined}
-          breadcrumb={{
-            ancestors: [
-              { projectId: "alpha", pageId: "root", title: "Root" },
-              { projectId: "alpha", pageId: "middle", title: "Middle" },
-              { projectId: "alpha", pageId: "child", title: "Child" },
-              { projectId: "alpha", pageId: "parent", title: "Parent" },
-            ],
-            currentTitle: "Nested",
-            onOpenAncestor: (ancestor) => openedPages.push(ancestor.pageId),
-          }}
-        />
-      </NodexTooltipProvider>,
-    );
-
-    await act(async () => {
-      const trigger = view.getByRole("button", { name: "More ancestor pages" });
-      fireEvent.pointerDown(trigger, {
-        button: 0,
-        ctrlKey: false,
-      });
-      fireEvent.mouseDown(trigger, { button: 0, ctrlKey: false });
-      fireEvent.click(trigger);
-      await Promise.resolve();
+    const view = renderToolbar({
+      breadcrumb: {
+        ancestors: [
+          { projectId: "alpha", pageId: "root", title: "Root" },
+          { projectId: "alpha", pageId: "middle", title: "Middle" },
+          { projectId: "alpha", pageId: "child", title: "Child" },
+          { projectId: "alpha", pageId: "parent", title: "Parent" },
+        ],
+        onOpenAncestor: (ancestor) => openedPages.push(ancestor.pageId),
+      },
     });
+
+    await openNodexMenu(view.getByRole("button", { name: "More ancestor pages" }));
     await act(async () => {
       fireEvent.click(view.getByRole("menuitem", { name: "Middle" }));
       await Promise.resolve();

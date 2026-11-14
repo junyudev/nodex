@@ -82,7 +82,12 @@ import {
 import { readCachedPageTargetReadModel } from "@/lib/block-reference-queries";
 import { previewTaskShorthandInlineContent } from "@/lib/task-shorthand-preview";
 import type { CodexPromptInput } from "@/lib/types";
-import { NfmFileSlashMenu, NfmSlashMenu } from "./nfm-slash-menu";
+import {
+  NfmFileSlashMenu,
+  NfmSlashMenu,
+  resolveNfmSuggestionHint,
+  type NfmSuggestionItem,
+} from "./nfm-slash-menu";
 import { NfmTableHandlesController } from "./nfm-table-handles";
 import { NfmHeadingNavigationRail } from "./nfm-heading-navigation-rail";
 import {
@@ -235,6 +240,11 @@ import type { NfmReceivingPageTransferIntent } from "./nfm-history-command";
 import { readNodexClipboardFragment } from "../../../../shared/clipboard-paste";
 import { applyLocalNfmTurnInto, type NfmTurnBlocksIntoInput } from "@/lib/nfm-turn-into-targets";
 import {
+  createNfmEditorCommands,
+  type NfmCommandEditor,
+  type NfmEditorCommands,
+} from "./nfm-editor-commands";
+import {
   copiedSelectionHasFileReferences,
   resolveManagedAssetReference,
   rewriteCopiedSelectionFileReferences,
@@ -293,6 +303,8 @@ interface NfmEditorCommonProps {
     onBoundaryArrow: (direction: VerticalArrowDirection) => boolean;
   };
   navigationRef?: Ref<NfmEditorBoundaryHandle>;
+  /** Authoring commands for chrome outside the editor, such as a Page toolbar. */
+  commandsRef?: Ref<NfmEditorCommands>;
   onEditorViewMount?: (editorRoot: HTMLElement) => void;
   onEditorViewUnmount?: () => void;
   /** Optional PageTab-owned model whose lifetime exceeds this React view. */
@@ -523,6 +535,7 @@ function NfmEditorInstance({
   surfaceMutationBarrier,
   embeddedBoundary,
   navigationRef,
+  commandsRef,
   onEditorViewMount,
   onEditorViewUnmount,
   editorSession,
@@ -1938,28 +1951,69 @@ function NfmEditorInstance({
     () => endLocalBlockDragSession({ sourceSurfaceId: source.clientSessionId }),
     [source.clientSessionId],
   );
-  const handleTurnBlocksInto = (input: NfmTurnBlocksIntoInput) => {
-    const expandedBlocks = input.expandedBlockIds.flatMap((blockId) => {
-      const block = editor.getBlock(blockId);
-      return block ? [block] : [];
-    });
-    const unsupportedOwner = expandedBlocks.find(
-      (block) => hasTypedOwnerType([block.type]) && block.type !== "page",
-    );
-    if (unsupportedOwner) {
-      toast.info("Canvas and Database blocks cannot be turned into text content.");
-      return true;
-    }
-    if (expandedBlocks.some((block) => block.type === "page")) {
-      return (
-        owner
-          .getActiveStructuralSession()
-          ?.turnBlocksInto(input.rootBlockIds, input.expandedBlockIds, input.target) ?? false
+  const handleTurnBlocksInto = useCallback(
+    (input: NfmTurnBlocksIntoInput) => {
+      const expandedBlocks = input.expandedBlockIds.flatMap((blockId) => {
+        const block = editor.getBlock(blockId);
+        return block ? [block] : [];
+      });
+      const unsupportedOwner = expandedBlocks.find(
+        (block) => hasTypedOwnerType([block.type]) && block.type !== "page",
       );
-    }
-    applyLocalNfmTurnInto(editor, expandedBlocks, input.localPatch);
-    return true;
-  };
+      if (unsupportedOwner) {
+        toast.info("Canvas and Database blocks cannot be turned into text content.");
+        return true;
+      }
+      if (expandedBlocks.some((block) => block.type === "page")) {
+        return (
+          owner
+            .getActiveStructuralSession()
+            ?.turnBlocksInto(input.rootBlockIds, input.expandedBlockIds, input.target) ?? false
+        );
+      }
+      applyLocalNfmTurnInto(editor, expandedBlocks, input.localPatch);
+      return true;
+    },
+    [editor, owner],
+  );
+  // The caret counts as placed once the person focuses this editor, so toolbar insertions
+  // follow it instead of landing at the start of a body they never clicked into.
+  const placedCaretRef = useRef(false);
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root) return;
+    const markPlaced = () => {
+      placedCaretRef.current = true;
+    };
+    root.addEventListener("focusin", markPlaced);
+    return () => root.removeEventListener("focusin", markPlaced);
+  }, []);
+  const insertCatalogRef = useRef<(() => NfmSuggestionItem[]) | null>(null);
+  useImperativeHandle(
+    commandsRef,
+    () =>
+      createNfmEditorCommands(editor as unknown as NfmCommandEditor, {
+        hasPlacedCaret: () => placedCaretRef.current,
+        turnBlocksInto: handleTurnBlocksInto,
+        readInsertCatalog: () =>
+          (insertCatalogRef.current?.() ?? []).flatMap((item) =>
+            item.key
+              ? [
+                  {
+                    key: item.key,
+                    title: item.title,
+                    description: item.subtext ?? null,
+                    group: item.group ?? "",
+                    icon: item.icon,
+                    hint: resolveNfmSuggestionHint(item),
+                    run: () => item.onItemClick(),
+                  },
+                ]
+              : [],
+          ),
+      }),
+    [editor, handleTurnBlocksInto],
+  );
   const sideMenuHandlers = {
     canSendBlocks: blockActionCapabilities.canMoveBlocks,
     canSendToThread: blockActionCapabilities.canSendBlocksToThread,
@@ -2497,6 +2551,7 @@ function NfmEditorInstance({
                             <NfmSlashMenu
                               executionProjectId={executionProjectId}
                               allowPageReferences
+                              catalogRef={insertCatalogRef}
                             />
                             <NfmTableHandlesController />
                           </NfmAskForChangeProvider>

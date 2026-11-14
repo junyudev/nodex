@@ -45,7 +45,6 @@ import { NodexDropdown } from "@/components/ui/dropdown";
 import { NodexPopover, NodexPopoverAnchor, NodexPopoverContent } from "@/components/ui/popover";
 import { toast } from "@/components/ui/toast";
 import { NfmSendToThreadMenu } from "@/components/board/editor/nfm-send-to-thread-menu";
-import { writeTextToClipboard } from "@/lib/clipboard";
 import { loadPageDocumentMaterialization } from "@/lib/page-prompt-context";
 import { usePresentedPageTitle } from "@/lib/page-title-projection-context";
 import { useDevelopmentFeature } from "@/lib/development-features-context";
@@ -61,10 +60,8 @@ import {
   type DatabaseViewPageMenuEntry,
   type DatabaseViewPageReorderDirection,
 } from "./database-view-page-menu-model";
-import {
-  isDatabaseViewPageCopyActionId,
-  resolveDatabaseViewPageCopyRequest,
-} from "./database-view-page-copy-model";
+import { isPageCopyActionId, resolvePageCopyRequest } from "@/lib/page-copy-model";
+import { copyTextWithFeedback } from "@/lib/copy-with-feedback";
 import { PageMoveDestinationPicker } from "@/components/library/page-move-destination-picker";
 
 import { appScope, useScopeHandle } from "@/lib/maitai";
@@ -75,19 +72,6 @@ interface ChatPickerSnapshot {
   readonly page: DatabaseViewPageTarget;
   readonly actionPort: DatabaseViewPageActionPort;
 }
-
-const copyWithFeedback = async (
-  value: string,
-  successMessage: string,
-  failureMessage: string,
-): Promise<void> => {
-  const copied = await writeTextToClipboard(value);
-  if (copied) {
-    toast.success(successMessage);
-    return;
-  }
-  toast.danger(failureMessage);
-};
 
 function DatabaseViewPageMenuActionIcon({
   actionId,
@@ -308,15 +292,15 @@ export function DatabaseViewPageContextMenuOverlay({
       return;
     }
 
-    if (isDatabaseViewPageCopyActionId(actionId)) {
-      const request = resolveDatabaseViewPageCopyRequest({
+    if (isPageCopyActionId(actionId)) {
+      const request = resolvePageCopyRequest({
         actionId,
         page,
         presentedTitle,
       });
       if (!request) return;
       if (request.kind === "value") {
-        void copyWithFeedback(request.value, request.successMessage, request.failureMessage);
+        void copyTextWithFeedback(request.value, request.successMessage, request.failureMessage);
         return;
       }
       void loadPageDocumentMaterialization({
@@ -324,7 +308,7 @@ export function DatabaseViewPageContextMenuOverlay({
         pageId: request.pageId,
       })
         .then((materialized) =>
-          copyWithFeedback(
+          copyTextWithFeedback(
             writePortableMarkdown(materialized.blockTree).markdown,
             request.successMessage,
             request.failureMessage,

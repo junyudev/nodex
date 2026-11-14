@@ -1,9 +1,5 @@
 import { blockHasType, editorHasBlockWithType } from "@blocknote/core";
-import {
-  FormattingToolbarExtension,
-  SideMenuExtension,
-  SuggestionMenu,
-} from "@blocknote/core/extensions";
+import { FormattingToolbarExtension, SideMenuExtension } from "@blocknote/core/extensions";
 import {
   useBlockNoteEditor,
   useComponentsContext,
@@ -109,6 +105,11 @@ import {
   type NfmSideMenuRect,
 } from "./nfm-side-menu-anchor";
 import { useNfmSideMenuRuntime } from "./nfm-side-menu-runtime";
+import {
+  openNfmInsertMenuAt,
+  type NfmCommandBlock,
+  type NfmCommandEditor,
+} from "./nfm-editor-commands";
 import { useCommandShortcutLabel } from "@/lib/use-command-keymap-state";
 import { downloadMermaidDiagram, readReadyMermaidSvg } from "./mermaid-code-preview";
 import {
@@ -652,7 +653,6 @@ function NfmAddBlockButton() {
   const Components = useComponentsContext()!;
   const dict = useDictionary();
   const editor = useBlockNoteEditor();
-  const suggestionMenu = useExtension(SuggestionMenu);
   const SideMenuButton = Components.SideMenu.Button;
   type CursorTarget = Parameters<typeof editor.setTextCursorPosition>[0];
   const lastPointerActivationAtRef = useRef<number | null>(null);
@@ -663,20 +663,8 @@ function NfmAddBlockButton() {
 
   const activateAddBlock = useCallback(() => {
     if (!block) return;
-
-    const blockContent = Array.isArray(block.content) ? block.content : [];
-    if (blockContent.length === 0) {
-      editor.setTextCursorPosition(block);
-      suggestionMenu.openSuggestionMenu("/");
-      return;
-    }
-
-    const insertedBlock = editor.insertBlocks([{ type: "paragraph" }], block, "after")[0];
-    if (!insertedBlock) return;
-
-    editor.setTextCursorPosition(insertedBlock);
-    suggestionMenu.openSuggestionMenu("/");
-  }, [block, editor, suggestionMenu]);
+    openNfmInsertMenuAt(editor as unknown as NfmCommandEditor, block as unknown as NfmCommandBlock);
+  }, [block, editor]);
 
   const handlePointerUp = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {

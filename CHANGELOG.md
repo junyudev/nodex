@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
 - Agents can set properties on many Pages in one step. Ask a chat to mark a batch of cards Done or re-prioritize a Board and it commits the whole change together and reports each card's resulting values, instead of editing cards one at a time. On the command line, `nodex page properties set NODEX-4 NODEX-8 --set Status=done --set Priority=p1-high` does the same, `nodex page create` takes `--set`, and `nodex page move` moves several Pages at once.
 - Agents running locally on Windows can use Nodex’s in-app Browser, with the same site access approvals as on macOS.
 - Computer Use can control desktop apps on Windows. Manage availability and saved app approvals in Computer use settings.
+- A Page's toolbar now holds the tools for writing it. **Text style**, **Image**, **Table**, and **Insert** sit beside the Page's menu and act where your caret is, and **Insert** lists every Block with a short description. The Page menu gathers Rename, Copy, **Download as Markdown**, **Open on right**, and **Open in new window** with the Page's view options, and **Copy link** has its own button.
+- Start an empty Page from a shape. A new Page offers **Task brief**, **Bug report**, **To-do list**, and **Meeting notes** under its first line; choosing one writes its headings and puts your caret where to begin.
 
 ### Changed
 

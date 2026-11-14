@@ -284,17 +284,7 @@ export function PageStageSessionTab({
 
   if (pageHydrating) {
     return (
-      <PageStageLoadingFrame
-        titleSnapshot={tab.config.titleSnapshot}
-        breadcrumb={
-          breadcrumb
-            ? {
-                ...breadcrumb,
-                currentTitle: tab.config.titleSnapshot ?? tab.config.pageId,
-              }
-            : undefined
-        }
-      />
+      <PageStageLoadingFrame titleSnapshot={tab.config.titleSnapshot} breadcrumb={breadcrumb} />
     );
   }
 

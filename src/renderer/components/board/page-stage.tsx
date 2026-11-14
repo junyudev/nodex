@@ -36,6 +36,7 @@ import type { PageStageProps } from "./page-stage/types";
 import { toast } from "@/components/ui/toast";
 import { buildPageDeepLink } from "@/lib/page-deeplink";
 import { writeTextToClipboard } from "@/lib/clipboard";
+import { toastFailure } from "@/lib/failure-toast";
 import type { BlockDocumentSurfaceRuntime } from "@/lib/block-document-surface-runtime";
 import type { EditorSurfaceLease } from "@/lib/document-session-registry";
 import { materializePageDocument } from "../../../shared/block-documents/block-document-codec";
@@ -53,17 +54,29 @@ import {
 import { contentRoutingContextKey } from "../../../shared/content-routing-context";
 import { ApplicationPending } from "@/bootstrap/application-surface";
 import { useAutomationsNavigation } from "@/features/automations/automations-navigation";
+import { selectEditableLeafContent } from "@/lib/editable-leaf-selection";
+import {
+  listPageCopyActions,
+  resolvePageCopyRequest,
+  type PageCopyActionId,
+} from "@/lib/page-copy-model";
+import { copyTextWithFeedback } from "@/lib/copy-with-feedback";
+import {
+  encodeUtf8Base64,
+  pageMarkdownFileContents,
+  pageMarkdownFileName,
+} from "@/lib/page-markdown-file";
+import { saveWorkspaceFileData } from "@/lib/workspace-file-operations";
+import { writePortableMarkdown } from "../../../shared/nodex-markdown";
+import type { NfmEditorCommands } from "./editor/nfm-editor-commands";
+import type { PageStageMenuActions } from "./page-stage/page-menu";
+import { PageStageStarters } from "./page-stage/page-starters";
 
 export type { PageStageProps } from "./page-stage/types";
 
-async function copyPageDeeplink(pageId: string): Promise<void> {
-  const copied = await writeTextToClipboard(buildPageDeepLink({ pageId: pageId }));
-  if (copied) {
-    toast.success("Copied deeplink");
-    return;
-  }
-
-  toast.danger("Failed to copy deeplink");
+/** The body as portable Markdown, read from the live Document so unsaved edits are included. */
+function readPortablePageMarkdown(document: Y.Doc): string {
+  return writePortableMarkdown(materializePageDocument(document).blockTree).markdown;
 }
 
 interface PageStageDescriptionEditorProps {
@@ -100,6 +113,9 @@ interface PageStageDescriptionEditorProps {
   readonly focusIntent: PageBlockFocusIntent | null;
   /** The body's navigation, shared with the title so Enter can continue into the body. */
   readonly bodyNavigationRef: RefObject<NfmEditorBoundaryHandle | null>;
+  /** The body's authoring commands while its editor shows, shared with the toolbar. */
+  readonly editorCommands: NfmEditorCommands | null;
+  readonly onEditorCommandsChange: (commands: NfmEditorCommands | null) => void;
 }
 
 const useLivePageDocumentNfm = (document: Y.Doc): string => {
@@ -151,6 +167,8 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   editorSession,
   focusIntent,
   bodyNavigationRef,
+  editorCommands,
+  onEditorCommandsChange,
 }: PageStageDescriptionEditorProps) {
   const navigationRef = useRef<NfmEditorBoundaryHandle | null>(null);
   const consumedFocusIntentRef = useRef<number | null>(null);
@@ -247,49 +265,57 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
     );
   }
 
+  // Starters float in the empty body's click area, just under its first line, so offering
+  // them never moves the body or what follows it.
   return (
-    <NfmEditor
-      contentRoutingContext={contentRoutingContext}
-      projectName={projectName}
-      projectWorkspacePath={projectWorkspacePath}
-      source={{
-        kind: "collaborative-document",
-        documentId,
-        storeEpoch: surfaceMutationBarrier.descriptor.storeEpoch,
-        generation,
-        clientSessionId: surfaceMutationBarrier.clientSessionId,
-        fragment: body,
-        user: { name: "You", color: "#3b82f6" },
-        provider: { awareness },
-        ...(editorSession ? { transactionOrigin: editorSession.transactionOrigin } : {}),
-      }}
-      sourcePageContext={{ pageId }}
-      surfaceMutationBarrier={surfaceMutationBarrier}
-      sessionId={sessionId}
-      sessionThread={sessionThread}
-      canStartThreadInSession={canStartThreadInSession}
-      sessionTitle={sessionTitle}
-      chatProjectId={chatProjectId}
-      onOpenCodexThread={onOpenCodexThread}
-      onOpenSession={onOpenSession}
-      onOpenPage={onOpenPage}
-      onOpenDatabase={onOpenDatabase}
-      onOpenCanvas={onOpenCanvas}
-      onOpenPageFile={onOpenPageFile}
-      onStartNewSessionThreadFromEditor={onStartNewSessionThreadFromEditor}
-      onSendPagePrompt={onSendPagePrompt}
-      onAddPromptToChatComposer={onAddPromptToChatComposer}
-      isActivePanelTab={isActivePanelTab}
-      headingRail={{
-        portalElement: headingRailPortalElement,
-        scrollContainerRef,
-      }}
-      placeholder={PAGE_DESCRIPTION_PLACEHOLDER}
-      editorSession={editorSession}
-      navigationRef={bindNavigation}
-      onEditorViewMount={handleEditorViewMount}
-      onEditorViewUnmount={handleEditorViewUnmount}
-    />
+    <div className="relative">
+      <NfmEditor
+        contentRoutingContext={contentRoutingContext}
+        projectName={projectName}
+        projectWorkspacePath={projectWorkspacePath}
+        source={{
+          kind: "collaborative-document",
+          documentId,
+          storeEpoch: surfaceMutationBarrier.descriptor.storeEpoch,
+          generation,
+          clientSessionId: surfaceMutationBarrier.clientSessionId,
+          fragment: body,
+          user: { name: "You", color: "#3b82f6" },
+          provider: { awareness },
+          ...(editorSession ? { transactionOrigin: editorSession.transactionOrigin } : {}),
+        }}
+        sourcePageContext={{ pageId }}
+        surfaceMutationBarrier={surfaceMutationBarrier}
+        sessionId={sessionId}
+        sessionThread={sessionThread}
+        canStartThreadInSession={canStartThreadInSession}
+        sessionTitle={sessionTitle}
+        chatProjectId={chatProjectId}
+        onOpenCodexThread={onOpenCodexThread}
+        onOpenSession={onOpenSession}
+        onOpenPage={onOpenPage}
+        onOpenDatabase={onOpenDatabase}
+        onOpenCanvas={onOpenCanvas}
+        onOpenPageFile={onOpenPageFile}
+        onStartNewSessionThreadFromEditor={onStartNewSessionThreadFromEditor}
+        onSendPagePrompt={onSendPagePrompt}
+        onAddPromptToChatComposer={onAddPromptToChatComposer}
+        isActivePanelTab={isActivePanelTab}
+        headingRail={{
+          portalElement: headingRailPortalElement,
+          scrollContainerRef,
+        }}
+        placeholder={PAGE_DESCRIPTION_PLACEHOLDER}
+        editorSession={editorSession}
+        navigationRef={bindNavigation}
+        commandsRef={onEditorCommandsChange}
+        onEditorViewMount={handleEditorViewMount}
+        onEditorViewUnmount={handleEditorViewUnmount}
+      />
+      {editorCommands ? (
+        <PageStageStarters commands={editorCommands} className="absolute inset-x-0 top-11" />
+      ) : null}
+    </div>
   );
 });
 
@@ -332,7 +358,9 @@ function PageStageDocumentTitle({
   onValueChange,
   autoFocus,
   bodyNavigationRef,
+  titleRef,
 }: {
+  readonly titleRef: RefObject<HTMLDivElement | null>;
   readonly title: Y.Text;
   readonly pageId: string;
   readonly historyScope: ContentInteractionHistoryScope;
@@ -342,6 +370,7 @@ function PageStageDocumentTitle({
 }) {
   return (
     <CollaborativePageTitle
+      ref={titleRef}
       pageId={pageId}
       title={title}
       historyScope={historyScope}
@@ -415,9 +444,98 @@ export function PageStage(props: PageStageProps) {
   const [headingRailPortalElement, setHeadingRailPortalElement] = useState<HTMLDivElement | null>(
     null,
   );
+  const [editorCommands, setEditorCommands] = useState<NfmEditorCommands | null>(null);
+  const titleRef = useRef<HTMLDivElement | null>(null);
 
   if (!controller.page) return null;
   const page = controller.page;
+  const copyPage = (actionId: PageCopyActionId) => {
+    const request = resolvePageCopyRequest({
+      actionId,
+      page: {
+        routingContext: props.contentRoutingContext,
+        pageId: page.id,
+        pageKey: page.pageKey,
+      },
+      presentedTitle: controller.title,
+    });
+    if (!request) return;
+    if (request.kind === "value") {
+      void copyTextWithFeedback(request.value, request.successMessage, request.failureMessage);
+      return;
+    }
+    const runtime = documentRuntimeRef.current;
+    if (!runtime) {
+      toast.danger(request.failureMessage);
+      return;
+    }
+    void copyTextWithFeedback(
+      readPortablePageMarkdown(runtime.document),
+      request.successMessage,
+      request.failureMessage,
+    );
+  };
+  const downloadMarkdown = () => {
+    const runtime = documentRuntimeRef.current;
+    if (!runtime) return;
+    const title = controller.title;
+    void saveWorkspaceFileData({
+      fileName: pageMarkdownFileName(title),
+      contentsBase64: encodeUtf8Base64(
+        pageMarkdownFileContents(title, readPortablePageMarkdown(runtime.document)),
+      ),
+    }).catch((error: unknown) => {
+      toastFailure("Couldn’t save the Page as Markdown", error);
+    });
+  };
+  const documentReady = Boolean(props.documentAuthority);
+  const menuActions: PageStageMenuActions = {
+    pageId: page.id,
+    ...(documentReady
+      ? {
+          onRename: () => {
+            const title = titleRef.current;
+            if (!title) return null;
+            // Select once focus has landed, so typing replaces the name.
+            requestAnimationFrame(() => selectEditableLeafContent(title));
+            return title;
+          },
+          onDownloadMarkdown: downloadMarkdown,
+        }
+      : {}),
+    // The link has its own button in the toolbar, so the menu does not repeat it.
+    copyActions: listPageCopyActions({
+      hasPageKey: Boolean(page.pageKey),
+      canCopyMarkdown: documentReady,
+    }).filter((action) => action.id !== "copy-deeplink"),
+    onCopy: copyPage,
+    ...(props.onOpenOnRight ? { onOpenOnRight: props.onOpenOnRight } : {}),
+    ...(props.onOpenInNewWindow ? { onOpenInNewWindow: props.onOpenInNewWindow } : {}),
+    fullWidth: !controller.limitMainContentWidth,
+    onToggleFullWidth: controller.handleToggleContentWidth,
+    showMarkdownSource: controller.showRawContent,
+    onToggleMarkdownSource: controller.handleToggleShowRawContent,
+    ...(automationsNavigation
+      ? {
+          onSchedule: () =>
+            automationsNavigation.scheduleRunbook({
+              pageId: page.id,
+              title: controller.title,
+              projectId:
+                controller.contentRoutingContext.kind === "project"
+                  ? controller.contentRoutingContext.projectId
+                  : null,
+            }),
+        }
+      : {}),
+    ...(props.onDelete
+      ? {
+          onDelete: () => {
+            void controller.handleDelete();
+          },
+        }
+      : {}),
+  };
   const renderDocumentSurface = (
     surface: BlockDocumentSurfaceValue,
     editorSession?: EditorSurfaceLease,
@@ -432,6 +550,7 @@ export function PageStage(props: PageStageProps) {
           onValueChange={controller.handleDocumentTitleChange}
           autoFocus={props.autoFocusTitle}
           bodyNavigationRef={bodyNavigationRef}
+          titleRef={titleRef}
         />
       }
       syncStatus={
@@ -471,6 +590,8 @@ export function PageStage(props: PageStageProps) {
           editorSession={editorSession}
           focusIntent={focusIntent}
           bodyNavigationRef={bodyNavigationRef}
+          editorCommands={editorCommands}
+          onEditorCommandsChange={setEditorCommands}
         />
       }
       referencedBy={
@@ -534,44 +655,18 @@ export function PageStage(props: PageStageProps) {
       scrollContainerRef={scrollContainerRef}
       toolbar={
         <PageStageToolbar
-          pageId={page.id}
           onNavigateBack={props.onNavigateBack}
           saving={controller.saving}
-          pending={!documentAuthority}
-          historyPanelActive={controller.historyPanelActive}
-          limitMainContentWidth={controller.limitMainContentWidth}
-          showRawContent={controller.showRawContent}
-          onCopyDeeplink={() => {
-            void copyPageDeeplink(page.id);
-          }}
-          onSchedule={
-            automationsNavigation
-              ? () =>
-                  automationsNavigation.scheduleRunbook({
-                    pageId: page.id,
-                    title: controller.title,
-                    projectId:
-                      controller.contentRoutingContext.kind === "project"
-                        ? controller.contentRoutingContext.projectId
-                        : null,
-                  })
-              : undefined
+          pending={!documentReady}
+          menu={menuActions}
+          editorCommands={controller.showRawContent ? null : editorCommands}
+          history={
+            onToggleHistoryPanel
+              ? { active: controller.historyPanelActive, onToggle: handleToggleHistoryPanel }
+              : null
           }
-          onDelete={() => {
-            void controller.handleDelete();
-          }}
-          showDelete={Boolean(props.onDelete)}
-          onToggleContentWidth={controller.handleToggleContentWidth}
-          onToggleShowRawContent={controller.handleToggleShowRawContent}
-          onToggleHistoryPanel={handleToggleHistoryPanel}
-          breadcrumb={
-            props.breadcrumb
-              ? {
-                  ...props.breadcrumb,
-                  currentTitle: controller.title,
-                }
-              : undefined
-          }
+          onCopyLink={() => writeTextToClipboard(buildPageDeepLink({ pageId: page.id }))}
+          breadcrumb={props.breadcrumb}
         />
       }
     >
