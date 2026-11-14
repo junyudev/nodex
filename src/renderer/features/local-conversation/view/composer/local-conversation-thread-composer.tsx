@@ -4569,11 +4569,6 @@ function HydratedThreadComposer({
                     hasVisibleNonImageAttachments={hasVisibleNonImageAttachments}
                     onEdit={handleEditComposerImage}
                   >
-                    <ComposerPageContextChips
-                      offers={pageContext.offers}
-                      onInclude={pageContext.include}
-                      onRemove={pageContext.remove}
-                    />
                     <ComposerAppModelContextAttachments
                       attachments={appModelContext.attachments}
                       onRemove={appModelContext.remove}
@@ -4768,6 +4763,11 @@ function HydratedThreadComposer({
                         </NodexTooltip>
                       );
                     })}
+                    <ComposerPageContextChips
+                      offers={pageContext.offers}
+                      onInclude={pageContext.include}
+                      onRemove={pageContext.remove}
+                    />
                   </ComposerImageAttachmentRow>
                 ) : null}
               </ComposerAttachments>
