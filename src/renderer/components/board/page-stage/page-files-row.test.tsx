@@ -10,6 +10,18 @@ import { createTestQueryClient, TestQueryProvider } from "@/test/query";
 import type { PageStageController } from "./use-page-stage-controller";
 
 const modal = vi.hoisted(() => ({ openModal: vi.fn() }));
+const imports = vi.hoisted(() => ({
+  prepareDroppedFiles: vi.fn(),
+  importPreparedPageEntries: vi.fn(),
+}));
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  prepareDroppedFiles: imports.prepareDroppedFiles,
+}));
+vi.mock("@/lib/library-file-commands", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/library-file-commands")>()),
+  importPreparedPageEntries: imports.importPreparedPageEntries,
+}));
 vi.mock("@/lib/modal-registry", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/modal-registry")>()),
   openModal: modal.openModal,
@@ -101,16 +113,23 @@ const controller = (overrides: Partial<PageStageController> = {}) =>
     ...overrides,
   }) as unknown as PageStageController;
 
-const renderRow = (files: readonly LibraryPageFileItem[], stage = controller()) => {
+const renderRow = (
+  files: readonly LibraryPageFileItem[],
+  stage = controller(),
+  baseFiles = model(files),
+) => {
   const client = createTestQueryClient();
   client.setQueryData(queryKeys.projectSessions.detail(CHAT), {
     id: CHAT,
     displayTitle: "Dashboard cold start",
   });
-  renderWithAppMaitai(<PageFilesRow baseFiles={model(files)} controller={stage} />, {
+  const view = renderWithAppMaitai(<PageFilesRow baseFiles={baseFiles} controller={stage} />, {
     wrapper: ({ children }) => <TestQueryProvider client={client}>{children}</TestQueryProvider>,
   });
-  return stage;
+  return Object.assign(stage, {
+    showFiles: (next: readonly LibraryPageFileItem[]) =>
+      view.rerender(<PageFilesRow baseFiles={model(next)} controller={stage} />),
+  });
 };
 
 const report = item("report", "profile/report.html", agent);
@@ -123,7 +142,11 @@ const before = image("before", "shots/before.png");
 const after = image("after", "shots/after.png");
 
 describe("PageFilesRow", () => {
-  beforeEach(() => modal.openModal.mockReset());
+  beforeEach(() => {
+    modal.openModal.mockReset();
+    imports.prepareDroppedFiles.mockReset();
+    imports.importPreparedPageEntries.mockReset();
+  });
 
   test("opens a File beside its Page: a click previews it, a double click keeps it", async () => {
     const stage = renderRow([report, flamegraph]);
@@ -194,10 +217,10 @@ describe("PageFilesRow", () => {
     expect(screen.queryByRole("dialog", { name: "Image preview" })).toBeNull();
   });
 
-  test("names one shared origin once, beneath the tree, and opens its chat", async () => {
+  test("names one shared origin once, for the whole tree, and opens its chat", async () => {
     const stage = renderRow([report, flamegraph]);
 
-    const caption = await screen.findByText("From");
+    const caption = await screen.findByText("from");
     const chat = await screen.findByRole("button", {
       name: "Dashboard cold start on behalf of You",
     });
@@ -214,32 +237,42 @@ describe("PageFilesRow", () => {
     expect(stage.openPageFile).not.toHaveBeenCalled();
   });
 
-  test("states mixed origins on the narrowest folder or File and lists body-only Files apart", async () => {
+  test("states mixed origins on the narrowest folder or File and folds body-only Files apart", async () => {
     renderRow([
       report,
       item("brief", "brief.md", { type: "member", member_id: "member-local" }),
       item("photo", null, null, 1),
     ]);
 
-    expect(screen.queryByText("From")).toBeNull();
+    expect(screen.queryByText("from")).toBeNull();
     expect(screen.getByRole("treeitem", { name: "profile" }).textContent).toContain(
       "Dashboard cold start",
     );
     expect(screen.getByRole("treeitem", { name: "brief.md" }).textContent).toContain("You");
-    expect(screen.getByText("In page")).toBeTruthy();
+
+    // The body already shows its own Files, so they wait folded beneath the attachments.
+    const inPage = screen.getByRole("treeitem", { name: "In page" });
+    expect(inPage.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("treeitem", { name: "photo.png" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(inPage);
+      await Promise.resolve();
+    });
     expect(screen.getByRole("treeitem", { name: "photo.png" }).textContent).not.toContain("You");
   });
 
-  test("folds into a summary that keeps the origin, and back", async () => {
+  test("the label folds the tree beneath a row that keeps the count and origin, and back", async () => {
     renderRow([report, flamegraph]);
-    const summary = screen.getByRole("button", { name: /^2 files/u });
+    const label = screen.getByRole("button", { name: "Files" });
+    expect(label.getAttribute("aria-expanded")).toBe("true");
 
     await act(async () => {
-      fireEvent.click(summary);
+      fireEvent.click(label);
       await Promise.resolve();
     });
-    expect(summary.getAttribute("aria-expanded")).toBe("false");
+    expect(label.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("tree")).toBeNull();
+    const summary = screen.getByRole("button", { name: "2 files" });
     expect(summary.parentElement?.textContent).toContain("from");
 
     await act(async () => {
@@ -247,6 +280,72 @@ describe("PageFilesRow", () => {
       await Promise.resolve();
     });
     expect(screen.getByRole("tree", { name: "Page files" })).toBeTruthy();
+  });
+
+  test("starts folded when the Page body already shows every File", async () => {
+    renderRow([item("photo", null, null, 1)]);
+
+    expect(screen.queryByRole("tree")).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "1 file" }));
+      await Promise.resolve();
+    });
+    // With no attachments to set them apart from, the body's Files are simply listed.
+    expect(screen.getByRole("treeitem", { name: "photo.png" })).toBeTruthy();
+    expect(screen.queryByRole("treeitem", { name: "In page" })).toBeNull();
+  });
+
+  test("stays open when its last attachment leaves while the Page is shown", async () => {
+    const photo = item("photo", null, null, 1);
+    const stage = renderRow([report, photo]);
+    expect(screen.getByRole("tree")).toBeTruthy();
+
+    await act(async () => {
+      stage.showFiles([photo]);
+      await Promise.resolve();
+    });
+    // Folding now would take the tree from under the person who just removed a File.
+    expect(screen.getByRole("treeitem", { name: "photo.png" })).toBeTruthy();
+  });
+
+  test("adds Files dropped on the Property and ignores other drags", async () => {
+    const baseFiles = model([report]);
+    renderRow([report], controller(), baseFiles);
+    const property = screen.getByRole("tree").closest("[data-page-files-property]")!;
+    const dropped = new File(["notes"], "notes.md");
+    const prepared = [{ name: "notes.md" }];
+    imports.prepareDroppedFiles.mockResolvedValue(prepared);
+    imports.importPreparedPageEntries.mockResolvedValue(undefined);
+
+    await act(async () => {
+      fireEvent.drop(property, { dataTransfer: { types: ["text/plain"], files: [] } });
+      await Promise.resolve();
+    });
+    expect(imports.prepareDroppedFiles).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.dragEnter(property, { dataTransfer: { types: ["Files"], files: [dropped] } });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("status").textContent).toContain("Drop Files");
+    await act(async () => {
+      fireEvent.drop(property, { dataTransfer: { types: ["Files"], files: [dropped] } });
+      await Promise.resolve();
+    });
+
+    await vi.waitFor(() => expect(baseFiles.refresh).toHaveBeenCalled());
+    expect(screen.queryByRole("status")).toBeNull();
+    const [context, operationId, files] = imports.prepareDroppedFiles.mock.calls[0]!;
+    expect(context).toEqual({ kind: "project", projectId: "project-1" });
+    expect(files).toEqual([dropped]);
+    // The import names the manifest revision the person saw, under the prepared upload's id.
+    expect(imports.importPreparedPageEntries).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ libraryId: "library-1" }),
+      "page-1",
+      3,
+      operationId,
+      prepared,
+    );
   });
 
   test("moves through the tree with the keyboard", async () => {

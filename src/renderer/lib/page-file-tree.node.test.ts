@@ -61,26 +61,34 @@ describe("buildPageFileTree", () => {
     ]);
   });
 
-  it("keeps body-only Files in a trailing group without inventing paths or origins", () => {
-    const tree = buildPageFileTree([
-      file("report", "profile/report.html"),
-      file("photo", null, null, null),
-    ]);
+  it("folds body-only Files into a trailing group beside attachments", () => {
+    const files = [file("report", "profile/report.html"), file("photo", null, null, null)];
 
-    expect(tree.provenance).toBeNull();
-    expect(outline(tree.rows)).toEqual([
+    const folded = buildPageFileTree(files);
+    expect(folded.provenance).toBeNull();
+    expect(outline(folded.rows)).toEqual(["profile/ <agent:chat>", "  report.html", "In page"]);
+    expect(folded.rows.at(-1)).toMatchObject({ kind: "group", expanded: false, fileCount: 1 });
+
+    const unfolded = buildPageFileTree(files, { bodyGroupExpanded: true });
+    expect(outline(unfolded.rows)).toEqual([
       "profile/ <agent:chat>",
       "  report.html",
       "In page",
-      "photo.png",
+      "  photo.png",
     ]);
-    expect(tree.rows.at(-2)).toMatchObject({ kind: "group", fileCount: 1 });
+    expect(unfolded.rows.at(-1)).toMatchObject({ kind: "file", provenance: null });
+  });
+
+  it("lists body-only Files plainly when the Page has no attachments", () => {
+    const tree = buildPageFileTree([file("b", null, null, null), file("a", null, null, null)]);
+
+    expect(outline(tree.rows)).toEqual(["a.png", "b.png"]);
   });
 
   it("hides the contents of folded folders but keeps their counts", () => {
     const tree = buildPageFileTree(
       [file("a", "profile/a.json"), file("b", "profile/raw/b.json"), file("c", "c.txt", "person")],
-      new Set(["profile"]),
+      { collapsedFolders: new Set(["profile"]) },
     );
 
     expect(outline(tree.rows)).toEqual(["profile/ <agent:chat>", "c.txt <person>"]);

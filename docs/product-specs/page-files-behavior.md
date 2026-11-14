@@ -47,11 +47,19 @@ path.
 Every Page Stage can expose one `Files` Property row. Opening the Page or
 rendering the row reads metadata only and never loads File bytes.
 
-The row summarizes the Page's Files as a count and, when one origin attached
-every File, names it: `3 files from <chat> · 2m`. It discloses the Files tree,
-which spans the full width of the Properties beneath the row rather than the
-value column, so folders, names, origins and sizes keep their own room. The tree
-starts open; whether it is open, which folders are folded and whether it shows
+The row states the count and, when one origin attached every File, that
+origin: `3 files from <chat> · 2m`. The Files tree hangs beneath the row as its
+outline, with no frame around it. The `Files` label is the tree's root: a
+top-level row's icon sits under the label's text, each deeper row's icon under
+its parent's name, and a hairline guide beneath every open level's icon ties its
+rows to it. Rows span the width of the Properties, capped at the standard
+content width, so names, origins and sizes keep their own room. The label
+carries the disclosure and folds and unfolds the tree; the count does too.
+
+Until the person chooses, the tree opens once the Page has unplaced entries and
+then stays open while the Page stays mounted, and a Page whose body already
+shows every File starts folded. Whether it is open, which
+folders are folded, whether the `In page` group is unfolded and whether it shows
 every row are remembered for each Page in the window. A tree longer than ten rows
 shows its first ten and `Show N more`; an inventory longer than one loaded window
 continues with `Show more`.
@@ -62,25 +70,35 @@ the quiet Properties disclosure owns the row, body-only changes do not make the
 surrounding Property layout jump while the Page remains mounted.
 
 The tree reads Page paths as folders: folders first, then Files, in natural name
-order. Each File shows its kind icon, name and byte size. Files used only in the
-Page body follow under `In page` with their File names; they have no path and no
-attachment origin. Files that arrive while the Page is open carry a quiet new
-mark until opened, and a folded tree shows the mark on its summary.
+order. Each File shows its kind icon, name and byte size; a name too long for
+its row gives way in the middle and keeps its extension. Pointing at a File adds
+Save and a `⋯` button, which opens the File's menu, beside its size. Files that
+arrive while the Page is open carry a quiet new mark until opened, and a folded
+tree shows the mark beside the count.
 
-Each attachment origin appears once, on the narrowest node it covers: the summary
-when one origin attached every File, a folder when one origin attached
-everything in it, otherwise the File itself. An origin is the attaching chat with
-its provider mark, `You`, or `Command line`, followed by how long ago; its
-tooltip gives the exact time, and a chat's name opens that chat. A chat that no
-longer exists reads `Deleted chat`.
+Files used only in the Page body have no path and no attachment origin. Beside
+attachments they follow in an `In page` group with its count, which starts
+folded because the body already shows them. A Page with no attachments lists
+them plainly, without the group.
+
+Each attachment origin appears once, on the narrowest node it covers: the
+Property's row when one origin attached every File, a folder when one origin
+attached everything in it, otherwise the File itself. An origin is the attaching
+chat with its provider mark, `You`, or `Command line`, followed by how long ago;
+its tooltip gives the exact time, and a chat's name opens that chat. A chat that
+no longer exists reads `Deleted chat`.
 
 Activating a File opens it in a tab beside its Page (see
 [Opening Files](#opening-files)); Arrow keys move through the tree, Right and
 Left unfold and fold folders, and Enter opens. A File's context menu offers
 Open, Open in new tab, Save…, Copy path, Manage in Page files… and Remove from
 Page, which reads Remove path while the body still uses the File. The row's `+`
-and Manage open the Page Files manager. A Page shown outside a tab group opens
-the manager on the File instead.
+and Manage open the Page Files manager.
+A Page shown outside a tab group opens the manager on the File instead.
+
+Files and folders dragged in from the system and dropped on the Property are
+imported and added to the Page as unplaced entries, exactly as the manager's own
+drop does; the Property is outlined while such a drag is over it.
 
 The manager provides a bounded, searchable inventory. All current-Profile
 Page relationships can be managed once their inventory is loaded; Page lifecycle

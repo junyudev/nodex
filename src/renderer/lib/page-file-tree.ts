@@ -1,8 +1,10 @@
 /**
- * A Page's Files as the tree its paths describe. Paths become folders; Files used only in the
- * Page body have no path and gather in a trailing `In page` group. Each attachment origin is
- * shown once, on the narrowest node it covers: a whole tree from one source states it in the
- * summary, a folder from one source states it on the folder, and anything else on its File.
+ * A Page's Files as the tree its paths describe. Paths become folders. Files used only in the
+ * Page body have no path: beside attachments they wait in a trailing `In page` group that starts
+ * folded, because the body already shows them; on their own they are simply listed. Each
+ * attachment origin is shown once, on the narrowest node it covers: a whole tree from one source
+ * states it once for the tree, a folder from one source states it on the folder, and anything
+ * else on its File.
  */
 
 export interface PageFileTreeFile<T> {
@@ -36,10 +38,12 @@ export type PageFileTreeRow<T> =
       readonly provenance: PageFileTreeProvenance | null;
     }
   | {
+      /** The body-only Files, folded apart from the attachments above them. */
       readonly kind: "group";
       readonly key: string;
       readonly name: string;
       readonly depth: 0;
+      readonly expanded: boolean;
       readonly fileCount: number;
     }
   | {
@@ -54,7 +58,7 @@ export type PageFileTreeRow<T> =
 export interface PageFileTree<T> {
   /** Visible rows in display order under the current folder expansion. */
   readonly rows: readonly PageFileTreeRow<T>[];
-  /** Stated by the summary when every File shares one origin. */
+  /** Stated once for the whole tree when every File shares one origin. */
   readonly provenance: PageFileTreeProvenance | null;
   readonly fileCount: number;
 }
@@ -116,13 +120,17 @@ const fileProvenance = <T>(file: PageFileTreeFile<T>): PageFileTreeProvenance | 
     ? null
     : { sourceKey: file.sourceKey, latestAttachedAtMs: file.attachedAtMs };
 
-/**
- * Builds the visible tree. Folders start expanded; `collapsedFolders` holds folder paths the
- * person folded.
- */
+export interface PageFileTreeDisclosure {
+  /** Folder paths the person folded; folders start expanded. */
+  readonly collapsedFolders?: ReadonlySet<string>;
+  /** Whether the person unfolded the `In page` group, which starts folded. */
+  readonly bodyGroupExpanded?: boolean;
+}
+
+/** Builds the visible tree under the person's folding. */
 export function buildPageFileTree<T>(
   files: readonly PageFileTreeFile<T>[],
-  collapsedFolders: ReadonlySet<string> = new Set(),
+  { collapsedFolders = new Set(), bodyGroupExpanded = false }: PageFileTreeDisclosure = {},
 ): PageFileTree<T> {
   const root = createFolder<T>("", "");
   const bodyOnly: PageFileTreeFile<T>[] = [];
@@ -166,22 +174,29 @@ export function buildPageFileTree<T>(
   visit(root, 0, provenance !== null);
 
   if (bodyOnly.length > 0) {
-    rows.push({
-      kind: "group",
-      key: PAGE_FILE_TREE_BODY_GROUP_KEY,
-      name: "In page",
-      depth: 0,
-      fileCount: bodyOnly.length,
-    });
-    for (const file of bodyOnly.toSorted((a, b) => byName(a.defaultName, b.defaultName))) {
+    // Only a tree that also holds attachments needs to set the body's own Files apart.
+    const grouped = rows.length > 0;
+    if (grouped) {
       rows.push({
-        kind: "file",
-        key: `file:${file.fileId}`,
-        name: file.defaultName,
+        kind: "group",
+        key: PAGE_FILE_TREE_BODY_GROUP_KEY,
+        name: "In page",
         depth: 0,
-        file,
-        provenance: null,
+        expanded: bodyGroupExpanded,
+        fileCount: bodyOnly.length,
       });
+    }
+    if (!grouped || bodyGroupExpanded) {
+      for (const file of bodyOnly.toSorted((a, b) => byName(a.defaultName, b.defaultName))) {
+        rows.push({
+          kind: "file",
+          key: `file:${file.fileId}`,
+          name: file.defaultName,
+          depth: grouped ? 1 : 0,
+          file,
+          provenance: null,
+        });
+      }
     }
   }
 

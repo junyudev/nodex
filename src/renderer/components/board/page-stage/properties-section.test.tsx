@@ -572,10 +572,10 @@ describe("PageStagePropertiesSection", () => {
       await Promise.resolve();
     });
 
-    expect(view.getByRole("button", { name: /^1 file/u }).getAttribute("aria-expanded")).toBe(
-      "true",
-    );
-    expect(view.getByRole("treeitem", { name: "image.png" })).toBeTruthy();
+    // The body already shows this File, so its row states the count and stays folded.
+    expect(view.getByRole("button", { name: "Files" }).getAttribute("aria-expanded")).toBe("false");
+    expect(view.getByRole("button", { name: "1 file" })).toBeTruthy();
+    expect(view.queryByRole("treeitem", { name: "image.png" })).toBeNull();
     expect(
       within(view.getByRole("group", { name: "Empty properties" }))
         .getAllByRole("button")

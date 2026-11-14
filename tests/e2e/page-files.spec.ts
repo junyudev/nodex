@@ -103,8 +103,9 @@ test("previews a pasted image above editor chrome and refreshes Files only for p
       await expect(pastedImage).toHaveAttribute("src", /^blob:/u);
       await expect(stage.getByText("Add image", { exact: true })).toHaveCount(0);
       const tree = await pageFilesTree(stage, 1);
+      // With no attachments to set it apart from, the body's own File is listed plainly.
       await expect(tree.getByRole("treeitem")).toHaveCount(1);
-      await expect(tree.getByText(/^In page\s*1$/u)).toBeVisible();
+      await expect(tree.getByRole("treeitem", { name: "In page" })).toHaveCount(0);
 
       await pastedImageBlock.click();
       const imageToolbar = page.locator('[role="toolbar"]').filter({

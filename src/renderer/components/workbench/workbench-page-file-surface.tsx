@@ -1,6 +1,6 @@
 import { useEffect, type JSX } from "react";
 
-import { PageFilesDialog } from "@/components/board/page-stage/page-files-row";
+import { PageFilesDialog } from "@/components/board/page-stage/page-files-dialog";
 import { LibraryFilesDialog } from "@/components/library/library-files-dialog";
 import { toast } from "@/components/ui/toast";
 import { PageFileUnavailable, PageFileViewer } from "@/features/page-files/page-file-viewer";

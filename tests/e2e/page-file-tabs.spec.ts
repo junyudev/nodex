@@ -92,10 +92,12 @@ for (const theme of ["light", "dark"] as const) {
         const reportPageId = manifest.pageIdsByKey[PAGE_FILE_PROVENANCE_REPORT_PAGE_KEY]!;
         const stage = await openPage(page, reportPageId);
 
-        // One chat attached every File, so the summary names it and the rows do not repeat it.
-        const summary = stage.getByRole("button", { name: /^3 files/u });
-        await expect(summary).toHaveAttribute("aria-expanded", "true");
-        await expect(stage.getByText("From", { exact: true })).toBeVisible();
+        // One chat attached every File, so the tree names it once and the rows do not repeat it.
+        await expect(stage.getByRole("button", { name: "Files", exact: true })).toHaveAttribute(
+          "aria-expanded",
+          "true",
+        );
+        await expect(stage.getByText("from", { exact: true })).toBeVisible();
         await expect(
           stage
             .locator("[data-page-files-property]")
@@ -171,13 +173,17 @@ for (const theme of ["light", "dark"] as const) {
         const mixedPageId = manifest.pageIdsByKey[PAGE_FILE_PROVENANCE_MIXED_PAGE_KEY]!;
         const mixed = await openPage(page, mixedPageId);
         const mixedTree = mixed.getByRole("tree", { name: "Page files" });
-        await expect(mixed.getByRole("button", { name: /^3 files/u })).toBeVisible();
-        await expect(mixed.getByText("From", { exact: true })).toHaveCount(0);
+        await expect(mixedTree).toBeVisible();
+        await expect(mixed.getByText("from", { exact: true })).toHaveCount(0);
         await expect(mixedTree.getByRole("treeitem", { name: "brief.md" })).toContainText("You");
         await expect(
           mixedTree.getByRole("treeitem", { name: "mockups", exact: true }),
         ).toContainText("Settings dark mode");
-        await expect(mixedTree.getByText(/^In page\s*1$/u)).toBeVisible();
+        // The body already shows its own File, so it waits folded beneath the attachments.
+        await expect(mixedTree.getByRole("treeitem", { name: "In page" })).toHaveAttribute(
+          "aria-expanded",
+          "false",
+        );
         await shot(application, "page-files-mixed", theme);
 
         // The brief the body refers to opens beside its Page, as its row in Files does.
