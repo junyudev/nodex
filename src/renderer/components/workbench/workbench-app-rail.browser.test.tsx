@@ -75,14 +75,7 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
   expect(onAutomations).toHaveBeenCalledOnce();
   expect(current()).toEqual(["Automations"]);
 
-  await act(async () => {
-    await userEvent.tab();
-    await userEvent.keyboard("{Enter}");
-  });
-  expect(document.activeElement).toBe(insights);
-  expect(onInsights).toHaveBeenCalledOnce();
-  expect(current()).toEqual(["Insights"]);
-
+  // Places come first; Insights reads across them below the hairline.
   await act(async () => {
     await userEvent.tab();
     await userEvent.keyboard("{Enter}");
@@ -90,6 +83,14 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
   expect(document.activeElement).toBe(plugins);
   expect(onPlugins).toHaveBeenCalledOnce();
   expect(current()).toEqual(["Plugins"]);
+
+  await act(async () => {
+    await userEvent.tab();
+    await userEvent.keyboard("{Enter}");
+  });
+  expect(document.activeElement).toBe(insights);
+  expect(onInsights).toHaveBeenCalledOnce();
+  expect(current()).toEqual(["Insights"]);
 
   await act(async () => {
     await userEvent.tab({ shift: true });
