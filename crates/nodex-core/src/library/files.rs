@@ -10,8 +10,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::domain::file_path::normalize_file_name;
 use crate::domain::files::{
-    FileRestoreHead, FileSnapshotManifest, FileSnapshotTarget, normalize_file_mime_type,
-    validate_file_identity,
+    FileRestoreHead, FileSnapshotManifest, FileSnapshotTarget, imported_file_name,
+    normalize_file_mime_type, validate_file_identity,
 };
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
@@ -80,6 +80,16 @@ pub(super) fn read_version(
         )
         .optional()?
         .ok_or_else(|| not_found("File version is unavailable"))
+}
+
+pub(super) fn import(
+    context: &FileWriteContext<'_>,
+    file_id: &str,
+    source_name: &str,
+    content: FileContent<'_>,
+) -> Result<LibraryFile, StoreError> {
+    let default_name = imported_file_name(source_name, content.mime_type);
+    create(context, file_id, &default_name, content)
 }
 
 pub(super) fn create(

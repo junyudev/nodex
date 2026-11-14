@@ -118,7 +118,11 @@ export async function pasteNfmResourceAttachments({
       if (item.file) {
         if (!fileRuntime) throw new Error("File authority is unavailable");
         const uploaded = {
-          source: await fileRuntime.upload({ kind: "browser_file", file: item.file }),
+          source: await fileRuntime.upload({
+            kind: "browser_file",
+            file: item.file,
+            fromClipboard: true,
+          }),
           name: item.file.name,
           mimeType: item.file.type || "application/octet-stream",
           bytes: item.file.size,

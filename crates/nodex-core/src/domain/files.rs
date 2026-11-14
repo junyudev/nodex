@@ -1,5 +1,8 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::sync::LazyLock;
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
@@ -31,6 +34,64 @@ pub(crate) fn normalize_file_mime_type(value: &str) -> Result<String, StoreError
         return Err(invalid("File MIME type is invalid"));
     }
     Ok(value.to_ascii_lowercase())
+}
+
+static GENERATED_IMAGE_STEM: LazyLock<Regex> = LazyLock::new(|| {
+    // Chat storage uses thread-prefixed UUIDs and may prefix materialized names with a digest.
+    Regex::new(concat!(
+        r"(?i)^(?:",
+        r"(?:[a-z0-9_]+-)*[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}(?:-[a-z0-9]{1,10})?",
+        r"|[a-f0-9]{16}-[a-z0-9._-]+|[a-f0-9]{32}|[a-f0-9]{40}|[a-f0-9]{64}|image-[a-f0-9]{8})$"
+    ))
+    .expect("valid generated image name pattern")
+});
+
+static UNNAMED_CHAT_IMAGE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^image(?: [0-9]+)?$").expect("valid unnamed chat image pattern")
+});
+
+/// Choose a default at import. Existing File names can also be copied or explicitly renamed.
+pub(crate) fn imported_file_name<'a>(name: &'a str, mime_type: &str) -> Cow<'a, str> {
+    let mime = mime_type.to_ascii_lowercase();
+    let Some(subtype) = mime
+        .split(';')
+        .next()
+        .and_then(|mime| mime.trim().strip_prefix("image/"))
+    else {
+        return name.into();
+    };
+    // Only inspect portable basenames. A directory in a supplied name is still invalid.
+    if name.contains(['/', '\\']) {
+        return name.into();
+    }
+    let stem = name.rsplit_once('.').map_or(name, |(stem, _)| stem);
+    let pasted = stem.strip_prefix("pasted-image-").is_some_and(|suffix| {
+        suffix.len() == 8 && suffix.bytes().all(|byte| byte.is_ascii_hexdigit())
+    });
+    let label = if name == "Pasted image" || pasted {
+        "Pasted image"
+    } else if name.trim().is_empty()
+        || GENERATED_IMAGE_STEM.is_match(stem)
+        || UNNAMED_CHAT_IMAGE.is_match(name)
+    {
+        "Image"
+    } else {
+        return name.into();
+    };
+    let extension = match subtype {
+        "jpeg" | "pjpeg" => "jpg",
+        "x-png" => "png",
+        "svg+xml" => "svg",
+        "vnd.microsoft.icon" | "x-icon" => "ico",
+        "x-ms-bmp" => "bmp",
+        subtype
+            if !subtype.is_empty() && subtype.bytes().all(|byte| byte.is_ascii_alphanumeric()) =>
+        {
+            subtype
+        }
+        _ => return label.into(),
+    };
+    format!("{label}.{extension}").into()
 }
 
 /// Exact content and fallback presentation captured alongside a Document. The
@@ -216,6 +277,39 @@ fn invalid(message: &'static str) -> StoreError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn imported_image_names_use_the_mime_type_when_the_source_has_no_name() {
+        let uuid = "600ee52b-c6b1-4424-b821-fe75ff6a48a3";
+        let hash = "b".repeat(64);
+        for (name, mime_type, expected) in [
+            ("", "image/png", "Image.png"),
+            ("   ", "image/webp", "Image.webp"),
+            ("Pasted image", "image/jpeg", "Pasted image.jpg"),
+            ("Image 1", "image/gif", "Image.gif"),
+            ("pasted-image-deadbeef.png", "image/png", "Pasted image.png"),
+            ("image-deadbeef.png", "image/png", "Image.png"),
+            (&format!("{uuid}.png"), "image/jpeg", "Image.jpg"),
+            (&format!("thread-{uuid}.png"), "image/png", "Image.png"),
+            (&format!("thread-{uuid}-png.png"), "image/png", "Image.png"),
+            (&format!("{hash}.blob"), "image/svg+xml", "Image.svg"),
+            ("a3b59d798871d6b0-image.png", "image/png", "Image.png"),
+            ("flamegraph.png", "image/png", "flamegraph.png"),
+            ("image.png", "image/png", "image.png"),
+            (
+                "Screenshot 2026-11-14 at 22.17.03.png",
+                "image/png",
+                "Screenshot 2026-11-14 at 22.17.03.png",
+            ),
+            (
+                &format!("{uuid}.png"),
+                "application/octet-stream",
+                &format!("{uuid}.png"),
+            ),
+        ] {
+            assert_eq!(imported_file_name(name, mime_type), expected, "{name}");
+        }
+    }
 
     fn snapshot() -> FileSnapshotManifest {
         FileSnapshotManifest {

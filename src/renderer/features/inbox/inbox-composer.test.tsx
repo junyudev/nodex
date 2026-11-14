@@ -95,8 +95,7 @@ test("a pasted image becomes a Library File sent ahead of the message's text", a
   await view.findByRole("button", { name: "shot.png" });
   expect(files.importFile).toHaveBeenCalledWith(
     { contentRoutingContext: { kind: "library" }, storeEpoch: "epoch", libraryId: "library" },
-    { kind: "browser_file", file: expect.any(File) },
-    "shot.png",
+    { kind: "browser_file", file: expect.any(File), fromClipboard: true },
   );
 
   await act(async () => {

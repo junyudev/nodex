@@ -387,7 +387,7 @@ fn direct_handback_publishes_attachments_with_the_message_atomically() {
         text: "Check this image".into(),
         files: vec![nodex_core_contracts::library::LibraryFileChange::Create {
             file_id: "returned-media".into(),
-            default_name: "screenshot.png".into(),
+            default_name: "thread-600ee52b-c6b1-4424-b821-fe75ff6a48a3.png".into(),
             mime_type: "image/png".into(),
             prepared_blob_receipt_id: "media-receipt".into(),
         }],
@@ -408,12 +408,12 @@ fn direct_handback_publishes_attachments_with_the_message_atomically() {
     let item = entry(&w.module, "returned-image");
     assert!(
         item.body
-            .contains("![screenshot.png](nodex://files/returned-media)")
+            .contains("![Image.png](nodex://files/returned-media)")
     );
     assert_eq!(
         count(
             &w,
-            "SELECT count(*) FROM library_files WHERE file_id='returned-media'"
+            "SELECT count(*) FROM library_files WHERE file_id='returned-media' AND default_name='Image.png'"
         ),
         1
     );

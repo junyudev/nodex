@@ -285,7 +285,7 @@ fn apply_with_kind(
                             .rsplit('/')
                             .next()
                             .expect("Portable path has a basename");
-                        let file = files::create(
+                        let file = files::import(
                             &write,
                             file_id,
                             name,

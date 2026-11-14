@@ -86,6 +86,46 @@ describe("Library File resources", () => {
     ]);
   });
 
+  test.each([
+    ["", "image/png", true, "Pasted image"],
+    ["image.png", "image/png", true, "Pasted image"],
+    ["image.png", "", true, "Pasted image"],
+    ["", "image/png", false, "Image"],
+    ["image.png", "image/png", false, "image.png"],
+    [
+      "Screenshot 2026-11-14 at 22.17.03.png",
+      "image/png",
+      true,
+      "Screenshot 2026-11-14 at 22.17.03.png",
+    ],
+  ])(
+    "passes the source name for %j (%s), clipboard=%s",
+    async (name, type, fromClipboard, expected) => {
+      api.prepareFileBlob.mockImplementation(async (_access, { source }) => {
+        if (!source.logicalPath) throw new Error("File name is required");
+        return {
+          receiptId: "prepared",
+          logicalPath: source.logicalPath,
+          mimeType: source.mimeType,
+        };
+      });
+      api.applyLibraryModule.mockImplementation(async (_access, { operation }) => ({
+        ok: true,
+        value: { fileMutation: { file: { file_id: operation.change.file_id } } },
+      }));
+
+      await importLibraryFile(
+        { libraryId: "library-1", contentRoutingContext: access, storeEpoch: "store-1" },
+        { kind: "browser_file", file: new File(["image"], name, { type }), fromClipboard },
+      );
+
+      expect(api.applyLibraryModule.mock.calls[0]![1].operation.change).toMatchObject({
+        default_name: expected,
+        mime_type: "image/png",
+      });
+    },
+  );
+
   test("preserves exact history authority for metadata, bytes, and saving", async () => {
     const readSource = {
       kind: "document_revision",

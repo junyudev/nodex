@@ -671,10 +671,10 @@ function NfmEditorInstance({
   }, [threadMentionSummaryMap]);
 
   const uploadFile = useCallback(
-    async (file: File) => {
+    async (file: File, fromClipboard = false) => {
       if (!fileRuntime) throw new Error("File authority is unavailable");
       const [url, dimensions] = await Promise.all([
-        fileRuntime.upload({ kind: "browser_file", file }),
+        fileRuntime.upload({ kind: "browser_file", file, fromClipboard }),
         readImageFileSourceDimensions(file),
       ]);
 
@@ -721,7 +721,12 @@ function NfmEditorInstance({
   );
 
   useLayoutEffect(
-    () => owner.bindCallbacks({ uploadFile, resolveFileUrl, resolveCopiedFileReferences }),
+    () =>
+      owner.bindCallbacks({
+        uploadFile: (file) => uploadFile(file),
+        resolveFileUrl,
+        resolveCopiedFileReferences,
+      }),
     [owner, uploadFile, resolveFileUrl, resolveCopiedFileReferences],
   );
   useLayoutEffect(() => {
@@ -960,7 +965,7 @@ function NfmEditorInstance({
     target: ReturnType<typeof capturePasteResourceTarget>,
   ) => {
     if (!editor || files.length === 0) return;
-    return pasteNfmImages({ owner, files, target, uploadFile });
+    return pasteNfmImages({ owner, files, target, uploadFile: (file) => uploadFile(file, true) });
   };
 
   // Handle content changes from the editor

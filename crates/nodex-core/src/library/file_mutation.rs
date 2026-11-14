@@ -124,7 +124,7 @@ pub(super) fn apply(
                     default_name,
                     mime_type,
                     ..
-                } => files::create(
+                } => files::import(
                     &write,
                     file_id,
                     default_name,

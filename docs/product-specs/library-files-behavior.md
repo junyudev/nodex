@@ -12,6 +12,10 @@ may repeat. A File can exist without a Page relationship. Identical bytes can be
 shared by several independent Files; content deduplication does not merge their
 identities, names or histories.
 
+New image imports preserve meaningful filenames. An unnamed image receives a
+default such as `Image.png` or `Pasted image.png`, with an extension for its
+format.
+
 Updating shared content appends a FileVersion and advances the File head. It
 requires both the expected metadata revision and head version. Renaming changes
 only the metadata revision. A failed comparison consumes no prepared upload and

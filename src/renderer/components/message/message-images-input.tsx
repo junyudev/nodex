@@ -48,7 +48,7 @@ export interface MessageDraftImage {
 
 /** What a Composer needs to take images: where they are imported, and how they are read back. */
 export interface MessageImageAccess {
-  readonly importImage: (file: File) => Promise<MessageDraftImage>;
+  readonly importImage: (file: File, fromClipboard: boolean) => Promise<MessageDraftImage>;
   /** Moves a File a draft imported to Trash, unless it changed or came into use since. */
   readonly discardImport: (fileId: string, importedRevision: number) => Promise<void>;
   readonly readAuthority: FileReadAuthority;
@@ -158,7 +158,7 @@ export function useMessageImageInput({
     }
   };
 
-  const add = (files: readonly File[]): boolean => {
+  const add = (files: readonly File[], fromClipboard = false): boolean => {
     const images = files.filter(isSupportedComposerImageFile);
     if (!access || images.length === 0) return false;
     const from = access;
@@ -166,7 +166,7 @@ export function useMessageImageInput({
       const upload = { id: createUuidV7(), name: file.name, url: URL.createObjectURL(file) };
       setUploads((current) => [...current, upload]);
       void from
-        .importImage(file)
+        .importImage(file, fromClipboard)
         .then(
           (image) => {
             previews.current.set(image.fileId, upload.url);
@@ -205,7 +205,7 @@ export function useMessageImageInput({
     onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => {
       pasteIntoMessageField(event, ({ imageFiles, libraryImages }) => {
         if (!access) return false;
-        if (libraryImages.length === 0) return add(imageFiles);
+        if (libraryImages.length === 0) return add(imageFiles, true);
         onImported(libraryImages.map(({ fileId, caption }) => ({ fileId, name: caption })));
         return true;
       });

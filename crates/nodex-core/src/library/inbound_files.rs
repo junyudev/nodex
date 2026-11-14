@@ -44,7 +44,7 @@ pub(crate) fn publish(
             operation,
             prepared_blob_receipt_id,
         )?;
-        let file = super::files::create(
+        let file = super::files::import(
             &super::files::FileWriteContext {
                 connection,
                 library_id: &context.library_id.0,

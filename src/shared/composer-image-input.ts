@@ -38,6 +38,11 @@ export function isSupportedComposerImageMimeType(mimeType: string): boolean {
   return SUPPORTED_IMAGE_MIME_TYPES.has(mimeType.trim().toLowerCase());
 }
 
+/** Use paste provenance while the browser's generic bitmap name is still distinguishable. */
+export function clipboardImageName(name: string): string {
+  return !name.trim() || /^image\.[a-z0-9]+$/iu.test(name.trim()) ? "Pasted image" : name;
+}
+
 export function resolveComposerImageMimeType(input: {
   readonly filename: string;
   readonly mimeType?: string | null;

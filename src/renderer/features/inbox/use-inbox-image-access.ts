@@ -17,12 +17,12 @@ export function useInboxImageAccess(routing: ContentRoutingContext): MessageImag
     libraryId: library.data.libraryId,
   };
   return {
-    importImage: async (file) => {
-      const imported = await importLibraryFile(
-        authority,
-        { kind: "browser_file", file },
-        file.name,
-      );
+    importImage: async (file, fromClipboard) => {
+      const imported = await importLibraryFile(authority, {
+        kind: "browser_file",
+        file,
+        fromClipboard,
+      });
       return {
         fileId: imported.file.file_id,
         name: imported.file.default_name,

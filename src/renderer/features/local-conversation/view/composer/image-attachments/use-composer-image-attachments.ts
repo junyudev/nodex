@@ -6,7 +6,10 @@ import { DEFAULT_CODEX_HOST_ID } from "../../../../../../shared/codex-host";
 import { fileSource } from "../../../../../../shared/file-resources";
 import type { CopiedLibraryImage } from "../../../../../../shared/markdown";
 import { uploadImageAsset } from "@/lib/assets";
-import { resolveComposerImageMimeType } from "../../../../../../shared/composer-image-input";
+import {
+  clipboardImageName,
+  resolveComposerImageMimeType,
+} from "../../../../../../shared/composer-image-input";
 import { isSupportedComposerImageFile } from "./composer-image-data-transfer";
 import {
   createResolvedComposerImageAttachment,
@@ -103,12 +106,12 @@ function inferPickedMimeType(file: ComposerPickedFile): string {
   return dataMime ?? "image/png";
 }
 
-function resolveFileAttachmentName(file: File, id: string, origin: "paste" | "drop"): string {
-  const filename = file.name.trim();
-  if (filename) return filename;
+function resolveFileAttachmentName(file: File, origin: "paste" | "drop"): string {
+  const filename = origin === "paste" ? clipboardImageName(file.name) : file.name;
+  if (filename.trim() && filename !== "Pasted image") return filename;
   const mimeType =
     resolveComposerImageMimeType({
-      filename,
+      filename: file.name,
       mimeType: file.type,
     }) ?? "image/png";
   const extension =
@@ -117,12 +120,7 @@ function resolveFileAttachmentName(file: File, id: string, origin: "paste" | "dr
       : mimeType === "image/x-png"
         ? "png"
         : mimeType.slice("image/".length);
-  const idSuffix =
-    id
-      .replace(/^image[_-]?/iu, "")
-      .replace(/[^a-z0-9]/giu, "")
-      .slice(0, 8) || "image";
-  return `${origin === "paste" ? "pasted-image" : "image"}-${idSuffix}.${extension}`;
+  return `${origin === "paste" ? "Pasted image" : "Image"}.${extension}`;
 }
 
 /** An image copied from Nodex attaches as the image itself, read from its Library File. */
@@ -214,7 +212,7 @@ export function useComposerImageAttachments(input: {
     const scopeKey = latestRef.current.scopeKey;
     const operations = supportedFiles.map((file) => {
       const id = adaptersRef.current.createId();
-      const filename = resolveFileAttachmentName(file, id, origin);
+      const filename = resolveFileAttachmentName(file, origin);
       const mimeType =
         resolveComposerImageMimeType({
           filename,

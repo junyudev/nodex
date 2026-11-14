@@ -1,3 +1,7 @@
+import {
+  clipboardImageName,
+  resolveComposerImageMimeType,
+} from "../../shared/composer-image-input";
 import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type {
   LibraryFile,
@@ -43,7 +47,7 @@ export interface FilePreviewAuthority extends LibraryFileAuthority {
 }
 
 export type FileUploadSource =
-  | { readonly kind: "browser_file"; readonly file: File }
+  | { readonly kind: "browser_file"; readonly file: File; readonly fromClipboard?: boolean }
   | { readonly kind: "local_path"; readonly path: string };
 
 export interface CreatedLibraryFile {
@@ -72,18 +76,25 @@ export async function prepareBrowserFiles(
   access: ContentRoutingContext,
   operationId: string,
   files: readonly File[],
+  fromClipboard = false,
 ): Promise<readonly PreparedFileBlob[]> {
   validateBrowserFileBatch(files);
   const prepared: PreparedFileBlob[] = [];
   for (const [index, file] of files.entries()) {
+    const mimeType =
+      fromClipboard && (!file.type || file.type === "application/octet-stream")
+        ? (resolveComposerImageMimeType({ filename: file.name }) ?? file.type)
+        : file.type;
+    const isImage = mimeType?.startsWith("image/");
+    const name = isImage && fromClipboard ? clipboardImageName(file.name) : file.name;
     prepared.push(
       await prepareFileBlob(access, {
         operationId,
         idempotencySlot: `selection:${index}`,
         source: {
           kind: "bytes",
-          logicalPath: file.name,
-          ...(file.type ? { mimeType: file.type } : {}),
+          logicalPath: name.trim() || (isImage ? "Image" : ""),
+          ...(mimeType ? { mimeType } : {}),
           bytes: new Uint8Array(await file.arrayBuffer()),
         },
       }),
@@ -121,7 +132,14 @@ export async function importLibraryFile(
   const operationId = createUuidV7();
   const prepared =
     source.kind === "browser_file"
-      ? (await prepareBrowserFiles(authority.contentRoutingContext, operationId, [source.file]))[0]!
+      ? (
+          await prepareBrowserFiles(
+            authority.contentRoutingContext,
+            operationId,
+            [source.file],
+            source.fromClipboard,
+          )
+        )[0]!
       : await prepareFileBlob(authority.contentRoutingContext, {
           operationId,
           source: { kind: "local_path", path: source.path },

@@ -74,7 +74,7 @@ describe("useComposerImageAttachments", () => {
       );
     });
 
-    expect(hook.result.current.attachments[0]?.filename).toBe("pasted-image-1.png");
+    expect(hook.result.current.attachments[0]?.filename).toBe("Pasted image.png");
   });
 
   test("shows a readable image before local materialization completes and patches it in place", async () => {
