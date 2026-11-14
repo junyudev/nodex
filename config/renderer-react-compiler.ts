@@ -50,11 +50,19 @@ export async function createRendererCompilerBabelPlugin(
   options: PluginOptions,
   observers: PluginItem[] = [],
 ): Promise<Plugin> {
-  const { default: babel } = await import("@rolldown/plugin-babel");
+  const { default: babel, defineRolldownBabelPreset } = await import("@rolldown/plugin-babel");
   const compilerPlugin = createRequire(import.meta.url).resolve("babel-plugin-react-compiler");
   return (await babel({
     include: (id) => !!id && isRendererCompilerSource(id, root),
-    plugins: [...observers, [compilerPlugin, options]],
+    presets: [
+      defineRolldownBabelPreset({
+        preset: [() => ({ plugins: [...observers, [compilerPlugin, options]] })],
+        rolldown: {
+          applyToEnvironmentHook: (environment) => environment.config.consumer === "client",
+          optimizeDeps: { include: ["react/compiler-runtime"] },
+        },
+      }),
+    ],
   })) as unknown as Plugin;
 }
 

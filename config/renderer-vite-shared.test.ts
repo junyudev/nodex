@@ -15,10 +15,10 @@ const transform = async (plugin: Plugin, code: string, id: string, ssr = false) 
   )) as TransformResult;
 };
 
-async function initializeCompilerEnvironment(plugin: Plugin) {
+async function initializeCompilerEnvironment(plugin: Plugin, ssr = false) {
   if (!plugin.applyToEnvironment) throw new Error("Missing Babel environment hook");
-  await Reflect.apply(plugin.applyToEnvironment, {}, [
-    { name: "client", config: { consumer: "client" } },
+  return Reflect.apply(plugin.applyToEnvironment, {}, [
+    { name: ssr ? "ssr" : "client", config: { consumer: ssr ? "server" : "client" } },
   ]);
 }
 
@@ -92,6 +92,7 @@ test("compiles components and hooks through the real Babel hook and preserves co
       });
     }
     const ssrId = resolve(root, "src/renderer/server-probe.tsx");
+    expect(await initializeCompilerEnvironment(babel, true)).toBe(false);
     await transform(coverage, inputs[0][1], ssrId, true);
     expect(await transform(babel, inputs[0][1], ssrId, true)).toBeUndefined();
 
