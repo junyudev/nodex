@@ -3,7 +3,9 @@ import { randomBytes, randomUUID } from "node:crypto";
 import {
   createServer,
   request as coreRequest,
+  type ClientRequest,
   type IncomingMessage,
+  type RequestOptions,
   type ServerResponse,
 } from "node:http";
 import * as Effect from "effect/Effect";
@@ -119,7 +121,13 @@ interface Grant extends GrantInput {
 }
 
 /** A loopback content audience, never a second Core or a general Host invocation tunnel. */
-export async function openScopedAgentCore(coreHome: string) {
+export async function openScopedAgentCore(
+  coreHome: string,
+  requestCore: (
+    options: RequestOptions,
+    onResponse: (incoming: IncomingMessage) => void,
+  ) => ClientRequest = coreRequest,
+) {
   const generation = randomBytes(12).toString("base64url");
   const grants = new Map<string, Grant>();
   let active = 0;
@@ -284,8 +292,9 @@ export async function openScopedAgentCore(coreHome: string) {
         bytes: Buffer;
         contentType?: string;
         etag?: string;
+        retryAfter?: string;
       }>((resolve, reject) => {
-        const upstream = coreRequest(
+        const upstream = requestCore(
           {
             socketPath: current.descriptor.endpoint,
             method: request.method,
@@ -298,7 +307,8 @@ export async function openScopedAgentCore(coreHome: string) {
               "x-nodex-agent-attribution": credential,
               ...(typeof projectId === "string" ? { "x-nodex-project-id": projectId } : {}),
               "x-nodex-request-id": randomUUID(),
-              "x-nodex-request-class": "interactive",
+              "x-nodex-request-class": "background",
+              // Keep the Agent gateway bounded by its existing request window.
               "x-nodex-request-deadline-ms": String(
                 CORE_TRANSPORT_BUDGETS.interactive_request_deadline_ms,
               ),
@@ -315,6 +325,7 @@ export async function openScopedAgentCore(coreHome: string) {
                   bytes,
                   contentType: incoming.headers["content-type"],
                   etag: incoming.headers.etag,
+                  retryAfter: incoming.headers["retry-after"],
                 }),
               reject,
             );
@@ -333,6 +344,7 @@ export async function openScopedAgentCore(coreHome: string) {
         "content-type": forwarded.contentType ?? "application/json",
         "cache-control": "no-store",
         ...(forwarded.etag ? { etag: forwarded.etag } : {}),
+        ...(forwarded.retryAfter === undefined ? {} : { "retry-after": forwarded.retryAfter }),
       });
       response.end(forwarded.bytes);
     } finally {

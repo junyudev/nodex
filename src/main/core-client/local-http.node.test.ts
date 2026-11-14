@@ -1,16 +1,32 @@
 import { randomBytes } from "node:crypto";
-import { createServer, type Server, type ServerResponse } from "node:http";
+import { EventEmitter } from "node:events";
+import {
+  Agent,
+  createServer,
+  IncomingMessage,
+  type ClientRequest,
+  type OutgoingHttpHeaders,
+  type RequestOptions,
+  type Server,
+  type ServerResponse,
+} from "node:http";
+import { Socket } from "node:net";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, test } from "vite-plus/test";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import {
   CORE_CLIENT_REQUIREMENTS,
   CORE_TRANSPORT_BUDGETS,
   type components,
 } from "@nodex/core-protocol";
 
-import type { CoreEventEnvelope, CoreEventReplayRequired, CoreStreamCheckpoint } from "./types";
+import type {
+  CoreEventEnvelope,
+  CoreEventReplayRequired,
+  CoreRequestOptions,
+  CoreStreamCheckpoint,
+} from "./types";
 import { CoreCodecError } from "./codec";
 import { CoreModuleResponseError } from "./core-client";
 import {
@@ -22,6 +38,7 @@ import {
   CoreEventCompatibilityError,
   CoreEventReplayError,
   CoreHttpError,
+  CoreRateLimitError,
   CoreResponseTooLargeError,
   CoreTransportError,
   LocalHttpTransport,
@@ -291,6 +308,8 @@ const requestError: components["schemas"]["CoreError"] = {
   recovery: { kind: "none" },
 };
 
+const binaryRequestBody = Uint8Array.of(0x00, 0x80, 0xff);
+
 const requestByBoundary = (transport: LocalHttpTransport, boundary: string): Promise<unknown> => {
   if (boundary === "document") {
     return transport.requestDocumentFrame(
@@ -302,12 +321,15 @@ const requestByBoundary = (transport: LocalHttpTransport, boundary: string): Pro
   }
   if (boundary === "blob") {
     return transport.requestBoundedBytes(
-      "GET",
-      "/core/v1/files/blobs/file-1",
-      undefined,
+      "POST",
+      "/core/v1/files/blobs/prepare",
+      binaryRequestBody,
       {},
       16_384,
     );
+  }
+  if (boundary === "agent run") {
+    return transport.requestJson("POST", "/core/v1/agent-runs/record", { run_id: "run-1" });
   }
   if (boundary === "events") {
     return configureEventContract(transport).openEventStream(0, () => undefined);
@@ -446,6 +468,361 @@ describe("Core HTTP request failures", () => {
   });
 });
 
+type ControlledRequestOptions = RequestOptions & { headers: OutgoingHttpHeaders };
+
+const controlledLocalCore = (agent?: Agent) => {
+  const socketPath = testEndpoint(`core-admission-${randomBytes(8).toString("hex")}`);
+  const sent: Array<{
+    options: ControlledRequestOptions;
+    body: readonly Uint8Array[];
+    respond: (status?: number, value?: unknown, retryAfter?: string) => void;
+  }> = [];
+  const request = (
+    options: ControlledRequestOptions,
+    receive: (response: IncomingMessage) => void,
+  ) => {
+    const outgoing = new EventEmitter();
+    const body: Uint8Array[] = [];
+    const destroy = (error: Error) => {
+      outgoing.emit("error", error);
+    };
+    return Object.assign(outgoing, {
+      write: (bytes: Uint8Array) => body.push(bytes),
+      destroy,
+      end: () =>
+        sent.push({
+          options,
+          body,
+          respond: (status = 200, value = null, retryAfter?: string) => {
+            const response = new IncomingMessage(new Socket());
+            response.statusCode = status;
+            response.headers["content-type"] = "application/json";
+            if (retryAfter !== undefined) response.headers["retry-after"] = retryAfter;
+            receive(response);
+            response.push(Buffer.from(JSON.stringify(value)));
+            response.push(null);
+          },
+        }),
+    });
+  };
+  return {
+    sent,
+    transport: (endpoint = socketPath) =>
+      new LocalHttpTransport(endpoint, "test-capability", {
+        connection: {
+          request: request as unknown as typeof import("node:http").request,
+          options: { socketPath: endpoint, agent },
+          credential: () => "test-capability",
+          ...(agent ? { maximumQueuedRequests: 1 } : {}),
+        },
+      }),
+  };
+};
+
+const admissionRefusal = {
+  status: "error",
+  payload: {
+    code: "overloaded",
+    message: "Core interactive request admission is full",
+    retryable: true,
+    recovery: { kind: "retry_admission", milliseconds: 100 },
+  },
+} as const;
+
+const queuedDeadline = {
+  status: "error",
+  payload: {
+    code: "deadline_exceeded",
+    message: "Core request deadline was exceeded",
+    retryable: true,
+    recovery: { kind: "none" },
+  },
+} as const;
+
+const queueRequest = (transport: LocalHttpTransport, id: string, options?: CoreRequestOptions) =>
+  transport.requestJson("POST", `/core/v1/modules/library/read?test=${id}`, {}, {}, options);
+
+describe("Local Core request admission", () => {
+  afterEach(() => vi.useRealTimers());
+
+  test("shares each class's in-flight budget across transports and admits waiters in FIFO order", async () => {
+    vi.useFakeTimers();
+    const core = controlledLocalCore();
+    const first = core.transport();
+    const second = core.transport();
+    const classes = [
+      { name: "interactive", limit: 64 },
+      { name: "background", limit: 16 },
+      { name: "maintenance", limit: 4 },
+    ] as const;
+    const pending = classes.flatMap(({ name, limit }) =>
+      Array.from({ length: limit + 2 }, (_, index) =>
+        queueRequest(index % 2 === 0 ? first : second, `${name}-${index}`, { class: name }),
+      ),
+    );
+    pending.push(first.requestJson("GET", "/core/v1/health"));
+    const sentFor = (name: string) =>
+      core.sent.filter(({ options }) => options.headers?.["x-nodex-request-class"] === name);
+    await vi.advanceTimersByTimeAsync(0);
+
+    const completed = new Set<(typeof core.sent)[number]>();
+    const respond = (request: (typeof core.sent)[number]): void => {
+      completed.add(request);
+      request.respond();
+    };
+    expect(core.sent.at(-1)?.options).toMatchObject({ path: "/core/v1/health" });
+    expect(core.sent.at(-1)?.options.headers).not.toHaveProperty("x-nodex-request-class");
+    for (const { name, limit } of classes) {
+      const sent = sentFor(name);
+      expect(sent).toHaveLength(limit);
+      respond(sent[0]!);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sentFor(name).at(-1)?.options.path).toContain(`test=${name}-${limit}`);
+      expect(sentFor(name)).toHaveLength(limit + 1);
+      respond(sent[1]!);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sentFor(name).at(-1)?.options.path).toContain(`test=${name}-${limit + 1}`);
+      expect(sentFor(name)).toHaveLength(limit + 2);
+    }
+
+    for (const sent of core.sent) {
+      if (!completed.has(sent)) sent.respond();
+    }
+    await Promise.all(pending);
+  });
+
+  test("removes cancelled and expired waiters without freeing an occupied slot", async () => {
+    vi.useFakeTimers();
+    const core = controlledLocalCore();
+    const transport = core.transport();
+    const running = Array.from({ length: 4 }, (_, index) =>
+      queueRequest(transport, String(index), { class: "maintenance" }),
+    );
+    const controller = new AbortController();
+    const cancelled = queueRequest(transport, "cancelled", {
+      class: "maintenance",
+      signal: controller.signal,
+    });
+    const cancellation = expect(cancelled).rejects.toMatchObject({
+      name: "CoreTransportError",
+      kind: "aborted",
+      phase: "connect",
+      code: "ABORT_ERR",
+    });
+    const expiring = {
+      class: "maintenance",
+      deadlineMs: CORE_TRANSPORT_BUDGETS.request_deadline_min_ms + 50,
+    } as const;
+    const expired = queueRequest(transport, "expired", expiring);
+    const expiredDocument = transport.requestDocumentFrame(
+      "/core/v1/modules/document/read",
+      new Uint8Array(),
+      {},
+      16_384,
+      expiring,
+    );
+    const expiredBlob = expect(
+      transport.requestBoundedBytes(
+        "GET",
+        "/core/v1/files/blobs/file-1",
+        undefined,
+        {},
+        16_384,
+        expiring,
+      ),
+    ).rejects.toMatchObject({
+      name: "CoreHttpError",
+      status: 504,
+      coreError: queuedDeadline.payload,
+    });
+    const expiredRecord = expect(
+      transport.requestJson("POST", "/core/v1/agent-runs/record", {}, {}, expiring),
+    ).rejects.toMatchObject({
+      name: "CoreHttpError",
+      status: 504,
+      coreError: queuedDeadline.payload,
+    });
+    const next = queueRequest(transport, "next", { class: "maintenance", deadlineMs: 1_000 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(core.sent).toHaveLength(4);
+
+    controller.abort();
+    await cancellation;
+    await vi.advanceTimersByTimeAsync(51);
+    await expect(expired).resolves.toEqual(queuedDeadline);
+    await expect(expiredDocument).resolves.toEqual({ kind: "json", value: queuedDeadline });
+    await Promise.all([expiredBlob, expiredRecord]);
+    expect(core.sent).toHaveLength(4);
+
+    core.sent[0]!.respond();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(core.sent).toHaveLength(5);
+    expect(core.sent[4]?.options).toMatchObject({
+      path: "/core/v1/modules/library/read?test=next",
+      headers: { "x-nodex-request-deadline-ms": "949" },
+    });
+    for (const sent of core.sent.slice(1)) sent.respond();
+    await Promise.all([...running, next]);
+  });
+
+  test.each([
+    { boundary: "json", retryAfter: "2", milliseconds: 100 },
+    { boundary: "document", retryAfter: undefined, milliseconds: 100 },
+    { boundary: "blob", retryAfter: "2", milliseconds: 750 },
+    { boundary: "agent run", retryAfter: "1", milliseconds: 100 },
+  ])(
+    "replays a Core admission refusal at the $boundary boundary with a new id and the same body",
+    async ({ boundary, retryAfter, milliseconds }) => {
+      vi.useFakeTimers();
+      const core = controlledLocalCore();
+      const pending = requestByBoundary(core.transport(), boundary);
+      await vi.advanceTimersByTimeAsync(0);
+      const initial = core.sent[0]!;
+      initial.respond(
+        429,
+        {
+          ...admissionRefusal,
+          payload: {
+            ...admissionRefusal.payload,
+            recovery: { kind: "retry_admission", milliseconds },
+          },
+        },
+        retryAfter,
+      );
+      await vi.advanceTimersByTimeAsync(milliseconds - 1);
+      expect(core.sent).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(core.sent).toHaveLength(2);
+      const replay = core.sent[1]!;
+      expect(replay.body).toEqual(initial.body);
+      if (boundary === "blob") {
+        expect(replay.options.method).toBe("POST");
+        expect(replay.body).toEqual([binaryRequestBody]);
+      }
+      expect(replay.options).toMatchObject({
+        path: initial.options.path,
+        method: initial.options.method,
+        headers: {
+          "x-nodex-request-class": "background",
+          "x-nodex-request-deadline-ms": String(
+            CORE_TRANSPORT_BUDGETS.background_request_deadline_ms - milliseconds,
+          ),
+        },
+      });
+      expect(replay.options.headers?.["x-nodex-request-id"]).not.toBe(
+        initial.options.headers?.["x-nodex-request-id"],
+      );
+      replay.respond();
+      await pending;
+    },
+  );
+
+  test("surfaces the last admission refusal when the deadline rules out the next attempt", async () => {
+    vi.useFakeTimers();
+    const core = controlledLocalCore();
+    const pending = queueRequest(core.transport(), "refused", {
+      deadlineMs: CORE_TRANSPORT_BUDGETS.request_deadline_min_ms + 150,
+    });
+    const result = pending.catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(0);
+    core.sent[0]!.respond(429, admissionRefusal, "1");
+    await vi.advanceTimersByTimeAsync(admissionRefusal.payload.recovery.milliseconds);
+    expect(core.sent).toHaveLength(2);
+    const latest = { ...admissionRefusal.payload, message: "Core interactive admission is full" };
+    core.sent[1]!.respond(429, { status: "error", payload: latest }, "1");
+
+    const error = await result;
+    expect(error).toBeInstanceOf(CoreRateLimitError);
+    expect(error).toMatchObject({ status: 429, retryAfterMs: 100, coreError: latest });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(core.sent).toHaveLength(2);
+  });
+
+  test("keeps the slot through exponential retries and releases it when backoff is cancelled", async () => {
+    vi.useFakeTimers();
+    const jitter = vi.spyOn(Math, "random").mockReturnValue(0.5);
+    try {
+      const core = controlledLocalCore();
+      const transport = core.transport();
+      const controller = new AbortController();
+      const pending = queueRequest(transport, "refused", {
+        class: "maintenance",
+        signal: controller.signal,
+      });
+      const cancellation = expect(pending).rejects.toMatchObject({ kind: "aborted" });
+      const queued = Array.from({ length: 4 }, (_, index) =>
+        queueRequest(transport, String(index), { class: "maintenance" }),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      const refusal = {
+        ...admissionRefusal,
+        payload: {
+          ...admissionRefusal.payload,
+          recovery: { kind: "retry_admission", milliseconds: 0 },
+        },
+      };
+      core.sent[0]!.respond(429, refusal, "0");
+      await vi.advanceTimersByTimeAsync(24);
+      expect(core.sent).toHaveLength(4);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(core.sent).toHaveLength(5);
+      expect(core.sent[4]?.options.path).toContain("test=refused");
+      core.sent[4]!.respond(429, refusal, "0");
+      await vi.advanceTimersByTimeAsync(49);
+      expect(core.sent).toHaveLength(5);
+
+      controller.abort();
+      await cancellation;
+      expect(core.sent).toHaveLength(6);
+      expect(core.sent[5]?.options.path).toContain("test=3");
+      for (const sent of [...core.sent.slice(1, 4), core.sent[5]!]) sent.respond();
+      await Promise.all(queued);
+    } finally {
+      jitter.mockRestore();
+    }
+  });
+
+  test.each([
+    { code: "overloaded", recovery: { kind: "none" } },
+    { code: "resource_exhausted", recovery: admissionRefusal.payload.recovery },
+  ])("only replays explicit Core admission refusals", async ({ code, recovery }) => {
+    vi.useFakeTimers();
+    const core = controlledLocalCore();
+    const pending = queueRequest(core.transport(), "overloaded");
+    const refusal = expect(pending).rejects.toMatchObject({
+      name: "CoreRateLimitError",
+      coreError: { code, recovery },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    core.sent[0]!.respond(
+      429,
+      { ...admissionRefusal, payload: { ...admissionRefusal.payload, code, recovery } },
+      "1",
+    );
+    await refusal;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(core.sent).toHaveLength(1);
+  });
+
+  test("does not replay the HTTP agent's client-side queue refusal", async () => {
+    vi.useFakeTimers();
+    const agent = new Agent({ maxSockets: 1 });
+    Object.assign(agent.requests, { test: [{} as ClientRequest] });
+    const core = controlledLocalCore(agent);
+    try {
+      await expect(queueRequest(core.transport(), "client-queue")).rejects.toMatchObject({
+        name: "CoreRateLimitError",
+        status: 429,
+        message: "Core client request queue is full",
+      });
+      expect(core.sent).toHaveLength(0);
+    } finally {
+      Reflect.deleteProperty(agent.requests, "test");
+      agent.destroy();
+    }
+  });
+});
+
 describe("Local Core event replay boundaries", () => {
   test("classifies a missing Core socket as definitive generation loss", async () => {
     const directory = mkdtempSync(path.join(tmpdir(), "nodex-core-uds-missing-"));
@@ -522,7 +899,10 @@ describe("Local Core event replay boundaries", () => {
 
     await expect(pending).rejects.toMatchObject({ code: "ABORT_ERR", kind: "aborted" });
     expect(headers["x-nodex-request-class"]).toBe("interactive");
-    expect(headers["x-nodex-request-deadline-ms"]).toBe("12345");
+    expect(Number(headers["x-nodex-request-deadline-ms"])).toBeGreaterThanOrEqual(
+      CORE_TRANSPORT_BUDGETS.request_deadline_min_ms,
+    );
+    expect(Number(headers["x-nodex-request-deadline-ms"])).toBeLessThanOrEqual(12_345);
     expect(await managed.cancelledRequestId).toBe(headers["x-nodex-request-id"]);
   });
 

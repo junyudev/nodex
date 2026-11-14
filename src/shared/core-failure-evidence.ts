@@ -45,6 +45,7 @@ const recoveryKinds = {
   use_new_idempotency_key: true,
   reconcile_expired_operation: true,
   retry_after: true,
+  retry_admission: true,
   none: true,
   recovery_package: true,
   reconnect_document_subscription: true,
@@ -120,6 +121,9 @@ const parseRecovery = (value: unknown): CoreRecovery => {
           milliseconds: value.milliseconds,
           budget: value.budget as components["schemas"]["RemoteBudget"],
         };
+      break;
+    case "retry_admission":
+      if (uint(value.milliseconds)) return { kind: value.kind, milliseconds: value.milliseconds };
       break;
     case "remote_access_withdrawn":
     case "renew_remote_session":

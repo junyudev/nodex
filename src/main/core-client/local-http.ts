@@ -1,9 +1,20 @@
-import { request as httpRequest, type RequestOptions, type IncomingMessage } from "node:http";
+import {
+  request as httpRequest,
+  type RequestOptions,
+  type IncomingMessage,
+  type IncomingHttpHeaders,
+} from "node:http";
 import { randomUUID } from "node:crypto";
 import { CORE_TRANSPORT_BUDGETS, type components } from "@nodex/core-protocol";
 
 import { CoreResponseError, requiresCoreSessionRenewal } from "./core-response-error";
 import { CoreCodecError, decodeBoundedJson, encodeBoundedJson } from "./codec";
+import {
+  acquireLocalCoreSlot,
+  DEFAULT_REQUEST_DEADLINES_MS,
+  localCoreRetryDelay,
+  waitForLocalCoreRetry,
+} from "./local-core-admission";
 import { SseParser } from "./sse-parser";
 import {
   DOCUMENT_HTTP_CONTENT_TYPE,
@@ -40,12 +51,10 @@ const FILE_BLOB_ROUTE_PREFIX = "/core/v1/files/blobs/";
 const MANAGED_BLOB_PREPARE_ROUTE = "/core/v1/blobs/prepare";
 const THREAD_BLOB_ROUTE = /^\/core\/v1\/threads\/[^/]+\/blobs\/[^/]+$/u;
 const MODULE_ROUTE_PREFIX = "/core/v1/modules/";
+const RECORD_AGENT_RUN_ROUTE = "/core/v1/agent-runs/record";
 const LOCAL_MUTATION_ROUTE = "/core/v1/local-mutations/resolve";
-const DEFAULT_REQUEST_DEADLINES_MS: Readonly<Record<CoreRequestClass, number>> = {
-  interactive: CORE_TRANSPORT_BUDGETS.interactive_request_deadline_ms,
-  background: CORE_TRANSPORT_BUDGETS.background_request_deadline_ms,
-  maintenance: CORE_TRANSPORT_BUDGETS.maintenance_request_deadline_ms,
-};
+const APP_TOOL_ADMISSION_ROUTE = "/core/v1/modules/workspace/tool-operations/admit";
+const MIN_REQUEST_DEADLINE_MS = CORE_TRANSPORT_BUDGETS.request_deadline_min_ms;
 
 /** Physical HTTP adapter; semantic codecs, bounds and SSE stay shared. */
 export interface CoreHttpConnection {
@@ -63,8 +72,7 @@ export interface LocalHttpTransportOptions {
   readonly requestTimeoutMs?: number;
 }
 
-interface RequestExecutionHeaders {
-  readonly requestId: string;
+interface RequestExecution {
   readonly class: CoreRequestClass;
   readonly deadlineMs: number;
 }
@@ -72,34 +80,51 @@ interface RequestExecutionHeaders {
 const requestExecution = (
   requestPath: string,
   options: CoreRequestOptions,
-): RequestExecutionHeaders | null => {
+): RequestExecution | null => {
   const route = requestPath.split("?", 1)[0]!;
   if (
-    !requestPath.startsWith(MODULE_ROUTE_PREFIX) &&
-    !requestPath.startsWith(FILE_BLOB_ROUTE_PREFIX) &&
+    !route.startsWith(MODULE_ROUTE_PREFIX) &&
+    !route.startsWith(FILE_BLOB_ROUTE_PREFIX) &&
     route !== MANAGED_BLOB_PREPARE_ROUTE &&
     !THREAD_BLOB_ROUTE.test(route) &&
-    requestPath !== LOCAL_MUTATION_ROUTE
+    route !== LOCAL_MUTATION_ROUTE &&
+    route !== RECORD_AGENT_RUN_ROUTE
   ) {
     return null;
   }
-  const requestClass = options.class ?? "interactive";
+  const requestClass = options.class ?? "background";
   const deadlineMs = boundedPositiveInteger(
     options.deadlineMs ?? DEFAULT_REQUEST_DEADLINES_MS[requestClass],
     CORE_TRANSPORT_BUDGETS.request_deadline_max_ms,
     "Core request deadline",
   );
-  if (deadlineMs < CORE_TRANSPORT_BUDGETS.request_deadline_min_ms) {
-    throw new Error(
-      `Core request deadline must be at least ${CORE_TRANSPORT_BUDGETS.request_deadline_min_ms}`,
-    );
+  if (deadlineMs < MIN_REQUEST_DEADLINE_MS) {
+    throw new Error(`Core request deadline must be at least ${MIN_REQUEST_DEADLINE_MS}`);
   }
   return {
-    requestId: randomUUID(),
     class: requestClass,
     deadlineMs,
   };
 };
+
+interface BufferedRequest {
+  readonly method: "GET" | "POST";
+  readonly path: string;
+  readonly body: Uint8Array | undefined;
+  readonly requestHeaders: Readonly<Record<string, string>>;
+  readonly accept: string;
+  readonly contentType: string;
+  readonly maximumResponseBytes: number;
+  readonly maximumErrorBytes?: number;
+  readonly hostWaitMs?: number;
+  readonly signal?: AbortSignal;
+}
+
+interface BufferedResponse {
+  readonly bytes: Uint8Array;
+  readonly status: number;
+  readonly headers: IncomingHttpHeaders;
+}
 
 export type DocumentFrameResponse<Response> =
   | { readonly kind: "binary"; readonly bytes: Uint8Array }
@@ -342,95 +367,21 @@ export class LocalHttpTransport {
         : requestPath === "/core/v1/host/call"
           ? 25_000
           : 0;
-    const transportTimeoutMs =
-      (execution?.deadlineMs ?? hostWaitMs) + this.#transportLivenessTimeoutMs;
-
-    return new Promise<Response>((resolve, reject) => {
-      let settled = false;
-      const settle = (action: () => void): void => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(deadline);
-        options.signal?.removeEventListener("abort", cancelCoreRequest);
-        action();
-      };
-      const cancelCoreRequest = (): void => {
-        if (!execution) return;
-        void this.#cancelRequest(execution.requestId, requestHeaders);
-      };
-      const request = (this.#connection?.request ?? httpRequest)(
-        {
-          socketPath: this.endpoint,
-          path: requestPath,
-          method,
-          agent: false,
-          ...this.#connection?.options,
-          signal: options.signal,
-          headers: {
-            ...requestHeaders,
-            ...(execution
-              ? {
-                  "x-nodex-request-id": execution.requestId,
-                  "x-nodex-request-class": execution.class,
-                  "x-nodex-request-deadline-ms": String(execution.deadlineMs),
-                }
-              : {}),
-            accept: "application/json",
-            authorization: `Bearer ${this.#connection?.credential() ?? this.authCapability}`,
-            ...(encodedBody
-              ? {
-                  "content-length": encodedBody.byteLength,
-                  "content-type": "application/json",
-                }
-              : {}),
-          },
-        },
-        (response) => {
-          collectResponse(response, maximumResponseBytes)
-            .then((bytes) => {
-              const status = response.statusCode ?? 0;
-              if (status < 200 || status >= 300) {
-                settle(() =>
-                  reject(
-                    decodeHttpError(
-                      status,
-                      bytes,
-                      maximumResponseBytes,
-                      response.headers["retry-after"],
-                    ),
-                  ),
-                );
-                return;
-              }
-              const value = decodeBoundedJson<Response>(
-                bytes,
-                maximumResponseBytes,
-                "Core response",
-              );
-              settle(() => resolve(value));
-            })
-            .catch((error: unknown) =>
-              settle(() => reject(normalizeTransportError(error, "response"))),
-            );
-        },
-      );
-      if (options.signal?.aborted) {
-        cancelCoreRequest();
-      } else {
-        options.signal?.addEventListener("abort", cancelCoreRequest, { once: true });
-      }
-      const deadline = setTimeout(() => {
-        cancelCoreRequest();
-        const error = new CoreTransportError("timeout", "response", "ETIMEDOUT", null);
-        settle(() => reject(error));
-        request.destroy(error);
-      }, transportTimeoutMs);
-      request.on("error", (error) =>
-        settle(() => reject(normalizeTransportError(error, "connect"))),
-      );
-      if (encodedBody) request.write(encodedBody);
-      request.end();
-    });
+    return this.#requestBuffered(
+      {
+        method,
+        path: requestPath,
+        body: encodedBody,
+        requestHeaders,
+        accept: "application/json",
+        contentType: "application/json",
+        maximumResponseBytes,
+        hostWaitMs,
+        signal: options.signal,
+      },
+      execution,
+      (bytes) => decodeBoundedJson<Response>(bytes, maximumResponseBytes, "Core response"),
+    );
   }
 
   async requestDocumentFrame<Response>(
@@ -443,99 +394,32 @@ export class LocalHttpTransport {
     await this.#connection?.beforeRequest?.(options.signal);
     this.#admitRequest();
     const execution = requestExecution(requestPath, options);
-    if (!execution) {
-      return Promise.reject(new Error("Document requests require Core execution metadata"));
-    }
-    const transportTimeoutMs = execution.deadlineMs + this.#transportLivenessTimeoutMs;
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const settle = (action: () => void): void => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(deadline);
-        options.signal?.removeEventListener("abort", cancelCoreRequest);
-        action();
-      };
-      const cancelCoreRequest = (): void => {
-        if (!execution) return;
-        void this.#cancelRequest(execution.requestId, requestHeaders);
-      };
-      const request = (this.#connection?.request ?? httpRequest)(
-        {
-          socketPath: this.endpoint,
-          path: requestPath,
-          method: "POST",
-          agent: false,
-          ...this.#connection?.options,
-          signal: options.signal,
-          headers: {
-            ...requestHeaders,
-            "x-nodex-request-id": execution.requestId,
-            "x-nodex-request-class": execution.class,
-            "x-nodex-request-deadline-ms": String(execution.deadlineMs),
-            accept: `${DOCUMENT_HTTP_CONTENT_TYPE}, application/json`,
-            authorization: `Bearer ${this.#connection?.credential() ?? this.authCapability}`,
-            "content-length": body.byteLength,
-            "content-type": DOCUMENT_HTTP_CONTENT_TYPE,
-          },
-        },
-        (response) => {
-          collectResponse(response, maximumResponseBytes)
-            .then((bytes) => {
-              const status = response.statusCode ?? 0;
-              if (status < 200 || status >= 300) {
-                settle(() =>
-                  reject(
-                    decodeHttpError(
-                      status,
-                      bytes,
-                      maximumResponseBytes,
-                      response.headers["retry-after"],
-                    ),
-                  ),
-                );
-                return;
-              }
-              const contentType = response.headers["content-type"]?.split(";", 1)[0];
-              if (contentType === DOCUMENT_HTTP_CONTENT_TYPE) {
-                settle(() => resolve({ kind: "binary", bytes }));
-                return;
-              }
-              if (contentType !== "application/json") {
-                settle(() =>
-                  reject(new Error("Core Document response has an invalid Content-Type")),
-                );
-                return;
-              }
-              const value = decodeBoundedJson<Response>(
-                bytes,
-                maximumResponseBytes,
-                "Core Document response",
-              );
-              settle(() => resolve({ kind: "json", value }));
-            })
-            .catch((error: unknown) =>
-              settle(() => reject(normalizeTransportError(error, "response"))),
-            );
-        },
-      );
-      if (options.signal?.aborted) {
-        cancelCoreRequest();
-      } else {
-        options.signal?.addEventListener("abort", cancelCoreRequest, { once: true });
-      }
-      const deadline = setTimeout(() => {
-        cancelCoreRequest();
-        const error = new CoreTransportError("timeout", "response", "ETIMEDOUT", null);
-        settle(() => reject(error));
-        request.destroy(error);
-      }, transportTimeoutMs);
-      request.on("error", (error) =>
-        settle(() => reject(normalizeTransportError(error, "connect"))),
-      );
-      request.write(body);
-      request.end();
-    });
+    if (!execution) throw new Error("Document requests require Core execution metadata");
+
+    return this.#requestBuffered<DocumentFrameResponse<Response>>(
+      {
+        method: "POST",
+        path: requestPath,
+        body,
+        requestHeaders,
+        accept: `${DOCUMENT_HTTP_CONTENT_TYPE}, application/json`,
+        contentType: DOCUMENT_HTTP_CONTENT_TYPE,
+        maximumResponseBytes,
+        signal: options.signal,
+      },
+      execution,
+      (bytes, headers) => {
+        const contentType = headers["content-type"]?.split(";", 1)[0];
+        if (contentType === DOCUMENT_HTTP_CONTENT_TYPE) return { kind: "binary", bytes };
+        if (contentType !== "application/json") {
+          throw new Error("Core Document response has an invalid Content-Type");
+        }
+        return {
+          kind: "json",
+          value: decodeBoundedJson<Response>(bytes, maximumResponseBytes, "Core Document response"),
+        };
+      },
+    );
   }
 
   async requestBoundedBytes(
@@ -549,91 +433,172 @@ export class LocalHttpTransport {
     await this.#connection?.beforeRequest?.(options.signal);
     this.#admitRequest();
     const execution = requestExecution(requestPath, options);
-    if (!execution) {
-      return Promise.reject(new Error("Blob requests require Core execution metadata"));
+    if (!execution) throw new Error("Blob requests require Core execution metadata");
+
+    return this.#requestBuffered(
+      {
+        method,
+        path: requestPath,
+        body,
+        requestHeaders,
+        accept: "application/octet-stream, application/json",
+        contentType: requestHeaders["content-type"] ?? "application/octet-stream",
+        maximumResponseBytes,
+        maximumErrorBytes: Math.min(maximumResponseBytes, MAX_JSON_RESPONSE_BYTES),
+        signal: options.signal,
+      },
+      execution,
+      (bytes, headers) => ({
+        bytes,
+        contentType: headers["content-type"]?.split(";", 1)[0],
+        etag: headers.etag,
+      }),
+    );
+  }
+
+  async #requestBuffered<Response>(
+    request: BufferedRequest,
+    execution: RequestExecution | null,
+    decode: (bytes: Uint8Array, headers: IncomingHttpHeaders) => Response,
+  ): Promise<Response> {
+    const { socketPath } = { socketPath: this.endpoint, ...this.#connection?.options };
+    const decodeError = ({ status, bytes, headers }: BufferedResponse): CoreHttpError =>
+      decodeHttpError(
+        status,
+        bytes,
+        request.maximumErrorBytes ?? request.maximumResponseBytes,
+        headers["retry-after"],
+      );
+
+    if (!execution || !socketPath) {
+      const response = await this.#sendBuffered(request, execution);
+      if (response.status < 200 || response.status >= 300) throw decodeError(response);
+      return decode(response.bytes, response.headers);
     }
-    const transportTimeoutMs = execution.deadlineMs + this.#transportLivenessTimeoutMs;
+
+    // Core owns execution deadlines. Only host queueing and replay consume this budget here.
+    const startedAt = performance.now();
+    const remaining = (): number =>
+      execution.deadlineMs - Math.floor(performance.now() - startedAt);
+    const acquired = acquireLocalCoreSlot(
+      socketPath,
+      execution.class,
+      remaining() - MIN_REQUEST_DEADLINE_MS + 1,
+      request.signal,
+    );
+    const slot = acquired instanceof Promise ? await acquired : acquired;
+    const aborted = (): CoreTransportError =>
+      new CoreTransportError("aborted", "connect", "ABORT_ERR", request.signal?.reason);
+    if (slot === "aborted") throw aborted();
+    if (slot === "expired") return localDeadlineResponse(request.path, decode);
+
+    try {
+      let lastRefusal: CoreRateLimitError | undefined;
+      for (let attempt = 0; ; attempt += 1) {
+        if (request.signal?.aborted) throw aborted();
+        const deadlineMs = remaining();
+        if (deadlineMs < MIN_REQUEST_DEADLINE_MS) {
+          if (lastRefusal) throw lastRefusal;
+          return localDeadlineResponse(request.path, decode);
+        }
+
+        const response = await this.#sendBuffered(request, { ...execution, deadlineMs });
+        if (response.status >= 200 && response.status < 300) {
+          return decode(response.bytes, response.headers);
+        }
+        const error = decodeError(response);
+        // Only Core's pre-execution refusal is safe to replay, including for mutations.
+        if (
+          !(error instanceof CoreRateLimitError) ||
+          error.coreError?.code !== "overloaded" ||
+          error.coreError.recovery.kind !== "retry_admission"
+        ) {
+          throw error;
+        }
+        lastRefusal = error;
+        const retryDelay = localCoreRetryDelay(attempt, error.coreError.recovery.milliseconds);
+        if (retryDelay > remaining() - MIN_REQUEST_DEADLINE_MS) throw error;
+        await waitForLocalCoreRetry(retryDelay, request.signal);
+      }
+    } finally {
+      slot();
+    }
+  }
+
+  #sendBuffered(
+    request: BufferedRequest,
+    execution: RequestExecution | null,
+  ): Promise<BufferedResponse> {
+    const { body, requestHeaders, signal } = request;
+    const requestId = execution ? randomUUID() : undefined;
+    const transportTimeoutMs =
+      (execution?.deadlineMs ?? request.hostWaitMs ?? 0) + this.#transportLivenessTimeoutMs;
+
     return new Promise((resolve, reject) => {
       let settled = false;
       const settle = (action: () => void): void => {
         if (settled) return;
         settled = true;
         clearTimeout(deadline);
-        options.signal?.removeEventListener("abort", cancelCoreRequest);
+        signal?.removeEventListener("abort", cancelCoreRequest);
         action();
       };
       const cancelCoreRequest = (): void => {
-        void this.#cancelRequest(execution.requestId, requestHeaders);
+        if (requestId) void this.#cancelRequest(requestId, requestHeaders);
       };
-      const request = (this.#connection?.request ?? httpRequest)(
+      const outgoing = (this.#connection?.request ?? httpRequest)(
         {
           socketPath: this.endpoint,
-          path: requestPath,
-          method,
+          path: request.path,
+          method: request.method,
           agent: false,
           ...this.#connection?.options,
-          signal: options.signal,
+          signal,
           headers: {
             ...requestHeaders,
-            "x-nodex-request-id": execution.requestId,
-            "x-nodex-request-class": execution.class,
-            "x-nodex-request-deadline-ms": String(execution.deadlineMs),
-            accept: "application/octet-stream, application/json",
+            ...(execution
+              ? {
+                  "x-nodex-request-id": requestId,
+                  "x-nodex-request-class": execution.class,
+                  "x-nodex-request-deadline-ms": String(execution.deadlineMs),
+                }
+              : {}),
+            accept: request.accept,
             authorization: `Bearer ${this.#connection?.credential() ?? this.authCapability}`,
             ...(body
               ? {
                   "content-length": body.byteLength,
-                  "content-type": requestHeaders["content-type"] ?? "application/octet-stream",
+                  "content-type": request.contentType,
                 }
               : {}),
           },
         },
         (response) => {
-          collectResponse(response, maximumResponseBytes)
-            .then((bytes) => {
-              const status = response.statusCode ?? 0;
-              if (status < 200 || status >= 300) {
-                settle(() =>
-                  reject(
-                    decodeHttpError(
-                      status,
-                      bytes,
-                      Math.min(maximumResponseBytes, MAX_JSON_RESPONSE_BYTES),
-                      response.headers["retry-after"],
-                    ),
-                  ),
-                );
-                return;
-              }
+          collectResponse(response, request.maximumResponseBytes).then(
+            (bytes) =>
               settle(() =>
-                resolve({
-                  bytes,
-                  contentType: response.headers["content-type"]?.split(";", 1)[0],
-                  etag: response.headers.etag,
-                }),
-              );
-            })
-            .catch((error: unknown) =>
-              settle(() => reject(normalizeTransportError(error, "response"))),
-            );
+                resolve({ bytes, status: response.statusCode ?? 0, headers: response.headers }),
+              ),
+            (error: unknown) => settle(() => reject(normalizeTransportError(error, "response"))),
+          );
         },
       );
-      if (options.signal?.aborted) {
+      if (signal?.aborted) {
         cancelCoreRequest();
       } else {
-        options.signal?.addEventListener("abort", cancelCoreRequest, { once: true });
+        signal?.addEventListener("abort", cancelCoreRequest, { once: true });
       }
       const deadline = setTimeout(() => {
         cancelCoreRequest();
         const error = new CoreTransportError("timeout", "response", "ETIMEDOUT", null);
         settle(() => reject(error));
-        request.destroy(error);
+        outgoing.destroy(error);
       }, transportTimeoutMs);
-      request.on("error", (error) =>
+      outgoing.on("error", (error) =>
         settle(() => reject(normalizeTransportError(error, "connect"))),
       );
-      if (body) request.write(body);
-      request.end();
+      if (body) outgoing.write(body);
+      outgoing.end();
     });
   }
 
@@ -993,6 +958,34 @@ const parseContentLength = (response: IncomingMessage): number | undefined => {
   return Number.isSafeInteger(value) ? value : undefined;
 };
 
+const localDeadlineResponse = <Response>(
+  requestPath: string,
+  decode: (bytes: Uint8Array, headers: IncomingHttpHeaders) => Response,
+): Response => {
+  const error: components["schemas"]["CoreError"] = {
+    code: "deadline_exceeded",
+    message: "Core request deadline was exceeded",
+    retryable: true,
+    recovery: { kind: "none" },
+  };
+  // Module operations report execution failures in their response envelope.
+  const route = requestPath.split("?", 1)[0]!;
+  if (route.startsWith(MODULE_ROUTE_PREFIX) && route !== APP_TOOL_ADMISSION_ROUTE) {
+    return decode(Buffer.from(JSON.stringify({ status: "error", payload: error })), {
+      "content-type": "application/json",
+    });
+  }
+  throw new CoreHttpError(504, error.message, undefined, error);
+};
+
+const parseRetryAfterMs = (value: string | undefined): number => {
+  if (value === undefined) return 0;
+  const milliseconds = /^\d+(?:\.\d+)?$/u.test(value)
+    ? Number(value) * 1_000
+    : Math.max(0, Date.parse(value) - Date.now());
+  return Number.isFinite(milliseconds) ? milliseconds : 0;
+};
+
 /** HTTP status remains authoritative even if an error response cannot be decoded. */
 const decodeHttpError = (
   status: number,
@@ -1003,17 +996,12 @@ const decodeHttpError = (
   const typed = (error: CoreHttpError): CoreHttpError => {
     if (status !== 429) return error;
     const retry = error.coreError?.recovery;
-    const headerMs =
-      retryAfter === undefined
-        ? 0
-        : /^\d+(?:\.\d+)?$/u.test(retryAfter)
-          ? Number(retryAfter) * 1_000
-          : Math.max(0, Date.parse(retryAfter) - Date.now());
+    if (retry?.kind === "retry_admission") return new CoreRateLimitError(error, retry.milliseconds);
     return new CoreRateLimitError(
       error,
       Math.max(
         1_000,
-        Number.isFinite(headerMs) ? headerMs : 0,
+        parseRetryAfterMs(retryAfter),
         retry?.kind === "retry_after" ? retry.milliseconds : 0,
       ),
     );

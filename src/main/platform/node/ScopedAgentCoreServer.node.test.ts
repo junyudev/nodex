@@ -2,6 +2,8 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
+import { createServer, request } from "node:http";
+import { once } from "node:events";
 import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 import { expect, test, vi } from "vite-plus/test";
@@ -45,7 +47,31 @@ test("the Agent CLI retains live Run attribution across Core restarts and wrappe
       run_id: "run:one",
     } as const;
     let active = true;
-    const server = await openScopedAgentCore(scenario.profile.nodexHome);
+    const refusal = {
+      status: "error",
+      payload: {
+        code: "overloaded",
+        message: "Core background request admission is full",
+        retryable: true,
+        recovery: { kind: "retry_admission", milliseconds: 100 },
+      },
+    };
+    await using refusingCore = createServer((_request, response) => {
+      response.writeHead(429, { "content-type": "application/json", "retry-after": "1" });
+      response.end(JSON.stringify(refusal));
+    });
+    refusingCore.listen(0, "127.0.0.1");
+    await once(refusingCore, "listening");
+    const address = refusingCore.address();
+    if (!address || typeof address === "string") throw new Error("Missing refusal test address");
+    const server = await openScopedAgentCore(scenario.profile.nodexHome, (options, receive) =>
+      options.path === "/core/v1/modules/library/read?test=admission-refusal"
+        ? request(
+            { ...options, socketPath: undefined, host: address.address, port: address.port },
+            receive,
+          )
+        : request(options, receive),
+    );
     try {
       const issue = (runId = "run:one", session = sessionId) =>
         server.issue({
@@ -208,6 +234,13 @@ test("the Agent CLI retains live Run attribution across Core restarts and wrappe
       const nonce = JSON.parse(bootstrap).descriptor.start_nonce;
       const headers = { ...authorization, "x-nodex-agent-core-generation": nonce };
       expect(bootstrap.includes(scenario.profile.nodexHome)).toBe(false);
+      const refused = await fetch(
+        `${connection.endpoint}/core/v1/modules/library/read?test=admission-refusal`,
+        { method: "POST", headers, body: "{}" },
+      );
+      expect(refused.status).toBe(429);
+      expect(refused.headers.get("retry-after")).toBe("1");
+      expect(await refused.json()).toEqual(refusal);
       await expect(cli(["--json", "space", "devices"])).rejects.toMatchObject({
         code: 2,
         stderr: expect.stringContaining("Host administration is unavailable"),
