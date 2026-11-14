@@ -1,18 +1,16 @@
 # Plugins behavior
 
-Customize manages plugins and marketplaces in the active local Codex home. The local skill
-inventory also covers Claude Profiles and Project source folders. Native Agent directories and
-configuration remain the authority for skill files and availability.
-
-The Plugins page also lists [Nodex-installed plugins](agent-plugins-behavior.md).
-Those installations belong to the Nodex Profile and are enabled per Project.
-The Codex-home actions described here apply to the active local Codex home.
+Customize manages plugins and marketplaces in the active local Codex home. A plugin installed
+there works in every Agent chat: Codex loads it natively, and Nodex brings its skills and the
+MCP servers it can run to Claude Code and ACP Agents (see [Plugins in every Agent](#plugins-in-every-agent)).
+The local skill inventory also covers Claude Profiles and Project source folders. Native Agent
+directories and configuration remain the authority for skill files and availability.
 
 ## Customize pages
 
-The rail's Plugins entry opens Customize. Its sidebar has a search over installed Codex-home
-plugins, the Plugins and Skills pages, and the Codex-home plugins, each with a More actions menu
-(Try now, Manage, Uninstall). The gear on every Customize page opens Settings › Plugins.
+The rail's Plugins entry opens Customize. Its sidebar has a search over installed plugins, the
+Plugins and Skills pages, and the installed plugins, each with a More actions menu (Try now,
+Manage, Update from folder for a plugin added from a folder, Uninstall). The gear on every Customize page opens Settings › Plugins.
 
 - **Plugin page.** Any plugin row opens it. The titlebar breadcrumb reads Plugins, then the
   category when the plugin was opened from one, then the plugin; ancestors return to the
@@ -24,7 +22,9 @@ plugins, the Plugins and Skills pages, and the Codex-home plugins, each with a M
   mentions the plugin, installing or enabling it first when needed. A long description folds
   after fifteen lines. Included apps (grouped by category when there are several), MCP
   servers, skills and hooks follow; a list longer than five folds behind "See A, B, and N
-  more". Installed local skills open their skill pages. Uninstalled and remote skills can
+  more". An MCP server that needs a sign-in is marked Codex only. An installed plugin then shows
+  Installation: the folder it was added from, if any, the Projects it applies to, and the Agents
+  that can use it. Installed local skills open their skill pages. Uninstalled and remote skills can
   preview their instructions. The Information table always lists Website, showing Unavailable
   without one. A plugin with apps ends with the notice of how connected apps may use chat
   data, worded for one or several apps and extended for Google apps.
@@ -51,7 +51,8 @@ plugins, the Plugins and Skills pages, and the Codex-home plugins, each with a M
   personal skill has a switch. A plugin row opens its settings. An installed local skill row
   opens its page in Customize. The skills listed are personal skills that aren't recommended ones.
   Browse directory returns to the Customize page for the selected tab. Add offers Create
-  plugin and Record a skill when their helpers exist, Add a marketplace, and Add MCP server.
+  plugin and Record a skill when their helpers exist, Plugin from folder, Add a marketplace,
+  and Add MCP server.
 - **Apps.** The apps you have connected each have a switch; one controlled by an administrator
   or another configuration layer stays locked and says why. A row opens the app's tools, split
   into tools that change things and tools that only read, with the app's switch and Try now,
@@ -73,6 +74,30 @@ plugins, the Plugins and Skills pages, and the Codex-home plugins, each with a M
   under Settings › Plugins: each of its skills with a switch and its instructions, and what is
   known about it (when it was connected, developer, version, website, privacy policy, terms).
   View details returns to the plugin's page; Uninstall removes it and returns to the list.
+
+## Plugins in every Agent
+
+- **From a folder.** Add › Plugin from folder picks a folder that holds a plugin, in the
+  Agent Plugins layout or the Codex layout. Nodex copies the folder, then shows what the copy
+  contains before anything is installed: its name, version and developer, its skills, the
+  command or address each MCP server runs, how many hooks and connected apps it has, and
+  which Agents can use it. Install installs exactly the reviewed copy; closing the dialog
+  discards it. A folder that is not a plugin lists why. Installing a folder whose plugin is
+  already installed replaces that copy. Update from folder copies the same folder again and
+  reinstalls it, without another review. These plugins live in a marketplace named Local
+  folders that Nodex keeps in the Profile; Codex outside Nodex sees them too. If installation
+  fails, the error names the step that failed or explains why the folder needs a new review.
+- **Projects.** An installed, enabled plugin applies to every Project and to chats without a
+  Project. Installation › Projects can limit it to chosen Projects; the last chosen Project
+  stays chosen, and All projects removes the limit. A Codex chat picks up a change when it next
+  starts or resumes; other Agents pick it up before their next turn.
+- **Agents.** Codex uses every part of a plugin. Claude Code and ACP Agents receive its skills
+  and the MCP servers Nodex can run itself: local command servers and servers that need no
+  sign-in. Servers that need a sign-in, connected apps and hooks stay in Codex, because their
+  credentials and review live there; Installation › Agents names them. OpenCode does not receive
+  plugins yet. Disabling or uninstalling a plugin, or narrowing its Projects, cuts off its
+  servers for other Agents at once; a call already running finishes, and its result is not
+  returned.
 
 ## Context and capabilities
 

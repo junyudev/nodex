@@ -12,7 +12,7 @@ export interface AgentRuntimeBootstrap {
   readonly pausedThreadIds?: ReadonlyArray<string>;
   readonly modelPolicy?: ModelPolicy;
   readonly providers: AgentRuntimeConfiguration["providers"];
-  readonly hostCodexPlugins?: true;
+  readonly hostSessionPlugins?: true;
   readonly hostTools?: NonNullable<AgentRuntimeConfiguration["host"]>["tools"];
 }
 
@@ -37,10 +37,10 @@ export async function readAgentRuntimeBootstrap(
   if (frame.hostTools !== undefined && !Array.isArray(frame.hostTools))
     throw new Error("Agent Runtime bootstrap host tools must be a list.");
   if (
-    frame.hostCodexPlugins !== undefined &&
-    (frame.hostCodexPlugins !== true || frame.hostTools === undefined)
+    frame.hostSessionPlugins !== undefined &&
+    (frame.hostSessionPlugins !== true || frame.hostTools === undefined)
   )
-    throw new Error("Agent Runtime Codex Plugin delivery requires a Host.");
+    throw new Error("Agent Runtime Session plugin delivery requires a Host.");
   const bootstrap = frame as unknown as AgentRuntimeBootstrap;
   return {
     providers: bootstrap.providers,
@@ -56,7 +56,7 @@ export async function readAgentRuntimeBootstrap(
       : {
           host: {
             tools: bootstrap.hostTools,
-            ...(bootstrap.hostCodexPlugins ? { codexPlugins: true } : {}),
+            ...(bootstrap.hostSessionPlugins ? { sessionPlugins: true } : {}),
           },
         }),
   };

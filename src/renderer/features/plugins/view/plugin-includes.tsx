@@ -44,6 +44,7 @@ import { DetailDialog } from "./detail-dialog";
 import { PluginLogoImage, pluginLogoSource } from "./plugin-logo";
 import { PluginWorksWith } from "./plugin-works-with";
 import { SkillInstructions } from "./skill-preview-modal";
+import { isCodexOnlyServer } from "../model/plugin-agent-support";
 
 export type PluginApp = PluginDetailView["apps"][number];
 type PluginSkill = PluginDetailView["skills"][number];
@@ -426,6 +427,11 @@ function McpServerRow({
         </span>
       }
       title={capitalize(server.name)}
+      description={
+        view.row.summary.installed && isCodexOnlyServer(view.agentSupport, server.name)
+          ? "Codex only · needs sign-in"
+          : undefined
+      }
       actions={
         <>
           <NodexTooltip tooltipContent={settingsLabel} side="top">

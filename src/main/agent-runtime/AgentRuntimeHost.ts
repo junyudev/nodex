@@ -1,5 +1,4 @@
-import type { CodexPluginDelivery } from "../../host/agent-plugins/CodexPluginDelivery";
-import { makeClaudePluginQueries } from "../../host/agent-plugins/ClaudePluginQueries";
+import { makePluginSessions } from "../../host/agent-plugins/PluginSessions";
 import { createHash } from "node:crypto";
 import { parseDesktopIdentifier, parseDesktopToolActivity } from "@nodex/agent-runtime/contracts";
 import { renderPersonalInstructions } from "@nodex/agent-runtime/instructions";
@@ -97,15 +96,11 @@ function launchesWsl(config: unknown): boolean {
 export const make = Effect.fn("AgentRuntimeHost.make")(function* (
   connection: AgentRuntimeProcessConnection,
   options: {
-    readonly claudePlugins?: Pick<
-      Parameters<typeof makeClaudePluginQueries>[0],
-      "installations" | "broker"
-    >;
+    readonly plugins?: Omit<Parameters<typeof makePluginSessions>[0], "home" | "spaceId">;
     readonly projectlessId: string;
     readonly providers: AgentRuntimeConfiguration["providers"];
     readonly providerDriver?: (instanceId: string) => string | undefined;
     readonly execute: AgentRuntimeHostToolExecutor;
-    readonly codexPlugins?: CodexPluginDelivery["Service"];
     /** The Profile's own instructions, read at each turn so edits apply to the next turn. */
     readonly agentInstructions?: Effect.Effect<AgentInstructionsSettings>;
     readonly desktop?: Pick<
@@ -135,16 +130,17 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
   if (Option.isSome(hostPolicy) && !scopedCore) return yield* unavailable("scoped-agent-core");
   const authorizeExecution = yield* makeRuntimeAuthority;
   const { runtimeId, runtimeGeneration: leaseId } = connection.identity;
-  const claudePlugins = options.claudePlugins
-    ? yield* makeClaudePluginQueries({ home: config.nodexHome, ...options.claudePlugins })
+  const plugins = options.plugins
+    ? yield* makePluginSessions({
+        home: config.nodexHome,
+        spaceId: coreAuthority.identity.libraryId,
+        ...options.plugins,
+      })
     : null;
   let open = true;
-  const pluginThreads = new Set<string>();
   yield* Effect.addFinalizer(() =>
     Effect.gen(function* () {
       open = false;
-      if (options.codexPlugins)
-        yield* Effect.forEach(pluginThreads, options.codexPlugins.release, { discard: true });
       options.presentation?.finishRuntimeLease(runtimeId, leaseId);
       yield* options.desktop?.pip?.retireRuntimeLease(runtimeId, leaseId) ?? Effect.void;
     }),
@@ -310,12 +306,6 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       backend,
     });
     const driver = driverOf(proof.providerInstanceId);
-    const pluginPlan =
-      claudePlugins && driver === "claudeAgent" && context.actorProjectId !== null
-        ? yield* claudePlugins
-            .plan({ spaceId: context.libraryId, projectId: context.actorProjectId })
-            .pipe(Effect.mapError(() => unavailable("claude.plugins")))
-        : null;
     const nativeId =
       identity.nativeThreadRef?.driver === "codex" ? identity.nativeThreadRef.nativeId : null;
     const taskId = nativeId ?? shellTaskId(proof.threadId);
@@ -384,7 +374,6 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         .filter(Boolean)
         .join("\n\n"),
       sourceRoots,
-      ...(pluginPlan?.plugins.length ? { claudePluginKey: pluginPlan.key } : {}),
       ...(cliShell ? { cliShell } : {}),
     } satisfies HostTurnPreparation;
   });
@@ -415,65 +404,58 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
 
   const execute = Effect.fn("AgentRuntimeHost.execute")(
     function* (request: AgentHostRequest) {
-      if (request.operation === "codex.plugins") {
+      if (
+        request.operation === "plugins.close" ||
+        request.operation === "plugins.revision" ||
+        request.operation === "plugins.open"
+      ) {
         if (!isCurrentLease(request.identity)) return yield* unavailable(request.operation);
-        const input = request.request;
-        const plugins = options.codexPlugins;
-        if (!plugins) return { revision: null, delivery: null };
-        if (input.action === "release") {
-          const key = leaseId + ":" + input.attachmentId;
-          pluginThreads.delete(key);
-          yield* plugins.release(key);
-          return { revision: null, delivery: null };
+        if (request.operation === "plugins.close") {
+          yield* plugins?.close(request.attachmentId) ?? Effect.void;
+          return {};
         }
-        if (input.projectId === options.projectlessId) return { revision: null, delivery: null };
-        const project = { spaceId: coreAuthority.identity.libraryId, projectId: input.projectId };
-        if (!(yield* plugins.hasContributions(project))) return { revision: null, delivery: null };
-        const snapshot = yield* core.workspace
-          .read({ kind: "project", project_id: project.projectId }, undefined, project.projectId)
-          .pipe(Effect.provideService(CoreApplicationAgent, null));
-        const active =
-          snapshot.value.kind === "project" && snapshot.value.project.lifecycle === "active";
-        const revision = yield* plugins.status(project, active);
-        if (input.action === "status" || revision === null) return { revision, delivery: null };
-        const owner = yield* core.workspace
-          .read(
-            {
-              kind: "agent_runtime_session_binding_by_execution",
-              runtime_id: runtimeId,
-              runtime_thread_id: input.rootThreadId,
-            },
-            undefined,
-            project.projectId,
-          )
-          .pipe(Effect.provideService(CoreApplicationAgent, null));
-        const binding =
-          owner.value.kind === "agent_runtime_session_binding" ? owner.value.binding : null;
-        if (!binding || binding.project_id !== project.projectId || !open)
+        if (request.operation === "plugins.revision")
+          return {
+            revision: yield* (
+              plugins
+                ?.revision(request.attachmentId)
+                .pipe(Effect.mapError(() => unavailable(request.operation))) ?? Effect.succeed(null)
+            ),
+          };
+        if (!plugins) return { plugins: null };
+        const target = yield* connection.request("thread.read", {
+          threadId: request.request.threadId,
+        });
+        const thread =
+          target ??
+          (request.request.sourceThreadId
+            ? yield* connection.request("thread.read", { threadId: request.request.sourceThreadId })
+            : null);
+        if (
+          !thread ||
+          (request.request.projectId !== null &&
+            projectIdOf(thread.projectId) !== projectIdOf(request.request.projectId))
+        )
           return yield* unavailable(request.operation);
-        const key = leaseId + ":" + input.attachmentId;
-        pluginThreads.add(key);
-        const delivery = yield* plugins.attach(project, binding.session_id, key, revision);
-        return { revision: delivery?.revision ?? null, delivery };
-      }
-      if (request.operation === "claude.plugins.close") {
-        if (!isCurrentLease(request.identity)) return yield* unavailable(request.operation);
-        yield* claudePlugins?.close(request.queryId) ?? Effect.void;
-        return {};
-      }
-      if (request.operation === "claude.plugins.open") {
-        if (!claudePlugins) return yield* unavailable(request.operation);
-        const { context, sessionId, proof } = yield* authorize(request.identity);
-        if (driverOf(proof.providerInstanceId) !== "claudeAgent" || context.actorProjectId === null)
-          return yield* unavailable(request.operation);
-        return yield* claudePlugins
-          .open(
-            { spaceId: context.libraryId, projectId: context.actorProjectId },
-            sessionId,
-            request.queryId,
-            request.key,
+        const backend = agentBackendKindOfRuntimeDriver(thread.providerDriver ?? undefined);
+        if (backend !== request.request.backend) return yield* unavailable(request.operation);
+        if (backend === "codex") {
+          const provider = options.providers[thread.providerInstanceId]?.config;
+          if (
+            hasExternalProviderServer(provider) ||
+            launchesWsl(provider) ||
+            thread.providerInstanceId !== "codex"
           )
-          .pipe(Effect.mapError(() => unavailable(request.operation)));
+            return { plugins: null };
+        }
+        return {
+          plugins: yield* plugins
+            .open(request.attachmentId, {
+              ...request.request,
+              projectId: projectIdOf(thread.projectId),
+            })
+            .pipe(Effect.mapError(() => unavailable(request.operation))),
+        };
       }
       if (request.operation === "turn.prepare") return yield* prepare(request.identity);
       if (request.operation === "desktop.skill-roots") {

@@ -68,6 +68,8 @@ function detailView(summary: Parameters<typeof pluginSummary>[0]): PluginDetailV
     skillsError: null,
     apps: [],
     mcpServers: [],
+    agentSupport: { outsideCodex: "none", limitations: [] },
+    projectScope: { kind: "all" },
     mcpServerStates: [],
     mcpServerError: null,
     hooks: [],
@@ -102,7 +104,7 @@ function renderPage(view: PluginDetailView | Error) {
     onNavigate: vi.fn(),
     onStartChat: vi.fn(),
     onOpenSettings: vi.fn(),
-    agentPluginProjects: [],
+    projects: [],
     onOpenHooksSettings: vi.fn(),
   };
   render(
@@ -136,7 +138,7 @@ afterEach(() => {
 it("starts a chat that mentions the plugin when a starter prompt is chosen", async () => {
   const navigation = renderPage(detailView({ installed: true, enabled: true }));
   expect(screen.getByRole("heading", { level: 1, name: /Figma/ })).toBeTruthy();
-  expect(screen.getByText("Codex home · By Figma, Inc. • Design to code")).toBeTruthy();
+  expect(screen.getByText("By Figma, Inc. • Design to code")).toBeTruthy();
   await click(screen.getByRole("button", { name: /Implement this frame/ }));
 
   expect(navigation.onStartChat).toHaveBeenCalledWith(

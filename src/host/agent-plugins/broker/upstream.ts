@@ -1,3 +1,4 @@
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -58,10 +59,9 @@ const connect = Effect.fnUntraced(function* (
   options: PluginMcpBrokerOptions,
 ) {
   const transport = server.transport;
-  if (transport.type === "sse") return yield* invalidConfiguration();
   const signals = new AsyncLocalStorage<AbortSignal>();
   const http = yield* Effect.gen(function* () {
-    if (transport.type !== "streamable-http") return undefined;
+    if (transport.type === "stdio") return undefined;
     if (!remoteEndpoint.safeParse(transport.url).success) return yield* invalidConfiguration();
     const url = new URL(transport.url);
     const values = yield* options.resolveHeaders({
@@ -69,12 +69,15 @@ const connect = Effect.fnUntraced(function* (
       origin: url.origin,
       url: url.href,
       declaredHeaderNames: Object.keys(transport.headers),
+      declaredHeaders: transport.headers,
     });
     const headers = yield* Effect.try({
       try: () => upstreamHeaders(values),
       catch: invalidConfiguration,
     });
-    return new StreamableHTTPClientTransport(url, {
+    const transportOptions: NonNullable<
+      ConstructorParameters<typeof StreamableHTTPClientTransport>[1]
+    > = {
       requestInit: { headers },
       fetch: (target, init) => {
         const signal = signals.getStore();
@@ -93,7 +96,16 @@ const connect = Effect.fnUntraced(function* (
           }),
         });
       },
-    });
+    };
+    if (transport.type === "sse") {
+      return new SSEClientTransport(url, {
+        ...transportOptions,
+        eventSourceInit: {
+          fetch: (input, init) => transportOptions.fetch!(input, { ...init, headers }),
+        },
+      });
+    }
+    return new StreamableHTTPClientTransport(url, transportOptions);
   });
   const client = new Client({ name: "Nodex Plugin Broker", version: "1" });
   const wire =
@@ -114,7 +126,7 @@ const connect = Effect.fnUntraced(function* (
   // oxlint-disable-next-line unicorn/prefer-add-event-listener -- MCP Client exposes a callback slot.
   client.onclose = markClosed;
   yield* Effect.addFinalizer(() =>
-    (http
+    (http instanceof StreamableHTTPClientTransport
       ? Effect.tryPromise(() => http.terminateSession()).pipe(timeout(500), Effect.ignore)
       : Effect.void
     ).pipe(Effect.ensuring(Effect.tryPromise(() => wire.close()).pipe(Effect.ignore)), (close) =>

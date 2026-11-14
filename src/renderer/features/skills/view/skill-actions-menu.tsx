@@ -9,6 +9,7 @@ import {
 import { toast } from "@/components/ui/toast";
 import { MoreActionsButton, type MoreActionsVariant } from "@/components/ui/toolbar-button";
 import { writeTextToClipboard } from "@/lib/clipboard";
+import { revealInFileManagerLabel } from "@/lib/reveal-in-file-manager-label";
 import { useFileReferenceRouter } from "@/lib/file-reference-router";
 import type {
   SkillInventoryContext,
@@ -22,13 +23,6 @@ import {
   displaySkillLocation,
   skillSlugFromInput,
 } from "../skill-presentation";
-
-function revealLabel(): string {
-  const platform = typeof navigator === "undefined" ? "" : navigator.platform;
-  if (platform.startsWith("Mac")) return "Reveal in Finder";
-  if (platform.startsWith("Win")) return "Reveal in File Explorer";
-  return "Reveal in File Manager";
-}
 
 function directoryName(skill: Pick<SkillInventoryEntry, "directory" | "name">): string {
   const last = skill.directory.split(/[\\/]/u).at(-1) ?? "";
@@ -172,7 +166,7 @@ export function SkillActionsMenu({
           void router.open({ path: skill.manifestPath }, { external: true, opener: "fileManager" })
         }
       >
-        {revealLabel()}
+        {revealInFileManagerLabel()}
       </NodexDropdownItem>
       <NodexDropdownItem
         onSelect={() => {

@@ -1,0 +1,18 @@
+{
+  "name": "field-notes",
+  "version": "1.2.0",
+  "description": "Collect field notes and turn them into summaries.",
+  "interface": {
+    "displayName": "Field Notes",
+    "shortDescription": "Collect and summarize field notes",
+    "longDescription": "Field Notes keeps short observations next to your work and summarizes them when you ask.",
+    "developerName": "Nodex Labs",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": ["Summarize today's field notes"],
+    "brandColor": "#2F7D5C",
+    "logo": "./assets/logo.svg"
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

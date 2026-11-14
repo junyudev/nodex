@@ -1,5 +1,5 @@
 import { startTransition, useOptimistic, useState, type ReactNode } from "react";
-import { ActivitySpinnerIcon, PluginsIcon } from "@/components/shared/icons";
+import { ActivitySpinnerIcon, FolderIcon, PluginsIcon } from "@/components/shared/icons";
 import { ChevronRightMdIcon, PlusIcon20 } from "@/components/shared/icons/customize-action-icons";
 import { BrowseTabs } from "@/components/ui/browse-tabs";
 import { PageSearchInput } from "@/components/ui/page-search-input";
@@ -11,6 +11,7 @@ import { pluginMutationSucceeded } from "../model/mutation-result";
 import {
   usePersonalPlugins,
   usePluginCategory,
+  selectorToRouteTarget,
   usePluginManagement,
   usePluginSearch,
   usePublicPluginSections,
@@ -20,9 +21,14 @@ import {
   type PluginContext,
   type PluginRow,
 } from "../plugin-management";
-import { buildPluginDirectoryPath, type PluginDirectoryTab } from "../plugins-routes";
-import { AgentPluginInstallations } from "./agent-plugin-installations";
+import {
+  buildPluginDetailPath,
+  buildPluginDirectoryPath,
+  type PluginDirectoryTab,
+} from "../plugins-routes";
+
 import { AddMarketplaceDialog } from "./add-marketplace-dialog";
+import { useAddPluginFromFolder } from "./folder-plugin-dialog";
 import { CustomizeHeaderActions } from "./customize-header-actions";
 import { usePluginHelperActions } from "./use-plugin-helper-actions";
 import { PluginBrowseContext } from "./plugin-browse-context";
@@ -64,6 +70,11 @@ export function PluginsDirectoryPage({
   const [addMarketplaceOpen, setAddMarketplaceOpen] = useState(false);
   const management = usePluginManagement(context);
   const helpers = usePluginHelperActions(context, navigation);
+  const fromFolder = useAddPluginFromFolder(context, ({ pluginId, selector }) =>
+    navigation.onNavigate(
+      buildPluginDetailPath(selectorToRouteTarget({ nativeId: pluginId, selector })),
+    ),
+  );
 
   const onSearchQueryChange = (value: string) =>
     startTransition(() => {
@@ -160,6 +171,12 @@ export function PluginsDirectoryPage({
                 onSelect: helpers.createPlugin.run,
               },
               {
+                id: "folder",
+                label: "Plugin from folder…",
+                icon: <FolderIcon />,
+                onSelect: fromFolder.start,
+              },
+              {
                 id: "marketplace",
                 label: "Add a marketplace",
                 icon: <PlusIcon20 />,
@@ -183,12 +200,6 @@ export function PluginsDirectoryPage({
         }
       >
         <div className="-mx-2 flex min-h-0 flex-1 flex-col gap-8">
-          {overrideContent == null ? (
-            <AgentPluginInstallations
-              defaultProjectId={context.projectId}
-              projects={navigation.agentPluginProjects}
-            />
-          ) : null}
           <PluginBrowseContext value={{ tab, category, search }}>
             {overrideContent ??
               (tab === "personal" ? (
@@ -199,6 +210,7 @@ export function PluginsDirectoryPage({
           </PluginBrowseContext>
         </div>
       </SearchablePageLayout>
+      {fromFolder.dialog}
       <AddMarketplaceDialog
         open={addMarketplaceOpen}
         onOpenChange={setAddMarketplaceOpen}

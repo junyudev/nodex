@@ -1,3 +1,4 @@
+import { acpSessionMcpServers } from "./pluginDelivery.ts";
 import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeCrypto from "node:crypto";
@@ -131,6 +132,9 @@ export interface AcpSessionRuntimeOptions {
    * account vs API key) from the method, so the session must not open first.
    */
   readonly authenticateEagerly?: boolean;
+  readonly preparePlugins?: (
+    initialized: EffectAcpSchema.InitializeResponse,
+  ) => Effect.Effect<Parameters<typeof acpSessionMcpServers>[0]["plugins"], EffectAcpErrors.AcpError>;
   readonly mcpServers?: ReadonlyArray<EffectAcpSchema.McpServer>;
   /** Extra workspace roots the agent may read and write besides `cwd`. */
   readonly additionalDirectories?: ReadonlyArray<string>;
@@ -1135,6 +1139,7 @@ export interface AcpSessionRuntimeStartResult {
 }
 
 export interface AcpSessionActivationOptions {
+  readonly plugins?: NonNullable<Parameters<typeof acpSessionMcpServers>[0]["plugins"]>;
   readonly mcpServers?: ReadonlyArray<EffectAcpSchema.McpServer>;
   readonly acpMcpServers?: ReadonlyArray<EffectAcpSchema.McpServer>;
 }
@@ -2257,19 +2262,19 @@ export const make = (
     const sessionMcpServers = (
       initializeResult: EffectAcpSchema.InitializeResponse,
       activationOptions?: AcpSessionActivationOptions,
-    ): ReadonlyArray<EffectAcpSchema.McpServer> => {
-      const acpServers = activationOptions?.acpMcpServers ?? options.acpMcpServers ?? [];
-      if (
-        initializeResult.agentCapabilities?.mcpCapabilities?.acp === true &&
-        acpServers.length > 0
-      ) {
-        return acpServers;
-      }
-      return activationOptions?.mcpServers ?? options.mcpServers ?? [];
-    };
+    ): ReadonlyArray<EffectAcpSchema.McpServer> =>
+      acpSessionMcpServers({
+        capabilities: initializeResult.agentCapabilities,
+        servers: activationOptions?.mcpServers ?? options.mcpServers ?? [],
+        acpServers: activationOptions?.acpMcpServers ?? options.acpMcpServers ?? [],
+        ...(activationOptions?.plugins ? { plugins: activationOptions.plugins } : {}),
+      });
 
     const startOnce = Effect.gen(function* () {
       const initializeResult = yield* initialize;
+      const plugins = yield* options.preparePlugins?.(initializeResult) ?? Effect.succeed(undefined);
+      const initialMcpServers = sessionMcpServers(initializeResult, plugins ? { plugins } : undefined);
+
 
       const authenticateAfterRequired = (
         authRequiredError: EffectAcpErrors.AcpError,
@@ -2335,7 +2340,7 @@ export const make = (
               sessionId,
               cwd: options.cwd,
               ...additionalDirectories,
-              mcpServers: sessionMcpServers(initializeResult),
+              mcpServers: initialMcpServers,
             } satisfies EffectAcpSchema.LoadSessionRequest;
             sessionSetupResult = yield* runLoadSessionWithReplayIdle(loadPayload, initializeResult);
           } else if (initializeResult.agentCapabilities?.sessionCapabilities?.resume != null) {
@@ -2343,7 +2348,7 @@ export const make = (
               sessionId,
               cwd: options.cwd,
               ...additionalDirectories,
-              mcpServers: sessionMcpServers(initializeResult),
+              mcpServers: initialMcpServers,
             } satisfies EffectAcpSchema.ResumeSessionRequest;
             sessionSetupResult = yield* runLoggedRequest(
               "session/resume",
@@ -2360,7 +2365,7 @@ export const make = (
         } else {
           const createPayload = {
             cwd: options.cwd,
-            mcpServers: sessionMcpServers(initializeResult),
+            mcpServers: initialMcpServers,
             ...additionalDirectories,
           } satisfies EffectAcpSchema.NewSessionRequest;
           const created = yield* runLoggedRequest(

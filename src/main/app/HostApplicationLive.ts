@@ -4,11 +4,13 @@ import {
   unsupportedWindowsDesktopTools,
 } from "../platform/node/WindowsDesktopTools";
 import { SkillFileMutationLane } from "../host-runtime/SkillFileMutationLane";
+import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
 import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import { live as workspaceRuntimeLive } from "../../host/WorkspaceRuntimeLive";
 import { live as standaloneSkillsLive } from "../platform/node/StandaloneSkillsNode";
 import { PluginService, live as pluginServiceLive } from "../codex-application/PluginService";
 import { PluginManager, live as pluginManagerLive } from "../codex-application/PluginManager";
+import { PluginCatalogSource } from "../../host/agent-plugins/PluginCatalogSource";
 import { PluginNativeOperations } from "../codex-application/PluginNativeOperations";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AppProtocolRuntime } from "../host-runtime/AppProtocolRuntime";
@@ -16,6 +18,7 @@ import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHost
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import {
   BrowserApplication,
   BrowserApplicationError,
@@ -124,7 +127,9 @@ const plugins = Layer.unwrap(
     return pluginManagerLive({
       homeDirectory: config.homeDirectory,
       runtimeStateHome: codex.runtimeStateHome,
-      codexHome: codex.codexHome,
+      profileHome: config.nodexHome,
+      // The effective account home links its plugin directory to the shared Codex home.
+      codexHome: codex.accountHome.sharedHome,
     }).pipe(
       Layer.provide(
         standaloneSkillsLive({
@@ -302,11 +307,30 @@ const gitActions = gitActionsLive.pipe(
   ),
 );
 
+/** Agent Sessions receive the plugins Codex has installed, refreshed when plugin state changes. */
+const pluginCatalog = Layer.effect(
+  PluginCatalogSource,
+  Effect.gen(function* () {
+    const manager = yield* PluginManager;
+    const catalog = manager.catalog;
+    if (!catalog) return yield* Effect.die("Plugin management has no catalog.");
+    return PluginCatalogSource.of({
+      catalog,
+      changes: manager.changes.pipe(
+        Stream.filter(({ kind }) =>
+          ["plugins", "account", "connection", "skills", "mcp"].includes(kind),
+        ),
+      ),
+    });
+  }),
+).pipe(Layer.provideMerge(plugins));
+
 /** Browser, execution-host, worktree and Git resource families owned by the Main Scope. */
 export const live: Layer.Layer<
   | ElectronNet.ElectronNet
   | ChatGptDesktop
   | PluginManager
+  | PluginCatalogSource
   | SkillFileMutationLane
   | PluginService
   | CodexWorkspaceRouting
@@ -336,6 +360,7 @@ export const live: Layer.Layer<
   | ExecutionHostRuntimeError,
   | CodexGateway
   | PluginNativeOperations
+  | DatabaseNotifierRuntime
   | ProjectWorkspace
   | AppProtocolRuntime
   | CodexAppServerCapabilities
@@ -358,5 +383,5 @@ export const live: Layer.Layer<
   attachments,
   gitActions,
   externalSuggestions,
-  plugins,
+  pluginCatalog,
 );

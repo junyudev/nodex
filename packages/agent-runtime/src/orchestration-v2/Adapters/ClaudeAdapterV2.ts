@@ -1,3 +1,7 @@
+import {
+  SESSION_SKILLS_PLUGIN_NAME,
+  type SessionPlugins,
+} from "../../../../../src/shared/agent-plugins/session-plugins.ts";
 import { decideClaudeNativePluginOverrides } from "./ClaudePluginConfig.ts";
 import {
   restrictions as claudeModelRestrictions,
@@ -1467,42 +1471,40 @@ export function claudeMcpQueryOverrides(input: {
 }
 
 export function claudePluginQueryDecision(
-  live: { readonly key: string | null; readonly renewAfter: number | null } | null,
+  live: { readonly key: string | null } | null,
   key: string | null,
-  now: number,
 ): "open" | "reuse" | "revoke-and-reopen" {
   if (live === null) return "open";
-  if (live.key !== key || (live.renewAfter !== null && now >= live.renewAfter))
-    return "revoke-and-reopen";
+  if (live.key !== key) return "revoke-and-reopen";
   return "reuse";
 }
 
 export function withClaudePluginQueryOptions(
   base: ReturnType<typeof claudeMcpQueryOverrides>,
-  plugins: ExecutionHost.HostClaudePlugins | null,
+  plugins: SessionPlugins | null,
 ): ReturnType<typeof claudeMcpQueryOverrides> {
   if (plugins === null) return base;
   return {
     ...base,
-    ...(plugins.roots.length === 0
+    ...(plugins.skillsRoot === null
       ? {}
       : {
           plugins: [
             ...(base.plugins ?? []),
-            ...plugins.roots.map((path) => ({
+            {
               type: "local" as const,
-              path,
+              path: plugins.skillsRoot,
               skipMcpDiscovery: true,
-            })),
+            },
           ],
         }),
-    ...(plugins.servers.length === 0
+    ...(plugins.mcpServers.length === 0
       ? {}
       : {
           mcpServers: {
             ...base.mcpServers,
             ...Object.fromEntries(
-              plugins.servers.map(({ name, url, bearerToken }) => [
+              plugins.mcpServers.map(({ name, url, bearerToken }) => [
                 name,
                 { type: "http" as const, url, headers: { Authorization: `Bearer ${bearerToken}` } },
               ]),
@@ -3356,8 +3358,12 @@ interface ClaudeLiveQueryContext {
   readonly query: ClaudeAgentSdkQuerySession;
   readonly queryPolicyKey: string;
   readonly pluginKey: string | null;
-  readonly pluginRenewAfter: number | null;
-  readonly pluginSkills: ExecutionHost.HostClaudePlugins["skills"];
+  readonly pluginRevision: Effect.Effect<string | null, ExecutionHost.ExecutionHostError>;
+  readonly pluginSkills: readonly {
+    readonly name: string;
+    readonly path: string;
+    readonly userInvocable?: false;
+  }[];
   readonly releasePlugins: Effect.Effect<void>;
   readonly cliShellKey: string | null;
   // Choices the process was launched with; a change needs a new process.
@@ -4189,12 +4195,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
   const skillDispatch = Effect.fnUntraced(function* (
     turn: ProviderAdapter.ProviderAdapterV2TurnInput,
     requested: ProviderAdapter.ProviderAdapterV2TurnMessage["skillInvocations"],
-    pluginSkills: ExecutionHost.HostClaudePlugins["skills"],
+    pluginSkills: readonly {
+      readonly name: string;
+      readonly path: string;
+      readonly userInvocable?: false;
+    }[],
   ) {
     const cwd = turn.runtimePolicy.cwd;
     const skills = [
       ...(yield* userInvocableSkills(cwd)),
-      ...pluginSkills.filter(({ userInvocable }) => userInvocable),
+      ...pluginSkills.filter(({ userInvocable }) => userInvocable !== false),
     ];
     const desktop = (yield* mcpSessions.read(turn.threadId))?.desktopTools;
     const optionalSkills = (requested ?? []).flatMap((invocation) =>
@@ -9934,11 +9944,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             return existing;
           }
           const identity = turnInput.hostExecutionIdentity;
-          const pluginKey = turnInput.hostClaudePluginKey ?? null;
           const pluginDecision = claudePluginQueryDecision(
-            existing && { key: existing.pluginKey, renewAfter: existing.pluginRenewAfter },
-            pluginKey,
-            yield* Clock.currentTimeMillis,
+            existing && { key: existing.pluginKey },
+            existing ? yield* existing.pluginRevision : null,
           );
           yield* endChatGrantsOnModeChange(turnInput, nativeThreadId);
           if (
@@ -10018,19 +10026,24 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           const profileHome =
             cliShell?.profileHome ?? adapterOptions.environment?.NODEX_AGENT_PROFILE_HOME;
           const pluginScope =
-            identity && pluginKey && executionHost.openClaudePlugins
-              ? yield* Scope.fork(sessionScope)
-              : null;
+            identity && executionHost.openPlugins ? yield* Scope.fork(sessionScope) : null;
           const releasePlugins = pluginScope ? Scope.close(pluginScope, Exit.void) : Effect.void;
-          const plugins =
-            identity && pluginKey && pluginScope && executionHost.openClaudePlugins
-              ? yield* executionHost.openClaudePlugins(identity, pluginKey).pipe(
-                  Scope.provide(pluginScope),
-                  Effect.onError(() => releasePlugins),
-                )
+          const attachment =
+            identity && pluginScope && executionHost.openPlugins
+              ? yield* executionHost
+                  .openPlugins({
+                    threadId: turnInput.threadId,
+                    projectId: identity.projectId,
+                    backend: "claude",
+                  })
+                  .pipe(
+                    Scope.provide(pluginScope),
+                    Effect.onError(() => releasePlugins),
+                  )
               : null;
+          const plugins = attachment?.plugins ?? null;
           const sdkSettings = yield* nativePluginSettings(
-            plugins?.identities ?? [],
+            plugins?.pluginIds.map((id) => id.split("@")[0]!) ?? [],
             turnInput.runtimePolicy.cwd,
             environment,
           ).pipe(Effect.onError(() => releasePlugins));
@@ -10146,9 +10159,15 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             cwd: turnInput.runtimePolicy.cwd,
             query: querySession,
             queryPolicyKey,
-            pluginKey,
-            pluginRenewAfter: plugins?.renewAfter ?? null,
-            pluginSkills: plugins?.skills ?? [],
+            pluginKey: plugins?.revision ?? null,
+            pluginRevision: attachment?.revision ?? Effect.succeed(null),
+            pluginSkills: plugins?.skillsRoot
+              ? plugins.skills.map((skill) => ({
+                  name: SESSION_SKILLS_PLUGIN_NAME + ":" + skill.alias,
+                  path: path.join(plugins.skillsRoot!, "skills", skill.alias, "SKILL.md"),
+                  ...(skill.userInvocable === false ? { userInvocable: false as const } : {}),
+                }))
+              : [],
             releasePlugins,
             cliShellKey,
             launchKey: compiledSelection.launchIdentity,

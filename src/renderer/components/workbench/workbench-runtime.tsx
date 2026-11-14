@@ -3049,7 +3049,7 @@ export function WorkbenchRuntime({
   const customizeNavigation: CustomizeNavigation = {
     path: pluginsPath,
     projectId: activeProjectId,
-    agentPluginProjects: projects.filter(({ lifecycle }) => lifecycle === "active"),
+    projects: projects.filter(({ lifecycle }) => lifecycle === "active"),
     onNavigate: navigatePlugins,
     onStartChat: (prompt) => void startNewChatWithPrompt({ projectId: activeProjectId, prompt }),
     onOpenSettings: (target) =>

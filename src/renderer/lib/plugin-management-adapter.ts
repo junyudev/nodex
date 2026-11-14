@@ -4,6 +4,48 @@ import type {
   PluginManagementChanged,
 } from "../../shared/codex-plugin-management";
 import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
+const pickFolderCommand = defineRendererCommand({
+  key: "plugins.folder-pick",
+  channel: "codex:plugins:folder-pick",
+  authority: "main",
+  owner: "PluginManager",
+  protocol: { kind: "returned_value" },
+});
+const prepareFolderCommand = defineRendererCommand({
+  key: "plugins.folder-prepare",
+  channel: "codex:plugins:folder-prepare",
+  authority: "main",
+  owner: "PluginManager",
+  protocol: { kind: "returned_value" },
+});
+const installFolderCommand = defineRendererCommand({
+  key: "plugins.folder-install",
+  channel: "codex:plugins:folder-install",
+  authority: "main",
+  owner: "PluginManager",
+  protocol: { kind: "returned_value" },
+});
+const discardFolderCommand = defineRendererCommand({
+  key: "plugins.folder-discard",
+  channel: "codex:plugins:folder-discard",
+  authority: "main",
+  owner: "PluginManager",
+  protocol: { kind: "returned_value" },
+});
+const updateFromFolderCommand = defineRendererCommand({
+  key: "plugins.folder-update",
+  channel: "codex:plugins:folder-update",
+  authority: "main",
+  owner: "PluginManager",
+  protocol: { kind: "returned_value" },
+});
+const setProjectScopeCommand = defineRendererCommand({
+  key: "plugins.set-project-scope",
+  channel: "codex:plugins:set-project-scope",
+  authority: "main",
+  owner: "PluginManager",
+  protocol: { kind: "returned_value" },
+});
 const appToolEnabledCommand = defineRendererCommand({
   key: "plugins.app-tool-enabled",
   channel: "codex:plugins:app-tool-enabled",
@@ -187,6 +229,12 @@ const commands: PluginCommandHandlers = {
   uninstall: (input) => invokePlainCommand(uninstallCommand, input),
   "set-enabled": (input) => invokePlainCommand(setEnabledCommand, input),
   "skill-enabled": (input) => invokePlainCommand(skillEnabledCommand, input),
+  "folder-pick": (input) => invokePlainCommand(pickFolderCommand, input),
+  "folder-prepare": (input) => invokePlainCommand(prepareFolderCommand, input),
+  "folder-install": (input) => invokePlainCommand(installFolderCommand, input),
+  "folder-discard": (input) => invokePlainCommand(discardFolderCommand, input),
+  "folder-update": (input) => invokePlainCommand(updateFromFolderCommand, input),
+  "set-project-scope": (input) => invokePlainCommand(setProjectScopeCommand, input),
   "marketplace-add": (input) => invokePlainCommand(marketplaceAddCommand, input),
   "marketplace-remove": (input) => invokePlainCommand(marketplaceRemoveCommand, input),
   "marketplace-upgrade": (input) => invokePlainCommand(marketplaceUpgradeCommand, input),

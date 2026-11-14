@@ -21,7 +21,7 @@ export function tryPluginPrompt(row: PluginRow, prompt: string | null): string {
   return `${markdownLink(`@${pluginDisplayName(row)}`, `plugin://${row.nativeId}`)} ${prompt?.trim() ?? ""}`;
 }
 
-/** Install, uninstall, and Try now for one plugin, with the outcome toasts. */
+/** Install, uninstall, Try now and folder updates for one plugin, with the outcome toasts. */
 export function usePluginRowActions(
   context: PluginContext,
   navigation: Pick<CustomizeNavigation, "onStartChat">,
@@ -135,5 +135,24 @@ export function usePluginRowActions(
     );
   };
 
-  return { install, uninstall, setEnabled, tryNow };
+  /** Copies a folder plugin's source folder again and reinstalls it. */
+  const updateFromFolder = async (row: PluginRow) => {
+    const name = pluginDisplayName(row);
+    const end = beginPluginAction(row.stableIdentity, "installing");
+    return runWithCleanup(
+      async () => {
+        const result = await management.updateFromFolder({ pluginId: row.nativeId });
+        if (pluginMutationSucceeded(result)) toast.success(`${name} updated from its folder`);
+        else toast.danger(result.error.message);
+      },
+      {
+        onError: () => {
+          toast.danger(`Couldn’t update ${name}`);
+        },
+        cleanup: end,
+      },
+    );
+  };
+
+  return { install, uninstall, setEnabled, tryNow, updateFromFolder };
 }

@@ -1,4 +1,3 @@
-import { CodexPluginDelivery } from "./agent-plugins/CodexPluginDelivery";
 import { SessionFolders } from "../main/agent-backend/SessionFolders";
 import { makeSessionReader } from "./RuntimeNotificationSessions";
 import { ReadbackRuntime } from "./ReadbackRuntime";
@@ -17,7 +16,7 @@ import { CodexConversations } from "../main/codex-application/CodexConversations
 import { projectCodexConversationThreadSettings } from "../main/codex-application/CodexConversationSnapshotProjection";
 import { codexVisualizationPassiveParts } from "../shared/codex-visualization-passive-context";
 import { createHash } from "node:crypto";
-import { join, resolve } from "node:path";
+import { delimiter, isAbsolute, join, resolve } from "node:path";
 import * as NodeServices from "../main/platform/node/NodeServices";
 import type {
   AgentRuntimeConfiguration,
@@ -53,9 +52,7 @@ import {
   type AgentRuntimeApplicationConnection,
 } from "../main/agent-runtime/AgentRuntimeApplication";
 import { AgentChatWorktrees } from "../main/codex-application/AgentChatWorktrees";
-import { PluginInstallation } from "./agent-plugins/PluginInstallation";
-import { live as pluginInstallation } from "./agent-plugins/PluginInstallationLive";
-import { PluginMcpBroker } from "./agent-plugins/broker";
+import { makePluginMcpBroker, PluginMcpBroker } from "./agent-plugins/broker";
 import { make as makeHost } from "../main/agent-runtime/AgentRuntimeHost";
 import { HostDesktopTools } from "./HostDesktopTools";
 import {
@@ -128,6 +125,7 @@ import {
   AGENT_RUNTIME_STARTUP_EVIDENCE_FILE,
   type AgentRuntimeStartupEvidence,
 } from "../shared/agent-runtime-startup-evidence";
+import { PluginCatalogSource } from "./agent-plugins/PluginCatalogSource";
 
 /** A quiet execution process with no live or pending work stops after this period. */
 const AGENT_RUNTIME_IDLE_AFTER = "3 minutes";
@@ -176,10 +174,25 @@ class HostActivation extends Context.Service<
   }
 >()("nodex/main/app/AgentRuntimeHostActivation") {}
 
+const pluginBroker = Layer.effect(
+  PluginMcpBroker,
+  Effect.gen(function* () {
+    const { environment } = yield* MainConfig;
+    const path = Object.entries(environment).find(([key]) => key.toUpperCase() === "PATH")?.[1];
+    return yield* makePluginMcpBroker({
+      executableSearchPath: path?.split(delimiter).filter(isAbsolute) ?? [],
+      resolveHeaders: ({ declaredHeaders }) => Effect.succeed(declaredHeaders),
+    });
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new MainApplicationError({ phase: "startup", operation: "plugin-mcp-broker", cause }),
+    ),
+  ),
+);
 const supervisor = Layer.effectContext(
   Effect.gen(function* () {
     const config = yield* MainConfig;
-    const codexPlugins = yield* CodexPluginDelivery;
     const platform = yield* CodexPlatform;
     const codexLaunch = yield* CodexLocalLaunch;
     const settings = yield* ApplicationSettings;
@@ -197,8 +210,9 @@ const supervisor = Layer.effectContext(
     );
     const conversations = Option.getOrUndefined(yield* Effect.serviceOption(CodexConversations));
     const desktop = yield* HostDesktopTools;
-    const installations = yield* PluginInstallation;
     const broker = yield* PluginMcpBroker;
+    const pluginCatalog = Option.getOrUndefined(yield* Effect.serviceOption(PluginCatalogSource));
+    const catalog = pluginCatalog?.catalog;
     const pip = desktop.pip;
     const appToolCatalog = yield* HostAppToolCatalog;
     const hostPolicy = Option.getOrUndefined(yield* Effect.serviceOption(HostAgentPolicy));
@@ -645,7 +659,7 @@ const supervisor = Layer.effectContext(
         automaticWorkAtOnce: snapshot.agentRuntime.automaticWorkAtOnce,
         pausedThreadIds: yield* heldThreadIds(modules),
         modelPolicy: snapshot.modelPolicy,
-        host: { tools: appToolCatalog, codexPlugins: true },
+        host: { tools: appToolCatalog, ...(catalog ? { sessionPlugins: true } : {}) },
       };
       for (const [id, provider] of Object.entries(providers)) drivers.set(id, provider.driver);
       return { configuration, environment, executable };
@@ -689,8 +703,11 @@ const supervisor = Layer.effectContext(
         const configuration = prepared.get(connection.identity);
         if (!configuration) return Effect.fail(new Error("Execution configuration is unavailable"));
         return makeHost(connection, {
-          claudePlugins: { installations, broker },
-          codexPlugins,
+          ...(pluginCatalog
+            ? {
+                plugins: { catalog: pluginCatalog.catalog, broker, changes: pluginCatalog.changes },
+              }
+            : {}),
           desktop,
           workspaceEnvironment: workspace.environment,
           presentation,
@@ -879,7 +896,7 @@ const supervisor = Layer.effectContext(
 
 /** Execution and its Host-owned capabilities acquire before product tools activate. */
 export const runtime = supervisor.pipe(
-  Layer.provideMerge(Layer.mergeAll(promptImagesLayer, sessionWorkspaceLayer, pluginInstallation)),
+  Layer.provideMerge(Layer.mergeAll(promptImagesLayer, sessionWorkspaceLayer, pluginBroker)),
 );
 
 /** Product tool semantics activate after Session, Workbench and automation Modules exist. */

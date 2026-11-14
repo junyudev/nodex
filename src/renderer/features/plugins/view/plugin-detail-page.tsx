@@ -19,6 +19,7 @@ import { NodexTooltip } from "@/components/ui/tooltip";
 import { openExternalUrl } from "@/lib/file-system-operations";
 import { AppShellHeaderContentRegistrar } from "@/lib/workbench-ui-scopes";
 import { cn } from "@/lib/utils";
+import { useFileReferenceRouter } from "@/lib/file-reference-router";
 import type { CustomizeNavigation } from "../customize-navigation";
 import {
   pluginDeveloperSubtitle,
@@ -41,12 +42,12 @@ import { buildPluginDirectoryPath, type PluginDirectoryBrowse } from "../plugins
 import { PluginDescription } from "./plugin-description";
 import { PluginDetailActions } from "./plugin-detail-actions";
 import { PluginIncludes, type PluginApp } from "./plugin-includes";
+import { PluginInstallationSection } from "./plugin-installation-section";
 import { PluginInformation, PluginLegalNotice } from "./plugin-information";
 import { PluginLogoImage, pluginLogoSource } from "./plugin-logo";
 import { PluginMentionChip } from "./plugin-mention-chip";
 import { PluginOriginBadge } from "./plugin-origin-badge";
 import { PluginCategoryTitle } from "./plugins-directory-page";
-import { describeInstallation } from "../model/plugin-installation-presentation";
 import { usePluginRowActions } from "./use-plugin-row-actions";
 
 /** "Plugins › {category} › {plugin}" in the titlebar, leading back to the directory view. */
@@ -125,10 +126,6 @@ function PluginDetailHero({
     view == null
       ? null
       : pluginDeveloperSubtitle(view.summary.interface?.developerName, pluginTagline(view));
-  const installation = view?.row.summary.installed
-    ? describeInstallation({ source: "codex-home" }).sourceLabel
-    : null;
-  const detailLine = [installation, subtitle].filter(Boolean).join(" · ");
   return (
     <DetailHeader
       asset={
@@ -158,8 +155,8 @@ function PluginDetailHero({
       subtitle={
         view == null ? (
           <div className="h-3 w-3/5 rounded bg-text/10" />
-        ) : detailLine.length === 0 ? null : (
-          <TruncatedLine id="plugin-description">{detailLine}</TruncatedLine>
+        ) : subtitle == null ? null : (
+          <TruncatedLine id="plugin-description">{subtitle}</TruncatedLine>
         )
       }
       actions={actions}
@@ -234,6 +231,7 @@ function PluginDetailReady({
 }) {
   const row = view.row;
   const actions = usePluginRowActions(context, navigation);
+  const fileReferences = useFileReferenceRouter();
   const [busy, setBusy] = useState(false);
   const prompts = pluginStarterPrompts(view);
   const description = pluginLongDescription(view);
@@ -284,6 +282,14 @@ function PluginDetailReady({
               onTryNow: () => actions.tryNow(row),
               onUninstall: () => void actions.uninstall(row),
               onManage: () => navigation.onOpenSettings(selectorToRouteTarget(row)),
+              onUpdateFromFolder: () => void actions.updateFromFolder(row),
+              onRevealFolder: () => {
+                if (row.localFolder == null) return;
+                void fileReferences.open(
+                  { path: row.localFolder },
+                  { external: true, opener: "fileManager" },
+                );
+              },
             }}
           />
         }
@@ -336,6 +342,7 @@ function PluginDetailReady({
         onConnectApp={onConnectApp}
         onRetryDetail={onRetry}
       />
+      <PluginInstallationSection view={view} context={context} projects={navigation.projects} />
       <PluginInformation view={view} />
       <PluginLegalNotice view={view} />
     </DetailSections>

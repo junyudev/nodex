@@ -6,9 +6,8 @@ import type {
   PluginMcpFailureCode,
   PluginMcpLease,
   PluginMcpLeaseScope,
-  PluginMcpProject,
 } from "../../../shared/agent-plugins/mcp-lease";
-import type { AgentPluginMcpServer } from "../../../shared/agent-plugins/types";
+import type { AgentPluginMcpServer, AgentPluginSkill } from "../../../shared/agent-plugins/types";
 
 export class PluginMcpFailure extends Data.TaggedError("PluginMcpFailure")<{
   readonly code: PluginMcpFailureCode;
@@ -18,15 +17,13 @@ export class PluginMcpFailure extends Data.TaggedError("PluginMcpFailure")<{
   }
 }
 
-/** Published by the installation owner in commit order. Null withdraws the installation.
- * Package paths and server declarations are immutable within a generation.
- */
+/** Package paths and server declarations resolved by the attachment owner. */
 export interface PluginMcpInstallation {
   readonly generation: string;
   readonly packageRoot: string;
   readonly dataRoot: string;
-  readonly activeProjects: readonly PluginMcpProject[];
   readonly servers: readonly AgentPluginMcpServer[];
+  readonly skills?: readonly AgentPluginSkill[];
 }
 
 export interface PluginMcpApprovalRequest {
@@ -40,12 +37,13 @@ export type PluginMcpApproval = (
   request: PluginMcpApprovalRequest,
 ) => Effect.Effect<"allow" | "deny" | "ask">;
 
-/** Resolve credentials for this scope and exact origin. Package header values never reach the port. */
+/** Resolve credentials for this scope and exact origin. The Host supplies the headers for that server. */
 export type PluginMcpSecrets = (request: {
   readonly scope: PluginMcpLeaseScope;
   readonly origin: string;
   readonly url: string;
   readonly declaredHeaderNames: readonly string[];
+  readonly declaredHeaders: Readonly<Record<string, string>>;
 }) => Effect.Effect<Readonly<Record<string, string>>, PluginMcpFailure>;
 
 export interface PluginMcpBrokerOptions {
@@ -62,6 +60,7 @@ export interface PluginMcpBrokerOptions {
 
 export interface PluginMcpLeaseOptions {
   readonly approval?: PluginMcpApproval;
+  readonly authorize?: Effect.Effect<boolean>;
   /** Bind a client that pools HTTP sockets to one MCP session issued on its first connection. */
   readonly httpBinding?: "mcp-session";
   /** Maximum lifetime in milliseconds from issuance. Defaults to eight hours. */
@@ -69,13 +68,14 @@ export interface PluginMcpLeaseOptions {
 }
 
 export interface PluginMcpBrokerService {
-  readonly publishInstallation: (
-    installationId: string,
-    installation: PluginMcpInstallation | null,
-  ) => Effect.Effect<void>;
   readonly openLease: (
     scope: PluginMcpLeaseScope,
+    source: PluginMcpInstallation,
     options?: PluginMcpLeaseOptions,
+  ) => Effect.Effect<PluginMcpLease, PluginMcpFailure>;
+  readonly openSkillCatalog: (
+    source: import("./skill-catalog").SkillCatalogSource,
+    options?: Pick<PluginMcpLeaseOptions, "authorize">,
   ) => Effect.Effect<PluginMcpLease, PluginMcpFailure>;
   readonly revokeLease: (leaseId: string) => Effect.Effect<void>;
   /** Trusted in-process callers supply their own scope as well as the credential. */

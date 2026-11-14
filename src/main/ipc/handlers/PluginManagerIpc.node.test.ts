@@ -1,3 +1,4 @@
+import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
 import type { IpcMainInvokeEvent } from "electron";
 import { assert, it } from "@effect/vitest";
 import { vi } from "vitest";
@@ -46,6 +47,23 @@ it.effect("validates selector XOR and typed command booleans at ingress", () =>
       }).pipe(Effect.result))._tag,
       "Failure",
     );
+    for (const [command, input] of [
+      ["folder-prepare", { folder: "relative" }],
+      ["folder-install", { stagingId: "../unreviewed" }],
+      ["folder-discard", { stagingId: "../unreviewed" }],
+      [
+        "set-project-scope",
+        { pluginId: "fixture@local", scope: { kind: "projects", projectIds: [42] } },
+      ],
+    ] as const) {
+      assert.equal(
+        (yield* Schema.decodeUnknownEffect(pluginCommandSchemas[command])({
+          ...base,
+          ...input,
+        }).pipe(Effect.result))._tag,
+        "Failure",
+      );
+    }
     for (const input of [
       { ...base },
       { ...base, marketplacePath: "/catalog", remoteMarketplaceName: "remote" },
@@ -155,6 +173,7 @@ it.effect(
                 testLayer({ rendererUrl: "http://localhost:5173" }),
                 Layer.succeed(ElectronIpc, ipc),
                 Layer.succeed(PluginManager, manager),
+                Layer.succeed(ElectronDesktop, {} as ElectronDesktop["Service"]),
                 Layer.succeed(WindowRuntime, {
                   all: () => [window(), window()],
                 } as unknown as WindowRuntime["Service"]),

@@ -128,7 +128,7 @@ export interface AgentRuntimeConfiguration {
   readonly providers: Readonly<Record<string, AgentWire<ProviderInstanceConfig>>>;
   readonly host?: {
     readonly tools: ReadonlyArray<AgentHostTool>;
-    readonly codexPlugins?: true;
+    readonly sessionPlugins?: true;
   };
 }
 
@@ -989,24 +989,24 @@ export type AgentHostRequest =
   | {
       readonly type: "host.request";
       readonly id: string;
-      readonly operation: "codex.plugins";
+      readonly operation: "plugins.open";
       readonly identity: { readonly runtimeId: string; readonly runtimeGeneration: string };
-      readonly request: import("@nodex/provider-core/server/ExecutionHost").CodexPluginRequest;
+      readonly attachmentId: string;
+      readonly request: import("@nodex/provider-core/server/ExecutionHost").OpenSessionPluginsRequest;
     }
   | {
       readonly type: "host.request";
       readonly id: string;
-      readonly operation: "claude.plugins.open";
-      readonly identity: AgentHostTurnIdentity;
-      readonly queryId: string;
-      readonly key: string;
+      readonly operation: "plugins.revision";
+      readonly identity: { readonly runtimeId: string; readonly runtimeGeneration: string };
+      readonly attachmentId: string;
     }
   | {
       readonly type: "host.request";
       readonly id: string;
-      readonly operation: "claude.plugins.close";
-      readonly queryId: string;
+      readonly operation: "plugins.close";
       readonly identity: { readonly runtimeId: string; readonly runtimeGeneration: string };
+      readonly attachmentId: string;
     }
   | {
       readonly type: "host.request";

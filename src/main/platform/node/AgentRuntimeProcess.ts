@@ -136,35 +136,30 @@ const hostRequestSchema = z.discriminatedUnion("operation", [
   z.object({
     type: z.literal("host.request"),
     id: z.string().min(1),
-    operation: z.literal("codex.plugins"),
+    operation: z.literal("plugins.open"),
     identity: hostIdentitySchema,
-    request: z.discriminatedUnion("action", [
-      z.object({ action: z.literal("status"), projectId: z.string().min(1) }),
-      z.object({
-        action: z.literal("attach"),
-        projectId: z.string().min(1),
-        rootThreadId: z.string().min(1),
-        attachmentId: z.string().min(1),
-      }),
-      z.object({ action: z.literal("release"), attachmentId: z.string().min(1) }),
-    ]),
+    attachmentId: z.uuid(),
+    request: z.object({
+      threadId: z.string().min(1),
+      projectId: z.string().min(1).nullable(),
+      backend: z.enum(["codex", "claude", "acp", "opencode"]),
+      acpHttp: z.boolean().optional(),
+      sourceThreadId: z.string().min(1).optional(),
+    }),
   }),
   z.object({
     type: z.literal("host.request"),
     id: z.string().min(1),
-    operation: z.literal("claude.plugins.open"),
-    identity: hostIdentitySchema
-      .extend({ threadId: z.string().min(1), runId: z.string().min(1) })
-      .passthrough(),
-    queryId: z.uuid(),
-    key: z.string().regex(/^[0-9a-f]{64}$/u),
+    operation: z.literal("plugins.revision"),
+    identity: hostIdentitySchema,
+    attachmentId: z.uuid(),
   }),
   z.object({
     type: z.literal("host.request"),
     id: z.string().min(1),
-    operation: z.literal("claude.plugins.close"),
-    queryId: z.uuid(),
+    operation: z.literal("plugins.close"),
     identity: hostIdentitySchema,
+    attachmentId: z.uuid(),
   }),
   z
     .object({
@@ -483,7 +478,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     ...(options.configuration.host
       ? {
           hostTools: options.configuration.host.tools,
-          hostCodexPlugins: options.configuration.host.codexPlugins,
+          hostSessionPlugins: options.configuration.host.sessionPlugins,
         }
       : {}),
   } satisfies AgentRuntimeBootstrap);

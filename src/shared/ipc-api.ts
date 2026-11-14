@@ -19,7 +19,6 @@ import type { SpaceConnectionIpcApi } from "./space-connection";
 import type { PluginManagementIpcApi, PluginManagementChanged } from "./codex-plugin-management";
 import type { WorkspaceFileSaveDataInput } from "./native-file-save";
 import type { NativeResourceData, NativeResourceReadInput } from "./native-resource";
-import type { AgentPluginIpcApi } from "./agent-plugins/ipc";
 import type { McpAppDataIpcApi } from "./mcp-app/mcp-app-data";
 import type { AcpIpcApi } from "./acp-api";
 import type { AgentRuntimeIpcApi } from "./agent-runtime-api";
@@ -734,7 +733,6 @@ export interface IpcApi
     AcpIpcApi,
     PluginManagementIpcApi,
     McpAppDataIpcApi,
-    AgentPluginIpcApi,
     SpaceConnectionIpcApi,
     SpaceAdministrationIpcApi {
   "codex:turn-presentation:capture": {

@@ -7,7 +7,7 @@ export interface CustomizeNavigation {
   /** The Project whose working directories scope plugin discovery, if any. */
   readonly projectId: string | null;
   /** Active Projects available for Nodex plugin activation in this Space. */
-  readonly agentPluginProjects: readonly { readonly id: string; readonly name: string }[];
+  readonly projects: readonly { readonly id: string; readonly name: string }[];
   readonly onNavigate: (path: string, options?: { readonly replace?: boolean }) => void;
   /** Opens a new chat with an unsent draft, such as a plugin mention and a starter prompt. */
   readonly onStartChat: (prompt: string) => void;

@@ -69,7 +69,6 @@ const setupStdio = Effect.fnUntraced(function* (mode: string, cwd = "./sub") {
   });
   const installation: PluginMcpInstallation = {
     generation: scope.generation,
-    activeProjects: [scope.project],
     packageRoot: root,
     dataRoot: data,
     servers: [
@@ -92,7 +91,6 @@ const setupStdio = Effect.fnUntraced(function* (mode: string, cwd = "./sub") {
 function httpInstallation(url: string): PluginMcpInstallation {
   return {
     generation: scope.generation,
-    activeProjects: [scope.project],
     packageRoot: "/unused",
     dataRoot: "/unused",
     servers: [
@@ -137,7 +135,7 @@ const connectionFetch =
       else outgoing.end();
     });
 
-const attach = Effect.fnUntraced(function* (lease: PluginMcpLease) {
+const attach = Effect.fnUntraced(function* (lease: PluginMcpLease, pooled = false) {
   const agent = yield* Effect.acquireRelease(
     Effect.sync(() => new Agent({ keepAlive: true, maxSockets: 1 })),
     (agent) => Effect.sync(() => agent.destroy()),
@@ -151,7 +149,7 @@ const attach = Effect.fnUntraced(function* (lease: PluginMcpLease) {
     requestInit: { headers: { Authorization: "Bearer " + lease.bearerToken } },
   });
   yield* Effect.promise(() => client.connect(transport));
-  expect(transport.sessionId).toBeUndefined();
+  expect(transport.sessionId !== undefined).toBe(pooled);
   return client;
 });
 
@@ -174,13 +172,13 @@ it.live(
         Effect.gen(function* () {
           const { root, data, installation } = yield* setupStdio("serve");
           const broker = yield* make();
-          yield* broker.publishInstallation(scope.installationId, installation);
-          const lease = yield* broker.openLease(scope, { approval: allow });
+
+          const lease = yield* broker.openLease(scope, installation, { approval: allow });
           const view = {
             ...scope,
             principal: { kind: "interface-view", id: scope.principal.id },
           } as const;
-          const viewLease = yield* broker.openLease(view, { approval: allow });
+          const viewLease = yield* broker.openLease(view, installation, { approval: allow });
           expect(
             yield* Effect.promise(() => readFile(join(data, "starts"), "utf8").catch(() => null)),
           ).toBeNull();
@@ -222,8 +220,8 @@ it.live.each(["../outside", "./link"])(
         await symlink(outside, join(root, "link"), "junction");
       });
       const broker = yield* make();
-      yield* broker.publishInstallation(scope.installationId, installation);
-      const lease = yield* broker.openLease(scope, { approval: allow });
+
+      const lease = yield* broker.openLease(scope, installation, { approval: allow });
       yield* expectFailure(broker.listTools(scope, lease), "invalid_configuration");
     }),
 );
@@ -242,10 +240,8 @@ it.live(
       );
       const broker = yield* make({ resolveHeaders });
       const installation = httpInstallation(fixture.url);
-      yield* broker.publishInstallation(scope.installationId, installation);
-      yield* expectFailure(broker.openLease(otherProject), "server_inactive");
-      yield* expectFailure(broker.openLease(otherSpace), "server_inactive");
-      const lease = yield* broker.openLease(scope, { approval: allow });
+
+      const lease = yield* broker.openLease(scope, installation, { approval: allow });
       yield* expectFailure(broker.listTools(otherProject, lease), "invalid_lease");
       yield* expectFailure(broker.listTools(otherSpace, lease), "invalid_lease");
       const client = yield* attach(lease);
@@ -259,6 +255,7 @@ it.live(
         origin: new URL(fixture.url).origin,
         url: fixture.url,
         declaredHeaderNames: ["Authorization"],
+        declaredHeaders: { Authorization: "untrusted-package-literal" },
       });
       expect(fixture.seen[0]).toMatchObject({
         authorization: "Bearer from-host-secret-port",
@@ -268,11 +265,7 @@ it.live(
         fixture.seen.some((headers) => headers.authorization?.includes(lease.bearerToken)),
       ).toBe(false);
 
-      yield* broker.publishInstallation(scope.installationId, {
-        ...installation,
-        activeProjects: [scope.project, otherProject.project],
-      });
-      const otherLease = yield* broker.openLease(otherProject, { approval: allow });
+      const otherLease = yield* broker.openLease(otherProject, installation, { approval: allow });
       const mismatched = yield* Effect.promise(() =>
         fetch(otherLease.url, {
           method: "POST",
@@ -295,8 +288,8 @@ it.live("rejects replay of a bound bearer on a different HTTP connection", () =>
   Effect.gen(function* () {
     const fixture = yield* httpFixture;
     const broker = yield* make();
-    yield* broker.publishInstallation(scope.installationId, httpInstallation(fixture.url));
-    const lease = yield* broker.openLease(scope);
+    const installation = httpInstallation(fixture.url);
+    const lease = yield* broker.openLease(scope, installation);
     const client = yield* attach(lease);
     const replay = yield* Effect.promise(() =>
       fetch(lease.url, {
@@ -314,8 +307,8 @@ it.live("binds a pooled HTTP client to its issued MCP session across sockets", (
   Effect.gen(function* () {
     const fixture = yield* httpFixture;
     const broker = yield* make();
-    yield* broker.publishInstallation(scope.installationId, httpInstallation(fixture.url));
-    const lease = yield* broker.openLease(scope, { httpBinding: "mcp-session" });
+    const installation = httpInstallation(fixture.url);
+    const lease = yield* broker.openLease(scope, installation, { httpBinding: "mcp-session" });
     const post = (method: string, sessionId?: string, params?: unknown) =>
       Effect.promise(() =>
         fetch(lease.url, {
@@ -362,10 +355,13 @@ it.effect("expires leases after the default and per-lease maximum lifetimes", ()
   Effect.gen(function* () {
     const fixture = yield* httpFixture;
     const broker = yield* make();
-    yield* broker.publishInstallation(scope.installationId, httpInstallation(fixture.url));
-    yield* expectFailure(broker.openLease(scope, { maxLifetimeMs: 0 }), "invalid_configuration");
-    const lease = yield* broker.openLease(scope);
-    const short = yield* broker.openLease(scope, { maxLifetimeMs: 100 });
+    const installation = httpInstallation(fixture.url);
+    yield* expectFailure(
+      broker.openLease(scope, installation, { maxLifetimeMs: 0 }),
+      "invalid_configuration",
+    );
+    const lease = yield* broker.openLease(scope, installation);
+    const short = yield* broker.openLease(scope, installation, { maxLifetimeMs: 100 });
     yield* TestClock.adjust(100);
     yield* expectFailure(broker.listTools(scope, short), "invalid_lease");
     yield* TestClock.adjust("7 hours");
@@ -379,9 +375,9 @@ it.live("discards an in-flight reply after revoke and keeps the shared upstream 
   Effect.gen(function* () {
     const fixture = yield* httpFixture;
     const broker = yield* make({ restartBudget: 0 });
-    yield* broker.publishInstallation(scope.installationId, httpInstallation(fixture.url));
-    const first = yield* broker.openLease(scope, { approval: allow });
-    const second = yield* broker.openLease(scope, { approval: allow });
+    const installation = httpInstallation(fixture.url);
+    const first = yield* broker.openLease(scope, installation, { approval: allow });
+    const second = yield* broker.openLease(scope, installation, { approval: allow });
     const client = yield* attach(first);
     const active = yield* Effect.tryPromise(() => client.callTool({ name: "hang" })).pipe(
       Effect.flip,
@@ -414,9 +410,9 @@ it.live("rejects new operations on a revoked lease before consulting approval", 
   Effect.gen(function* () {
     const fixture = yield* httpFixture;
     const broker = yield* make();
-    yield* broker.publishInstallation(scope.installationId, httpInstallation(fixture.url));
+    const installation = httpInstallation(fixture.url);
     const approval = vi.fn(allow);
-    const lease = yield* broker.openLease(scope, { approval });
+    const lease = yield* broker.openLease(scope, installation, { approval });
     yield* broker.revokeLease(lease.id);
 
     yield* expectFailure(broker.listTools(scope, lease), "lease_revoked");
@@ -431,8 +427,8 @@ it.live("interrupts the upstream call when the downstream MCP client disconnects
   Effect.gen(function* () {
     const fixture = yield* httpFixture;
     const broker = yield* make();
-    yield* broker.publishInstallation(scope.installationId, httpInstallation(fixture.url));
-    const lease = yield* broker.openLease(scope, { approval: allow });
+    const installation = httpInstallation(fixture.url);
+    const lease = yield* broker.openLease(scope, installation, { approval: allow });
     const client = yield* attach(lease);
     yield* Effect.tryPromise(() => client.callTool({ name: "hang" })).pipe(
       Effect.ignore,
@@ -445,48 +441,13 @@ it.live("interrupts the upstream call when the downstream MCP client disconnects
   }),
 );
 
-it.live("invalidates leases on disable, generation replacement and uninstall", () =>
-  Effect.gen(function* () {
-    const fixture = yield* httpFixture;
-    const broker = yield* make();
-    const installation = httpInstallation(fixture.url);
-    yield* broker.publishInstallation(scope.installationId, installation);
-    const disabled = yield* broker.openLease(scope);
-    const client = yield* attach(disabled);
-
-    yield* broker.publishInstallation(scope.installationId, {
-      ...installation,
-      activeProjects: [],
-    });
-    yield* expectFailure(broker.listTools(scope, disabled), "lease_revoked");
-    yield* expectFailure(broker.openLease(scope), "server_inactive");
-    expect(
-      (yield* Effect.tryPromise(() => client.listTools()).pipe(Effect.flip)).cause,
-    ).toMatchObject({ code: 401 });
-
-    yield* broker.publishInstallation(scope.installationId, installation);
-    const stale = yield* broker.openLease(scope);
-    const next = { ...scope, generation: "v2" };
-    yield* broker.publishInstallation(scope.installationId, {
-      ...installation,
-      generation: next.generation,
-    });
-    yield* expectFailure(broker.listTools(scope, stale), "lease_revoked");
-    yield* expectFailure(broker.openLease(scope), "server_inactive");
-    const active = yield* broker.openLease(next);
-    expect(yield* broker.listTools(next, active)).toHaveLength(2);
-    yield* broker.publishInstallation(scope.installationId, null);
-    yield* expectFailure(broker.listTools(next, active), "lease_revoked");
-  }),
-);
-
 const startPausedStdioCall = Effect.fnUntraced(function* (
   options: Partial<PluginMcpBrokerOptions> = {},
 ) {
   const { data, installation } = yield* setupStdio("serve");
   const broker = yield* make(options);
-  yield* broker.publishInstallation(scope.installationId, installation);
-  const lease = yield* broker.openLease(scope, { approval: allow });
+
+  const lease = yield* broker.openLease(scope, installation, { approval: allow });
   const first = yield* broker.callTool(scope, lease, "inspect");
   const pid = Number(first.structuredContent?.pid);
   const paused = yield* broker
@@ -496,60 +457,54 @@ const startPausedStdioCall = Effect.fnUntraced(function* (
   return { broker, data, installation, lease, paused, pid };
 });
 
-it.live("disabling an installation drains its last call before stopping the child", () =>
+it.live("revokes delivery while the last call drains before stopping the child", () =>
   Effect.gen(function* () {
-    const { broker, data, installation, paused, pid } = yield* startPausedStdioCall();
-    const disable = yield* broker
-      .publishInstallation(scope.installationId, { ...installation, activeProjects: [] })
-      .pipe(Effect.forkScoped);
+    const { broker, data, lease, paused, pid } = yield* startPausedStdioCall();
+    yield* broker.revokeLease(lease.id);
     expect(yield* Fiber.join(paused)).toMatchObject({ code: "lease_revoked" });
-    expect(disable.pollUnsafe()).toBeUndefined();
     expect(() => process.kill(pid, 0)).not.toThrow();
     yield* Effect.promise(() => writeFile(join(data, "release"), ""));
-    yield* Fiber.join(disable);
+    yield* Effect.promise(() =>
+      vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow(/ESRCH/)),
+    );
     expect(yield* Effect.promise(() => readFile(join(data, "finished"), "utf8"))).toBe("call\n");
-    expect(() => process.kill(pid, 0)).toThrow(/ESRCH/);
   }),
 );
 
-it.effect(
-  "uninstall kills a hung child after the shutdown grace period and reports a typed failure",
-  () => {
-    const messages: unknown[] = [];
-    return Effect.gen(function* () {
-      const { broker, paused, pid, lease } = yield* startPausedStdioCall({
-        requestTimeoutMs: 20_000,
-        shutdownGraceMs: 250,
-      });
-      // Uninstall also waits for a child already retiring after its last lease was revoked.
-      yield* broker.revokeLease(lease.id);
-      expect(yield* Fiber.join(paused)).toMatchObject({ code: "lease_revoked" });
-      expect(() => process.kill(pid, 0)).not.toThrow();
-      const uninstall = yield* broker
-        .publishInstallation(scope.installationId, null)
-        .pipe(Effect.forkScoped({ startImmediately: true }));
-      yield* TestClock.adjust(249);
-      expect(uninstall.pollUnsafe()).toBeUndefined();
-      expect(() => process.kill(pid, 0)).not.toThrow();
-      yield* TestClock.adjust(1);
-      yield* Fiber.join(uninstall);
-      expect(() => process.kill(pid, 0)).toThrow(/ESRCH/);
-      const failures = messages.flat().filter((item) => item instanceof PluginMcpFailure);
-      expect(failures.map(({ code }) => code)).toEqual(["shutdown_timeout"]);
-    }).pipe(
-      Effect.scoped,
-      Effect.provide(Logger.layer([Logger.make(({ message }) => messages.push(message))])),
+it.effect("stops a hung upstream after the shutdown grace period", () => {
+  const messages: unknown[] = [];
+  return Effect.gen(function* () {
+    const { broker, paused, pid, lease } = yield* startPausedStdioCall({
+      requestTimeoutMs: 20_000,
+      shutdownGraceMs: 250,
+    });
+    yield* broker.revokeLease(lease.id);
+    expect(yield* Fiber.join(paused)).toMatchObject({ code: "lease_revoked" });
+    yield* TestClock.adjust(249);
+    expect(() => process.kill(pid, 0)).not.toThrow();
+    yield* TestClock.adjust(1);
+    yield* Effect.promise(() =>
+      vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow(/ESRCH/)),
     );
-  },
-);
+    expect(
+      messages
+        .flat()
+        .filter((item) => item instanceof PluginMcpFailure)
+        .map(({ code }) => code),
+    ).toEqual(["shutdown_timeout"]);
+  }).pipe(
+    Effect.scoped,
+    Effect.provide(Logger.layer([Logger.make(({ message }) => messages.push(message))])),
+  );
+});
 
 it.live("requires approval before calling and returns typed deny and unanswered decisions", () =>
   Effect.gen(function* () {
     const fixture = yield* httpFixture;
     const broker = yield* make({ requestTimeoutMs: 500 });
-    yield* broker.publishInstallation(scope.installationId, httpInstallation(fixture.url));
+    const installation = httpInstallation(fixture.url);
     const approval = vi.fn(() => Effect.succeed("deny" as const));
-    const denied = yield* broker.openLease(scope, { approval });
+    const denied = yield* broker.openLease(scope, installation, { approval });
     yield* expectFailure(
       broker.callTool(scope, denied, "inspect", { example: true }),
       "approval_denied",
@@ -559,12 +514,16 @@ it.live("requires approval before calling and returns typed deny and unanswered 
       arguments: { example: true },
       tool: expect.objectContaining({ name: "inspect" }),
     });
-    const ask = yield* broker.openLease(scope, { approval: () => Effect.succeed("ask") });
+    const ask = yield* broker.openLease(scope, installation, {
+      approval: () => Effect.succeed("ask"),
+    });
     yield* expectFailure(broker.callTool(scope, ask, "inspect"), "approval_required");
-    const unannotated = yield* broker.openLease(scope);
+    const unannotated = yield* broker.openLease(scope, installation);
     yield* expectFailure(broker.callTool(scope, unannotated, "inspect"), "approval_required");
     yield* expectFailure(broker.callTool(scope, unannotated, "missing"), "unknown_tool");
-    const unanswered = yield* broker.openLease(scope, { approval: () => Effect.never });
+    const unanswered = yield* broker.openLease(scope, installation, {
+      approval: () => Effect.never,
+    });
     yield* expectFailure(broker.callTool(scope, unanswered, "inspect"), "approval_required");
     expect(fixture.calls).toEqual([]);
   }),
@@ -574,8 +533,8 @@ it.live("times out and disconnects an unresponsive tool request", () =>
   Effect.gen(function* () {
     const fixture = yield* httpFixture;
     const broker = yield* make({ requestTimeoutMs: 300 });
-    yield* broker.publishInstallation(scope.installationId, httpInstallation(fixture.url));
-    const lease = yield* broker.openLease(scope, { approval: allow });
+    const installation = httpInstallation(fixture.url);
+    const lease = yield* broker.openLease(scope, installation, { approval: allow });
     yield* expectFailure(broker.callTool(scope, lease, "hang"), "timeout");
     yield* Effect.promise(() => fixture.disconnected);
     expect(fixture.calls).toEqual(["hang"]);
@@ -588,8 +547,8 @@ it.live(
     Effect.gen(function* () {
       const { data, installation } = yield* setupStdio("serve");
       const broker = yield* make({ restartBudget: 1 });
-      yield* broker.publishInstallation(scope.installationId, installation);
-      const lease = yield* broker.openLease(scope, { approval: allow });
+
+      const lease = yield* broker.openLease(scope, installation, { approval: allow });
       yield* expectFailure(
         broker.callTool(scope, lease, "inspect", { exit: true }),
         "upstream_unavailable",
@@ -610,11 +569,75 @@ it.live("bounds automatic restart when an upstream exits before negotiating capa
   Effect.gen(function* () {
     const { data, installation } = yield* setupStdio("crash");
     const broker = yield* make({ restartBudget: 1 });
-    yield* broker.publishInstallation(scope.installationId, installation);
-    const lease = yield* broker.openLease(scope, { approval: allow });
+
+    const lease = yield* broker.openLease(scope, installation, { approval: allow });
     yield* expectFailure(broker.listTools(scope, lease), "restart_budget_exhausted");
     expect(yield* Effect.promise(() => readFile(join(data, "starts"), "utf8"))).toBe(
       "start\nstart\n",
     );
+  }),
+);
+
+it.live("serves only current Project skills and contains and bounds package reads", () =>
+  Effect.gen(function* () {
+    const broker = yield* make();
+    const { base, root, installation } = yield* setupStdio("echo");
+    const skill = {
+      name: "guide",
+      description: "A guide",
+      directory: "skills/guide",
+      valid: true,
+      diagnostics: [],
+    };
+    yield* Effect.promise(async () => {
+      const dir = join(root, skill.directory);
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(base, "secret"), "outside");
+      await writeFile(join(dir, "SKILL.md"), "first generation");
+      await writeFile(join(dir, "guide.txt"), "supporting text");
+      await writeFile(join(dir, "oversize.txt"), "x".repeat(64 * 1024 + 1));
+      await symlink(join(base, "secret"), join(dir, "escape.txt"));
+    });
+    const first = { ...installation, skills: [skill] };
+    let authorized = true;
+    const lease = yield* broker.openSkillCatalog([["enabled", first]], {
+      authorize: Effect.sync(() => authorized),
+    });
+    const client = yield* attach(lease, true);
+    expect((yield* Effect.promise(() => client.listTools())).tools.map(({ name }) => name)).toEqual(
+      ["list_plugin_skills", "read_plugin_skill"],
+    );
+    const call = (name: string, args: Record<string, unknown> = {}) =>
+      Effect.promise(() => client.callTool({ name, arguments: args })).pipe(
+        Effect.map((result) => {
+          const [content] = result.content as { type: string; text: string }[];
+          return { result, value: JSON.parse(content!.text) as unknown };
+        }),
+      );
+    const selection = { installationId: "enabled", skill: skill.directory };
+    expect((yield* call("list_plugin_skills")).value).toMatchObject({
+      skills: [{ installationId: "enabled", generation: "v1" }],
+      nextOffset: null,
+    });
+    expect((yield* call("read_plugin_skill", selection)).value).toMatchObject({
+      text: "first generation",
+      files: ["guide.txt"],
+    });
+    expect((yield* call("read_plugin_skill", { ...selection, file: "guide.txt" })).value).toEqual({
+      text: "supporting text",
+    });
+    for (const file of ["../../../secret", "escape.txt", "oversize.txt"]) {
+      expect((yield* call("read_plugin_skill", { ...selection, file })).result.isError).toBe(true);
+    }
+    for (const installationId of ["disabled", "other-project"]) {
+      expect(
+        (yield* call("read_plugin_skill", { ...selection, installationId })).result.isError,
+      ).toBe(true);
+    }
+    authorized = false;
+    yield* Effect.promise(() => expect(client.listTools()).rejects.toThrow("lease_revoked"));
+    authorized = true;
+    yield* broker.revokeLease(lease.id);
+    yield* Effect.promise(() => expect(client.listTools()).rejects.toThrow());
   }),
 );

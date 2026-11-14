@@ -1,3 +1,4 @@
+import { commandPluginManagement } from "../../lib/plugin-management-adapter";
 import { useEffect, useState } from "react";
 import {
   useQuery,
@@ -79,6 +80,12 @@ type Command<K extends keyof PluginCommands> = (
   input: Omit<PluginCommands[K]["input"], keyof PluginContext>,
 ) => Promise<PluginCommands[K]["output"]>;
 export interface PluginManagement {
+  readonly pickFolder: () => Promise<string | null>;
+  readonly prepareFolder: Command<"folder-prepare">;
+  readonly installFolder: Command<"folder-install">;
+  readonly discardFolder: Command<"folder-discard">;
+  readonly updateFromFolder: Command<"folder-update">;
+  readonly setProjectScope: Command<"set-project-scope">;
   readonly clearMcpAppData: () => Promise<PluginMutationResult>;
   readonly setAppToolEnabled: Command<"app-tool-enabled">;
   readonly setAppEnabled: Command<"app-enabled">;
@@ -310,6 +317,12 @@ export function usePluginManagement(context: PluginContext): PluginManagement {
   const client = useQueryClient();
   useScope(context);
   return {
+    pickFolder: () => commandPluginManagement("folder-pick", context),
+    discardFolder: (input) => commandPluginManagement("folder-discard", { ...context, ...input }),
+    prepareFolder: (input) => runPluginMutation(client, context, "folder-prepare", input),
+    installFolder: (input) => runPluginMutation(client, context, "folder-install", input),
+    updateFromFolder: (input) => runPluginMutation(client, context, "folder-update", input),
+    setProjectScope: (input) => runPluginMutation(client, context, "set-project-scope", input),
     install: (input) => runPluginMutation(client, context, "install", input),
     uninstall: (input) => runPluginMutation(client, context, "uninstall", input),
     setPluginEnabled: (input) => runPluginMutation(client, context, "set-enabled", input),

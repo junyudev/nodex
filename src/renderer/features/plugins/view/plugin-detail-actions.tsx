@@ -1,14 +1,19 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { ActivitySpinnerIcon } from "@/components/shared/icons";
-import { TrashIcon } from "@/components/shared/icons/customize-action-icons";
+import { ActivitySpinnerIcon, FolderIcon } from "@/components/shared/icons";
+import { RefreshArrowsIcon, TrashIcon } from "@/components/shared/icons/customize-action-icons";
 import {
   GearIcon20,
   PlusMdIcon,
   ProfileLockIcon,
   TryInChatIcon,
 } from "@/components/shared/icons/plugin-detail-icons";
-import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
+import {
+  NodexDropdownItem,
+  NodexDropdownMenu,
+  NodexDropdownSeparator,
+} from "@/components/ui/dropdown";
+import { revealInFileManagerLabel } from "@/lib/reveal-in-file-manager-label";
 import { MoreActionsButton, ToolbarButton } from "@/components/ui/toolbar-button";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { usePendingPluginActions } from "../model/install-sessions";
@@ -101,6 +106,10 @@ export interface PluginDetailActionHandlers {
   readonly onUninstall: () => void;
   /** Opens the plugin's settings; omitted while there is no settings page for it. */
   readonly onManage?: () => void;
+  /** For a plugin added from a folder: copy the folder again and reinstall. */
+  readonly onUpdateFromFolder?: () => void;
+  /** For a plugin added from a folder: show that folder in the file manager. */
+  readonly onRevealFolder?: () => void;
 }
 
 /** The detail page's "…" menu, Manage, and the primary action for the plugin's state. */
@@ -211,9 +220,10 @@ export function PluginDetailActions({
   }
 
   const canUninstall = installed && row.canUninstall;
+  const fromFolder = installed && row.localFolder != null;
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      {canUninstall ? (
+      {canUninstall || fromFolder ? (
         <NodexDropdownMenu
           align="end"
           contentWidth="sm"
@@ -221,17 +231,43 @@ export function PluginDetailActions({
           onOpenChange={setMenuOpen}
           triggerButton={<MoreActionsButton variant="toolbar" />}
         >
-          <NodexDropdownItem
-            leftSlot={<TrashIcon />}
-            disabled={forcedLabel != null || enabling || pending === "uninstalling"}
-            className="text-danger"
-            onSelect={() => {
-              setMenuOpen(false);
-              handlers.onUninstall();
-            }}
-          >
-            {forcedLabel ?? "Uninstall"}
-          </NodexDropdownItem>
+          {fromFolder && handlers.onUpdateFromFolder != null ? (
+            <NodexDropdownItem
+              leftSlot={<RefreshArrowsIcon />}
+              disabled={pending != null}
+              onSelect={() => {
+                setMenuOpen(false);
+                handlers.onUpdateFromFolder?.();
+              }}
+            >
+              Update from folder
+            </NodexDropdownItem>
+          ) : null}
+          {fromFolder && handlers.onRevealFolder != null ? (
+            <NodexDropdownItem
+              leftSlot={<FolderIcon />}
+              onSelect={() => {
+                setMenuOpen(false);
+                handlers.onRevealFolder?.();
+              }}
+            >
+              {revealInFileManagerLabel()}
+            </NodexDropdownItem>
+          ) : null}
+          {fromFolder && canUninstall ? <NodexDropdownSeparator /> : null}
+          {canUninstall ? (
+            <NodexDropdownItem
+              leftSlot={<TrashIcon />}
+              disabled={forcedLabel != null || enabling || pending === "uninstalling"}
+              className="text-danger"
+              onSelect={() => {
+                setMenuOpen(false);
+                handlers.onUninstall();
+              }}
+            >
+              {forcedLabel ?? "Uninstall"}
+            </NodexDropdownItem>
+          ) : null}
         </NodexDropdownMenu>
       ) : null}
       {installed && handlers.onManage != null ? (

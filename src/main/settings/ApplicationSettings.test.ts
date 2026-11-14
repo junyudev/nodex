@@ -49,6 +49,23 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
+it.effect("persists per-plugin Project scope in Profile preferences", () =>
+  Effect.gen(function* () {
+    const { root, settingsPath } = fixture('[plugin]\nname = "keep"\n');
+    const input = { environment: {}, hostHomeDirectory: root, settingsPath };
+    const pluginId = "example.local@marketplace";
+    const settings = yield* makeApplicationSettings(input);
+    yield* settings.setPluginScope!(pluginId, { kind: "projects", projectIds: ["b", "a", "b"] });
+    const reopened = yield* makeApplicationSettings(input);
+    assert.deepEqual(yield* reopened.pluginScopes!, {
+      [pluginId]: { kind: "projects", projectIds: ["a", "b"] },
+    });
+    yield* reopened.setPluginScope!(pluginId, { kind: "all" });
+    assert.deepEqual(yield* settings.pluginScopes!, {});
+    assert.deepEqual(parseToml(readFileSync(settingsPath, "utf8")).plugin, { name: "keep" });
+  }),
+);
+
 describe("update channel continuity", () => {
   const previousNightly = "0.5.5-nightly.20261110.2523";
 

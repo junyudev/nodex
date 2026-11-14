@@ -1,3 +1,5 @@
+import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
+import { isAbsolute } from "node:path";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -218,6 +220,27 @@ export const pluginCommandSchemas = {
     marketplaceName: Schema.optionalKey(Schema.NullOr(Schema.NonEmptyString)),
   }),
   refresh: ContextInput,
+  "folder-pick": ContextInput,
+  "folder-prepare": Schema.Struct({
+    ...context,
+    folder: Schema.String.check(
+      Schema.makeFilter((path) => isAbsolute(path) && !path.includes("\0")),
+    ),
+  }),
+  "folder-install": Schema.Struct({ ...context, stagingId: Schema.String.check(Schema.isUUID()) }),
+  "folder-discard": Schema.Struct({ ...context, stagingId: Schema.String.check(Schema.isUUID()) }),
+  "folder-update": Schema.Struct({ ...context, pluginId: Schema.NonEmptyString }),
+  "set-project-scope": Schema.Struct({
+    ...context,
+    pluginId: Schema.NonEmptyString,
+    scope: Schema.Union([
+      Schema.Struct({ kind: Schema.Literal("all") }),
+      Schema.Struct({
+        kind: Schema.Literal("projects"),
+        projectIds: Schema.Array(Schema.NonEmptyString),
+      }),
+    ]),
+  }),
 } as const;
 export const live = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -225,6 +248,24 @@ export const live = Layer.effectDiscard(
     const ipc = yield* ElectronIpc;
     const config = yield* MainConfig;
     const windows = yield* WindowRuntime;
+    const desktop = yield* ElectronDesktop;
+    const pickFolder = Effect.fn("PluginManagerIpc.pickFolder")(function* (
+      event: IpcMainInvokeEvent,
+    ) {
+      const owner = windows.getRegisteredWindow(event.sender.id);
+      if (!owner) return null;
+      return yield* Effect.tryPromise(() =>
+        desktop.dialog.showOpenDialog(owner, {
+          title: "Choose plugin folder",
+          properties: ["openDirectory"],
+        }),
+      ).pipe(
+        Effect.map((result) => (result.canceled ? null : (result.filePaths[0] ?? null))),
+        Effect.mapError(() =>
+          pluginError("service_unavailable", "Could not open the folder picker."),
+        ),
+      );
+    });
     const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
         try: () => {
@@ -252,7 +293,13 @@ export const live = Layer.effectDiscard(
               Effect.mapError(() => pluginError("invalid_input", "Invalid plugin request.")),
             ),
           ),
-          Effect.flatMap((input) => manager.command(name, input as PluginCommands[K]["input"])),
+          Effect.flatMap((input) =>
+            name === "folder-pick"
+              ? pickFolder(event).pipe(
+                  Effect.map((result) => result as PluginCommands[K]["output"]),
+                )
+              : manager.command(name, input as PluginCommands[K]["input"]),
+          ),
           Effect.catch((error) => {
             const outcome = {
               status:
@@ -271,7 +318,11 @@ export const live = Layer.effectDiscard(
                     removed: false,
                     outcome,
                   }
-                : outcome) as PluginCommands[K]["output"],
+                : name === "folder-pick"
+                  ? null
+                  : name === "folder-discard"
+                    ? undefined
+                    : outcome) as PluginCommands[K]["output"],
             );
           }),
         ),

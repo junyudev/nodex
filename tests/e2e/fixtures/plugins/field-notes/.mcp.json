@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "notes": {
+      "command": "node",
+      "args": ["./server.mjs"]
+    },
+    "notes-cloud": {
+      "type": "http",
+      "url": "https://notes.example.com/mcp",
+      "oauth_resource": "https://notes.example.com"
+    }
+  }
+}

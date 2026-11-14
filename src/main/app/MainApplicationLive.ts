@@ -82,6 +82,7 @@ import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { ApplicationWindowRuntime } from "../window-runtime/ApplicationWindowRuntime";
 import { ApplicationWindowShellRuntime } from "../window-runtime/ApplicationWindowShellRuntime";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
+import { live as databaseNotificationsLive } from "../platform/electron/DatabaseNotifications";
 import * as ProductAnalyticsPlatform from "../platform/electron/ProductAnalyticsPlatform";
 import * as CodexApplicationLive from "./CodexApplicationLive";
 import * as ConversationApplicationLive from "./ConversationApplicationLive";
@@ -143,6 +144,7 @@ const conversationGraph = ConversationApplicationLive.live.pipe(
       ),
     ),
   ),
+  Layer.provideMerge(databaseNotificationsLive),
 );
 const executionGraph = AgentRuntimeApplicationLive.runtime.pipe(
   Layer.provide(HostDesktopToolsLive.live),

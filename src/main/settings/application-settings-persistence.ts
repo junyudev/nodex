@@ -1,3 +1,4 @@
+import type { PluginProjectScope } from "../../shared/agent-plugins/session-plugins";
 import {
   decodeState,
   PRODUCT_ANALYTICS_STATE_FILE,
@@ -282,6 +283,44 @@ function getProfileSettingsPath(source: ApplicationSettingsDocumentSource): stri
 
 function readTomlConfig(configPath: string): RootTomlConfig {
   return readSettingsTomlDocument(configPath) as RootTomlConfig;
+}
+
+/** Only restricted plugins need a persisted override. */
+export function readPluginScopes(source: ApplicationSettingsDocumentSource) {
+  return pluginScopesFromDocument(readTomlConfig(source.settingsPath));
+}
+
+function pluginScopesFromDocument(document: RootTomlConfig) {
+  const table = document.plugin_project_scope;
+  if (!table || typeof table !== "object" || Array.isArray(table)) return {};
+  return Object.fromEntries(
+    Object.entries(table).flatMap(([id, projects]) =>
+      Array.isArray(projects) &&
+      projects.every((project): project is string => typeof project === "string")
+        ? [[id, { kind: "projects", projectIds: projects } as const]]
+        : [],
+    ),
+  );
+}
+
+export function writePluginScope(
+  source: ApplicationSettingsDocumentSource,
+  id: string,
+  scope: PluginProjectScope,
+) {
+  const document = readTomlConfig(source.settingsPath);
+  const entries = Object.fromEntries(
+    Object.entries(pluginScopesFromDocument(document))
+      .filter(([key]) => key !== id)
+      .map(([key, value]) => [key, value.projectIds]),
+  );
+  if (scope.kind === "projects")
+    Object.defineProperty(entries, id, {
+      enumerable: true,
+      value: [...new Set(scope.projectIds)].sort(),
+    });
+  document.plugin_project_scope = entries;
+  writeTomlConfig(source.settingsPath, document);
 }
 
 function writeTomlConfig(configPath: string, nextToml: RootTomlConfig): void {

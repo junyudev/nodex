@@ -418,11 +418,6 @@ export interface ProviderAdapterV2AutomaticApprovalDecline {
 }
 
 export interface ProviderAdapterV2OpenSessionInput {
-  readonly codexPluginProject?: {
-    readonly projectId: string;
-    readonly revision: string | null;
-    readonly rootThreadFor: (threadId: ThreadId) => Effect.Effect<ThreadId, unknown>;
-  };
   /** Commit this session's roster. False means the provider thread is not bound yet. */
   readonly reportBackgroundTasks?: (
     providerThread: OrchestrationV2ProviderThread,
@@ -465,7 +460,6 @@ export interface ProviderAdapterV2TurnInput {
   readonly hostExecutionIdentity?: import("./ExecutionHost.ts").HostTurnIdentity;
   /** Trusted execution-host context supplied after Turn admission. */
   readonly hostInstructions?: string;
-  readonly hostClaudePluginKey?: string;
   readonly hostCliShell?: import("./ExecutionHost.ts").HostCliShell;
   /** Current Project Sources supplied by the host for this admitted Turn. */
   readonly hostSourceRoots?: readonly string[];
@@ -687,8 +681,6 @@ export interface ProviderAdapterV2SessionRuntime {
   readonly nativeGeneration?: number;
   /** A native cancellation ended this incarnation; the manager must retire its credentials and scope. */
   readonly nativeSessionRetired?: Effect.Effect<boolean>;
-  /** A stale Project app-server drains its existing work before recycling. */
-  readonly codexPluginDeliveryStale?: Effect.Effect<boolean>;
   /** An unavailable captured session must fail instead of silently replacing its native identity. */
   readonly nativeResumeFailurePolicy?: "fail" | "portable-context";
   readonly instanceId: ProviderInstanceId;

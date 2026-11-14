@@ -15,8 +15,8 @@ import {
   type PluginMcpBrokerService,
   type PluginMcpBrokerOptions,
   type PluginMcpLeaseOptions,
-  type PluginMcpInstallation,
 } from "./contract";
+import { skillCatalog, type SkillCatalogSource } from "./skill-catalog";
 import { leasePath, listen } from "./http";
 import { makeUpstream } from "./upstream";
 
@@ -42,17 +42,9 @@ const keyFor = (scope: PluginMcpLeaseScope) =>
     scope.principal.id,
   ]);
 
-function projectActive(installation: PluginMcpInstallation, scope: PluginMcpLeaseScope) {
-  return installation.activeProjects.some(
-    (project) =>
-      project.spaceId === scope.project.spaceId && project.projectId === scope.project.projectId,
-  );
-}
-
 type Upstream = Effect.Success<ReturnType<typeof makeUpstream>>;
 type Entry = {
   readonly key: string;
-  readonly installationId: string;
   readonly owner: Scope.Closeable;
   readonly upstream: Upstream;
   readonly requests: FiberSet.FiberSet;
@@ -67,13 +59,22 @@ type Credential = {
   sessionId?: string;
   lease?: Lease;
 };
-type Lease = {
+type LiveLease = {
   readonly credential: Credential;
+  readonly revoked: Deferred.Deferred<never, PluginMcpFailure>;
+  readonly authorize: Effect.Effect<boolean>;
+};
+type ServerLease = LiveLease & {
+  readonly kind: "server";
   readonly scope: PluginMcpLeaseScope;
   readonly entry: Entry;
-  readonly revoked: Deferred.Deferred<never, PluginMcpFailure>;
   readonly approval: PluginMcpApproval;
 };
+type CatalogLease = LiveLease & {
+  readonly kind: "catalog";
+  readonly source: SkillCatalogSource;
+};
+type Lease = ServerLease | CatalogLease;
 
 /** Compose in the Profile Scope. Trusted callers supply authoritative activation and principal facts. */
 export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
@@ -92,14 +93,9 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
   const clock = yield* Clock.Clock;
   const owner = yield* Scope.make();
   const gate = yield* Semaphore.make(1);
-  const installations = new Map<string, PluginMcpInstallation>();
   const upstreams = new Map<string, Entry>();
   const credentials = new Map<string, Credential>();
-  const retiring = yield* FiberMap.make<
-    readonly [installationId: string, id: symbol],
-    void,
-    never
-  >().pipe(Scope.provide(owner));
+  const retiring = yield* FiberMap.make<symbol, void, never>().pipe(Scope.provide(owner));
   let closed = false;
 
   const shutdown = (entry: Entry) =>
@@ -119,7 +115,7 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
     // Revoke every credential before waiting for any upstream to drain.
     for (const lease of leases) {
       delete lease.credential.lease;
-      if (--lease.entry.refs !== 0) continue;
+      if (lease.kind === "catalog" || --lease.entry.refs !== 0) continue;
       upstreams.delete(lease.entry.key);
       unused.push(lease.entry);
     }
@@ -128,9 +124,8 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
     for (const entry of unused)
       yield* FiberMap.run(
         retiring,
-        [entry.installationId, Symbol()],
+        Symbol(),
         shutdown(entry).pipe(
-          // Installation publication follows a durable commit and cannot roll it back.
           Effect.catch((failure) =>
             Effect.logWarning("Plugin MCP shutdown exceeded its grace period", failure),
           ),
@@ -157,7 +152,7 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
 
   // An upstream request belongs to the connection. Revoking the lease stops delivery, while
   // an ordinary downstream disconnect can still cancel work on behalf of a live lease.
-  const dispatch = <A>(lease: Lease, operation: Effect.Effect<A, PluginMcpFailure>) =>
+  const dispatch = <A>(lease: ServerLease, operation: Effect.Effect<A, PluginMcpFailure>) =>
     Effect.uninterruptibleMask((restore) =>
       Effect.gen(function* () {
         if (!isLive(lease)) return yield* new PluginMcpFailure("lease_revoked");
@@ -176,14 +171,20 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
   const withLease = <A>(lease: Lease, operation: Effect.Effect<A, PluginMcpFailure>) =>
     Effect.gen(function* () {
       if (!isLive(lease)) return yield* new PluginMcpFailure("lease_revoked");
-      const result = yield* Effect.raceFirst(operation, Deferred.await(lease.revoked)).pipe(
+      const authorized = Effect.gen(function* () {
+        if (!(yield* lease.authorize)) return yield* new PluginMcpFailure("lease_revoked");
+        const result = yield* operation;
+        if (!(yield* lease.authorize)) return yield* new PluginMcpFailure("lease_revoked");
+        return result;
+      });
+      const result = yield* Effect.raceFirst(authorized, Deferred.await(lease.revoked)).pipe(
         Effect.result,
       );
       if (!isLive(lease)) return yield* new PluginMcpFailure("lease_revoked");
       return yield* Effect.fromResult(result);
     });
 
-  const projection = (lease: Lease) => ({
+  const serverProjection = (lease: ServerLease) => ({
     listTools: withLease(
       lease,
       dispatch(
@@ -218,17 +219,27 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
           );
           if (decision === "deny") return yield* new PluginMcpFailure("approval_denied");
           if (decision !== "allow") return yield* new PluginMcpFailure("approval_required");
+          if (!(yield* lease.authorize)) return yield* new PluginMcpFailure("lease_revoked");
           return yield* dispatch(lease, connection.callTool(name, args));
         }),
       ),
   });
+
+  const projection = (lease: Lease) => {
+    if (lease.kind === "server") return serverProjection(lease);
+    const catalog = skillCatalog(lease.source);
+    return {
+      listTools: withLease(lease, catalog.listTools),
+      callTool: (name: string, args: Record<string, unknown>) =>
+        withLease(lease, catalog.callTool(name, args)),
+    };
+  };
 
   yield* Effect.addFinalizer((exit) =>
     gate
       .withPermit(
         Effect.gen(function* () {
           closed = true;
-          installations.clear();
           yield* invalidate(activeLeases());
           credentials.clear();
         }),
@@ -256,33 +267,6 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
     return { projection: projection(credential.lease) };
   }).pipe(Scope.provide(owner));
 
-  const publishInstallation: PluginMcpBrokerService["publishInstallation"] = (
-    installationId,
-    installation,
-  ) =>
-    Effect.uninterruptible(
-      Effect.gen(function* () {
-        const pending = yield* gate.withPermit(
-          Effect.gen(function* () {
-            if (closed) return [];
-            if (installation) installations.set(installationId, structuredClone(installation));
-            else installations.delete(installationId);
-            yield* invalidate(
-              activeLeases().filter(
-                ({ scope }) =>
-                  scope.installationId === installationId &&
-                  (installation?.generation !== scope.generation ||
-                    !projectActive(installation, scope) ||
-                    !installation.servers.some(({ key }) => key === scope.serverKey)),
-              ),
-            );
-            return [...retiring].flatMap(([[id], fiber]) => (id === installationId ? [fiber] : []));
-          }),
-        );
-        yield* Fiber.joinAll(pending);
-      }),
-    );
-
   const revokeLease: PluginMcpBrokerService["revokeLease"] = (id) =>
     gate.withPermit(
       Effect.uninterruptible(
@@ -295,10 +279,55 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
       ),
     );
 
+  const issue = Effect.fnUntraced(function* (
+    key: string,
+    maxLifetimeMs: number,
+    httpBinding: Credential["httpBinding"],
+    makeLease: (live: LiveLease) => Lease,
+  ) {
+    const id = randomBytes(18).toString("base64url");
+    const bearerToken = randomBytes(32).toString("base64url");
+    const revoked = yield* Deferred.make<never, PluginMcpFailure>();
+    const expiresAt = clock.monotonicTimeNanosUnsafe() + BigInt(maxLifetimeMs) * 1_000_000n;
+    const credential: Credential = {
+      secret: Buffer.from(bearerToken),
+      key,
+      expiresAt,
+      httpBinding,
+    };
+    credential.lease = makeLease({ credential, revoked, authorize: Effect.succeed(true) });
+    credentials.set(id, credential);
+    yield* Effect.sleep(maxLifetimeMs).pipe(
+      Effect.andThen(revokeLease(id)),
+      Effect.forkIn(owner, { startImmediately: true, uninterruptible: false }),
+    );
+    return { id, url: origin + leasePath(id), bearerToken };
+  });
+
+  const openSkillCatalog: PluginMcpBrokerService["openSkillCatalog"] = (
+    source,
+    options?: Pick<PluginMcpLeaseOptions, "authorize">,
+  ) =>
+    gate.withPermit(
+      Effect.uninterruptible(
+        Effect.suspend(() => {
+          if (closed) return Effect.fail(new PluginMcpFailure("broker_closed"));
+          return issue("", defaultLifetimeMs, "mcp-session", (live) => ({
+            ...live,
+            kind: "catalog",
+            source,
+            authorize: options?.authorize ?? live.authorize,
+          }));
+        }),
+      ),
+    );
+
   const openLease: PluginMcpBrokerService["openLease"] = (
     requestedScope,
+    installation,
     {
       approval = () => Effect.succeed("ask" as const),
+      authorize = Effect.succeed(true),
       maxLifetimeMs = defaultLifetimeMs,
       httpBinding,
     }: PluginMcpLeaseOptions = {},
@@ -310,8 +339,7 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
           if (!Number.isSafeInteger(maxLifetimeMs) || maxLifetimeMs <= 0)
             return yield* new PluginMcpFailure("invalid_configuration");
           const scope = structuredClone(requestedScope);
-          const installation = installations.get(scope.installationId);
-          if (installation?.generation !== scope.generation || !projectActive(installation, scope))
+          if (installation.generation !== scope.generation)
             return yield* new PluginMcpFailure("server_inactive");
           const server = installation.servers.find(({ key }) => key === scope.serverKey);
           if (!server) return yield* new PluginMcpFailure("server_inactive");
@@ -326,7 +354,6 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
             const requests = yield* FiberSet.make().pipe(Scope.provide(child));
             entry = {
               key,
-              installationId: scope.installationId,
               owner: child,
               upstream,
               requests,
@@ -334,25 +361,15 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
             };
             upstreams.set(key, entry);
           }
-          const id = randomBytes(18).toString("base64url");
-          const bearerToken = randomBytes(32).toString("base64url");
-          const revoked = yield* Deferred.make<never, PluginMcpFailure>();
           entry.refs++;
-          const expiresAt = clock.monotonicTimeNanosUnsafe() + BigInt(maxLifetimeMs) * 1_000_000n;
-          // Retain only authenticated credential metadata until its original expiry.
-          const credential: Credential = {
-            secret: Buffer.from(bearerToken),
-            key,
-            expiresAt,
-            httpBinding,
-          };
-          credential.lease = { credential, scope, entry, revoked, approval };
-          credentials.set(id, credential);
-          yield* Effect.sleep(maxLifetimeMs).pipe(
-            Effect.andThen(revokeLease(id)),
-            Effect.forkIn(owner, { startImmediately: true, uninterruptible: false }),
-          );
-          return { id, url: origin + leasePath(id), bearerToken };
+          return yield* issue(key, maxLifetimeMs, httpBinding, (live) => ({
+            ...live,
+            kind: "server",
+            scope,
+            entry,
+            approval,
+            authorize,
+          }));
         }),
       ),
     );
@@ -371,8 +388,8 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
     });
 
   return {
-    publishInstallation,
     openLease,
+    openSkillCatalog,
     revokeLease,
     listTools: (scope, credential) => use(scope, credential, (lease) => lease.listTools),
     callTool: (scope, credential, name, args = {}) =>

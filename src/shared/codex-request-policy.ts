@@ -89,7 +89,6 @@ const REQUEST_SOURCES: Readonly<Record<string, string>> = {
   "remoteControl/status/read": `remote_control`,
   "review/start": `review`,
   "skills/config/write": `skills`,
-  "skills/extraRoots/set": `skills`,
   "skills/list": `skills`,
   "thread/approveGuardianDeniedAction": `thread`,
   "thread/archive": `thread`,

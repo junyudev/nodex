@@ -1,3 +1,19 @@
+import * as Option from "effect/Option";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
+import {
+  ALL_PROJECTS,
+  describeAgentSupport,
+  makeInstalledPluginCache,
+  pluginCatalogSnapshot,
+  type PluginCatalogSnapshot,
+  readInstalledPlugin,
+  readPluginCatalog,
+} from "../../host/agent-plugins/PluginCatalog";
+import {
+  FolderReviewError,
+  LOCAL_MARKETPLACE,
+  makeFolderMarketplace,
+} from "../../host/agent-plugins/FolderMarketplace";
 import { localProjectSourceRoots } from "../../shared/project-sources";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 import { matchPluginDetailSkill, projectPluginMcpServers } from "./PluginDetailModel";
@@ -20,6 +36,10 @@ import {
 } from "./PluginSettingsModel";
 import type { McpServerStatus } from "@nodex/codex-app-server-protocol/v2/McpServerStatus";
 import type { ConfigEdit } from "@nodex/codex-app-server-protocol/v2/ConfigEdit";
+import * as Cache from "effect/Cache";
+import * as Data from "effect/Data";
+import * as Duration from "effect/Duration";
+import * as Exit from "effect/Exit";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -66,6 +86,7 @@ import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHostAuthState";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
 import { AppProtocolRuntime } from "../host-runtime/AppProtocolRuntime";
 import { PluginNativeOperations } from "./PluginNativeOperations";
 import { PluginService, PluginServiceAccount, type ServiceListing } from "./PluginService";
@@ -85,6 +106,9 @@ export class PluginManager extends Context.Service<
       name: K,
       input: PluginCommands[K]["input"],
     ) => Effect.Effect<PluginCommands[K]["output"]>;
+    readonly catalog?: (
+      projectId: string | null,
+    ) => Effect.Effect<PluginCatalogSnapshot, PluginManagementError>;
     readonly changes: Stream.Stream<PluginManagementChanged>;
   }
 >()("nodex/main/codex-application/PluginManager") {}
@@ -109,10 +133,16 @@ const PluginOperationLease = Context.Reference<AbortSignal | null>(
   "nodex/main/codex-application/PluginOperationLease",
   { defaultValue: () => null },
 );
+class CatalogKey extends Data.Class<{
+  readonly projectId: string | null;
+  readonly generation: number;
+}> {}
+
 export const live = (options: {
   readonly runtimeStateHome: string;
   readonly codexHome: string;
   readonly homeDirectory?: string;
+  readonly profileHome?: string;
 }) =>
   Layer.effect(
     PluginManager,
@@ -121,6 +151,7 @@ export const live = (options: {
       const versions = yield* CodexAppServerCapabilities;
       const auth = yield* CodexExecutionHostAuthState;
       const workspace = yield* ProjectWorkspace;
+      const database = yield* DatabaseNotifierRuntime;
       const protocol = yield* AppProtocolRuntime;
       const native = yield* PluginNativeOperations;
       const service = yield* PluginService;
@@ -128,6 +159,39 @@ export const live = (options: {
       const apps = yield* makePluginApps;
       const accountMetadata = yield* makePluginAccountMetadata;
       const standaloneSkills = yield* StandaloneSkills;
+      const settings = Option.getOrUndefined(yield* Effect.serviceOption(ApplicationSettings));
+      const scopes =
+        settings?.pluginScopes?.pipe(
+          Effect.mapError(() => pluginError("service_unavailable", "Could not read plugin scope.")),
+        ) ??
+        Effect.succeed(
+          {} as Readonly<
+            Record<string, import("../../shared/agent-plugins/session-plugins").PluginProjectScope>
+          >,
+        );
+      const folderError = () =>
+        pluginError("service_unavailable", "Could not change the local folder marketplace.");
+      const folders = options.profileHome
+        ? yield* makeFolderMarketplace(options.profileHome).pipe(
+            Effect.catch((error) =>
+              Effect.logWarning("Local folder marketplace is unavailable", error).pipe(
+                Effect.as(null),
+              ),
+            ),
+          )
+        : null;
+      const localName = (row: PluginRow) =>
+        folders &&
+        row.marketplace.name === LOCAL_MARKETPLACE &&
+        row.marketplace.path === folders.catalogPath
+          ? row.selector.pluginName
+          : null;
+      const localSources =
+        folders?.sources.pipe(Effect.orElseSucceed(() => ({}))) ?? Effect.succeed({});
+      const markLocal = (row: PluginRow, sources: Readonly<Record<string, string>>) => {
+        const name = localName(row);
+        return name && Object.hasOwn(sources, name) ? { ...row, localFolder: sources[name]! } : row;
+      };
       const policy = createPluginInventoryPolicy(options.runtimeStateHome);
       const epoch = yield* Ref.make(0);
       // Backpressure retains progress and OAuth completion; IPC fan-out does not await renderer work.
@@ -159,58 +223,6 @@ export const live = (options: {
       const skillManifestPath = (path: string) =>
         isAbsoluteAppFilesystemPath(path) && /[/\\]SKILL\.md$/u.test(path);
       let nextOperation = 0;
-      const emit = Effect.fn("PluginManager.emit")(function* (
-        kind: PluginManagementChanged["kind"],
-        progress?: MarketplaceRemovalProgress,
-      ) {
-        yield* PubSub.publish(events, {
-          hostId: "local",
-          accountEpoch: yield* Ref.get(epoch),
-          kind,
-          ...(progress ? { progress } : {}),
-        });
-      });
-      yield* gateway.events.pipe(
-        Stream.runForEach((event) =>
-          Effect.gen(function* () {
-            if (event.kind === "connection") {
-              if (event.value.hostId !== "local") return;
-              detailSkillGrants.clear();
-              yield* Ref.update(epoch, (n) => n + 1);
-              yield* emit("connection");
-              return;
-            }
-            if (event.hostId !== "local") return;
-            if (event.value.method === "account/updated") {
-              detailSkillGrants.clear();
-              yield* Ref.update(epoch, (n) => n + 1);
-              yield* emit("account");
-              return;
-            }
-            const method: string = event.value.method;
-            if (method === "skills/changed" || method === "codex/event/skills_update_available")
-              yield* emit("skills");
-            else if (method === "app/list/updated") yield* emit("apps");
-            else if (event.value.method === "mcpServer/oauthLogin/completed")
-              yield* PubSub.publish(events, {
-                hostId: event.hostId,
-                accountEpoch: yield* Ref.get(epoch),
-                kind: "mcp",
-                hostGeneration: event.generation,
-                mcpOauthCompletion: event.value
-                  .params as unknown as import("@nodex/codex-app-server-protocol/v2/McpServerOauthLoginCompletedNotification").McpServerOauthLoginCompletedNotification,
-              });
-            else if (method === "mcpServer/startupStatus/updated") yield* emit("mcp");
-            else if (method.startsWith("plugin/") || method.startsWith("marketplace/"))
-              yield* emit("plugins");
-          }),
-        ),
-        Effect.forkScoped({ startImmediately: true }),
-      );
-      yield* native.changes.pipe(
-        Stream.runForEach(() => emit("plugins")),
-        Effect.forkScoped({ startImmediately: true }),
-      );
       const resolve = Effect.fn("PluginManager.resolve")(function* (input: PluginContext) {
         if (input.hostId !== "local")
           return yield* pluginError(
@@ -304,6 +316,7 @@ export const live = (options: {
         context: ResolvedPluginContext,
         method: M,
         params: ClientRequestParamsByMethod[M],
+        failedAction?: string,
       ) =>
         withOperationLease(
           gateway
@@ -311,7 +324,7 @@ export const live = (options: {
               expectedHostId: "local",
               expectedGeneration: context.hostGeneration,
             })
-            .pipe(Effect.mapError(nativeFailure)),
+            .pipe(Effect.mapError((error) => nativeFailure(error, failedAction))),
         );
       const captureAccount = Effect.gen(function* () {
         const status = yield* desktop
@@ -339,17 +352,132 @@ export const live = (options: {
         }).pipe(Effect.map((response) => response as unknown as PluginInstalledResponse));
       const installed = (context: ResolvedPluginContext) =>
         installedRaw(context).pipe(Effect.map((response) => policy.project(response, "local")));
-      const directoryRaw = (context: ResolvedPluginContext, forceRefetch = false) =>
-        request(context, "plugin/list", {
-          cwds: context.cwds.length ? [...context.cwds] : null,
-          forceRefetch,
-        }).pipe(Effect.map((response) => response as unknown as PluginListResponse));
+      const readPackage = yield* makeInstalledPluginCache(options.codexHome);
+      // Codex evaluates each Project's own source roots and configuration when listing plugins.
+      const catalogs = yield* Cache.makeWith(
+        Effect.fn("PluginManager.loadCatalog")(function* ({ projectId }: CatalogKey) {
+          const context = yield* resolve({ hostId: "local", projectId });
+          const [inventory, scope] = yield* Effect.all([installed(context), scopes]);
+          const entries = yield* readPluginCatalog(
+            inventory.marketplaces.flatMap(({ plugins }) => plugins),
+            scope,
+            readPackage,
+          );
+          yield* assertCurrent(context);
+          return pluginCatalogSnapshot(entries);
+        }),
+        {
+          capacity: Infinity,
+          timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.infinity : Duration.zero),
+        },
+      );
+      let catalogGeneration = 0;
+      const invalidateCatalog = Effect.sync(() => {
+        catalogGeneration++;
+      }).pipe(Effect.andThen(Cache.invalidateAll(catalogs)));
+      const catalog = Effect.fn("PluginManager.catalog")(function* (projectId: string | null) {
+        while (true) {
+          const generation = catalogGeneration;
+          const result = yield* Cache.get(catalogs, new CatalogKey({ projectId, generation })).pipe(
+            Effect.result,
+          );
+          // A mutation may have landed while the inventory or a package was being read.
+          if (generation === catalogGeneration) return yield* Effect.fromResult(result);
+        }
+      });
+      const emit = Effect.fn("PluginManager.emit")(function* (
+        kind: PluginManagementChanged["kind"],
+        progress?: MarketplaceRemovalProgress,
+      ) {
+        if (
+          (kind === "plugins" && !progress) ||
+          kind === "connection" ||
+          kind === "account" ||
+          kind === "skills"
+        )
+          yield* invalidateCatalog;
+        yield* PubSub.publish(events, {
+          hostId: "local",
+          accountEpoch: yield* Ref.get(epoch),
+          kind,
+          ...(progress ? { progress } : {}),
+        });
+      });
+      yield* gateway.events.pipe(
+        Stream.runForEach((event) =>
+          Effect.gen(function* () {
+            if (event.kind === "connection") {
+              if (event.value.hostId !== "local") return;
+              detailSkillGrants.clear();
+              yield* Ref.update(epoch, (n) => n + 1);
+              yield* emit("connection");
+              return;
+            }
+            if (event.hostId !== "local") return;
+            if (event.value.method === "account/updated") {
+              detailSkillGrants.clear();
+              yield* Ref.update(epoch, (n) => n + 1);
+              yield* emit("account");
+              return;
+            }
+            const method: string = event.value.method;
+            if (method === "skills/changed" || method === "codex/event/skills_update_available")
+              yield* emit("skills");
+            else if (method === "app/list/updated") yield* emit("apps");
+            else if (event.value.method === "mcpServer/oauthLogin/completed")
+              yield* PubSub.publish(events, {
+                hostId: event.hostId,
+                accountEpoch: yield* Ref.get(epoch),
+                kind: "mcp",
+                hostGeneration: event.generation,
+                mcpOauthCompletion: event.value
+                  .params as unknown as import("@nodex/codex-app-server-protocol/v2/McpServerOauthLoginCompletedNotification").McpServerOauthLoginCompletedNotification,
+              });
+            else if (method === "mcpServer/startupStatus/updated") yield* emit("mcp");
+            else if (method.startsWith("plugin/") || method.startsWith("marketplace/"))
+              yield* emit("plugins");
+          }),
+        ),
+        Effect.forkScoped({ startImmediately: true }),
+      );
+      yield* native.changes.pipe(
+        Stream.runForEach(() => emit("plugins")),
+        Effect.forkScoped({ startImmediately: true }),
+      );
+      yield* database.projectInvalidations.pipe(
+        Stream.filter(
+          ({ changeType, projectId }) =>
+            changeType === "sources" ||
+            changeType === "lifecycle" ||
+            changeType === "delete" ||
+            changeType === "create" ||
+            (changeType === "update" && !projectId),
+        ),
+        Stream.runForEach(() => emit("plugins")),
+        Effect.forkScoped({ startImmediately: true }),
+      );
+      const directoryRaw = (
+        context: ResolvedPluginContext,
+        forceRefetch = false,
+        failedAction?: string,
+      ) =>
+        request(
+          context,
+          "plugin/list",
+          { cwds: context.cwds.length ? [...context.cwds] : null, forceRefetch },
+          failedAction,
+        ).pipe(
+          // Codex can replace installed cache directories during a forced list refresh.
+          Effect.tap(() => (forceRefetch ? invalidateCatalog : Effect.void)),
+          Effect.map((response) => response as unknown as PluginListResponse),
+        );
       const directory = (context: ResolvedPluginContext, forceRefetch = false) =>
         directoryRaw(context, forceRefetch).pipe(
           Effect.map((response) => policy.project(response, "local")),
         );
       const protectedMarketplace = (response: PluginInstalledResponse, name?: string | null) =>
         name === policy.marketplaceName ||
+        (folders !== null && name === LOCAL_MARKETPLACE) ||
         response.marketplaces.some(
           (marketplace) =>
             (name == null || marketplace.name === name) &&
@@ -969,17 +1097,22 @@ export const live = (options: {
           const detail = response.plugin as unknown as PluginDetail;
           if (!policy.visible(detail.summary.id, "local"))
             return yield* pluginError("not_found", "The plugin was not found.");
-          const row = rows({
-            marketplaces: [
-              {
-                name: detail.marketplaceName,
-                path: detail.marketplacePath,
-                interface: null,
-                plugins: [detail.summary],
-              },
-            ],
-            marketplaceLoadErrors: [],
-          })[0]!;
+          const row = markLocal(
+            rows({
+              marketplaces: [
+                {
+                  name: detail.marketplaceName,
+                  path: detail.marketplacePath,
+                  interface: null,
+                  plugins: [detail.summary],
+                },
+              ],
+              marketplaceLoadErrors: [],
+            })[0]!,
+            yield* localSources,
+          );
+          const scopeById = yield* scopes;
+          const installedPackage = yield* readInstalledPlugin(options.codexHome, row.summary);
           const ui = row.summary.interface;
           const appView = detail.apps.length
             ? yield* withOperationLease(
@@ -1130,6 +1263,25 @@ export const live = (options: {
                 canDisconnect: state?.canDisconnect ?? false,
               };
             }),
+            agentSupport: installedPackage
+              ? describeAgentSupport(installedPackage.package)
+              : {
+                  outsideCodex: detail.skills.length
+                    ? detail.apps.length || detail.hooks.length
+                      ? "partial"
+                      : "full"
+                    : "none",
+                  limitations: [
+                    ...detail.apps.map((app) => ({
+                      kind: "connected-app" as const,
+                      name: app.name,
+                    })),
+                    ...(detail.hooks.length ? [{ kind: "hooks" as const }] : []),
+                  ],
+                },
+            projectScope: Object.hasOwn(scopeById, row.nativeId)
+              ? scopeById[row.nativeId]!
+              : ALL_PROJECTS,
             mcpServers: detail.mcpServers,
             mcpServerStates: projectPluginMcpServers(
               detail.mcpServers,
@@ -1545,7 +1697,11 @@ export const live = (options: {
             })
             .pipe(Effect.mapError(nativeFailure)),
         );
-        if (result.status === "uninstalled") return yield* applied(context, undefined, false);
+        if (result.status === "uninstalled") {
+          const name = localName(row);
+          if (folders && name) yield* folders.remove(name).pipe(Effect.mapError(folderError));
+          return yield* applied(context, undefined, Boolean(name));
+        }
         if (result.status === "protected")
           return failed(pluginError("protected", "This desktop tool is managed by Nodex."));
         if (result.status === "outcome_unavailable") {
@@ -1561,6 +1717,59 @@ export const live = (options: {
         return failed(
           pluginError("inventory_unavailable", "Plugin removal could not be confirmed."),
         );
+      });
+      const installFolder = Effect.fn("PluginManager.installFolder")(function* (
+        context: ResolvedPluginContext,
+        stagingId: string,
+      ) {
+        if (!folders) return yield* folderError();
+        yield* assertCurrent(context);
+        return yield* folders
+          .install(stagingId, (root, marketplacePath, pluginName) =>
+            Effect.gen(function* () {
+              const { marketplaces } = yield* directoryRaw(
+                context,
+                false,
+                "Codex couldn’t read the plugin marketplaces.",
+              );
+              const configured = marketplaces.find(({ name }) => name === LOCAL_MARKETPLACE);
+              if (configured && configured.path !== marketplacePath)
+                return yield* pluginError(
+                  "policy_denied",
+                  "The local folders marketplace name is already in use.",
+                );
+              if (!configured)
+                yield* request(
+                  context,
+                  "marketplace/add",
+                  { source: root, refName: null, sparsePaths: null },
+                  "Codex couldn’t add the Local folders marketplace.",
+                );
+              return yield* request(
+                context,
+                "plugin/install",
+                {
+                  marketplacePath,
+                  remoteMarketplaceName: null,
+                  pluginName,
+                  installAttemptId: null,
+                },
+                "Codex couldn’t install the reviewed plugin.",
+              );
+            }),
+          )
+          .pipe(
+            Effect.mapError((error) =>
+              error instanceof PluginManagementError
+                ? error
+                : error instanceof FolderReviewError
+                  ? pluginError("invalid_input", error.message)
+                  : pluginError(
+                      "service_unavailable",
+                      "Couldn’t save the reviewed plugin to Local folders.",
+                    ),
+            ),
+          );
       });
       const commandHandlers: {
         [K in keyof PluginCommands]: (
@@ -2027,9 +2236,72 @@ export const live = (options: {
             return yield* applied(context, result);
           },
         ),
+        "folder-pick": () => Effect.succeed(null),
+        "folder-prepare": Effect.fn("PluginManager.prepareFolder")(function* (context, input) {
+          if (!folders) return yield* folderError();
+          const inventory = yield* requireInventory(context);
+          const preview = yield* folders.prepare(
+            input.folder,
+            new Set(inventory.filter((row) => row.summary.installed).map((row) => row.nativeId)),
+            icon,
+          );
+          return { status: "success" as const, value: preview, refreshFailures: [] };
+        }),
+        "folder-install": Effect.fn("PluginManager.commitFolder")(function* (context, input) {
+          const receipt = yield* installFolder(context, input.stagingId);
+          return yield* applied(context, receipt);
+        }),
+        "folder-discard": (_context, input) =>
+          folders?.discard(input.stagingId).pipe(Effect.mapError(folderError)) ?? Effect.void,
+        "folder-update": Effect.fn("PluginManager.updateFolder")(function* (context, input) {
+          if (!folders) return yield* folderError();
+          const row = yield* findPlugin(context, input.pluginId, true);
+          const name = localName(row);
+          const source = name
+            ? (yield* folders.sources.pipe(Effect.mapError(folderError)))[name]
+            : undefined;
+          if (!source)
+            return yield* pluginError("not_found", "No source folder is recorded for this plugin.");
+          const review = yield* folders.prepare(source, new Set([row.nativeId]));
+          if (review.status === "rejected")
+            return yield* pluginError("invalid_input", review.reasons.join(" "));
+          const { stagingId } = review.preview;
+          yield* Effect.gen(function* () {
+            if (review.preview.name !== name)
+              return yield* pluginError(
+                "invalid_input",
+                "The source folder now declares a different plugin name.",
+              );
+            yield* installFolder(context, stagingId);
+          }).pipe(Effect.ensuring(folders.discard(stagingId).pipe(Effect.ignore)));
+          return yield* applied(context, undefined);
+        }),
+        "set-project-scope": Effect.fn("PluginManager.setProjectScope")(function* (context, input) {
+          const row = yield* findPlugin(context, input.pluginId, true);
+          if (!settings?.setPluginScope) return yield* folderError();
+          if (input.scope.kind === "projects") {
+            const projects = yield* Effect.forEach(input.scope.projectIds, (id) =>
+              workspace
+                .getProject(id)
+                .pipe(
+                  Effect.mapError(() =>
+                    pluginError("project_unavailable", "The Project is unavailable."),
+                  ),
+                ),
+            );
+            if (projects.some((project) => project?.lifecycle !== "active"))
+              return yield* pluginError("project_unavailable", "The Project is unavailable.");
+          }
+          yield* assertCurrent(context);
+          yield* settings
+            .setPluginScope(row.nativeId, input.scope)
+            .pipe(Effect.mapError(folderError));
+          return yield* applied(context, undefined);
+        }),
         refresh: (context) => applied(context, undefined),
       };
       return PluginManager.of({
+        catalog,
         changes: Stream.fromPubSub(events),
         query: Effect.fn("PluginManager.query")(function* <K extends keyof PluginQueries>(
           name: K,
@@ -2081,6 +2353,20 @@ export const live = (options: {
             });
             detailSkillGrants.set(scope, grants);
           }
+          if (
+            [
+              "list",
+              "installed",
+              "search",
+              "public-home",
+              "category",
+              "personal",
+              "personal-page",
+            ].includes(name)
+          ) {
+            const sources = yield* localSources;
+            return mapPluginProjection(value, (row) => markLocal(row, sources)) as typeof value;
+          }
           return value;
         }),
         command: <K extends keyof PluginCommands>(name: K, input: PluginCommands[K]["input"]) =>
@@ -2100,7 +2386,7 @@ export const live = (options: {
                   Effect.provideService(PluginOperationLease, lease),
                   Effect.tapError((error) =>
                     error.code === "mutation_outcome_unknown"
-                      ? installed(context).pipe(Effect.ignore)
+                      ? emit("plugins").pipe(Effect.andThen(installed(context)), Effect.ignore)
                       : Effect.void,
                   ),
                 );
@@ -2129,7 +2415,11 @@ export const live = (options: {
                         removed: false,
                         outcome: failed(error),
                       }
-                    : failed(error)) as PluginCommands[K]["output"],
+                    : name === "folder-pick"
+                      ? null
+                      : name === "folder-discard"
+                        ? undefined
+                        : failed(error)) as PluginCommands[K]["output"],
                 ),
               ),
             ),

@@ -71,6 +71,7 @@ export function createPluginInventoryPolicy(runtimeStateHome: string) {
                 },
           stableIdentity: pluginStableIdentity(summary),
           nativeId: summary.id,
+          localFolder: null,
           logoUrl: authorizedIcon(summary, "logo", authorize),
           logoDarkUrl: authorizedIcon(summary, "dark", authorize),
           composerIconUrl: authorizedIcon(summary, "composer", authorize),

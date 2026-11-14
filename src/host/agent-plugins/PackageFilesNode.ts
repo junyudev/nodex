@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 import { createHash } from "node:crypto";
 import { constants, type BigIntStats } from "node:fs";
-import { lstat, mkdir, open, opendir, readlink, realpath, symlink } from "node:fs/promises";
+import { lstat, mkdir, open, opendir, readlink, realpath } from "node:fs/promises";
 import path from "node:path";
 import type {
   AgentPluginDiagnostic,
@@ -305,30 +305,5 @@ export function copyPackageSubtrees(
       }
     }
     for (const { source, target } of subtrees) await copy(source, target, []);
-  }).pipe(Effect.uninterruptible);
-}
-
-/** Use the same bounded, no-follow file reads as the package reader. */
-export function copyPackageToStage(root: string, stage: string) {
-  return io(async (signal) => {
-    const { entries } = await inventory(root, signal);
-    for (const [key, entry] of entries) {
-      if (key === ".") continue;
-      const destination = path.join(stage, key);
-      if (entry.kind === "directory") {
-        await mkdir(destination, { mode: 0o700 });
-        continue;
-      }
-      if (entry.kind === "file") {
-        await copyPackageFile(root, key, entry, destination, signal);
-        continue;
-      }
-      if (entry.kind !== "link" || path.isAbsolute(entry.target))
-        fail("unsafe-path", "The package contains an entry that cannot be relocated safely.", key);
-      const target = resolve(root, entries, key);
-      if (target.kind !== "file" && target.kind !== "directory")
-        fail("unsafe-path", "The package contains a link that cannot be staged safely.", key);
-      await symlink(entry.target, destination, target.kind === "directory" ? "dir" : "file");
-    }
   }).pipe(Effect.uninterruptible);
 }

@@ -1,7 +1,13 @@
+import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
+import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import * as PubSub from "effect/PubSub";
+import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import { StandaloneSkills } from "./StandaloneSkills";
 import { assert, it } from "@effect/vitest";
+import { vi } from "vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -16,6 +22,16 @@ import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapab
 import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHostAuthState";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AppProtocolRuntime } from "../host-runtime/AppProtocolRuntime";
+import {
+  DatabaseNotifierRuntime,
+  headless as databaseNotifierLive,
+} from "../host-runtime/DatabaseNotifierRuntime";
+import {
+  ApplicationSettings,
+  make as makeApplicationSettings,
+} from "../settings/ApplicationSettings";
+import { pluginReader } from "../../host/agent-plugins/PluginCatalog";
+import { makePluginSessions } from "../../host/agent-plugins/PluginSessions";
 import { pluginSummary } from "../../shared/test-fixtures/plugins";
 import type { PluginSummary } from "../../shared/codex-plugin-management";
 import type { Project } from "../../shared/types";
@@ -30,6 +46,8 @@ const unavailable = () => Effect.die("Unexpected test capability");
 const make = (
   options: {
     plugins?: PluginSummary[];
+    profileHome?: string;
+    codexHome?: string;
     omitInventory?: boolean;
     failSkills?: boolean;
     failUninstall?: string;
@@ -45,6 +63,7 @@ const make = (
     directoryErrors?: boolean;
     upgradePartial?: boolean;
     abortInstall?: boolean;
+    rejectFolderRequest?: (method: string) => boolean;
     config?: unknown;
     mcpStatuses?: unknown[];
     configWriteOk?: boolean;
@@ -60,6 +79,7 @@ const make = (
     appTools?: import("@nodex/codex-app-server-protocol/v2/AppToolSummary").AppToolSummary[];
     accountMetadata?: unknown;
     events?: Stream.Stream<import("../codex-runtime/CodexEventHub").CodexEndpointEvent>;
+    beforeInstalled?: Effect.Effect<void>;
     hooks?: import("@nodex/codex-app-server-protocol/v2/HookMetadata").HookMetadata[];
   } = {},
 ) => {
@@ -70,6 +90,7 @@ const make = (
     pluginSummary({ id: "a@custom", name: "a" }),
     pluginSummary({ id: "b@custom", name: "b" }),
   ];
+  let localMarketplace: string | null = null;
   let failUninstall = options.failUninstall;
   let interruptedInstall = false;
   let project: Pick<Project, "id" | "lifecycle" | "bindingRevision" | "sources"> | null = {
@@ -91,8 +112,18 @@ const make = (
             name: options.marketplaceName ?? "custom",
             path: "/marketplace.json",
             interface: null,
-            plugins,
+            plugins: plugins.filter(({ id }) => !id.endsWith("@nodex-local")),
           },
+          ...(localMarketplace
+            ? [
+                {
+                  name: "nodex-local",
+                  path: localMarketplace,
+                  interface: null,
+                  plugins: plugins.filter(({ id }) => id.endsWith("@nodex-local")),
+                },
+              ]
+            : []),
         ],
     marketplaceLoadErrors: [],
   });
@@ -100,9 +131,24 @@ const make = (
     Effect.suspend(() => {
       const params = raw as Record<string, unknown>;
       calls.push({ method, params });
+      if (options.rejectFolderRequest?.(method))
+        return Effect.fail(
+          codexRuntimeError({
+            operation: "gateway.request",
+            reason: "request",
+            retryable: false,
+            method,
+            cause: CodexAppServerRequestError.fromProtocolError(
+              { code: -32601, message: `Unhandled scenario request: ${method}` },
+              method,
+              "test",
+            ),
+          }),
+        );
       if (method === "plugin/installed") {
         onRead?.();
-        return Effect.succeed(inventory());
+        const snapshot = inventory();
+        return options.beforeInstalled?.pipe(Effect.as(snapshot)) ?? Effect.succeed(snapshot);
       }
       if (method === "plugin/list")
         return Effect.succeed({
@@ -146,7 +192,45 @@ const make = (
             shareUrl: null,
           },
         });
+      if (method === "marketplace/add" && options.profileHome) {
+        localMarketplace = join(String(params.source), ".agents/plugins/marketplace.json");
+        return Effect.succeed({
+          marketplaceName: "nodex-local",
+          installedRoot: params.source,
+          alreadyAdded: false,
+        });
+      }
       if (method === "plugin/install") {
+        if (
+          localMarketplace &&
+          params.marketplacePath === localMarketplace &&
+          options.codexHome &&
+          options.profileHome
+        ) {
+          const name = String(params.pluginName);
+          const id = name + "@nodex-local";
+          const packageRoot = join(options.profileHome, "nodex-local/plugins", name);
+          const cache = join(options.codexHome, "plugins/cache/nodex-local", name, "local");
+          return Effect.tryPromise(async () => {
+            await mkdir(dirname(cache), { recursive: true });
+            const staging = await mkdtemp(join(dirname(cache), ".staged-"));
+            await cp(packageRoot, staging, { recursive: true });
+            await rm(cache, { recursive: true, force: true });
+            await rename(staging, cache);
+            plugins = [
+              ...plugins.filter((plugin) => plugin.id !== id),
+              pluginSummary({
+                id,
+                name,
+                installed: true,
+                enabled: true,
+                localVersion: null,
+                source: { type: "local", path: packageRoot },
+              }),
+            ];
+            return { authPolicy: "ON_INSTALL", appsNeedingAuth: [] };
+          }).pipe(Effect.orDie);
+        }
         if (options.abortInstall) {
           controller.abort();
           return Effect.never.pipe(
@@ -372,7 +456,24 @@ const make = (
       FileSystem.makeNoop({ readFileString: () => Effect.succeed("contents") }),
     ),
   );
-  const layer = live({ runtimeStateHome: home, codexHome: "/native-home" }).pipe(
+  const layer = live({
+    runtimeStateHome: home,
+    codexHome: options.codexHome ?? "/native-home",
+    ...(options.profileHome ? { profileHome: options.profileHome } : {}),
+  }).pipe(
+    Layer.provideMerge(databaseNotifierLive),
+    Layer.provide(
+      options.profileHome
+        ? Layer.effect(
+            ApplicationSettings,
+            makeApplicationSettings({
+              hostHomeDirectory: options.profileHome,
+              settingsPath: join(options.profileHome, "config.toml"),
+              environment: {},
+            }),
+          )
+        : Layer.empty,
+    ),
     Layer.provide(
       Layer.merge(services, nativeLive({ runtimeStateHome: home }).pipe(Layer.provide(services))),
     ),
@@ -397,14 +498,20 @@ const make = (
     },
   };
 };
-const withManager = <A>(
+const withManager = <A, R>(
   harness: ReturnType<typeof make>,
-  run: (manager: PluginManager["Service"]) => Effect.Effect<A, unknown>,
+  run: (
+    manager: PluginManager["Service"],
+    database: DatabaseNotifierRuntime["Service"],
+  ) => Effect.Effect<A, unknown, R>,
 ) =>
   Effect.scoped(
     Effect.gen(function* () {
       const services = yield* Layer.build(harness.layer);
-      return yield* run(Context.get(services, PluginManager));
+      return yield* run(
+        Context.get(services, PluginManager),
+        Context.get(services, DatabaseNotifierRuntime),
+      );
     }),
   );
 
@@ -2052,3 +2159,251 @@ it.effect("denies managed app tools and reports absent native tool catalogs expl
     }),
   );
 });
+
+it.effect("shares a cold catalog across opens and reuses packages after invalidation", () =>
+  Effect.gen(function* () {
+    const profile = yield* Effect.acquireRelease(
+      Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-plugin-catalog-"))),
+      (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+    );
+    const root = join(profile, "plugins/cache/custom/a/local");
+    const manifest = join(root, ".codex-plugin/plugin.json");
+    yield* Effect.promise(async () => {
+      await mkdir(dirname(manifest), { recursive: true });
+      await writeFile(manifest, JSON.stringify({ name: "a" }));
+    });
+    const reader = yield* Effect.acquireRelease(
+      Effect.sync(() => vi.spyOn(pluginReader, "read")),
+      (spy) => Effect.sync(() => spy.mockRestore()),
+    );
+    const nativeEvents =
+      yield* PubSub.unbounded<import("../codex-runtime/CodexEventHub").CodexEndpointEvent>();
+    const reading = yield* Deferred.make<void>();
+    const unblock = yield* Deferred.make<void>();
+    const harness = make({
+      profileHome: profile,
+      codexHome: profile,
+      plugins: [pluginSummary({ id: "a@custom", name: "a", installed: true, enabled: true })],
+      events: Stream.fromPubSub(nativeEvents),
+      beforeInstalled: Deferred.succeed(reading, undefined).pipe(
+        Effect.andThen(Deferred.await(unblock)),
+      ),
+    });
+    const counts = () => ({
+      inventory: harness.calls.filter(({ method }) => method === "plugin/installed").length,
+      packages: reader.mock.calls.length,
+    });
+    yield* withManager(harness, (manager, database) =>
+      Effect.gen(function* () {
+        const options = {
+          home: profile,
+          spaceId: "space",
+          catalog: manager.catalog!,
+          changes: Stream.empty,
+          broker: {
+            openLease: unavailable,
+            openSkillCatalog: unavailable,
+            revokeLease: unavailable,
+          },
+        };
+        const first = yield* makePluginSessions(options);
+        const second = yield* makePluginSessions(options);
+        const request = { threadId: "thread", projectId: null, backend: "claude" } as const;
+        const openFirst = yield* first
+          .open("first", request)
+          .pipe(Effect.forkScoped({ startImmediately: true }));
+        yield* Deferred.await(reading);
+        const openSecond = yield* second
+          .open("second", request)
+          .pipe(Effect.forkScoped({ startImmediately: true }));
+        assert.deepEqual(counts(), { inventory: 1, packages: 0 });
+        yield* Deferred.succeed(unblock, undefined);
+        const attached = yield* Fiber.join(openFirst);
+        assert.isString(attached?.revision);
+        assert.equal((yield* Fiber.join(openSecond))?.revision, attached?.revision);
+        assert.deepEqual(counts(), { inventory: 1, packages: 1 });
+
+        assert.equal(yield* first.revision("first"), attached?.revision);
+        assert.equal(yield* second.revision("second"), attached?.revision);
+        assert.deepEqual(counts(), { inventory: 1, packages: 1 });
+
+        // A different Project needs its own effective inventory, but sees the same cache package.
+        yield* manager.catalog!("p");
+        assert.deepEqual(counts(), { inventory: 2, packages: 1 });
+        assert.deepEqual(
+          harness.calls.filter(({ method }) => method === "plugin/installed").at(-1)?.params.cwds,
+          ["/a", "/b"],
+        );
+
+        const observed = yield* manager.changes.pipe(
+          Stream.filter(({ kind }) => kind === "skills"),
+          Stream.take(1),
+          Stream.runDrain,
+          Effect.forkScoped({ startImmediately: true }),
+        );
+        harness.addPlugin(
+          pluginSummary({ id: "b@custom", name: "b", installed: true, enabled: true }),
+        );
+        yield* PubSub.publish(nativeEvents, {
+          kind: "notification",
+          hostId: "local",
+          generation: 1,
+          value: { protocol: "generated", method: "skills/changed", params: {} },
+        });
+        yield* Fiber.join(observed);
+        const refreshed = yield* first.revision("first");
+        assert.notEqual(refreshed, attached?.revision);
+        assert.equal(yield* second.revision("second"), refreshed);
+        assert.deepEqual(counts(), { inventory: 3, packages: 1 });
+
+        const scoped = yield* manager.command("set-project-scope", {
+          ...context,
+          pluginId: "a@custom",
+          scope: { kind: "projects", projectIds: ["p"] },
+        });
+        assert.equal(scoped.status, "success");
+        const updated = yield* first.open("scoped", { ...request, backend: "codex" });
+        assert.notEqual(updated?.revision, refreshed);
+        assert.deepEqual(updated?.codexDisabledPluginIds, ["a@custom"]);
+        assert.deepEqual(counts(), { inventory: 5, packages: 1 });
+
+        const project = yield* second.open("project", { ...request, projectId: "p" });
+        const archived = yield* manager.changes.pipe(
+          Stream.filter(({ kind }) => kind === "plugins"),
+          Stream.take(1),
+          Stream.runDrain,
+          Effect.forkScoped({ startImmediately: true }),
+        );
+        harness.setProject(null);
+        yield* database.notifyProjectsChanged("lifecycle", "p");
+        yield* Fiber.join(archived);
+        assert.isString(project?.revision);
+        const result = yield* second.revision("project").pipe(Effect.flip);
+        assert.propertyVal(result, "code", "project_unavailable");
+        assert.isNull(yield* second.revision("project"));
+      }),
+    );
+  }),
+);
+
+it.effect(
+  "reinstalls a local folder, refreshes the cached package, and cleans up after uninstall",
+  () =>
+    Effect.gen(function* () {
+      const profile = yield* Effect.acquireRelease(
+        Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-folders-manager-"))),
+        (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+      );
+      const codex = join(profile, "codex");
+      const source = join(profile, "source");
+      const manifest = join(source, ".codex-plugin/plugin.json");
+      const reader = yield* Effect.acquireRelease(
+        Effect.sync(() => vi.spyOn(pluginReader, "read")),
+        (spy) => Effect.sync(() => spy.mockRestore()),
+      );
+      // The review also uses the reader. Count only reads from Codex's installed copy.
+      const installedReads = () =>
+        reader.mock.calls.filter(([path]) => path.includes("/plugins/cache/nodex-local/")).length;
+      yield* Effect.promise(async () => {
+        await mkdir(dirname(manifest), { recursive: true });
+        await writeFile(
+          manifest,
+          JSON.stringify({ name: "local-plugin", description: "Original" }),
+        );
+      });
+      const harness = make({ profileHome: profile, codexHome: codex });
+      yield* withManager(harness, (manager) =>
+        Effect.gen(function* () {
+          const prepared = yield* manager.command("folder-prepare", { ...context, folder: source });
+          if (prepared.status !== "success" || prepared.value.status !== "ready")
+            throw new Error(JSON.stringify(prepared));
+          const installed = yield* manager.command("folder-install", {
+            ...context,
+            stagingId: prepared.value.preview.stagingId,
+          });
+          assert.equal(installed.status, "success");
+          const pluginId = "local-plugin@nodex-local";
+          const row = (yield* manager.query("installed", context)).rows.find(
+            (row) => row.nativeId === pluginId,
+          );
+          assert.isTrue(row?.localFolder?.endsWith("/source"));
+          const original = yield* manager.catalog!(null);
+          assert.equal(installedReads(), 1);
+          assert.equal(
+            original.entries.find(({ id }) => id === pluginId)?.package?.identity.description,
+            "Original",
+          );
+          yield* Effect.promise(() =>
+            writeFile(manifest, JSON.stringify({ name: "local-plugin", description: "Updated" })),
+          );
+          const updated = yield* manager.command("folder-update", { ...context, pluginId });
+          assert.equal(updated.status, "success");
+          const catalog = yield* manager.catalog!(null);
+          assert.equal(installedReads(), 2);
+          assert.notEqual(catalog.revision, original.revision);
+          assert.equal(
+            catalog.entries.find(({ id }) => id === pluginId)?.package?.identity.description,
+            "Updated",
+          );
+          assert.deepEqual(
+            harness.calls
+              .filter(({ method }) => ["marketplace/add", "plugin/install"].includes(method))
+              .map(({ method }) => method),
+            ["marketplace/add", "plugin/install", "plugin/install"],
+          );
+          const removed = yield* manager.command("uninstall", { ...context, pluginId });
+          assert.equal(removed.status, "success");
+          const marketplace = yield* Effect.promise(() =>
+            readFile(join(profile, "nodex-local/.agents/plugins/marketplace.json"), "utf8"),
+          );
+          assert.deepEqual(JSON.parse(marketplace).plugins, []);
+        }),
+      );
+    }).pipe(Effect.scoped),
+);
+
+it.effect("identifies the failed folder install step and allows retrying the reviewed copy", () =>
+  Effect.gen(function* () {
+    const profile = yield* Effect.acquireRelease(
+      Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-folders-failure-"))),
+      (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+    );
+    const folder = join(profile, "source");
+    const manifest = join(folder, ".codex-plugin/plugin.json");
+    yield* Effect.promise(async () => {
+      await mkdir(dirname(manifest), { recursive: true });
+      await writeFile(manifest, JSON.stringify({ name: "local-plugin" }));
+    });
+    const failures = [
+      ["plugin/list", "Codex couldn’t read the plugin marketplaces."],
+      ["marketplace/add", "Codex couldn’t add the Local folders marketplace."],
+      ["plugin/install", "Codex couldn’t install the reviewed plugin."],
+    ] as const;
+    let rejectedMethod: string | undefined;
+    const harness = make({
+      profileHome: profile,
+      codexHome: join(profile, "codex"),
+      rejectFolderRequest: (method) => method === rejectedMethod,
+    });
+    yield* withManager(harness, (manager) =>
+      Effect.gen(function* () {
+        const prepared = yield* manager.command("folder-prepare", { ...context, folder });
+        if (prepared.status !== "success" || prepared.value.status !== "ready")
+          throw new Error(JSON.stringify(prepared));
+        const input = { ...context, stagingId: prepared.value.preview.stagingId };
+        for (const [method, message] of failures) {
+          rejectedMethod = method;
+          const result = yield* manager.command("folder-install", input);
+          assert.strictEqual(result.status, "failed");
+          if (result.status === "failed") assert.strictEqual(result.error.message, message);
+        }
+        rejectedMethod = undefined;
+        assert.strictEqual((yield* manager.command("folder-install", input)).status, "success");
+        const expired = yield* manager.command("folder-install", input);
+        assert.strictEqual(expired.status, "failed");
+        if (expired.status === "failed")
+          assert.strictEqual(expired.error.message, "This folder review has expired.");
+      }),
+    );
+  }).pipe(Effect.scoped),
+);

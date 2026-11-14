@@ -1,3 +1,4 @@
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import {
   extractCopilotSubagentUpdate,
   makeCopilotSubagentRouting,
@@ -1268,12 +1269,26 @@ describe("AcpAdapterV2", () => {
     { method: "session/new", transport: "stdio", desktop: false },
     { method: "session/new", transport: "stdio", desktop: true },
     { method: "session/new", transport: "acp", desktop: true },
+    { method: "session/new", transport: "stdio", desktop: false, plugins: "stdio" },
+    { method: "session/new", transport: "acp", desktop: false, plugins: "http" },
     { method: "session/load", transport: "stdio", desktop: true },
     { method: "session/resume", transport: "stdio", desktop: true },
   ] as const)(
     "advertises $transport MCP servers for $method (Desktop Tools: $desktop)",
-    ({ method, transport, desktop }) =>
+    (fixture) =>
       Effect.gen(function* () {
+        const { method, transport, desktop } = fixture;
+        const plugins = "plugins" in fixture ? fixture.plugins : undefined;
+        const catalog = {
+          name: "nodex_plugin_skills",
+          url: "http://127.0.0.1:1/catalog",
+          bearerToken: "catalog-token",
+        };
+        const plugin = {
+          name: "nodex-plugin-test",
+          url: "http://127.0.0.1:1/tools",
+          bearerToken: "tool-token",
+        };
         const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
         const path = yield* Path.Path;
         const selfInvocation = yield* resolveSelfInvocation().pipe(
@@ -1316,6 +1331,7 @@ describe("AcpAdapterV2", () => {
           mockAgentPath,
           protocolEvents,
           environment: {
+            ...(plugins === "http" ? { NODEX_ACP_MCP_HTTP: "1" } : {}),
             ...(transport === "acp" ? { NODEX_ACP_MCP_ACP: "1" } : {}),
             ...(method !== "session/new"
               ? {
@@ -1369,7 +1385,12 @@ describe("AcpAdapterV2", () => {
             Effect.timeout("5 seconds"),
           ),
         );
-        const expectedNames = desktop ? ["nodex_app", "node_repl"] : ["nodex_app"];
+        const baseNames = desktop ? ["nodex_app", "node_repl"] : ["nodex_app"];
+        const expectedNames = [
+          ...baseNames,
+          ...(plugins === undefined ? [] : [catalog.name]),
+          ...(plugins === "http" ? [plugin.name] : []),
+        ];
         const servers = rawProtocolRequestParam(setup, "mcpServers");
         if (!Array.isArray(servers)) return yield* Effect.die("Missing ACP MCP servers");
         assert.deepEqual(
@@ -1378,8 +1399,8 @@ describe("AcpAdapterV2", () => {
         );
         if (transport === "acp") {
           assert.deepEqual(
-            servers,
-            expectedNames.map((name) => ({ type: "acp", name, serverId: name })),
+            servers.slice(0, baseNames.length),
+            baseNames.map((name) => ({ type: "acp", name, serverId: name })),
           );
         } else if (desktop) {
           assert.deepEqual(servers[1], {
@@ -1397,6 +1418,23 @@ describe("AcpAdapterV2", () => {
             ],
           });
         }
+        if (plugins === "http") {
+          assert.deepEqual(
+            servers.slice(baseNames.length),
+            [catalog, plugin].map(({ name, url, bearerToken }) => ({
+              type: "http",
+              name,
+              url,
+              headers: [{ name: "Authorization", value: "Bearer " + bearerToken }],
+            })),
+          );
+        } else if (plugins === "stdio") {
+          assert.equal(servers.at(-1)?.command, process.execPath);
+          assert.deepEqual(servers.at(-1)?.env?.slice(1), [
+            { name: "NODEX_ACP_MCP_ENDPOINT", value: catalog.url },
+            { name: "NODEX_ACP_MCP_AUTHORIZATION", value: "Bearer " + catalog.bearerToken },
+          ]);
+        }
         assert.equal(
           runtimeInput?.processEnvironment?.NODEX_ACP_DESKTOP_MCP_ENDPOINT,
           desktop ? "http://127.0.0.1:43123/mcp/node_repl" : undefined,
@@ -1409,7 +1447,44 @@ describe("AcpAdapterV2", () => {
         assert.deepEqual(mcpServer.args, ["acp-mcp-bridge"]);
         assert.equal(runtimeInput?.processEnvironment?.NODEX_ACP_MCP_NODE, process.execPath);
         assert.equal(runtimeInput?.processEnvironment?.NODEX_ACP_MCP_ENTRYPOINT, undefined);
-      }).pipe(Effect.provide(layerTest), Effect.scoped),
+      }).pipe(
+        Effect.provideService(ExecutionHost.ExecutionHost, {
+          prepareTurn: () => Effect.succeed({}),
+          ...("plugins" in fixture
+            ? {
+                openPlugins: ({ acpHttp: http }) => {
+                  assert.equal(http, fixture.plugins === "http");
+                  return Effect.succeed({
+                    revision: Effect.succeed("1"),
+                    plugins: {
+                      revision: "1",
+                      pluginIds: [],
+                      skillsRoot: null,
+                      skills: [],
+                      codexDisabledPluginIds: [],
+                      skillCatalog: {
+                        name: "nodex_plugin_skills",
+                        url: "http://127.0.0.1:1/catalog",
+                        bearerToken: "catalog-token",
+                      },
+                      mcpServers: [
+                        {
+                          pluginId: "test@local",
+                          serverKey: "test",
+                          name: "nodex-plugin-test",
+                          url: "http://127.0.0.1:1/tools",
+                          bearerToken: "tool-token",
+                        },
+                      ],
+                    },
+                  });
+                },
+              }
+            : {}),
+        }),
+        Effect.provide(layerTest),
+        Effect.scoped,
+      ),
   );
 
   it.live("refreshes ACP prompt instructions when the interaction mode changes", () =>
@@ -1505,15 +1580,15 @@ describe("AcpAdapterV2", () => {
       assert.include(firstDefault.prompt, "<nodex_instructions>");
       assert.include(firstDefault.prompt, "Nodex interaction mode: Default");
       assert.notInclude(firstDefault.prompt, "node_repl");
+      assert.include(firstDefault.prompt, "list_plugin_skills");
       assert.notInclude(
         firstDefault.methods,
         "session/set_config_option",
         "Build should preserve the agent's advertised mode default",
       );
-      assert.include(
-        (yield* runTurn(2, defaultPolicy, "Second default request.")).prompt,
-        "Second default request.",
-      );
+      const secondDefault = yield* runTurn(2, defaultPolicy, "Second default request.");
+      assert.include(secondDefault.prompt, "Second default request.");
+      assert.notInclude(secondDefault.prompt, "list_plugin_skills");
 
       const planPolicy = policy("plan");
       const firstPlan = yield* runTurn(3, planPolicy, "Plan this change.");
@@ -1552,7 +1627,30 @@ describe("AcpAdapterV2", () => {
       assert.include(perPrompt.prompt, "Host instructions");
       assert.include(perPrompt.prompt, "/ready-plugin/skills/chrome/SKILL.md");
       assert.notInclude(restoredBuild.methods, "session/set_config_option");
-    }).pipe(Effect.provide(layerTest), Effect.scoped),
+    }).pipe(
+      Effect.provideService(ExecutionHost.ExecutionHost, {
+        prepareTurn: () => Effect.succeed({}),
+        openPlugins: () =>
+          Effect.succeed({
+            revision: Effect.succeed("1"),
+            plugins: {
+              revision: "1",
+              pluginIds: [],
+              skillsRoot: null,
+              skills: [],
+              codexDisabledPluginIds: [],
+              skillCatalog: {
+                name: "nodex_plugin_skills",
+                url: "http://127.0.0.1:1/catalog",
+                bearerToken: "catalog-token",
+              },
+              mcpServers: [],
+            },
+          }),
+      }),
+      Effect.provide(layerTest),
+      Effect.scoped,
+    ),
   );
 
   it.live("reapplies a selection after a switch away from it failed partway", () =>

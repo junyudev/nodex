@@ -1,3 +1,4 @@
+import type { SessionPlugins, SessionPluginsRequest } from "../../../../../../src/shared/agent-plugins/session-plugins.ts";
 import type { DesktopToolActivity } from "./desktopToolActivity.ts";
 import type {
   OrchestrationV2ProviderThread,
@@ -87,7 +88,6 @@ export const HostTurnPreparation = Schema.Struct({
   instructions: Schema.optionalKey(Schema.String),
   cliShell: Schema.optionalKey(HostCliShell),
   sourceRoots: Schema.optionalKey(Schema.Array(Schema.String)),
-  claudePluginKey: Schema.optionalKey(Schema.String),
 });
 export type HostTurnPreparation = typeof HostTurnPreparation.Type;
 
@@ -126,39 +126,15 @@ export class ExecutionHostError extends Schema.TaggedError<ExecutionHostError>()
   },
 ) {}
 
-export const CodexPluginDelivery = Schema.Struct({
-  revision: Schema.String,
-  root: Schema.NullOr(Schema.String),
-  identities: Schema.Array(Schema.String),
-  servers: Schema.Array(Schema.Struct({
-    key: Schema.String,
-    url: Schema.String,
-    authorization: Schema.String,
-  })),
-  expiresAt: Schema.NullOr(Schema.Number),
-});
-export type CodexPluginDelivery = typeof CodexPluginDelivery.Type;
+export interface SessionPluginAttachment {
+  readonly plugins: SessionPlugins | null;
+  readonly revision: Effect.Effect<string | null, ExecutionHostError>;
+}
 
-export type CodexPluginRequest =
-  | { readonly action: "status"; readonly projectId: string }
-  | { readonly action: "attach"; readonly projectId: string; readonly rootThreadId: string; readonly attachmentId: string }
-  | { readonly action: "release"; readonly attachmentId: string };
-export const HostClaudePlugins = Schema.Struct({
-  identities: Schema.Array(Schema.String),
-  roots: Schema.Array(Schema.String),
-  skills: Schema.Array(Schema.Struct({
-    name: Schema.String,
-    path: Schema.String,
-    userInvocable: Schema.Boolean,
-  })),
-  servers: Schema.Array(Schema.Struct({
-    name: Schema.String,
-    url: Schema.String,
-    bearerToken: Schema.String,
-  })),
-  renewAfter: Schema.NullOr(Schema.Number),
-});
-export type HostClaudePlugins = typeof HostClaudePlugins.Type;
+export interface OpenSessionPluginsRequest extends SessionPluginsRequest {
+  /** Forks may open the native target before its Nodex Session has been committed. */
+  readonly sourceThreadId?: string;
+}
 
 /** A host may admit a Turn and supply trusted CLI/skill context before native execution. */
 export class ExecutionHost extends Context.Reference<{
@@ -195,14 +171,9 @@ export class ExecutionHost extends Context.Reference<{
     readonly nativeDriver: import("@nodex/runtime-contracts").ProviderDriverKind;
     readonly cwd: string | null;
   }) => Effect.Effect<HostThreadPreparation, ExecutionHostError>;
-  readonly codexPlugins?: (request: CodexPluginRequest) => Effect.Effect<
-    { readonly revision: string | null; readonly delivery: CodexPluginDelivery | null },
-    ExecutionHostError
-  >;
-  readonly openClaudePlugins?: (
-    identity: HostTurnIdentity,
-    key: string,
-  ) => Effect.Effect<HostClaudePlugins, ExecutionHostError, Scope.Scope>;
+  readonly openPlugins?: (
+    request: OpenSessionPluginsRequest,
+  ) => Effect.Effect<SessionPluginAttachment, ExecutionHostError, Scope.Scope>;
   /** Desktop activity is addressed by its captured execution and opaque Desktop Turn. */
   readonly observeNativeTurn?: (input: HostTurnIdentityReport) => Effect.Effect<void>;
 }>("@nodex/provider-core/server/ExecutionHost", {

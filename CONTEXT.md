@@ -321,26 +321,28 @@ from any Project.
 
 ### Plugin package
 
-A Plugin package is a folder with a manifest that can supply skills and MCP
-servers. Its manifest identifies the package independently of its source folder
-and any Plugin installation.
+A Plugin package is a folder with a manifest that can supply skills, MCP
+servers, hooks and connected apps. Its manifest identifies the package
+independently of its source folder.
 
-### Plugin installation
+### Plugin
 
-A Plugin installation is the Profile's managed copy of a reviewed Plugin
-package on its execution Host. It retains its identity when the package is
-updated from the same source.
+A Plugin is a Plugin package installed in the Profile's Codex home through
+Customize, identified by its Codex plugin id, `name@marketplace`. Codex is the
+authority for installing, enabling and removing it; Nodex extends it to Agents
+other than Codex.
 
-### Plugin activation
+### Plugin scope
 
-A Plugin activation is the explicit enablement of a Plugin installation for
-one Project. Each Project has its own activation for that installation.
+A Plugin scope is the set of Projects an enabled Plugin applies to: every
+Project and chats without a Project by default, or chosen Projects. It is a
+Profile setting on the host that runs the Agents.
 
 ### Plugin server lease
 
 A Plugin server lease is a revocable connection from one Agent Session or MCP
-App view to a plugin MCP server through Nodex. It is scoped to the caller and
-the Plugin activation that authorizes it.
+App view to a Plugin's MCP server through Nodex. It is scoped to the caller and
+ends when the Plugin is disabled, removed or leaves the caller's Plugin scope.
 
 ### Entry point
 

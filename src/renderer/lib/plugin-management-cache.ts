@@ -134,6 +134,7 @@ export async function invalidatePluginManagement(
         ]),
   ]);
 }
+type PluginMutationName = Exclude<keyof PluginCommands, "folder-pick" | "folder-discard">;
 const changeForCommand = (name: keyof PluginCommands): PluginManagementChanged["kind"] => {
   if (name === "plugin-hooks-trust") return "hooks";
   if (name === "plugin-mcp-enabled") return "mcp";
@@ -270,7 +271,7 @@ const succeeded = (
   PluginMutationResult<unknown>,
   { status: "success" | "success-with-refresh-warning" }
 > => result.status === "success" || result.status === "success-with-refresh-warning";
-export async function runPluginMutation<K extends keyof PluginCommands>(
+export async function runPluginMutation<K extends PluginMutationName>(
   client: QueryClient,
   context: PluginContext,
   name: K,

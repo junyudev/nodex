@@ -135,7 +135,7 @@ function describeServers(
       });
       continue;
     }
-    const vendorAuth = portable ? undefined : compatibilityAuth(raw);
+    const vendorAuth = compatibilityAuth(raw);
     const inherited = "env_vars" in data ? (data.env_vars ?? []) : [];
     servers.push({
       key,

@@ -1,4 +1,9 @@
-import { GearIcon, TrashIcon, TryNowIcon } from "@/components/shared/icons/customize-action-icons";
+import {
+  GearIcon,
+  RefreshArrowsIcon,
+  TrashIcon,
+  TryNowIcon,
+} from "@/components/shared/icons/customize-action-icons";
 import {
   NodexDropdownItem,
   NodexDropdownMenu,
@@ -24,8 +29,8 @@ export function forcedInstallLabel(row: PluginRow): string | null {
 }
 
 /**
- * The "More actions" menu of an installed plugin: Try now, Manage (its settings), then
- * Uninstall. While an uninstall runs, the trigger becomes an "Uninstalling" label.
+ * The "More actions" menu of an installed plugin: Try now, Manage (its settings), Update from
+ * folder for a plugin added from a folder, then Uninstall. While an uninstall runs, the trigger becomes an "Uninstalling" label.
  */
 export function InstalledPluginActionsMenu({
   row,
@@ -79,6 +84,15 @@ export function InstalledPluginActionsMenu({
         >
           Manage
         </NodexDropdownItem>
+        {row.localFolder == null ? null : (
+          <NodexDropdownItem
+            leftSlot={<RefreshArrowsIcon />}
+            disabled={pending != null}
+            onSelect={() => void actions.updateFromFolder(row)}
+          >
+            Update from folder
+          </NodexDropdownItem>
+        )}
         {variant === "settings" ? null : <NodexDropdownSeparator />}
         <NodexDropdownItem
           leftSlot={<TrashIcon />}

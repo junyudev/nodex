@@ -43,7 +43,9 @@ export function compatibilityAuth(raw: unknown) {
     Object.entries(value).filter(
       ([key]) =>
         /^(?:oauth(?:_|$)|.*_env_var$)/.test(key) ||
-        ["http_headers_helper", "env_http_headers", "scopes"].includes(key),
+        ["auth", "authentication", "http_headers_helper", "env_http_headers", "scopes"].includes(
+          key,
+        ),
     ),
   );
   const declaration = openai && own(openai, "auth");

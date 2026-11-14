@@ -1,6 +1,6 @@
 # ADR 0086: Nodex owns Agent Plugin installation and delivery
 
-- Status: Accepted
+- Status: Superseded by [ADR 0087](0087-codex-installs-plugins-nodex-extends-them.md)
 - Date: 2026-11-13
 - Owners: Nodex maintainers
 
@@ -143,5 +143,5 @@ entry point launches use the broker and are a later capability.
   Owner and mode.
 
 These decisions retain their existing authority. The
-[Agent Plugins behavior specification](../product-specs/agent-plugins-behavior.md)
+[Plugins behavior specification](../product-specs/plugins-behavior.md)
 defines the release scope.

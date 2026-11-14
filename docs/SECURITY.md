@@ -1249,3 +1249,11 @@ never from the renderer. See [Insights Behavior](product-specs/insights-behavior
 
 - Basic security smoke checks in CI for IPC/body limits and absence of SQL inspection routes.
 - Stronger native subprocess lifecycle diagnostics without content-access policy.
+
+### Session plugin credentials
+
+The Host issues scoped loopback broker credentials for the current Session plugin attachment.
+A plugin change or attachment close revokes those leases, including calls already in flight.
+The Host keeps broker credentials on the private Runtime bridge and passes them to provider
+transports in headers or the stdio bridge environment. Codex retains its own OAuth credentials
+and connected app sign-in.

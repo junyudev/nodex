@@ -104,19 +104,21 @@ const compareSemanticVersions = (
   return 0;
 };
 
+/** Compare exact SemVer values, returning null for a non-SemVer input. */
+export function compareExactSemanticVersions(left: string, right: string): -1 | 0 | 1 | null {
+  const parsedLeft = parseSemanticVersion(left);
+  const parsedRight = parseSemanticVersion(right);
+  return parsedLeft && parsedRight ? compareSemanticVersions(parsedLeft, parsedRight) : null;
+}
+
 /** Compares two exact app-server SemVer strings without inferring support for unknown versions. */
 export function isCodexAppServerVersionAtLeast(
   version: string | null | undefined,
   minimumVersion: string,
 ): boolean {
   if (!version) return false;
-  const parsedVersion = parseSemanticVersion(version);
-  const parsedMinimum = parseSemanticVersion(minimumVersion);
-  return (
-    parsedVersion !== null &&
-    parsedMinimum !== null &&
-    compareSemanticVersions(parsedVersion, parsedMinimum) >= 0
-  );
+  const comparison = compareExactSemanticVersions(version, minimumVersion);
+  return comparison !== null && comparison >= 0;
 }
 
 /** Extracts only an app-server product version, never an unrelated OS/browser version. */

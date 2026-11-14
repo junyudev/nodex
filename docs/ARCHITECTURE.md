@@ -50,9 +50,9 @@ context selects the Skill and a task-bound shell entrypoint for the current
 executable, Profile, and content placement. See [Agent Interface Behavior](product-specs/agent-interface-behavior.md)
 and [ADR 0064](adr/0064-native-application-mcp.md).
 
-The Host owns the Profile's Plugin installations, Project activation, and brokered MCP
-server leases. The Agent Runtime consumes those capabilities through the current Session
-binding. See [ADR 0086](adr/0086-agent-plugins-delivery.md).
+Codex owns the Profile's plugin inventory, installation and enablement. The Host
+owns Project scope and brokered MCP leases. The Agent Runtime resolves those
+capabilities through the Session plugin contract. See [ADR 0087](adr/0087-codex-installs-plugins-nodex-extends-them.md).
 
 The Main-owned Workspace Dependency Runtime exposes verified host document dependencies.
 Its Node Adapter validates the packaged distribution; it owns no Project content or user

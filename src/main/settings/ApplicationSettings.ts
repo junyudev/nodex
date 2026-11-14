@@ -1,3 +1,5 @@
+import type { PluginProjectScope } from "../../shared/agent-plugins/session-plugins";
+import { readPluginScopes, writePluginScope } from "./application-settings-persistence";
 import { getLogger } from "../logging/logger";
 import { DEFAULT_MODEL_POLICY, sameModelPolicy, type ModelPolicy } from "../../shared/model-policy";
 import { getModelPolicy, updateModelPolicy } from "./application-settings-persistence";
@@ -230,6 +232,14 @@ export class ApplicationSettings extends Context.Service<
     readonly claudeLaunchConfiguration: (
       instanceId: string,
     ) => Effect.Effect<ReturnType<typeof getClaudeLaunchConfiguration>, ApplicationSettingsError>;
+    readonly pluginScopes?: Effect.Effect<
+      Readonly<Record<string, PluginProjectScope>>,
+      ApplicationSettingsError
+    >;
+    readonly setPluginScope?: (
+      id: string,
+      scope: PluginProjectScope,
+    ) => Effect.Effect<void, ApplicationSettingsError>;
     readonly snapshot: () => Effect.Effect<ApplicationSettingsSnapshot, ApplicationSettingsError>;
     readonly update: (
       command: ApplicationSettingsCommand,
@@ -511,6 +521,13 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
         attempt("claude-launch-configuration", () =>
           getClaudeLaunchConfiguration(source, instanceId),
         ),
+      ),
+    pluginScopes: writes.withPermits(1)(
+      attempt("read-plugin-scopes", () => readPluginScopes(source)),
+    ),
+    setPluginScope: (id, scope) =>
+      writes.withPermits(1)(
+        attempt("write-plugin-scope", () => writePluginScope(source, id, scope)),
       ),
     snapshot: () => writes.withPermits(1)(readUnlocked()),
     update: (command, options = {}) =>

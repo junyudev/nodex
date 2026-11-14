@@ -36,10 +36,43 @@ const Result = Schema.Union([
     error: Schema.Struct({ message: Schema.String }),
   }),
 ]);
+const pluginServer = Schema.Struct({
+  name: Schema.String,
+  url: Schema.String,
+  bearerToken: Schema.String,
+});
+const decodePlugins = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    plugins: Schema.NullOr(
+      Schema.Struct({
+        revision: Schema.String,
+        skillsRoot: Schema.NullOr(Schema.String),
+        skills: Schema.Array(
+          Schema.Struct({
+            pluginId: Schema.String,
+            alias: Schema.String,
+            description: Schema.String,
+            userInvocable: Schema.optionalKey(Schema.Literal(false)),
+          }),
+        ),
+        mcpServers: Schema.Array(
+          Schema.Struct({
+            ...pluginServer.fields,
+            pluginId: Schema.String,
+            serverKey: Schema.String,
+          }),
+        ),
+        pluginIds: Schema.Array(Schema.String),
+        skillCatalog: Schema.optionalKey(pluginServer),
+        codexDisabledPluginIds: Schema.Array(Schema.String),
+      }),
+    ),
+  }),
+);
 const pluginError = () =>
   new ExecutionHost.ExecutionHostError({
-    operation: "claude.plugins.open",
-    message: "Could not open the Project’s Claude plugins.",
+    operation: "plugins.open",
+    message: "Could not resolve this Session’s plugins.",
   });
 
 const decodeResult = Schema.decodeUnknownEffect(Result);
@@ -263,57 +296,43 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
     );
   };
 
-  const codexPlugins = Effect.fn("AgentRuntime.codexPlugins")(function* (
-    request: ExecutionHost.CodexPluginRequest,
+  const openPlugins = Effect.fn("AgentRuntime.openPlugins")(function* (
+    request: ExecutionHost.OpenSessionPluginsRequest,
   ) {
-    const output = yield* exchange({
-      type: "host.request",
-      operation: "codex.plugins",
-      identity: { runtimeId, runtimeGeneration },
-      request,
-    });
-    return yield* Schema.decodeUnknownEffect(
-      Schema.Struct({
-        revision: Schema.NullOr(Schema.String),
-        delivery: Schema.NullOr(ExecutionHost.CodexPluginDelivery),
-      }),
-    )(output).pipe(
-      Effect.mapError(
-        () =>
-          new ExecutionHost.ExecutionHostError({
-            operation: "codex.plugins",
-            message: "The host returned invalid Codex Plugin delivery.",
-          }),
+    const attachmentId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+    const identity = { runtimeId, runtimeGeneration };
+    yield* Effect.addFinalizer(() =>
+      exchange({ type: "host.request", operation: "plugins.close", identity, attachmentId }).pipe(
+        Effect.timeout("5 seconds"),
+        Effect.interruptible,
+        Effect.ignore,
       ),
     );
-  });
-  const openClaudePlugins = Effect.fn("AgentRuntime.openClaudePlugins")(function* (
-    turn: ExecutionHost.HostTurnIdentity,
-    key: string,
-  ) {
-    const queryId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
-    const identity = { ...turn, runtimeId, runtimeGeneration };
-    yield* Effect.addFinalizer(() =>
-      exchange({
-        type: "host.request",
-        operation: "claude.plugins.close",
-        queryId,
-        identity: { runtimeId, runtimeGeneration },
-      }).pipe(Effect.timeout("5 seconds"), Effect.interruptible, Effect.ignore),
-    );
-    const output = yield* exchange({
+    const { plugins } = yield* exchange({
       type: "host.request",
-      operation: "claude.plugins.open",
+      operation: "plugins.open",
       identity,
-      queryId,
-      key,
+      attachmentId,
+      request,
     }).pipe(
+      Effect.flatMap(decodePlugins),
       Effect.timeout("30 seconds"),
-      Effect.mapError(() => pluginError()),
+      Effect.mapError(pluginError),
     );
-    return yield* Schema.decodeUnknownEffect(ExecutionHost.HostClaudePlugins)(output).pipe(
-      Effect.mapError(() => pluginError()),
+    const revision = exchange({
+      type: "host.request",
+      operation: "plugins.revision",
+      identity,
+      attachmentId,
+    }).pipe(
+      Effect.flatMap(
+        Schema.decodeUnknownEffect(Schema.Struct({ revision: Schema.NullOr(Schema.String) })),
+      ),
+      Effect.map(({ revision }) => revision),
+      Effect.timeout("30 seconds"),
+      Effect.mapError(pluginError),
     );
+    return { plugins, revision };
   });
 
   const prepareThread = Effect.fn("AgentRuntime.prepareHostThread")(function* (input: {
@@ -561,8 +580,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
     prepareTurn,
     registerNativeSession,
     prepareThread,
-    ...(configuration.host?.codexPlugins ? { codexPlugins } : {}),
-    openClaudePlugins,
+    ...(configuration.host?.sessionPlugins ? { openPlugins } : {}),
     desktopSkillRoots,
     observeNativeTurn,
     onNativeSessionClose: (
@@ -695,8 +713,7 @@ export const layerExecutionHost = Layer.effect(
       releaseNativeToolCall: bridge.releaseNativeToolCall,
       registerNativeSession: bridge.registerNativeSession,
       prepareThread: bridge.prepareThread,
-      ...(bridge.codexPlugins ? { codexPlugins: bridge.codexPlugins } : {}),
-      openClaudePlugins: bridge.openClaudePlugins,
+      ...(bridge.openPlugins ? { openPlugins: bridge.openPlugins } : {}),
       observeNativeTurn: bridge.observeNativeTurn,
       toolAvailability: { browser: false, device: false },
       orchestrationInstructions: ORCHESTRATION_INSTRUCTIONS,

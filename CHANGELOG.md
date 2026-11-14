@@ -6,7 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Review and install local Agent Plugin folders in Customize → Plugins. See the package’s skills, MCP commands and endpoints, hooks, and app mappings before confirming. Enable an installed Plugin for a Project to make its skills and tools available in Codex and Claude Code chats.
+- Plugins work in every Agent chat. A plugin installed in Customize → Plugins reaches Codex natively, and Nodex brings its skills and the MCP servers it can run to Claude Code and ACP Agents. Limit a plugin to chosen Projects from its page; servers that need a sign-in, connected apps and hooks stay in Codex, and the plugin's page says so.
+- Add a plugin from any folder. Customize → Plugins → Add → Plugin from folder shows what the folder contains before installing it, and Update from folder picks up later changes.
 - Read and edit the instructions Agents receive in **Settings > Agents**. **Full Nodex instructions** shows the guidance every chat gets, and **Your instructions** lets you add standing instructions for all of your chats. **Artifact opening** chooses whether Agents open artifacts beside the chat on their own, ask first, or never.
 - Type `@Nodex` to turn the block you are writing into a Prompt for Nodex. The `@` menu offers Nodex first, and the block keeps its text and child blocks, so `⌘↵` sends it to the chat beside the Page.
 - Choose whether a new chat from your Inbox works in a worktree. **New chats use a worktree** in Inbox settings sets the default, and the dispatch editor shows **Worktree** or **Local** beside the chat's Agent so each message can choose its own. A chat that runs in your checkout stays linked to its message's Page.

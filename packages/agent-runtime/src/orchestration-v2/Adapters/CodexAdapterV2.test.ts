@@ -1,4 +1,3 @@
-import { decideCodexNativePluginOverrides } from "./CodexPluginConfig.ts";
 import * as NodeOS from "node:os";
 
 import { historyResponseItems } from "@nodex/provider-core/server/handoffBudget";
@@ -2091,7 +2090,6 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ) => CodexClient.CodexAppServerClient["Service"],
     serverConfigOverride?: ServerConfig.ServerConfig["Service"],
     continuationFailure?: ProviderContinuationRequests.ProviderContinuationQueueFull,
-    codexPluginProject?: ProviderAdapter.ProviderAdapterV2OpenSessionInput["codexPluginProject"],
   ) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -2162,7 +2160,6 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       );
       const threadId = ThreadId.make(`thread-${transcript.scenario}`);
       const runtime = yield* adapter.openSession({
-        ...(codexPluginProject ? { codexPluginProject } : {}),
         threadId,
         providerSessionId: ProviderSessionId.make(`provider-session-${transcript.scenario}`),
         modelSelection: CODEX_TEST_MODEL_SELECTION,
@@ -4350,194 +4347,6 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ),
   );
 
-  it.effect(
-    "materializes current Codex Plugin config on start, cold resume, and ordinary fork",
-    () =>
-      Effect.gen(function* () {
-        const root = "/nodex/project-skills";
-        const nativeThreadId = "native-plugin-source";
-        const forkThreadId = "native-plugin-fork";
-        const revision = yield* Ref.make("revision-a");
-        const config = (n: number) => ({
-          ...CodexAdapterV2.CODEX_THREAD_CONFIG,
-          "mcp_servers.nodex_plugin_fixture": {
-            url: `http://127.0.0.1:4000/plugin-mcp/lease-${n}`,
-            http_headers: { Authorization: `Bearer fixture-${n}` },
-          },
-        });
-        const request = (
-          id: number,
-          method: string,
-          params: unknown,
-          result: unknown,
-        ): CodexReplay.CodexAppServerReplayEntry[] => [
-          { type: "expect_outbound", frame: { id, method, params } },
-          { type: "emit_inbound", frame: { id, result } },
-        ];
-        const nativeInventory = (id: number) =>
-          request(id, "plugin/installed", { cwds: ["/workspace"] }, { marketplaces: [] });
-        const extraRoots = (id: number) =>
-          request(id, "skills/extraRoots/set", { extraRoots: [root + "/skills"] }, {});
-        const transcript = makeCodexReplayTranscript({
-          scenario: "codex-plugin-delivery",
-          entries: [
-            ...codexReplayPreamble({
-              nativeThreadId,
-              nativeTurnId: "unused",
-              prompt: "unused",
-            }).slice(0, 3),
-            ...nativeInventory(2),
-            ...request(
-              3,
-              "thread/start",
-              {
-                config: config(1),
-                selectedCapabilityRoots: [
-                  {
-                    id: "nodex-project-plugins",
-                    location: { type: "environment", environmentId: "local", path: root },
-                  },
-                ],
-              },
-              codexReplayThreadResult({ nativeThreadId, forkedFromId: null }),
-            ),
-            ...request(
-              4,
-              "thread/unsubscribe",
-              { threadId: nativeThreadId },
-              { status: "unsubscribed" },
-            ),
-            ...nativeInventory(5),
-            ...extraRoots(6),
-            ...request(
-              7,
-              "thread/resume",
-              {
-                threadId: nativeThreadId,
-                excludeTurns: true,
-                cwd: "/workspace",
-                config: config(2),
-              },
-              {
-                thread: { id: nativeThreadId, updatedAt: 1782622440 },
-              },
-            ),
-            ...request(
-              8,
-              "thread/backgroundTerminals/list",
-              { threadId: nativeThreadId, limit: 100 },
-              { data: [], nextCursor: null },
-            ),
-            ...nativeInventory(9),
-            ...extraRoots(10),
-            ...request(
-              11,
-              "thread/fork",
-              {
-                threadId: nativeThreadId,
-                excludeTurns: true,
-                cwd: "/workspace",
-                config: config(3),
-              },
-              codexReplayThreadResult({
-                nativeThreadId: forkThreadId,
-                forkedFromId: nativeThreadId,
-              }),
-            ),
-          ],
-        });
-        const requests: string[] = [];
-        const released: string[] = [];
-        let attached = 0;
-        const harness = yield* makeCodexReplayHarness(
-          transcript,
-          undefined,
-          (method) =>
-            Effect.sync(() => {
-              requests.push(method);
-            }),
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          { projectId: "project", revision: "revision-a", rootThreadFor: Effect.succeed },
-        ).pipe(
-          Effect.provideService(ExecutionHost.ExecutionHost, {
-            prepareTurn: () => Effect.succeed({}),
-            codexPlugins: (request) =>
-              Effect.gen(function* () {
-                const current = yield* Ref.get(revision);
-                if (request.action === "release") released.push(request.attachmentId);
-                if (request.action !== "attach") return { revision: current, delivery: null };
-                attached++;
-                return {
-                  revision: current,
-                  delivery: {
-                    revision: current,
-                    root,
-                    identities: [],
-                    expiresAt: null,
-                    servers: [
-                      {
-                        key: "nodex_plugin_fixture",
-                        url: `http://127.0.0.1:4000/plugin-mcp/lease-${attached}`,
-                        authorization: `Bearer fixture-${attached}`,
-                      },
-                    ],
-                  },
-                };
-              }),
-          }),
-        );
-        yield* harness.runtime.unloadThread!({ providerThread: harness.providerThread });
-        yield* harness.runtime.resumeThread({
-          providerThread: harness.providerThread,
-          runtimePolicy: CODEX_TEST_RUNTIME_POLICY,
-        });
-        yield* harness.runtime.forkThread({
-          sourceProviderThread: harness.providerThread,
-          targetThreadId: ThreadId.make("plugin-fork-target"),
-          runtimePolicy: CODEX_TEST_RUNTIME_POLICY,
-        });
-        assert.equal(attached, 3);
-        assert.equal(released.length, 1);
-        assert.include(requests, "thread/fork");
-        assert.isFalse(yield* harness.runtime.codexPluginDeliveryStale!);
-        yield* Ref.set(revision, "revision-b");
-        assert.isTrue(yield* harness.runtime.codexPluginDeliveryStale!);
-      }).pipe(
-        Effect.scoped,
-        Effect.provide(
-          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
-        ),
-      ),
-  );
-
-  it("suppresses enabled native duplicates and reports an unsupported override as a conflict", () => {
-    const plugin = { id: "organizer@market", name: "organizer", installed: true, enabled: true };
-    assert.deepEqual(
-      decideCodexNativePluginOverrides(
-        ["organizer"],
-        [
-          plugin,
-          { ...plugin, id: "organizer@disabled", enabled: false },
-          { ...plugin, id: "different@market", name: "different" },
-        ],
-      ),
-      {
-        status: "ready",
-        overrides: { "plugins.organizer@market.enabled": false },
-      },
-    );
-    assert.deepEqual(
-      decideCodexNativePluginOverrides(
-        ["sample.organizer"],
-        [{ ...plugin, id: "sample.organizer@market", name: "sample.organizer" }],
-      ),
-      { status: "conflict", identity: "sample.organizer" },
-    );
-  });
-
   it.effect("unsubscribes from the native thread when it is unloaded", () =>
     Effect.gen(function* () {
       const nativeThreadId = "unload-thread";
@@ -6270,6 +6079,99 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
         ),
       ),
+    ),
+  );
+
+  it.effect("applies only nested disabled plugin overrides to start, fork and cold resume", () =>
+    Effect.gen(function* () {
+      const nativeThreadId = "native-plugin-scope";
+      const preamble = codexReplayPreamble({
+        nativeThreadId,
+        nativeTurnId: "unused",
+        prompt: "unused",
+      }).slice(0, 5);
+      const start = preamble[3] as Extract<
+        CodexReplay.CodexAppServerReplayEntry,
+        { type: "expect_outbound" }
+      >;
+      const overrides = {
+        ...CodexAdapterV2.CODEX_THREAD_CONFIG,
+        plugins: { "example.local@market": { enabled: false } },
+      };
+      preamble[3] = {
+        ...start,
+        frame: { id: 2, method: "thread/start", params: { config: overrides } },
+      };
+      const transcript = makeCodexReplayTranscript({
+        scenario: "scoped-plugins",
+        entries: [
+          ...preamble,
+          {
+            type: "expect_outbound",
+            frame: {
+              id: 3,
+              method: "thread/fork",
+              params: {
+                threadId: nativeThreadId,
+                excludeTurns: true,
+                config: overrides,
+              },
+            },
+          },
+          {
+            type: "emit_inbound",
+            frame: {
+              id: 3,
+              result: codexReplayThreadResult({
+                nativeThreadId: "forked",
+                forkedFromId: nativeThreadId,
+              }),
+            },
+          },
+          {
+            type: "expect_outbound",
+            frame: {
+              id: 4,
+              method: "thread/resume",
+              params: {
+                threadId: nativeThreadId,
+                excludeTurns: true,
+                config: overrides,
+              },
+            },
+          },
+          {
+            type: "emit_inbound",
+            frame: { id: 4, result: { thread: { id: nativeThreadId, updatedAt: 1782622450 } } },
+          },
+        ],
+      });
+      const harness = yield* makeCodexReplayHarness(transcript);
+      yield* harness.runtime.forkThread({
+        sourceProviderThread: harness.providerThread,
+        targetThreadId: ThreadId.make("fork-target"),
+      });
+      yield* harness.runtime.resumeThread({ providerThread: harness.providerThread });
+    }).pipe(
+      Effect.provideService(ExecutionHost.ExecutionHost, {
+        prepareTurn: () => Effect.succeed({}),
+        openPlugins: () =>
+          Effect.succeed({
+            revision: Effect.succeed("revision"),
+            plugins: {
+              revision: "revision",
+              skillsRoot: null,
+              skills: [],
+              mcpServers: [],
+              pluginIds: [],
+              codexDisabledPluginIds: ["example.local@market"],
+            },
+          }),
+      }),
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+      Effect.scoped,
     ),
   );
 

@@ -1,6 +1,3 @@
-import * as Option from "effect/Option";
-import { CodexPluginDelivery } from "../../host/agent-plugins/CodexPluginDelivery";
-import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -79,8 +76,6 @@ export const live: Layer.Layer<
     const lifecycleRuntime = yield* ProjectRuntimeLifecycleRuntime;
     const workspace = yield* ProjectWorkspace;
     const terminals = yield* TerminalSessions;
-    const plugins = Option.getOrUndefined(yield* Effect.serviceOption(CodexPluginDelivery));
-    const authority = Option.getOrUndefined(yield* Effect.serviceOption(CoreAuthority));
 
     const project = <A>(
       operation: ProjectLifecycleCommandsError["operation"],
@@ -221,21 +216,6 @@ export const live: Layer.Layer<
         }
       }
       const committed = yield* project("commit", workspace.setProjectLifecycle(command));
-      if (plugins && authority) {
-        yield* plugins
-          .status(
-            {
-              spaceId: authority.identity.libraryId,
-              projectId: ownedProject.id,
-            },
-            false,
-          )
-          .pipe(
-            Effect.catch((error) =>
-              Effect.logError("Could not withdraw Project Plugin delivery", error),
-            ),
-          );
-      }
       yield* cleanupOwnership(commitOwnership);
       return {
         kind: "committed",

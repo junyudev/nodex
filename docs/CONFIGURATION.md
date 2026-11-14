@@ -332,6 +332,12 @@ The selected Profile owns one absolute Desktop preferences document at
 document; project configuration does not overlay its backup, notification,
 Git, worktree, execution-host, keyboard, update, or window settings.
 
+The optional `[plugin_project_scope]` table maps quoted Codex plugin IDs to
+arrays of Project IDs. A missing entry applies to every Project and to chats
+without a Project. The Profile's `nodex-local/` marketplace stores reviewed
+folder copies under `plugins/`, its catalog under `.agents/plugins/`, and
+source paths in `sources.json`. Codex owns the installed copies in its cache.
+
 An unpackaged Desktop process requires an explicit nonblank `NODEX_HOME` and
 does not fall back to project or user configuration. The supported `vp run dev`
 launcher supplies an isolated Profile, defaulting to `<worktree>/runs.local/default`

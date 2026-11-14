@@ -2085,20 +2085,12 @@ function makeFakeClaudeCli(answerSetServers = true) {
 }
 
 describe("Claude plugin query lifetime", () => {
-  it("replaces a query on activation, removal, generation change or lease expiry", () => {
+  it("reuses the query only while its attachment revision stays current", () => {
     const decide = ClaudeAdapterV2.claudePluginQueryDecision;
-    assert.equal(decide(null, "generation-a", 0), "open");
-    assert.equal(decide({ key: null, renewAfter: null }, "generation-a", 0), "revoke-and-reopen");
-    assert.equal(decide({ key: "generation-a", renewAfter: 10 }, "generation-a", 9), "reuse");
-    assert.equal(
-      decide({ key: "generation-a", renewAfter: 10 }, "generation-a", 10),
-      "revoke-and-reopen",
-    );
-    assert.equal(
-      decide({ key: "generation-a", renewAfter: null }, "generation-b", 0),
-      "revoke-and-reopen",
-    );
-    assert.equal(decide({ key: "generation-a", renewAfter: null }, null, 0), "revoke-and-reopen");
+    assert.equal(decide(null, "generation-a"), "open");
+    assert.equal(decide({ key: "generation-a" }, "generation-a"), "reuse");
+    assert.equal(decide({ key: "generation-a" }, "generation-b"), "revoke-and-reopen");
+    assert.equal(decide({ key: "generation-a" }, null), "revoke-and-reopen");
   });
 });
 
@@ -2177,17 +2169,20 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
         },
       });
       const plugin = {
-        roots: ["/managed/agent-plugins/skills"],
+        skillsRoot: "/managed/plugin-sessions/skills",
         skills: [],
-        servers: [
+        mcpServers: [
           {
+            pluginId: "fixture@local",
+            serverKey: "gauge",
             name: "nodex-fixture-gauge",
             url: "http://127.0.0.1:43125/plugin-mcp/lease",
             bearerToken: "plugin-credential",
           },
         ],
-        identities: ["fixture"],
-        renewAfter: 60_000,
+        pluginIds: ["fixture@local"],
+        revision: "fixture-revision",
+        codexDisabledPluginIds: [],
       };
       for (const plugins of [null, plugin]) {
         const options = ClaudeAdapterV2.withClaudePluginQueryOptions(base, plugins);
@@ -2203,7 +2198,7 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
               : {
                   "nodex-fixture-gauge": {
                     type: "http",
-                    url: plugin.servers[0]!.url,
+                    url: plugin.mcpServers[0]!.url,
                     headers: { Authorization: "Bearer plugin-credential" },
                   },
                 }),
@@ -2212,8 +2207,8 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
         assert.isDefined(options.mcpServers?.nodex_app);
         const spawned = JSON.stringify(cli.spawns);
         assert.include(spawned, "/managed/desktop-tools");
-        if (plugins !== null) assert.include(spawned, plugin.roots[0]!);
-        else assert.notInclude(spawned, plugin.roots[0]!);
+        if (plugins !== null) assert.include(spawned, plugin.skillsRoot);
+        else assert.notInclude(spawned, plugin.skillsRoot);
         assert.notInclude(spawned, "plugin-credential");
         assert.notInclude(spawned, "application-credential");
       }
@@ -3085,6 +3080,96 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
         ),
       ),
+  );
+
+  it.effect("resumes in a fresh Claude query after the Host plugin revision changes", () =>
+    Effect.gen(function* () {
+      let revision = "one";
+      const closed: string[] = [];
+      const harness = yield* makeWakeHarnessWithOptions({ freshQueueOnReopen: true }).pipe(
+        Effect.provideService(ExecutionHost.ExecutionHost, {
+          prepareTurn: () => Effect.succeed({}),
+          openPlugins: () =>
+            Effect.gen(function* () {
+              const opened = revision;
+              yield* Effect.addFinalizer(() =>
+                Effect.sync(() => {
+                  closed.push(opened);
+                }),
+              );
+              return {
+                revision: Effect.sync(() => revision),
+                plugins: {
+                  revision: opened,
+                  skillsRoot: "/plugins/" + opened,
+                  skills: [],
+                  mcpServers: [],
+                  pluginIds: [],
+                  codexDisabledPluginIds: [],
+                },
+              };
+            }),
+        }),
+      );
+      const turn = (ordinal: number) => {
+        const input = makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: DateTime.makeUnsafe("2026-11-06T00:00:00Z"),
+          attemptId: RunAttemptId.make("plugin-" + ordinal),
+          providerTurnOrdinal: ordinal,
+          text: "Hello.",
+          attachments: [],
+        });
+        return harness.runtime
+          .startTurn({
+            ...input,
+            hostExecutionIdentity: {
+              threadId: harness.threadId,
+              projectId: ProjectId.make("project-plugins"),
+              providerSessionId: harness.runtime.providerSession.id,
+              providerInstanceId: harness.runtime.instanceId,
+              providerThreadId: harness.providerThread.id,
+              nativeGeneration: 1,
+              nativeThreadRef: harness.providerThread.nativeThreadRef,
+              runId: input.runId,
+              attemptId: input.attemptId,
+              cwd: input.runtimePolicy.cwd,
+            },
+          })
+          .pipe(
+            Effect.andThen(
+              Effect.suspend(() =>
+                Queue.offer(
+                  harness.processQueues.at(-1)!,
+                  makeResultFrame({ uuid: "plugin-result-" + ordinal, result: "Done" }),
+                ),
+              ),
+            ),
+            Effect.andThen(Queue.take(harness.terminalReceipts)),
+          );
+      };
+      yield* turn(1);
+      yield* turn(2);
+      assert.equal(harness.processQueues.length, 1);
+      revision = "two";
+      yield* turn(3);
+      assert.equal(harness.processQueues.length, 2);
+      assert.deepEqual(closed, ["one"]);
+      assert.equal(
+        harness.getOpenedOptions()?.resume,
+        harness.providerThread.nativeThreadRef?.nativeId,
+      );
+      assert.deepInclude(harness.getOpenedOptions()?.plugins ?? [], {
+        type: "local",
+        path: "/plugins/two",
+        skipMcpDiscovery: true,
+      });
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
   );
 
   it.effect("adds and removes Desktop Tools between prompted Turns", () =>

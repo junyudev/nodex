@@ -64,8 +64,6 @@ import {
   ComposerAppshotRuntime,
   live as composerAppshotRuntimeLive,
 } from "../host-runtime/ComposerAppshotRuntime";
-import * as DatabaseNotifierRuntime from "../host-runtime/DatabaseNotifierRuntime";
-import { live as databaseNotificationsLive } from "../platform/electron/DatabaseNotifications";
 import {
   DesktopNotificationRuntime,
   live as desktopNotificationRuntimeLive,
@@ -128,7 +126,6 @@ const turnPresentation = Layer.effect(CodexTurnPresentation, makeTurnPresentatio
   Layer.provideMerge(workbenchAgentBridgeLive),
 );
 const privacy = electronPrivacyLive;
-const databaseNotifier = databaseNotificationsLive;
 const structuralClipboard = structuralClipboardRuntimeLive.pipe(
   Layer.provideMerge(Layer.merge(electronClipboardLive, rendererClients)),
 );
@@ -306,7 +303,6 @@ export const live: Layer.Layer<
   | ComputerUseSettingsRuntime
   | CodexMedia
   | DictationDictionary
-  | DatabaseNotifierRuntime.DatabaseNotifierRuntime
   | DesktopNotificationRuntime
   | DeepLinkRuntime
   | DictationRuntime
@@ -370,7 +366,6 @@ export const live: Layer.Layer<
   remoteHostedPipIntegration,
   codexMedia,
   dictationDictionary,
-  databaseNotifier,
   deepLinks,
   dictation,
   structuralClipboard,

@@ -13,6 +13,7 @@ import type { MarketplaceUpgradeResponse } from "@nodex/codex-app-server-protoco
 import type { SkillsListResponse } from "@nodex/codex-app-server-protocol/v2/SkillsListResponse";
 import type { SkillMetadata } from "@nodex/codex-app-server-protocol/v2/SkillMetadata";
 import type { HooksListResponse } from "@nodex/codex-app-server-protocol/v2/HooksListResponse";
+import type { PluginAgentSupport, PluginProjectScope } from "./agent-plugins/session-plugins";
 
 export type { PluginSummary, PluginDetail, PluginSearchScope, PluginListResponse };
 export interface PluginContext {
@@ -78,6 +79,8 @@ export interface PluginRow {
   readonly actionState: PluginActionState;
   readonly isPersonal: boolean;
   readonly isOfficial: boolean;
+  /** The folder a plugin was added from, for plugins installed from a local folder. */
+  readonly localFolder: string | null;
 }
 export interface PluginInventory<T = PluginListResponse | PluginInstalledResponse> {
   readonly response: T;
@@ -160,6 +163,9 @@ export interface PersonalPlugins {
   }[];
 }
 export interface PluginDetailView {
+  /** What reaches Agents other than Codex. */
+  readonly agentSupport: PluginAgentSupport;
+  readonly projectScope: PluginProjectScope;
   readonly appConnectionStates?: Readonly<Record<string, PluginAppConnectionState>>;
   readonly scheduledTasks?: PluginDetail["scheduledTasks"];
   readonly appTemplates?: PluginDetail["appTemplates"];
@@ -238,6 +244,32 @@ export interface PluginManagementChanged {
   readonly mcpOauthCompletion?: import("@nodex/codex-app-server-protocol/v2/McpServerOauthLoginCompletedNotification").McpServerOauthLoginCompletedNotification;
   readonly progress?: MarketplaceRemovalProgress;
 }
+/** A local folder copied for review before it is installed. */
+export interface FolderPluginPreview {
+  /** Identifies the reviewed copy; installing it installs exactly these bytes. */
+  readonly stagingId: string;
+  readonly folder: string;
+  readonly name: string;
+  readonly displayName: string | null;
+  readonly description: string | null;
+  readonly version: string | null;
+  readonly developer: string | null;
+  readonly logoUrl: string | null;
+  readonly skills: readonly { readonly name: string; readonly description: string }[];
+  /** `launch` is the command line or URL the server runs, as the person should see it. */
+  readonly mcpServers: readonly { readonly key: string; readonly launch: string }[];
+  readonly hookCount: number;
+  readonly connectedAppCount: number;
+  readonly agentSupport: PluginAgentSupport;
+  /** The installed plugin this folder would replace, if its name is already installed. */
+  readonly replacesPluginId: string | null;
+  /** Problems that do not block installation. */
+  readonly warnings: readonly string[];
+}
+export type FolderPluginPreviewResult =
+  | { readonly status: "ready"; readonly preview: FolderPluginPreview }
+  | { readonly status: "rejected"; readonly folder: string; readonly reasons: readonly string[] };
+
 export interface PluginQueries extends PluginSettingsQueries {
   context: { input: PluginContext; output: ResolvedPluginContext };
   capabilities: { input: PluginContext; output: PluginManagementCapabilities };
@@ -317,6 +349,27 @@ export interface PluginCommands extends PluginSettingsCommands {
     output: PluginMutationResult<MarketplaceUpgradeResponse>;
   };
   refresh: { input: PluginContext; output: PluginMutationResult };
+  /** Opens the system folder picker. Resolves null when the person cancels. */
+  "folder-pick": { input: PluginContext; output: string | null };
+  "folder-prepare": {
+    input: PluginContext & { readonly folder: string };
+    output: PluginMutationResult<FolderPluginPreviewResult>;
+  };
+  "folder-install": {
+    input: PluginContext & { readonly stagingId: string };
+    /** The selector opens the installed plugin's page. */
+    output: PluginMutationResult<{ readonly pluginId: string; readonly selector: PluginSelector }>;
+  };
+  "folder-discard": { input: PluginContext & { readonly stagingId: string }; output: void };
+  /** Copies the plugin's source folder again and reinstalls it. */
+  "folder-update": {
+    input: PluginContext & { readonly pluginId: string };
+    output: PluginMutationResult;
+  };
+  "set-project-scope": {
+    input: PluginContext & { readonly pluginId: string; readonly scope: PluginProjectScope };
+    output: PluginMutationResult;
+  };
 }
 export type PluginManagementIpcApi = {
   [K in keyof PluginQueries as `codex:plugins:${K}`]: {
