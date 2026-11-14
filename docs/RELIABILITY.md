@@ -128,7 +128,22 @@ requests `RuntimeFatal`; `connection = failed` is therefore never a mutation-cap
 
 Core, rather than Electron, owns request admission and completion. Interactive
 work retains reserved execution capacity while background and maintenance work
-use bounded subordinate lanes. One absolute request deadline and cancellation
+use bounded subordinate lanes, and each class has its own admission budget for
+queued plus running requests, so a backlog in one class is refused on that
+budget and never takes the admission another class needs. A request's class
+follows where its work originates: host work is `background` unless it runs
+under an entry point where a person is waiting (a renderer invocation, a Member
+or phone request, a requested deep link), which grants `interactive` to that
+work and the fibers it forks. A mislabel therefore costs latency instead of
+competing with the person; an explicit per-call class is reserved for work that
+differs from its origin, such as Store maintenance. The desktop host also
+bounds its own in-flight requests per class below Core's budgets and queues the
+excess locally, so a burst waits within each request's deadline instead of
+filling Core's queue. An admission refusal means the request never started:
+Core answers it at the transport level with a retry hint, and the host replays
+it with backoff inside the same deadline, for reads and mutations alike. Core
+logs each refusal episode with the per-class occupancy and the operations
+holding admission. One absolute request deadline and cancellation
 token reach queued readers, the writer, and SQLite progress handlers. Deadline,
 explicit cancellation, overload, and transport loss remain distinct failures;
 Electron waits a short liveness grace beyond the semantic deadline before it
@@ -140,8 +155,9 @@ prioritizes interaction with bounded aging, while maintenance yields between
 short slices. SQLite planner statistics are maintained when
 the Store opens and after writer use; FTS-backed searches keep the virtual
 table as their driving loop even before an existing Store has statistics.
-Health evidence includes active and queued requests, admission and execution
-duration, and deadline/cancellation/overload counts.
+Health evidence includes active and queued requests, per-class queued,
+running, and refused counts, admission and execution duration, and
+deadline/cancellation/overload counts.
 
 Store migrations accept only exact catalog identities. Core validates the
 source, creates a content-addressed SQLite Online Backup, applies the selected

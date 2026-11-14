@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -102,7 +103,9 @@ export const live = (options: DeepLinkRuntimeOptions) =>
             ...current,
             pending: current.pending.filter((entry) => entry !== target),
           }));
-          const resolved = yield* resolve(target);
+          const resolved = yield* resolve(target).pipe(
+            Effect.provideService(CoreRequestClass, "interactive"),
+          );
           yield* Ref.update(state, (current) => ({
             ...current,
             resolved: resolved

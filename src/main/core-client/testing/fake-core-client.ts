@@ -175,6 +175,10 @@ export const createFakeCoreHandshake = ({
 };
 
 export class FakeCoreClient implements CoreClientPort {
+  forRequestClass(): this {
+    return this;
+  }
+
   readonly readFileBlobs: ReadFileBytesInput[] = [];
   readonly automationReads: AutomationRead[] = [];
   readonly automationReadOptions: Array<CoreRequestOptions | undefined> = [];

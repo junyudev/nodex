@@ -148,7 +148,7 @@ async function readFetchObservation(
         block_id: request.input.id,
         authorization,
       },
-      { class: "background", signal },
+      { signal },
     );
     if (targetRead.value.kind !== "agent_block_target") {
       throw new Error("Core returned the wrong Agent Block target variant");
@@ -198,7 +198,7 @@ async function readFetchObservation(
         cursor: request.input.page?.cursor ?? null,
         limit: request.input.page?.limit ?? null,
       },
-      { class: "background", signal },
+      { signal },
     );
     if (snapshotRead.value.kind !== "agent_semantic_snapshot") {
       throw new Error("Core returned the wrong Agent Document snapshot variant");

@@ -237,9 +237,27 @@ export function useStoreBackupRuntime({ open, port }: UseStoreBackupRuntimeInput
 
   useEffect(() => {
     if (!open || !storageOptimization?.optimizing) return;
-    const timer = setInterval(() => void reloadStorageOptimization(), 2_000);
-    return () => clearInterval(timer);
-  }, [open, reloadStorageOptimization, storageOptimization?.optimizing]);
+    let disposed = false;
+    const poll = async () => {
+      await runWithCleanup(
+        async () => {
+          const next = await port.storageOptimization();
+          if (!disposed) setStorageOptimization(next);
+        },
+        {
+          onError: () => undefined,
+          cleanup: () => {
+            if (!disposed) timer = setTimeout(poll, 2_000);
+          },
+        },
+      );
+    };
+    let timer = setTimeout(poll, 2_000);
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+    };
+  }, [open, port, storageOptimization?.optimizing]);
 
   const [previousInput, setPreviousInput] = useState({ open, port });
   if (previousInput.open !== open || previousInput.port !== port) {

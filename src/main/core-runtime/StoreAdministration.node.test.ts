@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "./CoreRequestClass";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -318,6 +319,9 @@ it.effect("returns submitted before durable admission and durably coalesces late
   Effect.gen(function* () {
     const applyStarted = yield* Deferred.make<void>();
     const finishApply = yield* Deferred.make<void>();
+    const observed = yield* Deferred.make<string>();
+    const optimizationReadClass: string[] = [];
+    let backupReads = 0;
     let activeOperationId: string | null = null;
     let createApplyCount = 0;
     let coalesceApplyCount = 0;
@@ -334,57 +338,73 @@ it.effect("returns submitted before durable admission and durably coalesces late
           yield* Deferred.await(finishApply);
           return committed({ backup_id: backup.backup_id });
         }),
-      read: (read) => {
+      read: Effect.fnUntraced(function* (read) {
+        if (read.kind === "operational_journal_status") {
+          optimizationReadClass.push(yield* CoreRequestClass);
+          return readSnapshot({
+            kind: "operational_journal_status",
+            status: {
+              optimizing: true,
+              commit_head_seq: 0,
+              replay_floor_seq: 0,
+              pending_commit_metadata: 0,
+              pending_receipt_metadata: 0,
+              retained_commit_count: 0,
+              retained_delivery_bytes: 0,
+              retained_receipt_count: 0,
+              retained_receipt_bytes: 0,
+              last_pruned_commit_seq: 0,
+              freelist_pages: 0,
+              reclaimable_bytes: 0,
+            },
+          });
+        }
         if (read.kind === "backup_jobs") {
-          return Effect.succeed(
-            readSnapshot({
-              kind: "backup_jobs",
-              coalesced_starts: [],
-              jobs: activeOperationId
-                ? [
-                    {
-                      job_id: activeOperationId,
-                      operation_id: activeOperationId,
-                      state: "running",
-                      phase: "database_snapshot",
-                      completed_units: 1,
-                      total_units: 7,
-                      started_at_ms: 10,
-                      updated_at_ms: 20,
-                      label: "Background",
-                      include_assets: true,
-                      trigger: "manual",
-                      backup_id: backup.backup_id,
-                      error: null,
-                      progress: jobProgress,
-                    },
-                  ]
-                : [],
-            }),
-          );
+          // The first backup_jobs read hydrates Store Administration at startup.
+          if (++backupReads > 1) yield* Deferred.succeed(observed, yield* CoreRequestClass);
+          return readSnapshot({
+            kind: "backup_jobs",
+            coalesced_starts: [],
+            jobs: activeOperationId
+              ? [
+                  {
+                    job_id: activeOperationId,
+                    operation_id: activeOperationId,
+                    state: "running",
+                    phase: "database_snapshot",
+                    completed_units: 1,
+                    total_units: 7,
+                    started_at_ms: 10,
+                    updated_at_ms: 20,
+                    label: "Background",
+                    include_assets: true,
+                    trigger: "manual",
+                    backup_id: backup.backup_id,
+                    error: null,
+                    progress: jobProgress,
+                  },
+                ]
+              : [],
+          });
         }
         if (read.kind === "maintenance_status") {
-          return Effect.succeed(
-            readSnapshot({
-              kind: "maintenance_status",
-              active: true,
-              operation_id: null,
-              phase: "validation",
-            }),
-          );
+          return readSnapshot({
+            kind: "maintenance_status",
+            active: true,
+            operation_id: null,
+            phase: "validation",
+          });
         }
-        return Effect.succeed(
-          readSnapshot({
-            kind: "backups",
-            backups: {
-              items: [backup],
-              next_cursor: null,
-              authority: { projection_revision: 4 },
-            },
-            capacity,
-          }),
-        );
-      },
+        return readSnapshot({
+          kind: "backups",
+          backups: {
+            items: [backup],
+            next_cursor: null,
+            authority: { projection_revision: 4 },
+          },
+          capacity,
+        });
+      }),
     };
     const layer = administrationLayer().pipe(
       Layer.provide(
@@ -397,15 +417,24 @@ it.effect("returns submitted before durable admission and durably coalesces late
     const context = yield* Layer.build(layer);
     const administration = Context.get(context, StoreAdministration);
 
-    const submitted = yield* administration.startBackup({
-      operationId: "electron:administration:create-backup-job:test",
-      label: "Background",
-    });
+    const optimization = yield* administration.snapshotStorageOptimization.pipe(
+      Effect.provideService(CoreRequestClass, "interactive"),
+    );
+    assert.isTrue(optimization.optimizing);
+    assert.deepEqual(optimizationReadClass, ["background"]);
+
+    const submitted = yield* administration
+      .startBackup({
+        operationId: "electron:administration:create-backup-job:test",
+        label: "Background",
+      })
+      .pipe(Effect.provideService(CoreRequestClass, "interactive"));
     assert.strictEqual(submitted.kind, "submitted");
     if (submitted.kind !== "submitted") return assert.fail("expected submitted Backup job");
     assert.strictEqual(submitted.job.state, "queued");
     assert.strictEqual(submitted.job.phase, "queued");
     yield* Deferred.await(applyStarted);
+    assert.strictEqual(yield* Deferred.await(observed), "background");
 
     const retried = yield* administration.startBackup({
       operationId: submitted.operationId,

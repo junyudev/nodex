@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -37,7 +38,15 @@ const runApplication = <R, E>(
         const application = yield* MainApplication;
         onAcquired(application);
         yield* Effect.addFinalizer(() =>
-          application.prepareShutdown.pipe(Effect.ensuring(Effect.sync(() => onAcquired(null)))),
+          Effect.gen(function* () {
+            if (!(yield* shutdown.isRequested)) return yield* application.prepareShutdown;
+            const reason = yield* shutdown.awaitRequest;
+            if (reason._tag !== "UserQuit" && reason._tag !== "UpdateInstall")
+              return yield* application.prepareShutdown;
+            yield* application.prepareShutdown.pipe(
+              Effect.provideService(CoreRequestClass, "interactive"),
+            );
+          }).pipe(Effect.ensuring(Effect.sync(() => onAcquired(null)))),
         );
         if (application.readiness === "ready") {
           for (const event of options.initialEvents) yield* application.handleBootstrapEvent(event);
@@ -95,7 +104,7 @@ export const program = <R, E>(options: MainAppOptions<R, E>) =>
               if (yield* shutdown.isRequested) return;
               const approved = yield* activeApplication?.confirmQuit ?? Effect.succeed(true);
               if (approved) yield* shutdown.request({ _tag: "UserQuit" });
-            }),
+            }).pipe(Effect.provideService(CoreRequestClass, "interactive")),
           ),
     }));
     yield* electron.onWindowAllClosed(

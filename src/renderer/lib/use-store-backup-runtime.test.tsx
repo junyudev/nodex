@@ -100,6 +100,47 @@ describe("useStoreBackupRuntime", () => {
     view.unmount();
   });
 
+  test("waits for storage optimization reads to settle before polling again", async () => {
+    vi.useFakeTimers();
+    try {
+      const idle = await portWith({}).storageOptimization();
+      let rejectPending!: (cause: Error) => void;
+      const storageOptimization = vi
+        .fn()
+        .mockResolvedValueOnce({ ...idle, optimizing: true })
+        .mockImplementationOnce(
+          () =>
+            new Promise((_resolve, reject) => {
+              rejectPending = reject;
+            }),
+        )
+        .mockResolvedValue(idle);
+      const port = portWith({ storageOptimization });
+      const view = renderHook(() => useStoreBackupRuntime({ open: true, port }));
+      await act(async () => {
+        await view.result.current.refresh();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(6_000);
+      });
+      expect(storageOptimization).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        rejectPending(new Error("Core is busy"));
+        await vi.advanceTimersByTimeAsync(1_999);
+      });
+      expect(storageOptimization).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(storageOptimization).toHaveBeenCalledTimes(3);
+      expect(view.result.current.storageOptimization?.optimizing).toBe(false);
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("releases cancellation pending state after a failed cancellation", async () => {
     let fail!: (error: Error) => void;
     const cancel = vi.fn(

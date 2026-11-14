@@ -439,7 +439,7 @@ const readNativeNodexAgentPageUpdateOutput = async (
   const contentSnapshot = wantsMarkdown
     ? await runtime.rootClient.libraryRead(
         { kind: "page_content", page_id: request.input.pageId },
-        { class: "background", signal },
+        { signal },
       )
     : null;
   const content =
@@ -485,7 +485,7 @@ export const prepareNativeNodexAgentPageUpdate = async (
     }
     const contentSnapshot = await runtime.rootClient.libraryRead(
       { kind: "page_content", page_id: request.input.pageId },
-      { class: "background", signal },
+      { signal },
     );
     if (contentSnapshot.value.kind !== "page_content") {
       throw new Error("Core returned the wrong Agent Page content variant");
@@ -511,7 +511,7 @@ export const prepareNativeNodexAgentPageUpdate = async (
         ),
         mutation,
       },
-      { class: "background", signal },
+      { signal },
     );
     if (snapshot.value.kind !== "agent_semantic_mutation_preparation") {
       throw new Error("Core returned the wrong Agent Page update preparation variant");
@@ -631,7 +631,7 @@ export const applyNativeNodexAgentPageUpdate = async (
           mutation: pending.mutation,
         },
       },
-      { class: "background", signal },
+      { signal },
     );
     const retained = { ...pending, committed };
     return {

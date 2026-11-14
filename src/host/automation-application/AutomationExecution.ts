@@ -192,7 +192,7 @@ export const live: Layer.Layer<
         const read = (file_kind: "meta_yaml" | "body_markdown") =>
           core.library.read(
             { kind: "page_projection_file", page_id: pageId, file_kind },
-            { class: "background" },
+            undefined,
             null,
           );
         const metadata = yield* read("meta_yaml");

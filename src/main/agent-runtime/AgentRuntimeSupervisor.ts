@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -230,6 +231,7 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
       }
     });
     return Effect.raceFirst(watch, Deferred.await(ended)).pipe(
+      Effect.provideService(CoreRequestClass, "background"),
       Effect.forkIn(ownerScope),
       Effect.asVoid,
     );
@@ -281,6 +283,8 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
             Effect.andThen(Effect.fail(new AgentRuntimeSupervisorError({ operation: "closed" }))),
           ),
         ),
+        // Runtime observation and reverse requests belong to the process, even on a demand start.
+        Effect.provideService(CoreRequestClass, "background"),
         Effect.provideService(Scope.Scope, generationScope),
         Effect.provide(dependencies),
         Effect.exit,
@@ -365,6 +369,7 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
             )
           : Effect.void,
       ),
+      Effect.provideService(CoreRequestClass, "background"),
       Effect.forkIn(ownerScope),
     );
     return connection;

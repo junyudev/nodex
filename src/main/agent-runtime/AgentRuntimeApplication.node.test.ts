@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import { HostInvocation } from "../../host/HostInvocation";
 import { HostWorkspace, HostWorkspaceError } from "../../host/HostWorkspace";
 import {
@@ -4101,12 +4102,14 @@ it.effect(
     Effect.gen(function* () {
       const events: string[] = [];
       const preparationProofs: (string | null)[] = [];
+      const preparationClasses: string[] = [];
       const prepared: import("../agent-backend/NativeSessionWorkspace").NativeSessionWorkspaceInput[] =
         [];
       const fixture = setup({
         prepareWorkspace: (input) =>
           Effect.gen(function* () {
             preparationProofs.push(yield* HostInvocation);
+            preparationClasses.push(yield* CoreRequestClass);
             prepared.push(input);
             yield* Effect.addFinalizer(() =>
               Effect.sync(() => {
@@ -4140,7 +4143,10 @@ it.effect(
       };
       const result = yield* owner
         .launch(input)
-        .pipe(Effect.provideService(HostInvocation, "short-lived-member-proof"));
+        .pipe(
+          Effect.provideService(HostInvocation, "short-lived-member-proof"),
+          Effect.provideService(CoreRequestClass, "interactive"),
+        );
       yield* awaitCommand(fixture, "prepared-run.release");
       const types = [...fixture.commands.values()].map((command) => command.type);
       // The prompt is durable before any filesystem work; the Run starts after relocation.
@@ -4172,12 +4178,129 @@ it.effect(
       );
       yield* owner.launch(input);
       assert.deepEqual(preparationProofs, [null]);
+      assert.deepEqual(preparationClasses, ["interactive"]);
       assert.equal(
         fixture.hostInvocations.find(({ kind }) => kind === "create_agent_runtime_session")?.proof,
         "short-lived-member-proof",
       );
       assert.equal(prepared.length, 1, "Receipt replay never prepares a second workspace");
     }),
+);
+
+for (const [code, expectedClass, expectedCode] of [
+  ["overloaded", "transport_error", "overloaded"],
+  ["core_unavailable", "transport_error", "core_unavailable"],
+  ["deadline_exceeded", "transport_error", "deadline_exceeded"],
+  ["maintenance_in_progress", "transport_error", "maintenance_in_progress"],
+  ["cancelled", "unknown", "cancelled"],
+  ["stale_store_epoch", "unknown", "stale_store_epoch"],
+  ["aborted", "unknown", "cancelled"],
+  ["connection_lost", "transport_error", null],
+  ["bare_503", "transport_error", null],
+  ["invalid_input", "validation_error", null],
+  ["rate_limit", "transport_error", "rate_limit"],
+] as const) {
+  it.effect(`reports ${code} during deferred Page Workspace preparation`, () =>
+    Effect.gen(function* () {
+      const underlying = (() => {
+        switch (code) {
+          case "rate_limit":
+            return new CoreRateLimitError(new CoreHttpError(429, "Request rate exceeded"), 1_000);
+          case "aborted":
+          case "connection_lost":
+            return new CoreTransportError(code, "response", null, undefined);
+          case "bare_503":
+            return new CoreHttpError(503, "Service unavailable");
+          default:
+            return new CoreModuleResponseError({
+              code,
+              message: "Workspace could not be prepared",
+              retryable: code !== "invalid_input",
+              recovery:
+                code === "stale_store_epoch"
+                  ? { kind: "current_store_epoch", store_epoch: "epoch:current" }
+                  : { kind: "none" },
+            });
+        }
+      })();
+      const fixture = setup({
+        pageWorkspaces: {
+          claim: () => Effect.succeed({ workspace: pageWorkspace, lease: null }),
+          prepare: () =>
+            Effect.fail(
+              new PageWorkspaceError({
+                cause: coreRuntimeError({
+                  operation: "workspace.read",
+                  reason: "operation",
+                  retryable: true,
+                  cause: underlying,
+                }),
+              }),
+            ),
+        },
+      });
+      const owner = yield* fixture.owner;
+      yield* owner.launch({ ...launch, workPage: { pageId: "page:work" } });
+      const failed = yield* awaitCommand(fixture, "prepared-run.fail");
+      if (failed.type !== "prepared-run.fail") return yield* Effect.die("Missing failure");
+      assert.deepInclude(failed.failure, {
+        class: expectedClass,
+        code: expectedCode,
+        retryable: true,
+      });
+    }),
+  );
+}
+
+it.effect.each([
+  {
+    name: "transport loss",
+    cause: coreRuntimeError({
+      operation: "workspace.apply",
+      reason: "transport-loss",
+      retryable: true,
+    }),
+    message: "Core is temporarily unavailable",
+  },
+  {
+    name: "cancellation",
+    cause: new CoreModuleResponseError({
+      code: "cancelled",
+      message: "Core request was canceled",
+      recovery: { kind: "none" },
+      retryable: true,
+    }),
+    message: "Page Workspace preparation was canceled",
+  },
+  {
+    name: "stale Store epoch",
+    cause: new CoreModuleResponseError({
+      code: "stale_store_epoch",
+      message: "Store epoch did not match",
+      recovery: { kind: "current_store_epoch", store_epoch: "epoch:current" },
+      retryable: true,
+    }),
+    message: "The Store changed during Page Workspace preparation",
+  },
+])("reports $name when a Page Workspace claim fails before creating a Run", ({ cause, message }) =>
+  Effect.gen(function* () {
+    const claimFailure = new PageWorkspaceError({ cause });
+    const fixture = setup({
+      pageWorkspaces: {
+        claim: () => Effect.fail(claimFailure),
+        prepare: () => Effect.die("The launch could not claim its Workspace"),
+      },
+    });
+    const owner = yield* fixture.owner;
+    const result = yield* owner
+      .launch({ ...launch, workPage: { pageId: "page:work" } })
+      .pipe(Effect.result);
+    if (result._tag === "Success") return yield* Effect.die("Launch unexpectedly succeeded");
+    assert.include(result.failure.message, message);
+    assert.strictEqual(result.failure.cause, claimFailure);
+    assert.isUndefined(result.failure.admissionRejected);
+    assert.isFalse([...fixture.commands.values()].some(({ type }) => type === "message.dispatch"));
+  }),
 );
 
 it.effect("a failed worktree preparation can be retried or started in the source checkout", () =>

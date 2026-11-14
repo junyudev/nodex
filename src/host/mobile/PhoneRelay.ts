@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../../main/core-runtime/CoreRequestClass";
 import {
   MOBILE_PROTOCOL_REVISION,
   PUSH_KEY_BYTES,
@@ -253,7 +254,11 @@ export const startPhoneRelay = Effect.fn("PhoneRelay.start")(function* (input: {
       method === "chat.open" || method === "chat.close" ? channel.lifecycle : channel.requests
     )
       .withPermit(answer)
-      .pipe(Effect.forkIn(channel.scope), Effect.asVoid);
+      .pipe(
+        Effect.provideService(CoreRequestClass, "interactive"),
+        Effect.forkIn(channel.scope),
+        Effect.asVoid,
+      );
   });
   yield* Effect.forever(poll).pipe(
     Effect.catchCause(

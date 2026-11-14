@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import { formatAppVersion } from "../../shared/app-version";
 import {
   parsePageDeepLink,
@@ -57,6 +58,7 @@ export const live = Layer.effectDiscard(
     const desktops = yield* LayerMap.make(
       (spaceId: string): ReturnType<typeof RemoteSpaceDesktop.live> =>
         Layer.fresh(RemoteSpaceDesktop.live(spaceId)).pipe(
+          Layer.updateService(CoreRequestClass, () => "background"),
           Layer.tapError((error) =>
             Schema.is(CoreRuntimeError)(error) && error.retryable
               ? desktops.invalidate(spaceId)

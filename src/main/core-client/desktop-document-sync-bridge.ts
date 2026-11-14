@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import { CoreEventCompatibilityError } from "./local-http";
 import { createHash } from "node:crypto";
@@ -1597,6 +1598,7 @@ const makeDesktopDocumentSessionState = (
                     { projectId: projectIdFor(scope) },
                   )
                   .pipe(
+                    Effect.provideService(CoreRequestClass, "background"),
                     Effect.tap((events) => Effect.sync(() => events.forEach(receive))),
                     Effect.asVoid,
                     Effect.mapError((cause) => documentLiveRuntimeError("delivery.event", cause)),

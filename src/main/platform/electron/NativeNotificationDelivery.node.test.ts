@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../../core-runtime/CoreRequestClass";
 import { EventEmitter } from "node:events";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -34,20 +35,25 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const scope = yield* Scope.make();
+      const callbacks: Effect.Effect<void>[] = [];
       const notification = new NativeNotification();
-      let actions = 0;
       let completed = false;
       const deliver = yield* Scope.provide(
         makeNativeNotificationDelivery({
           ...options(notification),
-          runCallback: () => {
+          runCallback: (effect) => {
             assert.deepEqual(notification.eventNames(), []);
-            actions++;
+            callbacks.push(effect);
           },
         }),
         scope,
       );
-      const fiber = yield* deliver({ ...input, onClick: Effect.void }).pipe(
+      const fiber = yield* deliver({
+        ...input,
+        onClick: CoreRequestClass.pipe(
+          Effect.map((requestClass) => assert.strictEqual(requestClass, "interactive")),
+        ),
+      }).pipe(
         Effect.tap(() =>
           Effect.sync(() => {
             completed = true;
@@ -62,12 +68,13 @@ it.effect(
       assert.isTrue(yield* Fiber.join(fiber));
       const lateClick = notification.listeners("click")[0];
       notification.emit("click");
-      assert.strictEqual(actions, 1);
+      assert.lengthOf(callbacks, 1);
+      yield* callbacks[0]!;
       assert.deepEqual(notification.eventNames(), []);
       notification.emit("click");
       notification.emit("action", {}, 0);
       lateClick?.();
-      assert.strictEqual(actions, 1);
+      assert.lengthOf(callbacks, 1);
       yield* Scope.close(scope, Exit.void);
       assert.isFalse(notification.closed);
     }),
@@ -78,6 +85,7 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const scope = yield* Scope.make();
+      const callbacks: Effect.Effect<void>[] = [];
       const notification = new NativeNotification();
       let closeCalls = 0;
       notification.close = () => {
@@ -85,14 +93,13 @@ it.effect(
         notification.closed = true;
       };
       const selected: number[] = [];
-      let dispatched = 0;
       const deliver = yield* Scope.provide(
         makeNativeNotificationDelivery({
           ...options(notification),
-          runCallback: () => {
+          runCallback: (effect) => {
             assert.deepEqual(notification.eventNames(), []);
             assert.isTrue(notification.closed);
-            dispatched++;
+            callbacks.push(effect);
           },
         }),
         scope,
@@ -102,7 +109,9 @@ it.effect(
         actions: ["Snooze 10m", "Snooze 1h"],
         onAction: (index) => {
           selected.push(index);
-          return Effect.void;
+          return CoreRequestClass.pipe(
+            Effect.map((requestClass) => assert.strictEqual(requestClass, "interactive")),
+          );
         },
       }).pipe(Effect.forkChild);
       yield* Effect.yieldNow;
@@ -111,11 +120,13 @@ it.effect(
       assert.isTrue(yield* Fiber.join(fiber));
       assert.deepEqual(notification.eventNames(), []);
       assert.deepEqual(selected, [1]);
+      assert.lengthOf(callbacks, 1);
+      yield* callbacks[0]!;
       notification.emit("show");
       notification.emit("click");
       notification.emit("action", {}, 0);
       lateAction?.({}, 0);
-      assert.strictEqual(dispatched, 1);
+      assert.lengthOf(callbacks, 1);
       assert.deepEqual(selected, [1]);
       yield* Scope.close(scope, Exit.void);
       assert.strictEqual(closeCalls, 1);

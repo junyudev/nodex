@@ -61,6 +61,7 @@ import type {
   CoreLocalMutationResolveRequest,
   CoreLocalMutationResolveResponse,
   CoreModuleError,
+  CoreRequestClass,
   CoreRequestOptions,
   AutomationApplyInput,
   AutomationApplyResponse,
@@ -156,6 +157,7 @@ export class CoreClient implements CoreClientPort {
   readonly #projectId: string | undefined;
   readonly #connectionId: string;
   readonly #invocation: string | undefined;
+  readonly #requestClass: CoreRequestClass | undefined;
   readonly handshake: CoreHandshakeResponse;
   readonly spaceName: string | undefined;
 
@@ -166,7 +168,9 @@ export class CoreClient implements CoreClientPort {
     connectionId: string,
     spaceName?: string,
     invocation?: string,
+    requestClass?: CoreRequestClass,
   ) {
+    this.#requestClass = requestClass;
     this.#invocation = invocation;
     this.spaceName = spaceName;
     this.#transport = transport;
@@ -288,6 +292,7 @@ export class CoreClient implements CoreClientPort {
       this.#connectionId,
       this.spaceName,
       this.#invocation,
+      this.#requestClass,
     );
   }
 
@@ -300,11 +305,31 @@ export class CoreClient implements CoreClientPort {
       this.#connectionId,
       this.spaceName,
       credential,
+      this.#requestClass,
+    );
+  }
+
+  forRequestClass(requestClass: CoreRequestClass): CoreClient {
+    if (requestClass === this.#requestClass) return this;
+    return new CoreClient(
+      this.#transport,
+      this.handshake,
+      this.#projectId,
+      this.#connectionId,
+      this.spaceName,
+      this.#invocation,
+      requestClass,
     );
   }
 
   health(): Promise<HealthResponse> {
-    return this.#transport.requestJson("GET", "/core/v1/health");
+    return this.#transport.requestJson(
+      "GET",
+      "/core/v1/health",
+      undefined,
+      {},
+      this.#requestOptions(),
+    );
   }
 
   /** Local Owner control; remote connections never acquire this administration capability. */
@@ -316,6 +341,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/space/listen",
       input,
       this.#moduleHeaders(),
+      this.#requestOptions(),
     );
   }
 
@@ -332,7 +358,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/modules/workspace/tool-operations/admit",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
 
@@ -342,7 +368,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/remote-info",
       undefined,
       {},
-      options,
+      this.#requestOptions(options),
     );
   }
 
@@ -352,7 +378,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/space/members",
       undefined,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
   spaceDevices(options: CoreRequestOptions = {}) {
@@ -361,7 +387,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/space/devices",
       undefined,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
   spaceInvite(input: components["schemas"]["InviteRequest"], options: CoreRequestOptions = {}) {
@@ -370,7 +396,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/space/invite",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
   spaceLinkDevice(options: CoreRequestOptions = {}) {
@@ -379,7 +405,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/space/link-device",
       {},
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
   spaceRevokeDevice(
@@ -391,7 +417,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/space/revoke",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
   spaceRemoveMember(
@@ -403,7 +429,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/space/remove-member",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
   spaceRename(
@@ -415,7 +441,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/space/name",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
   spaceRenameMember(
@@ -427,7 +453,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/space/member-name",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
   spaceRemoteAccess(options: CoreRequestOptions = {}) {
@@ -436,7 +462,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/space/remote-access",
       undefined,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
   spaceRemoteAccessOn(input: { readonly address: string }, options: CoreRequestOptions = {}) {
@@ -445,7 +471,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/space/listen",
       { address: input.address, cert: null, key: null, peer_policy: "private" },
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
   spaceRemoteAccessOff(options: CoreRequestOptions = {}) {
@@ -454,7 +480,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/space/stop-listener",
       {},
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
   hostCall(input: components["schemas"]["HostCall"], options: CoreRequestOptions = {}) {
@@ -463,7 +489,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/host/call",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
 
@@ -473,7 +499,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/host/availability",
       undefined,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
 
@@ -483,7 +509,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/host/register",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
 
@@ -493,7 +519,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/host/poll",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
 
@@ -503,7 +529,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/host/phone/poll",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
 
@@ -513,7 +539,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/host/phone/publish",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
 
@@ -526,7 +552,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/host/phone/response-entitlements",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
 
@@ -540,7 +566,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/host/phone/push",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
 
@@ -553,7 +579,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/host/phone/push-recipients",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
 
@@ -566,7 +592,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/host/phone/push-forget",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
 
@@ -580,7 +606,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/host/presence",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
 
@@ -594,7 +620,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/host/member-presence",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
 
@@ -604,7 +630,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/host/complete",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
 
@@ -617,7 +643,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/agent-runs/record",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
   }
 
@@ -634,7 +660,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/agent-attributions",
       input,
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
     return response.credential;
   }
@@ -647,6 +673,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/local-mutations/resolve",
       input,
       this.#moduleHeaders(),
+      this.#requestOptions(),
     );
   }
 
@@ -659,7 +686,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/modules/library/read",
       { contract_version: MODULE_CONTRACT_VERSIONS.library, read },
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
     if (response.status === "ok") return response.payload;
     throw new CoreModuleResponseError(response.payload);
@@ -685,7 +712,7 @@ export class CoreClient implements CoreClientPort {
           ? { "x-nodex-agent-attribution": options.agentAttribution }
           : {}),
       },
-      options,
+      this.#requestOptions(options),
     );
     if (response.status === "ok") return response.payload;
     throw new CoreModuleResponseError(response.payload);
@@ -739,7 +766,7 @@ export class CoreClient implements CoreClientPort {
       input.bytes,
       this.#moduleHeaders(),
       CORE_TRANSPORT_BUDGETS.ordinary_json_response_bytes,
-      options,
+      this.#requestOptions(options),
     );
     if (response.contentType !== "application/json") {
       throw new Error("Core prepared Blob response has an invalid Content-Type");
@@ -761,7 +788,7 @@ export class CoreClient implements CoreClientPort {
       undefined,
       this.#moduleHeaders(),
       CORE_TRANSPORT_BUDGETS.managed_blob_bytes,
-      options,
+      this.#requestOptions(options),
     );
     if (!response.contentType || !response.etag) {
       throw new Error("Core Thread Blob response omitted its content evidence");
@@ -786,7 +813,7 @@ export class CoreClient implements CoreClientPort {
       undefined,
       this.#moduleHeaders(),
       CORE_TRANSPORT_BUDGETS.file_blob_bytes,
-      options,
+      this.#requestOptions(options),
     );
     if (!response.contentType || !response.etag)
       throw new Error("Core File response omitted its content evidence");
@@ -803,7 +830,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/modules/query/read",
       { contract_version: MODULE_CONTRACT_VERSIONS.query, read },
       this.#databaseHeaders(),
-      options,
+      this.#requestOptions(options),
     );
     if (response.status === "ok") return response.payload;
     throw new CoreModuleResponseError(response.payload);
@@ -818,7 +845,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/modules/database/read",
       { contract_version: MODULE_CONTRACT_VERSIONS.database, read },
       this.#databaseHeaders(),
-      options,
+      this.#requestOptions(options),
     );
     if (response.status === "ok") return response.payload;
     throw new CoreModuleResponseError(response.payload);
@@ -838,7 +865,7 @@ export class CoreClient implements CoreClientPort {
         intent: input.intent,
       },
       this.#databaseHeaders(),
-      options,
+      this.#requestOptions(options),
     );
     if (response.status === "ok") return response.payload;
     throw new CoreModuleResponseError(response.payload);
@@ -856,7 +883,7 @@ export class CoreClient implements CoreClientPort {
         ...this.#moduleHeaders(),
         ...(options.hostInvocation ? { "x-nodex-host-invocation": options.hostInvocation } : {}),
       },
-      options,
+      this.#requestOptions(options),
     );
     if (response.status === "ok") return response.payload;
     throw new CoreModuleResponseError(response.payload);
@@ -879,7 +906,7 @@ export class CoreClient implements CoreClientPort {
         ...this.#moduleHeaders(),
         ...(options.hostInvocation ? { "x-nodex-host-invocation": options.hostInvocation } : {}),
       },
-      options,
+      this.#requestOptions(options),
     );
     if (response.status === "ok") return response.payload;
     throw new CoreModuleResponseError(response.payload);
@@ -894,7 +921,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/modules/automation/read",
       { contract_version: MODULE_CONTRACT_VERSIONS.automation, read },
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
     if (response.status === "ok") return response.payload;
     throw new CoreModuleResponseError(response.payload);
@@ -914,7 +941,7 @@ export class CoreClient implements CoreClientPort {
         intent: input.intent,
       },
       this.#moduleHeaders(),
-      options,
+      this.#requestOptions(options),
     );
     if (response.status === "ok") return response.payload;
     throw new CoreModuleResponseError(response.payload);
@@ -928,7 +955,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/modules/administration/read",
       { contract_version: MODULE_CONTRACT_VERSIONS.storeAdministration, read },
       this.#moduleHeaders(),
-      { class: "background" },
+      this.#requestOptions(),
     );
     if (response.status === "ok") return response.payload;
     throw new CoreModuleResponseError(response.payload);
@@ -969,7 +996,7 @@ export class CoreClient implements CoreClientPort {
         }),
         this.#documentHeaders(clientSessionId, read.document_id),
         CORE_TRANSPORT_BUDGETS.document_response_bytes,
-        options,
+        this.#requestOptions(options),
       );
       const response =
         frame.kind === "binary" ? decodeDocumentModuleRead(frame.bytes) : frame.value;
@@ -982,7 +1009,7 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/modules/document/read",
       { contract_version: MODULE_CONTRACT_VERSIONS.ownedDocument, read },
       this.#documentHeaders(clientSessionId),
-      options,
+      this.#requestOptions(options),
     );
     if (response.status === "ok") return response.payload;
     throw new CoreModuleResponseError(response.payload);
@@ -1014,7 +1041,7 @@ export class CoreClient implements CoreClientPort {
         "x-nodex-payload-hash": bundle.payloadHash,
       },
       CORE_TRANSPORT_BUDGETS.ordinary_json_response_bytes,
-      options,
+      this.#requestOptions(options),
     );
     const response = decodeBoundedJson<OwnedDocumentApplyResponse>(
       result.bytes,
@@ -1035,7 +1062,7 @@ export class CoreClient implements CoreClientPort {
       new TextEncoder().encode(JSON.stringify({ draft_id: draftId })),
       { ...this.#documentHeaders("document-recovery"), "content-type": "application/json" },
       CORE_TRANSPORT_BUDGETS.recovery_export_bytes,
-      options,
+      this.#requestOptions(options),
     );
     if (
       result.contentType?.split(";", 1)[0] ===
@@ -1076,7 +1103,7 @@ export class CoreClient implements CoreClientPort {
         }),
         this.#documentHeaders(input.clientSessionId, input.intent.document_id),
         CORE_TRANSPORT_BUDGETS.document_response_bytes,
-        options,
+        this.#requestOptions(options),
       );
       const response =
         frame.kind === "binary" ? decodeDocumentModuleApply(frame.bytes) : frame.value;
@@ -1095,7 +1122,7 @@ export class CoreClient implements CoreClientPort {
         intent: input.intent,
       },
       this.#documentHeaders(input.clientSessionId),
-      options,
+      this.#requestOptions(options),
     );
     if (response.status === "ok") return response.payload;
     throw new CoreModuleResponseError(response.payload);
@@ -1110,7 +1137,7 @@ export class CoreClient implements CoreClientPort {
       encodeDocumentSyncHttpRequest(input),
       this.#documentHeaders(input.clientSessionId, input.documentId),
       DOCUMENT_FRAME_OVERHEAD_BYTES + MAX_PAGE_DOCUMENT_STATE_BYTES,
-      options,
+      this.#requestOptions(options),
     );
     if (response.kind === "binary") {
       return decodeDocumentSyncHttpResponse(response.bytes);
@@ -1130,7 +1157,7 @@ export class CoreClient implements CoreClientPort {
       encodeCanvasSceneSyncHttpRequest(input),
       this.#documentHeaders(input.clientSessionId, input.documentId),
       DOCUMENT_FRAME_OVERHEAD_BYTES + MAX_CANVAS_SCENE_SNAPSHOT_BYTES,
-      options,
+      this.#requestOptions(options),
     );
     if (response.kind === "binary") {
       return decodeCanvasSceneSyncHttpResponse(response.bytes);
@@ -1150,7 +1177,7 @@ export class CoreClient implements CoreClientPort {
       encodeDocumentApplyHttpRequest(input),
       this.#documentHeaders(input.clientSessionId, input.documentId),
       DOCUMENT_FRAME_OVERHEAD_BYTES + MAX_PAGE_DOCUMENT_STATE_BYTES,
-      options,
+      this.#requestOptions(options),
     );
     if (response.kind === "binary") {
       return decodeDocumentApplyHttpAck(response.bytes);
@@ -1172,7 +1199,7 @@ export class CoreClient implements CoreClientPort {
       encodeDocumentAwarenessHttpRequest(input),
       this.#documentHeaders(input.clientSessionId, input.documentId),
       DOCUMENT_FRAME_OVERHEAD_BYTES + MAX_DOCUMENT_AWARENESS_UPDATE_BYTES,
-      options,
+      this.#requestOptions(options),
     );
     if (response.kind === "binary") {
       throw new Error("Core returned a binary Awareness acknowledgement");
@@ -1258,7 +1285,13 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/admin/shutdown",
       { kind: "shutdown" },
       this.#moduleHeaders(),
+      this.#requestOptions(),
     );
+  }
+
+  #requestOptions(options?: CoreRequestOptions): CoreRequestOptions | undefined {
+    if (options?.class !== undefined || this.#requestClass === undefined) return options;
+    return { ...options, class: this.#requestClass };
   }
 
   #documentHeaders(clientSessionId: string, documentId?: string): Readonly<Record<string, string>> {

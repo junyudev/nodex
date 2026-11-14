@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../main/core-runtime/CoreRequestClass";
 import { InboxSkillAvailabilityInputSchema } from "../shared/schemas/inbox";
 import * as Effect from "effect/Effect";
 import { z } from "zod";
@@ -183,4 +184,7 @@ export const executeHostCommand = (
       case "chat_search_messages":
         return yield* host.chats.searchMessages(ChatMessageSearchInputSchema.parse(input));
     }
-  }).pipe(Effect.provideService(HostInvocation, invocation.credential));
+  }).pipe(
+    Effect.provideService(HostInvocation, invocation.credential),
+    Effect.provideService(CoreRequestClass, "interactive"),
+  );

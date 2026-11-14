@@ -1,3 +1,9 @@
+import { CORE_CLIENT_REQUIREMENTS } from "@nodex/core-protocol";
+import * as FiberSet from "effect/FiberSet";
+import { vi } from "vitest";
+import { CoreClient } from "../core-client/core-client";
+import * as runtimeDescriptor from "../core-client/runtime-descriptor";
+import { CoreRequestClass } from "./CoreRequestClass";
 import { HostInvocation } from "../../host/HostInvocation";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -12,7 +18,7 @@ import { assert, it } from "@effect/vitest";
 import type { CoreGenerationClient } from "../core-client/core-generation-client";
 import type { LibraryReadSnapshot } from "../core-client/types";
 import { createFakeCoreHandshake, FakeCoreClient } from "../core-client/testing/fake-core-client";
-import { CoreTransportError } from "../core-client/local-http";
+import { CoreTransportError, LocalHttpTransport } from "../core-client/local-http";
 import { MainShutdown, layer as shutdownLayer } from "../app/MainShutdown";
 import { CoreAuthority, CoreSessionAccess, live as authorityLive } from "./CoreAuthority";
 import { coreRuntimeError } from "./CoreRuntimeError";
@@ -94,6 +100,93 @@ const buildAuthority = (
   authorityLive({ jitter: false, retryBase: "1 second", retryCap: "1 second", ...options }).pipe(
     Layer.provideMerge(Layer.merge(shutdownLayer, fromLaunch(launch))),
   );
+
+it.effect("scopes finite Core requests to their origin across forks and runtime re-entry", () =>
+  Effect.gen(function* () {
+    const { handshake } = generationClient({
+      generation: 1,
+      read: () => Promise.resolve(snapshot(1)),
+    });
+    const scope = yield* Effect.scope;
+    const descriptor = vi.spyOn(runtimeDescriptor, "readCoreRuntimeConnection").mockReturnValue({
+      authCapability: "fixture",
+      descriptor: {
+        ...handshake.generation,
+        artifact: handshake.artifact,
+        actual_store_format: handshake.actual_store_format,
+        endpoint: "/fake-core.sock",
+        manifest: {
+          manifest_version: 1,
+          transport: CORE_CLIENT_REQUIREMENTS.transport,
+          event_versions: {
+            min: handshake.selected_event_version,
+            max: handshake.selected_event_version,
+          },
+          modules: handshake.selected_module_versions.map(({ module, contract_version }) => ({
+            module,
+            versions: { min: contract_version, max: contract_version },
+          })),
+          store: {
+            current: handshake.actual_store_format,
+            readable: [handshake.actual_store_format],
+            migratable: [],
+          },
+        },
+      },
+    });
+    const request = vi
+      .spyOn(LocalHttpTransport.prototype, "requestJson")
+      .mockImplementation((_method, path) => {
+        if (path === "/core/v1/handshake") return Promise.resolve(handshake as never);
+        if (path === "/core/v1/health") return Promise.resolve({ status: "ready" } as never);
+        return Promise.resolve({ status: "ok", payload: snapshot(1) } as never);
+      });
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        request.mockRestore();
+        descriptor.mockRestore();
+      }),
+    );
+    const client = yield* Effect.promise(() =>
+      CoreClient.connect({ nodexHome: "/fixture", clientKind: "test", buildId: "test" }),
+    );
+    const context = yield* Layer.buildWithScope(
+      buildAuthority(() => Promise.resolve(session(client))),
+      scope,
+    );
+    const access = Context.get(context, CoreSessionAccess);
+    const read = (options?: import("../core-client/types").CoreRequestOptions) =>
+      access.use("library.read", (selected) => selected.libraryRead({ kind: "metadata" }, options));
+    const runDaemon = yield* FiberSet.makeRuntimePromise();
+    yield* read();
+    yield* Effect.gen(function* () {
+      yield* read();
+      yield* read({ class: "maintenance", deadlineMs: 12_345 });
+      yield* Fiber.join(yield* Effect.forkChild(read()));
+      yield* Fiber.join(yield* Effect.forkIn(read(), scope));
+      const workers = yield* FiberSet.make();
+      yield* Fiber.join(yield* FiberSet.run(workers, read()));
+      yield* Effect.promise(() => runDaemon(read()));
+      // oxlint-disable-next-line nodex/no-manual-effect-runtime-in-tests -- Verify a fresh Promise runtime does not inherit the calling fiber's class.
+      yield* Effect.promise(() => Effect.runPromise(read()));
+    }).pipe(Effect.provideService(CoreRequestClass, "interactive"));
+    assert.deepEqual(
+      request.mock.calls
+        .filter(([, path]) => path === "/core/v1/modules/library/read")
+        .map(([, , , , options]) => options),
+      [
+        { class: "background" },
+        { class: "interactive" },
+        { class: "maintenance", deadlineMs: 12_345 },
+        { class: "interactive" },
+        { class: "interactive" },
+        { class: "interactive" },
+        { class: "background" },
+        { class: "background" },
+      ],
+    );
+  }),
+);
 
 it.effect("coalesces concurrent same-authority recovery and replays safe operations", () =>
   Effect.gen(function* () {

@@ -881,19 +881,18 @@ it.effect("routes occurrence reads and mutations through the exact Project scope
   }),
 );
 
-it.effect("keeps Inbox and Reminder scheduler traffic on the root background lane", () =>
+it.effect("reads the shared Inbox and claims Reminders without a Project binding", () =>
   Effect.gen(function* () {
     const calls: Array<{
       readonly kind: "read" | "apply";
-      readonly requestClass: string | undefined;
       readonly projectId: string | null | undefined;
     }> = [];
     const application = yield* make.pipe(
       Effect.provideService(
         CoreModules,
         coreModules({
-          read: (_input, options, projectId) => {
-            calls.push({ kind: "read", requestClass: options?.class, projectId });
+          read: (_input, _options, projectId) => {
+            calls.push({ kind: "read", projectId });
             return Effect.succeed(
               readSnapshot({
                 kind: "inbox",
@@ -918,8 +917,8 @@ it.effect("keeps Inbox and Reminder scheduler traffic on the root background lan
               }),
             );
           },
-          apply: (_input, options, projectId) => {
-            calls.push({ kind: "apply", requestClass: options?.class, projectId });
+          apply: (_input, _options, projectId) => {
+            calls.push({ kind: "apply", projectId });
             return Effect.succeed(
               committed({
                 reminder_leases: [
@@ -950,7 +949,7 @@ it.effect("keeps Inbox and Reminder scheduler traffic on the root background lan
       Effect.provideService(AutomationRoutingIndex, routingIndex()),
     );
 
-    const inbox = yield* application.inbox.read(25, "background");
+    const inbox = yield* application.inbox.read(25);
     assert.deepEqual(inbox.unreadRunCounts, {
       total: 1,
       automationIds: ["daily-report"],
@@ -964,8 +963,8 @@ it.effect("keeps Inbox and Reminder scheduler traffic on the root background lan
       pageId: "page:planning",
     });
     assert.deepEqual(calls, [
-      { kind: "read", requestClass: "background", projectId: undefined },
-      { kind: "apply", requestClass: "background", projectId: undefined },
+      { kind: "read", projectId: undefined },
+      { kind: "apply", projectId: undefined },
     ]);
   }),
 );

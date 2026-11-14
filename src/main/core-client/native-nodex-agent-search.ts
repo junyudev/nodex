@@ -131,7 +131,7 @@ export async function readNativeSearch(
     };
     const client = nativeAgentClient(runtime, request.projectId);
     const snapshot = signal
-      ? await client.libraryRead(read, { class: "background", signal })
+      ? await client.libraryRead(read, { signal })
       : await client.libraryRead(read);
     if (snapshot.value.kind !== "agent_search") {
       throw new Error("Core returned the wrong Agent search variant");

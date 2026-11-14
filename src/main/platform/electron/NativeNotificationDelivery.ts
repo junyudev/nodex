@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../../core-runtime/CoreRequestClass";
 import * as Effect from "effect/Effect";
 import type { ElectronNotificationInput } from "./ElectronDesktop";
 import type { NativeNotificationAuthorizationService } from "./NativeNotificationAuthorization";
@@ -94,13 +95,19 @@ export const makeNativeNotificationDelivery = Effect.fnUntraced(function* (optio
           instance.on("click", () => {
             // Electron destroys clicked notifications without emitting close.
             if (!consume()) return;
-            if (input.onClick !== undefined) options.runCallback(input.onClick);
+            if (input.onClick !== undefined)
+              options.runCallback(
+                input.onClick.pipe(Effect.provideService(CoreRequestClass, "interactive")),
+              );
           });
           instance.on("action", (_event, index) => {
             if (typeof index !== "number" || !consume()) return;
             // macOS action callbacks do not destroy or close their notification.
             closeNative();
-            if (input.onAction !== undefined) options.runCallback(input.onAction(index));
+            if (input.onAction !== undefined)
+              options.runCallback(
+                input.onAction(index).pipe(Effect.provideService(CoreRequestClass, "interactive")),
+              );
           });
           active.add(close);
           try {

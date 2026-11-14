@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import { AgentRuntimeSupervisorError } from "./AgentRuntimeSupervisor";
 import { HostInvocation } from "../../host/HostInvocation";
 import { make as makeChatMessageDelivery } from "./ChatMessageDelivery";
@@ -61,7 +62,8 @@ import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLi
 import type { ProjectWorkspaceApplyInput } from "../core-client/types";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { isRetryableCoreTransportError } from "../core-client/document-session-error";
-import { CoreRateLimitError, CoreTransportError } from "../core-client/local-http";
+import { CoreResponseError } from "../core-client/core-response-error";
+import { CoreHttpError, CoreRateLimitError, CoreTransportError } from "../core-client/local-http";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { readActionableErrorMessage } from "../actionable-error-message";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
@@ -349,6 +351,75 @@ const isTransientOpenReadFailure = (error: unknown): boolean => {
   }
   return false;
 };
+/** A Core refusal can arrive wrapped by both the Workspace and Core application owners. */
+const workspaceFailureEvidence = (error: unknown) => {
+  let cause = error;
+  let fallback: "unknown" | "transport_error" | "validation_error" = "unknown";
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (cause instanceof CoreResponseError) {
+      const code = cause.coreError?.code;
+      if (code === "invalid_input") return { class: "validation_error", code: null } as const;
+      if (
+        code === "overloaded" ||
+        code === "deadline_exceeded" ||
+        code === "core_unavailable" ||
+        code === "maintenance_in_progress" ||
+        (cause instanceof CoreHttpError && !code && cause.status >= 500 && cause.status < 600)
+      ) {
+        return { class: "transport_error", code: code ?? null } as const;
+      }
+      if (
+        cause instanceof CoreRateLimitError &&
+        (!code || cause.coreError?.recovery.kind === "retry_after")
+      ) {
+        return {
+          class: "transport_error",
+          code: "rate_limit",
+          httpStatusCode: cause.status,
+        } as const;
+      }
+      if (code) return { class: "unknown", code } as const;
+    }
+    if (cause instanceof CoreTransportError) {
+      return {
+        class: isRetryableCoreTransportError(cause) ? "transport_error" : "unknown",
+        code: cause.kind === "aborted" ? "cancelled" : null,
+      } as const;
+    }
+    if (cause instanceof CoreRuntimeError) {
+      if (cause.reason === "request") fallback = "validation_error";
+      if (
+        cause.retryable &&
+        (cause.reason === "transport-loss" ||
+          cause.reason === "health" ||
+          cause.reason === "launch")
+      ) {
+        fallback = "transport_error";
+      }
+    }
+    if (typeof cause !== "object" || cause === null || !("cause" in cause)) break;
+    cause = cause.cause;
+  }
+  return { class: fallback, code: null } as const;
+};
+
+const preparationFailure = (message: string, cause: unknown) => ({
+  ...workspaceFailureEvidence(cause),
+  message,
+  retryable: true,
+});
+
+const launchWorkspaceFailure = (cause: unknown) => {
+  const evidence = workspaceFailureEvidence(cause);
+  let message = "Page Workspace could not be prepared";
+  if (evidence.class === "transport_error")
+    message = "Core is temporarily unavailable for workspace preparation. Try again shortly.";
+  if (evidence.code === "cancelled") message = "Page Workspace preparation was canceled.";
+  if (evidence.code === "stale_store_epoch")
+    message = "The Store changed during Page Workspace preparation. Try again.";
+  return failure("workspace", message, cause);
+};
+
 const NATIVE_IMPORT_LAUNCH_PREFIX = NATIVE_THREAD_IMPORT_OPERATION_PREFIX;
 
 /**
@@ -472,15 +543,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     execution: import("../../shared/agent-runtime-api").AgentRuntimeAutomationExecution | undefined,
   ) {
     if (!execution) return;
-    const snapshot = yield* core.automation.read(
-      {
-        kind: "automation_execution_admission",
-        run_id: execution.runId,
-        lease_id: execution.leaseId,
-        dispatch_id: execution.dispatchId,
-      },
-      { class: "background" },
-    );
+    const snapshot = yield* core.automation.read({
+      kind: "automation_execution_admission",
+      run_id: execution.runId,
+      lease_id: execution.leaseId,
+      dispatch_id: execution.dispatchId,
+    });
     if (snapshot.value.kind !== "automation_execution_admission" || !snapshot.value.valid)
       return yield* failure(
         "automation-execution",
@@ -1201,17 +1269,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       sourceRoots: scope.sourceRoots,
     } satisfies DeferredPreparation;
   });
-  const preparationFailure = (message: string) => {
-    // The engine stores trimmed text of at most 4,096 characters; a tool can report more.
-    const text = Array.from(message.trim()).slice(0, 4_096).join("").trim();
-    return {
-      class: "validation_error" as const,
-      message: text || "The worktree could not be prepared",
-      code: null,
-      retryable: true,
-    };
-  };
-
   /**
    * Prepares a launch's managed checkout while its Run waits as `preparing`: the Page's Workspace
    * for a chat that joined one, otherwise a worktree of its own. The Run starts only after the
@@ -1280,21 +1337,22 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         runId,
       });
     }).pipe(
-      Effect.catchCause((cause) =>
+      Effect.catchCause((cause) => {
+        const error = Cause.squash(cause);
         // Ownership ends before the failure is visible, so a retry can take it at once.
-        Effect.sync(() => preparing.delete(preparationKey(threadId, runId))).pipe(
+        return Effect.sync(() => preparing.delete(preparationKey(threadId, runId))).pipe(
           Effect.andThen(
             dispatch(connection, {
               type: "prepared-run.fail",
               commandId: commandId("preparation-failure", { threadId, runId, attempt }),
               threadId,
               runId,
-              // A tagged workspace error carries its reason in its cause, not its message.
               failure: preparationFailure(
-                readActionableErrorMessage(Cause.squash(cause), {
-                  fallback: "",
+                readActionableErrorMessage(error, {
+                  fallback: "The worktree could not be prepared",
                   maximumLength: 4_096,
-                }),
+                }).trimEnd(),
+                error,
               ),
             }),
           ),
@@ -1303,8 +1361,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               Effect.annotateLogs({ threadId, runId, cause: Cause.pretty(recordCause) }),
             ),
           ),
-        ),
-      ),
+        );
+      }),
       Effect.ensuring(Effect.sync(() => preparing.delete(preparationKey(threadId, runId)))),
     );
   /**
@@ -1323,6 +1381,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       preparing.add(key);
       return prepareDeferredWorkspace(connection, threadId, runId, attempt).pipe(
         Effect.provideService(HostInvocation, null),
+        // The preparing Run is still waiting on this checkout. Its fork inherits the launch or retry class.
         Effect.forkIn(ownerScope),
         Effect.asVoid,
       );
@@ -1588,11 +1647,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
                   sourceCwd,
                   sourceRoots: scope.sourceRoots,
                 })
-                .pipe(
-                  Effect.mapError((cause) =>
-                    failure("workspace", "Page Workspace could not be prepared", cause),
-                  ),
-                )
+                .pipe(Effect.mapError(launchWorkspaceFailure))
             : null;
         // A Page chat's first Run starts in the Page's checkout. A new Thread is created there
         // when the checkout exists; a Thread anywhere else is moved there before the Run starts.
@@ -1623,22 +1678,30 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           pageLease ??
           (!existing && !deferred && options.prepareWorkspace
             ? yield* asExecutionOwner(
-                options.prepareWorkspace({
-                  projectId,
-                  targetId: input.sessionId,
-                  title: input.title.trim(),
-                  prompt: prepared.message.text,
-                  sourceCwd,
-                  sourceRoots: scope.sourceRoots,
-                  runInTarget: "localProject",
-                  operationId: createStableOperationId(
-                    "agent-runtime.workspace",
-                    input.acceptedAt,
-                    {
-                      launchId: input.launchId,
-                    },
+                options
+                  .prepareWorkspace({
+                    projectId,
+                    targetId: input.sessionId,
+                    title: input.title.trim(),
+                    prompt: prepared.message.text,
+                    sourceCwd,
+                    sourceRoots: scope.sourceRoots,
+                    runInTarget: "localProject",
+                    operationId: createStableOperationId(
+                      "agent-runtime.workspace",
+                      input.acceptedAt,
+                      {
+                        launchId: input.launchId,
+                      },
+                    ),
+                  })
+                  .pipe(
+                    Effect.mapError((cause) =>
+                      workspaceFailureEvidence(cause).class === "transport_error"
+                        ? launchWorkspaceFailure(cause)
+                        : cause,
+                    ),
                   ),
-                }),
               )
             : null);
         const cwd =
@@ -1861,6 +1924,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ),
       // This producer continues an already-admitted Session, beyond the person request lifetime.
       Effect.provideService(HostInvocation, null),
+      Effect.provideService(CoreRequestClass, "background"),
       Effect.forkIn(ownerScope),
       Effect.asVoid,
     );
@@ -1972,9 +2036,13 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             }),
             threadId: rootThreadId,
             runId: activeRunId,
-            failure: preparationFailure(
-              "Worktree preparation was interrupted when Nodex restarted. Retry to create it again.",
-            ),
+            failure: {
+              class: "transport_error",
+              code: null,
+              message:
+                "Worktree preparation was interrupted when Nodex restarted. Retry to create it again.",
+              retryable: true,
+            },
           }).pipe(Effect.ignoreCause);
         }
         cursor = page.nextCursor ?? undefined;

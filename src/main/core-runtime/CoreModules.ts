@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "./CoreRequestClass";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -356,11 +357,16 @@ export const live: Layer.Layer<CoreModules, never, CoreSessionAccess> = Layer.ef
           ),
         ),
         publishAwareness: Effect.fn("CoreModules.document.publishAwareness")((input, projectId) =>
-          access.use(
-            "document.publishAwareness",
-            (client, signal) => client.documentPublishAwareness(input, { signal }),
-            { projectId, replayAfterRecovery: false },
-          ),
+          access
+            .use(
+              "document.publishAwareness",
+              (client, signal) => client.documentPublishAwareness(input, { signal }),
+              { projectId, replayAfterRecovery: false },
+            )
+            .pipe(
+              // Presence is best effort, including when the renderer sends it from the editor.
+              Effect.provideService(CoreRequestClass, "background"),
+            ),
         ),
       },
     });

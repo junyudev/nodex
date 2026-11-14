@@ -18,6 +18,7 @@ import {
   isRecoverableCoreTransportFailure,
   type CoreRuntimeError,
 } from "./CoreRuntimeError";
+import { CoreRequestClass } from "./CoreRequestClass";
 import { CoreTransport, type CoreTransportSession } from "./CoreTransport";
 
 export interface CoreAuthorityIdentity {
@@ -232,6 +233,7 @@ export const live = (
         yield* assertOpen();
         const selected = yield* Ref.get(session);
         const invocation = yield* HostInvocation;
+        const requestClass = yield* CoreRequestClass;
         const invoke = (target: AuthoritySession) =>
           Effect.tryPromise({
             try: (signal) => {
@@ -240,7 +242,7 @@ export const live = (
               const client = operationOptions.projectId
                 ? scoped.forProject(operationOptions.projectId)
                 : scoped;
-              return run(client, signal);
+              return run(client.forRequestClass(requestClass), signal);
             },
             catch: (cause) => classifyCoreOperationFailure(operation, cause, target.generation),
           });

@@ -258,8 +258,9 @@ start new Core work. They recheck admission after every asynchronous claim or
 initialization step. A lease returned after authority changes is settled for a
 bounded retry without delivering a notification or starting an agent run.
 Scheduled claims, lease settlement, reminder delivery, interrupted-run recovery,
-and native agent Document work declare the background class at their semantic
-adapter boundary; user-initiated Automation editing remains interactive.
+and native agent Document work run in the background class like all host work
+that no person-facing entry point started; user-initiated Automation editing
+is interactive because it arrives through a renderer invocation.
 
 ## Store formats and migrations
 

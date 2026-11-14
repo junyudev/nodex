@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -113,6 +114,7 @@ export const live = Layer.effect(
           const catalog = yield* chats.search({ query: "", limit: 60 });
           yield* tray.showMenu(windowsTrayChatGroups(catalog.matches.map(({ chat }) => chat)));
         }).pipe(
+          Effect.provideService(CoreRequestClass, "interactive"),
           Effect.catchCause((cause) =>
             Effect.gen(function* () {
               logger.warn("Notification-area action failed", { action: action.kind, cause });

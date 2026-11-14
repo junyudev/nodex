@@ -209,7 +209,7 @@ export const prepareNativeNodexAgentPageCreate = async (
         ),
         request: createRequest,
       },
-      { class: "background", signal },
+      { signal },
     );
     if (snapshot.value.kind !== "agent_create_pages_preparation") {
       throw new Error("Core returned the wrong Agent Page-create preparation variant");

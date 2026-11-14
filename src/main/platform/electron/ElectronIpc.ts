@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../../core-runtime/CoreRequestClass";
 import * as Fiber from "effect/Fiber";
 import * as Exit from "effect/Exit";
 import { WebContentsDestructionSubscriptions } from "./WebContentsDestructionSubscriptions";
@@ -250,6 +251,7 @@ const asyncLive: Layer.Layer<
                   if (Exit.isFailure(exit)) return yield* Effect.failCause(exit.cause);
                   return exit.value;
                 }).pipe(
+                  Effect.provideService(CoreRequestClass, "interactive"),
                   Effect.catchCause((cause) =>
                     Effect.logError("Electron IPC handler failed").pipe(
                       Effect.annotateLogs({ channel, cause: Cause.pretty(cause) }),

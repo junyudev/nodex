@@ -748,7 +748,7 @@ export const make: Effect.Effect<
           active_window: { after: input.activeAfter, first: input.activeFirst },
           done_window: { after: input.doneAfter, first: input.doneFirst },
         },
-        { class: "background", deadlineMs: DISCOVERY_PAGE_TIMEOUT_MS },
+        { deadlineMs: DISCOVERY_PAGE_TIMEOUT_MS },
       )
       .pipe(Effect.mapError((cause) => error("read", context.universe.root_thread_id, cause)));
     if (response.value.kind !== "subagent_overview_window") {
@@ -768,7 +768,7 @@ export const make: Effect.Effect<
     const response = yield* core.workspace
       .read(
         { kind: "subagent_overview_item", universe: context.universe, thread_id: threadId },
-        { class: "interactive", deadlineMs: DISCOVERY_PAGE_TIMEOUT_MS },
+        { deadlineMs: DISCOVERY_PAGE_TIMEOUT_MS },
       )
       .pipe(
         Effect.mapError((cause) => error("read", context.universe.root_thread_id, cause, threadId)),
@@ -840,7 +840,7 @@ export const make: Effect.Effect<
             ...(precondition ? { precondition } : {}),
           },
         },
-        { class: "interactive", deadlineMs: DISCOVERY_PAGE_TIMEOUT_MS },
+        { deadlineMs: DISCOVERY_PAGE_TIMEOUT_MS },
       )
       .pipe(
         Effect.mapError((cause) =>
@@ -883,7 +883,7 @@ export const make: Effect.Effect<
             observed_at_ms: Math.max(0, Math.trunc(pending.observedAtMs)),
           },
         },
-        { class: "interactive", deadlineMs: DISCOVERY_PAGE_TIMEOUT_MS },
+        { deadlineMs: DISCOVERY_PAGE_TIMEOUT_MS },
       )
       .pipe(
         Effect.mapError((cause) =>
@@ -1065,7 +1065,7 @@ export const make: Effect.Effect<
             complete,
           },
         },
-        { class: "background", deadlineMs: DISCOVERY_PAGE_TIMEOUT_MS },
+        { deadlineMs: DISCOVERY_PAGE_TIMEOUT_MS },
       )
       .pipe(Effect.mapError((cause) => error("discover", context.universe.root_thread_id, cause)));
     // Discovery has the same commit/receipt ambiguity as status evidence. Always tell observers

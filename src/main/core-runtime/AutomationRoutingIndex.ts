@@ -4,13 +4,9 @@ import * as Layer from "effect/Layer";
 import * as MutableRef from "effect/MutableRef";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
-import type { AutomationReadSnapshot, CoreRequestOptions } from "../core-client/types";
+import type { AutomationReadSnapshot } from "../core-client/types";
 import { CoreModules } from "./CoreModules";
 import type { CoreRuntimeError } from "./CoreRuntimeError";
-
-const BACKGROUND_CORE_REQUEST = {
-  class: "background",
-} as const satisfies CoreRequestOptions;
 
 export type AutomationRoutingDefinition = Extract<
   AutomationReadSnapshot["value"],
@@ -149,14 +145,11 @@ export const live: Layer.Layer<AutomationRoutingIndex, never, CoreModules> = Lay
       const seenCursors = new Set<string>();
       let after: string | null = null;
       while (true) {
-        const snapshot: AutomationReadSnapshot = yield* core.automation.read(
-          {
-            kind: "automations",
-            include_deleted: false,
-            window: { after, first: 200 },
-          },
-          BACKGROUND_CORE_REQUEST,
-        );
+        const snapshot: AutomationReadSnapshot = yield* core.automation.read({
+          kind: "automations",
+          include_deleted: false,
+          window: { after, first: 200 },
+        });
         if (snapshot.value.kind !== "automations") {
           return yield* new AutomationRoutingIndexError({
             operation: "synchronize.automations",
@@ -182,14 +175,11 @@ export const live: Layer.Layer<AutomationRoutingIndex, never, CoreModules> = Lay
       const seenCursors = new Set<string>();
       let after: string | null = null;
       while (true) {
-        const snapshot: AutomationReadSnapshot = yield* core.automation.read(
-          {
-            kind: "runs",
-            include_archived: true,
-            window: { after, first: 200 },
-          },
-          BACKGROUND_CORE_REQUEST,
-        );
+        const snapshot: AutomationReadSnapshot = yield* core.automation.read({
+          kind: "runs",
+          include_archived: true,
+          window: { after, first: 200 },
+        });
         if (snapshot.value.kind !== "runs") {
           return yield* new AutomationRoutingIndexError({
             operation: "synchronize.runs",

@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import { randomBytes } from "node:crypto";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -380,7 +381,9 @@ export const makePageFileHtmlHost = (options: {
           }),
         );
         session.protocol.handle(PAGE_FILE_HTML_SCHEME, (request) =>
-          run(serve(entry, request)).catch(() => pageFileHtmlResponse(410)),
+          run(
+            serve(entry, request).pipe(Effect.provideService(CoreRequestClass, "interactive")),
+          ).catch(() => pageFileHtmlResponse(410)),
         );
         return { status: "admitted", admission: claim } as const;
       }).pipe(

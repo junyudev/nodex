@@ -173,7 +173,7 @@ export const prepareNativeNodexAgentPageCopy = async (
         ),
         request: copyRequest,
       },
-      { class: "background", signal },
+      { signal },
     );
     if (snapshot.value.kind !== "agent_page_copy_preparation") {
       throw new Error("Core returned the wrong Agent Page copy preparation variant");

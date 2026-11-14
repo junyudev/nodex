@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -617,7 +618,14 @@ it.effect("turns the first ready-state before-quit into the same scoped shutdown
     const applicationLayer = mainApplicationTestLayer({
       acquire: Deferred.succeed(started, undefined).pipe(Effect.asVoid),
       handleBootstrapEvent: () => Effect.void,
+      confirmQuit: CoreRequestClass.pipe(
+        Effect.map((requestClass) => {
+          assert.strictEqual(requestClass, "interactive");
+          return true;
+        }),
+      ),
       prepareShutdown: Effect.gen(function* () {
+        assert.strictEqual(yield* CoreRequestClass, "interactive");
         events.push("flush");
         yield* Effect.yieldNow;
         assert.deepEqual(events, ["flush"]);

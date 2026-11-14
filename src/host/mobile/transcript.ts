@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../../main/core-runtime/CoreRequestClass";
 import { MainConfig } from "../../main/app/MainConfig";
 import { hostPathFlavor } from "../host-paths";
 import type { AgentSnapshot } from "@nodex/agent-runtime/contracts";
@@ -488,7 +489,10 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
                 [activityChanges, live],
                 (watch) =>
                   Effect.forkIn(
-                    watch.pipe(Effect.provideService(HostInvocation, observation)),
+                    watch.pipe(
+                      Effect.provideService(HostInvocation, observation),
+                      Effect.provideService(CoreRequestClass, "background"),
+                    ),
                     scope,
                     {
                       startImmediately: true,
@@ -509,7 +513,10 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
               ),
             );
             yield* Effect.forkIn(
-              coreChanges.pipe(Effect.provideService(HostInvocation, observation)),
+              coreChanges.pipe(
+                Effect.provideService(HostInvocation, observation),
+                Effect.provideService(CoreRequestClass, "background"),
+              ),
               scope,
               { startImmediately: true },
             );

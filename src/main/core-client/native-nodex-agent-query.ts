@@ -84,7 +84,7 @@ export async function readNativeDatabaseQuery(
           };
     const client = nativeAgentClient(runtime, request.projectId);
     const snapshot = signal
-      ? await client.databaseRead(read, { class: "background", signal })
+      ? await client.databaseRead(read, { signal })
       : await client.databaseRead(read);
     if (
       snapshot.value.kind !== "agent_view_query" &&
@@ -97,7 +97,7 @@ export async function readNativeDatabaseQuery(
       client,
       libraryId: authority.libraryId,
       storeEpoch: snapshot.store_epoch,
-      ...(signal ? { requestOptions: { class: "background" as const, signal } } : {}),
+      ...(signal ? { requestOptions: { signal } } : {}),
     };
     const actorProjectId = request.projectId;
     const readDescriptor =

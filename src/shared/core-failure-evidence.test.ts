@@ -35,6 +35,19 @@ describe("Core error payloads", () => {
     expect(parseCoreError(payload)).toEqual(payload);
   });
 
+  it("preserves a replay-safe admission refusal with a valid retry delay", () => {
+    const refusal = {
+      code: "overloaded",
+      message: "Core is busy",
+      retryable: true,
+      recovery: { kind: "retry_admission", milliseconds: 50 },
+    } as const;
+    expect(parseCoreError(refusal)).toEqual(refusal);
+    expect(() =>
+      parseCoreError({ ...refusal, recovery: { kind: "retry_admission", milliseconds: -1 } }),
+    ).toThrow(TypeError);
+  });
+
   it.each([
     null,
     { ...payload, code: "unknown" },

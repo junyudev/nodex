@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "./CoreRequestClass";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -254,6 +255,8 @@ export const make = (options: { readonly restore?: StoreAdministrationRestorePor
     const snapshotStorageOptimization = core.administration
       .read({ kind: "operational_journal_status" })
       .pipe(
+        // The renderer polls this status to observe ongoing optimization.
+        Effect.provideService(CoreRequestClass, "background"),
         Effect.mapError((cause) => error("read-operational-journal-status", cause)),
         Effect.flatMap((snapshot) =>
           snapshot.value.kind === "operational_journal_status"
@@ -408,6 +411,8 @@ export const make = (options: { readonly restore?: StoreAdministrationRestorePor
     ) {
       const observeCorePhase = Effect.forever(
         readCoreBackupState.pipe(
+          // This job-owned observer samples progress independently of the person's request.
+          Effect.provideService(CoreRequestClass, "background"),
           Effect.tap(({ jobs }) => {
             const durable = jobs.find((job) => job.operation_id === operationIdentifier);
             if (!durable) return Effect.void;

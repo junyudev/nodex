@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import {
   ApplicationMenuSnapshots,
   findNativeMenuAccelerator,
@@ -181,7 +182,13 @@ export const live = (
           Effect.sync(() => logger.warn("Application menu action failed", { operation, cause })),
         );
       const fork = <A, E>(operation: string, effect: Effect.Effect<A, E>): void => {
-        callbacks.fork(effect.pipe(reportFailure(operation), Effect.asVoid));
+        callbacks.fork(
+          effect.pipe(
+            Effect.provideService(CoreRequestClass, "interactive"),
+            reportFailure(operation),
+            Effect.asVoid,
+          ),
+        );
       };
       const snapshots = new ApplicationMenuSnapshots();
       const installedWindows = new Map<number, () => void>();

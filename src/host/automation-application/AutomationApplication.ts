@@ -28,7 +28,6 @@ import type {
   AutomationApplyResult,
   AutomationIntent,
   AutomationReadSnapshot,
-  CoreRequestOptions,
 } from "../../main/core-client/types";
 import { AutomationRoutingIndex } from "../../main/core-runtime/AutomationRoutingIndex";
 import { CoreModules } from "../../main/core-runtime/CoreModules";
@@ -52,12 +51,6 @@ import {
   type CoreAutomationInboxItem,
   type CoreAutomationRun,
 } from "./AutomationProjection";
-
-const BACKGROUND_CORE_REQUEST = {
-  class: "background",
-} as const satisfies CoreRequestOptions;
-
-export type AutomationReadClass = "interactive" | "background";
 
 export interface AutomationDeleteResult extends AutomationDeleteResponse {
   readonly deletedRunCount: number;
@@ -153,11 +146,8 @@ export interface Automations {
     automationId: string,
     limit?: number,
   ) => AutomationEffect<readonly AutomationDecision[]>;
-  readonly listWindow: (
-    input?: AutomationWindowInput,
-    requestClass?: AutomationReadClass,
-  ) => AutomationEffect<AutomationWindow>;
-  readonly list: (requestClass?: AutomationReadClass) => AutomationEffect<readonly Automation[]>;
+  readonly listWindow: (input?: AutomationWindowInput) => AutomationEffect<AutomationWindow>;
+  readonly list: () => AutomationEffect<readonly Automation[]>;
   readonly get: (automationId: string) => AutomationEffect<Automation | null>;
   readonly getForExecution: (automationId: string) => AutomationEffect<Automation | null>;
   readonly create: (
@@ -228,10 +218,7 @@ export interface AutomationRuns {
 }
 
 export interface AutomationInbox {
-  readonly read: (
-    limit?: number,
-    requestClass?: AutomationReadClass,
-  ) => AutomationEffect<AutomationRunsInboxResponse>;
+  readonly read: (limit?: number) => AutomationEffect<AutomationRunsInboxResponse>;
   readonly setReadState: (
     input: AutomationRunReadStateInput,
   ) => AutomationEffect<AutomationInboxItem | null>;
@@ -291,9 +278,6 @@ export class AutomationApplication extends Context.Service<
   }
 >()("nodex/main/automation-application/AutomationApplication") {}
 
-const requestOptions = (requestClass: AutomationReadClass): CoreRequestOptions | undefined =>
-  requestClass === "background" ? BACKGROUND_CORE_REQUEST : undefined;
-
 const operationId = (kind: string): string => createOperationId(`automation.${kind}`);
 
 export const make: Effect.Effect<
@@ -349,11 +333,10 @@ export const make: Effect.Effect<
   const read = (
     operation: string,
     input: Parameters<typeof core.automation.read>[0],
-    options?: CoreRequestOptions,
     projectId?: string,
   ): AutomationEffect<AutomationReadSnapshot> =>
     core.automation
-      .read(input, options, projectId)
+      .read(input, undefined, projectId)
       .pipe(Effect.mapError((cause) => error(operation, cause, projectId)));
 
   const commitRouting = (
@@ -388,7 +371,6 @@ export const make: Effect.Effect<
   const apply = Effect.fn("AutomationApplication.apply")(function* (
     operation: string,
     input: AutomationApplyInput,
-    options?: CoreRequestOptions,
     projectId?: string,
     removals?: {
       readonly definitionIds?: readonly string[];
@@ -396,7 +378,7 @@ export const make: Effect.Effect<
     },
   ) {
     const committed = yield* core.automation
-      .apply(input, options, projectId)
+      .apply(input, undefined, projectId)
       .pipe(Effect.mapError((cause) => error(operation, cause, projectId)));
     // A replay returns historical evidence; current routing follows newer commits.
     if (!committed.receipt.duplicate) commitRouting(committed, removals);
@@ -422,11 +404,7 @@ export const make: Effect.Effect<
   const readDueWork = Effect.fn("AutomationApplication.readDueWork")(function* (
     lane: "automations" | "reminders",
   ) {
-    const snapshot = yield* read(
-      `${lane}.planDue`,
-      { kind: "due_work", lane },
-      BACKGROUND_CORE_REQUEST,
-    );
+    const snapshot = yield* read(`${lane}.planDue`, { kind: "due_work", lane });
     if (snapshot.value.kind !== "due_work") {
       return yield* error(
         `${lane}.planDue`,
@@ -440,11 +418,8 @@ export const make: Effect.Effect<
     };
   });
 
-  const readRun = Effect.fn("AutomationApplication.readRun")(function* (
-    runId: string,
-    options?: CoreRequestOptions,
-  ) {
-    const snapshot = yield* read("runs.get", { kind: "run", run_id: runId }, options);
+  const readRun = Effect.fn("AutomationApplication.readRun")(function* (runId: string) {
+    const snapshot = yield* read("runs.get", { kind: "run", run_id: runId });
     if (snapshot.value.kind !== "run") {
       return yield* error("runs.get", new Error("Core returned a non-Run Automation read"));
     }
@@ -485,18 +460,13 @@ export const make: Effect.Effect<
 
   const listDefinitionWindow = Effect.fn("AutomationApplication.automations.listWindow")(function* (
     input: AutomationWindowInput = {},
-    readClass: AutomationReadClass = "interactive",
   ) {
-    const snapshot = yield* read(
-      "automations.list",
-      {
-        kind: "automations",
-        include_deleted: false,
-        search_query: input.query ?? null,
-        window: { after: input.cursor ?? null, first: input.limit ?? 20 },
-      },
-      requestOptions(readClass),
-    );
+    const snapshot = yield* read("automations.list", {
+      kind: "automations",
+      include_deleted: false,
+      search_query: input.query ?? null,
+      window: { after: input.cursor ?? null, first: input.limit ?? 20 },
+    });
     if (snapshot.value.kind !== "automations") {
       return yield* error(
         "automations.list",
@@ -510,10 +480,8 @@ export const make: Effect.Effect<
     };
   });
 
-  const listDefinitions = Effect.fn("AutomationApplication.automations.list")(function* (
-    readClass: AutomationReadClass = "interactive",
-  ) {
-    const window = yield* listDefinitionWindow({ limit: 200 }, readClass);
+  const listDefinitions = Effect.fn("AutomationApplication.automations.list")(function* () {
+    const window = yield* listDefinitionWindow({ limit: 200 });
     if (window.nextCursor) {
       return yield* error(
         "automations.list",
@@ -590,7 +558,6 @@ export const make: Effect.Effect<
               },
       },
       undefined,
-      undefined,
       input.status === "DELETED" ? { definitionIds: [input.id] } : undefined,
     );
     const updated = yield* projectDefinition(
@@ -652,7 +619,6 @@ export const make: Effect.Effect<
         },
       },
       undefined,
-      undefined,
       { definitionIds: [automationId] },
     );
     return {
@@ -687,20 +653,16 @@ export const make: Effect.Effect<
     expectedRevision: number,
     policy: { readonly notBefore?: number; readonly retryWithinMs?: number },
   ) {
-    const committed = yield* apply(
-      "automations.reschedule",
-      {
-        operationId: operationId(`reschedule:${automationId}`),
-        intent: {
-          kind: "reschedule_automation",
-          automation_id: automationId,
-          expected_revision: expectedRevision,
-          not_before_ms: policy.notBefore ?? null,
-          retry_within_ms: policy.retryWithinMs ?? null,
-        },
+    const committed = yield* apply("automations.reschedule", {
+      operationId: operationId(`reschedule:${automationId}`),
+      intent: {
+        kind: "reschedule_automation",
+        automation_id: automationId,
+        expected_revision: expectedRevision,
+        not_before_ms: policy.notBefore ?? null,
+        retry_within_ms: policy.retryWithinMs ?? null,
       },
-      BACKGROUND_CORE_REQUEST,
-    );
+    });
     return yield* projectDefinition(
       "automations.reschedule",
       yield* requireDefinition("automations.reschedule", committed, automationId),
@@ -712,22 +674,18 @@ export const make: Effect.Effect<
     limit: number,
     leaseDurationMs: number,
   ) {
-    const committed = yield* apply(
-      "automations.claimDue",
-      {
-        operationId: createDueWorkOperationId("automation.claim-due", workToken, {
-          limit,
-          leaseDurationMs,
-        }),
-        intent: {
-          kind: "claim_due",
-          work_token: workToken,
-          limit,
-          lease_duration_ms: leaseDurationMs,
-        },
+    const committed = yield* apply("automations.claimDue", {
+      operationId: createDueWorkOperationId("automation.claim-due", workToken, {
+        limit,
+        leaseDurationMs,
+      }),
+      intent: {
+        kind: "claim_due",
+        work_token: workToken,
+        limit,
+        lease_duration_ms: leaseDurationMs,
       },
-      BACKGROUND_CORE_REQUEST,
-    );
+    });
     const automations = new Map(
       committed.outcome.automations.map((item) => [item.automation_id, item]),
     );
@@ -768,25 +726,19 @@ export const make: Effect.Effect<
     operation: string,
     runId: string,
     intent: (run: CoreAutomationRun) => AutomationIntent,
-    options?: CoreRequestOptions,
   ) {
-    const current = yield* readRun(runId, options);
+    const current = yield* readRun(runId);
     if (!current) return null;
     const requestedIntent = intent(current);
-    const committed = yield* apply(
-      operation,
-      {
-        operationId: operationId(`run:${runId}`),
-        intent: requestedIntent,
-      },
-      options,
-    );
+    const committed = yield* apply(operation, {
+      operationId: operationId(`run:${runId}`),
+      intent: requestedIntent,
+    });
     return yield* requireRun(operation, committed, runId);
   });
 
   const readInboxItems = Effect.fn("AutomationApplication.inbox.readItems")(function* (
     limit: number | undefined,
-    readClass: AutomationReadClass,
   ) {
     const requested = limit ?? 200;
     if (!Number.isInteger(requested) || requested < 1 || requested > 1_000) {
@@ -799,14 +751,10 @@ export const make: Effect.Effect<
     let after: string | null = null;
     let unreadTotal = 0;
     do {
-      const snapshot: AutomationReadSnapshot = yield* read(
-        "inbox.read",
-        {
-          kind: "inbox",
-          window: { after, first: Math.min(200, requested - items.length) },
-        },
-        requestOptions(readClass),
-      );
+      const snapshot: AutomationReadSnapshot = yield* read("inbox.read", {
+        kind: "inbox",
+        window: { after, first: Math.min(200, requested - items.length) },
+      });
       if (snapshot.value.kind !== "inbox") {
         return yield* error("inbox.read", new Error("Core returned a non-Inbox Automation read"));
       }
@@ -834,7 +782,6 @@ export const make: Effect.Effect<
     const committed = yield* apply(
       operation,
       { operationId: operationIdentity, intent },
-      undefined,
       projectId,
     );
     const result = committed.outcome.page_occurrence_mutation;
@@ -865,21 +812,17 @@ export const make: Effect.Effect<
     readonly runId: string;
     readonly sessionId: string;
   }) {
-    const current = yield* readRun(input.runId, BACKGROUND_CORE_REQUEST);
+    const current = yield* readRun(input.runId);
     if (!current) return false;
-    const committed = yield* apply(
-      "runs.bindSession",
-      {
-        operationId: operationId(`bind-run:${input.runId}:${input.sessionId}`),
-        intent: {
-          kind: "bind_run_session",
-          run_id: input.runId,
-          session_id: input.sessionId,
-          expected_revision: current.run_revision,
-        },
+    const committed = yield* apply("runs.bindSession", {
+      operationId: operationId(`bind-run:${input.runId}:${input.sessionId}`),
+      intent: {
+        kind: "bind_run_session",
+        run_id: input.runId,
+        session_id: input.sessionId,
+        expected_revision: current.run_revision,
       },
-      BACKGROUND_CORE_REQUEST,
-    );
+    });
     return committed.outcome.runs.some(
       (run) => run.run_id === input.runId && run.session_id === input.sessionId,
     );
@@ -898,7 +841,6 @@ export const make: Effect.Effect<
           expected_revision: current.run_revision,
         },
       },
-      undefined,
       undefined,
       { runIds: [runId] },
     );
@@ -955,7 +897,6 @@ export const make: Effect.Effect<
         search_query: input.searchQuery?.trim() || null,
         window: { after: input.after ?? null, first: 200 },
       },
-      undefined,
       input.projectId,
     );
     if (snapshot.value.kind !== "occurrences") {
@@ -1006,7 +947,6 @@ export const make: Effect.Effect<
           snooze_minutes: input.snoozeMinutes,
         },
       },
-      undefined,
       input.projectId,
     );
   });
@@ -1077,39 +1017,27 @@ export const make: Effect.Effect<
       planDue: readDueWork("automations"),
       claimDue: claimDueDefinitions,
       completeLease: (leaseId) =>
-        apply(
-          "automations.completeLease",
-          {
-            operationId: operationId(`complete-lease:${leaseId}`),
-            intent: { kind: "complete_lease", lease_id: leaseId },
-          },
-          BACKGROUND_CORE_REQUEST,
-        ).pipe(Effect.asVoid),
+        apply("automations.completeLease", {
+          operationId: operationId(`complete-lease:${leaseId}`),
+          intent: { kind: "complete_lease", lease_id: leaseId },
+        }).pipe(Effect.asVoid),
       failLease: (leaseId, retryDelayMs, reasonCode) =>
-        apply(
-          "automations.failLease",
-          {
-            operationId: operationId(`fail-lease:${leaseId}`),
-            intent: {
-              kind: "fail_lease",
-              lease_id: leaseId,
-              retry_delay_ms: retryDelayMs,
-              reason_code: reasonCode,
-            },
+        apply("automations.failLease", {
+          operationId: operationId(`fail-lease:${leaseId}`),
+          intent: {
+            kind: "fail_lease",
+            lease_id: leaseId,
+            retry_delay_ms: retryDelayMs,
+            reason_code: reasonCode,
           },
-          BACKGROUND_CORE_REQUEST,
-        ).pipe(Effect.asVoid),
+        }).pipe(Effect.asVoid),
     },
     runs: {
       settleInterrupted: Effect.suspend(() =>
-        apply(
-          "runs.settleInterrupted",
-          {
-            operationId: operationId("settle-interrupted-runs"),
-            intent: { kind: "settle_interrupted_runs" },
-          },
-          BACKGROUND_CORE_REQUEST,
-        ).pipe(
+        apply("runs.settleInterrupted", {
+          operationId: operationId("settle-interrupted-runs"),
+          intent: { kind: "settle_interrupted_runs" },
+        }).pipe(
           Effect.map((committed) => ({
             archivedPendingCount: committed.outcome.run_bulk?.archived_pending_count ?? 0,
             pendingReviewCount: committed.outcome.run_bulk?.pending_review_count ?? 0,
@@ -1119,25 +1047,21 @@ export const make: Effect.Effect<
       get: (runId) =>
         readRun(runId).pipe(Effect.map((item) => (item ? projectAutomationRun(item) : null))),
       begin: (input) =>
-        apply(
-          "runs.begin",
-          {
-            operationId: operationId(`begin-run:${input.runId}`),
-            intent: {
-              kind: "begin_run",
-              run_id: input.runId,
-              automation_id: input.automationId,
-              dispatch_id: input.dispatchId ?? null,
-              message_id: input.messageId ?? null,
-              notification_policy: input.notificationPolicy ?? null,
-              agent_selection: input.agentSelection ?? null,
-              session_id: input.sessionId ?? null,
-              session_title: input.sessionTitle ?? null,
-              source_cwd: input.sourceCwd ?? null,
-            },
+        apply("runs.begin", {
+          operationId: operationId(`begin-run:${input.runId}`),
+          intent: {
+            kind: "begin_run",
+            run_id: input.runId,
+            automation_id: input.automationId,
+            dispatch_id: input.dispatchId ?? null,
+            message_id: input.messageId ?? null,
+            notification_policy: input.notificationPolicy ?? null,
+            agent_selection: input.agentSelection ?? null,
+            session_id: input.sessionId ?? null,
+            session_title: input.sessionTitle ?? null,
+            source_cwd: input.sourceCwd ?? null,
           },
-          BACKGROUND_CORE_REQUEST,
-        ).pipe(
+        }).pipe(
           Effect.map((committed) =>
             committed.outcome.runs.some((run) => run.run_id === input.runId),
           ),
@@ -1151,19 +1075,14 @@ export const make: Effect.Effect<
           session_title: sessionTitle,
         })).pipe(Effect.map((run) => run !== null)),
       completeForReview: (input) =>
-        applyRun(
-          "runs.completeForReview",
-          input.runId,
-          (current) => ({
-            kind: "complete_run_for_review",
-            run_id: input.runId,
-            quiet: input.quiet ?? false,
-            expected_revision: current.run_revision,
-            inbox_title: input.inboxTitle ?? null,
-            inbox_summary: input.inboxSummary ?? null,
-          }),
-          BACKGROUND_CORE_REQUEST,
-        ).pipe(Effect.map((run) => run !== null)),
+        applyRun("runs.completeForReview", input.runId, (current) => ({
+          kind: "complete_run_for_review",
+          run_id: input.runId,
+          quiet: input.quiet ?? false,
+          expected_revision: current.run_revision,
+          inbox_title: input.inboxTitle ?? null,
+          inbox_summary: input.inboxSummary ?? null,
+        })).pipe(Effect.map((run) => run !== null)),
       setInboxItem: (input) =>
         applyRun("runs.setInboxItem", input.runId, (current) => ({
           kind: "set_run_inbox_item",
@@ -1197,8 +1116,8 @@ export const make: Effect.Effect<
         })).pipe(Effect.map((run) => run !== null)),
     },
     inbox: {
-      read: (limit, readClass = "interactive") =>
-        readInboxItems(limit, readClass).pipe(
+      read: (limit) =>
+        readInboxItems(limit).pipe(
           Effect.map(({ items, unreadTotal }) => {
             const mappedItems = items.map(projectAutomationInboxItem);
             const unreadItems = mappedItems.filter(
@@ -1281,22 +1200,18 @@ export const make: Effect.Effect<
       snooze: snoozeReminder,
       planDue: readDueWork("reminders"),
       claimDue: (workToken, limit, leaseDurationMs) =>
-        apply(
-          "reminders.claimDue",
-          {
-            operationId: createDueWorkOperationId("automation.claim-due-reminders", workToken, {
-              limit,
-              leaseDurationMs,
-            }),
-            intent: {
-              kind: "claim_due_reminders",
-              work_token: workToken,
-              limit,
-              lease_duration_ms: leaseDurationMs,
-            },
+        apply("reminders.claimDue", {
+          operationId: createDueWorkOperationId("automation.claim-due-reminders", workToken, {
+            limit,
+            leaseDurationMs,
+          }),
+          intent: {
+            kind: "claim_due_reminders",
+            work_token: workToken,
+            limit,
+            lease_duration_ms: leaseDurationMs,
           },
-          BACKGROUND_CORE_REQUEST,
-        ).pipe(
+        }).pipe(
           Effect.map((committed) =>
             committed.outcome.reminder_leases.map((lease) => ({
               leaseId: lease.lease_id,
@@ -1312,28 +1227,20 @@ export const make: Effect.Effect<
           ),
         ),
       completeLease: (leaseId) =>
-        apply(
-          "reminders.completeLease",
-          {
-            operationId: operationId(`complete-reminder:${leaseId}`),
-            intent: { kind: "complete_reminder_lease", lease_id: leaseId },
-          },
-          BACKGROUND_CORE_REQUEST,
-        ).pipe(Effect.asVoid),
+        apply("reminders.completeLease", {
+          operationId: operationId(`complete-reminder:${leaseId}`),
+          intent: { kind: "complete_reminder_lease", lease_id: leaseId },
+        }).pipe(Effect.asVoid),
       failLease: (leaseId, retryDelayMs, reasonCode) =>
-        apply(
-          "reminders.failLease",
-          {
-            operationId: operationId(`fail-reminder:${leaseId}`),
-            intent: {
-              kind: "fail_reminder_lease",
-              lease_id: leaseId,
-              retry_delay_ms: retryDelayMs,
-              reason_code: reasonCode,
-            },
+        apply("reminders.failLease", {
+          operationId: operationId(`fail-reminder:${leaseId}`),
+          intent: {
+            kind: "fail_reminder_lease",
+            lease_id: leaseId,
+            retry_delay_ms: retryDelayMs,
+            reason_code: reasonCode,
           },
-          BACKGROUND_CORE_REQUEST,
-        ).pipe(Effect.asVoid),
+        }).pipe(Effect.asVoid),
     },
   });
 });

@@ -198,7 +198,7 @@ export const prepareNativeNodexAgentPageMove = async (
         ),
         request: moveRequest,
       },
-      { class: "background", signal },
+      { signal },
     );
     if (snapshot.value.kind !== "agent_move_pages_preparation") {
       throw new Error("Core returned the wrong Agent Page-move preparation variant");

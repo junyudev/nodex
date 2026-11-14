@@ -1,3 +1,5 @@
+import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
+import type { CoreRequestClass as RequestClass } from "../core-client/types";
 import { randomUUID } from "node:crypto";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -210,7 +212,10 @@ export const make: Effect.Effect<
       }),
     );
 
-  const dispatch = (action: CodexPendingWorktreeAction): readonly CodexPendingWorktreeEffect[] => {
+  const dispatch = (
+    action: CodexPendingWorktreeAction,
+    requestClass?: RequestClass,
+  ): readonly CodexPendingWorktreeEffect[] => {
     if (!accepting) return [];
     const transition = reduceCodexPendingWorktreeState(state, action);
     if (transition.state !== state) {
@@ -219,7 +224,7 @@ export const make: Effect.Effect<
       PubSub.publishUnsafe(changes, snapshot);
       applicationEvents.publish({ kind: "pendingWorktreesChanged", value: snapshot });
     }
-    for (const effect of transition.effects) executeEffect(effect);
+    for (const effect of transition.effects) executeEffect(effect, requestClass);
     return transition.effects;
   };
 
@@ -333,6 +338,7 @@ export const make: Effect.Effect<
     pendingWorktreeId: string,
     attempt: number,
   ) {
+    const requestClass = yield* CoreRequestClass;
     const entry = state.entriesById.get(pendingWorktreeId);
     if (!entry || entry.attempt !== attempt) return;
     dispatch({ type: "start", pendingWorktreeId, attempt });
@@ -360,13 +366,16 @@ export const make: Effect.Effect<
           });
           return Effect.void;
         }
-        dispatch({
-          type: "worktreeReady",
-          pendingWorktreeId,
-          attempt,
-          worktreeGitRoot: result.worktreeGitRoot,
-          worktreeWorkspaceRoot: result.worktreeWorkspaceRoot,
-        });
+        dispatch(
+          {
+            type: "worktreeReady",
+            pendingWorktreeId,
+            attempt,
+            worktreeGitRoot: result.worktreeGitRoot,
+            worktreeWorkspaceRoot: result.worktreeWorkspaceRoot,
+          },
+          requestClass,
+        );
         return Effect.void;
       }),
       Effect.catch((error) => {
@@ -444,7 +453,10 @@ export const make: Effect.Effect<
     }
   });
 
-  function executeEffect(effect: CodexPendingWorktreeEffect): void {
+  function executeEffect(
+    effect: CodexPendingWorktreeEffect,
+    requestClass: RequestClass = "background",
+  ): void {
     if (!accepting) return;
     switch (effect.type) {
       case "startWorktree":
@@ -452,16 +464,21 @@ export const make: Effect.Effect<
           FiberMap.run(
             attemptFibers,
             effect.pendingWorktreeId,
-            startWorktree(effect.pendingWorktreeId, effect.attempt),
+            startWorktree(effect.pendingWorktreeId, effect.attempt).pipe(
+              Effect.provideService(CoreRequestClass, requestClass),
+            ),
             { startImmediately: true },
           ).pipe(Effect.asVoid),
         );
         return;
       case "launchConversation":
         runBackground(
-          FiberMap.run(launchFibers, effect.pendingWorktreeId, launchConversation(effect), {
-            startImmediately: true,
-          }).pipe(Effect.asVoid),
+          FiberMap.run(
+            launchFibers,
+            effect.pendingWorktreeId,
+            launchConversation(effect).pipe(Effect.provideService(CoreRequestClass, requestClass)),
+            { startImmediately: true },
+          ).pipe(Effect.asVoid),
         );
         return;
       case "abort":
@@ -510,6 +527,7 @@ export const make: Effect.Effect<
               },
             })
             .pipe(
+              Effect.provideService(CoreRequestClass, requestClass),
               Effect.matchEffect({
                 onFailure: (error) =>
                   Effect.sync(() => {
@@ -659,7 +677,7 @@ export const make: Effect.Effect<
       sourceCollaborationMode: null,
     });
     const createdAt = yield* Clock.currentTimeMillis;
-    dispatch({ type: "create", request: allocated.request, createdAt });
+    dispatch({ type: "create", request: allocated.request, createdAt }, yield* CoreRequestClass);
     return allocated.result;
   });
 
@@ -685,19 +703,21 @@ export const make: Effect.Effect<
     create: (request, createdAt) =>
       Effect.gen(function* () {
         const admittedAt = createdAt ?? (yield* Clock.currentTimeMillis);
-        dispatch({ type: "create", request, createdAt: admittedAt });
+        // The pending worktree and launch continue after the renderer gets its receipt.
+        dispatch({ type: "create", request, createdAt: admittedAt }, yield* CoreRequestClass);
       }),
     createSetupRepair,
     retry: (pendingWorktreeId) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
+        const requestClass = yield* CoreRequestClass;
         const entry = state.entriesById.get(pendingWorktreeId);
         const conversationStart =
           state.conversationStartsByPendingWorktreeId.get(pendingWorktreeId);
         if (entry?.phase === "worktree-ready" && conversationStart?.value.state === "failed") {
-          dispatch({ type: "retryConversationStart", pendingWorktreeId });
+          dispatch({ type: "retryConversationStart", pendingWorktreeId }, requestClass);
           return;
         }
-        dispatch({ type: "retry", pendingWorktreeId });
+        dispatch({ type: "retry", pendingWorktreeId }, requestClass);
       }),
     workLocally: (pendingWorktreeId) =>
       localLaunchAdmission
@@ -717,7 +737,8 @@ export const make: Effect.Effect<
               CodexPendingWorktreeRuntimeError
             >();
             localLaunches.set(pendingWorktreeId, deferred);
-            const effects = dispatch({ type: "workLocally", pendingWorktreeId });
+            const requestClass = yield* CoreRequestClass;
+            const effects = dispatch({ type: "workLocally", pendingWorktreeId }, requestClass);
             const started = effects.some(
               (effect) =>
                 effect.type === "launchConversation" && effect.includeWorktreeInit === false,
@@ -737,9 +758,9 @@ export const make: Effect.Effect<
         )
         .pipe(Effect.flatMap(Deferred.await)),
     continueWithoutSetup: (pendingWorktreeId) =>
-      Effect.sync(() => dispatch({ type: "continueWithoutSetup", pendingWorktreeId })).pipe(
-        Effect.asVoid,
-      ),
+      Effect.gen(function* () {
+        dispatch({ type: "continueWithoutSetup", pendingWorktreeId }, yield* CoreRequestClass);
+      }),
     cancel: (pendingWorktreeId) =>
       Effect.sync(() => {
         rejectLocalLaunch(pendingWorktreeId, "Pending worktree launch canceled");

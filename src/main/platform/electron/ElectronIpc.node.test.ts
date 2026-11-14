@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../../core-runtime/CoreRequestClass";
 import { EventEmitter } from "node:events";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
@@ -50,7 +51,10 @@ const makeIpc = Effect.fn("makeIpc")(function* () {
       const envelope = request as { spaceId: string; args: readonly unknown[] };
       if (!envelope || envelope.spaceId !== "personal" || !Array.isArray(envelope.args))
         return Effect.fail(new Error("Unknown Space"));
-      return personal(envelope.args);
+      return CoreRequestClass.pipe(
+        Effect.tap((requestClass) => Effect.sync(() => expect(requestClass).toBe("interactive"))),
+        Effect.andThen(personal(envelope.args)),
+      );
     })
     .pipe(Effect.provideService(Scope.Scope, scope));
   return { ipc: Context.get(context, ElectronIpc), scope };

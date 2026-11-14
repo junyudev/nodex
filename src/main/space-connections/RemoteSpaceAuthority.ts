@@ -1,3 +1,4 @@
+import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -155,10 +156,16 @@ export const live = (input: {
         const stopped = yield* Ref.get(terminal);
         if (stopped) return yield* stopped;
         const selected = yield* Ref.get(current);
+        const requestClass = yield* CoreRequestClass;
         const invoke = (client: CoreGenerationClient) =>
           Effect.tryPromise({
             try: (signal) =>
-              run(options.projectId ? client.forProject(options.projectId) : client, signal),
+              run(
+                (options.projectId ? client.forProject(options.projectId) : client).forRequestClass(
+                  requestClass,
+                ),
+                signal,
+              ),
             catch: (cause) =>
               remoteFailure(operation, cause, client.handshake.generation.start_nonce),
           }).pipe(

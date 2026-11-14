@@ -1,5 +1,5 @@
 import type { components } from "@nodex/core-protocol";
-import type { CoreClientPort, CoreHandshakeResponse } from "./types";
+import type { CoreClientPort, CoreHandshakeResponse, CoreRequestClass } from "./types";
 
 type HealthResponse = components["schemas"]["HealthResponse"];
 type ShutdownResponse = components["schemas"]["ShutdownResponse"];
@@ -9,6 +9,7 @@ export interface CoreGenerationClient extends CoreClientPort {
   readonly handshake: CoreHandshakeResponse;
   readonly spaceName?: string;
   forProject(projectId: string): CoreGenerationClient;
+  forRequestClass(requestClass: CoreRequestClass): CoreGenerationClient;
   forInvocation?(credential: string): CoreGenerationClient;
   health(): Promise<HealthResponse>;
   shutdown(): Promise<ShutdownResponse>;
