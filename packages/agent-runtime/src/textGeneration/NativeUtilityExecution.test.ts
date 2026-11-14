@@ -49,7 +49,10 @@ process.stdin.on("end", () => {
   const ephemeral = args.includes(codex ? "--ephemeral" : "--no-session-persistence");
   fs.appendFileSync(path.join(process.env.NATIVE_UTILITY_PROOF_DIR, "accepted.jsonl"), JSON.stringify({ investigation, ephemeral, web, cwd: process.cwd(), args }) + "\\n");
   if (codex) fs.writeFileSync(args[args.indexOf("--output-last-message") + 1], JSON.stringify(result));
-  else process.stdout.write(JSON.stringify({ structured_output: result }));
+  else process.stdout.write(JSON.stringify([
+    { type: "system", subtype: "init", model: valueOf("--model") },
+    { type: "result", structured_output: result },
+  ]));
 });
 `;
 

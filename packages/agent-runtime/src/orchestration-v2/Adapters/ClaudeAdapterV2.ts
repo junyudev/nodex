@@ -36,6 +36,7 @@ import { normalizeClaudeTurnTokenUsage } from "../../provider/ClaudeTurnTokenUsa
 import { loadClaudeAgentSdk } from "../../provider/ClaudeAgentSdk.ts";
 import { formatModelSlugName } from "@nodex/runtime-shared/model";
 import {
+  claudeModelMatches,
   claudeResponseModel,
   queryClaudeAppliedSettings,
   type ClaudeAppliedSettings,
@@ -1299,6 +1300,9 @@ export function makeClaudeQueryOptions(input: {
   const {
     "permission-mode": _launchArgPermissionMode,
     "dangerously-skip-permissions": _launchArgSkipPermissions,
+    // The SDK's extra arguments can override its typed model and policy options.
+    model: _launchArgModel,
+    "managed-settings": _launchArgManagedSettings,
     ...extraArgs
   } = input.settings === undefined ? {} : parseCliArgs(input.settings.launchArgs).flags;
   const requestThinkingSummaries =
@@ -9706,10 +9710,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             Effect.orElseSucceed(() => null),
           );
           const matches = (applied: ClaudeAppliedSettings | null) =>
-            applied?.model &&
-            (selection.model === "default" ||
-              claudeResponseModel(subagentModelCatalog, applied.model) ===
-                claudeResponseModel(subagentModelCatalog, selection.model));
+            claudeModelMatches(subagentModelCatalog, selection.model, applied?.model);
           let applied = yield* readApplied;
           if (matches(applied)) return applied;
           // A resumed session or a native switch can supersede the launch choice.

@@ -28,25 +28,48 @@ const generateFrom = (
   transport: "CLI" | "SDK",
   result: Record<string, unknown>,
   cli?: { readonly exitCode: number; readonly stderr?: string },
+  models: { init: string; response: string } = {
+    init: "claude-sonnet-5-5",
+    response: "claude-sonnet-5-5",
+  },
+  offered: ClaudeSdk.SDKUserMessage[] = [],
 ) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-claude-result-" });
     const prompt = "Captured text that should never appear in an error.";
     const messages = [
-      { type: "system", subtype: "init" },
+      { type: "system", subtype: "init", model: models.init },
       { type: "user", message: { role: "user", content: prompt } },
-      { type: "result", result_index: 0, ...result },
+      {
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: { model: models.response },
+      },
+      { type: "result", ...result },
     ];
     let binaryPath: string | undefined;
     if (transport === "SDK") {
-      const query = vi.spyOn(ClaudeSdk, "query").mockImplementation(() => {
+      let drain: Promise<void> | undefined;
+      const query = vi.spyOn(ClaudeSdk, "query").mockImplementation(({ prompt }) => {
+        drain = (async () => {
+          if (typeof prompt === "string") throw new Error("Expected streaming input");
+          for await (const message of prompt) offered.push(message);
+        })();
         const stream = (async function* () {
           yield* messages;
         })();
-        return Object.assign(stream, { close: () => {} }) as unknown as ClaudeSdk.Query;
+        return Object.assign(stream, {
+          close: () => {},
+          getSettings: async () => ({ applied: { model: models.init } }),
+        }) as unknown as ClaudeSdk.Query;
       });
-      yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(async () => {
+          query.mockRestore();
+          await drain;
+        }),
+      );
     } else {
       binaryPath = writeFakeCli({
         directory: cwd,
@@ -83,6 +106,45 @@ it.live.each(["CLI", "SDK"] as const)(
       assert.deepEqual(
         yield* generateFrom(transport, { ...success, structured_output: output }),
         output,
+      );
+    }),
+);
+
+it.live("SDK never offers the prompt when Claude starts on a different model", () =>
+  Effect.gen(function* () {
+    const offered: ClaudeSdk.SDKUserMessage[] = [];
+    const error = yield* generateFrom(
+      "SDK",
+      { ...success, structured_output: output },
+      undefined,
+      { init: "claude-haiku-5-5", response: "claude-haiku-5-5" },
+      offered,
+    ).pipe(Effect.scoped, Effect.flip);
+    assert.instanceOf(error, TextGenerationError);
+    if (!(error instanceof TextGenerationError)) return;
+    assert.include(error.detail, "Claude Haiku 5.5");
+    assert.isEmpty(offered);
+  }),
+);
+
+it.live.each(["CLI", "SDK"] as const)(
+  "%s rejects structured output generated on a substituted model",
+  (transport) =>
+    Effect.gen(function* () {
+      const error = yield* generateFrom(
+        transport,
+        { ...success, structured_output: output },
+        undefined,
+        {
+          init: "claude-sonnet-5-5",
+          response: "claude-haiku-5-5",
+        },
+      ).pipe(Effect.flip);
+      assert.instanceOf(error, TextGenerationError);
+      if (!(error instanceof TextGenerationError)) return;
+      assert.strictEqual(
+        error.detail,
+        "Claude Code used Claude Haiku 5.5 for a request on Claude Sonnet 5.5.",
       );
     }),
 );

@@ -92,9 +92,13 @@ if (kind === "claude" && passkeys() && argument("--output-format") === "json") {
   for await (const _chunk of process.stdin) {
     /* consume the utility prompt */
   }
-  emit({
-    structured_output: { title: "Passkey sign-in", description: "Add passkey sign-in to Lumen." },
-  });
+  emit([
+    { type: "system", subtype: "init", model: argument("--model") },
+    {
+      type: "result",
+      structured_output: { title: "Passkey sign-in", description: "Add passkey sign-in to Lumen." },
+    },
+  ]);
   process.exit(0);
 }
 if (
@@ -116,7 +120,7 @@ if (
   );
   process.exit(0);
 }
-const model = argument("--model") ?? (passkeys() ? "claude-opus-5-5" : "claude-sonnet-5-5");
+let model = argument("--model") ?? (passkeys() ? "claude-opus-5-5" : "claude-sonnet-5-5");
 const notify = (method, params) => emit({ method, params });
 const nativeThread = (id, cwd) => ({
   id,
@@ -1273,6 +1277,9 @@ async function handleClaude(message) {
   if (message.type === "control_request") {
     const request = message.request;
     record({ event: "control", subtype: request.subtype, nativeSessionId });
+    if (request.subtype === "apply_flag_settings" && typeof request.settings?.model === "string")
+      model = request.settings.model;
+    if (request.subtype === "set_model" && typeof request.model === "string") model = request.model;
     const response =
       request.subtype === "initialize"
         ? {
@@ -1296,14 +1303,16 @@ async function handleClaude(message) {
           }
         : request.subtype === "mcp_set_servers"
           ? { added: Object.keys(request.servers ?? {}), removed: [], errors: {} }
-          : request.subtype === "get_usage"
-            ? {
-                session: {},
-                subscription_type: "pro",
-                rate_limits_available: false,
-                behaviors: null,
-              }
-            : {};
+          : request.subtype === "get_settings"
+            ? { applied: { model } }
+            : request.subtype === "get_usage"
+              ? {
+                  session: {},
+                  subscription_type: "pro",
+                  rate_limits_available: false,
+                  behaviors: null,
+                }
+              : {};
     if (request.subtype === "initialize") claudeHooks = request.hooks ?? {};
     if (request.subtype === "mcp_set_servers") claudeServer = request.servers?.nodex_app;
     emit({

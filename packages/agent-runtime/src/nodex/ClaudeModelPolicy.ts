@@ -5,15 +5,15 @@ import type {
   ResolveSettingsOptions,
 } from "@anthropic-ai/claude-agent-sdk";
 import * as Effect from "effect/Effect";
-import { isModelOn, policyModelKey } from "../../../../src/shared/model-policy.ts";
+import { isModelOn, modelPolicyFailure } from "../../../../src/shared/model-policy.ts";
 import { ModelPolicyError, RuntimeModelPolicy, providerForPolicy } from "./ModelPolicy.ts";
 import type { ModelSelection } from "@nodex/runtime-contracts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   resolveClaudeCatalogApiModelId,
-  resolveClaudeModelSlug,
   type ClaudeModelCatalog,
 } from "../provider/ClaudeModelCatalog.ts";
+import { claudeResponseModel } from "../provider/ClaudeAppliedSettings.ts";
 
 /** Compile the Profile's per-version choices into Claude Code's exact allowlist. */
 export const restrictions = Effect.fn("ClaudeModelPolicy.restrictions")(function* (
@@ -21,31 +21,23 @@ export const restrictions = Effect.fn("ClaudeModelPolicy.restrictions")(function
   catalog: ClaudeModelCatalog = BUNDLED_CLAUDE_MODEL_CATALOG,
 ) {
   const owner = yield* RuntimeModelPolicy;
-  const selected = resolveClaudeModelSlug(catalog, selection.model);
-  // Check the same identity that the CLI will run, including old selections saved as aliases.
-  yield* owner.assert({ ...selection, model: selected }, "nodex-agent");
+  const selected = claudeResponseModel(catalog, selection.model);
   const { policy, providers } = yield* owner.current;
   const provider = providerForPolicy(providers, selection.instanceId);
+  // Claude strips context suffixes before matching its allowlist. Check the same model
+  // against the same snapshot from which we build the list, including selections saved as aliases.
+  const failure = modelPolicyFailure(policy, provider, selected, "nodex-agent");
+  if (failure) return yield* new ModelPolicyError(failure);
   const declared = providers[selection.instanceId]?.modelAllowlist;
-  const remembered = policy.exceptions.flatMap((key) => {
-    try {
-      const parts: unknown = JSON.parse(key);
-      const model = Array.isArray(parts) ? parts.at(-1) : undefined;
-      return typeof model === "string" && policyModelKey(provider, model) === key ? [model] : [];
-    } catch {
-      return [];
-    }
-  });
   const models = [
     ...new Set(
       (
         declared ?? [
           ...BUNDLED_CLAUDE_MODEL_CATALOG.models.map(({ model }) => model.slug),
           ...catalog.models.map(({ model }) => model.slug),
-          ...remembered,
           selected,
         ]
-      ).map((model) => resolveClaudeModelSlug(catalog, model)),
+      ).map((model) => claudeResponseModel(catalog, model)),
     ),
   ];
   // A deny such as claude-opus-5 also blocks claude-opus-5-5, even in exact mode.

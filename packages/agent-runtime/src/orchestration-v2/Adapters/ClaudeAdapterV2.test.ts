@@ -384,6 +384,21 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
     assert.notInclude(options.settings ?? {}, { showThinkingSummaries: true });
   });
 
+  it("keeps the chat model and policy authoritative over additional CLI flags", () => {
+    const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+      modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+      nativeThreadId: "native-model-override",
+      resume: false,
+      cwd: "/workspace",
+      settings: {
+        ...DEFAULT_CLAUDE_SETTINGS,
+        launchArgs: '--model claude-haiku-5-5 --managed-settings "{}" --thinking-display omitted',
+      },
+    });
+    assert.equal(options.model, CLAUDE_TEST_MODEL_SELECTION.model);
+    assert.deepEqual(options.extraArgs, { "thinking-display": "omitted" });
+  });
+
   it("does not enable thinking when the model option disables it", () => {
     const options = ClaudeAdapterV2.makeClaudeQueryOptions({
       modelSelection: {

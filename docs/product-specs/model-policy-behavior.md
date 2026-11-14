@@ -139,7 +139,8 @@ versions in the same family available. The installed SDK's local settings resolv
 checks that the list and its enforcement survive the settings merge before launch.
 Missing or replaced policy refuses execution. A policy fingerprint prevents reusing a
 process with old restrictions for a subsequent turn. Native text utilities receive the
-same policy.
+same policy. Claude utilities stop if the SDK reports a different model before dispatch.
+Utilities reject results when the CLI or the main response reports a different model.
 
 This local check performs no inference. It checks the SDK's raw settings cascade, not
 remote billing or the entire launched CLI's request stream. The SDK resolver does not run

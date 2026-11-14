@@ -40,7 +40,20 @@ export async function queryClaudeAppliedSettings(
     ? readClaudeAppliedSettings(await getSettings.call(query))
     : null;
 }
+
 /** Context suffixes affect the token budget, but the Messages API reports the base model. */
 export function claudeResponseModel(catalog: ClaudeModelCatalog, model: string): string {
   return resolveClaudeModelSlug(catalog, model.replace(/\[\d+[km]\]$/i, ""));
+}
+
+export function claudeModelMatches(
+  catalog: ClaudeModelCatalog,
+  requested: string,
+  observed: string | null | undefined,
+): boolean {
+  return Boolean(
+    observed &&
+    (requested === "default" ||
+      claudeResponseModel(catalog, observed) === claudeResponseModel(catalog, requested)),
+  );
 }

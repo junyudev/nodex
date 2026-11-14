@@ -12,6 +12,10 @@ import {
 import * as Effect from "effect/Effect";
 import type { SDKUserMessage, Options } from "@anthropic-ai/claude-agent-sdk";
 import { loadClaudeAgentSdk } from "../provider/ClaudeAgentSdk.ts";
+import {
+  claudeModelMatches,
+  queryClaudeAppliedSettings,
+} from "../provider/ClaudeAppliedSettings.ts";
 import { resolveClaudeSdkExecutablePath } from "../provider/Drivers/ClaudeExecutable.ts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -27,6 +31,7 @@ import {
   toJsonSchemaObject,
 } from "@nodex/provider-core/server/textGenerationUtils";
 import {
+  formatModelSlugName,
   getModelSelectionStringOptionValue,
   getProviderOptionDescriptors,
 } from "@nodex/runtime-shared/model";
@@ -55,6 +60,20 @@ const ClaudeResult = Schema.Struct({
   structured_output: Schema.optionalKey(Schema.Unknown),
 });
 const isClaudeResultMessage = Schema.is(Schema.Struct({ type: Schema.Literal("result") }));
+const readClaudeInitModel = Schema.decodeUnknownOption(
+  Schema.Struct({
+    type: Schema.Literal("system"),
+    subtype: Schema.Literal("init"),
+    model: Schema.String,
+  }),
+);
+const readClaudeRootResponseModel = Schema.decodeUnknownOption(
+  Schema.Struct({
+    type: Schema.Literal("assistant"),
+    parent_tool_use_id: Schema.Null,
+    message: Schema.Struct({ model: Schema.String }),
+  }),
+);
 const decodeClaudeResult = Schema.decodeUnknownOption(
   Schema.Union([
     Schema.Struct({ ...ClaudeResult.fields, type: Schema.Literal("result") }),
@@ -187,6 +206,22 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       ...modelSelection,
       model: resolveClaudeModelSlug(catalog, modelSelection.model),
     };
+    const requestedModel = resolveClaudeCatalogApiModelId(catalog, resolvedModelSelection);
+    const modelError = (observed?: string | null) =>
+      new TextGenerationError({
+        operation,
+        detail: observed
+          ? `Claude Code used ${formatModelSlugName(observed)} for a request on ${formatModelSlugName(requestedModel)}.`
+          : `Claude Code could not confirm ${formatModelSlugName(requestedModel)}.`,
+      });
+    const checkResponseModel = (message: unknown) => {
+      const response = readClaudeRootResponseModel(message);
+      if (Option.isNone(response)) return null;
+      const model = response.value.message.model;
+      return model === "<synthetic>" || claudeModelMatches(catalog, requestedModel, model)
+        ? null
+        : modelError(model);
+    };
     const jsonSchemaStr = yield* encodeJsonForOperation(
       operation,
       withoutDeclaredDialect(jsonSchema ?? toJsonSchemaObject(outputSchemaJson)),
@@ -256,11 +291,6 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           }),
       });
       if (useSdk) {
-        const sdk = yield* Effect.tryPromise({
-          try: loadClaudeAgentSdk,
-          catch: (cause) =>
-            new TextGenerationError({ operation, detail: "Failed to load Claude SDK.", cause }),
-        });
         const binaryPath =
           claudeSettings.binaryPath && !claudeSettings.isolated
             ? yield* resolveClaudeSdkExecutablePath(claudeSettings.binaryPath, claudeEnvironment)
@@ -280,12 +310,14 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           },
         };
         yield* assertTextGenerationAdmission;
+        // Keep the prompt off the SDK transport until the running process confirms its model.
+        const promptGate = Promise.withResolvers<boolean>();
         const query = yield* Effect.acquireRelease(
           Effect.try({
             try: () =>
-              sdk.query({
+              policySdk.query({
                 prompt: (async function* () {
-                  yield userMessage;
+                  if (await promptGate.promise) yield userMessage;
                 })(),
                 options: {
                   cwd,
@@ -298,7 +330,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
                         extraArgs: { "disable-slash-commands": null },
                       }
                     : {}),
-                  model: resolveClaudeCatalogApiModelId(catalog, resolvedModelSelection),
+                  model: requestedModel,
                   permissionMode: "dontAsk",
                   tools: readTools,
                   allowedTools: readTools,
@@ -319,19 +351,34 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
                 cause,
               }),
           }),
-          (query) => Effect.sync(() => query.close()),
+          (query) =>
+            Effect.sync(() => {
+              promptGate.resolve(false);
+              query.close();
+            }),
         );
-        const result = yield* Effect.tryPromise({
+        const applied = yield* Effect.tryPromise({
+          try: () => queryClaudeAppliedSettings(query),
+          catch: () => modelError(),
+        });
+        if (!claudeModelMatches(catalog, requestedModel, applied?.model))
+          return yield* modelError(applied?.model);
+        yield* assertTextGenerationAdmission;
+        promptGate.resolve(true);
+        const response = yield* Effect.tryPromise({
           try: async () => {
             for await (const message of query) {
-              if (message.type === "result") return message;
+              const mismatch = checkResponseModel(message);
+              if (mismatch) return { mismatch };
+              if (message.type === "result") return { result: message };
             }
-            return undefined;
+            return {};
           },
           catch: (cause) =>
             new TextGenerationError({ operation, detail: "Claude SDK query failed.", cause }),
         });
-        return yield* readClaudeResult(operation, result);
+        if (response.mismatch) return yield* response.mismatch;
+        return yield* readClaudeResult(operation, response.result);
       }
       const settingsJson = yield* encodeJsonForOperation(
         operation,
@@ -347,10 +394,11 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
             : []),
           "--output-format",
           "json",
+          "--verbose",
           "--json-schema",
           jsonSchemaStr,
           "--model",
-          resolveClaudeCatalogApiModelId(catalog, resolvedModelSelection),
+          requestedModel,
           ...(cliEffort ? ["--effort", cliEffort] : []),
           "--settings",
           settingsJson,
@@ -418,7 +466,15 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           detail: "Claude CLI returned unexpected output format.",
         });
       }
-      return yield* readClaudeResult(operation, result);
+      const structured = yield* readClaudeResult(operation, result);
+      const frames: readonly unknown[] = Array.isArray(output) ? output : [];
+      const initialModel = frames.map((frame) => readClaudeInitModel(frame)).find(Option.isSome)
+        ?.value.model;
+      if (!claudeModelMatches(catalog, requestedModel, initialModel))
+        return yield* modelError(initialModel);
+      const mismatch = frames.map(checkResponseModel).find((failure) => failure !== null);
+      if (mismatch) return yield* mismatch;
+      return structured;
     });
 
     const structuredOutput = yield* runClaudeCommand().pipe(

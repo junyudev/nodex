@@ -49,6 +49,7 @@ it.live.each([false, true])(
         })();
         return Object.assign(stream, {
           close: input.options?.outputFormat ? close : () => {},
+          getSettings: async () => ({ applied: { model: input.options?.model } }),
         }) as unknown as ClaudeSdk.Query;
       });
       yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));
@@ -144,7 +145,7 @@ it.live("retiring managed access interrupts an in-flight SDK utility request", (
     let opened = false;
     let finish: () => void = () => {};
     const close = vi.fn(() => finish());
-    const query = vi.spyOn(ClaudeSdk, "query").mockImplementation(() => {
+    const query = vi.spyOn(ClaudeSdk, "query").mockImplementation((input) => {
       opened = true;
       const pending = new Promise<void>((resolve) => {
         finish = resolve;
@@ -154,7 +155,7 @@ it.live("retiring managed access interrupts an in-flight SDK utility request", (
           await pending;
           yield { type: "result", subtype: "success", structured_output: { title: "Late result" } };
         })(),
-        { close },
+        { close, getSettings: async () => ({ applied: { model: input.options?.model } }) },
       ) as unknown as ClaudeSdk.Query;
     });
     yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));

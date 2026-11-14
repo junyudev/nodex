@@ -261,6 +261,8 @@ connects, without restarting Nodex. See
 
 The executable and configuration select trusted user-managed code; enabling an instance does not
 attest executable or configuration bytes.
+The chat's selected model and the Profile's model policy own Claude's launch model and managed
+settings flags.
 Disabling it prevents new connections and leaves existing durable task bindings explicit.
 
 ## OpenCode instances

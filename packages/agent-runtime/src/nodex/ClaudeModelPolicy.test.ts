@@ -119,6 +119,25 @@ it.live(
     }),
 );
 
+it.effect("refuses extended context selections for an off model", () =>
+  Effect.gen(function* () {
+    const instanceId = ProviderInstanceId.make("claudeAgent");
+    const model = "claude-sonnet-4-6";
+    const policy = setModelOn(
+      DEFAULT_MODEL_POLICY,
+      { instanceId, driver: "claudeAgent" },
+      model,
+      false,
+    );
+    const owner = yield* make(policy, {});
+    const failure = yield* restrictions({ instanceId, model: `${model}[1m]` }).pipe(
+      Effect.provideService(RuntimeModelPolicy, owner),
+      Effect.flip,
+    );
+    expect(failure.code).toBe("model_off");
+  }),
+);
+
 it.effect(
   "newly discovered Claude models follow the provider default in native exact restrictions",
   () =>
