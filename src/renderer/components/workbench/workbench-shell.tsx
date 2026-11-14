@@ -9,7 +9,10 @@ import {
   useWorkbenchShortcuts,
 } from "@/lib/use-workbench-shortcuts";
 import { useCommandKeymapState } from "@/lib/use-command-keymap-state";
-import { openWorkbenchWindow } from "@/lib/workbench-shell-operations";
+import {
+  openWorkbenchWindow,
+  type OpenPageInNewWindowHandler,
+} from "@/lib/workbench-shell-operations";
 import {
   reminderOpenToPageDeepLink,
   useWorkbenchCommandIngress,
@@ -350,6 +353,19 @@ export function WorkbenchShell({
     },
   });
 
+  const handleOpenPageInNewWindow = useCallback<OpenPageInNewWindowHandler>(
+    (page) => {
+      void flushBeforeWindowClone()
+        .then(() => openWorkbenchWindow({ page }))
+        .catch((error: unknown) => {
+          toast.danger(
+            error instanceof Error ? error.message : "Could not open Page in a new window",
+          );
+        });
+    },
+    [flushBeforeWindowClone],
+  );
+
   const handleOpenContentSearch = useCallback(() => {
     workbenchCommands.openContentSearch("keyboard_shortcut");
   }, [workbenchCommands]);
@@ -438,6 +454,7 @@ export function WorkbenchShell({
       onPageDeepLinkHandled={handlePageDeepLinkHandled}
       onViewDeepLinkHandled={handleViewDeepLinkHandled}
       onOpenProjectSessionInNewWindow={handleOpenProjectSessionInNewWindow}
+      onOpenPageInNewWindow={handleOpenPageInNewWindow}
       openPageStage={navigateToPage}
       setSidebarCollapsed={setSidebarCollapsed}
       setSidebarWidth={setSidebarWidth}

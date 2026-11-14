@@ -148,6 +148,64 @@ function createHarness(
 }
 
 describe("WorkbenchSceneNavigator", () => {
+  test.each([
+    { owner: { kind: "library" }, routingContext: { kind: "library" }, mode: "preview" },
+    {
+      owner: { kind: "project", projectId: "alpha" },
+      routingContext: { kind: "project", projectId: "alpha" },
+      mode: "durable",
+    },
+    {
+      owner: { kind: "session", sessionId: "chat" },
+      routingContext: { kind: "project", projectId: "alpha" },
+      mode: "durable",
+    },
+  ] as const)(
+    "opens another Page tab to the right in $owner.kind",
+    async ({ owner, routingContext, mode }) => {
+      const harness = createHarness();
+      const input = {
+        owner,
+        request: { kind: "page_stage", config: { routingContext, pageId: "roadmap" } },
+        target: { panelId: "right" },
+        mode,
+        navigation: "select-owner",
+      } as const;
+      const source = await harness.navigator.presentPanelSurface(input);
+      if (source.status !== "presented") throw new Error(source.reason);
+
+      const beside = {
+        ...input,
+        mode: "durable",
+        target: {
+          ...input.target,
+          placement: { kind: "adjacent-right", sourceSurfaceId: source.surfaceId },
+        },
+      } as const;
+      const opened = await harness.navigator.presentPanelSurface(beside);
+      if (opened.status !== "presented") throw new Error(opened.reason);
+      const repeated = await harness.navigator.presentPanelSurface(beside);
+
+      expect(opened.surfaceId).not.toBe(source.surfaceId);
+      expect(repeated).toMatchObject({
+        status: "presented",
+        reused: true,
+        surfaceId: opened.surfaceId,
+      });
+      const scene = harness.scenes[makeWorkbenchSceneKey(owner)]!;
+      const layout = scene.panels.right.layout;
+      const sourceGroup =
+        mode === "preview"
+          ? Object.values(harness.previews).find((entry) => entry.surface.id === source.surfaceId)
+              ?.leafId
+          : findWorkbenchPanelLeafForTab(layout, source.surfaceId)?.id;
+      const newGroup = findWorkbenchPanelLeafForTab(layout, opened.surfaceId);
+      expect(sourceGroup).toBeDefined();
+      expect(newGroup?.activeTabId).toBe(opened.surfaceId);
+      expect(findNearestWorkbenchPanelLeafToRight(layout, sourceGroup!)).toBe(newGroup?.id);
+      expect(scene.panelSurfacesById[opened.surfaceId]).toMatchObject(input.request);
+    },
+  );
   test("materializes and deduplicates a Project resource without creating a Session", async () => {
     const harness = createHarness();
     const owner = { kind: "project" as const, projectId: "alpha" };

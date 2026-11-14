@@ -1,3 +1,4 @@
+import type { OpenPageInNewWindowHandler } from "@/lib/workbench-shell-operations";
 import { useMemo, useState, type MutableRefObject, type ReactNode, type RefObject } from "react";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { OwnedBlockDocumentBoundary } from "@/components/block-documents/owned-block-document-boundary";
@@ -128,6 +129,7 @@ export function PageStageSessionTab({
   onEnsureDefaultDraftSessionForProject,
   onRefreshSessions,
   onOpenPageTab,
+  onOpenPageInNewWindow,
   onOpenPageFile,
   onOpenCanvasStage,
   onOpenThread,
@@ -163,6 +165,7 @@ export function PageStageSessionTab({
   ) => Promise<WorkbenchSessionRenderProjection>;
   onRefreshSessions: (projectId: string) => Promise<WorkbenchSessionRenderProjection[]>;
   onOpenPageTab: OpenPageTabHandler;
+  onOpenPageInNewWindow?: OpenPageInNewWindowHandler;
   onOpenPageFile?: import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler;
   onOpenCanvasStage: OpenCanvasStageHandler;
   onOpenThread: (threadId: string) => Promise<void>;
@@ -378,6 +381,26 @@ export function PageStageSessionTab({
             persistRef={persistRef}
             sessionSnapshotRef={sessionSnapshotRef}
             onClose={onClose}
+            onOpenOnRight={() => {
+              void onOpenPageTab(
+                pageAccessProjectId,
+                tab.config.pageId,
+                page.page.title.slice(0, 2_000) || tab.config.titleSnapshot,
+                {
+                  placement: { kind: "adjacent-right", sourceSurfaceId: tab.id },
+                  openMode: "durable",
+                },
+              );
+            }}
+            onOpenInNewWindow={
+              onOpenPageInNewWindow
+                ? () =>
+                    onOpenPageInNewWindow({
+                      ...tab.config,
+                      titleSnapshot: page.page.title.slice(0, 2_000) || tab.config.titleSnapshot,
+                    })
+                : undefined
+            }
             onLeavePage={onLeavePage}
             onUpdate={async (pageId: string, updates: Partial<PageInput>) =>
               await commitPageDetailMetadataPatch({

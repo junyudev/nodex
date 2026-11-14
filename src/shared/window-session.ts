@@ -1,5 +1,7 @@
 import type { WorkbenchLayoutSnapshot } from "./workbench-layout";
 
+import type { WorkbenchPageStageSurfaceConfig } from "./workbench-scene";
+
 export type WindowRestorePolicy = "all" | "last-window" | "none";
 
 export interface WindowRestoreSettings {
@@ -48,6 +50,7 @@ export interface WindowSessionNewWindowRequest {
   activeProjectSessionId?: string | null;
   activeProjectId?: string | null;
   browserUrl?: string;
+  page?: WorkbenchPageStageSurfaceConfig;
 }
 
 export interface WindowSessionSaveLayoutInput {

@@ -6,6 +6,8 @@ import * as Schema from "effect/Schema";
 import { nativeTheme, type IpcMainInvokeEvent } from "electron";
 import { parseDevelopmentFeatureEnvironment } from "../../../shared/development-features";
 import type { AppRuntimeCapabilities } from "../../../shared/runtime-capabilities";
+import type { WorkbenchPageStageSurfaceConfig } from "../../../shared/workbench-scene";
+import { rendererSpaceParameter } from "../../../shared/space-ipc-policy";
 import { WindowSessionNewWindowRequestSchema } from "../../../shared/schemas/window-session";
 import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorization";
 import { MainConfig } from "../../app/MainConfig";
@@ -22,10 +24,14 @@ export class ApplicationWindowIpcError extends Schema.TaggedError<ApplicationWin
 
 export interface ApplicationWindowIpcOptions {
   readonly runtimeCapabilities?: AppRuntimeCapabilities;
+  readonly validatePageTarget: (
+    event: IpcMainInvokeEvent,
+    page: WorkbenchPageStageSurfaceConfig,
+  ) => Effect.Effect<void, unknown>;
 }
 
 export const live = (
-  options: ApplicationWindowIpcOptions = {},
+  options: ApplicationWindowIpcOptions,
 ): Layer.Layer<
   never,
   never,
@@ -144,9 +150,27 @@ export const live = (
           Effect.andThen(
             parse("parse-new-window", () => WindowSessionNewWindowRequestSchema.parse(input)),
           ),
-          Effect.tap((request) =>
-            Effect.sync(() => applicationWindows.openForRequest(event.sender.id, request)),
-          ),
+          Effect.flatMap((request) => {
+            const open = () => applicationWindows.openForRequest(event.sender.id, request);
+            if (!request.page) return parse("open-new-window", open);
+
+            const generation = windows.resolveRendererGeneration(event.sender.id);
+            const spaceId = rendererSpaceParameter(event.senderFrame?.url ?? "");
+            return options.validatePageTarget(event, request.page).pipe(
+              Effect.andThen(
+                parse("open-new-page-window", () => {
+                  if (
+                    generation === null ||
+                    windows.resolveRendererGeneration(event.sender.id) !== generation ||
+                    (windows.bootstrap(event.sender.id).activeSpaceId ?? null) !== spaceId
+                  ) {
+                    throw new Error("The source window changed while opening this Page");
+                  }
+                  open();
+                }),
+              ),
+            );
+          }),
           Effect.as(true),
         ),
       );

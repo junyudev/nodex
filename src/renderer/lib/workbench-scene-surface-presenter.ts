@@ -1,6 +1,9 @@
+import { findNearestWorkbenchPanelLeafToRight } from "../../shared/workbench-panel-layout";
 import { createSecureRuntimeId } from "../../shared/secure-runtime-id";
 import {
   getWorkbenchSurfaceReuseKey,
+  insertWorkbenchSceneLeaf,
+  maximizeWorkbenchSceneLeaf,
   makeWorkbenchSceneKey,
   materializeInitialWorkbenchScene,
   type WorkbenchSurfaceDescriptor,
@@ -32,17 +35,31 @@ export function createWorkbenchSceneSurfacePresenter(
       materializeInitialWorkbenchScene(input.owner);
     const observed = readWorkbenchAgentContext(state, input.owner);
     const reuseKey = getWorkbenchSurfaceReuseKey(surface);
-    const matching =
-      reuseKey === null
-        ? null
-        : observed?.tabs.find(
-            (tab) =>
-              tab.surface &&
-              getWorkbenchSurfaceReuseKey({ ...tab.surface, stateKey: 0, state: null }) ===
-                reuseKey,
-          );
+    const matches =
+      observed?.tabs.filter(
+        (tab) =>
+          reuseKey !== null &&
+          tab.surface &&
+          getWorkbenchSurfaceReuseKey({ ...tab.surface, stateKey: 0, state: null }) === reuseKey,
+      ) ?? [];
+    const placement = input.target.placement;
+    const source =
+      surface.kind === "page_stage" && placement?.kind === "adjacent-right"
+        ? matches.find((tab) => tab.tabId === placement.sourceSurfaceId)
+        : undefined;
+    const adjacent =
+      source?.panelId && source.groupId
+        ? openBesidePage(initialScene, source.panelId, source.groupId)
+        : null;
+    if (source && !adjacent)
+      return { status: "unavailable", reason: "Could not open a tab group to the right" };
+
+    const matching = adjacent
+      ? matches.find((tab) => tab.panelId === adjacent.panelId && tab.groupId === adjacent.leafId)
+      : matches[0];
     const target =
-      matching?.panelId && matching.groupId
+      adjacent ??
+      (matching?.panelId && matching.groupId
         ? { scene: initialScene, panelId: matching.panelId, leafId: matching.groupId }
         : resolvePanelSurfaceTarget(
             initialScene,
@@ -51,7 +68,7 @@ export function createWorkbenchSceneSurfacePresenter(
               initialScene,
               state.ephemeralPanels.previewSurfacesByPanel,
             ),
-          );
+          ));
     const { id: _id, state: _state, stateKey: _stateKey, ...opening } = surface;
     const generationIsCurrent = captureIsCurrent?.();
     const receipt = await executor.execute(
@@ -75,6 +92,7 @@ export function createWorkbenchSceneSurfacePresenter(
           : {}),
         open: {
           openerTabId: input.target.placement?.sourceSurfaceId,
+          ...(adjacent ? { reuseInTargetGroup: true } : {}),
           targetIndex: "targetIndex" in target ? target.targetIndex : undefined,
           ...(input.tab === "background" ? { presentation: "background" as const } : {}),
         },
@@ -93,4 +111,24 @@ export function createWorkbenchSceneSurfacePresenter(
       };
     return { status: "presented", surfaceId: receipt.tabId, reused: Boolean(matching) };
   };
+}
+
+function openBesidePage(
+  scene: Parameters<typeof insertWorkbenchSceneLeaf>[0],
+  panelId: PresentWorkbenchPanelSurfaceInput["target"]["panelId"],
+  groupId: string,
+) {
+  const layout = scene.panels[panelId].layout;
+  const neighbor = findNearestWorkbenchPanelLeafToRight(layout, groupId);
+  if (neighbor) {
+    return {
+      scene: layout.maximizedLeafId
+        ? maximizeWorkbenchSceneLeaf(scene, { panelId, leafId: null })
+        : scene,
+      panelId,
+      leafId: neighbor,
+    };
+  }
+  const inserted = insertWorkbenchSceneLeaf(scene, { panelId, leafId: groupId, side: "right" });
+  return inserted.leafId ? { scene: inserted.scene, panelId, leafId: inserted.leafId } : null;
 }

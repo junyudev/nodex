@@ -22,12 +22,19 @@ import {
 } from "../shared/schemas/window-session";
 import { WorkbenchLayoutSnapshotSchema } from "../shared/schemas/workbench-layout";
 import {
+  activateWorkbenchSceneSurface,
   cloneWorkbenchSceneLayoutForNewWindow,
   createWorkbenchSceneSurface,
+  getWorkbenchSurfaceReuseKey,
   makeWorkbenchSceneKey,
+  maximizeWorkbenchSceneLeaf,
+  moveWorkbenchSceneSurface,
   materializeInitialWorkbenchScene,
+  updateWorkbenchSceneSurface,
+  type WorkbenchPageStageSurfaceConfig,
   type WorkbenchSurfaceDescriptor,
 } from "../shared/workbench-scene";
+import { findWorkbenchPanelLeafForTab } from "../shared/workbench-panel-layout";
 import { resolveBrowserTabTitle } from "../shared/browser-url";
 import { createSecureRuntimeId } from "../shared/secure-runtime-id";
 import { getLogger } from "./logging/logger";
@@ -114,6 +121,77 @@ function openBrowserInClonedLayout(
     location,
     scenesByOwnerKey: { ...layout.scenesByOwnerKey, [sceneKey]: nextScene },
   };
+}
+
+function openPageInClonedLayout(
+  layout: WorkbenchLayoutSnapshot,
+  page: WorkbenchPageStageSurfaceConfig,
+): WorkbenchLayoutSnapshot {
+  const location = page.routingContext;
+  const sceneKey = makeWorkbenchSceneKey(location);
+  const scene = layout.scenesByOwnerKey[sceneKey] ?? materializeInitialWorkbenchScene(location);
+  const surface: WorkbenchSurfaceDescriptor = {
+    id: createSecureRuntimeId("surface"),
+    kind: "page_stage",
+    titleSnapshot: page.titleSnapshot || "Page",
+    config: page,
+    stateKey: 0,
+    state: null,
+  };
+
+  const withScene = (next: typeof scene): WorkbenchLayoutSnapshot => ({
+    ...layout,
+    location,
+    homeLocation: location.kind === "project" ? location : layout.homeLocation,
+    scenesByOwnerKey: { ...layout.scenesByOwnerKey, [sceneKey]: next },
+  });
+  // The Project's Home group is its canonical active group when the Scene is restored.
+  const rootLeaf = scene.primary
+    ? findWorkbenchPanelLeafForTab(scene.panels.right.layout, scene.primary.id)
+    : null;
+  const reuseKey = getWorkbenchSurfaceReuseKey(surface);
+  const existing = Object.values(scene.panelSurfacesById).find(
+    (candidate) => getWorkbenchSurfaceReuseKey(candidate) === reuseKey,
+  );
+  if (existing) {
+    for (const panelId of ["right", "bottom"] as const) {
+      const leaf = findWorkbenchPanelLeafForTab(scene.panels[panelId].layout, existing.id);
+      if (!leaf) continue;
+      const updated =
+        page.titleSnapshot === undefined
+          ? scene
+          : updateWorkbenchSceneSurface(scene, existing.id, {
+              config: page,
+              titleSnapshot: surface.titleSnapshot,
+            });
+      if (rootLeaf && (panelId !== "right" || leaf.id !== rootLeaf.id)) {
+        return withScene(
+          moveWorkbenchSceneSurface(updated, {
+            surfaceId: existing.id,
+            targetPanelId: "right",
+            targetLeafId: rootLeaf.id,
+          }),
+        );
+      }
+      const active = activateWorkbenchSceneSurface(updated, panelId, leaf.id, existing.id);
+      const maximizedLeafId = active.panels[panelId].layout.maximizedLeafId;
+      return withScene(
+        maximizedLeafId && maximizedLeafId !== leaf.id
+          ? maximizeWorkbenchSceneLeaf(active, { panelId, leafId: leaf.id })
+          : active,
+      );
+    }
+  }
+
+  const next = createWorkbenchSceneSurface(scene, {
+    panelId: "right",
+    targetLeafId: rootLeaf?.id,
+    surface,
+  });
+  if (!next.panelSurfacesById[surface.id]) {
+    throw new Error("The Page's Scene has reached its surface limit");
+  }
+  return withScene(next);
 }
 
 function browserStorageIdForLegacyTab(
@@ -317,12 +395,13 @@ export class WindowSessionState {
       ...layout,
       location,
     };
+    const targetLayout = override.page
+      ? openPageInClonedLayout(requestedLayout, override.page)
+      : override.browserUrl === undefined
+        ? requestedLayout
+        : openBrowserInClonedLayout(requestedLayout, override.browserUrl);
     const session = {
-      ...this.createSessionRecord(
-        override.browserUrl === undefined
-          ? requestedLayout
-          : openBrowserInClonedLayout(requestedLayout, override.browserUrl),
-      ),
+      ...this.createSessionRecord(targetLayout),
       activeSpaceId: sourceSession.activeSpaceId,
       spaceLayouts: Object.fromEntries(
         Object.entries(sourceSession.spaceLayouts ?? {}).map(([spaceId, snapshot]) => [

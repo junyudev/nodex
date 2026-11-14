@@ -52,6 +52,10 @@ export interface PageStageDocumentAuthority {
 
 export interface PageStageProps {
   onClose: () => void;
+  /** Opens this Page as a tab in a new window. Absent when the host cannot. */
+  onOpenInNewWindow?: () => void;
+  /** Opens this Page again in the tab group to the right, keeping this tab. Absent when the host cannot. */
+  onOpenOnRight?: () => void;
   /** Stable PageTab identity whose editor model may outlive this React view. */
   editorSessionKey?: string;
   /** Stable resource identity for renderer-local live title projection. */

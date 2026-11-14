@@ -28,7 +28,6 @@ import * as OpenCodeSetup from "../host-runtime/OpenCodeSetup";
 import * as OpenCodeInstallPlatform from "../platform/node/OpenCodeInstallPlatform";
 import * as ApplicationLifecycleIpc from "../ipc/handlers/ApplicationLifecycleIpc";
 import * as ApplicationSyncIpc from "../ipc/handlers/ApplicationSyncIpc";
-import * as ApplicationWindowIpc from "../ipc/handlers/ApplicationWindowIpc";
 import * as BrowserProfileIpc from "../ipc/handlers/BrowserProfileIpc";
 import * as BrowserSidebarIpc from "../ipc/handlers/BrowserSidebarIpc";
 import * as ComposerAppshotIpc from "../ipc/handlers/ComposerAppshotIpc";
@@ -127,7 +126,6 @@ export const live = Layer.mergeAll(
   CodexConversationServiceIpc.live,
   CodexRendererProjectionRuntime.live,
   CodexThreadNotificationRuntime.live,
-  ApplicationWindowIpc.live(),
   BrowserProfileIpc.live,
   BrowserSidebarIpc.live,
   CoreAuthorityIpc.live,

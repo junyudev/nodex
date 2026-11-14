@@ -1,3 +1,5 @@
+import { readWorkbenchAgentContext } from "./workbench-agent-context";
+import type { WorkbenchPageStageSurfaceConfig } from "../../shared/workbench-scene";
 import { localProjectSourceRoots } from "../../shared/project-sources";
 import { runWithCleanup } from "./run-with-cleanup";
 import { omitRecordKey } from "./utils";
@@ -283,6 +285,11 @@ interface WorkbenchPanelOpenersInput {
   ) => void;
   /** Consumes a selected-Project request by materializing the Page in its Project Scene. */
   readonly presentProjectScenePage: OpenPageTabHandler;
+  readonly presentSessionPageBeside: (
+    sessionId: string,
+    page: WorkbenchPageStageSurfaceConfig,
+    placement: Extract<WorkbenchSurfaceRelativePlacement, { kind: "adjacent-right" }>,
+  ) => Promise<void>;
   readonly pendingPageDeepLinkOpen:
     | {
         readonly projectId: string;
@@ -318,6 +325,7 @@ export function useWorkbenchPanelOpeners({
   refreshProjectSessions,
   requestPageStageNavigation,
   presentProjectScenePage,
+  presentSessionPageBeside,
   pendingPageDeepLinkOpen,
   onPageDeepLinkHandled,
 }: WorkbenchPanelOpenersInput) {
@@ -1348,6 +1356,31 @@ export function useWorkbenchPanelOpeners({
 
   const openPageTab = useCallback<OpenPageTabHandler>(
     async (projectId, pageId, titleSnapshot, options) => {
+      const placementRequest = options?.placement;
+      const routingContext = { kind: "project" as const, projectId };
+      if (
+        activeSession &&
+        options?.openMode === "durable" &&
+        placementRequest?.kind === "adjacent-right"
+      ) {
+        const source = readWorkbenchAgentContext(workbenchOwner.read(), {
+          kind: "session",
+          sessionId: activeSession.id,
+        })?.tabs.find((tab) => tab.tabId === placementRequest.sourceSurfaceId)?.surface;
+        if (
+          source?.kind === "page_stage" &&
+          source.config.pageId === pageId &&
+          source.config.routingContext.kind === "project" &&
+          source.config.routingContext.projectId === projectId
+        ) {
+          await presentSessionPageBeside(
+            activeSession.id,
+            { routingContext, pageId, titleSnapshot },
+            placementRequest,
+          );
+          return;
+        }
+      }
       if (!activeSession || activeSession.projectId === null) {
         requestPageStageNavigation(projectId, pageId, titleSnapshot, options);
         return;
@@ -1464,6 +1497,8 @@ export function useWorkbenchPanelOpeners({
       ensureActivePanelOpenWithoutRefresh,
       createSessionViewTab,
       requestPageStageNavigation,
+      presentSessionPageBeside,
+      workbenchOwner,
       pinPreviewTab,
       previewTabsByPanel,
       refreshProjectSessions,

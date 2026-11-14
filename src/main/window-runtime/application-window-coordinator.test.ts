@@ -135,8 +135,11 @@ describe("application window coordinator", () => {
     });
   });
 
-  test("opens a link in a cloned window instead of reopening a closed session", () => {
-    const cloned = session("window-browser");
+  test.each([
+    { browserUrl: "https://example.com/path" },
+    { page: { routingContext: { kind: "library" as const }, pageId: "page-1" } },
+  ])("opens a targeted window instead of reopening a closed session (%j)", (request) => {
+    const cloned = session("window-target");
     const created = browserWindow(9);
     const create = vi.fn(() => created);
     const acquireSessionForNewWindow = vi.fn();
@@ -152,8 +155,6 @@ describe("application window coordinator", () => {
         hasClosedSessionAvailable: () => true,
       } as unknown as WindowRuntimeService,
     });
-    const request = { browserUrl: "https://example.com/path" };
-
     coordinator.openForRequest(3, request);
 
     expect(acquireSessionForNewWindow).not.toHaveBeenCalled();

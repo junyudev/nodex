@@ -25,7 +25,9 @@ import {
 import {
   createWorkbenchSceneSurface,
   makeWorkbenchSceneKey,
+  maximizeWorkbenchSceneLeaf,
   materializeInitialWorkbenchScene,
+  splitWorkbenchSceneLeaf,
 } from "../shared/workbench-scene";
 import { WindowSessionState, windowSessionStateTestHelpers } from "./window-session-state";
 
@@ -653,6 +655,103 @@ describe("WindowSessionState", () => {
       );
     });
   });
+
+  test.each([{ kind: "library" } as const, { kind: "project", projectId: "project-1" } as const])(
+    "opens a Page in its $kind Scene in a new Window Session",
+    (routingContext) => {
+      withTempUserData((userDataPath) => {
+        const state = new WindowSessionState(userDataPath);
+        const fresh = state.createFreshSession();
+        state.attachWindow(1, fresh.id);
+        const source = state.bootstrap(1, "team-space");
+        const homeLocation = { kind: "inbox" } as const;
+        const sessionLocation = {
+          kind: "session",
+          sessionId: "session-1",
+          projectContextId: "project-1",
+        } as const;
+        const sessionOwner = { kind: "session", sessionId: sessionLocation.sessionId } as const;
+        const sceneKey = makeWorkbenchSceneKey(routingContext);
+        const page = { routingContext, pageId: "page-1", titleSnapshot: "Roadmap" };
+        const existing = {
+          id: "source-page",
+          kind: "page_stage",
+          titleSnapshot: "Old title",
+          config: { ...page, titleSnapshot: "Old title" },
+          stateKey: 0,
+          state: null,
+        } as const;
+        const sessionScene = createWorkbenchSceneSurface(
+          materializeInitialWorkbenchScene(sessionOwner),
+          { panelId: "right", surface: existing },
+        );
+        // The Project's existing tab starts hidden behind a maximized group.
+        const projectScene =
+          routingContext.kind === "project"
+            ? createWorkbenchSceneSurface(materializeInitialWorkbenchScene(routingContext), {
+                panelId: "right",
+                surface: existing,
+              })
+            : null;
+        const splitScene = projectScene
+          ? splitWorkbenchSceneLeaf(projectScene, {
+              panelId: "right",
+              leafId: projectScene.panels.right.layout.activeLeafId,
+              side: "right",
+              surfaceId: existing.id,
+            })
+          : null;
+        const maximizedScene =
+          splitScene && projectScene
+            ? maximizeWorkbenchSceneLeaf(splitScene, {
+                panelId: "right",
+                leafId: projectScene.panels.right.layout.activeLeafId,
+              })
+            : null;
+        const saved = state.saveLayout(1, {
+          sessionId: source.id,
+          revision: source.layoutRevision + 1,
+          spaceId: "team-space",
+          layout: {
+            ...source.layout,
+            location: { kind: "settings", path: "/general", returnTo: sessionLocation },
+            homeLocation,
+            scenesByOwnerKey: {
+              [makeWorkbenchSceneKey(sessionOwner)]: sessionScene,
+              ...(maximizedScene ? { [sceneKey]: maximizedScene } : {}),
+            },
+          },
+        });
+
+        const clone = state.cloneSessionForWindow(1, { page });
+
+        expect(clone.id).not.toBe(source.id);
+        expect(clone.activeSpaceId).toBe("team-space");
+        expect(clone.layout.location).toEqual(routingContext);
+        expect(clone.layout.homeLocation).toEqual(
+          routingContext.kind === "project" ? routingContext : saved.layout.homeLocation,
+        );
+        const scene = clone.layout.scenesByOwnerKey[sceneKey]!;
+        expect(scene.owner).toEqual(routingContext);
+        expect(scene.lastFocusedPanelId).toBe("right");
+        const activeLeaf = getWorkbenchPanelActiveLeaf(scene.panels.right.layout);
+        const { maximizedLeafId } = scene.panels.right.layout;
+        expect(maximizedLeafId ?? activeLeaf.id).toBe(activeLeaf.id);
+        const activeId = activeLeaf.activeTabId!;
+        expect(activeId).not.toBe(existing.id);
+        const openedPage = { kind: "page_stage", titleSnapshot: "Roadmap", config: page };
+        expect(scene.panelSurfacesById[activeId]).toMatchObject(openedPage);
+        expect(
+          Object.values(scene.panelSurfacesById).filter((surface) => surface.kind === "page_stage"),
+        ).toHaveLength(1);
+        expect(state.getSessionForWindow(1)).toEqual(saved);
+        const persisted = new WindowSessionState(userDataPath).readCatalog();
+        expect(persisted?.sessions.find((session) => session.id === clone.id)?.layout).toEqual(
+          clone.layout,
+        );
+      });
+    },
+  );
 
   test("materializes and selects the Scene behind Settings for a Browser window", () => {
     withTempUserData((userDataPath) => {

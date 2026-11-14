@@ -324,6 +324,8 @@ export interface WorkbenchSceneCommandOptions {
     readonly presentation?: "activate" | "background";
     readonly targetIndex?: number;
     readonly openerTabId?: string;
+    /** An explicit second Page tab may reuse the Page only in its destination group. */
+    readonly reuseInTargetGroup?: boolean;
   };
   /** A UI replacement may keep an empty group until its already-prepared replacement is inserted. */
   readonly remove?: WorkbenchSceneSurfaceRemoveOptions;
@@ -479,16 +481,15 @@ export function prepareWorkbenchSceneCommand(
     if (!isWorkbenchScenePanelSurfaceAllowed(sceneOwner, surface))
       return reject("invalid_placement");
     const reuseKey = getWorkbenchSurfaceReuseKey(surface);
+    const canReuse = (tab: WorkbenchRendererObservation["tabs"][number]) =>
+      tab.surface &&
+      (!options.open?.reuseInTargetGroup ||
+        (tab.panelId === command.panelId && tab.groupId === command.groupId)) &&
+      getWorkbenchSurfaceReuseKey({ ...tab.surface, stateKey: 0, state: null }) === reuseKey;
     const existing =
       reuseKey === null
         ? undefined
-        : observation.tabs.find(
-            (tab) =>
-              tab.surface &&
-              getWorkbenchSurfaceReuseKey({ ...tab.surface, stateKey: 0, state: null }) ===
-                reuseKey &&
-              tab.persisted,
-          );
+        : observation.tabs.find((tab) => tab.persisted && canReuse(tab));
     if (existing && options.open?.presentation === "background")
       return { scene, ephemeralPanels, closing, tabId: existing.tabId, groupId: existing.groupId };
     if (existing)
@@ -500,15 +501,7 @@ export function prepareWorkbenchSceneCommand(
         getOpenerState,
       );
     const matchingPreview =
-      reuseKey === null
-        ? undefined
-        : observation.tabs.find(
-            (tab) =>
-              tab.preview &&
-              tab.surface &&
-              getWorkbenchSurfaceReuseKey({ ...tab.surface, stateKey: 0, state: null }) ===
-                reuseKey,
-          );
+      reuseKey === null ? undefined : observation.tabs.find((tab) => tab.preview && canReuse(tab));
     if (matchingPreview?.surface) {
       const preview = resolveTab(state, initialScene, matchingPreview.tabId);
       surface = preview.surface!;
@@ -564,6 +557,7 @@ export function prepareWorkbenchSceneCommand(
         pageFileInsertionIndex(scene, command.panelId, command.groupId, surface),
       surface,
     });
+    if (!resolveWorkbenchSceneSurface(scene, surface.id)) return reject("invalid_placement");
     tabId = surface.id;
     const relativeSourceId =
       surface.kind === "page_file" ? (options.open?.openerTabId ?? sourcePage?.tabId) : undefined;

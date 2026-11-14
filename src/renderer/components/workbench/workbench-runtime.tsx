@@ -278,7 +278,10 @@ import {
 import { skillTryPrompt } from "@/features/plugins/model/skill-model";
 import { WorkbenchSkillPageSurface } from "./workbench-skill-page-surface";
 import { FileReferenceRouterProvider } from "@/lib/file-reference-router";
-import { openWorkbenchWindow } from "@/lib/workbench-shell-operations";
+import {
+  openWorkbenchWindow,
+  type OpenPageInNewWindowHandler,
+} from "@/lib/workbench-shell-operations";
 import { useWorkbenchPanelCommandRouter } from "@/lib/use-workbench-panel-command-router";
 import { useWorkbenchSessionCommands } from "@/lib/use-workbench-session-commands";
 import {
@@ -540,6 +543,7 @@ export interface WorkbenchRuntimeProps {
     titleSnapshot?: string,
     options?: OpenPageStageOptions,
   ) => void;
+  onOpenPageInNewWindow?: OpenPageInNewWindowHandler;
   onOpenProjectSessionInNewWindow?: (session: ProjectSession) => Promise<void>;
   onLeavePageStage: (snapshot: PageStageSessionSnapshot) => void;
   onCreateProject: (input: ProjectCreateInput) => Promise<Project | null>;
@@ -593,6 +597,7 @@ export function WorkbenchRuntime({
   setSearchQuery: observeSearchQueryMutation,
   openPageStage,
   onOpenProjectSessionInNewWindow,
+  onOpenPageInNewWindow,
   onLeavePageStage,
   onCreateProject,
   onUpdateProject,
@@ -2892,6 +2897,16 @@ export function WorkbenchRuntime({
     refreshProjectSessions,
     requestPageStageNavigation: openPageStage,
     presentProjectScenePage: openProjectScenePage,
+    presentSessionPageBeside: async (sessionId, page, placement) => {
+      const result = await sceneNavigator.presentPanelSurface({
+        owner: { kind: "session", sessionId },
+        request: { kind: "page_stage", config: page, titleSnapshot: page.titleSnapshot },
+        target: { panelId: "right", placement },
+        mode: "durable",
+        navigation: "background",
+      });
+      if (result.status === "unavailable") toast.danger(result.reason);
+    },
     pendingPageDeepLinkOpen,
     onPageDeepLinkHandled,
   });
@@ -3323,10 +3338,11 @@ export function WorkbenchRuntime({
         activeSearchQuery,
         browserViewScopeId: windowSessionId,
         onOpenBrowserSettings: openBrowserSettings,
-        onOpenLibraryTarget: (target, { sourceSurfaceId, ...options }) =>
+        onOpenPageInNewWindow,
+        onOpenLibraryTarget: (target, { sourceSurfaceId, placement, ...options }) =>
           presentLibraryTarget(target, {
             ...options,
-            placement: { kind: "same-group", sourceSurfaceId },
+            placement: placement ?? { kind: "same-group", sourceSurfaceId },
           }),
         windowSessionId,
         onLeavePageStage,
@@ -4671,6 +4687,7 @@ export function WorkbenchRuntime({
     ) {
       return (
         <WorkbenchLibraryResourceSurface
+          onOpenPageInNewWindow={onOpenPageInNewWindow}
           onOpenPageFile={openPageFileTab}
           surface={surface}
           owner={workbenchWindow.owner}
@@ -4689,7 +4706,7 @@ export function WorkbenchRuntime({
               ...options,
               owner: activeProjectScene.owner,
               targetPanelId: context.panelId,
-              placement: { kind: "same-group", sourceSurfaceId: surface.id },
+              placement: options?.placement ?? { kind: "same-group", sourceSurfaceId: surface.id },
             });
           }}
           pageChats={pageChatCommands}
@@ -4815,6 +4832,7 @@ export function WorkbenchRuntime({
       };
       return (
         <PageStageSessionTab
+          onOpenPageInNewWindow={onOpenPageInNewWindow}
           onOpenPageFile={openPageFileTab}
           tab={tab}
           project={projects.find((item) => item.id === pageAccessProjectId) ?? null}
@@ -4980,12 +4998,16 @@ export function WorkbenchRuntime({
     };
     // Content opened from this Scene stays in it, in the source surface's tab group; an Inbox
     // opens a message's Page beside itself instead.
-    const openInSourceGroup = (target: LibraryRouteTarget, titleSnapshot?: string) => {
+    const openInSourceGroup = (
+      target: LibraryRouteTarget,
+      titleSnapshot?: string,
+      placement?: PresentWorkbenchPanelSurfaceInput["target"]["placement"],
+    ) => {
       void presentLibraryTarget(target, {
         owner: librarySceneOwner,
         titleSnapshot,
         targetPanelId: context.panelId,
-        placement: { kind: "same-group", sourceSurfaceId: surface.id },
+        placement: placement ?? { kind: "same-group", sourceSurfaceId: surface.id },
       });
     };
 
@@ -5087,14 +5109,15 @@ export function WorkbenchRuntime({
     if (surface.kind === "page_stage") {
       return (
         <WorkbenchLibraryPageSurface
+          onOpenPageInNewWindow={onOpenPageInNewWindow}
           onOpenPageFile={openPageFileTab}
           pageId={surface.config.pageId}
           surfaceId={surface.id}
           isActivePanelTab={context.active}
           onClose={removeSurface}
           onOpenDatabase={(databaseId) => openInSourceGroup({ kind: "database", databaseId })}
-          onOpenPage={(pageId, titleSnapshot) =>
-            openInSourceGroup({ kind: "page", pageId }, titleSnapshot)
+          onOpenPage={(pageId, titleSnapshot, placement) =>
+            openInSourceGroup({ kind: "page", pageId }, titleSnapshot, placement)
           }
           onOpenCanvas={(canvasId, titleSnapshot) =>
             openInSourceGroup({ kind: "canvas", canvasId }, titleSnapshot)

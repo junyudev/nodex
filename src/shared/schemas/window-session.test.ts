@@ -44,6 +44,30 @@ describe("WindowSession schemas", () => {
     }
   });
 
+  test("accepts Library and Project Page targets and rejects conflicting or invalid targets", () => {
+    const page = { routingContext: { kind: "library" }, pageId: "page-1" };
+    const projectPage = {
+      ...page,
+      routingContext: { kind: "project", projectId: "project-1" },
+      titleSnapshot: "Roadmap",
+    };
+    for (const target of [page, projectPage]) {
+      expect(WindowSessionNewWindowRequestSchema.parse({ page: target })).toEqual({ page: target });
+    }
+    for (const request of [
+      { page: { ...page, pageId: "" } },
+      { page: { ...page, routingContext: { kind: "project" } } },
+      { page: { ...page, routingContext: { kind: "session", sessionId: "session-1" } } },
+      { page: { ...page, titleSnapshot: 1 } },
+      { page: { ...page, extra: true } },
+      { page, browserUrl: "https://example.com/" },
+      { page, activeProjectSessionId: null },
+      { page, activeProjectId: "project-1" },
+    ]) {
+      expect(WindowSessionNewWindowRequestSchema.safeParse(request).success).toBe(false);
+    }
+  });
+
   test("accepts catalog v3 with strict open and closed lifecycles", () => {
     const parsed = WindowSessionCatalogSchema.parse({
       version: 3,

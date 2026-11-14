@@ -1,3 +1,5 @@
+import type { OpenPageInNewWindowHandler } from "@/lib/workbench-shell-operations";
+import type { WorkbenchSurfaceRelativePlacement } from "@/lib/workbench-panel-placement";
 import type { LibraryRouteTarget } from "../../../shared/library-module";
 import type {
   WorkbenchSceneOwner,
@@ -29,6 +31,7 @@ export function WorkbenchLibraryResourceSurface({
   presentedPageIds,
   onClose,
   onOpenPageFile,
+  onOpenPageInNewWindow,
   onTitleChange,
   onOpenTarget,
   pageChats,
@@ -44,8 +47,13 @@ export function WorkbenchLibraryResourceSurface({
   readonly onTitleChange: (title: string) => void;
   readonly onOpenTarget: (
     target: LibraryRouteTarget,
-    options?: { readonly titleSnapshot?: string; readonly mode?: "durable" | "preview" },
+    options?: {
+      readonly titleSnapshot?: string;
+      readonly mode?: "durable" | "preview";
+      readonly placement?: WorkbenchSurfaceRelativePlacement;
+    },
   ) => void;
+  readonly onOpenPageInNewWindow?: OpenPageInNewWindowHandler;
   readonly onOpenPageFile?: import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler;
   readonly pageChats?: PageChatCommands;
   /** The chat a Session Scene shows its Pages beside. */
@@ -62,9 +70,10 @@ export function WorkbenchLibraryResourceSurface({
         isActivePanelTab={active}
         onClose={onClose}
         onOpenPageFile={onOpenPageFile}
+        onOpenPageInNewWindow={onOpenPageInNewWindow}
         onOpenDatabase={(databaseId) => onOpenTarget({ kind: "database", databaseId })}
-        onOpenPage={(pageId, titleSnapshot) =>
-          onOpenTarget({ kind: "page", pageId }, { titleSnapshot })
+        onOpenPage={(pageId, titleSnapshot, placement) =>
+          onOpenTarget({ kind: "page", pageId }, { titleSnapshot, placement })
         }
         onOpenCanvas={(canvasId, titleSnapshot) =>
           onOpenTarget({ kind: "canvas", canvasId }, { titleSnapshot })

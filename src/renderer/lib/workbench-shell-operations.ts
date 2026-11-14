@@ -5,6 +5,10 @@ import type {
 import type { WindowSessionNewWindowRequest } from "../../shared/window-session";
 import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
 
+export type OpenPageInNewWindowHandler = (
+  page: NonNullable<WindowSessionNewWindowRequest["page"]>,
+) => void;
+
 const moveSidebarThreadCommand = defineRendererCommand({
   key: "workbench_sidebar.move_thread",
   channel: "codex:sidebar:thread:move",

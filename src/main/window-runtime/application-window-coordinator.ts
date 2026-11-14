@@ -167,7 +167,11 @@ export const createApplicationWindowCoordinator = (
     flushDictationRecording,
     openForRequest: (sourceWebContentsId, request) => {
       if (!accepting) return;
-      if (request.activeProjectSessionId === undefined && request.browserUrl === undefined) {
+      if (
+        request.activeProjectSessionId === undefined &&
+        request.browserUrl === undefined &&
+        request.page === undefined
+      ) {
         openNew(sourceWebContentsId);
         return;
       }

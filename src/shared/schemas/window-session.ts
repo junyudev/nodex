@@ -9,6 +9,7 @@ import type {
   WindowSessionSaveLayoutInput,
 } from "../window-session";
 import { WorkbenchLayoutSnapshotSchema } from "./workbench-layout";
+import { WorkbenchPageStageSurfaceConfigSchema } from "./workbench-scene";
 
 export const WindowRestorePolicySchema = z.enum(["all", "last-window", "none"]);
 
@@ -29,8 +30,20 @@ export const WindowSessionNewWindowRequestSchema = z
     activeProjectSessionId: z.string().min(1).nullable().optional(),
     activeProjectId: z.string().min(1).nullable().optional(),
     browserUrl: z.url({ protocol: /^https?$/ }).optional(),
+    page: WorkbenchPageStageSurfaceConfigSchema.optional(),
   })
-  .strict() satisfies z.ZodType<WindowSessionNewWindowRequest>;
+  .strict()
+  .refine(
+    ({ page, browserUrl, activeProjectSessionId, activeProjectId }) =>
+      page === undefined ||
+      (browserUrl === undefined &&
+        activeProjectSessionId === undefined &&
+        activeProjectId === undefined),
+    {
+      path: ["page"],
+      message: "A new Page window cannot also target a Browser, Project, or Session",
+    },
+  ) satisfies z.ZodType<WindowSessionNewWindowRequest>;
 
 export const WindowSessionSaveLayoutInputSchema = z
   .object({

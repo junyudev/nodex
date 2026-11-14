@@ -30,6 +30,7 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
       on: () => Effect.void,
     });
     const openForRequest = vi.fn();
+    const validatePageTarget = vi.fn((): Effect.Effect<void, Error> => Effect.void);
     const publishHistory = vi.fn(() => Effect.void);
     const snapshot = vi.fn(() => Effect.succeed({ menus: [] }));
     const invoke = vi.fn(() => Effect.succeed(true));
@@ -40,13 +41,16 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
       isFocused: () => true,
       isFullScreen: () => true,
     } as unknown as BrowserWindow;
+    const resolveRendererGeneration = vi.fn(() => "renderer-1");
     const windows = WindowRuntime.of({
       get: () => focusedWindow,
       has: () => true,
+      bootstrap: () => ({ activeSpaceId: undefined }),
+      resolveRendererGeneration,
     } as unknown as WindowRuntime["Service"]);
     const scope = yield* Scope.make();
     yield* Layer.buildWithScope(
-      live().pipe(
+      live({ validatePageTarget }).pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(ApplicationWindowRuntime, applicationWindows),
@@ -116,6 +120,19 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
     yield* handlers.get("window:new")!(event, { activeProjectSessionId: "session-1" });
     assert.strictEqual(openForRequest.mock.calls.length, 1);
     assert.deepEqual(openForRequest.mock.calls[0], [17, { activeProjectSessionId: "session-1" }]);
+    const newWindow = handlers.get("window:new")!;
+    const page = { routingContext: { kind: "library" }, pageId: "page-1" };
+    const malformed = yield* newWindow(event, { page: { ...page, pageId: "" } }).pipe(Effect.exit);
+    assert.isTrue(Exit.isFailure(malformed));
+    assert.strictEqual(validatePageTarget.mock.calls.length, 0);
+    validatePageTarget.mockReturnValueOnce(Effect.fail(new Error("This Page is unavailable")));
+    assert.isTrue(Exit.isFailure(yield* newWindow(event, { page }).pipe(Effect.exit)));
+    assert.strictEqual(openForRequest.mock.calls.length, 1);
+    resolveRendererGeneration.mockReturnValueOnce("previous-renderer");
+    assert.isTrue(Exit.isFailure(yield* newWindow(event, { page }).pipe(Effect.exit)));
+    assert.strictEqual(openForRequest.mock.calls.length, 1);
+    assert.isTrue(yield* newWindow(event, { page }));
+    assert.deepEqual(openForRequest.mock.calls[1], [17, { page }]);
     assert.strictEqual(yield* handlers.get("surface-history:bind")!(event), 1);
     const publication = { generation: 1, sequence: 1, snapshot: null };
     yield* handlers.get("surface-history:publish")!(event, publication);

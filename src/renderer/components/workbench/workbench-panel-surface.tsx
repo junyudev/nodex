@@ -1,4 +1,5 @@
 import { PluginAppView, ThreadPluginAppView } from "@/features/plugins/view/plugin-app-view";
+import type { OpenPageInNewWindowHandler } from "@/lib/workbench-shell-operations";
 import type { PluginAppBinding } from "../../../shared/agent-plugins/app-entrypoints";
 import type { ComponentProps, MutableRefObject, RefObject } from "react";
 import type { MotionValue } from "motion/react";
@@ -68,6 +69,7 @@ export function WorkbenchTabProjectionPanel({
   setSearchQuery,
   onLeavePageStage,
   onOpenPageTab,
+  onOpenPageInNewWindow,
   onOpenPageFile,
   onPinPreviewTab,
   onOpenPageInNewChat,
@@ -113,6 +115,7 @@ export function WorkbenchTabProjectionPanel({
   setSearchQuery: (projectId: string, value: string) => void;
   onLeavePageStage: (snapshot: PageStageSessionSnapshot) => void;
   onOpenPageTab: OpenPageTabHandler;
+  onOpenPageInNewWindow?: OpenPageInNewWindowHandler;
   onPinPreviewTab?: (panelId: PanelId, tabId: string) => void;
   onOpenPageFile?: import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler;
   onOpenPageInNewChat?: (input: OpenPageInNewChatInput) => Promise<void> | void;
@@ -140,6 +143,7 @@ export function WorkbenchTabProjectionPanel({
     options: {
       readonly owner: WorkbenchSceneOwner;
       readonly sourceSurfaceId: string;
+      readonly placement?: import("@/lib/workbench-panel-placement").WorkbenchSurfaceRelativePlacement;
       readonly targetPanelId: PanelId;
       readonly titleSnapshot?: string;
       readonly mode?: "durable" | "preview";
@@ -231,6 +235,7 @@ export function WorkbenchTabProjectionPanel({
       return null;
     return (
       <WorkbenchLibraryResourceSurface
+        onOpenPageInNewWindow={onOpenPageInNewWindow}
         surface={{ ...canonicalSurface, state: tab.state, stateKey: tab.stateKey }}
         onOpenPageFile={onOpenPageFile}
         owner={workbenchOwner}
@@ -419,6 +424,7 @@ export function WorkbenchTabProjectionPanel({
     const sendTarget = sessionSendTarget(pageAccessProjectId);
     return (
       <PageStageSessionTab
+        onOpenPageInNewWindow={onOpenPageInNewWindow}
         tab={pageTab}
         project={projects.find((item) => item.id === pageAccessProjectId) ?? null}
         closeRef={pageStageCloseRef}

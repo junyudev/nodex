@@ -1,3 +1,5 @@
+import type { OpenPageInNewWindowHandler } from "@/lib/workbench-shell-operations";
+import type { WorkbenchSurfaceRelativePlacement } from "@/lib/workbench-panel-placement";
 import { useMemo, useState } from "react";
 import { consumePageTitleFocus } from "@/lib/page-title-focus-intent";
 import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -63,6 +65,7 @@ export function WorkbenchLibraryPageSurface({
   onOpenDatabase,
   onOpenPage,
   onOpenPageFile,
+  onOpenPageInNewWindow,
   onOpenCanvas,
   pageChats,
   currentSessionId = null,
@@ -74,8 +77,13 @@ export function WorkbenchLibraryPageSurface({
   readonly isActivePanelTab?: boolean;
   readonly onClose?: () => void;
   readonly onOpenDatabase: (databaseId: DatabaseId) => void;
+  readonly onOpenPageInNewWindow?: OpenPageInNewWindowHandler;
   readonly onOpenPageFile?: import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler;
-  readonly onOpenPage?: (pageId: string, titleSnapshot?: string) => void;
+  readonly onOpenPage?: (
+    pageId: string,
+    titleSnapshot?: string,
+    placement?: WorkbenchSurfaceRelativePlacement,
+  ) => void;
   readonly onOpenCanvas?: (canvasBlockId: string, titleSnapshot?: string) => void;
   readonly pageChats?: PageChatCommands;
   /** The chat whose Scene shows this Page, if any. */
@@ -235,6 +243,25 @@ export function WorkbenchLibraryPageSurface({
           : undefined
       }
       onClose={onClose}
+      onOpenOnRight={
+        onOpenPage
+          ? () =>
+              onOpenPage(pageId, stagePage.page.title.slice(0, 2_000), {
+                kind: "adjacent-right",
+                sourceSurfaceId: surfaceId,
+              })
+          : undefined
+      }
+      onOpenInNewWindow={
+        onOpenPageInNewWindow
+          ? () =>
+              onOpenPageInNewWindow({
+                routingContext: libraryContentRoute,
+                pageId,
+                titleSnapshot: stagePage.page.title.slice(0, 2_000),
+              })
+          : undefined
+      }
       isActivePanelTab={isActivePanelTab}
       {...(besideChat
         ? {

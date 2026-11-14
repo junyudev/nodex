@@ -166,6 +166,7 @@ interface WorkbenchPanelProjectionInput {
     | "browserViewScopeId"
     | "onOpenBrowserSettings"
     | "onOpenLibraryTarget"
+    | "onOpenPageInNewWindow"
     | "windowSessionId"
     | "onLeavePageStage"
     | "pageStageCloseRef"

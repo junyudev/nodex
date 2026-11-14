@@ -1,4 +1,5 @@
 import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
+import * as ApplicationWindowIpc from "../ipc/handlers/ApplicationWindowIpc";
 import { formatAppVersion } from "../../shared/app-version";
 import {
   parsePageDeepLink,
@@ -120,6 +121,40 @@ export const live = Layer.effectDiscard(
           return space;
         }),
       );
+
+    yield* Layer.build(
+      ApplicationWindowIpc.live({
+        validatePageTarget: (event, page) =>
+          Effect.gen(function* () {
+            const space = yield* contextFor(event);
+            const remote =
+              space.spaceId === spaces.personalSpaceId
+                ? null
+                : Context.get(
+                    yield* Effect.scoped(desktops.contextEffect(space.spaceId)),
+                    RemoteSpaceDesktop.RemoteSpaceDesktop,
+                  );
+            const routingContext = page.routingContext;
+            if (routingContext.kind === "project") {
+              const projects = remote?.projects ?? personalProjects;
+              const project = yield* projects.getProject(routingContext.projectId);
+              if (project?.lifecycle !== "active")
+                return yield* Effect.fail(
+                  new Error("The Page's Project is unavailable in this Space"),
+                );
+            }
+            const library = remote?.library ?? personalLibrary;
+            const target = yield* library.resolvePageTarget({
+              routingContext,
+              targetPageId: page.pageId,
+            });
+            if (target?.status !== "available")
+              return yield* Effect.fail(
+                new Error("This Page is unavailable in the selected Space"),
+              );
+          }),
+      }),
+    );
 
     yield* routing.configure(({ channel, event, request, personal }) =>
       Effect.gen(function* () {
