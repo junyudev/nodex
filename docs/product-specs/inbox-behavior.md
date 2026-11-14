@@ -37,6 +37,12 @@ intents, and selection.
   Desktop and [Mobile](mobile-companion-behavior.md) choose destinations explicitly.
 - The sidebar counts actionable intake, Turns and Problems across all Projects.
   Each Project row shows its own count, muted at zero.
+- The Library Inbox names the Project of every row that has one, since rows
+  from every Project share its stream: the Project's marker and name on the
+  line above a message or Turn, ahead of who sent it, and beside a Problem's
+  fix. A Later line names it before its Page key. The name opens that Project's
+  Inbox. A row without a Project names none, and a Project's own Inbox names
+  none, as everything in it is that Project's.
 
 Mobile uses the same Member-scoped projection in the personal Space. Intake
 alone offers routing and triage decisions. Turns offer episode-fenced Reply,

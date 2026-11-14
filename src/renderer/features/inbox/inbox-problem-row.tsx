@@ -1,5 +1,5 @@
 import { runWithCleanup } from "@/lib/run-with-cleanup";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { InboxItem } from "../../../shared/inbox";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
@@ -12,10 +12,13 @@ import { invalidateInbox } from "./use-inbox";
 /** Problems expose one fix and keep their evidence until the operation succeeds. */
 export function InboxProblemRow({
   item,
+  project = null,
   onOpenGitHubSettings,
   onOpenPage,
 }: {
   readonly item: InboxItem;
+  /** Names the Problem's Project, where rows from every Project share the stream. */
+  readonly project?: ReactNode;
   readonly onOpenGitHubSettings: () => void;
   readonly onOpenPage: (pageId: string) => void;
 }) {
@@ -52,6 +55,7 @@ export function InboxProblemRow({
     <div data-inbox-page-id={item.pageId} className="flex min-h-9 items-center gap-2 py-1 text-sm">
       <PermissionFullAccessWarningIcon className="size-4 shrink-0 text-warning" />
       <span className="min-w-0 flex-1 truncate text-token-foreground">{problem.summary}</span>
+      {project}
       <NodexButton size="xs" variant="ghost" disabled={pending} onClick={() => void act()}>
         {fix === "reconnect" ? "Reconnect" : fix === "open_card" ? "Open card" : "Retry"}
       </NodexButton>

@@ -338,6 +338,7 @@ export interface InboxItem {
   readonly waiting: boolean;
   readonly suggestionState: InboxSuggestionState;
   readonly suggestionError: string | null;
+  /** The Inbox the row shows in now: its Page's current Project's, or the Library's. */
   readonly scope: InboxScope;
   readonly location: InboxLocation;
   /** The current suggestion. An outdated one stays here while new advice waits, runs or fails. */

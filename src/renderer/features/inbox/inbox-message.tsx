@@ -209,6 +209,7 @@ export function InboxMessage({
   onOpenPage,
   onUnmarkImportant,
   arrivalToken = null,
+  project = null,
   editor,
   messageActions,
   strip,
@@ -233,6 +234,8 @@ export function InboxMessage({
   readonly onUnmarkImportant: () => void;
   /** Set while the reader has just been brought to this message; changes on every arrival. */
   readonly arrivalToken?: number | null;
+  /** Names the message's Project, where messages from every Project share the stream. */
+  readonly project?: React.ReactNode;
   /** Takes the message text's place while the user rewrites it. */
   readonly editor: React.ReactNode;
   /**
@@ -314,6 +317,52 @@ export function InboxMessage({
     </span>
   );
 
+  // Who sent it, when that is not the reader.
+  const sender =
+    item.source.kind === "nodex" ? (
+      <NodexAuthor />
+    ) : item.source.kind === "github" ? (
+      <a
+        href={item.source.url}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (item.source.kind === "github") void openExternalUrl(item.source.url);
+        }}
+        className="inline-flex min-w-0 items-center gap-1 hover:text-token-foreground"
+      >
+        <WebsiteGitHubIcon className="icon-2xs shrink-0" />
+        <span className="truncate">
+          {item.source.repository} #{item.source.number} · @{item.source.actorLogin}
+        </span>
+      </a>
+    ) : item.source.kind === "agent" ? (
+      <button
+        type="button"
+        disabled={!item.source.sessionId}
+        onClick={() =>
+          item.source.kind === "agent" && item.source.sessionId && onOpenChat(item.source.sessionId)
+        }
+        className="cursor-interaction min-w-0 truncate hover:text-token-foreground disabled:cursor-default disabled:hover:text-token-description-foreground"
+      >
+        From {item.source.label}
+      </button>
+    ) : item.source.kind === "automation" ? (
+      <button
+        type="button"
+        disabled={!onOpenAutomation}
+        onClick={() =>
+          item.source.kind === "automation" && onOpenAutomation?.(item.source.automationId)
+        }
+        className="cursor-interaction flex min-w-0 items-center gap-1 hover:text-token-foreground disabled:cursor-default disabled:hover:text-token-description-foreground"
+      >
+        <AutomationsIcon className="icon-2xs shrink-0" />
+        <span className="min-w-0 truncate">From {item.source.label}</span>
+      </button>
+    ) : item.source.kind === "command_line" ? (
+      <span className="min-w-0 truncate">From {item.source.label}</span>
+    ) : null;
+
   return (
     <article
       data-testid="inbox-message"
@@ -345,52 +394,16 @@ export function InboxMessage({
           <span className="truncate">{backFromLater}</span>
         </p>
       ) : null}
-      {item.source.kind === "nodex" ? (
-        <NodexAuthor />
-      ) : item.source.kind === "github" ? (
-        <a
-          href={item.source.url}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            if (item.source.kind === "github") void openExternalUrl(item.source.url);
-          }}
-          className="inline-flex max-w-[80%] min-w-0 items-center gap-1 pl-1 text-xs text-token-description-foreground hover:text-token-foreground"
+      {/* Where the message belongs, then who sent it: read before its words, on one line. */}
+      {project || sender ? (
+        <div
+          data-testid="inbox-message-context"
+          className="flex max-w-[80%] min-w-0 items-center gap-1.5 px-1 text-xs text-token-description-foreground"
         >
-          <WebsiteGitHubIcon className="icon-2xs shrink-0" />
-          <span className="truncate">
-            {item.source.repository} #{item.source.number} · @{item.source.actorLogin}
-          </span>
-        </a>
-      ) : item.source.kind === "agent" ? (
-        <button
-          type="button"
-          disabled={!item.source.sessionId}
-          onClick={() =>
-            item.source.kind === "agent" &&
-            item.source.sessionId &&
-            onOpenChat(item.source.sessionId)
-          }
-          className="cursor-interaction max-w-[80%] truncate pl-1 text-xs text-token-description-foreground hover:text-token-foreground disabled:cursor-default disabled:hover:text-token-description-foreground"
-        >
-          From {item.source.label}
-        </button>
-      ) : item.source.kind === "automation" ? (
-        <button
-          type="button"
-          disabled={!onOpenAutomation}
-          onClick={() =>
-            item.source.kind === "automation" && onOpenAutomation?.(item.source.automationId)
-          }
-          className="cursor-interaction flex max-w-[80%] min-w-0 items-center gap-1 pl-1 text-xs text-token-description-foreground hover:text-token-foreground disabled:cursor-default disabled:hover:text-token-description-foreground"
-        >
-          <AutomationsIcon className="icon-2xs shrink-0" />
-          <span className="min-w-0 truncate">From {item.source.label}</span>
-        </button>
-      ) : item.source.kind === "command_line" ? (
-        <span className="max-w-[80%] truncate pl-1 text-xs text-token-description-foreground">
-          From {item.source.label}
-        </span>
+          {project}
+          {project && sender ? <span aria-hidden="true">·</span> : null}
+          {sender}
+        </div>
       ) : null}
       <div
         className={cn(

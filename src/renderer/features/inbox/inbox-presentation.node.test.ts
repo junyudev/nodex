@@ -15,6 +15,7 @@ import {
   inboxRowOffers,
   inboxPageRoutingContext,
   inboxRowAction,
+  inboxRowProject,
   inboxTimestampSeparators,
   inboxTriageModel,
   isInboxItemHandled,
@@ -152,6 +153,24 @@ describe("inboxPageRoutingContext", () => {
     expect(
       inboxPageRoutingContext(item({ scope: { kind: "project", projectId: "project:nodex" } })),
     ).toEqual({ kind: "project", projectId: "project:nodex" });
+  });
+});
+
+describe("inboxRowProject", () => {
+  const projects = [{ id: "project:nodex" }, { id: "project:site" }];
+  const inNodex = item({ scope: { kind: "project", projectId: "project:nodex" } });
+
+  it("names a row's Project only where rows from every Project share a stream", () => {
+    expect(inboxRowProject(inNodex, { kind: "all" }, projects)).toBe(projects[0]);
+    // A Project's own Inbox holds nothing else.
+    expect(
+      inboxRowProject(inNodex, { kind: "project", projectId: "project:nodex" }, projects),
+    ).toBeNull();
+  });
+
+  it("names none for a row without a Project, or one whose Project is not listed", () => {
+    expect(inboxRowProject(item(), { kind: "all" }, projects)).toBeNull();
+    expect(inboxRowProject(inNodex, { kind: "all" }, [projects[1]!])).toBeNull();
   });
 });
 

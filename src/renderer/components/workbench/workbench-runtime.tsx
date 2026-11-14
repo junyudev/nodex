@@ -5010,6 +5010,7 @@ export function WorkbenchRuntime({
           projects={projects}
           focusComposerToken={inboxFocusToken}
           onOpenSession={sessionCommands.openProjectSessionById}
+          onOpenProject={openProjectInbox}
           onShowPagesInChat={sessionCommands.showPagesInChat}
           onOpenAutomation={
             isRemoteSpace()

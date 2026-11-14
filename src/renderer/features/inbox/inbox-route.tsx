@@ -72,6 +72,7 @@ import { INBOX_EASE_OUT, InboxStreamItem } from "./inbox-stream-item";
 import {
   inboxChatPageIds,
   inboxBuriedImportant,
+  inboxRowProject,
   inboxTimestampSeparators,
   INBOX_HOLD_LABELS,
   type InboxOutcomeTarget,
@@ -80,6 +81,7 @@ import {
 import { useInboxAgents, type InboxAgents } from "./inbox-agent-picker";
 import { InboxAgentsPopover } from "./inbox-agents-popover";
 import { InboxPlanningSummary } from "./inbox-planning-summary";
+import { InboxProjectLabel } from "./inbox-project-label";
 import { InboxSuggestionPauseNotice } from "./inbox-suggestion-pause-notice";
 import { InboxTriage } from "./inbox-triage";
 import { InboxCaptureRecovery } from "./inbox-capture-recovery";
@@ -115,6 +117,8 @@ export interface InboxRouteProps {
   readonly projects: readonly Project[];
   readonly focusComposerToken?: number;
   readonly onOpenSession: (sessionId: string) => void;
+  /** Opens a Project's own Inbox, from a row of it in the all-Projects Inbox. */
+  readonly onOpenProject?: (projectId: string) => void;
   /** Opens an automation in Automations, from a run of it waiting here. */
   readonly onOpenAutomation?: (automationId: string) => void;
   readonly onOpenPage: (pageId: string) => void;
@@ -305,6 +309,7 @@ export function InboxRoute({
   projects,
   focusComposerToken,
   onOpenSession,
+  onOpenProject,
   onOpenAutomation,
   onOpenPage,
   onShowPagesInChat,
@@ -531,11 +536,23 @@ export function InboxRoute({
   const openTarget = (target: InboxOutcomeTarget) =>
     target.kind === "session" ? onOpenSession(target.sessionId) : onOpenDatabase(target.databaseId);
 
+  // The all-Projects Inbox says which Project each row belongs to; a Project's own has no need.
+  const projectLabel = (item: InboxItem) => {
+    const project = inboxRowProject(item, scope, projects);
+    return project ? (
+      <InboxProjectLabel
+        project={project}
+        onOpen={onOpenProject && (() => onOpenProject(project.id))}
+      />
+    ) : null;
+  };
+
   const renderMessage = (item: InboxItem) => {
     if (item.rowKind === "problem")
       return (
         <InboxProblemRow
           item={item}
+          project={projectLabel(item)}
           onOpenPage={onOpenPage}
           onOpenGitHubSettings={onOpenGitHubSettings}
         />
@@ -557,6 +574,7 @@ export function InboxRoute({
       return (
         <InboxTurnRow
           item={item}
+          project={projectLabel(item)}
           onOpenPage={() => onOpenPage(item.pageId)}
           onOpenChat={() =>
             data.active_chat ? onOpenSession(data.active_chat.session_id) : onOpenPage(item.pageId)
@@ -642,6 +660,7 @@ export function InboxRoute({
             onOpenPage={() => onOpenPage(item.pageId)}
             onUnmarkImportant={() => void actions.setImportant(item.pageId, false)}
             arrivalToken={jump.arrival.pageId === item.pageId ? jump.arrival.token : null}
+            project={projectLabel(item)}
             editor={triage.editor}
             messageActions={triage.messageActions}
             strip={triage.strip}
@@ -769,6 +788,7 @@ export function InboxRoute({
             >
               <InboxLaterView
                 items={later.items}
+                projectLabel={projectLabel}
                 onOpenPage={onOpenPage}
                 onReturn={(pageId) => void actions.clearLater([pageId])}
                 onReschedule={(pageId, remindAt) => void actions.later([pageId], remindAt, true)}

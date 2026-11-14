@@ -9,6 +9,7 @@ import type {
   InboxItem,
   InboxPageStatus,
   InboxProposal,
+  InboxScope,
   NodexEntryPurpose,
 } from "../../../shared/inbox";
 import type {
@@ -264,6 +265,21 @@ export function inboxPageRoutingContext(item: InboxItem): ContentRoutingContext 
       : { kind: "library" };
   }
   return item.scope.kind === "project" ? item.scope : { kind: "library" };
+}
+
+/**
+ * The Project a row is named by. Only the all-Projects Inbox names one, where rows from every
+ * Project share a stream: a Project's own Inbox holds nothing else, and a row without a Project
+ * says so by naming none.
+ */
+export function inboxRowProject<P extends { readonly id: string }>(
+  item: Pick<InboxItem, "scope">,
+  inbox: InboxScope,
+  projects: readonly P[],
+): P | null {
+  if (inbox.kind === "project" || item.scope.kind !== "project") return null;
+  const { projectId } = item.scope;
+  return projects.find((project) => project.id === projectId) ?? null;
 }
 
 /** The kind the user set, else the one the current suggestion proposes. */

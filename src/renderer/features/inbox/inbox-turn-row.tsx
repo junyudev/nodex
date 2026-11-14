@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useSpaceHostAvailable } from "@/lib/space-host-runtime";
 import { REMOTE_AGENT_REASON } from "../../../shared/space-connection";
 import type { InboxItem } from "../../../shared/inbox";
@@ -32,6 +32,7 @@ const READER = { you: true, name: "You" } as const;
 /** The row explains Core's current episode and submits its exact action fence. */
 export function InboxTurnRow({
   item,
+  project = null,
   onOpenPage,
   onOpenChat,
   onReply,
@@ -42,6 +43,8 @@ export function InboxTurnRow({
   onLater,
 }: {
   readonly item: InboxItem;
+  /** Names the work's Project, where rows from every Project share the stream. */
+  readonly project?: ReactNode;
   readonly onOpenPage: () => void;
   readonly onOpenChat: () => void;
   readonly onReply: () => void;
@@ -99,6 +102,7 @@ export function InboxTurnRow({
           <span className="truncate">{backFromLater}</span>
         </p>
       ) : null}
+      {project ? <div className="flex max-w-[80%] min-w-0 px-1">{project}</div> : null}
       {/* One object, as a message is: what the Turn says on top and, joined to it, what to do
           about it. It keeps to its own words' width, so the reply never drifts away from what it
           answers. */}

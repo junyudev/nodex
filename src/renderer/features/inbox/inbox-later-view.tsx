@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { InboxItem } from "../../../shared/inbox";
 import {
   NoteIcon,
@@ -34,10 +34,12 @@ export interface InboxLaterHandlers {
 
 function LaterLine({
   item,
+  project,
   now,
   handlers,
 }: {
   readonly item: InboxItem;
+  readonly project: ReactNode;
   readonly now: Date;
   readonly handlers: InboxLaterHandlers;
 }) {
@@ -102,6 +104,7 @@ function LaterLine({
           {reschedule}
           {returnNow}
         </div>
+        {project}
         {item.pageKey ? (
           <NodexTooltip tooltipContent="Open page">
             <NodexButton
@@ -174,8 +177,13 @@ function LaterLine({
  */
 export function InboxLaterView({
   items,
+  projectLabel,
   ...handlers
-}: { readonly items: readonly InboxItem[] } & InboxLaterHandlers) {
+}: {
+  readonly items: readonly InboxItem[];
+  /** Names a row's Project, where rows from every Project share the list. */
+  readonly projectLabel?: (item: InboxItem) => ReactNode;
+} & InboxLaterHandlers) {
   const now = new Date(useInboxClock());
   if (items.length === 0) {
     return (
@@ -196,7 +204,13 @@ export function InboxLaterView({
           </h3>
           <ul className="flex flex-col">
             {section.items.map((item) => (
-              <LaterLine key={item.pageId} item={item} now={now} handlers={handlers} />
+              <LaterLine
+                key={item.pageId}
+                item={item}
+                project={projectLabel?.(item) ?? null}
+                now={now}
+                handlers={handlers}
+              />
             ))}
           </ul>
         </section>
