@@ -240,6 +240,10 @@
   --blue-text: #2783de;
   --purple-bg: #faf7fc;
   --purple-text: #b577d6;
+  --pink-bg: #fdf5f9;
+  --pink-text: #d4569a;
+  --brown-bg: #f9f5f2;
+  --brown-text: #a3735b;
   --gray-bg: #f9f8f7;
   --gray-text: #8e8b86;
   --conditional-color-gray-background: #f0efed;
@@ -339,6 +343,10 @@
   --blue-text: #5e9fe8;
   --purple-bg: rgba(255, 133, 192, 0.426);
   --purple-text: #bf8eda;
+  --pink-bg: rgba(255, 92, 158, 0.44);
+  --pink-text: #f08fbc;
+  --brown-bg: rgba(196, 139, 111, 0.42);
+  --brown-text: #d3a78f;
   --gray-bg: #383836;
   --gray-text: #a19e99;
   --conditional-color-gray-background: #383836;
