@@ -8863,6 +8863,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ? {
                 ...approvalTurnItem,
                 decision: command.decision,
+                autoDeclineAt: undefined,
                 ...(command.optionId === undefined ? {} : { optionId: command.optionId }),
                 ...(command.feedback === undefined ? {} : { feedback: command.feedback }),
               }
@@ -11020,7 +11021,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           threadId: command.threadId,
           nodeId: request.nodeId,
           occurredAt: now,
-          payload: { ...item, status: "cancelled", completedAt: now, updatedAt: now },
+          payload: {
+            ...item,
+            autoDeclineAt: undefined,
+            status: "cancelled",
+            completedAt: now,
+            updatedAt: now,
+          },
         });
       }
       // Session-origin callbacks have no native Turn to interrupt.

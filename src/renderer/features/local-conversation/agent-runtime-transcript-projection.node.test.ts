@@ -915,6 +915,9 @@ describe("Runtime message attribution and notices", () => {
     expect(projectAgentRuntimeItem(approval("cancel"))).toMatchObject({
       message: "Declined curl -sI https://example.com",
     });
+    expect(
+      projectAgentRuntimeItem({ ...approval("decline"), autoDeclined: true } as AgentTurnItem),
+    ).toMatchObject({ message: "Declined curl -sI https://example.com — no one answered" });
   });
 
   test("reported work names the tasks it reports and the one it can open", () => {
@@ -1574,7 +1577,14 @@ describe("Runtime pending approval projection", () => {
         fullAccessOverride: "ask_rule",
         live: true,
         supportsFeedback: true,
+        autoDeclineAt: null,
       });
+      expect(
+        projectAgentPendingApproval(
+          { ...item, autoDeclineAt: "2026-01-01T00:02:00.000Z" } as AgentTurnItem,
+          request,
+        ),
+      ).toMatchObject({ autoDeclineAt: Date.parse("2026-01-01T00:02:00.000Z") });
       expect(
         projectAgentPendingApproval(
           { ...item, runId: "run" },

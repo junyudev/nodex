@@ -17,6 +17,7 @@ const approval: AgentPendingApproval = {
   live: true,
   supportsFeedback: true,
   createdAt: 0,
+  autoDeclineAt: null,
 };
 afterEach(() => vi.useRealTimers());
 

@@ -71,6 +71,14 @@ An Agent or Runtime tool may offer a narrower set of choices or its own labels. 
 the choices that the execution source can honor. A request that still reaches the person in Full access explains
 why: an ask rule in the Agent's own settings, or a native safety check that no setting can skip.
 
+Full access never stalls on a Claude Code safety check for a command, such as its check for a
+removal it cannot prove is contained. The request waits two minutes for the person and names that
+deadline. Unanswered, it is declined for them: the command does not run, the Agent is told to use
+a safe rewrite or to leave the removal to the person, and the turn continues. The chat records the
+request as declined because no one answered. After three such requests go unanswered in one turn,
+later ones in that turn are declined at once. Requests from an ask rule wait for the person, as do
+requests in the other modes: there the person asked to decide.
+
 Network approvals show the requested destination, including its protocol and any supplied port;
 the command remains context. An ACP command approval is consumed by one matching terminal
 creation. When the Agent supplies no execution context to correlate, it covers the first terminal

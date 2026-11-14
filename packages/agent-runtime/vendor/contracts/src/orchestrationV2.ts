@@ -1969,7 +1969,11 @@ export const OrchestrationV2TurnItem = Schema.Union([
     prompt: Schema.optional(Schema.String),
     reason: Schema.optional(Schema.String),
     fullAccessOverride: Schema.optional(ProviderApprovalFullAccessOverride),
-    /** The person's answer, once resolved. */
+    /** When Nodex will decline the request if nobody answers. */
+    autoDeclineAt: Schema.optional(Schema.DateTimeUtc),
+    /** Nodex declined the request because nobody answered. */
+    autoDeclined: Schema.optional(Schema.Literal(true)),
+    /** The decision, once resolved. */
     decision: Schema.optional(ProviderApprovalDecision),
     optionId: Schema.optional(Schema.String),
     feedback: Schema.optional(Schema.String),
@@ -2828,7 +2832,11 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     prompt: Schema.optional(Schema.String),
     reason: Schema.optional(Schema.String),
     fullAccessOverride: Schema.optional(ProviderApprovalFullAccessOverride),
-    /** The person's answer, once resolved. */
+    /** When Nodex will decline the request if nobody answers. */
+    autoDeclineAt: Schema.optional(Schema.DateTimeUtcFromString),
+    /** Nodex declined the request because nobody answered. */
+    autoDeclined: Schema.optional(Schema.Literal(true)),
+    /** The decision, once resolved. */
     decision: Schema.optional(ProviderApprovalDecision),
     optionId: Schema.optional(Schema.String),
     feedback: Schema.optional(Schema.String),

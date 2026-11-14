@@ -94,7 +94,10 @@ import * as ClaudeAdapterV2 from "./ClaudeAdapterV2.ts";
 import { SIDE_CHAT_BOUNDARY_TEXT } from "../../nodex/SideChat.ts";
 import type { ClaudeAppliedSettings } from "../../provider/ClaudeAppliedSettings.ts";
 import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
-import { ClaudeOrchestratorReplayHarness } from "./ClaudeAdapterV2.testkit.ts";
+import {
+  ClaudeOrchestratorReplayHarness,
+  scriptClaudeToolApproval,
+} from "./ClaudeAdapterV2.testkit.ts";
 import { readProviderReplayTranscript } from "@nodex/provider-testing/replayTranscript";
 import { provideDeterministicTestRuntime } from "../testkit/DeterministicRuntime.ts";
 import { runOrchestratorV2Scenario } from "../testkit/OrchestratorScenario.ts";
@@ -3327,6 +3330,190 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         });
         if (decision === "acceptForSession")
           assert.include(harness.hostPermissionChanges.at(-1)?.allow ?? [], "Bash(npm publish:*)");
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it("explains both kinds of automatic decline and includes the reason when available", () => {
+    const timedOut = ClaudeAdapterV2.claudeAutomaticDeclineMessage(false, "Unsafe path");
+    assert.match(timedOut, /^Nobody answered this approval request within 2 minutes/);
+    assert.match(timedOut, /What was flagged: Unsafe path$/);
+    const immediate = ClaudeAdapterV2.claudeAutomaticDeclineMessage(true);
+    assert.match(immediate, /^Earlier approval requests in this turn went unanswered/);
+    assert.include(immediate, "The command was NOT run");
+    assert.notInclude(immediate, "What was flagged");
+  });
+
+  const startApprovalTestTurn = Effect.fnUntraced(function* (
+    harness: Effect.Success<typeof makeWakeHarness>,
+    runtimeMode: "full-access" | "approval-required",
+    ordinal = 1,
+  ) {
+    yield* harness.runtime.startTurn(
+      makeClaudeTestTurnInput({
+        threadId: harness.threadId,
+        providerThread: harness.providerThread,
+        now: yield* DateTime.now,
+        attemptId: RunAttemptId.make(`approvals-${ordinal}`),
+        providerTurnOrdinal: ordinal,
+        text: "Run a command",
+        attachments: [],
+        runtimePolicy: { ...CLAUDE_TEST_RUNTIME_POLICY, runtimeMode },
+      }),
+    );
+  });
+
+  it.effect(
+    "automatically declines unanswered Full access commands and resets the limit next turn",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        yield* startApprovalTestTurn(harness, "full-access");
+        const canUseTool = harness.getOpenedOptions()!.canUseTool!;
+        for (const index of [1, 2, 3, 4]) {
+          const result = yield* scriptClaudeToolApproval(
+            canUseTool,
+            {
+              toolName: "Bash",
+              input: { command: "test -d ./cache" },
+              options: {
+                toolUseID: `checked-command-${index}`,
+                decisionReason: "\u001b[31mNative safety check\u001b[0m",
+              },
+            },
+            new AbortController().signal,
+          ).pipe(Effect.forkScoped);
+          const { turnItem } = yield* Queue.take(harness.approvalReceipts);
+          if (turnItem.type !== "approval_request" || turnItem.startedAt === null)
+            throw new Error("Expected a command approval.");
+          if (index <= 3) {
+            assert.equal(turnItem.status, "waiting");
+            assert.deepEqual(
+              turnItem.autoDeclineAt,
+              DateTime.addDuration(turnItem.startedAt, "2 minutes"),
+            );
+            yield* TestClock.adjust("119 seconds");
+            assert.isUndefined(result.pollUnsafe());
+            yield* TestClock.adjust("1 second");
+          }
+          const settled =
+            index <= 3 ? (yield* Queue.take(harness.approvalReceipts)).turnItem : turnItem;
+          assert.include(settled, { status: "cancelled", decision: "decline", autoDeclined: true });
+          assert.notProperty(settled, "autoDeclineAt");
+          assert.deepEqual(yield* Fiber.join(result), {
+            behavior: "deny",
+            message: ClaudeAdapterV2.claudeAutomaticDeclineMessage(
+              index === 4,
+              "Native safety check",
+            ),
+            toolUseID: `checked-command-${index}`,
+          });
+          const request = harness.events.findLast(
+            (event) =>
+              event.type === "runtime_request.updated" &&
+              event.runtimeRequest.id === turnItem.requestId,
+          );
+          const node = harness.events.findLast(
+            (event) => event.type === "node.updated" && event.node.id === turnItem.nodeId,
+          );
+          assert.include(
+            request?.type === "runtime_request.updated" ? request.runtimeRequest : {},
+            {
+              status: "resolved",
+              decision: "decline",
+            },
+          );
+          assert.equal(node?.type === "node.updated" ? node.node.status : undefined, "cancelled");
+          const response = yield* Effect.exit(
+            harness.runtime.respondToRuntimeRequest({
+              requestId: turnItem.requestId,
+              decision: "accept",
+            }),
+          );
+          assert.isTrue(Exit.isFailure(response));
+        }
+
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({ uuid: "approval-turn-result", result: "Done" }),
+        );
+        yield* Queue.take(harness.terminalReceipts);
+        yield* startApprovalTestTurn(harness, "full-access", 2);
+        const controller = new AbortController();
+        const result = yield* scriptClaudeToolApproval(
+          harness.getOpenedOptions()!.canUseTool!,
+          {
+            toolName: "Bash",
+            input: { command: "test -d ./cache" },
+            options: { toolUseID: "next-turn-command" },
+          },
+          controller.signal,
+        ).pipe(Effect.forkScoped);
+        const { turnItem } = yield* Queue.take(harness.approvalReceipts);
+        assert.isDefined(turnItem.type === "approval_request" ? turnItem.autoDeclineAt : undefined);
+        yield* TestClock.adjust("119 seconds");
+        controller.abort();
+        yield* TestClock.adjust("1 second");
+        assert.include(yield* Fiber.join(result), { behavior: "deny", interrupt: true });
+        assert.equal(Queue.sizeUnsafe(harness.approvalReceipts), 0);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect.each(["provider check", "ask rule", "other mode", "other request kind"] as const)(
+    "keeps the person's choice for a %s",
+    (scenario) =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        yield* startApprovalTestTurn(
+          harness,
+          scenario === "other mode" ? "approval-required" : "full-access",
+        );
+        const result = yield* scriptClaudeToolApproval(
+          harness.getOpenedOptions()!.canUseTool!,
+          {
+            toolName: scenario === "other request kind" ? "Read" : "Bash",
+            input:
+              scenario === "other request kind"
+                ? { file_path: "/tmp/notes.txt" }
+                : { command: "pwd" },
+            options: {
+              toolUseID: "answered-command",
+              ...(scenario === "ask rule"
+                ? { matchedAskRule: { source: "userSettings", toolName: "Bash" } }
+                : {}),
+            },
+          },
+          new AbortController().signal,
+        ).pipe(Effect.forkScoped);
+        const { turnItem } = yield* Queue.take(harness.approvalReceipts);
+        if (turnItem.type !== "approval_request") throw new Error("Expected an approval.");
+        if (scenario === "provider check") {
+          assert.isDefined(turnItem.autoDeclineAt);
+          yield* TestClock.adjust("119 seconds");
+        } else {
+          assert.notProperty(turnItem, "autoDeclineAt");
+          yield* TestClock.adjust("2 minutes");
+        }
+        assert.isUndefined(result.pollUnsafe());
+        yield* harness.runtime.respondToRuntimeRequest({
+          requestId: turnItem.requestId,
+          decision: "accept",
+        });
+        yield* TestClock.adjust("2 minutes");
+        assert.include(yield* Fiber.join(result), {
+          behavior: "allow",
+          decisionClassification: "user_temporary",
+        });
+        assert.equal(Queue.sizeUnsafe(harness.approvalReceipts), 0);
       }).pipe(
         Effect.scoped,
         Effect.provide(

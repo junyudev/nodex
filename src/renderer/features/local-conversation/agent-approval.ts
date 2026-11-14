@@ -41,6 +41,8 @@ export interface AgentPendingApproval {
   /** A decline can carry feedback back to the asking Agent. */
   readonly supportsFeedback: boolean;
   readonly createdAt: number;
+  /** When an unanswered request is declined for the person, so an unattended turn carries on. */
+  readonly autoDeclineAt: number | null;
 }
 
 export interface AgentApprovalResponse {
@@ -59,10 +61,40 @@ export const AGENT_APPROVAL_KIND_LABEL: Record<AgentApprovalKind, string> = {
 
 export const FULL_ACCESS_OVERRIDE_QUESTION = "Why am I being asked?";
 
-export function fullAccessOverrideExplanation(override: "ask_rule" | "provider_check"): string {
-  return override === "ask_rule"
-    ? "Full access skips approvals, but an ask rule in the Agent's own settings matches this action. Remove or narrow that rule to stop these prompts."
-    : "Full access skips approvals, but the Agent still stops for a few safety checks of its own that no setting can skip. Check the request and approve it if it's what you expect.";
+export function fullAccessOverrideExplanation(
+  override: "ask_rule" | "provider_check",
+  autoDeclines = false,
+): string {
+  if (override === "ask_rule")
+    return "Full access skips approvals, but an ask rule in the Agent's own settings matches this action. Remove or narrow that rule to stop these prompts.";
+  const check =
+    "Full access skips approvals, but the Agent still stops for a few safety checks of its own that no setting can skip. Check the request and approve it if it's what you expect.";
+  return autoDeclines
+    ? `${check} If no one answers, it is declined and the Agent finds another way.`
+    : check;
+}
+
+const MINUTE_MS = 60_000;
+
+/**
+ * What a waiting approval says about its deadline, and when that wording next changes. Whole
+ * minutes keep the row still: it reads as a deadline, not a countdown to race.
+ */
+export function agentApprovalWaitingStatus(
+  autoDeclineAt: number | null,
+  now: number,
+): { readonly label: string; readonly nextChangeAt: number | null } {
+  if (autoDeclineAt === null) return { label: "Waiting for approval", nextChangeAt: null };
+  const remaining = autoDeclineAt - now;
+  if (remaining <= 0) return { label: "No answer, declining", nextChangeAt: null };
+  const minutes = Math.ceil(remaining / MINUTE_MS);
+  return {
+    label:
+      minutes <= 1
+        ? "Waiting for approval · declines in under a minute"
+        : `Waiting for approval · declines in ${minutes} min`,
+    nextChangeAt: autoDeclineAt - (minutes - 1) * MINUTE_MS,
+  };
 }
 
 /** The composer stays usable while approvals wait: a message declines them and redirects. */

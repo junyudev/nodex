@@ -119,6 +119,7 @@ export interface EventSinkV2Shape {
   readonly writeIfRunCurrent: (input: {
     /** Runtime approvals require a running attempt on an open, unstopped Thread. */
     readonly requireApprovalOwner?: boolean;
+    readonly signal?: AbortSignal;
     readonly guardProviderRequestUpdates?: boolean;
     readonly commandId?: CommandId;
     readonly threadId: ThreadId;
@@ -317,6 +318,15 @@ const layerBase: Layer.Layer<
     // Native cleanup and late provider events cannot erase a person's recorded decision.
     const guardProviderRequests = (events: ReadonlyArray<OrchestrationV2DomainEvent>) =>
       Effect.gen(function* () {
+        const automaticDeclines = new Set(
+          events.flatMap((event) =>
+            event.type === "turn-item.updated" &&
+            event.payload.type === "approval_request" &&
+            event.payload.autoDeclined
+              ? [event.payload.requestId]
+              : [],
+          ),
+        );
         const staleRequests = new Set<RuntimeRequestId>();
         const staleNodes = new Set<NodeId>();
         for (const event of events) {
@@ -337,7 +347,12 @@ const layerBase: Layer.Layer<
               current.kind !== event.payload.kind ||
               current.providerTurnId !== event.payload.providerTurnId ||
               current.responseCapability.type === "message");
-          if (!resolvedApproval && !reopened && !staleCancellation) continue;
+          const staleAutomaticDecline =
+            automaticDeclines.has(event.payload.id) &&
+            current !== undefined &&
+            current.status !== "pending";
+          if (!resolvedApproval && !reopened && !staleCancellation && !staleAutomaticDecline)
+            continue;
           staleRequests.add(event.payload.id);
           staleNodes.add(event.payload.nodeId);
         }
@@ -865,6 +880,7 @@ const layerBase: Layer.Layer<
                 ? yield* guardProviderRequests(input.events)
                 : input.events,
             );
+            if (input.signal?.aborted) return { committed: false as const, storedEvents: [] };
             const storedEvents = yield* eventStore.append({
               ...(input.commandId === undefined ? {} : { commandId: input.commandId }),
               events: normalized,

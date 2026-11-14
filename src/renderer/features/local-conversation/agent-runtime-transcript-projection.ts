@@ -930,7 +930,10 @@ export function projectAgentRuntimeItem(
       return isDeclinedApproval(item)
         ? notice(
             item,
-            [`Declined ${approvalDetail(item) || "request"}`, item.feedback]
+            [
+              `Declined ${approvalDetail(item) || "request"}`,
+              item.autoDeclined ? "no one answered" : item.feedback,
+            ]
               .filter(Boolean)
               .join(" — "),
             { kind: "declined" },
@@ -1141,6 +1144,7 @@ export function projectAgentPendingApproval(
       request?.responseCapability.type === "live" &&
       request.responseCapability.supportsFeedback === true,
     createdAt: agentRuntimeTime(request?.createdAt ?? item.startedAt ?? item.updatedAt) ?? 0,
+    autoDeclineAt: agentRuntimeTime(item.autoDeclineAt) ?? null,
   };
 }
 

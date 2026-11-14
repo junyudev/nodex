@@ -44,6 +44,7 @@ import { makeProviderFailureTurnItem } from "@nodex/provider-core/server/failure
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import { stripUnservedToolOutputImageBytes } from "./toolOutputImageBytes.ts";
 import { isNativeCompactCommand } from "./nativeMaintenanceCommand.ts";
+import { retryObservation } from "./ProviderObservation.ts";
 
 export class ProviderEventNormalizeError extends Schema.TaggedError<ProviderEventNormalizeError>()(
   "ProviderEventNormalizeError",
@@ -271,6 +272,13 @@ export interface ProviderEventIngestInput {
 }
 
 export interface ProviderEventIngestorV2Shape {
+  readonly declineUnansweredApproval: (
+    input: ProviderAdapter.ProviderAdapterV2AutomaticApprovalDecline & {
+      readonly driver: ProviderAdapter.ProviderAdapterV2Event["driver"];
+      readonly providerSessionId: ProviderSessionId;
+      readonly providerInstanceId: ProviderInstanceId;
+    },
+  ) => Effect.Effect<"declined" | "answered" | "cancelled", ProviderEventIngestorV2Error>;
   readonly normalize: (
     input: ProviderEventIngestInput,
   ) => Effect.Effect<ReadonlyArray<OrchestrationV2DomainEvent>, ProviderEventIngestorV2Error>;
@@ -445,7 +453,13 @@ export const layer: Layer.Layer<
               threadId,
               nodeId: item.nodeId,
               runId: item.runId,
-              payload: { ...item, status: "cancelled", completedAt: now, updatedAt: now },
+              payload: {
+                ...item,
+                ...(item.type === "approval_request" ? { autoDeclineAt: undefined } : {}),
+                status: "cancelled",
+                completedAt: now,
+                updatedAt: now,
+              },
             }),
           );
         }
@@ -858,6 +872,59 @@ export const layer: Layer.Layer<
       );
 
     return ProviderEventIngestorV2.of({
+      declineUnansweredApproval: (input) => {
+        const { attemptId, signal, driver, request, node, turnItem } = input;
+        const { threadId, runId, id: nodeId } = node;
+        const source = {
+          threadId,
+          providerSessionId: input.providerSessionId,
+          providerInstanceId: input.providerInstanceId,
+        };
+        const events: ReadonlyArray<ProviderAdapter.ProviderAdapterV2Event> = [
+          { type: "node.updated", driver, node },
+          { type: "turn_item.updated", driver, turnItem },
+          { type: "runtime_request.updated", driver, runtimeRequest: request },
+        ];
+        return threadCommands
+          .withLock(
+            threadId,
+            Effect.gen(function* () {
+              if (runId === null || signal.aborted) return "cancelled" as const;
+              // A person's answer is durable before the outbox delivers it to the adapter.
+              const current = yield* projections.getRuntimeRequest(threadId, request.id);
+              if (current?.status === "resolved") return "answered" as const;
+              if (current !== undefined && current.status !== "pending")
+                return "cancelled" as const;
+              const batches = yield* Effect.forEach(events, (event) =>
+                normalize({ ...source, runId, nodeId, event }),
+              );
+              const result = yield* eventSink.writeIfRunCurrent({
+                threadId,
+                runId,
+                activeAttemptId: attemptId,
+                expectedStatus: "running",
+                requireApprovalOwner: true,
+                guardProviderRequestUpdates: true,
+                signal,
+                events: batches.flat(),
+              });
+              return result.storedEvents.length > 0
+                ? ("declined" as const)
+                : ("cancelled" as const);
+            }),
+          )
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new ProviderEventPublishError({
+                  providerSessionId: input.providerSessionId,
+                  eventCount: events.length,
+                  cause,
+                }),
+            ),
+            retryObservation,
+          );
+      },
       normalize,
       ingestNormalized: (input) =>
         Effect.gen(function* () {

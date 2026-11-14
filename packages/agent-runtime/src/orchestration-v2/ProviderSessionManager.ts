@@ -934,6 +934,7 @@ export const layerWithOptions = (
                   occurredAt: now,
                   payload: {
                     ...turnItem,
+                    ...(turnItem.type === "approval_request" ? { autoDeclineAt: undefined } : {}),
                     status: input.reason === "runtime_error" ? "failed" : "cancelled",
                     completedAt: now,
                     updatedAt: now,
@@ -944,7 +945,7 @@ export const layerWithOptions = (
           }
 
           if (events.length > 0) {
-            yield* eventSink.write({ events });
+            yield* eventSink.write({ events, guardProviderRequestUpdates: true });
           }
         });
 
@@ -3104,6 +3105,24 @@ export const layerWithOptions = (
                   ...(input.ephemeral ? { ephemeral: true } : {}),
                   threadId: input.threadId,
                   providerSessionId: input.providerSessionId,
+                  declineUnansweredApproval: (approval) =>
+                    providerEventIngestor
+                      .declineUnansweredApproval({
+                        ...approval,
+                        driver: adapter.driver,
+                        providerSessionId: input.providerSessionId,
+                        providerInstanceId: input.modelSelection.instanceId,
+                      })
+                      .pipe(
+                        Effect.mapError(
+                          (cause) =>
+                            new ProviderAdapter.ProviderAdapterProtocolError({
+                              driver: adapter.driver,
+                              detail: "Could not record the unanswered approval.",
+                              cause,
+                            }),
+                        ),
+                      ),
                   reportBackgroundTasks,
                   ...(codexPluginProject ? { codexPluginProject } : {}),
                   modelSelection: input.modelSelection,

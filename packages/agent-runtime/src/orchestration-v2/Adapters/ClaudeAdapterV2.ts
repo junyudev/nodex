@@ -3256,6 +3256,7 @@ interface ActiveClaudeTurnContext {
   nativeMessageCursor: string | null;
   readonly providerTurnId: OrchestrationV2ProviderTurn["id"];
   readonly providerTurnOrdinal: number;
+  unansweredCommandApprovals: number;
   readonly startedAt: DateTime.Utc;
   // Item ordinals allocated in this turn. Later turns never look items up
   // here: a subagent resumed from another turn keeps its ordinal on the
@@ -3598,6 +3599,11 @@ const CLAUDE_NO_STANDING_GRANT_OPTIONS = [
   { decision: "accept", label: "Approve" },
 ] satisfies ReadonlyArray<ProviderApprovalOption>;
 
+function claudeApprovalReason(decisionReason: string | undefined): string | undefined {
+  // The reason can carry terminal escapes from the CLI's own prompt renderer.
+  return stripVTControlCharacters(decisionReason ?? "").trim() || undefined;
+}
+
 export function claudeApprovalPresentation(input: {
   readonly permissionMode: PermissionMode;
   readonly prompt: string;
@@ -3610,8 +3616,7 @@ export function claudeApprovalPresentation(input: {
   readonly fullAccessOverride?: ProviderApprovalFullAccessOverride;
   readonly options?: ReadonlyArray<ProviderApprovalOption>;
 } {
-  // The reason can carry terminal escapes from the CLI's own prompt renderer.
-  const reason = stripVTControlCharacters(input.callbackOptions.decisionReason ?? "").trim();
+  const reason = claudeApprovalReason(input.callbackOptions.decisionReason);
   // Bypass auto-allows everything it can, so any ask that still reaches the
   // callback is one bypass refused. The SDK drops the CLI's decision_reason_type,
   // leaving the matched ask rule as the only way to tell the two causes apart.
@@ -3642,7 +3647,7 @@ export function claudeApprovalPresentation(input: {
           { decision: "cancel", label: "Decline and stop" },
         ];
   return {
-    ...(reason === "" || reason === input.prompt ? {} : { reason }),
+    ...(reason === undefined || reason === input.prompt ? {} : { reason }),
     ...(fullAccessOverride === undefined ? {} : { fullAccessOverride }),
     ...(input.callbackOptions.suppressAlwaysAllowRule === true
       ? { options: CLAUDE_NO_STANDING_GRANT_OPTIONS }
@@ -3650,6 +3655,25 @@ export function claudeApprovalPresentation(input: {
         ? {}
         : { options: scopedOptions }),
   };
+}
+
+const CLAUDE_COMMAND_APPROVAL_WAIT_MS = 120_000;
+const CLAUDE_UNANSWERED_COMMAND_APPROVAL_LIMIT = 3;
+
+export function claudeAutomaticDeclineMessage(
+  declinedWithoutWaiting: boolean,
+  reason?: string,
+): string {
+  const opening = declinedWithoutWaiting
+    ? "Earlier approval requests in this turn went unanswered, so this one was declined without waiting."
+    : "Nobody answered this approval request within 2 minutes, so it was declined.";
+  return (
+    `${opening} The command was NOT run; do not claim it succeeded. Claude Code's own safety check stopped it, and only a person can approve it. ` +
+    "If the reason below suggests a safe rewrite, run that instead. If the command was only too complex to check, run it in simpler steps: " +
+    "write scripts to a file instead of a heredoc, use literal paths, and keep any removal in its own plain command. " +
+    "Do not try to get a risky removal past the check another way; finish the rest of the task, then tell the user what you wanted to remove and why." +
+    (reason === undefined ? "" : ` What was flagged: ${reason}`)
+  );
 }
 
 export function permissionResultFromDecision(input: {
@@ -6491,6 +6515,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           readonly appName?: string;
           readonly options?: ReadonlyArray<ProviderApprovalOption>;
           readonly presentation?: ReturnType<typeof claudeApprovalPresentation>;
+          readonly autoDecline?: boolean;
 
           readonly questions?: ReadonlyArray<OrchestrationV2UserInputQuestion>;
         }) {
@@ -6584,6 +6609,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   ...(input.appName === undefined ? {} : { appName: input.appName }),
                   ...(input.options === undefined ? {} : { options: input.options }),
                   ...input.presentation,
+                  ...(input.autoDecline === true
+                    ? {
+                        autoDeclineAt: DateTime.addDuration(
+                          createdAt,
+                          CLAUDE_COMMAND_APPROVAL_WAIT_MS,
+                        ),
+                      }
+                    : {}),
                 }
               : {
                   type: "user_input_request" as const,
@@ -9068,6 +9101,64 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           yield* handleRoutedSdkMessage(input);
         });
 
+        const declineUnansweredApproval = Effect.fnUntraced(function* (
+          artifacts: {
+            readonly node: OrchestrationV2ExecutionNode;
+            readonly request: OrchestrationV2RuntimeRequest;
+            readonly turnItem: Extract<OrchestrationV2TurnItem, { type: "approval_request" }>;
+          },
+          context: ActiveClaudeTurnContext,
+          signal: AbortSignal,
+        ) {
+          const now = yield* DateTime.now;
+          if (
+            signal.aborted ||
+            (yield* Ref.get(activeTurn)) !== context ||
+            (yield* Ref.get(interruptedTurns)).has(context.providerTurnId)
+          )
+            return "cancelled" as const;
+          const { autoDeclineAt: _deadline, ...turnItem } = artifacts.turnItem;
+          const automaticDecline = {
+            attemptId: context.input.attemptId,
+            signal,
+            node: { ...artifacts.node, status: "cancelled", completedAt: now },
+            request: {
+              ...artifacts.request,
+              status: "resolved",
+              decision: "decline",
+              resolvedAt: now,
+            },
+            turnItem: {
+              ...turnItem,
+              autoDeclined: true,
+              decision: "decline",
+              status: "cancelled",
+              completedAt: now,
+              updatedAt: now,
+            },
+          } satisfies ProviderAdapter.ProviderAdapterV2AutomaticApprovalDecline;
+          if (input.declineUnansweredApproval !== undefined)
+            return yield* input.declineUnansweredApproval(automaticDecline);
+
+          // Standalone adapter consumers observe the same settlement through provider events.
+          yield* emitProviderEvent({
+            type: "node.updated",
+            driver: CLAUDE_PROVIDER,
+            node: automaticDecline.node,
+          });
+          yield* emitProviderEvent({
+            type: "runtime_request.updated",
+            driver: CLAUDE_PROVIDER,
+            runtimeRequest: automaticDecline.request,
+          });
+          yield* emitProviderEvent({
+            type: "turn_item.updated",
+            driver: CLAUDE_PROVIDER,
+            turnItem: automaticDecline.turnItem,
+          });
+          return "declined" as const;
+        });
+
         const canUseToolEffect = Effect.fn("ClaudeAdapterV2.canUseTool")(function* (
           toolName: Parameters<CanUseTool>[0],
           toolInput: Parameters<CanUseTool>[1],
@@ -9245,6 +9336,17 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           const prompt =
             (typeof command === "string" && command.trim() !== "" ? command : undefined) ??
             `${toolName}: ${jsonStringifyForTool(toolInput)}`;
+          const presentation = claudeApprovalPresentation({
+            permissionMode:
+              (yield* Ref.get(queryContext))?.queryPolicy.permissionMode ?? "acceptEdits",
+            prompt,
+            callbackOptions,
+          });
+          const autoDecline =
+            requestKind === "command" && presentation.fullAccessOverride === "provider_check";
+          const declinedWithoutWaiting =
+            autoDecline &&
+            context.unansweredCommandApprovals >= CLAUDE_UNANSWERED_COMMAND_APPROVAL_LIMIT;
           const artifacts = yield* buildApprovalRequestArtifacts({
             context,
             nativeItemId: nativeRequestId,
@@ -9252,13 +9354,37 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             requestKind,
             prompt,
             ...(toolName === "Agent" ? { parentNodeId: context.input.rootNodeId } : {}),
-            presentation: claudeApprovalPresentation({
-              permissionMode:
-                (yield* Ref.get(queryContext))?.queryPolicy.permissionMode ?? "acceptEdits",
-              prompt,
-              callbackOptions,
-            }),
+            presentation,
+            autoDecline: autoDecline && !declinedWithoutWaiting,
           });
+          if (artifacts.turnItem.type !== "approval_request") {
+            return yield* Effect.die("Claude tool approval must produce an approval item.");
+          }
+          const { turnItem } = artifacts;
+          const automaticDeny = (): PermissionResult => ({
+            behavior: "deny",
+            message: claudeAutomaticDeclineMessage(
+              declinedWithoutWaiting,
+              claudeApprovalReason(callbackOptions.decisionReason),
+            ),
+            toolUseID: nativeRequestId,
+          });
+          const cancelled = () =>
+            permissionResultFromDecision({
+              toolName,
+              toolInput,
+              toolUseID: nativeRequestId,
+              decision: "cancel",
+            });
+          if (declinedWithoutWaiting) {
+            const outcome = yield* declineUnansweredApproval(
+              { ...artifacts, turnItem },
+              context,
+              callbackOptions.signal,
+            );
+            return outcome === "declined" ? automaticDeny() : cancelled();
+          }
+
           const decision = yield* Deferred.make<ClaudeApprovalResponse>();
           yield* Ref.update(pendingRuntimeRequests, (current) => {
             const updated = new Map(current);
@@ -9290,10 +9416,28 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             { concurrency: 1 },
           );
 
-          const resolvedDecision = yield* awaitClaudeApprovalDecision(
-            decision,
-            callbackOptions.signal,
-          ).pipe(
+          const awaitDecision = awaitClaudeApprovalDecision(decision, callbackOptions.signal);
+          const resolveDecision = Effect.gen(function* () {
+            if (turnItem.autoDeclineAt === undefined) return yield* awaitDecision;
+
+            const remaining =
+              DateTime.toEpochMillis(turnItem.autoDeclineAt) - (yield* Clock.currentTimeMillis);
+            const answer = yield* awaitDecision.pipe(Effect.timeoutOption(Math.max(0, remaining)));
+            if (callbackOptions.signal.aborted) return { decision: "cancel" as const };
+            if (Option.isSome(answer)) return answer.value;
+            if (yield* Deferred.isDone(decision)) return yield* awaitDecision;
+
+            const outcome = yield* declineUnansweredApproval(
+              { ...artifacts, turnItem },
+              context,
+              callbackOptions.signal,
+            );
+            if (outcome === "answered") return yield* awaitDecision;
+            if (outcome === "cancelled") return { decision: "cancel" as const };
+            context.unansweredCommandApprovals += 1;
+            return null;
+          });
+          const resolvedDecision = yield* resolveDecision.pipe(
             Effect.ensuring(
               Ref.update(pendingRuntimeRequests, (current) => {
                 const updated = new Map(current);
@@ -9302,6 +9446,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               }),
             ),
           );
+          if (resolvedDecision === null) return automaticDeny();
 
           const permission = permissionResultFromDecision({
             toolName,
@@ -10137,6 +10282,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               nativeMessageCursor: null,
               providerTurnId,
               providerTurnOrdinal,
+              unansweredCommandApprovals: 0,
               startedAt,
               itemOrdinals: new Map(),
               requestedModel: claudeResponseModel(subagentModelCatalog, selection.apiModelId),

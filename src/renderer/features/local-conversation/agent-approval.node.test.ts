@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   agentApprovalComposerPlaceholder,
+  agentApprovalWaitingStatus,
   planAgentApprovalDeclineOnSend,
   resolveAgentApprovalOptions,
   splitAgentApprovalOptions,
@@ -20,6 +21,7 @@ function approval(overrides: Partial<AgentPendingApproval> = {}): AgentPendingAp
     live: true,
     supportsFeedback: false,
     createdAt: 0,
+    autoDeclineAt: null,
     ...overrides,
   };
 }
@@ -75,6 +77,27 @@ describe("approval options", () => {
     );
     expect(primary.map((option) => option.label)).toEqual(["Decline and stop", "Approve"]);
     expect(more).toEqual([]);
+  });
+});
+
+describe("an approval that declines itself when unanswered", () => {
+  it("names the deadline in whole minutes and changes only when the wording does", () => {
+    expect(agentApprovalWaitingStatus(null, 0)).toEqual({
+      label: "Waiting for approval",
+      nextChangeAt: null,
+    });
+    expect(agentApprovalWaitingStatus(120_000, 0)).toEqual({
+      label: "Waiting for approval · declines in 2 min",
+      nextChangeAt: 60_000,
+    });
+    expect(agentApprovalWaitingStatus(120_000, 60_000)).toEqual({
+      label: "Waiting for approval · declines in under a minute",
+      nextChangeAt: 120_000,
+    });
+    expect(agentApprovalWaitingStatus(120_000, 120_000)).toEqual({
+      label: "No answer, declining",
+      nextChangeAt: null,
+    });
   });
 });
 

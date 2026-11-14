@@ -32,6 +32,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Claude Code chats in Full access no longer stall on a safety check while you are away. Claude Code still asks before a command whose removals it cannot verify, even a harmless script, and the request used to wait for you indefinitely. It now waits two minutes and shows that deadline; if no one answers, the command is declined, the Agent rewrites it safely or leaves the removal to you, and the turn carries on.
 - Claude Code chats honor the selected model when an older version is turned off. If Claude Code cannot apply the selection, the chat explains why the message was held. If Claude Code changes models during a reply, the chat names the model it used.
 - A follow-up sent to a delegated task while it is still working now wakes the Agent that sent it. Before, a follow-up queued behind the task's unfinished work could complete without ever reporting back, and the reply named the task that had not run it. Each follow-up now gets its own task, and the task ID it returns is the one that reports the result.
 - Bash commands in Claude chats no longer stop with "still settling" after an earlier command was cut short. Nodex no longer holds a command back to check which Run started its shell, so every command runs. A background command that outlives its Run is credited to the chat's current Run.

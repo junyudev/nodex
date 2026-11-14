@@ -895,6 +895,7 @@ it("keeps Page context as a steer after approval feedback consumes the typed mes
         live: true,
         supportsFeedback: true,
         createdAt: 0,
+        autoDeclineAt: null,
       },
     ],
     suppressedItemIds: new Set(),

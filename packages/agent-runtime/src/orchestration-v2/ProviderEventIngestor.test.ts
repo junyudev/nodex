@@ -1457,6 +1457,230 @@ layer("ProviderEventIngestorV2", (it) => {
     }),
   );
 
+  it.effect("settles an unanswered native approval durably and preserves a recorded answer", () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+      const ids = yield* IdAllocator.IdAllocatorV2;
+      const thread = yield* threadCreatedEvent(now);
+      if (thread.type !== "thread.created") throw new Error("Expected a thread fixture.");
+      const { threadId } = thread;
+      const runId = RunId.make("approval-run");
+      const attemptId = RunAttemptId.make("approval-attempt");
+      const rootNodeId = NodeId.make("approval-root");
+      const providerTurnId = ProviderTurnId.make("approval-native-turn");
+      const providerThreadId = ids.derive.providerThread({
+        driver: CODEX_DRIVER,
+        nativeThreadId: "approval-native-thread",
+      });
+      const providerSessionId = yield* ids.allocate.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+        threadId,
+      });
+      const eventBase = { threadId, runId, occurredAt: now };
+      yield* eventSink.write({
+        events: [
+          thread,
+          {
+            ...eventBase,
+            id: yield* ids.allocate.event({ threadId }),
+            type: "run.created",
+            payload: {
+              id: runId,
+              threadId,
+              ordinal: 1,
+              providerInstanceId: modelSelection.instanceId,
+              modelSelection,
+              providerThreadId,
+              userMessageId: MessageId.make("approval-prompt"),
+              rootNodeId,
+              activeAttemptId: attemptId,
+              status: "running",
+              requestedAt: now,
+              startedAt: now,
+              completedAt: null,
+              checkpointId: null,
+              contextHandoffId: null,
+            },
+          },
+          {
+            ...eventBase,
+            id: yield* ids.allocate.event({ threadId }),
+            type: "run-attempt.created",
+            payload: {
+              id: attemptId,
+              runId,
+              attemptOrdinal: 1,
+              rootNodeId,
+              providerInstanceId: modelSelection.instanceId,
+              providerThreadId,
+              providerTurnId,
+              reason: "initial",
+              status: "running",
+              startedAt: now,
+              completedAt: null,
+            },
+          },
+        ],
+      });
+
+      for (const [ordinal, outcome] of (
+        ["declined", "answered", "cancelled", "immediate"] as const
+      ).entries()) {
+        const requestId = RuntimeRequestId.make(`approval:${outcome}`);
+        const nodeId = NodeId.make(`approval-node:${outcome}`);
+        const itemId = TurnItemId.make(`approval-item:${outcome}`);
+        const request: OrchestrationV2RuntimeRequest = {
+          id: requestId,
+          nodeId,
+          providerTurnId,
+          nativeRequestRef: null,
+          kind: "command",
+          status: "pending",
+          responseCapability: { type: "live", providerSessionId },
+          createdAt: now,
+          resolvedAt: null,
+        };
+        const node: OrchestrationV2ExecutionNode = {
+          id: nodeId,
+          threadId,
+          runId,
+          parentNodeId: rootNodeId,
+          rootNodeId,
+          kind: "approval_request",
+          status: "waiting",
+          countsForRun: false,
+          providerThreadId,
+          providerTurnId,
+          nativeItemRef: null,
+          runtimeRequestId: requestId,
+          checkpointScopeId: null,
+          startedAt: now,
+          completedAt: null,
+        };
+        const item: Extract<OrchestrationV2TurnItem, { type: "approval_request" }> = {
+          id: itemId,
+          threadId,
+          runId,
+          nodeId,
+          providerThreadId,
+          providerTurnId,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal,
+          status: "waiting",
+          title: null,
+          startedAt: now,
+          completedAt: null,
+          updatedAt: now,
+          type: "approval_request",
+          requestId,
+          requestKind: "command",
+          fullAccessOverride: "provider_check",
+        };
+        const answered = outcome === "answered";
+        const autoDeclineAt = DateTime.addDuration(now, "2 minutes");
+        const source = {
+          threadId,
+          runId,
+          providerSessionId,
+          providerInstanceId: modelSelection.instanceId,
+        };
+        const ingestOpen = Effect.forEach(
+          [
+            { type: "node.updated", driver: CODEX_DRIVER, node },
+            { type: "runtime_request.updated", driver: CODEX_DRIVER, runtimeRequest: request },
+            {
+              type: "turn_item.updated",
+              driver: CODEX_DRIVER,
+              turnItem: { ...item, autoDeclineAt },
+            },
+          ] as const,
+          (event) => ingestor.ingestNormalized({ ...source, event }),
+        );
+        if (outcome !== "immediate") yield* ingestOpen;
+        if (answered) {
+          yield* eventSink.write({
+            events: [
+              {
+                ...eventBase,
+                id: yield* ids.allocate.event({ threadId }),
+                type: "node.updated",
+                payload: { ...node, status: "completed", completedAt: now },
+              },
+              {
+                ...eventBase,
+                id: yield* ids.allocate.event({ threadId }),
+                type: "runtime-request.updated",
+                payload: { ...request, status: "resolved", decision: "accept", resolvedAt: now },
+              },
+              {
+                ...eventBase,
+                id: yield* ids.allocate.event({ threadId }),
+                type: "turn-item.updated",
+                payload: { ...item, status: "completed", decision: "accept", completedAt: now },
+              },
+            ],
+          });
+        }
+        if (outcome === "declined") {
+          const pending = yield* store.getTurnItem({ threadId, itemId });
+          assert.deepEqual(
+            pending?.type === "approval_request" ? pending.autoDeclineAt : undefined,
+            autoDeclineAt,
+          );
+        }
+        const result = yield* ingestor.declineUnansweredApproval({
+          ...source,
+          driver: CODEX_DRIVER,
+          attemptId,
+          signal: outcome === "cancelled" ? AbortSignal.abort() : new AbortController().signal,
+          request: {
+            ...request,
+            status: "resolved",
+            decision: "decline",
+            resolvedAt: autoDeclineAt,
+          },
+          node: { ...node, status: "cancelled", completedAt: autoDeclineAt },
+          turnItem: {
+            ...item,
+            status: "cancelled",
+            decision: "decline",
+            autoDeclined: true,
+            completedAt: autoDeclineAt,
+            updatedAt: autoDeclineAt,
+          },
+        });
+        assert.equal(result, outcome === "immediate" ? "declined" : outcome);
+        if (outcome === "immediate") yield* ingestOpen; // Late pending events cannot reopen it.
+        const response = yield* store.getRuntimeResponseContext(threadId, requestId);
+        const pending = yield* store.getPendingNativeRequests(threadId, providerTurnId);
+        const cancelled = outcome === "cancelled";
+        const decision = answered ? "accept" : cancelled ? undefined : "decline";
+        assert.equal(response.request?.decision, decision);
+        assert.equal(response.request?.status, cancelled ? "pending" : "resolved");
+        assert.equal(
+          response.node?.status,
+          answered ? "completed" : cancelled ? "waiting" : "cancelled",
+        );
+        assert.equal(
+          pending.runtimeRequests.some((entry) => entry.id === requestId),
+          cancelled,
+        );
+        assert.equal(
+          response.item?.type === "approval_request" ? response.item.decision : undefined,
+          decision,
+        );
+        assert.equal(
+          response.item?.type === "approval_request" ? response.item.autoDeclined : undefined,
+          decision === "decline" ? true : undefined,
+        );
+      }
+    }),
+  );
+
   it.effect("stores tool image bytes only where a tool-output-image asset serves them", () =>
     Effect.gen(function* () {
       const now = yield* DateTime.now;

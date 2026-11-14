@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import { useState, type ComponentType } from "react";
 import {
   AppActivityIcon,
   EditFilesIcon,
@@ -11,12 +11,14 @@ import {
 import { NodexButton } from "@/components/ui/button";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
+import { useClockAt } from "@/lib/use-clock-at";
 import { cn } from "@/lib/utils";
 import {
   AGENT_APPROVAL_KIND_LABEL,
   FULL_ACCESS_OVERRIDE_QUESTION,
   fullAccessOverrideExplanation,
   agentApprovalOptionKey,
+  agentApprovalWaitingStatus,
   splitAgentApprovalOptions,
   type AgentApprovalKind,
   type AgentApprovalOption,
@@ -61,6 +63,9 @@ export function PendingApprovalRow({
   const KindIcon = presentation.icon;
   const { primary, more } = splitAgentApprovalOptions(approval.options);
   const inert = disabled || responding || !approval.live;
+  const [now, setNow] = useState(Date.now);
+  const waiting = agentApprovalWaitingStatus(approval.autoDeclineAt, now);
+  useClockAt(waiting.nextChangeAt, setNow);
   const reason =
     approval.reason && approval.reason.trim() !== approval.detail.trim() ? approval.reason : null;
   const respond = (option: AgentApprovalOption) => {
@@ -89,7 +94,10 @@ export function PendingApprovalRow({
             side="top"
             tooltipContent={
               <span className="block max-w-72 whitespace-normal">
-                {fullAccessOverrideExplanation(approval.fullAccessOverride)}
+                {fullAccessOverrideExplanation(
+                  approval.fullAccessOverride,
+                  approval.autoDeclineAt !== null,
+                )}
               </span>
             }
           >
@@ -121,7 +129,7 @@ export function PendingApprovalRow({
         {approval.live ? (
           <span className="me-auto inline-flex min-w-0 items-center gap-1.5 text-xs text-token-editor-warning-foreground">
             <PermissionAskForApprovalIcon className="icon-xs shrink-0" />
-            Waiting for approval
+            {waiting.label}
           </span>
         ) : (
           <span className="me-auto min-w-0 text-xs text-token-editor-warning-foreground">

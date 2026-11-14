@@ -409,6 +409,14 @@ export const ProviderAdapterV2Error = Schema.Union([
 ]);
 export type ProviderAdapterV2Error = typeof ProviderAdapterV2Error.Type;
 
+export interface ProviderAdapterV2AutomaticApprovalDecline {
+  readonly attemptId: RunAttemptId;
+  readonly signal: AbortSignal;
+  readonly request: OrchestrationV2RuntimeRequest;
+  readonly node: OrchestrationV2ExecutionNode;
+  readonly turnItem: Extract<OrchestrationV2TurnItem, { type: "approval_request" }>;
+}
+
 export interface ProviderAdapterV2OpenSessionInput {
   readonly codexPluginProject?: {
     readonly projectId: string;
@@ -419,6 +427,10 @@ export interface ProviderAdapterV2OpenSessionInput {
   readonly reportBackgroundTasks?: (
     providerThread: OrchestrationV2ProviderThread,
   ) => Effect.Effect<boolean>;
+  /** Settle a native approval only while its turn still owns the request. */
+  readonly declineUnansweredApproval?: (
+    input: ProviderAdapterV2AutomaticApprovalDecline,
+  ) => Effect.Effect<"declined" | "answered" | "cancelled", ProviderAdapterV2Error>;
   readonly threadId: ThreadId;
   readonly providerSessionId: ProviderSessionId;
   readonly modelSelection: ModelSelection;

@@ -368,6 +368,19 @@ function makeClaudePermissionResponseFrame(
   };
 }
 
+export const scriptClaudeToolApproval = (
+  canUseTool: CanUseTool,
+  frame: Omit<ClaudePermissionRequestFrame, "type">,
+  signal: AbortSignal,
+) =>
+  Effect.promise(() =>
+    canUseTool(
+      frame.toolName,
+      frame.input,
+      permissionRequestOptionsFromFrame({ type: "permission.request", ...frame }, signal),
+    ),
+  );
+
 function permissionRequestOptionsFromFrame(
   frame: ClaudePermissionRequestFrame,
   signal: AbortSignal,
