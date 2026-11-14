@@ -17,7 +17,6 @@ import {
   makeSessionTab,
 } from "./workbench-testkit/workbench-shell-fixtures";
 import {
-  TITLEBAR_NEW_CHAT_ICON_PREFIX,
   executeCommandPaletteCommand,
   getHeaderShellSlot,
   getLastTerminalPanelProps,
@@ -2494,12 +2493,6 @@ describe("workbench session shell / library-shell-navigation", () => {
       expect(collapseButton.hasAttribute("title")).toBe(false);
       expect(backButton.hasAttribute("disabled")).toBe(true);
       expect(forwardButton.hasAttribute("disabled")).toBe(true);
-      expect(
-        compactNewChatButton
-          .querySelector("path")
-          ?.getAttribute("d")
-          ?.startsWith(TITLEBAR_NEW_CHAT_ICON_PREFIX),
-      ).toBe(true);
       expect(collapseButton.className.includes("no-drag")).toBe(true);
 
       await moveSidebarPointer(12);

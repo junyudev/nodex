@@ -721,10 +721,7 @@ describe("AppShellTabs", () => {
     const closeButton = view.getByLabelText("Close Two tab");
     const closeIcon = closeButton.querySelector("svg");
     expect(closeButton.tagName).toBe("BUTTON");
-    expect(closeIcon?.getAttribute("viewBox")).toBe("0 0 21 21");
-    expect(
-      closeIcon?.querySelector("path")?.getAttribute("d")?.startsWith("M14.6549 5.57307"),
-    ).toBe(true);
+    expect(closeIcon?.getAttribute("aria-hidden")).toBe("true");
 
     fireEvent.mouseDown(closeButton, { button: 0 });
     fireEvent.click(closeButton);

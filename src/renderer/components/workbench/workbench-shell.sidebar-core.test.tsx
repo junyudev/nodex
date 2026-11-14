@@ -706,7 +706,7 @@ describe("workbench session shell / sidebar-core", () => {
     if (!(pinButton instanceof HTMLButtonElement)) {
       throw new Error("Expected Pin target pin button");
     }
-    expect(pinButton.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 20 20");
+    expect(pinButton.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
     await act(async () => {
       fireEvent.click(pinButton);
       await Promise.resolve();
@@ -726,7 +726,7 @@ describe("workbench session shell / sidebar-core", () => {
     expect(updatedRow.getAttribute("data-app-action-sidebar-thread-pinned")).toBe("true");
     const updatedButton = updatedRow.querySelector("[data-app-action-sidebar-thread-pin-session]");
     expect(updatedButton?.getAttribute("aria-label")).toBe("Unpin chat");
-    expect(updatedButton?.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 24 24");
+    expect(updatedButton?.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
   });
 
   test("settles a Session fork before destination control hydration completes", async () => {
@@ -812,7 +812,7 @@ describe("workbench session shell / sidebar-core", () => {
 
     const row = getThreadRow(screen.container, "Archive target");
     const archiveButton = within(row).getByRole("button", { name: "Archive chat" });
-    expect(archiveButton.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 20 20");
+    expect(archiveButton.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
 
     await act(async () => {
       fireEvent.click(archiveButton);
@@ -1114,7 +1114,7 @@ describe("workbench session shell / sidebar-core", () => {
       throw new Error("Expected Pinned target unpin button");
     }
     expect(unpinButton.getAttribute("aria-label")).toBe("Unpin chat");
-    expect(unpinButton.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 24 24");
+    expect(unpinButton.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
 
     await act(async () => {
       fireEvent.click(unpinButton);
@@ -1135,7 +1135,7 @@ describe("workbench session shell / sidebar-core", () => {
     expect(row.getAttribute("data-app-action-sidebar-thread-pinned")).toBe("false");
     const pinButton = row.querySelector("[data-app-action-sidebar-thread-pin-session]");
     expect(pinButton?.getAttribute("aria-label")).toBe("Pin chat");
-    expect(pinButton?.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 20 20");
+    expect(pinButton?.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
   });
 
   test("sidebar pin slot treats Database View as ordinary, keeps pinning for unread rows, and protects long titles", async () => {

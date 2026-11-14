@@ -273,8 +273,6 @@ export let pendingWorktreeWarningListener:
   | null = null;
 export const PANEL_VISIBLE_ICON_PREFIX = "M16.835 8.66301";
 export const BOTTOM_PANEL_HIDDEN_ICON_PREFIX = "M13.334 12.2529";
-export const NEW_CHAT_ICON_PREFIX = "M2.6687 11.333";
-export const TITLEBAR_NEW_CHAT_ICON_PREFIX = "M6.33325 1.88379";
 
 export type TerminalEventListenerMap = Record<string, (payload: unknown) => void>;
 

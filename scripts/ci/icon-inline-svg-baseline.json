@@ -29,10 +29,9 @@
       "reason": "Appearance selection uses a composite application illustration to preview light and dark surfaces, not a reusable control icon."
     },
     "src/renderer/components/workbench/command-menu-reference-icons.tsx": 1,
-    "src/renderer/components/workbench/database-list/database-list-icons.tsx": 3,
+    "src/renderer/components/workbench/database-list/database-list-icons.tsx": 2,
     "src/renderer/components/workbench/database-list/database-list-nesting-lines.tsx": 1,
     "src/renderer/components/workbench/review-diff-panel.tsx": 1,
-    "src/renderer/components/workbench/threads-icon.tsx": 1,
     "src/renderer/components/workbench/toggle-list-icon.tsx": 1,
     "src/renderer/components/workbench/workbench-rail-usage-meter.tsx": {
       "count": 1,

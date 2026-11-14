@@ -429,6 +429,10 @@ work follows [Page Stage rich-editor performance](product-specs/card-stage-rich-
   keep semantic wrappers, but those wrappers share the glyph instead of copying
   SVG paths. Cross-runtime consumers share transport-neutral geometry data and
   keep runtime-specific render adapters.
+- Draw shared outline masters as filled `currentColor` paths through `IconGlyph`.
+  Use the 16px master for compact controls and the 20px master for controls
+  sized at 20px or above when the family has both. Semantic components preserve
+  their intrinsic width and height, and consumer size classes can override them.
 - Keep diagrams, data marks, favicons, brand artwork, and rendering fixtures at
   their owning boundary. Treat them as reviewed exceptions rather than forcing
   them into the app-icon API.

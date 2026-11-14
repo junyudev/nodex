@@ -1,3 +1,8 @@
+import {
+  ArrowUturnLeft20Glyph,
+  ArrowUturnRight20Glyph,
+  ChatBubblePlus20Glyph,
+} from "./outline-glyphs";
 import type { JSX } from "react";
 import { cn } from "@/lib/utils";
 import { IconSilhouette } from "./icon-silhouette";
@@ -42,29 +47,7 @@ export function ImageEditorTabIcon({ className, ...props }: ImageEditorIconProps
 }
 
 export function ImageCommentIcon({ className, ...props }: ImageEditorIconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-      aria-hidden="true"
-      {...props}
-    >
-      <path
-        d="M10.02 6.70483C9.66589 6.70516 9.37778 6.9928 9.37778 7.34698V9.36292H7.36187C7.00755 9.36292 6.71983 9.65081 6.71973 10.005C6.71973 10.3595 7.00749 10.6473 7.36187 10.6473H9.37778V12.6644C9.37812 13.0184 9.666 13.3061 10.02 13.3065C10.3742 13.3065 10.6619 13.0186 10.6621 12.6644V10.6473H12.6792C13.0337 10.6473 13.3214 10.3595 13.3214 10.005C13.3213 9.65081 13.0336 9.36292 12.6792 9.36292H10.6621V7.34698C10.6621 6.9926 10.3743 6.70483 10.02 6.70483Z"
-        fill="currentColor"
-      />
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M9.9994 2.43188C5.62998 2.43188 2.02393 5.78683 2.02393 10.0003C2.02401 11.5112 2.49346 12.9166 3.29509 14.0943C3.29768 14.0982 3.29903 14.1028 3.29986 14.1051V14.1086L2.80334 16.0339C2.61585 16.7426 3.27268 17.3856 3.97781 17.1845L3.97901 17.1856L6.08567 16.5961L6.08806 16.5949H6.09164C7.24756 17.2136 8.58138 17.5676 9.9994 17.5676C14.3687 17.5676 17.9746 14.2136 17.9748 10.0003C17.9748 5.78683 14.3688 2.43188 9.9994 2.43188ZM9.9994 3.71617C13.7302 3.71617 16.6906 6.56372 16.6906 10.0003C16.6904 13.4369 13.7301 16.2845 9.9994 16.2845C8.79575 16.2845 7.66933 15.9853 6.69678 15.4645L6.6932 15.4622L6.58339 15.4109C6.3226 15.3028 6.02191 15.2753 5.72998 15.3619L4.19027 15.7928L4.54238 14.4285L4.54118 14.4273C4.64035 14.0542 4.55881 13.6756 4.36215 13.3818L4.35857 13.377L4.12224 13.0022C3.6023 12.1093 3.30829 11.087 3.30821 10.0003C3.30821 6.56372 6.26865 3.71617 9.9994 3.71617Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <ChatBubblePlus20Glyph {...props} className={className} />;
 }
 
 export function ImageRemoveIcon({ className, ...props }: ImageEditorIconProps) {
@@ -133,27 +116,11 @@ export function ImageRemoveBackgroundIcon({ className, ...props }: ImageEditorIc
 }
 
 export function ImageUndoIcon({ className, ...props }: ImageEditorIconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-      aria-hidden="true"
-      {...props}
-    >
-      <path
-        d="M15.998 10.833C15.9978 8.439 14.0571 6.49805 11.663 6.49805H4.9355L7.13374 8.69629L7.2187 8.80078C7.38911 9.05884 7.36084 9.40947 7.13374 9.63672C6.90652 9.86394 6.55592 9.89207 6.2978 9.72168L6.19331 9.63672L2.85932 6.30371C2.5999 6.04411 2.60001 5.62295 2.85932 5.36328L6.19331 2.0293C6.45298 1.76998 6.87414 1.76987 7.13374 2.0293C7.39344 2.289 7.39344 2.711 7.13374 2.9707L4.93647 5.16797H11.663C14.7916 5.16797 17.3279 7.70446 17.3281 10.833C17.3281 13.9617 14.7917 16.498 11.663 16.498H8.33003C7.96276 16.498 7.66499 16.2003 7.66499 15.833C7.66516 15.4659 7.96287 15.168 8.33003 15.168H11.663C14.0572 15.168 15.998 13.2272 15.998 10.833Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <ArrowUturnLeft20Glyph {...props} className={className} />;
 }
 
 export function ImageRedoIcon({ className, ...props }: ImageEditorIconProps) {
-  return <ImageUndoIcon className={cn("-scale-x-100", className)} {...props} />;
+  return <ArrowUturnRight20Glyph {...props} className={className} />;
 }
 
 export function ImageMultiSelectIcon({ className, ...props }: ImageEditorIconProps) {

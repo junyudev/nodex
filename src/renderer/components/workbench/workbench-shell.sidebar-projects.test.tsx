@@ -12,7 +12,6 @@ import {
   makeSidebarSnapshotItemForSession,
 } from "./workbench-testkit/workbench-shell-fixtures";
 import {
-  NEW_CHAT_ICON_PREFIX,
   codexHostMessageListener,
   getSidebarProjectGroup,
   getSidebarSection,
@@ -895,8 +894,6 @@ describe("workbench session shell / sidebar-projects", () => {
       await settleAsyncRender();
 
       const betaAction = screen.getByLabelText("Start new chat in Beta");
-      const iconPath = betaAction.querySelector("path")?.getAttribute("d") ?? "";
-      expect(iconPath.startsWith(NEW_CHAT_ICON_PREFIX)).toBe(true);
 
       await act(async () => {
         fireEvent.click(betaAction);

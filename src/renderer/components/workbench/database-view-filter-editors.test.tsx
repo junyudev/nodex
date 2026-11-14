@@ -188,7 +188,7 @@ describe("DatabaseViewAdvancedFilterEditor", () => {
     );
     expect(canonicalOptions.every((option) => option.querySelector("svg") !== null)).toBe(true);
     expect(canonicalOptions[0]?.querySelector("svg path")).not.toBeNull();
-    expect(canonicalOptions[1]?.querySelectorAll("svg rect")).toHaveLength(3);
+    expect(canonicalOptions[1]?.querySelector("svg")?.querySelectorAll("rect")).toHaveLength(3);
 
     await act(async () => {
       fireEvent.click(canonicalOptions[2]!);

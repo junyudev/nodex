@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { render } from "@/test/dom";
-import { TERMINAL_ICON_GEOMETRY } from "../../../../shared/icon-geometry";
+import { TerminalActivityIcon } from "./activity-icons";
 import {
   ChatIcon,
   CopyIcon,
@@ -41,8 +41,8 @@ describe("canonical shared icons", () => {
 
     expect(icon?.getAttribute("width")).toBe("20");
     expect(icon?.getAttribute("height")).toBe("20");
-    expect(icon?.getAttribute("viewBox")).toBe("0 0 20 20");
-    expect(icon?.getAttribute("class")).toBe("size-4");
+    expect(icon?.getAttribute("viewBox")).toBe("0 0 16 16");
+    expect(icon?.classList.contains("size-4")).toBe(true);
     expect(path?.getAttribute("fill")).toBe("currentColor");
     expect(icon?.getAttribute("aria-hidden")).toBe("true");
   });
@@ -61,13 +61,10 @@ describe("canonical shared icons", () => {
     expect(icon?.querySelector("path")?.getAttribute("fill")).toBe("currentColor");
   });
 
-  test("uses the transport-neutral terminal geometry as its render source", () => {
-    const view = render(<TerminalIcon />);
-    const paths = [...view.container.querySelectorAll("path")].map((path) =>
-      path.getAttribute("d"),
-    );
-
-    expect(paths).toEqual(TERMINAL_ICON_GEOMETRY.paths.map((path) => path.d));
+  test("uses the same terminal glyph in activities and navigation", () => {
+    const terminal = render(<TerminalIcon />);
+    const activity = render(<TerminalActivityIcon />);
+    expect(pathSignature(terminal.container)).toEqual(pathSignature(activity.container));
   });
 
   test("keeps directional actions as semantic wrappers over one glyph", () => {
@@ -78,27 +75,24 @@ describe("canonical shared icons", () => {
 
     expect(moveUp?.getAttribute("d")).toBe(ascending?.getAttribute("d"));
     expect(moveDown?.getAttribute("d")).toBe(descending?.getAttribute("d"));
-    expect(descending?.getAttribute("transform")).toBe("rotate(180 10 10)");
+    expect(ascending?.getAttribute("d")).not.toBe(descending?.getAttribute("d"));
   });
 
   test.each([
-    ["filter", FilterIcon, "0 0 20 20", 3, "M12.5 14.0049", "fill"],
-    ["list layout", ListLayoutIcon, "0 0 16 16", 6, "M3.35 3.7", "fill"],
-    ["image", ImageIcon, "0 0 24 24", 3, "M5 3h14", "stroke"],
-    ["loading", LoadingIcon, "0 0 24 24", 2, "M18 12C18", "fill"],
-  ])(
-    "preserves the reviewed %s geometry",
-    (_label, Icon, viewBox, pathCount, firstPathPrefix, paintAttribute) => {
-      const view = render(<Icon />);
-      const svg = view.container.querySelector("svg");
-      const firstPath = svg?.querySelector("path");
+    ["filter", FilterIcon, "0 0 16 16", "20"],
+    ["list layout", ListLayoutIcon, "0 0 16 16", "16"],
+    ["image", ImageIcon, "0 0 16 16", "24"],
+    ["loading", LoadingIcon, "0 0 24 24", "24"],
+  ])("preserves the %s box and currentColor paint", (_label, Icon, viewBox, boxSize) => {
+    const view = render(<Icon />);
+    const svg = view.container.querySelector("svg");
+    const firstPath = svg?.querySelector("path");
 
-      expect(svg?.getAttribute("viewBox")).toBe(viewBox);
-      expect(svg?.querySelectorAll("path")).toHaveLength(pathCount);
-      expect(firstPath?.getAttribute("d")?.startsWith(firstPathPrefix)).toBe(true);
-      expect(firstPath?.getAttribute(paintAttribute)).toBe("currentColor");
-    },
-  );
+    expect(svg?.getAttribute("viewBox")).toBe(viewBox);
+    expect(svg?.getAttribute("width")).toBe(boxSize);
+    expect(svg?.getAttribute("height")).toBe(boxSize);
+    expect(firstPath?.getAttribute("fill")).toBe("currentColor");
+  });
 
   test("keeps reset and retry as semantic names for the reviewed retry glyph", () => {
     const reset = render(<ResetIcon />);
@@ -117,23 +111,14 @@ describe("canonical shared icons", () => {
     expect(pathSignature(play.container)).not.toEqual(pathSignature(pause.container));
   });
 
-  test("draws line glyphs at the house weight so they sit beside outlined icons", () => {
+  test("keeps work-kind icons visually distinct", () => {
     const glyphs = [NoteIcon, TodoIcon, QuestionIcon, SendToChatIcon, DispatchIcon, ImportantIcon];
     const signatures = glyphs.map((Icon) => {
       const view = render(<Icon />);
-      const svg = view.container.querySelector("svg");
-      const strokes = [...view.container.querySelectorAll("path[stroke]")];
-
-      expect(svg?.getAttribute("viewBox")).toBe("0 0 20 20");
-      expect(strokes.length).toBeGreaterThan(0);
-      for (const path of strokes) {
-        expect(path.getAttribute("fill")).toBe("none");
-        expect(path.getAttribute("stroke-width")).toBe("1.33");
-        expect(path.getAttribute("stroke-linecap")).toBe("round");
-      }
       return pathSignature(view.container).join(" ");
     });
 
+    expect(signatures.every(Boolean)).toBe(true);
     expect(new Set(signatures).size).toBe(glyphs.length);
   });
 

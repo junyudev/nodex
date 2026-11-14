@@ -1,5 +1,31 @@
-import type { SVGProps } from "react";
-import { TERMINAL_ICON_GEOMETRY } from "../../../../shared/icon-geometry";
+import { EllipsisIcon } from "./customize-action-icons";
+import {
+  Terminal20Glyph,
+  Archive16Glyph,
+  CircleExclamationMark16Glyph,
+  OpenLink16Glyph,
+  ClockArrowRotateCounterclockwise16Glyph,
+  ChatBubble16Glyph,
+  ArrowLeftLg16Glyph,
+  Tag16Glyph,
+  ArrowUpMd16Glyph,
+  ArrowDownMd16Glyph,
+  Filter16Glyph,
+  InfoCircle16Glyph,
+  Eye16Glyph,
+  EyeSlash16Glyph,
+  Photo16Glyph,
+  ArrowRotateClockwise16Glyph,
+  Smartphone16Glyph,
+  Notebook16Glyph,
+  CheckmarkCircle16Glyph,
+  CircleQuestionmark16Glyph,
+  Sun16Glyph,
+  PlaySmFill16Glyph,
+} from "./outline-glyphs";
+import { CopyLightIcon, BulletListIcon, MediaPauseIcon } from "./file-viewer-icons";
+import type { ComponentType, SVGProps } from "react";
+import type { IconGlyphProps } from "./icon-glyph";
 import { IconSilhouette } from "./icon-silhouette";
 
 export type CanonicalIconProps = SVGProps<SVGSVGElement> & {
@@ -44,6 +70,33 @@ const isFilledAndStroked = (path: IconPath): boolean =>
 
 const DEFAULT_ICON_CLASS = "icon-xs shrink-0";
 
+function canonicalAriaHidden({
+  ariaHidden,
+  "aria-hidden": ariaHiddenAttribute,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+}: CanonicalIconProps) {
+  const hasAccessibleName = ariaLabel !== undefined || ariaLabelledBy !== undefined;
+  return ariaHidden ?? ariaHiddenAttribute ?? (hasAccessibleName ? undefined : true);
+}
+
+function CanonicalOutlineGlyph({
+  glyph: Glyph,
+  className,
+  ariaHidden,
+  children,
+  ...props
+}: CanonicalIconProps & { glyph: ComponentType<IconGlyphProps> }) {
+  return (
+    <Glyph
+      {...props}
+      className={className ?? DEFAULT_ICON_CLASS}
+      aria-hidden={canonicalAriaHidden({ ...props, ariaHidden })}
+      svgChildren={children}
+    />
+  );
+}
+
 function CanonicalGlyph({
   paths,
   viewBox = "0 0 20 20",
@@ -54,9 +107,6 @@ function CanonicalGlyph({
   "aria-hidden": ariaHiddenAttribute,
   ...svgProps
 }: CanonicalGlyphProps) {
-  const hasAccessibleName =
-    svgProps["aria-label"] !== undefined || svgProps["aria-labelledby"] !== undefined;
-
   // Several paths that cross are painted as one silhouette, so a translucent color stays even.
   const shapes = paths.map((path, index) => {
     if (typeof path === "string") {
@@ -89,7 +139,11 @@ function CanonicalGlyph({
       xmlns="http://www.w3.org/2000/svg"
       {...svgProps}
       className={className ?? DEFAULT_ICON_CLASS}
-      aria-hidden={ariaHidden ?? ariaHiddenAttribute ?? (hasAccessibleName ? undefined : true)}
+      aria-hidden={canonicalAriaHidden({
+        ...svgProps,
+        ariaHidden,
+        "aria-hidden": ariaHiddenAttribute,
+      })}
     >
       {paths.every(isMonochromePath) && (paths.length > 1 || paths.some(isFilledAndStroked)) ? (
         <IconSilhouette>{shapes}</IconSilhouette>
@@ -99,80 +153,6 @@ function CanonicalGlyph({
     </svg>
   );
 }
-
-const COPY_PATH =
-  "M15.1 1.785a3.065 3.065 0 0 1 3.065 3.066v6.033a3.065 3.065 0 0 1-3.064 3.064h-1.103v1.103a3.065 3.065 0 0 1-3.064 3.064H4.9a3.066 3.066 0 0 1-3.065-3.064V9.018A3.066 3.066 0 0 1 4.9 5.952h1.102V4.851a3.066 3.066 0 0 1 3.065-3.066zM4.9 7.282c-.958 0-1.735.777-1.735 1.736v6.033c0 .958.777 1.734 1.735 1.734h6.034c.957 0 1.734-.776 1.734-1.734V9.018c0-.959-.776-1.736-1.734-1.736zm4.167-4.167c-.958 0-1.735.777-1.735 1.736v1.101h3.602a3.065 3.065 0 0 1 3.064 3.066v3.6h1.103c.957 0 1.734-.776 1.734-1.734V4.85c0-.958-.777-1.735-1.734-1.736z";
-
-const MORE_ACTIONS_PATHS = [
-  "M15.6981 9.04712C16.5255 9.04712 17.1959 9.71781 17.1961 10.5452C17.1961 11.3727 16.5256 12.0442 15.6981 12.0442C14.8706 12.0442 14.2 11.3727 14.2 10.5452C14.2002 9.71781 14.8707 9.04712 15.6981 9.04712Z",
-  "M4.69806 9.04712C5.52546 9.04712 6.19691 9.71781 6.19708 10.5452C6.19708 11.3727 5.52557 12.0442 4.69806 12.0442C3.8707 12.044 3.20001 11.3726 3.20001 10.5452C3.20019 9.71792 3.87081 9.04729 4.69806 9.04712Z",
-  "M10.2003 9.04712C11.0276 9.0473 11.6982 9.71792 11.6984 10.5452C11.6984 11.3726 11.0277 12.044 10.2003 12.0442C9.37284 12.0442 8.70132 11.3727 8.70132 10.5452C8.7015 9.71781 9.37295 9.04712 10.2003 9.04712Z",
-] as const;
-
-const BACK_PATH =
-  "M8.8011 3.611C9.05912 3.44087 9.40989 3.46898 9.63703 3.69596C9.89673 3.95566 9.89673 4.37767 9.63703 4.63737L4.93977 9.33463H16.6663L16.8011 9.34831C17.1038 9.41043 17.3312 9.67859 17.3314 9.99967C17.3314 10.3209 17.1039 10.5888 16.8011 10.651L16.6663 10.6647H4.93879L9.63703 15.363L9.722 15.4674C9.89241 15.7255 9.86413 16.0761 9.63703 16.3034C9.40981 16.5306 9.05921 16.5587 8.8011 16.3883L8.69661 16.3034L2.86262 10.4704C2.60319 10.2108 2.6033 9.78962 2.86262 9.52995L8.69661 3.69596L8.8011 3.611Z";
-
-const OPEN_EXTERNAL_PATH =
-  "M11.949 3.47949C12.0997 3.46465 12.2553 3.51279 12.3709 3.62793C12.4863 3.74328 12.5338 3.89898 12.5193 4.0498C12.5206 4.06633 12.5251 4.08275 12.5252 4.09961V10.667C12.525 10.9565 12.2902 11.191 12.0007 11.1914C11.7109 11.1914 11.4755 10.9568 11.4754 10.667V5.2666L4.37184 12.376C4.16684 12.5807 3.83365 12.5808 3.62867 12.376C3.42385 12.1711 3.42396 11.8388 3.62867 11.6338L10.7332 4.52539H5.33375C5.0438 4.52539 4.80836 4.28995 4.80836 4C4.80836 3.71005 5.0438 3.47461 5.33375 3.47461H11.9002C11.9167 3.47462 11.9328 3.47822 11.949 3.47949Z";
-
-const CHAT_PATH =
-  "M13.4746 8.00098C13.4746 5.18918 11.0524 2.85938 8 2.85938C4.94756 2.85938 2.52539 5.18918 2.52539 8.00098C2.52548 9.13438 2.98018 9.88391 3.55176 11.0156C3.62017 11.1511 3.63938 11.3067 3.60645 11.4551L3.34277 12.6416L4.62598 12.3096L4.74023 12.29C4.81669 12.2841 4.89333 12.2922 4.9668 12.3125L5.0752 12.3525L5.44238 12.5225C6.29248 12.9002 7.09158 13.1426 8 13.1426C11.0523 13.1426 13.4744 10.8126 13.4746 8.00098ZM14.5254 8.00098C14.5252 11.4483 11.5749 14.1924 8 14.1924C6.78477 14.1924 5.75932 13.8299 4.75488 13.3604L2.9873 13.8193C2.5113 13.9426 2.07317 13.5191 2.17969 13.0391L2.5498 11.3643C2.03641 10.3607 1.4747 9.38268 1.47461 8.00098C1.47461 4.55354 4.42502 1.80859 8 1.80859C11.575 1.80859 14.5254 4.55354 14.5254 8.00098Z";
-
-const DATABASE_LABEL_PATHS = [
-  "M12 11.5V13H5.132v-1.5zm1.5-1.5V6a1.5 1.5 0 0 0-1.346-1.492L12 4.5H5.133a.5.5 0 0 0-.303.103l-.08.076-2.382 2.834a.5.5 0 0 0-.11.234l-.008.087v.331a.5.5 0 0 0 .118.321l2.382 2.835a.5.5 0 0 0 .383.179V13l-.22-.012a2 2 0 0 1-1.16-.54l-.15-.16L1.218 9.45a2 2 0 0 1-.46-1.11L.75 8.165v-.331a2 2 0 0 1 .363-1.147l.106-.14 2.383-2.834a2 2 0 0 1 1.312-.701L5.134 3H12a3 3 0 0 1 3 3v4a3 3 0 0 1-3.002 3v-1.5a1.5 1.5 0 0 0 1.494-1.347z",
-  "M5.5 8a1 1 0 1 1 2 0 1 1 0 0 1-2 0",
-] as const;
-
-const DIRECTIONAL_ARROW_PATH =
-  "M9.33467 16.6663V4.93978L4.6374 9.63704L4.1667 9.16634L3.69599 8.69661L9.52998 2.86263L9.63447 2.77767C9.8925 2.60753 10.2433 2.63564 10.4704 2.86263L16.3034 8.69661L16.3884 8.80111C16.5588 9.05922 16.5306 9.40982 16.3034 9.63704C16.0762 9.86414 15.7255 9.89242 15.4675 9.722L15.363 9.63704L10.6647 4.9388V16.6663C10.6647 17.0336 10.367 17.3314 9.99971 17.3314C9.63259 17.3312 9.33467 17.0335 9.33467 16.6663ZM4.6374 9.63704C4.3777 9.89674 3.95569 9.89674 3.69599 9.63704C3.43657 9.37744 3.43668 8.95628 3.69599 8.69661L4.6374 9.63704Z";
-
-const DIRECTIONAL_ARROW_PATHS = [{ d: DIRECTIONAL_ARROW_PATH }] as const;
-const DIRECTIONAL_ARROW_DOWN_PATHS = [
-  { d: DIRECTIONAL_ARROW_PATH, transform: "rotate(180 10 10)" },
-] as const;
-
-const FILTER_PATHS = [
-  "M12.5 14.0049C12.8673 14.0049 13.165 14.3027 13.165 14.6699C13.165 15.0372 12.8673 15.335 12.5 15.335H7.5C7.13273 15.335 6.83496 15.0372 6.83496 14.6699C6.83496 14.3027 7.13273 14.0049 7.5 14.0049H12.5Z",
-  "M15 9.33496C15.3673 9.33496 15.665 9.63273 15.665 10C15.665 10.3673 15.3673 10.665 15 10.665H5C4.63273 10.665 4.33496 10.3673 4.33496 10C4.33496 9.63273 4.63273 9.33496 5 9.33496H15Z",
-  "M17.5 4.66504C17.8673 4.66504 18.165 4.96281 18.165 5.33008C18.165 5.69735 17.8673 5.99512 17.5 5.99512H2.5C2.13273 5.99512 1.83496 5.69735 1.83496 5.33008C1.83496 4.96281 2.13273 4.66504 2.5 4.66504H17.5Z",
-] as const;
-
-const LIST_LAYOUT_PATHS = [
-  "M3.35 3.7a.8.8 0 1 1 0 1.6a.8.8 0 1 1 0-1.6Z",
-  "M3.35 7.2a.8.8 0 1 1 0 1.6a.8.8 0 1 1 0-1.6Z",
-  "M3.35 10.7a.8.8 0 1 1 0 1.6a.8.8 0 1 1 0-1.6Z",
-  "M6.125 3.975h7.05a.525.525 0 0 1 0 1.05h-7.05a.525.525 0 0 1 0-1.05Z",
-  "M6.125 7.475h7.05a.525.525 0 0 1 0 1.05h-7.05a.525.525 0 0 1 0-1.05Z",
-  "M6.125 10.975h7.05a.525.525 0 0 1 0 1.05h-7.05a.525.525 0 0 1 0-1.05Z",
-] as const;
-
-const INFO_PATHS = [
-  {
-    d: "M10 1.75C14.5563 1.75 18.25 5.44365 18.25 10C18.25 14.5563 14.5563 18.25 10 18.25C5.44365 18.25 1.75 14.5563 1.75 10C1.75 5.44365 5.44365 1.75 10 1.75ZM10 3.25C6.27208 3.25 3.25 6.27208 3.25 10C3.25 13.7279 6.27208 16.75 10 16.75C13.7279 16.75 16.75 13.7279 16.75 10C16.75 6.27208 13.7279 3.25 10 3.25Z",
-    fillRule: "evenodd",
-    clipRule: "evenodd",
-  },
-  "M9.25 8.25H10.75V14H9.25V8.25ZM10 5.25C10.5523 5.25 11 5.69772 11 6.25C11 6.80228 10.5523 7.25 10 7.25C9.44772 7.25 9 6.80228 9 6.25C9 5.69772 9.44772 5.25 10 5.25Z",
-] as const;
-
-const HISTORY_PATH =
-  "M10 2.25C14.2802 2.25 17.75 5.71979 17.75 10C17.75 14.2802 14.2802 17.75 10 17.75C6.71706 17.75 3.90026 15.7115 2.736 12.8125H4.374C5.38877 14.8245 7.47908 16.25 10 16.25C13.4518 16.25 16.25 13.4518 16.25 10C16.25 6.54822 13.4518 3.75 10 3.75C7.47287 3.75 5.37809 5.18254 4.36618 7.203H6.25V8.703H2.25V4.703H3.75V6.073C5.15051 3.76289 7.56818 2.25 10 2.25ZM9.25 5.75H10.75V9.688L13.237 12.175L12.175 13.237L9.25 10.312V5.75Z";
-
-const VISIBILITY_PATHS = [
-  {
-    d: "M10 4C15.4 4 18.5 9.99999 18.5 9.99999C18.5 9.99999 15.4 16 10 16C4.6 16 1.5 9.99999 1.5 9.99999C1.5 9.99999 4.6 4 10 4ZM10 5.5C6.623 5.5 4.257 8.633 3.241 10C4.257 11.367 6.623 14.5 10 14.5C13.377 14.5 15.743 11.367 16.759 10C15.743 8.633 13.377 5.5 10 5.5Z",
-    fillRule: "evenodd",
-    clipRule: "evenodd",
-  },
-  "M10 7.25C11.5188 7.25 12.75 8.48122 12.75 10C12.75 11.5188 11.5188 12.75 10 12.75C8.48122 12.75 7.25 11.5188 7.25 10C7.25 8.48122 8.48122 7.25 10 7.25Z",
-] as const;
-
-const VISIBILITY_OFF_PATHS = [
-  ...VISIBILITY_PATHS,
-  {
-    d: "M3.03 2.97L17.03 16.97L15.97 18.03L1.97 4.03L3.03 2.97Z",
-  },
-] as const;
 
 const LOADING_PATHS = [
   {
@@ -184,129 +164,73 @@ const LOADING_PATHS = [
   },
 ] as const;
 
-const IMAGE_PATHS = [
-  "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z",
-  "M11 9a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z",
-  "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21",
-].map((d) => ({
-  d,
-  fill: "none",
-  stroke: "currentColor",
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-  strokeWidth: 2,
-}));
-
-const RETRY_PATH =
-  "M16.4183 9.99967C16.4181 6.45518 13.5448 3.58188 10.0003 3.58171C7.96895 3.58171 6.15935 4.52712 4.98273 6.00163H7.50031L7.6341 6.0153C7.93707 6.07735 8.16535 6.34535 8.16535 6.66667C8.16535 6.98799 7.93707 7.25598 7.6341 7.31803L7.50031 7.33171H3.75031C3.73055 7.33171 3.71104 7.32656 3.69172 7.32487C3.68913 7.32464 3.68649 7.32513 3.68391 7.32487C3.64304 7.32082 3.60409 7.31254 3.56574 7.30143C3.56188 7.30031 3.55788 7.2997 3.55402 7.2985C3.51366 7.286 3.47546 7.27023 3.43879 7.25065L3.43586 7.24967C3.43444 7.24891 3.43337 7.24752 3.43195 7.24675C3.35757 7.20587 3.29219 7.15262 3.23859 7.08757C3.23505 7.08329 3.23128 7.07923 3.22785 7.07487C3.20549 7.04631 3.1858 7.01609 3.16828 6.98405C3.16491 6.97791 3.16169 6.97173 3.15852 6.9655C3.14408 6.93698 3.13265 6.90732 3.12238 6.87663C3.11744 6.86205 3.11264 6.84757 3.10871 6.83268C3.10316 6.81117 3.09843 6.78955 3.09504 6.76725C3.09108 6.74233 3.08833 6.71738 3.08723 6.69206C3.08691 6.68361 3.08527 6.67519 3.08527 6.66667V2.91667C3.08527 2.5494 3.38304 2.25163 3.75031 2.25163C4.11743 2.2518 4.41535 2.54951 4.41535 2.91667V4.62956C5.82462 3.16447 7.80565 2.25163 10.0003 2.25163C14.2793 2.2518 17.7482 5.72065 17.7484 9.99967C17.7484 14.2789 14.2794 17.7485 10.0003 17.7487C6.02899 17.7487 2.75629 14.7612 2.305 10.9108L2.96516 10.8337L3.62531 10.7555C3.99895 13.9437 6.7115 16.4186 10.0003 16.4186C13.5449 16.4184 16.4183 13.5443 16.4183 9.99967ZM2.88801 10.1725C3.25252 10.13 3.58237 10.3911 3.62531 10.7555L2.305 10.9108C2.26225 10.546 2.52323 10.2153 2.88801 10.1725Z";
-
-const PLAY_PATH =
-  "M6 14.7227V5.27693C6 4.29057 7.08894 3.6928 7.9211 4.22235L15.3428 8.94526C16.1147 9.43645 16.1147 10.5632 15.3428 11.0544L7.92109 15.7773C7.08894 16.3069 6 15.7091 6 14.7227Z";
-
-const PAUSE_PATHS = [
-  "M6 4.75C6 4.33579 6.33579 4 6.75 4H8.25C8.66421 4 9 4.33579 9 4.75V15.25C9 15.6642 8.66421 16 8.25 16H6.75C6.33579 16 6 15.6642 6 15.25V4.75Z",
-  "M11 4.75C11 4.33579 11.3358 4 11.75 4H13.25C13.6642 4 14 4.33579 14 4.75V15.25C14 15.6642 13.6642 16 13.25 16H11.75C11.3358 16 11 15.6642 11 15.25V4.75Z",
-] as const;
-
 export function CopyIcon(props: CanonicalIconProps) {
-  return (
-    <CanonicalGlyph
-      {...props}
-      paths={[{ d: COPY_PATH, fillRule: "evenodd", clipRule: "evenodd" }]}
-    />
-  );
+  return <CanonicalOutlineGlyph glyph={CopyLightIcon} width={20} height={20} {...props} />;
 }
 
 export function MoreActionsIcon(props: CanonicalIconProps) {
-  return (
-    <CanonicalGlyph
-      {...props}
-      width={21}
-      height={21}
-      viewBox="0 0 21 21"
-      paths={MORE_ACTIONS_PATHS}
-    />
-  );
+  return <CanonicalOutlineGlyph glyph={EllipsisIcon} {...props} width={21} height={21} />;
 }
 
 export function TerminalIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={TERMINAL_ICON_GEOMETRY.paths} />;
+  return <CanonicalOutlineGlyph glyph={Terminal20Glyph} {...props} />;
 }
 
 export function BackIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={[BACK_PATH]} />;
+  return <CanonicalOutlineGlyph glyph={ArrowLeftLg16Glyph} width={20} height={20} {...props} />;
 }
 
 export function OpenExternalIcon(props: CanonicalIconProps) {
-  return (
-    <CanonicalGlyph
-      {...props}
-      width={16}
-      height={16}
-      viewBox="0 0 16 16"
-      paths={[OPEN_EXTERNAL_PATH]}
-    />
-  );
+  return <CanonicalOutlineGlyph glyph={OpenLink16Glyph} {...props} width={16} height={16} />;
 }
 
 /** A chat's identity wherever one appears: tabs, rows, mentions, sources, and activity. */
 export function ChatIcon(props: CanonicalIconProps) {
-  return (
-    <CanonicalGlyph {...props} width={16} height={16} viewBox="0 0 16 16" paths={[CHAT_PATH]} />
-  );
+  return <CanonicalOutlineGlyph glyph={ChatBubble16Glyph} {...props} width={16} height={16} />;
 }
 
 export function DatabaseLabelIcon(props: CanonicalIconProps) {
-  return (
-    <CanonicalGlyph
-      {...props}
-      width={16}
-      height={16}
-      viewBox="0 0 16 16"
-      paths={DATABASE_LABEL_PATHS}
-    />
-  );
+  return <CanonicalOutlineGlyph glyph={Tag16Glyph} {...props} width={16} height={16} />;
 }
 
 export function SortAscendingIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={DIRECTIONAL_ARROW_PATHS} />;
+  return <MoveUpIcon {...props} />;
 }
 
 export function SortDescendingIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={DIRECTIONAL_ARROW_DOWN_PATHS} />;
+  return <MoveDownIcon {...props} />;
 }
 
 export function MoveUpIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={DIRECTIONAL_ARROW_PATHS} />;
+  return <CanonicalOutlineGlyph glyph={ArrowUpMd16Glyph} width={20} height={20} {...props} />;
 }
 
 export function MoveDownIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={DIRECTIONAL_ARROW_DOWN_PATHS} />;
+  return <CanonicalOutlineGlyph glyph={ArrowDownMd16Glyph} width={20} height={20} {...props} />;
 }
 
 export function FilterIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={FILTER_PATHS} />;
+  return <CanonicalOutlineGlyph glyph={Filter16Glyph} width={20} height={20} {...props} />;
 }
 
 /** Drawn on the 16px toolbar grid to pair with the Board layout glyph. */
 export function ListLayoutIcon(props: CanonicalIconProps) {
-  return (
-    <CanonicalGlyph
-      {...props}
-      width={16}
-      height={16}
-      viewBox="0 0 16 16"
-      paths={LIST_LAYOUT_PATHS}
-    />
-  );
+  return <CanonicalOutlineGlyph glyph={BulletListIcon} {...props} width={16} height={16} />;
 }
 
 export function InfoIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={INFO_PATHS} />;
+  return <CanonicalOutlineGlyph glyph={InfoCircle16Glyph} width={20} height={20} {...props} />;
 }
 
 export function HistoryIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={[HISTORY_PATH]} />;
+  return (
+    <CanonicalOutlineGlyph
+      glyph={ClockArrowRotateCounterclockwise16Glyph}
+      width={20}
+      height={20}
+      {...props}
+    />
+  );
 }
 
 /**
@@ -320,21 +244,21 @@ export function LoadingIcon(props: CanonicalIconProps) {
 }
 
 export function VisibilityIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={VISIBILITY_PATHS} />;
+  return <CanonicalOutlineGlyph glyph={Eye16Glyph} width={20} height={20} {...props} />;
 }
 
 export function VisibilityOffIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={VISIBILITY_OFF_PATHS} />;
+  return <CanonicalOutlineGlyph glyph={EyeSlash16Glyph} width={20} height={20} {...props} />;
 }
 
 export function ImageIcon(props: CanonicalIconProps) {
-  return (
-    <CanonicalGlyph {...props} width={24} height={24} viewBox="0 0 24 24" paths={IMAGE_PATHS} />
-  );
+  return <CanonicalOutlineGlyph glyph={Photo16Glyph} {...props} width={24} height={24} />;
 }
 
 export function RetryIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={[RETRY_PATH]} />;
+  return (
+    <CanonicalOutlineGlyph glyph={ArrowRotateClockwise16Glyph} width={20} height={20} {...props} />
+  );
 }
 
 export function ResetIcon(props: CanonicalIconProps) {
@@ -342,11 +266,11 @@ export function ResetIcon(props: CanonicalIconProps) {
 }
 
 export function PlayIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={[PLAY_PATH]} />;
+  return <CanonicalOutlineGlyph glyph={PlaySmFill16Glyph} width={20} height={20} {...props} />;
 }
 
 export function PauseIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={PAUSE_PATHS} />;
+  return <CanonicalOutlineGlyph glyph={MediaPauseIcon} width={20} height={20} {...props} />;
 }
 
 /** A line glyph at the house weight: a 1.33 stroke on the 20px grid with round ends. */
@@ -363,24 +287,6 @@ function lineGlyphPaths(...d: readonly string[]) {
 
 // The kinds of a captured thought share one weight. Todo and question, both asking for work,
 // share a 14px circle; a note is a 13px sheet, which reads as the same size beside them.
-const KIND_CIRCLE = "M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0z";
-
-const NOTE_PATHS = lineGlyphPaths(
-  "M16.5 11.5V6.5a3 3 0 0 0-3-3h-7a3 3 0 0 0-3 3v7a3 3 0 0 0 3 3h5z",
-  "M11.5 16.5v-2.5a2.5 2.5 0 0 1 2.5-2.5h2.5",
-);
-
-const MOBILE_PATHS = lineGlyphPaths(
-  "M7 3h6a1.5 1.5 0 0 1 1.5 1.5v11A1.5 1.5 0 0 1 13 17H7a1.5 1.5 0 0 1-1.5-1.5v-11A1.5 1.5 0 0 1 7 3z",
-  "M9.25 14.5h1.5",
-);
-
-const TODO_PATHS = lineGlyphPaths(KIND_CIRCLE, "M6.75 10.25 9 12.5l4.25-4.75");
-
-const QUESTION_PATHS = [
-  ...lineGlyphPaths(KIND_CIRCLE, "M7.9 7.7a2.15 2.15 0 0 1 4.2.55c0 1.45-2.1 1.7-2.1 3.1"),
-  "M10.85 13.45a.85.85 0 1 1-1.7 0 .85.85 0 0 1 1.7 0z",
-];
 
 const SEND_TO_CHAT_PATHS = lineGlyphPaths(
   "M16.6 3.4 11.7 16.6a.6.6 0 0 1-1.1.03L8.4 11.6 3.37 9.4a.6.6 0 0 1 .03-1.1z",
@@ -415,22 +321,24 @@ export function ImportantFilledIcon(props: CanonicalIconProps) {
 
 /** A phone paired with this Profile. */
 export function MobileIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={MOBILE_PATHS} />;
+  return <CanonicalOutlineGlyph glyph={Smartphone16Glyph} width={20} height={20} {...props} />;
 }
 
 /** A thought kept for later: a sheet with its corner turned. */
 export function NoteIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={NOTE_PATHS} />;
+  return <CanonicalOutlineGlyph glyph={Notebook16Glyph} width={20} height={20} {...props} />;
 }
 
 /** Something to do: a check centered in its circle. */
 export function TodoIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={TODO_PATHS} />;
+  return <CanonicalOutlineGlyph glyph={CheckmarkCircle16Glyph} width={20} height={20} {...props} />;
 }
 
 /** Something to answer: a question mark centered in its circle. */
 export function QuestionIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={QUESTION_PATHS} />;
+  return (
+    <CanonicalOutlineGlyph glyph={CircleQuestionmark16Glyph} width={20} height={20} {...props} />
+  );
 }
 
 export function SendToChatIcon(props: CanonicalIconProps) {
@@ -443,14 +351,7 @@ export function DispatchIcon(props: CanonicalIconProps) {
 }
 
 export function SunIcon(props: CanonicalIconProps) {
-  return (
-    <CanonicalGlyph
-      {...props}
-      paths={[
-        "M9.33447 18.3336V16.6666C9.33447 16.2995 9.63239 16.0018 9.99951 16.0016C10.3668 16.0016 10.6646 16.2994 10.6646 16.6666V18.3336C10.6644 18.7007 10.3667 18.9987 9.99951 18.9987C9.6325 18.9985 9.33465 18.7006 9.33447 18.3336ZM5.28564 14.7145L5.75635 15.1842L4.57764 16.3629C4.31799 16.6225 3.89691 16.6224 3.63721 16.3629C3.37752 16.1032 3.37753 15.6822 3.63721 15.4225L4.81592 14.2438L5.28564 14.7145ZM16.3628 15.4225C16.6223 15.6822 16.6224 16.1033 16.3628 16.3629C16.1032 16.6226 15.6821 16.6224 15.4224 16.3629L16.3628 15.4225ZM16.3628 15.4225L15.8921 15.8922L15.4224 16.3629L14.2437 15.1842L14.7144 14.7145L15.1841 14.2438L16.3628 15.4225ZM4.81592 14.2438C5.07563 13.9843 5.49671 13.9841 5.75635 14.2438C6.01582 14.5034 6.01581 14.9245 5.75635 15.1842L4.81592 14.2438ZM14.2437 14.2438C14.5033 13.9841 14.9244 13.9841 15.1841 14.2438L14.2437 15.1842C13.984 14.9245 13.984 14.5035 14.2437 14.2438ZM12.6685 9.99963C12.6683 8.5261 11.4731 7.33167 9.99951 7.33167C8.52609 7.33184 7.33172 8.52621 7.33154 9.99963C7.33154 11.4732 8.52598 12.6684 9.99951 12.6686C11.4732 12.6686 12.6685 11.4733 12.6685 9.99963ZM3.3335 9.33459L3.46729 9.34827C3.77019 9.41027 3.99838 9.67844 3.99854 9.99963C3.99854 10.3209 3.77023 10.5889 3.46729 10.651L3.3335 10.6647H1.6665C1.29923 10.6647 1.00146 10.3669 1.00146 9.99963C1.00164 9.63251 1.29934 9.33459 1.6665 9.33459H3.3335ZM18.3335 9.33459L18.4673 9.34827C18.7702 9.41027 18.9984 9.67844 18.9985 9.99963C18.9985 10.3209 18.7702 10.5889 18.4673 10.651L18.3335 10.6647H16.6665C16.2992 10.6647 16.0015 10.3669 16.0015 9.99963C16.0016 9.63251 16.2993 9.33459 16.6665 9.33459H18.3335ZM5.75635 4.81604C6.01571 5.07577 6.01593 5.49688 5.75635 5.75647C5.49676 6.01605 5.07564 6.01583 4.81592 5.75647L5.75635 4.81604ZM15.1841 5.75647C14.9244 6.01594 14.5033 6.01595 14.2437 5.75647C13.984 5.49683 13.9841 5.07575 14.2437 4.81604L15.1841 5.75647ZM3.63721 3.63733C3.86449 3.41005 4.21501 3.38183 4.47314 3.55237L4.57764 3.63733L5.75635 4.81604L5.28564 5.28577L4.81592 5.75647L3.63721 4.57776L3.55225 4.47327C3.3817 4.21513 3.40992 3.86461 3.63721 3.63733ZM15.4224 3.63733C15.6821 3.37765 16.1031 3.37764 16.3628 3.63733C16.6223 3.89703 16.6224 4.31811 16.3628 4.57776L15.1841 5.75647L14.7144 5.28577L14.2437 4.81604L15.4224 3.63733ZM9.33447 3.33362V1.66663C9.33447 1.29947 9.63239 1.00176 9.99951 1.00159C10.3668 1.00159 10.6646 1.29936 10.6646 1.66663V3.33362C10.6644 3.70074 10.3667 3.99866 9.99951 3.99866C9.6325 3.99848 9.33465 3.70063 9.33447 3.33362ZM13.9985 9.99963C13.9985 12.2079 12.2077 13.9987 9.99951 13.9987C7.79144 13.9985 6.00146 12.2077 6.00146 9.99963C6.00164 7.79167 7.79155 6.00176 9.99951 6.00159C12.2076 6.00159 13.9984 7.79156 13.9985 9.99963Z",
-      ]}
-    />
-  );
+  return <CanonicalOutlineGlyph glyph={Sun16Glyph} width={20} height={20} {...props} />;
 }
 
 export function MoonIcon(props: CanonicalIconProps) {
@@ -465,40 +366,11 @@ export function MoonIcon(props: CanonicalIconProps) {
 }
 
 /* Glyphs drawn on a 16px grid for dense notification surfaces, where scaled 20px artwork reads light. */
-const ARCHIVE_16_PATHS: readonly IconPath[] = [
-  "M9.33423 8.14124C9.6238 8.14167 9.85864 8.37695 9.85864 8.66663C9.85864 8.9563 9.6238 9.19158 9.33423 9.19202H6.66724C6.37729 9.19202 6.14185 8.95658 6.14185 8.66663C6.14185 8.37668 6.37729 8.14124 6.66724 8.14124H9.33423Z",
-  {
-    d: "M12.3333 2.14124C13.3595 2.14124 14.1915 2.97346 14.1917 3.99963V4.66663C14.1917 5.11035 14.0352 5.51699 13.7756 5.83655V11.3336C13.7755 12.7279 12.6445 13.8589 11.2502 13.859H4.75024C3.35584 13.859 2.22504 12.728 2.22485 11.3336V5.83752C1.96478 5.51781 1.80786 5.11082 1.80786 4.66663V3.99963C1.80804 2.97356 2.64019 2.14141 3.66626 2.14124H12.3333ZM12.7249 6.48206C12.5985 6.50918 12.4677 6.52502 12.3333 6.52502H3.66626C3.53214 6.525 3.4017 6.50907 3.27563 6.48206V11.3336C3.27582 12.1481 3.93574 12.8082 4.75024 12.8082H11.2502C12.0646 12.8081 12.7247 12.148 12.7249 11.3336V6.48206ZM3.66626 3.19202C3.22009 3.19219 2.85882 3.55346 2.85864 3.99963V4.66663C2.85864 4.94388 2.99856 5.18793 3.21118 5.33362H3.27563V5.37366C3.39145 5.43793 3.5244 5.47516 3.66626 5.47522H12.3333C12.4754 5.47522 12.6088 5.43811 12.7249 5.37366V5.33362H12.7903C13.0026 5.18786 13.1418 4.94346 13.1418 4.66663V3.99963C13.1417 3.55335 12.7796 3.19202 12.3333 3.19202H3.66626Z",
-    fillRule: "evenodd",
-    clipRule: "evenodd",
-    fill: "currentColor",
-  },
-];
 const CLOSE_16_PATHS: readonly IconPath[] = [
   "M10.9621 4.29539C11.167 4.09057 11.4992 4.09076 11.7043 4.29539C11.9093 4.50039 11.9092 4.83255 11.7043 5.03758L8.74235 7.99949L11.7052 10.9624C11.9098 11.1673 11.9097 11.4996 11.7052 11.7046C11.5003 11.9095 11.1681 11.9093 10.9631 11.7046L8.00016 8.74168L5.03727 11.7046C4.83222 11.9093 4.5 11.9095 4.29509 11.7046C4.09054 11.4996 4.09051 11.1673 4.29509 10.9624L7.25798 7.99949L4.29606 5.03758C4.09107 4.83255 4.09105 4.5004 4.29606 4.29539C4.50111 4.09079 4.83336 4.09054 5.03825 4.29539L8.00016 7.2573L10.9621 4.29539Z",
 ];
-const INFO_CIRCLE_16_PATHS: readonly IconPath[] = [
-  "M8 7.48633C8.28351 7.48633 8.51367 7.71649 8.51367 8V10.667C8.5135 10.9503 8.2834 11.1797 8 11.1797C7.7166 11.1797 7.4865 10.9503 7.48633 10.667V8C7.48633 7.71649 7.71649 7.48633 8 7.48633Z",
-  "M8 4.90137C8.37814 4.9015 8.68544 5.20779 8.68555 5.58594C8.68528 5.96395 8.37804 6.27135 8 6.27148C7.62194 6.27138 7.31569 5.96396 7.31543 5.58594C7.31554 5.20778 7.62184 4.90147 8 4.90137Z",
-  {
-    d: "M8 1.48633C11.5972 1.48633 14.5137 4.40279 14.5137 8C14.5137 11.5972 11.5972 14.5137 8 14.5137C4.40279 14.5137 1.48633 11.5972 1.48633 8C1.48633 4.40279 4.40279 1.48633 8 1.48633ZM8 2.51367C4.9698 2.51367 2.51367 4.9698 2.51367 8C2.51367 11.0302 4.9698 13.4863 8 13.4863C11.0302 13.4863 13.4863 11.0302 13.4863 8C13.4863 4.9698 11.0302 2.51367 8 2.51367Z",
-    fillRule: "evenodd",
-    clipRule: "evenodd",
-    fill: "currentColor",
-  },
-];
 const SUCCESS_CIRCLE_16_PATHS: readonly IconPath[] = [
   "M9.82617 5.80469C9.98754 5.56401 10.3139 5.49907 10.5547 5.66016C10.795 5.82162 10.8602 6.14803 10.6992 6.38867L7.98633 10.4346C7.70834 10.8488 7.11691 10.8958 6.77637 10.5312L5.35352 9.00684C5.15579 8.7949 5.16712 8.46247 5.37891 8.26465C5.59087 8.06696 5.92331 8.07818 6.12109 8.29004L7.30664 9.56152L9.82617 5.80469Z",
-  {
-    d: "M8 1.47461C11.6037 1.47461 14.5254 4.39634 14.5254 8C14.5254 11.6037 11.6037 14.5254 8 14.5254C4.39634 14.5254 1.47461 11.6037 1.47461 8C1.47461 4.39634 4.39634 1.47461 8 1.47461ZM8 2.52539C4.97624 2.52539 2.52539 4.97624 2.52539 8C2.52539 11.0238 4.97624 13.4746 8 13.4746C11.0238 13.4746 13.4746 11.0238 13.4746 8C13.4746 4.97624 11.0238 2.52539 8 2.52539Z",
-    fillRule: "evenodd",
-    clipRule: "evenodd",
-    fill: "currentColor",
-  },
-];
-const ALERT_CIRCLE_16_PATHS: readonly IconPath[] = [
-  "M8.08398 9.30859C8.49579 9.35064 8.81726 9.69822 8.81738 10.1211C8.81738 10.5724 8.45123 10.9383 8 10.9385C7.57705 10.9384 7.22945 10.617 7.1875 10.2051L7.18262 10.1211L7.1875 10.0381C7.22923 9.62595 7.57689 9.30383 8 9.30371L8.08398 9.30859Z",
-  "M8 5.06152C8.28995 5.06152 8.52539 5.29696 8.52539 5.58691V7.75391C8.52522 8.04371 8.28984 8.27832 8 8.27832C7.71016 8.27832 7.47478 8.04371 7.47461 7.75391V5.58691C7.47461 5.29696 7.71005 5.06152 8 5.06152Z",
   {
     d: "M8 1.47461C11.6037 1.47461 14.5254 4.39634 14.5254 8C14.5254 11.6037 11.6037 14.5254 8 14.5254C4.39634 14.5254 1.47461 11.6037 1.47461 8C1.47461 4.39634 4.39634 1.47461 8 1.47461ZM8 2.52539C4.97624 2.52539 2.52539 4.97624 2.52539 8C2.52539 11.0238 4.97624 13.4746 8 13.4746C11.0238 13.4746 13.4746 11.0238 13.4746 8C13.4746 4.97624 11.0238 2.52539 8 2.52539Z",
     fillRule: "evenodd",
@@ -515,7 +387,7 @@ function Glyph16({
 }
 
 export function Archive16Icon(props: CanonicalIconProps) {
-  return <Glyph16 {...props} paths={ARCHIVE_16_PATHS} />;
+  return <CanonicalOutlineGlyph glyph={Archive16Glyph} {...props} width={16} height={16} />;
 }
 
 export function Close16Icon(props: CanonicalIconProps) {
@@ -523,7 +395,7 @@ export function Close16Icon(props: CanonicalIconProps) {
 }
 
 export function InfoCircle16Icon(props: CanonicalIconProps) {
-  return <Glyph16 {...props} paths={INFO_CIRCLE_16_PATHS} />;
+  return <CanonicalOutlineGlyph glyph={InfoCircle16Glyph} {...props} width={16} height={16} />;
 }
 
 export function SuccessCircle16Icon(props: CanonicalIconProps) {
@@ -531,5 +403,7 @@ export function SuccessCircle16Icon(props: CanonicalIconProps) {
 }
 
 export function AlertCircle16Icon(props: CanonicalIconProps) {
-  return <Glyph16 {...props} paths={ALERT_CIRCLE_16_PATHS} />;
+  return (
+    <CanonicalOutlineGlyph glyph={CircleExclamationMark16Glyph} {...props} width={16} height={16} />
+  );
 }

@@ -38,10 +38,8 @@ describe("image-editor semantic icons", () => {
     expect(svg?.getAttribute("width")).toBe("20");
     expect(svg?.getAttribute("height")).toBe("20");
     expect(svg?.getAttribute("viewBox")).toBe("0 0 20 20");
-    expect(svg?.getAttribute("fill")).toBe("currentColor");
+    expect(svg?.querySelector("path")?.getAttribute("fill")).toBe("currentColor");
     expect(svg?.getAttribute("aria-hidden")).toBe("true");
-    expect(svg?.querySelectorAll("path")).toHaveLength(1);
-    expect(svg?.querySelector("path")?.getAttribute("d")?.length).toBeGreaterThan(300);
   });
 
   test("keeps each aspect option visually distinct", () => {
@@ -68,8 +66,10 @@ describe("image-editor semantic icons", () => {
     expect(focusedSvg?.getAttribute("viewBox")).toBe("0 0 16 16");
     expect(focusedSvg?.querySelector("g")?.getAttribute("transform")).toBe("translate(1.468 2.11)");
     expect(focusedSvg?.querySelectorAll("path")).toHaveLength(1);
-    expect(canvasSvg?.querySelector("g")?.getAttribute("transform")).toBe("translate(1.516 1.516)");
-    expect(canvasSvg?.querySelectorAll("path")).toHaveLength(4);
+    expect(canvasSvg?.getAttribute("viewBox")).toBe("0 0 16 16");
+    expect(canvasSvg?.querySelector("path")?.getAttribute("d")).not.toBe(
+      focusedSvg?.querySelector("path")?.getAttribute("d"),
+    );
   });
 
   test("renders tab, comment, erase, background, resize, history, and selection identities", () => {
@@ -83,9 +83,10 @@ describe("image-editor semantic icons", () => {
     const redo = render(<ImageRedoIcon />).container.querySelector("svg");
     const select = render(<ImageMultiSelectIcon />).container.querySelector("svg");
 
+    expect(tab?.getAttribute("width")).toBe("24");
     expect(tab?.getAttribute("viewBox")).toBe("0 0 24 24");
     expect(tab?.querySelectorAll("path")).toHaveLength(3);
-    expect(comment?.querySelectorAll("path")).toHaveLength(2);
+    expect(comment?.querySelector("path")?.getAttribute("fill")).toBe("currentColor");
     expect(erase?.getAttribute("viewBox")).toBe("0 0 20 20");
     expect(erase?.querySelector("path")?.getAttribute("fill-rule")).toBe("evenodd");
     expect(removeBackground?.getAttribute("viewBox")).toBe("0 0 20 20");
@@ -97,8 +98,9 @@ describe("image-editor semantic icons", () => {
       "translate(2 2) scale(1.25)",
     );
     expect(resize?.querySelector("path")?.getAttribute("fill-rule")).toBe("evenodd");
-    expect(undo?.querySelectorAll("path")).toHaveLength(1);
-    expect(redo?.getAttribute("class")).toContain("-scale-x-100");
+    expect(redo?.querySelector("path")?.getAttribute("d")).not.toBe(
+      undo?.querySelector("path")?.getAttribute("d"),
+    );
     expect(select?.getAttribute("viewBox")).toBe("0 0 13 13");
   });
 

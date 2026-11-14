@@ -303,7 +303,7 @@ const NFM_TURN_INTO_DEFINITION_BY_KEY = new Map(
 function getNfmSlashMenuItemIcon(key: NfmSlashMenuItemKey, turnIntoKey?: NfmTurnIntoBlockKey) {
   if (turnIntoKey) return <NfmTurnIntoBlockIcon targetKey={turnIntoKey} />;
   if (key === "emoji") return <TextActionReactionIcon />;
-  if (key === "divider") return <Minus className="size-5" />;
+  if (key === "divider") return <Minus size={20} className="size-5" />;
   if (key === "table") return <NfmTableBlockIcon />;
   if (key === "image") return <ImageBlockIcon />;
   if (key === "canvas") return <CanvasIcon className="size-5" />;

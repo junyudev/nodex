@@ -31,6 +31,8 @@ import {
   PageIcon,
   PanelRightHiddenIcon,
   PanelRightVisibleIcon,
+  SidebarHiddenIcon,
+  SidebarVisibleIcon,
   PendingWorktreeLocalIcon,
   QueueFailureIcon,
   QueuePauseIcon,
@@ -112,8 +114,8 @@ describe("file and page identity icons", () => {
     const fileSvg = fileView.container.querySelector("svg");
     const pageSvg = pageView.container.querySelector("svg");
 
-    expect(fileSvg?.getAttribute("viewBox")).toBe("0 0 21 21");
-    expect(pageSvg?.getAttribute("viewBox")).toBe("0 0 21 21");
+    expect(fileSvg?.getAttribute("viewBox")).toBe("0 0 20 20");
+    expect(pageSvg?.getAttribute("viewBox")).toBe("0 0 20 20");
     expect(fileSvg?.querySelector("path")?.getAttribute("d")).toBe(
       pageSvg?.querySelector("path")?.getAttribute("d"),
     );
@@ -124,16 +126,15 @@ describe("file and page identity icons", () => {
 });
 
 describe("code identity icons", () => {
-  test("uses the canonical Code geometry for generic file tabs", () => {
+  test("preserves code file artwork alongside the editor code glyph", () => {
     const codeView = render(<CodeIcon />);
     const fileTabView = render(<FileTabIconSvg icon="code" />);
     const codeSvg = codeView.container.querySelector("svg");
     const fileTabSvg = fileTabView.container.querySelector("svg");
 
     expect(fileTabSvg?.getAttribute("viewBox")).toBe(codeSvg?.getAttribute("viewBox"));
-    expect(fileTabSvg?.querySelector("path")?.getAttribute("d")).toBe(
-      codeSvg?.querySelector("path")?.getAttribute("d"),
-    );
+    expect(fileTabSvg?.getAttribute("data-file-tab-icon")).toBe("code");
+    expect(pathSignature(fileTabView.container)).not.toEqual(pathSignature(codeView.container));
   });
 });
 
@@ -178,10 +179,10 @@ describe("Nodex mark identity", () => {
 
 describe("settings identity icons", () => {
   test.each([
-    ["import", SettingsImportIcon, "0 0 20 20"],
+    ["import", SettingsImportIcon, "0 0 16 16"],
     ["browser", SettingsBrowserIcon, "0 0 16 16"],
     ["computer use", SettingsComputerUseIcon, "0 0 21 20"],
-    ["git", SettingsGitIcon, "0 0 20 20"],
+    ["git", SettingsGitIcon, "0 0 16 16"],
     ["passwords", SettingsPasswordsIcon, "0 0 20 20"],
   ])("renders an app-owned geometry for %s", (_label, Icon, viewBox) => {
     const view = render(<Icon />);
@@ -195,26 +196,30 @@ describe("settings identity icons", () => {
 
 describe("shared action icon geometry", () => {
   test.each([
-    ["edit", EditIcon, "0 0 21 21", "M11.7313 4.20472", "fill"],
-    ["replace", ReplaceIcon, "0 0 24 24", "m16 3", "stroke"],
-    ["download", DownloadIcon, "0 0 20 20", "M2.66831 12.6664", "fill"],
-    ["delete", DeleteIcon, "0 0 20 20", "M10.6299 1.33496", "fill"],
-  ])("renders the app-owned %s glyph", (_label, Icon, viewBox, pathPrefix, paintAttribute) => {
+    ["edit", EditIcon, "0 0 16 16", "21", "fill"],
+    ["replace", ReplaceIcon, "0 0 24 24", "16", "stroke"],
+    ["download", DownloadIcon, "0 0 16 16", "20", "fill"],
+    ["delete", DeleteIcon, "0 0 16 16", "20", "fill"],
+  ])("renders the app-owned %s glyph", (_label, Icon, viewBox, boxSize, paintAttribute) => {
     const view = render(<Icon />);
     const svg = view.container.querySelector("svg");
     const firstPath = svg?.querySelector("path");
     const paintOwner = firstPath?.hasAttribute(paintAttribute) ? firstPath : svg;
 
     expect(svg?.getAttribute("viewBox")).toBe(viewBox);
-    expect(firstPath?.getAttribute("d")?.startsWith(pathPrefix)).toBe(true);
+    expect(svg?.getAttribute("width")).toBe(boxSize);
+    expect(svg?.getAttribute("height")).toBe(boxSize);
     expect(paintOwner?.getAttribute(paintAttribute)).toBe("currentColor");
   });
 
-  test("uses the reviewed link-toolbar geometry for open-in actions", () => {
+  test("uses the compact and large masters for open-in actions", () => {
     const openIn = render(<OpenInIcon />);
     const linkToolbarOpen = render(<NfmLinkToolbarOpenIcon />);
 
-    expect(pathSignature(openIn.container)).toEqual(pathSignature(linkToolbarOpen.container));
+    expect(openIn.container.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 16 16");
+    expect(linkToolbarOpen.container.querySelector("svg")?.getAttribute("viewBox")).toBe(
+      "0 0 20 20",
+    );
   });
 
   test("preserves the reviewed repeat glyph", () => {
@@ -233,20 +238,24 @@ describe("shared action icon geometry", () => {
     const expand = render(<ExpandPanelIcon />);
     const restore = render(<RestorePanelIcon />);
 
-    expect(pathSignature(panelVisible.container)).not.toEqual(pathSignature(panelHidden.container));
+    const showSidebar = render(<SidebarVisibleIcon />);
+    const hideSidebar = render(<SidebarHiddenIcon />);
+    expect(pathSignature(panelVisible.container)).toEqual(pathSignature(hideSidebar.container));
+    expect(pathSignature(panelHidden.container)).toEqual(pathSignature(showSidebar.container));
+    expect(pathSignature(showSidebar.container)).not.toEqual(pathSignature(hideSidebar.container));
     expect(pathSignature(expand.container)).not.toEqual(pathSignature(restore.container));
   });
 });
 
 describe("queued follow-up icon geometry", () => {
   test.each([
-    ["follow-up lane", QueuedFollowUpIcon, "0 0 20 20", 1, "M2.66797 11V3.33301"],
+    ["follow-up lane", QueuedFollowUpIcon, "0 0 16 16", 3, "M2.33325 2.18164"],
     ["steer", QueueSteerIcon, "0 0 21 21", 1, "M13.1293 7.34753"],
-    ["pause", QueuePauseIcon, "0 0 20 20", 2, "M6.875 5.83333"],
+    ["pause", QueuePauseIcon, "0 0 16 16", 2, "M5.89966 4.14111"],
     ["delivery failure", QueueFailureIcon, "0 0 20 20", 2, "M9.995 12.315"],
     ["pending steer information", QueuePendingInfoIcon, "0 0 21 21", 3, "M10.6 9.70459"],
-    ["resume", ComposerResumeIcon, "0 0 20 20", 1, "M6 14.7227"],
-    ["more", AutomationMoreIcon, "0 0 21 21", 3, "M15.6981 9.04712"],
+    ["resume", ComposerResumeIcon, "0 0 16 16", 1, "M5.05811 4.68954"],
+    ["more", AutomationMoreIcon, "0 0 16 16", 3, "M3.33362 6.80811"],
     ["side chat", SidePanelSideChatIcon, "0 0 20 20", 2, "M3.165 10"],
   ])("preserves the fill-only %s glyph", (_label, Icon, viewBox, pathCount, firstPathPrefix) => {
     const view = render(<Icon />);
@@ -263,8 +272,8 @@ describe("queued follow-up icon geometry", () => {
     const view = render(<SidebarManualOrderIcon />);
     const svg = view.container.querySelector("svg");
 
-    expect(svg?.getAttribute("viewBox")).toBe("0 0 24 24");
-    expect(svg?.querySelectorAll("circle")).toHaveLength(6);
+    expect(svg?.getAttribute("width")).toBe("24");
+    expect(svg?.querySelectorAll("path")).toHaveLength(6);
     expect(svg?.querySelector("[stroke]")).toBeNull();
   });
 });

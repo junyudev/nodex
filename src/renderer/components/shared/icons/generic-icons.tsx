@@ -1,78 +1,99 @@
-import { forwardRef } from "react";
+import { MediaVolumeIcon } from "./file-viewer-icons";
 import {
-  AlertCircle as LucideAlertCircle,
-  AlertTriangle as LucideAlertTriangle,
-  ArrowLeft as LucideArrowLeft,
-  ArrowRight as LucideArrowRight,
-  ArrowUpDown as LucideArrowUpDown,
+  CircleExclamationMark16Glyph,
+  ExclamationMarkTriangle16Glyph,
+  ArrowLeftLg20Glyph,
+  ArrowRightLg20Glyph,
+  ArrowUpArrowDown16Glyph,
+  ChevronLeftLg16Glyph,
+  CircleXmark20Glyph,
+  ClipboardList16Glyph,
+  ClipboardList20Glyph,
+  Filter16Glyph,
+  Filter20Glyph,
+  PhotoBadgePlus16Glyph,
+  SquareGrid2x216Glyph,
+  SquareGrid2x220Glyph,
+  Link16Glyph,
+  Link20Glyph,
+  Lock16Glyph,
+  Lock20Glyph,
+  ChatBubblePlus16Glyph,
+  ChatBubblePlus20Glyph,
+  MinusLg16Glyph,
+  MinusLg20Glyph,
+  EyeDropper16Glyph,
+  PuzzlePiece16Glyph,
+  ArrowRotateCounterclockwise16Glyph,
+  PaperPlane16Glyph,
+  ShieldCheckmark16Glyph,
+  ShieldCheckmark20Glyph,
+  Smartphone16Glyph,
+  Smartphone20Glyph,
+  Sparkles16Glyph,
+  Sparkles20Glyph,
+  CloudArrowUp16Glyph,
+  CloudArrowUp20Glyph,
+  Person16Glyph,
+  Person20Glyph,
+  MagicWand16Glyph,
+  MagicWand20Glyph,
+  CircleXmark16Glyph,
+  Cube16Glyph,
+  Cube20Glyph,
+  Clipboard16Glyph,
+  Clipboard20Glyph,
+  Hand16Glyph,
+  Hand20Glyph,
+  ScreenArrowUp16Glyph,
+  ScreenArrowUp20Glyph,
+  MusicNote16Glyph,
+  MusicNote20Glyph,
+  TextFormat16Glyph,
+  TextFormat20Glyph,
+  Video16Glyph,
+  Video20Glyph,
+} from "./outline-glyphs";
+import { forwardRef, type ComponentType } from "react";
+import type { IconGlyphProps } from "./icon-glyph";
+import {
+  Reply as LucideReply,
   BoxSelect as LucideBoxSelect,
   CalendarClock as LucideCalendarClock,
-  ChevronLeft as LucideChevronLeft,
   ChevronsLeftRight as LucideChevronsLeftRight,
   ChevronsRightLeft as LucideChevronsRightLeft,
   Circle as LucideCircle,
-  CircleAlert as LucideCircleAlert,
   CircleDotIcon as LucideCircleDotIcon,
-  CircleX as LucideCircleX,
-  ClipboardListIcon as LucideClipboardListIcon,
   ContactRound as LucideContactRound,
   CornerDownLeft as LucideCornerDownLeft,
   CornerDownRight as LucideCornerDownRight,
-  Filter as LucideFilter,
   GitBranchPlus as LucideGitBranchPlus,
   GitMerge as LucideGitMerge,
   Hash as LucideHash,
-  ImagePlus as LucideImagePlus,
   KeyRound as LucideKeyRound,
-  LayoutGrid as LucideLayoutGrid,
   LayoutTemplate as LucideLayoutTemplate,
-  Link2 as LucideLink2,
-  Reply as LucideReply,
   ListTree as LucideListTree,
-  LockKeyhole as LucideLockKeyhole,
+  MapPin as LucideMapPin,
   Maximize2 as LucideMaximize2,
-  MessageCirclePlusIcon as LucideMessageCirclePlusIcon,
   Minimize2 as LucideMinimize2,
-  Minus as LucideMinus,
   MonitorCog as LucideMonitorCog,
   PictureInPicture2 as LucidePictureInPicture2,
   Plug as LucidePlug,
-  Pipette as LucidePipette,
   Printer as LucidePrinter,
-  Puzzle as LucidePuzzle,
-  RotateCcw as LucideRotateCcw,
   Route as LucideRoute,
   Rows3 as LucideRows3,
   Scissors as LucideScissors,
-  SendIcon as LucideSendIcon,
-  ShieldCheck as LucideShieldCheck,
   Slash as LucideSlash,
   SlidersHorizontal as LucideSlidersHorizontal,
-  Smartphone as LucideSmartphone,
-  Sparkles as LucideSparkles,
   SplitIcon as LucideSplitIcon,
   Star as LucideStar,
   TextCursorInput as LucideTextCursorInput,
-  TriangleAlert as LucideTriangleAlert,
-  UploadCloud as LucideUploadCloud,
-  UserRound as LucideUserRound,
-  Volume2 as LucideVolume2,
-  WandSparkles as LucideWandSparkles,
   WifiOff as LucideWifiOff,
-  XCircle as LucideXCircle,
   AppWindow as LucideAppWindow,
-  Box as LucideBox,
-  Clipboard as LucideClipboard,
   Cookie as LucideCookie,
   Glasses as LucideGlasses,
-  Hand as LucideHand,
   Hourglass as LucideHourglass,
-  MapPin as LucideMapPin,
-  MonitorUp as LucideMonitorUp,
-  Music as LucideMusic,
   Network as LucideNetwork,
-  Type as LucideType,
-  Video as LucideVideo,
   type LucideIcon as LucideIconType,
   type LucideProps,
 } from "lucide-react";
@@ -146,24 +167,66 @@ function createGenericIcon(Icon: LucideIconType, displayName: string): LucideIco
   return GenericIcon as LucideIconType;
 }
 
-export const AlertCircle: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideAlertCircle,
+/** Filled outline masters keep their authored weight at the requested size. */
+function createOutlineIcon(
+  Glyph: ComponentType<IconGlyphProps>,
+  displayName: string,
+  LargeGlyph = Glyph,
+): LucideIconType {
+  const OutlineIcon = forwardRef<SVGSVGElement, LucideProps>(function OutlineIcon(
+    {
+      "aria-hidden": ariaHidden,
+      "aria-label": ariaLabel,
+      "aria-labelledby": ariaLabelledBy,
+      absoluteStrokeWidth: _absoluteStrokeWidth,
+      children,
+      color,
+      size = DEFAULT_GENERIC_ICON_SIZE,
+      strokeWidth: _strokeWidth,
+      style,
+      ...props
+    },
+    ref,
+  ) {
+    const hasAccessibleName =
+      ariaLabel !== undefined || ariaLabelledBy !== undefined || children !== undefined;
+    const Master = Number(size) >= 20 ? LargeGlyph : Glyph;
+    return (
+      <Master
+        width={size}
+        height={size}
+        {...props}
+        ref={ref}
+        aria-hidden={hasAccessibleName ? ariaHidden : (ariaHidden ?? true)}
+        aria-label={ariaLabel}
+        aria-labelledby={ariaLabelledBy}
+        style={color === undefined ? style : { ...style, color }}
+        svgChildren={children}
+      />
+    );
+  });
+  OutlineIcon.displayName = displayName;
+  return OutlineIcon;
+}
+
+export const AlertCircle: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  CircleExclamationMark16Glyph,
   "AlertCircle",
 );
-export const AlertTriangle: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideAlertTriangle,
+export const AlertTriangle: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  ExclamationMarkTriangle16Glyph,
   "AlertTriangle",
 );
-export const ArrowLeft: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideArrowLeft,
+export const ArrowLeft: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  ArrowLeftLg20Glyph,
   "ArrowLeft",
 );
-export const ArrowRight: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideArrowRight,
+export const ArrowRight: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  ArrowRightLg20Glyph,
   "ArrowRight",
 );
-export const ArrowUpDown: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideArrowUpDown,
+export const ArrowUpDown: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  ArrowUpArrowDown16Glyph,
   "ArrowUpDown",
 );
 export const BoxSelect: LucideIconType = /* @__PURE__ */ createGenericIcon(
@@ -174,8 +237,8 @@ export const CalendarClock: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideCalendarClock,
   "CalendarClock",
 );
-export const ChevronLeft: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideChevronLeft,
+export const ChevronLeft: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  ChevronLeftLg16Glyph,
   "ChevronLeft",
 );
 export const ChevronsLeftRight: LucideIconType = /* @__PURE__ */ createGenericIcon(
@@ -187,18 +250,22 @@ export const ChevronsRightLeft: LucideIconType = /* @__PURE__ */ createGenericIc
   "ChevronsRightLeft",
 );
 export const Circle: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideCircle, "Circle");
-export const CircleAlert: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideCircleAlert,
+export const CircleAlert: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  CircleExclamationMark16Glyph,
   "CircleAlert",
 );
 export const CircleDotIcon: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideCircleDotIcon,
   "CircleDotIcon",
 );
-export const CircleX: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideCircleX, "CircleX");
-export const ClipboardListIcon: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideClipboardListIcon,
+export const CircleX: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  CircleXmark20Glyph,
+  "CircleX",
+);
+export const ClipboardListIcon: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  ClipboardList16Glyph,
   "ClipboardListIcon",
+  ClipboardList20Glyph,
 );
 export const ContactRound: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideContactRound,
@@ -213,50 +280,65 @@ export const CornerDownRight: LucideIconType = /* @__PURE__ */ createGenericIcon
   LucideCornerDownRight,
   "CornerDownRight",
 );
-export const Filter: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideFilter, "Filter");
+export const Filter: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  Filter16Glyph,
+  "Filter",
+  Filter20Glyph,
+);
 export const GitBranchPlus: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideGitBranchPlus,
   "GitBranchPlus",
 );
 export const Hash: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideHash, "Hash");
-export const ImagePlus: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideImagePlus,
+export const ImagePlus: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  PhotoBadgePlus16Glyph,
   "ImagePlus",
 );
 export const KeyRound: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideKeyRound,
   "KeyRound",
 );
-export const LayoutGrid: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideLayoutGrid,
+export const LayoutGrid: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  SquareGrid2x216Glyph,
   "LayoutGrid",
+  SquareGrid2x220Glyph,
 );
 export const LayoutTemplate: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideLayoutTemplate,
   "LayoutTemplate",
 );
-export const Link2: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideLink2, "Link2");
+export const Link2: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  Link16Glyph,
+  "Link2",
+  Link20Glyph,
+);
 export const ListTree: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideListTree,
   "ListTree",
 );
-export const LockKeyhole: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideLockKeyhole,
+export const LockKeyhole: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  Lock16Glyph,
   "LockKeyhole",
+  Lock20Glyph,
 );
 export const Maximize2: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideMaximize2,
   "Maximize2",
 );
-export const MessageCirclePlusIcon: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideMessageCirclePlusIcon,
+export const MessageCirclePlusIcon: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  ChatBubblePlus16Glyph,
   "MessageCirclePlusIcon",
+  ChatBubblePlus20Glyph,
 );
 export const Minimize2: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideMinimize2,
   "Minimize2",
 );
-export const Minus: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideMinus, "Minus");
+export const Minus: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  MinusLg16Glyph,
+  "Minus",
+  MinusLg20Glyph,
+);
 export const MonitorCog: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideMonitorCog,
   "MonitorCog",
@@ -265,12 +347,18 @@ export const PictureInPicture2: LucideIconType = /* @__PURE__ */ createGenericIc
   LucidePictureInPicture2,
   "PictureInPicture2",
 );
-export const Pipette: LucideIconType = /* @__PURE__ */ createGenericIcon(LucidePipette, "Pipette");
+export const Pipette: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  EyeDropper16Glyph,
+  "Pipette",
+);
 export const Plug: LucideIconType = /* @__PURE__ */ createGenericIcon(LucidePlug, "Plug");
 export const Printer: LucideIconType = /* @__PURE__ */ createGenericIcon(LucidePrinter, "Printer");
-export const Puzzle: LucideIconType = /* @__PURE__ */ createGenericIcon(LucidePuzzle, "Puzzle");
-export const RotateCcw: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideRotateCcw,
+export const Puzzle: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  PuzzlePiece16Glyph,
+  "Puzzle",
+);
+export const RotateCcw: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  ArrowRotateCounterclockwise16Glyph,
   "RotateCcw",
 );
 export const Route: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideRoute, "Route");
@@ -279,26 +367,29 @@ export const Scissors: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideScissors,
   "Scissors",
 );
-export const SendIcon: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideSendIcon,
+export const SendIcon: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  PaperPlane16Glyph,
   "SendIcon",
 );
-export const ShieldCheck: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideShieldCheck,
+export const ShieldCheck: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  ShieldCheckmark16Glyph,
   "ShieldCheck",
+  ShieldCheckmark20Glyph,
 );
 export const Slash: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideSlash, "Slash");
 export const SlidersHorizontal: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideSlidersHorizontal,
   "SlidersHorizontal",
 );
-export const Smartphone: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideSmartphone,
+export const Smartphone: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  Smartphone16Glyph,
   "Smartphone",
+  Smartphone20Glyph,
 );
-export const Sparkles: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideSparkles,
+export const Sparkles: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  Sparkles16Glyph,
   "Sparkles",
+  Sparkles20Glyph,
 );
 export const GitMergeIcon: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideGitMerge,
@@ -313,47 +404,78 @@ export const TextCursorInput: LucideIconType = /* @__PURE__ */ createGenericIcon
   LucideTextCursorInput,
   "TextCursorInput",
 );
-export const TriangleAlert: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideTriangleAlert,
+export const TriangleAlert: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  ExclamationMarkTriangle16Glyph,
   "TriangleAlert",
 );
-export const UploadCloud: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideUploadCloud,
+export const UploadCloud: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  CloudArrowUp16Glyph,
   "UploadCloud",
+  CloudArrowUp20Glyph,
 );
-export const UserRound: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideUserRound,
+export const UserRound: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  Person16Glyph,
   "UserRound",
+  Person20Glyph,
 );
-export const Volume2: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideVolume2, "Volume2");
-export const WandSparkles: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideWandSparkles,
+export const Volume2: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  MediaVolumeIcon,
+  "Volume2",
+);
+export const WandSparkles: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  MagicWand16Glyph,
   "WandSparkles",
+  MagicWand20Glyph,
 );
 export const WifiOff: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideWifiOff, "WifiOff");
-export const XCircle: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideXCircle, "XCircle");
+export const XCircle: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  CircleXmark16Glyph,
+  "XCircle",
+);
 export const AppWindow: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideAppWindow,
   "AppWindow",
 );
-export const Box: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideBox, "Box");
-export const Clipboard: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideClipboard,
+export const Box: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  Cube16Glyph,
+  "Box",
+  Cube20Glyph,
+);
+export const Clipboard: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  Clipboard16Glyph,
   "Clipboard",
+  Clipboard20Glyph,
 );
 export const Cookie: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideCookie, "Cookie");
 export const Glasses: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideGlasses, "Glasses");
-export const Hand: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideHand, "Hand");
+export const Hand: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  Hand16Glyph,
+  "Hand",
+  Hand20Glyph,
+);
 export const Hourglass: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideHourglass,
   "Hourglass",
 );
 export const MapPin: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideMapPin, "MapPin");
-export const MonitorUp: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideMonitorUp,
+export const MonitorUp: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  ScreenArrowUp16Glyph,
   "MonitorUp",
+  ScreenArrowUp20Glyph,
 );
-export const Music: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideMusic, "Music");
+export const Music: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  MusicNote16Glyph,
+  "Music",
+  MusicNote20Glyph,
+);
 export const Network: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideNetwork, "Network");
-export const Type: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideType, "Type");
-export const Video: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideVideo, "Video");
+export const Type: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  TextFormat16Glyph,
+  "Type",
+  TextFormat20Glyph,
+);
+export const Video: LucideIconType = /* @__PURE__ */ createOutlineIcon(
+  Video16Glyph,
+  "Video",
+  Video20Glyph,
+);
