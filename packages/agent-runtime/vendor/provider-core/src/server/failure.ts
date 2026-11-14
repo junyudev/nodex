@@ -119,6 +119,8 @@ function knownCause(cause: unknown): KnownCause {
             message: stringField(cause, "message"),
             code: NODEX_FAILURE_CODES.backgroundWorkBlocks,
           };
+        case "ClaudeModelNotAppliedError":
+          return { message: stringField(cause, "message"), code: NODEX_FAILURE_CODES.modelNotApplied };
         case "ContextHandoffDeliveryUncertainError":
           return {
             message:

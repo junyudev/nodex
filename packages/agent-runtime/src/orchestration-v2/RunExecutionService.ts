@@ -49,6 +49,7 @@ import * as CheckpointService from "./CheckpointService.ts";
 import * as EventSink from "./EventSink.ts";
 import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
+import { NODEX_FAILURE_CODES } from "@nodex/provider-core/failureCause";
 import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
 import type { ProjectionStoreV2Error } from "./ProjectionStore.ts";
 import {
@@ -2128,16 +2129,19 @@ export const layer: Layer.Layer<
                   yield* startObserving(true);
                   return;
                 }
+                const startError = Cause.squash(cause);
+                const failure = makeProviderFailure({
+                  cause: startError,
+                  class: Exit.isFailure(shouldStart) ? "unknown" : "provider_error",
+                });
+                const showFailureMessage =
+                  startError instanceof ProviderAdapter.ProviderTurnOwnershipConflictError ||
+                  failure.code === NODEX_FAILURE_CODES.modelNotApplied;
                 yield* finalizeRootRun(
                   makeFailedTerminalEvent(
-                    makeProviderFailure({
-                      cause: Cause.squash(cause),
-                      ...(Cause.squash(cause) instanceof
-                      ProviderAdapter.ProviderTurnOwnershipConflictError
-                        ? {}
-                        : { message: "The Agent couldn't start this reply." }),
-                      class: Exit.isFailure(shouldStart) ? "unknown" : "provider_error",
-                    }),
+                    showFailureMessage
+                      ? failure
+                      : { ...failure, message: "The Agent couldn't start this reply." },
                     (yield* Ref.get(latestTurnItemOrdinal)) + 1,
                   ),
                   false,

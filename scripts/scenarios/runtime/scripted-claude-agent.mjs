@@ -115,14 +115,14 @@ const record = (type, message, fields = {}) => {
   parentUuid = uuid;
   return uuid;
 };
-const result = () =>
+const result = (text = "Completed") =>
   send({
     type: "result",
     subtype: "success",
     session_id: sessionId,
     uuid: randomUUID(),
     is_error: false,
-    result: "Completed",
+    result: text,
     duration_ms: 1,
     duration_api_ms: 1,
     num_turns: 1,
@@ -192,7 +192,14 @@ for await (const line of createInterface({ input: process.stdin })) {
       respond(incoming, {
         effective: { alwaysThinkingEnabled: true, fastMode: false, ...settings },
         sources: [{ source: "flagSettings", settings: { ...settings } }],
-        applied: { model, effort, advisor: null, ultracode: false },
+        applied: {
+          model: existsSync(join(process.env.CLAUDE_CONFIG_DIR, "substitute-model"))
+            ? "claude-haiku-5-5"
+            : model,
+          effort,
+          advisor: null,
+          ultracode: false,
+        },
       });
       continue;
     }
@@ -565,15 +572,22 @@ for await (const line of createInterface({ input: process.stdin })) {
       });
       continue;
     }
-    if (incoming.message.content === "Verify thinking enabled") {
+    const changedModel =
+      typeof incoming.message.content === "string" &&
+      incoming.message.content.split("\n\nUser message:\n").at(-1) ===
+        "Verify model changed during reply";
+    if (incoming.message.content === "Verify thinking enabled" || changedModel) {
       if (!thinkingEnabled()) throw new Error("Expected native thinking to be reenabled");
       const message = {
-        id: "thinking-check",
+        id: changedModel ? "model-change-check" : "thinking-check",
         role: "assistant",
-        model,
+        model: changedModel ? "claude-haiku-5-5" : model,
         content: [
           { type: "thinking", thinking: "Thinking is enabled again" },
-          { type: "text", text: "Native thinking enabled" },
+          {
+            type: "text",
+            text: changedModel ? "Native reply after model change" : "Native thinking enabled",
+          },
         ],
         usage: { input_tokens: 12, output_tokens: 4 },
       };
@@ -584,7 +598,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         parent_tool_use_id: null,
         message,
       });
-      result();
+      result(changedModel ? "Native reply after model change" : undefined);
       continue;
     }
     if (incoming.message.content === "Simulate failure") {

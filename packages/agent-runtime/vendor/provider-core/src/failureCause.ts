@@ -17,6 +17,7 @@ export type ProviderFailureCause =
   | "usage_limit"
   | "authentication"
   | "context_budget"
+  | "model_not_applied"
   /** The provider rejected this request; sending it again cannot help. */
   | "refused"
   /** The provider cannot reopen the captured conversation. */
@@ -45,6 +46,8 @@ export const NODEX_FAILURE_CODES = {
   turnOwnershipConflict: "turn_ownership_conflict",
   /** Background work must finish or stop before this reply can replace the query. */
   backgroundWorkBlocks: "background_work_blocks_reply",
+  /** Claude Code could not confirm the selected model before receiving the prompt. */
+  modelNotApplied: "claude_model_not_applied",
 } as const;
 
 const CONNECTION_CODES = new Set<string>([
@@ -115,6 +118,7 @@ export function providerFailureHttpStatus(failure: ProviderFailureEvidence): num
  */
 export function providerFailureCause(failure: ProviderFailureEvidence): ProviderFailureCause {
   const code = failure.code;
+  if (code === NODEX_FAILURE_CODES.modelNotApplied) return "model_not_applied";
   if (failure.contextBudget !== undefined || (code !== null && CONTEXT_BUDGET_CODES.has(code)))
     return "context_budget";
   if (failure.class === "usage_limit" || (code !== null && USAGE_LIMIT_CODES.has(code)))

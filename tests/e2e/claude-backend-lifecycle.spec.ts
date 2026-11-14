@@ -8,7 +8,14 @@ import {
   setComposerFast,
 } from "./support/composer-model-picker";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -376,6 +383,35 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
       cwd: worktreePath,
       worktreeEnv: "prepared",
     });
+
+    const lastRunStatus = async () => (await control()).snapshot.projection.runs.at(-1)?.status;
+    await expect.poll(lastRunStatus).toBe("completed");
+    const substitution = path.join(harness.profile.runRoot, "claude-config", "substitute-model");
+    writeFileSync(substitution, "");
+    await reopened.fill("Verify model before sending");
+    await page.getByRole("button", { name: "Send prompt", exact: true }).click();
+    await expect(
+      page.getByText(
+        "Claude Code selected Claude Haiku 5.5. Your message for Claude Sonnet 5.5 was not sent.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    expect(
+      observations().some(
+        ({ type, content }) => type === "prompt" && content === "Verify model before sending",
+      ),
+    ).toBe(false);
+    await expect.poll(lastRunStatus).toBe("failed");
+    await page.screenshot({ path: test.info().outputPath("claude-model-not-applied.png") });
+
+    unlinkSync(substitution);
+    await reopened.fill("Verify model changed during reply");
+    await page.getByRole("button", { name: "Send prompt", exact: true }).click();
+    await expect(page.getByText("Native reply after model change", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Used Claude Haiku 5.5 · Selected Claude Sonnet 5.5", { exact: true }),
+    ).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("claude-model-change.png") });
   } catch (error) {
     const observationPath = path.join(
       harness.profile.runRoot,

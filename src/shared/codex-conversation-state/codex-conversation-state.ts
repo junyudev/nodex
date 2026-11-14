@@ -421,6 +421,8 @@ export type CodexRuntimeNotice =
     }
   /** The conversation's context ended here; later Turns start every Agent fresh. */
   | { readonly kind: "contextCleared" }
+  /** The root reply ran on a different model. Keep the notice beside the reply. */
+  | { readonly kind: "modelChange" }
   /** The person refused a native action the Agent asked to take. */
   | { readonly kind: "declined" }
   | { readonly kind: "info" };

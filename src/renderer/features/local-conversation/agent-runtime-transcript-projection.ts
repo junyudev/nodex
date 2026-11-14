@@ -848,7 +848,7 @@ export function projectAgentRuntimeItem(
     case "run_interrupt_result":
       return notice(item, "Stopped", { kind: "stopped" });
     case "system_notice":
-      return notice(item, item.message);
+      return notice(item, item.message, item.modelChange ? { kind: "modelChange" } : undefined);
     case "context_cleared":
       return notice(item, "Context cleared", { kind: "contextCleared" });
     case "handoff": {

@@ -813,6 +813,7 @@ function makeReplayQueryRunner(
   return {
     open: (input) => {
       assertNextOutboundFrame(makeClaudeQueryOpenFrame(input));
+      let model = input.options.model;
       return {
         messages: Stream.fromAsyncIterable(replayMessagesWithGateCleanup(input.options), (cause) =>
           replayQueryRunnerError(transcript, cause),
@@ -824,6 +825,7 @@ function makeReplayQueryRunner(
         applySelection: (settings) =>
           replayEffect(() => {
             assertNextOutboundFrame({ type: "query.apply_flag_settings", settings });
+            model = settings.model;
           }),
         setHostPermissions: ({ sourceRoots, allow, directories }) =>
           replayEffect(() => {
@@ -837,7 +839,13 @@ function makeReplayQueryRunner(
               },
             });
           }),
-        readAppliedSettings: Effect.succeed(null),
+        readAppliedSettings: Effect.sync(() => ({
+          model,
+          effort: null,
+          ultracode: false,
+          ultracodeRequested: false,
+          ultracodeAvailable: null,
+        })),
         setPermissionMode: (mode) =>
           replayEffect(() => {
             assertNextOutboundFrame({

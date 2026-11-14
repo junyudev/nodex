@@ -26,6 +26,8 @@ export function recoveryStatusLabel(recovery: ConversationRecovery): string {
     switch (recovery.reason) {
       case "context_budget":
         return "Conversation needs compaction";
+      case "model_not_applied":
+        return "Model could not be applied";
       case "authentication":
         return "Sign-in required";
       case "usage_limit":

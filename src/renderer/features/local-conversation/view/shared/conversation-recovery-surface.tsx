@@ -159,7 +159,12 @@ export function ConversationRecoverySurface({
   const visible = presence.visible || presence.expanded;
   if (!visible) return null;
 
-  const label = recovery ? recoveryStatusLabel(recovery) : (entry.markdownText ?? "Request failed");
+  const label =
+    recovery?.reason === "model_not_applied" && entry.markdownText
+      ? entry.markdownText
+      : recovery
+        ? recoveryStatusLabel(recovery)
+        : (entry.markdownText ?? "Request failed");
   const progress = recovery ? recoveryProgressLabel(recovery, now) : null;
   const details = recoveryDiagnosticText(entry);
   // The status row already says the state, cause and attempt; copying keeps all of them.

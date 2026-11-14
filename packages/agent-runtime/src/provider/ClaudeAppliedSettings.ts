@@ -1,3 +1,5 @@
+import { resolveClaudeModelSlug, type ClaudeModelCatalog } from "./ClaudeModelCatalog.ts";
+
 /** What Claude Code reports a session actually runs with (`get_settings().applied`). */
 export interface ClaudeAppliedSettings {
   readonly model: string | null;
@@ -37,4 +39,8 @@ export async function queryClaudeAppliedSettings(
   return typeof getSettings === "function"
     ? readClaudeAppliedSettings(await getSettings.call(query))
     : null;
+}
+/** Context suffixes affect the token budget, but the Messages API reports the base model. */
+export function claudeResponseModel(catalog: ClaudeModelCatalog, model: string): string {
+  return resolveClaudeModelSlug(catalog, model.replace(/\[\d+[km]\]$/i, ""));
 }

@@ -245,6 +245,11 @@ export function bucketizeTurnItems(input: BucketizeTurnItemsInput): ThreadTurnRe
       continue;
     }
 
+    if (item.type === "runtimeNotice" && item.entry.runtimeNotice?.kind === "modelChange") {
+      buckets.postAssistantItems.push(item);
+      continue;
+    }
+
     // A cleared context closes its Turn, after the reply and anything that follows it.
     if (item.type === "runtimeNotice" && item.entry.runtimeNotice?.kind === "contextCleared") {
       buckets.contextClearedItems.push(item);

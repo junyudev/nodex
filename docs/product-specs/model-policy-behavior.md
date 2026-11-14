@@ -133,18 +133,19 @@ must not be treated as a complete list of affected chats.
 
 ## Native limits
 
-Claude receives managed `availableModels`, `enforceAvailableModels`, exact matching and
-`deniedModels` for excluded known models. The installed SDK's local settings resolver
-checks that these restrictions survive the settings merge before launch; missing or
-replaced policy refuses execution. A policy fingerprint prevents reusing a process with
-old restrictions for a subsequent turn. Native text utilities receive the same policy.
+Claude receives a managed exact `availableModels` list and `enforceAvailableModels`.
+An off model is absent from the list, so turning off an older version leaves newer
+versions in the same family available. The installed SDK's local settings resolver
+checks that the list and its enforcement survive the settings merge before launch.
+Missing or replaced policy refuses execution. A policy fingerprint prevents reusing a
+process with old restrictions for a subsequent turn. Native text utilities receive the
+same policy.
 
 This local check performs no inference. It checks the SDK's raw settings cascade, not
 remote billing or the entire launched CLI's request stream. The SDK resolver does not run
 an administrator's `policyHelper`; a reported helper therefore refuses launch. Environment-
 scoped configuration and CLI/SDK differences remain limits of the local check. No paid
-native-subagent or helper-request conformance is implied. Claude's deny matching may cover
-multiple spellings or versions of a model; it is intentionally stricter than a catalog row.
+native-subagent or helper-request conformance is implied.
 
 The pinned Codex runtime has no general per-model deny that covers all native agent-role
 overrides. Nodex refuses its own work on off models, but an allowed Codex conversation's

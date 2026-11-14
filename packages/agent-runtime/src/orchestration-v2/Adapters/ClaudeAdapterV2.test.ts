@@ -212,6 +212,14 @@ const CUSTOM_MODEL_CLAUDE_SETTINGS = Schema.decodeSync(ClaudeSettings)({
     },
   ],
 });
+const appliedModel = (model: string): ClaudeAppliedSettings => ({
+  model,
+  effort: null,
+  ultracode: false,
+  ultracodeRequested: false,
+  ultracodeAvailable: null,
+});
+
 const CLAUDE_TEST_MODEL_SELECTION = {
   instanceId: ProviderInstanceId.make(ClaudeAdapterV2.CLAUDE_PROVIDER),
   model: "claude-sonnet-4-6",
@@ -1063,7 +1071,7 @@ describe("ClaudeAdapterV2 full execution access", () => {
 
                   applySelection: () => Effect.void,
                   setHostPermissions: () => Effect.void,
-                  readAppliedSettings: Effect.succeed(null),
+                  readAppliedSettings: Effect.succeed(appliedModel(input.options.model)),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
@@ -1194,7 +1202,7 @@ const captureSdkExecutablePaths = Effect.fn("captureSdkExecutablePaths")(functio
 
             applySelection: () => Effect.void,
             setHostPermissions: () => Effect.void,
-            readAppliedSettings: Effect.succeed(null),
+            readAppliedSettings: Effect.succeed(appliedModel(input.options.model)),
             setPermissionMode: () => Effect.void,
             stopTask: () => Effect.void,
             interrupt: Effect.void,
@@ -1318,7 +1326,7 @@ describe("ClaudeAdapterV2 resume compaction", () => {
 
                   applySelection: () => Effect.void,
                   setHostPermissions: () => Effect.void,
-                  readAppliedSettings: Effect.succeed(null),
+                  readAppliedSettings: Effect.succeed(appliedModel(input.options.model)),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
@@ -1531,7 +1539,9 @@ describe("ClaudeAdapterV2 attachments", () => {
 
                 applySelection: () => Effect.void,
                 setHostPermissions: () => Effect.void,
-                readAppliedSettings: Effect.succeed(null),
+                readAppliedSettings: Effect.succeed(
+                  appliedModel(CLAUDE_TEST_MODEL_SELECTION.model),
+                ),
                 setPermissionMode: () => Effect.void,
                 stopTask: () => Effect.void,
                 interrupt: Effect.void,
@@ -1681,7 +1691,9 @@ describe("ClaudeAdapterV2 attachments", () => {
 
                   applySelection: () => Effect.void,
                   setHostPermissions: () => Effect.void,
-                  readAppliedSettings: Effect.succeed(null),
+                  readAppliedSettings: Effect.succeed(
+                    appliedModel(CLAUDE_TEST_MODEL_SELECTION.model),
+                  ),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
@@ -1805,7 +1817,7 @@ describe("ClaudeAdapterV2 native fork", () => {
 
                   applySelection: () => Effect.void,
                   setHostPermissions: () => Effect.void,
-                  readAppliedSettings: Effect.succeed(null),
+                  readAppliedSettings: Effect.succeed(appliedModel(input.options.model)),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
@@ -2319,7 +2331,7 @@ describe("ClaudeAdapterV2 native session identity", () => {
 
                   applySelection: () => Effect.void,
                   setHostPermissions: () => Effect.void,
-                  readAppliedSettings: Effect.succeed(null),
+                  readAppliedSettings: Effect.succeed(appliedModel(input.options.model)),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
@@ -2430,11 +2442,15 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     uuid: "00000000-0000-4000-8000-000000000101",
     session_id: WAKE_NATIVE_SESSION,
   });
-  const makeAssistantTextFrame = (input: { readonly uuid: string; readonly text: string }) =>
+  const makeAssistantTextFrame = (input: {
+    readonly uuid: string;
+    readonly text: string;
+    readonly model?: string;
+  }) =>
     claudeSdkFrame({
       type: "assistant",
       message: {
-        model: "claude-sonnet-4-6",
+        model: input.model ?? "claude-sonnet-4-6",
         id: `msg_${input.uuid}`,
         type: "message",
         role: "assistant",
@@ -2591,6 +2607,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly freshQueueOnReopen?: boolean;
     // What Claude Code reports it runs with after a change.
     readonly appliedSettings?: ClaudeAppliedSettings;
+    readonly initialNativeModel?: string;
     readonly contextUsage?: { readonly usedTokens: number; readonly maxTokens: number };
     readonly refuseLiveSelectionOnce?: boolean;
     readonly refuseSourceRootsOnce?: boolean;
@@ -2667,7 +2684,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         ...(options?.contextUsage === undefined
           ? {}
           : { readContextUsage: Effect.succeed(options.contextUsage) }),
-        readAppliedSettings: Effect.succeed(options?.appliedSettings ?? null),
+        readAppliedSettings: Effect.sync(
+          () => options?.appliedSettings ?? appliedModel(actualNativeModel),
+        ),
       };
       const permissionModeChanges: Array<string> = [];
       const nativeModesAtOffer: Array<string> = [];
@@ -2724,7 +2743,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               nativeHostPermissions = null;
               nativeSourceRoots = [];
               nativeMode = input.options.permissionMode;
-              actualNativeModel = input.options.model;
+              actualNativeModel = options?.initialNativeModel ?? input.options.model;
               if (options?.freshQueueOnReopen === true && processQueues.length > 0) {
                 const processMessages = yield* Queue.unbounded<SDKMessage>();
                 processQueues.push(processMessages);
@@ -2878,6 +2897,96 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       };
     });
   const makeWakeHarness = makeWakeHarnessWithOptions();
+
+  it.effect.each([true, false])(
+    "verifies a substituted model before dispatch (recoverable: %s)",
+    (recoverable) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const requested = "claude-fable-5-2";
+          const substituted = "claude-haiku-5-5";
+          const harness = yield* makeWakeHarnessWithOptions(
+            recoverable
+              ? { initialNativeModel: substituted }
+              : { appliedSettings: appliedModel(substituted) },
+          );
+          const outcome = yield* Effect.result(
+            harness.runtime.startTurn(
+              makeClaudeTestTurnInput({
+                threadId: harness.threadId,
+                providerThread: harness.providerThread,
+                now: yield* DateTime.now,
+                attemptId: RunAttemptId.make("model-restriction-recovery"),
+                text: "Continue.",
+                attachments: [],
+                modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, model: requested },
+              }),
+            ),
+          );
+          if (recoverable) {
+            assert.equal(outcome._tag, "Success");
+            assert.deepEqual(harness.nativeModelsAtOffer, [requested]);
+            return;
+          }
+          assert.equal(outcome._tag, "Failure");
+          if (outcome._tag !== "Failure") return;
+          assert.instanceOf(outcome.failure.cause, ClaudeAdapterV2.ClaudeModelNotAppliedError);
+          assert.isEmpty(harness.nativeModelsAtOffer);
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+          ),
+        ),
+      ),
+  );
+
+  it.effect("records the actual model once when Claude changes models after sending", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("model-changed-after-dispatch"),
+            text: "Continue.",
+            attachments: [],
+            modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, model: "claude-fable-5-2" },
+          }),
+        );
+        for (const [id, model] of [
+          ["311", "<synthetic>"],
+          ["312", "claude-haiku-5-5"],
+          ["313", "claude-haiku-5-5"],
+        ] as const) {
+          yield* Queue.offer(
+            harness.sdkMessages,
+            makeAssistantTextFrame({
+              uuid: `00000000-0000-4000-8000-000000000${id}`,
+              text: "Working.",
+              model,
+            }),
+          );
+        }
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({ uuid: "00000000-0000-4000-8000-000000000314", result: "Done." }),
+        );
+        yield* Queue.take(harness.terminalReceipts);
+        const notices = harness.events.flatMap((event) =>
+          event.type === "turn_item.updated" && event.turnItem.type === "system_notice"
+            ? [event.turnItem.message]
+            : [],
+        );
+        assert.deepEqual(notices, ["Used Claude Haiku 5.5 · Selected Claude Fable 5.2"]);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
 
   it.effect(
     "refreshes the effective catalog after session creation before compiling a discovered model",
@@ -7753,7 +7862,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
 
                   applySelection: () => Effect.void,
                   setHostPermissions: () => Effect.void,
-                  readAppliedSettings: Effect.succeed(null),
+                  readAppliedSettings: Effect.succeed(
+                    appliedModel(CLAUDE_TEST_MODEL_SELECTION.model),
+                  ),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
@@ -8019,7 +8130,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
 
                     applySelection: () => Effect.void,
                     setHostPermissions: () => Effect.void,
-                    readAppliedSettings: Effect.succeed(null),
+                    readAppliedSettings: Effect.succeed(appliedModel(openInput.options.model)),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
                     interrupt: Effect.void,
@@ -12967,7 +13078,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
 
                   applySelection: () => Effect.void,
                   setHostPermissions: () => Effect.void,
-                  readAppliedSettings: Effect.succeed(null),
+                  readAppliedSettings: Effect.succeed(
+                    appliedModel(CLAUDE_TEST_MODEL_SELECTION.model),
+                  ),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
@@ -13158,7 +13271,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
 
                     applySelection: () => Effect.void,
                     setHostPermissions: () => Effect.void,
-                    readAppliedSettings: Effect.succeed(null),
+                    readAppliedSettings: Effect.succeed(
+                      appliedModel(CLAUDE_TEST_MODEL_SELECTION.model),
+                    ),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
                     interrupt: Effect.void,
@@ -13401,7 +13516,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
 
                     applySelection: () => Effect.void,
                     setHostPermissions: () => Effect.void,
-                    readAppliedSettings: Effect.succeed(null),
+                    readAppliedSettings: Effect.succeed(
+                      appliedModel(CLAUDE_TEST_MODEL_SELECTION.model),
+                    ),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
                     interrupt: Effect.void,
@@ -13601,7 +13718,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
 
                   applySelection: () => Effect.void,
                   setHostPermissions: () => Effect.void,
-                  readAppliedSettings: Effect.succeed(null),
+                  readAppliedSettings: Effect.succeed(
+                    appliedModel(CLAUDE_TEST_MODEL_SELECTION.model),
+                  ),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
@@ -13785,7 +13904,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
 
                     applySelection: () => Effect.void,
                     setHostPermissions: () => Effect.void,
-                    readAppliedSettings: Effect.succeed(null),
+                    readAppliedSettings: Effect.succeed(
+                      appliedModel(CLAUDE_TEST_MODEL_SELECTION.model),
+                    ),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
                     interrupt: Effect.void,
@@ -13925,7 +14046,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
 
                     applySelection: () => Effect.void,
                     setHostPermissions: () => Effect.void,
-                    readAppliedSettings: Effect.succeed(null),
+                    readAppliedSettings: Effect.succeed(
+                      appliedModel(CLAUDE_TEST_MODEL_SELECTION.model),
+                    ),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
                     interrupt: Effect.void,

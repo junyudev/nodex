@@ -46,6 +46,7 @@ export function classifyRunRecovery(failure: OrchestrationV2ProviderFailure): Ru
     case "usage_limit":
     case "authentication":
     case "context_budget":
+    case "model_not_applied":
     case "refused":
     case "unrecoverable":
       return "none";

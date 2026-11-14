@@ -6,22 +6,24 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import * as Effect from "effect/Effect";
 import { isModelOn, policyModelKey } from "../../../../src/shared/model-policy.ts";
-import { RuntimeModelPolicy, providerForPolicy } from "./ModelPolicy.ts";
+import { ModelPolicyError, RuntimeModelPolicy, providerForPolicy } from "./ModelPolicy.ts";
 import type { ModelSelection } from "@nodex/runtime-contracts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   resolveClaudeCatalogApiModelId,
+  resolveClaudeModelSlug,
   type ClaudeModelCatalog,
 } from "../provider/ClaudeModelCatalog.ts";
 
-/** Native selection plus helper-request denies. Empty allowlists must never mean all-off. */
+/** Compile the Profile's per-version choices into Claude Code's exact allowlist. */
 export const restrictions = Effect.fn("ClaudeModelPolicy.restrictions")(function* (
   selection: ModelSelection,
   catalog: ClaudeModelCatalog = BUNDLED_CLAUDE_MODEL_CATALOG,
 ) {
   const owner = yield* RuntimeModelPolicy;
-  // The outer boundary already authorized the caller; native restrictions describe the admitted parent.
-  yield* owner.assert(selection, "nodex-agent");
+  const selected = resolveClaudeModelSlug(catalog, selection.model);
+  // Check the same identity that the CLI will run, including old selections saved as aliases.
+  yield* owner.assert({ ...selection, model: selected }, "nodex-agent");
   const { policy, providers } = yield* owner.current;
   const provider = providerForPolicy(providers, selection.instanceId);
   const declared = providers[selection.instanceId]?.modelAllowlist;
@@ -36,22 +38,38 @@ export const restrictions = Effect.fn("ClaudeModelPolicy.restrictions")(function
   });
   const models = [
     ...new Set(
-      [...BUNDLED_CLAUDE_MODEL_CATALOG.models, ...catalog.models]
-        .map((entry) => entry.model.slug)
-        .concat(remembered),
+      (
+        declared ?? [
+          ...BUNDLED_CLAUDE_MODEL_CATALOG.models.map(({ model }) => model.slug),
+          ...catalog.models.map(({ model }) => model.slug),
+          ...remembered,
+          selected,
+        ]
+      ).map((model) => resolveClaudeModelSlug(catalog, model)),
     ),
   ];
-  const allowed = models.filter(
-    (model) => (!declared || declared.includes(model)) && isModelOn(policy, provider, model),
-  );
-  // The running model can be a custom model absent from the bundled inventory.
-  if (!models.includes(selection.model)) allowed.push(selection.model);
-  const apiId = (model: string) => resolveClaudeCatalogApiModelId(catalog, { ...selection, model });
+  // A deny such as claude-opus-5 also blocks claude-opus-5-5, even in exact mode.
+  // Compile the permitted IDs without a second, prefix-matched restriction.
+  const availableModels = [
+    ...new Set(
+      models
+        .filter((model) => model !== "default" && isModelOn(policy, provider, model))
+        .map((model) =>
+          resolveClaudeCatalogApiModelId(catalog, { instanceId: selection.instanceId, model }),
+        ),
+    ),
+  ];
+  if (availableModels.length === 0 || (selected !== "default" && !models.includes(selected))) {
+    return yield* new ModelPolicyError({
+      code: "model_off",
+      message: `Claude model ${selected} is unavailable on this account.`,
+      retryable: false,
+    });
+  }
   return {
-    availableModels: allowed.map(apiId),
+    availableModels,
     enforceAvailableModels: true,
     availableModelsMatch: "exact",
-    deniedModels: models.filter((model) => !allowed.includes(model)).map(apiId),
   } satisfies Settings;
 });
 
@@ -74,8 +92,7 @@ export async function verifyClaudeModelPolicy(
     effective.policyHelper ||
     effective.availableModelsMatch !== "exact" ||
     effective.enforceAvailableModels !== true ||
-    !sameList(effective.availableModels, requested.availableModels) ||
-    !sameList(effective.deniedModels, requested.deniedModels)
+    !sameList(effective.availableModels, requested.availableModels)
   )
     throw new Error(
       "Claude's effective model restrictions could not be verified. Check managed Claude settings before starting this model.",

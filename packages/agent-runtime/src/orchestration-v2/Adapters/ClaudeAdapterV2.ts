@@ -34,7 +34,9 @@ import {
 } from "@nodex/runtime-shared/fileChanges";
 import { normalizeClaudeTurnTokenUsage } from "../../provider/ClaudeTurnTokenUsage.ts";
 import { loadClaudeAgentSdk } from "../../provider/ClaudeAgentSdk.ts";
+import { formatModelSlugName } from "@nodex/runtime-shared/model";
 import {
+  claudeResponseModel,
   queryClaudeAppliedSettings,
   type ClaudeAppliedSettings,
 } from "../../provider/ClaudeAppliedSettings.ts";
@@ -478,6 +480,18 @@ export class ClaudeNativeSessionUnavailableError extends Schema.TaggedError<Clau
 ) {
   override get message(): string {
     return `Claude session ${this.sessionId} has no conversation to resume.`;
+  }
+}
+
+export class ClaudeModelNotAppliedError extends Schema.TaggedError<ClaudeModelNotAppliedError>()(
+  "ClaudeModelNotAppliedError",
+  { requested: Schema.String, applied: Schema.NullOr(Schema.String) },
+) {
+  override get message(): string {
+    const requested = formatModelSlugName(this.requested);
+    return this.applied === null
+      ? `Claude Code could not confirm ${requested}. The message was not sent.`
+      : `Claude Code selected ${formatModelSlugName(this.applied)}. Your message for ${requested} was not sent.`;
   }
 }
 
@@ -3243,6 +3257,9 @@ interface ActiveClaudeTurnContext {
   // here: a subagent resumed from another turn keeps its ordinal on the
   // session subagent registry.
   readonly itemOrdinals: Map<string, number>;
+  readonly requestedModel: string;
+  readonly otherResponseModels: Set<string>;
+  readonly announcedFallbackModels: Set<string>;
   readonly assistant: {
     fallbackText: string;
     fallbackNativeItemId: string;
@@ -5075,6 +5092,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           context: ActiveClaudeTurnContext,
           nativeItemId: string,
           notice: string,
+          modelChange?: { readonly from: string; readonly to: string },
         ) {
           const now = yield* DateTime.now;
           yield* emitProviderEvent({
@@ -5097,6 +5115,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               status: "completed",
               title: notice,
               message: notice,
+              ...(modelChange === undefined ? {} : { modelChange }),
               startedAt: now,
               completedAt: now,
               updatedAt: now,
@@ -6706,6 +6725,15 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           for (const decision of pendingApprovals)
             yield* Deferred.succeed(decision, { decision: "cancel" });
           yield* reasoningDeltas.flushTurn(input.context.nativeTurnId);
+          for (const model of input.context.otherResponseModels) {
+            if (input.context.announcedFallbackModels.has(model)) continue;
+            yield* emitSystemNotice(
+              input.context,
+              `model-used:${input.context.providerTurnId}:${model}`,
+              `Used ${formatModelSlugName(model)} · Selected ${formatModelSlugName(input.context.requestedModel)}`,
+              { from: input.context.requestedModel, to: model },
+            );
+          }
           if (input.status !== "completed") {
             // The run stops following its subagents once its root turn fails or is
             // interrupted, so a workflow it follows is stopped rather than left
@@ -8140,6 +8168,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
 
           if (message.type === "system" && message.subtype === "model_refusal_fallback") {
+            if (message.scope !== "local") {
+              context.announcedFallbackModels.add(
+                claudeResponseModel(subagentModelCatalog, message.fallback_model),
+              );
+            }
             const now = yield* DateTime.now;
             const nativeItemId = message.uuid;
             yield* emitProviderEvent({
@@ -8166,6 +8199,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 status: "completed",
                 title: message.content,
                 message: message.content,
+                ...(message.scope !== "local"
+                  ? { modelChange: { from: message.original_model, to: message.fallback_model } }
+                  : {}),
                 startedAt: now,
                 completedAt: now,
                 updatedAt: now,
@@ -8259,6 +8295,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             const parentToolUseId = message.parent_tool_use_id;
             const snapshotModel =
               typeof message.message.model === "string" ? message.message.model.trim() : "";
+            if (parentToolUseId === null && snapshotModel && snapshotModel !== "<synthetic>") {
+              const model = claudeResponseModel(subagentModelCatalog, snapshotModel);
+              if (context.requestedModel !== "default" && model !== context.requestedModel)
+                context.otherResponseModels.add(model);
+            }
             const model =
               snapshotModel.length === 0
                 ? undefined
@@ -9656,26 +9697,35 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           return true;
         });
 
-        // Claude Code accepts Ultracode silently and runs without it when the
-        // account has dynamic workflows off or the model cannot run it.
-        const reportUltracodeShortfall = Effect.fn("ClaudeAdapterV2.reportUltracodeShortfall")(
-          function* (querySession: ClaudeLiveQueryContext, context: ActiveClaudeTurnContext) {
-            if (!querySession.verifyUltracode) return;
-            querySession.verifyUltracode = false;
-            const applied = yield* querySession.query.readAppliedSettings.pipe(
-              Effect.timeout("20 seconds"),
-              Effect.orElseSucceed(() => null),
-            );
-            if (applied === null || applied.ultracode) return;
-            yield* emitSystemNotice(
-              context,
-              `ultracode-unavailable:${context.providerTurnId}`,
-              applied.ultracodeAvailable === false
-                ? "Ultracode is off for this chat: Claude Code needs dynamic workflows on (see /config in Claude Code) and a model that supports it."
-                : "Ultracode is off for this chat: Claude Code did not turn it on.",
-            );
-          },
-        );
+        const verifyPromptModel = Effect.fn("ClaudeAdapterV2.verifyPromptModel")(function* (
+          session: ClaudeLiveQueryContext,
+          selection: ClaudeLiveSelection,
+        ) {
+          const readApplied = session.query.readAppliedSettings.pipe(
+            Effect.timeout("20 seconds"),
+            Effect.orElseSucceed(() => null),
+          );
+          const matches = (applied: ClaudeAppliedSettings | null) =>
+            applied?.model &&
+            (selection.model === "default" ||
+              claudeResponseModel(subagentModelCatalog, applied.model) ===
+                claudeResponseModel(subagentModelCatalog, selection.model));
+          let applied = yield* readApplied;
+          if (matches(applied)) return applied;
+          // A resumed session or a native switch can supersede the launch choice.
+          // Restore it once on the same process so background work keeps running.
+          session.confirmedLiveSelection = null;
+          if (applied?.model) {
+            yield* applyLiveSelection(session, selection);
+            applied = yield* readApplied;
+            if (session.confirmedLiveSelection !== null && matches(applied)) return applied;
+          }
+          session.confirmedLiveSelection = null;
+          return yield* new ClaudeModelNotAppliedError({
+            requested: selection.model,
+            applied: applied?.model ?? null,
+          });
+        });
 
         const syncHostPermissions = Effect.fn("ClaudeAdapterV2.syncHostPermissions")(function* (
           context: ClaudeLiveQueryContext,
@@ -9704,6 +9754,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         const openQuery = Effect.fnUntraced(function* (
           turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
           nativeThreadId: string,
+          compiledSelection: ReturnType<typeof compileClaudeModelSelection>,
         ) {
           const cliShell = turnInput.hostCliShell;
           const cliShellKey =
@@ -9725,11 +9776,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             claudeEffectiveQueryPolicyKey(queryPolicy, mcpOverrides),
             nativeModelPolicy,
           ]);
-          const compiledSelection = compileClaudeModelSelection(
-            turnInput.modelSelection,
-            subagentModelCatalog,
-            adapterOptions.settings.modelTraits,
-          );
           const resumeSessionAt = yield* getNativeConversationHeadId(turnInput.providerThread);
           const existing = yield* Ref.get(queryContext);
           // A wake turn prompts nothing: it drains output the live process
@@ -10034,6 +10080,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         const startTurn = Effect.fn("ClaudeAdapterV2.startTurn")(
           function* (turnInput: ProviderAdapter.ProviderAdapterV2TurnInput) {
             subagentModelCatalog = yield* readModelCatalog;
+            const selection = compileClaudeModelSelection(
+              turnInput.modelSelection,
+              subagentModelCatalog,
+              adapterOptions.settings.modelTraits,
+            );
             const startedAt = yield* DateTime.now;
             const nativeThreadId = yield* getNativeThreadId(turnInput.providerThread);
             const nativeTurnId = `turn:${turnInput.attemptId}`;
@@ -10087,6 +10138,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               providerTurnOrdinal,
               startedAt,
               itemOrdinals: new Map(),
+              requestedModel: claudeResponseModel(subagentModelCatalog, selection.apiModelId),
+              otherResponseModels: new Set(),
+              announcedFallbackModels: new Set(),
               assistant: {
                 fallbackText: "",
                 fallbackNativeItemId: `assistant:${turnInput.runId}`,
@@ -10135,7 +10189,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     fileSystem,
                     uuid: promptUuid,
                   });
-            const querySession = yield* openQuery(turnInput, nativeThreadId);
+            const querySession = yield* openQuery(turnInput, nativeThreadId, selection);
             const prompt =
               preparePrompt === null
                 ? null
@@ -10174,11 +10228,18 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               });
             });
             if (userMessage !== null) {
+              const applied = yield* verifyPromptModel(querySession, selection.live);
               yield* attachTurn;
-              yield* reportUltracodeShortfall(querySession, context).pipe(
-                Effect.ignore,
-                Effect.forkIn(sessionScope),
-              );
+              if (querySession.verifyUltracode && applied !== null && !applied.ultracode) {
+                yield* emitSystemNotice(
+                  context,
+                  `ultracode-unavailable:${context.providerTurnId}`,
+                  applied.ultracodeAvailable === false
+                    ? "Ultracode is off for this chat: Claude Code needs dynamic workflows on (see /config in Claude Code) and a model that supports it."
+                    : "Ultracode is off for this chat: Claude Code did not turn it on.",
+                );
+              }
+              querySession.verifyUltracode = false;
               // A user turn that races a wake leaves the buffer alone: the
               // continuation run the worker queued behind this run drains it
               // afterwards with correct attribution.
