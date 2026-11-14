@@ -546,11 +546,11 @@ that remain useful when those features change.
 
 ## Seeded runs and frontend tests
 
-Testing commands and runtime selection are in
+Testing commands, runtime selection, and handoff gates are authoritative in
 [AGENTS.md](../AGENTS.md) and [Development](development.md). Frontend work adds
 evidence at the seam that owns the behavior:
 
-- Review integrated UI in a seeded development home. Use or
+- Follow [AGENTS.md](../AGENTS.md)'s seeded-first UI evidence boundary. Use or
   extend an authoritative scenario for integrated product states; reuse the
   existing test runtimes for isolated behavior and pressure evidence.
 - Use an authoritative isolated scenario when the behavior depends on an integrated Project, Database projection, Page lifecycle, document authority, preload/Main transport, or Window Session.

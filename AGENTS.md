@@ -195,9 +195,21 @@ Each runtime has its own runner; the wrong one fails, or passes, for the wrong r
 - Broader: `vp run build` for build configuration, entrypoints, packaging, or startup failures; `vp run test` when targeted suites cannot bound a change's impact; `vp run test:all` for a release gate.
 - The semantic gate, test suites, E2E runs, and Rust tests from all worktrees queue for one computer-wide CPU and memory budget. A `[machine-budget] ... is waiting` line is the queue working: let the command wait, in the background if needed, rather than cancelling or retrying it. See [Sharing the computer between checkouts](docs/development.md#sharing-the-computer-between-checkouts).
 
+### UI evidence boundary
+
+- Only the curated Nightly set, which selects `@automatic`-tagged cases, runs Electron E2E automatically; the remaining specs can still drift silently from the UI they drive. When you rename, move or remove a UI surface, accessible name or `data-*` hook, `git grep` `tests/e2e/` for it, then update and run every spec that uses it.
+- For a focused E2E run, verify Playwright's collection banner matches the intended test count (normally `Running 1 test`). If it starts collecting the full suite, interrupt it immediately and correct the invocation instead of waiting for unrelated E2Es.
+- Match checks to the changed surface while iterating:
+  - Renderer workflow changes: run the related renderer test(s) plus `vp run typecheck` when types or props changed.
+  - Styling or copy-only UI changes: run one complete semantic alias (`vp run typecheck` or `vp run lint`) when TypeScript/TSX files changed; review visual parity at the UI evidence boundary.
+- For UI parity work, put numeric/state rules in pure helpers with boundary tests, keep renderer integration tests to a small number of critical user workflows, and review visual details at the UI evidence boundary.
+- Default to `vp run dev --home <absolute-task-home> --seed <scenario-id>` for product UI iteration and manual visual review. Use or extend the nearest authoritative scenario for integrated product states.
+- Reopen a seeded home with `vp run dev --home <dir>` for a persistent integrated UI environment with HMR; run the scenario's dedicated Electron E2E spec for deterministic UI verification.
+- If a change needs an E2E run or visual review that this section requires and you skip it, say so in the handoff and report that part as unverified.
+
 ### Blind spots
 
-- Nightly selects individual Electron E2E cases tagged `@automatic`. Before changing any other case, follow its spec’s row in [tests/e2e/TRIAGE.md](tests/e2e/TRIAGE.md), moving the behavior down, merging it, or deleting it when indicated. When you rename, move, or remove a UI surface, accessible name, or `data-*` hook, `git grep` `tests/e2e/` and update the specs that use it; run them when the change could plausibly break them.
+- Before changing any Electron E2E case not tagged `@automatic`, follow its spec’s row in [tests/e2e/TRIAGE.md](tests/e2e/TRIAGE.md), moving the behavior down, merging it, or deleting it when indicated. The rename, run, and visual rules are in "UI evidence boundary" above.
 - Pushing to `main` without a pull request skips Main CI's static repository contracts (version surface, workflows, ownership, dependency audits); `vp run verify:static` covers them.
 - CI fails on lint warnings above the per-file baseline and on new React Compiler bailouts. After removing some, `vp run lint:baseline` or `vp run react-compiler:baseline` records the lower counts. Never raise a baseline to admit new ones; mark a deliberate lint exception with `oxlint-disable-next-line <rule> -- <reason>`.
 
