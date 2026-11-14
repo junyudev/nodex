@@ -19,11 +19,9 @@ import {
 import { foldDataSourceRelationSearchText } from "@/lib/data-source-relation-runtime";
 import { cn } from "@/lib/utils";
 import { useMountAction } from "@/lib/use-mount-action";
+import { PropertyEmptyValue } from "./property-empty-value";
 import {
-  DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
-  PropertyEmptyValue,
-} from "./property-empty-value";
-import {
+  DATABASE_PAGE_PROPERTY_BORDERLESS_VALUE_CLASS_NAME,
   DATABASE_PAGE_PROPERTY_OUTLINED_TOKEN_CLASS_NAME,
   DATABASE_PAGE_PROPERTY_VALUE_TOKEN_CLASS_NAME,
   DATABASE_PROPERTY_VALUE_CHIP_CLASS_NAME,
@@ -489,7 +487,7 @@ export function RelationPropertyEditor({
                     "group/relation-trigger text-sm",
                     preview.totalCount === 0 &&
                       !invalidPreview &&
-                      DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
+                      DATABASE_PAGE_PROPERTY_BORDERLESS_VALUE_CLASS_NAME,
                   )
                 : presentation === "list" || presentation === "board"
                   ? DATABASE_PROPERTY_VALUE_CHIP_CLASS_NAME
@@ -503,7 +501,9 @@ export function RelationPropertyEditor({
               <span
                 key={target.pageId}
                 className={cn(
-                  "inline-flex min-w-0 max-w-36 items-center gap-1",
+                  "inline-flex min-w-0 items-center gap-1",
+                  // On a Page a reference chip has the room a linked chat's chip has.
+                  presentation === "page" ? "max-w-64" : "max-w-36",
                   presentation === "list" || presentation === "board"
                     ? "text-[var(--database-property-chip-current-text,var(--database-property-chip-text))]"
                     : "text-token-text-secondary",

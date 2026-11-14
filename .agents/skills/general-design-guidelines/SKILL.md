@@ -303,6 +303,22 @@ Active/selected items must be **unmistakable** without being garish:
   reference should not become filled solely because it appears in another
   Property row.
 
+### Label and value lists
+
+- Give the list shared vertical edges and put what is visible at rest on them:
+  text, glyphs, and the outline or fill of a chip. A plain value, an empty value
+  and a chip then start on one line.
+- Let hover and focus surfaces hang outside an edge instead of indenting the
+  content by their padding. A borderless value that keeps 6px of hover padding
+  inside the edge reads as misaligned next to a chip.
+- Align the list's leading icons with the edge of the content around it, such as
+  a Page's title and body, not with the inside of their own hover surface.
+- A value that wraps stays in the value lane, its first line on its label's
+  line. A value that needs the list's whole width, such as a tree, hangs beneath
+  its row as that row's outline: indented one icon step, so its icons sit under
+  the label's text, and tied to the label by a hairline guide. Do not frame it:
+  a frame reads as a second object and repeats the label as a heading.
+
 ## Dropdowns & Poppers
 
 Dropdowns are **frosted glass** with a subtle shadow — they float above content, not beside it:

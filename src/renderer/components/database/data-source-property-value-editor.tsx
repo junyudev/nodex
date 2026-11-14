@@ -22,11 +22,9 @@ import { PropertyOptionPicker, type PropertyOptionPickerHost } from "./property-
 import { SemanticSelectPropertyEditor } from "./semantic-property-editors";
 import { DatePropertyEditor } from "./date-property-editor";
 import type { DataSourcePropertyEditorBinding } from "./data-source-property-editor-binding";
+import { PROPERTY_EMPTY_VALUE_LABEL } from "./property-empty-value";
 import {
-  DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
-  PROPERTY_EMPTY_VALUE_LABEL,
-} from "./property-empty-value";
-import {
+  DATABASE_PAGE_PROPERTY_BORDERLESS_INPUT_CLASS_NAME,
   DATABASE_PROPERTY_VALUE_CHIP_CLASS_NAME,
   type DatabasePropertyValuePresentation,
 } from "./property-value-chip";
@@ -37,8 +35,10 @@ const valueInputClass = cn(
 );
 
 // An inset ring preserves focus feedback without shifting Page scalar text past borderless triggers.
-const pageScalarInputClass =
-  "w-full max-w-72 border-0 px-1 text-sm focus:ring-1 focus:ring-inset focus:ring-token-focus-border";
+const pageScalarInputClass = cn(
+  DATABASE_PAGE_PROPERTY_BORDERLESS_INPUT_CLASS_NAME,
+  "w-full max-w-72 border-0 text-sm text-token-text-primary focus:ring-1 focus:ring-inset focus:ring-token-focus-border",
+);
 
 const scalarString = (value: DatabaseJsonValue | undefined): string =>
   typeof value === "string" ? value : "";
@@ -143,10 +143,7 @@ function ScalarPropertyEditor({
       className={cn(
         valueInputClass,
         presentation === "page"
-          ? cn(
-              pageScalarInputClass,
-              draft.length === 0 && DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
-            )
+          ? pageScalarInputClass
           : presentation === "list"
             ? "h-full min-w-0 max-w-40 flex-1 border-0 bg-transparent p-0 text-xs text-[var(--database-property-chip-current-text,var(--database-property-chip-text))] hover:bg-transparent focus:bg-transparent focus:ring-0"
             : presentation === "board"

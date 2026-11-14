@@ -3,10 +3,8 @@ import { BellIcon, GlobeIcon, RepeatIcon, SmallChevronDownIcon } from "@/compone
 import { NodexDropdownButtonTrigger, NodexOptionPicker } from "@/components/ui/dropdown";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
-import {
-  DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
-  PropertyEmptyValue,
-} from "@/components/database/property-empty-value";
+import { PropertyEmptyValue } from "@/components/database/property-empty-value";
+import { DATABASE_PAGE_PROPERTY_BORDERLESS_VALUE_CLASS_NAME } from "@/components/database/property-value-chip";
 import { cn } from "@/lib/utils";
 import { useMountAction } from "@/lib/use-mount-action";
 import type { RecurrenceFrequency } from "@/lib/types";
@@ -55,7 +53,7 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
           type="button"
           className={cn(
             "flex flex-wrap items-center gap-1",
-            DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
+            DATABASE_PAGE_PROPERTY_BORDERLESS_VALUE_CLASS_NAME,
           )}
           aria-label={hasSchedule ? "Edit schedule" : "Set schedule"}
         >

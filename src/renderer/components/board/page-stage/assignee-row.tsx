@@ -5,6 +5,8 @@ import { NodexDropdownButtonTrigger, NodexOptionPicker } from "@/components/ui/d
 import { useMembers } from "@/lib/members-runtime";
 import { InboxAgentPicker, useInboxAgents } from "@/features/inbox/inbox-agent-picker";
 import { PageStagePropertyRow } from "./property-row";
+import { pageStagePropertyDropdownValue } from "./property-value-styles";
+import { cn } from "@/lib/utils";
 import { PageAssigneeLabel } from "@/components/database/page-assignee-label";
 
 export function PageAssigneeRow({
@@ -85,7 +87,7 @@ export function PageAssigneeRow({
             <NodexDropdownButtonTrigger
               size="xs"
               chrome="transparent"
-              className="max-w-full min-w-0"
+              className={cn(pageStagePropertyDropdownValue, "max-w-full")}
               aria-label="Choose Assignee"
             >
               <PageAssigneeLabel assignee={assignment ?? null} />
@@ -116,7 +118,12 @@ export function PageOwnerRow({
         options={active.map((member) => ({ value: member.id, label: member.display_name }))}
         onValueChange={(owner) => onChange({ ...pageWork, owner })}
         triggerButton={
-          <NodexDropdownButtonTrigger size="xs" chrome="transparent" aria-label="Choose Owner">
+          <NodexDropdownButtonTrigger
+            size="xs"
+            chrome="transparent"
+            className={pageStagePropertyDropdownValue}
+            aria-label="Choose Owner"
+          >
             {active.find((member) => member.id === pageWork.owner)?.display_name ??
               "Removed Member"}
           </NodexDropdownButtonTrigger>

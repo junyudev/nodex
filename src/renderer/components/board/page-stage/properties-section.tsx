@@ -5,11 +5,11 @@ import { NodexDropdown } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import { SchedulePopover } from "@/components/board/schedule-popover";
 import { dataSourcePropertyIcon } from "@/components/database/data-source-property-presentation";
+import { PropertyEmptyValue } from "@/components/database/property-empty-value";
 import {
-  DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
-  PropertyEmptyValue,
-} from "@/components/database/property-empty-value";
-import { DATABASE_PAGE_PROPERTY_OUTLINED_TOKEN_CLASS_NAME } from "@/components/database/property-value-chip";
+  DATABASE_PAGE_PROPERTY_BORDERLESS_VALUE_CLASS_NAME,
+  DATABASE_PAGE_PROPERTY_OUTLINED_TOKEN_CLASS_NAME,
+} from "@/components/database/property-value-chip";
 import {
   ActivitySpinnerIcon,
   AssigneeIcon,
@@ -54,7 +54,11 @@ import { PageAutomationsRow } from "./automations-row";
 import { PageStatusTurn } from "./status-turn";
 import { PageWorkspaceRow } from "./page-workspace-row";
 import { PageAssigneeRow, PageOwnerRow } from "./assignee-row";
-import { PageStagePropertyRow } from "./property-row";
+import {
+  PageStagePropertyRow,
+  pageStagePropertyIconSlot,
+  pageStagePropertyLeadButton,
+} from "./property-row";
 import { pageStagePropertyAddControl } from "./property-value-styles";
 
 interface PageStagePropertiesSectionProps {
@@ -161,8 +165,8 @@ function RelatedChatAddControl({
       aria-label="Add chat"
       disabled={saving}
       className={cn(
-        "flex min-h-6 min-w-0 items-center text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-token-focus-border disabled:opacity-40",
-        DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
+        "flex min-w-0 items-center text-left text-sm disabled:opacity-40",
+        DATABASE_PAGE_PROPERTY_BORDERLESS_VALUE_CLASS_NAME,
       )}
     >
       <PropertyEmptyValue className="truncate" />
@@ -303,7 +307,7 @@ function RelatedChatsPropertyRow({
           <div
             role="status"
             aria-label="Loading linked chats"
-            className="flex h-7 items-center px-1.5 text-(--foreground-tertiary)"
+            className="flex h-7 items-center text-(--foreground-tertiary)"
           >
             <ActivitySpinnerIcon className="size-3.5" />
           </div>
@@ -459,18 +463,19 @@ function TuckedPropertyChoices({
   readonly onChoose: (key: string) => void;
 }) {
   return (
-    <div role="group" aria-label="Empty properties" className="flex flex-wrap gap-x-0.5 py-0.75">
+    <div role="group" aria-label="Empty properties" className="flex flex-wrap gap-x-1 py-0.75">
       {choices.map((choice) => (
         <button
           key={choice.key}
           type="button"
           data-page-stage-property-choice={choice.key}
           onClick={() => onChoose(choice.key)}
-          className="flex h-6 max-w-56 min-w-0 cursor-interaction items-center gap-1.5 rounded-sm pr-2 pl-1 text-sm/5 text-(--foreground-tertiary) hover:bg-token-foreground/5 hover:text-(--foreground-secondary) focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-token-focus-border"
+          className={cn(
+            pageStagePropertyLeadButton,
+            "h-6 max-w-56 text-(--foreground-tertiary) hover:text-(--foreground-secondary)",
+          )}
         >
-          <span className="flex w-5 shrink-0 items-center justify-center [&_svg]:size-4">
-            {choice.icon}
-          </span>
+          <span className={cn(pageStagePropertyIconSlot, "text-current")}>{choice.icon}</span>
           <span className="min-w-0 truncate">{choice.label}</span>
         </button>
       ))}
@@ -656,9 +661,12 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
           type="button"
           aria-expanded={propertiesExpanded}
           onClick={() => setExpandedState({ pageId, expanded: !propertiesExpanded })}
-          className="flex h-7.5 w-fit items-center gap-1.5 rounded-sm pr-2 pl-1 text-sm/5 text-(--foreground-tertiary) hover:bg-token-foreground/5 hover:text-(--foreground-secondary)"
+          className={cn(
+            pageStagePropertyLeadButton,
+            "h-7.5 w-fit text-(--foreground-tertiary) hover:text-(--foreground-secondary)",
+          )}
         >
-          <span className="flex w-5 shrink-0 items-center justify-center">
+          <span className={cn(pageStagePropertyIconSlot, "text-current")}>
             <ChevronDownIcon
               className={cn(
                 "icon-2xs transition-transform duration-150",

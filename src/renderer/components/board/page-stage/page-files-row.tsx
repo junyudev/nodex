@@ -18,10 +18,8 @@ import {
 import { NodexIconButton } from "@/components/ui/button";
 import { FileDetailsToolbar } from "@/components/shared/file-details-toolbar";
 import { ColorfulFileResourceIcon } from "@/components/shared/file-resource-icon";
-import {
-  DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
-  PropertyEmptyValue,
-} from "@/components/database/property-empty-value";
+import { PropertyEmptyValue } from "@/components/database/property-empty-value";
+import { DATABASE_PAGE_PROPERTY_BORDERLESS_VALUE_CLASS_NAME } from "@/components/database/property-value-chip";
 import {
   NodexDialog,
   NodexDialogAction,
@@ -887,7 +885,7 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
               type="button"
               className={cn(
                 "flex min-h-6 min-w-0 items-center text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-token-focus-border",
-                DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
+                DATABASE_PAGE_PROPERTY_BORDERLESS_VALUE_CLASS_NAME,
               )}
               onClick={() => openFiles()}
               aria-label="Add Page Files"

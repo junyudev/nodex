@@ -6,6 +6,24 @@ export type DatabasePropertyValuePresentation = "compact" | "page" | "list" | "b
 export const DATABASE_PAGE_PROPERTY_VALUE_TOKEN_CLASS_NAME =
   "inline-flex h-5.5 min-w-0 items-center rounded-md px-1.5 text-sm/5";
 
+/**
+ * A borderless Page Property value, empty or not, keeps its ink on the host's value edge. Its
+ * hover and focus surface hangs into the gutter a host declares with
+ * `--page-property-value-gutter`; a host without one keeps the surface inside the value's own
+ * padding. The surface is painted behind the value rather than made of its box, so the value
+ * occupies exactly its ink: nothing beside it shifts, and it never truncates to make room.
+ */
+export const DATABASE_PAGE_PROPERTY_BORDERLESS_VALUE_CLASS_NAME = [
+  "relative isolate min-h-6 rounded-md px-[calc(0.375rem-var(--page-property-value-gutter,0px))]",
+  "before:absolute before:inset-y-0 before:inset-x-[calc(var(--page-property-value-gutter,0px)*-1)] before:-z-10 before:rounded-md",
+  "hover:bg-transparent hover:before:bg-token-foreground/5",
+  "focus-visible:ring-0 focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-token-focus-border",
+].join(" ");
+
+/** The same contract for a text field, which cannot paint behind itself and so shifts its box. */
+export const DATABASE_PAGE_PROPERTY_BORDERLESS_INPUT_CLASS_NAME =
+  "relative left-[calc(var(--page-property-value-gutter,0px)*-1)] rounded-md px-1.5 hover:bg-token-foreground/5";
+
 /** Quiet outline treatment for Page Property values that act as references. */
 export const DATABASE_PAGE_PROPERTY_OUTLINED_TOKEN_CLASS_NAME = [
   DATABASE_PAGE_PROPERTY_VALUE_TOKEN_CLASS_NAME,
