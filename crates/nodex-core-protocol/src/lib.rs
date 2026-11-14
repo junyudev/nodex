@@ -660,6 +660,20 @@ pub struct CoreRequestCancelResponse {
     pub cancelled: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct RequestClassHealthCounts {
+    pub queued: u64,
+    pub running: u64,
+    pub refused: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct RequestClassHealth {
+    pub interactive: RequestClassHealthCounts,
+    pub background: RequestClassHealthCounts,
+    pub maintenance: RequestClassHealthCounts,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct CoreHealthMetrics {
     #[serde(default)]
@@ -676,6 +690,7 @@ pub struct CoreHealthMetrics {
     pub request_cancelled: u64,
     #[serde(default)]
     pub request_overloaded: u64,
+    pub request_classes: RequestClassHealth,
     pub writer_queue_depth: u64,
     pub active_writer_commands: u64,
     pub active_read_commands: u64,
@@ -1486,6 +1501,8 @@ mod team_api {
         HttpErrorResponse,
         CoreHealthMetrics,
         HealthDurationMetric,
+        RequestClassHealth,
+        RequestClassHealthCounts,
         CoreRequestClass,
         CoreRequestCancelRequest,
         CoreRequestCancelResponse,
@@ -1550,6 +1567,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
 }
 
 fn build_openapi() -> utoipa::openapi::OpenApi {
+    use utoipa::openapi::header::HeaderBuilder;
     use utoipa::openapi::{ContentBuilder, Ref, ResponseBuilder};
 
     let mut api = CoreProtocolApi::openapi();
@@ -1562,7 +1580,21 @@ fn build_openapi() -> utoipa::openapi::OpenApi {
                 .build(),
         )
         .build();
-    for path in api.paths.paths.values_mut() {
+    let admission_refusal = ResponseBuilder::from(error.clone())
+        .description("Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal")
+        .header("Retry-After", HeaderBuilder::new().description(Some("Delay in whole seconds")).build())
+        .build();
+    for (route, path) in &mut api.paths.paths {
+        let admits_requests = route.starts_with("/core/v1/modules/")
+            || matches!(
+                route.as_str(),
+                "/core/v1/agent-runs/record"
+                    | "/core/v1/local-mutations/resolve"
+                    | "/core/v1/blobs/prepare"
+                    | "/core/v1/files/blobs/prepare"
+                    | "/core/v1/files/blobs/{file_id}"
+                    | "/core/v1/threads/{thread_id}/blobs/{content_hash}"
+            );
         for operation in [
             &mut path.get,
             &mut path.put,
@@ -1582,6 +1614,12 @@ fn build_openapi() -> utoipa::openapi::OpenApi {
                 .responses
                 .responses
                 .insert("default".to_owned(), error.clone().into());
+            if admits_requests {
+                operation
+                    .responses
+                    .responses
+                    .insert("429".to_owned(), admission_refusal.clone().into());
+            }
         }
     }
     api

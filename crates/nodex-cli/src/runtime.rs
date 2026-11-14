@@ -2305,7 +2305,7 @@ pub(crate) fn map_core_error(error: CoreError) -> CliError {
         CoreErrorCode::ProtectedOwnerDeletion => CliErrorCode::ProtectedOwnerDeletion,
         CoreErrorCode::MaterializationStale => CliErrorCode::MaterializationStale,
         CoreErrorCode::ProtocolIncompatible => CliErrorCode::ProtocolIncompatible,
-        CoreErrorCode::CoreUnavailable => CliErrorCode::CoreUnavailable,
+        CoreErrorCode::CoreUnavailable | CoreErrorCode::Overloaded => CliErrorCode::CoreUnavailable,
         CoreErrorCode::RevisionConflict
         | CoreErrorCode::GenerationConflict
         | CoreErrorCode::HeadConflict

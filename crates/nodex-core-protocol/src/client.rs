@@ -1771,6 +1771,31 @@ mod tests {
     }
 
     #[test]
+    fn admission_refusal_is_a_transport_error_with_replay_evidence() {
+        use nodex_core_contracts::{CoreErrorCode, CoreErrorRecovery};
+
+        let body = r#"{"status":"error","payload":{"code":"overloaded","message":"Core interactive request admission is full","retryable":true,"recovery":{"kind":"retry_admission","milliseconds":100}}}"#;
+        let response = format!(
+            "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 1\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        let Err(ClientError::Http {
+            status: 429,
+            core_error: Some(error),
+            ..
+        }) = read_raw_response(&mut io::Cursor::new(response), 4096)
+        else {
+            panic!("expected an HTTP admission refusal");
+        };
+        assert_eq!(error.code, CoreErrorCode::Overloaded);
+        assert!(error.retryable);
+        assert_eq!(
+            error.recovery,
+            CoreErrorRecovery::RetryAdmission { milliseconds: 100 }
+        );
+    }
+
+    #[test]
     fn response_head_reader_stops_at_the_http_boundary() {
         let mut response =
             std::io::Cursor::new(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}".to_vec());

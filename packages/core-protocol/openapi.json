@@ -750,6 +750,24 @@
               }
             }
           },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          },
           "default": {
             "description": "Core HTTP rejection; invalid_input identifies request validation failures",
             "content": {
@@ -817,6 +835,24 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PreparedBlobReceipt"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -930,6 +966,24 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PreparedBlobReceipt"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -1112,6 +1166,24 @@
                     "format": "int32",
                     "minimum": 0
                   }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -1630,6 +1702,24 @@
               }
             }
           },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          },
           "default": {
             "description": "Core HTTP rejection; invalid_input identifies request validation failures",
             "content": {
@@ -1707,6 +1797,24 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StoreAdministrationApplyResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -1792,6 +1900,24 @@
               }
             }
           },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          },
           "default": {
             "description": "Core HTTP rejection; invalid_input identifies request validation failures",
             "content": {
@@ -1869,6 +1995,24 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AutomationApplyResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -1954,6 +2098,24 @@
               }
             }
           },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          },
           "default": {
             "description": "Core HTTP rejection; invalid_input identifies request validation failures",
             "content": {
@@ -2031,6 +2193,24 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DatabaseApplyResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -2116,6 +2296,24 @@
               }
             }
           },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          },
           "default": {
             "description": "Core HTTP rejection; invalid_input identifies request validation failures",
             "content": {
@@ -2197,6 +2395,24 @@
               }
             }
           },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          },
           "default": {
             "description": "Core HTTP rejection; invalid_input identifies request validation failures",
             "content": {
@@ -2274,6 +2490,24 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/OwnedDocumentReadResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -2398,6 +2632,24 @@
               }
             }
           },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          },
           "default": {
             "description": "Core HTTP rejection; invalid_input identifies request validation failures",
             "content": {
@@ -2484,6 +2736,24 @@
               }
             }
           },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          },
           "default": {
             "description": "Core HTTP rejection; invalid_input identifies request validation failures",
             "content": {
@@ -2561,6 +2831,24 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LibraryApplyResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -2646,6 +2934,24 @@
               }
             }
           },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          },
           "default": {
             "description": "Core HTTP rejection; invalid_input identifies request validation failures",
             "content": {
@@ -2723,6 +3029,24 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/QueryReadResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -2808,6 +3132,24 @@
               }
             }
           },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          },
           "default": {
             "description": "Core HTTP rejection; invalid_input identifies request validation failures",
             "content": {
@@ -2889,6 +3231,24 @@
               }
             }
           },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          },
           "default": {
             "description": "Core HTTP rejection; invalid_input identifies request validation failures",
             "content": {
@@ -2966,6 +3326,24 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppToolOperationIdentity"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -3089,6 +3467,24 @@
                     "format": "int32",
                     "minimum": 0
                   }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Delay in whole seconds"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -12266,6 +12662,27 @@
           },
           {
             "type": "object",
+            "description": "Core refused admission before the operation could run.",
+            "required": [
+              "milliseconds",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "retry_admission"
+                ]
+              },
+              "milliseconds": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "failure",
               "kind"
@@ -12461,6 +12878,7 @@
       "CoreHealthMetrics": {
         "type": "object",
         "required": [
+          "request_classes",
           "writer_queue_depth",
           "active_writer_commands",
           "active_read_commands",
@@ -12639,6 +13057,9 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          },
+          "request_classes": {
+            "$ref": "#/components/schemas/RequestClassHealth"
           },
           "request_deadline_exceeded": {
             "type": "integer",
@@ -57457,6 +57878,50 @@
           }
         },
         "additionalProperties": false
+      },
+      "RequestClassHealth": {
+        "type": "object",
+        "required": [
+          "interactive",
+          "background",
+          "maintenance"
+        ],
+        "properties": {
+          "background": {
+            "$ref": "#/components/schemas/RequestClassHealthCounts"
+          },
+          "interactive": {
+            "$ref": "#/components/schemas/RequestClassHealthCounts"
+          },
+          "maintenance": {
+            "$ref": "#/components/schemas/RequestClassHealthCounts"
+          }
+        }
+      },
+      "RequestClassHealthCounts": {
+        "type": "object",
+        "required": [
+          "queued",
+          "running",
+          "refused"
+        ],
+        "properties": {
+          "queued": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "refused": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "running": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
       },
       "ResourceKey": {
         "oneOf": [

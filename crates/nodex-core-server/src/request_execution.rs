@@ -13,7 +13,7 @@ use nodex_core_contracts::{CoreError, CoreErrorCode, CoreErrorRecovery};
 use nodex_core_protocol::{
     BACKGROUND_REQUEST_DEADLINE_MS, CoreRequestClass as RequestClass,
     INTERACTIVE_REQUEST_DEADLINE_MS, MAINTENANCE_REQUEST_DEADLINE_MS, MAX_REQUEST_DEADLINE_MS,
-    MIN_REQUEST_DEADLINE_MS,
+    MIN_REQUEST_DEADLINE_MS, RequestClassHealth, RequestClassHealthCounts,
 };
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
@@ -24,7 +24,14 @@ pub(crate) const REQUEST_DEADLINE_HEADER: &str = "x-nodex-request-deadline-ms";
 const TOTAL_EXECUTION_CAPACITY: usize = 4;
 const BACKGROUND_EXECUTION_CAPACITY: usize = TOTAL_EXECUTION_CAPACITY - 1;
 const MAINTENANCE_EXECUTION_CAPACITY: usize = 1;
-const ADMISSION_CAPACITY: usize = 128;
+const ADMISSION_CAPACITIES: AdmissionCapacities = AdmissionCapacities {
+    interactive: 128,
+    background: 48,
+    maintenance: 8,
+};
+const ADMISSION_RETRY_MS: u64 = 100;
+const REFUSAL_LOG_INTERVAL: Duration = Duration::from_secs(1);
+const REFUSAL_OPERATION_LIMIT: usize = 5;
 const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const CANCELLATION_TOMBSTONE_TTL: Duration = Duration::from_secs(60);
 const MAX_CANCELLATION_TOMBSTONES: usize = 4_096;
@@ -70,9 +77,48 @@ struct RequestKey {
     request_id: String,
 }
 
+#[derive(Clone, Copy)]
+struct AdmissionCapacities {
+    interactive: u64,
+    background: u64,
+    maintenance: u64,
+}
+
+impl AdmissionCapacities {
+    fn get(self, class: RequestClass) -> u64 {
+        match class {
+            RequestClass::Interactive => self.interactive,
+            RequestClass::Background => self.background,
+            RequestClass::Maintenance => self.maintenance,
+        }
+    }
+}
+
+struct ActiveRequest {
+    cancellation: QueryCancellation,
+    class: RequestClass,
+    operation: &'static str,
+    running: bool,
+}
+
 struct ActiveRequestGuard {
     registry: Arc<Mutex<RequestRegistry>>,
     key: RequestKey,
+}
+
+impl ActiveRequestGuard {
+    fn mark_running(&self) {
+        let mut registry = self.registry.lock().expect("request registry");
+        let request = registry
+            .active
+            .get_mut(&self.key)
+            .expect("admitted request");
+        request.running = true;
+        let class = request.class;
+        let counts = registry.counts_mut(class);
+        counts.queued -= 1;
+        counts.running += 1;
+    }
 }
 
 impl Drop for ActiveRequestGuard {
@@ -80,14 +126,31 @@ impl Drop for ActiveRequestGuard {
         let Ok(mut registry) = self.registry.lock() else {
             return;
         };
-        registry.active.remove(&self.key);
+        if let Some(request) = registry.active.remove(&self.key) {
+            let counts = registry.counts_mut(request.class);
+            if request.running {
+                counts.running -= 1;
+            } else {
+                counts.queued -= 1;
+            }
+        }
     }
 }
 
 #[derive(Default)]
 struct RequestRegistry {
-    active: HashMap<RequestKey, QueryCancellation>,
+    active: HashMap<RequestKey, ActiveRequest>,
     cancellation_tombstones: HashMap<RequestKey, Instant>,
+    counts: RequestClassHealth,
+    last_refusal_log: Option<Instant>,
+}
+
+#[derive(Debug)]
+struct AdmissionPressure {
+    class: RequestClass,
+    operation: &'static str,
+    counts: RequestClassHealth,
+    top_operations: Vec<(&'static str, u64)>,
 }
 
 impl RequestRegistry {
@@ -95,10 +158,71 @@ impl RequestRegistry {
         self.cancellation_tombstones
             .retain(|_, expires_at| *expires_at > now);
     }
+
+    fn counts_mut(&mut self, class: RequestClass) -> &mut RequestClassHealthCounts {
+        match class {
+            RequestClass::Interactive => &mut self.counts.interactive,
+            RequestClass::Background => &mut self.counts.background,
+            RequestClass::Maintenance => &mut self.counts.maintenance,
+        }
+    }
+
+    fn record_refusal(
+        &mut self,
+        class: RequestClass,
+        operation: &'static str,
+        now: Instant,
+    ) -> Option<AdmissionPressure> {
+        self.counts_mut(class).refused += 1;
+        if self
+            .last_refusal_log
+            .is_some_and(|last| now - last < REFUSAL_LOG_INTERVAL)
+        {
+            return None;
+        }
+        self.last_refusal_log = Some(now);
+        let mut operations = HashMap::<_, u64>::new();
+        for request in self.active.values() {
+            *operations.entry(request.operation).or_default() += 1;
+        }
+        let mut top_operations: Vec<_> = operations.into_iter().collect();
+        top_operations
+            .sort_unstable_by_key(|&(operation, count)| (std::cmp::Reverse(count), operation));
+        top_operations.truncate(REFUSAL_OPERATION_LIMIT);
+        Some(AdmissionPressure {
+            class,
+            operation,
+            counts: self.counts,
+            top_operations,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct AdmissionRefusal(RequestClass);
+
+impl AdmissionRefusal {
+    pub(crate) fn api_error(self) -> crate::http_error::ApiError {
+        crate::http_error::ApiError::new(
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            format!(
+                "Core {} request admission is full",
+                request_class_name(self.0)
+            ),
+        )
+        .with_recovery(CoreErrorRecovery::RetryAdmission {
+            milliseconds: ADMISSION_RETRY_MS,
+        })
+    }
+}
+
+impl axum::response::IntoResponse for AdmissionRefusal {
+    fn into_response(self) -> axum::response::Response {
+        self.api_error().into_response()
+    }
 }
 
 struct ExecutionPermits {
-    _admission: OwnedSemaphorePermit,
     _class: Option<OwnedSemaphorePermit>,
     _maintenance: Option<OwnedSemaphorePermit>,
     _total: OwnedSemaphorePermit,
@@ -109,10 +233,9 @@ pub(crate) struct RequestExecutor {
     total: Arc<Semaphore>,
     background: Arc<Semaphore>,
     maintenance: Arc<Semaphore>,
-    admission: Arc<Semaphore>,
+    admission: AdmissionCapacities,
     registry: Arc<Mutex<RequestRegistry>>,
     metrics: Arc<RequestExecutorMetrics>,
-    total_capacity: usize,
 }
 
 #[derive(Default)]
@@ -127,6 +250,7 @@ struct RequestExecutorMetrics {
 pub(crate) struct RequestExecutorSnapshot {
     pub(crate) active: u64,
     pub(crate) queued: u64,
+    pub(crate) classes: RequestClassHealth,
     pub(crate) admission_wait: DurationMetricSnapshot,
     pub(crate) execution_duration: DurationMetricSnapshot,
     pub(crate) deadline_exceeded: u64,
@@ -140,7 +264,7 @@ impl RequestExecutor {
             TOTAL_EXECUTION_CAPACITY,
             BACKGROUND_EXECUTION_CAPACITY,
             MAINTENANCE_EXECUTION_CAPACITY,
-            ADMISSION_CAPACITY,
+            ADMISSION_CAPACITIES,
         )
     }
 
@@ -148,16 +272,15 @@ impl RequestExecutor {
         total: usize,
         background: usize,
         maintenance: usize,
-        admission: usize,
+        admission: AdmissionCapacities,
     ) -> Self {
         Self {
             total: Arc::new(Semaphore::new(total)),
             background: Arc::new(Semaphore::new(background)),
             maintenance: Arc::new(Semaphore::new(maintenance)),
-            admission: Arc::new(Semaphore::new(admission)),
+            admission,
             registry: Arc::new(Mutex::new(RequestRegistry::default())),
             metrics: Arc::new(RequestExecutorMetrics::default()),
-            total_capacity: total,
         }
     }
 
@@ -166,27 +289,40 @@ impl RequestExecutor {
         connection_id: &str,
         headers: &HeaderMap,
         default_class: RequestClass,
+        label: &'static str,
         operation: impl FnOnce() -> Result<T, CoreError> + Send + 'static,
-    ) -> Result<T, CoreError>
+    ) -> Result<Result<T, CoreError>, AdmissionRefusal>
     where
         T: Send + 'static,
     {
-        let spec = RequestSpec::from_headers(connection_id, headers, default_class)?;
+        let spec = match RequestSpec::from_headers(connection_id, headers, default_class) {
+            Ok(spec) => spec,
+            Err(error) => return Ok(Err(error)),
+        };
         let started_at = Instant::now();
         let cancellation = QueryCancellation::new();
-        let guard = self.register(&spec.key, &cancellation)?;
-        if cancellation.is_cancelled() {
-            let error = cancelled();
-            self.record_error(&error);
-            return Err(error);
-        }
-        let admitted_at = Instant::now();
-        let admission = self.admission.clone().try_acquire_owned().map_err(|_| {
-            self.metrics.overloaded.fetch_add(1, Ordering::Relaxed);
-            overloaded()
-        })?;
+        let guard = match self.admit(&spec, label, &cancellation)? {
+            Ok(guard) => guard,
+            Err(error) => {
+                self.record_error(&error);
+                return Ok(Err(error));
+            }
+        };
+        Ok(self
+            .run(spec, started_at, cancellation, guard, operation)
+            .await)
+    }
+
+    async fn run<T: Send + 'static>(
+        &self,
+        spec: RequestSpec,
+        started_at: Instant,
+        cancellation: QueryCancellation,
+        guard: ActiveRequestGuard,
+        operation: impl FnOnce() -> Result<T, CoreError> + Send + 'static,
+    ) -> Result<T, CoreError> {
         let permits = match self
-            .acquire_permits(spec.class, spec.deadline, &cancellation, admission)
+            .acquire_permits(spec.class, spec.deadline, &cancellation)
             .await
         {
             Ok(permits) => permits,
@@ -208,7 +344,7 @@ impl RequestExecutor {
             self.record_error(&error);
             return Err(error);
         }
-        let admission_wait = admitted_at.elapsed();
+        let admission_wait = started_at.elapsed();
         self.metrics.admission_wait.record(admission_wait);
         let context = RequestExecutionContext::new(
             execution_class(spec.class),
@@ -220,8 +356,16 @@ impl RequestExecutor {
         let metrics = Arc::clone(&self.metrics);
         let request_span = tracing::Span::current();
         let mut worker = tokio::task::spawn_blocking(move || {
-            let _guard = guard;
             let _permits = permits;
+            let guard = guard;
+            // Dispatch can wait on Tokio's blocking pool after acquiring permits.
+            if Instant::now() >= context.deadline() {
+                return Err(deadline_exceeded());
+            }
+            if context.cancellation().is_cancelled() {
+                return Err(cancelled());
+            }
+            guard.mark_running();
             let started_at = Instant::now();
             // Tokio blocking workers do not inherit the async task's tracing
             // span. Carry it explicitly so SQLite work remains correlated with
@@ -309,8 +453,8 @@ impl RequestExecutor {
             return false;
         };
         registry.prune_tombstones(Instant::now());
-        if let Some(cancellation) = registry.active.get(&key) {
-            cancellation.cancel();
+        if let Some(request) = registry.active.get(&key) {
+            request.cancellation.cancel();
             return true;
         }
         if registry.cancellation_tombstones.len() >= MAX_CANCELLATION_TOMBSTONES {
@@ -323,21 +467,26 @@ impl RequestExecutor {
     }
 
     pub(crate) fn snapshot(&self) -> RequestExecutorSnapshot {
-        let active = self
-            .total_capacity
-            .saturating_sub(self.total.available_permits());
-        let registered = self
-            .registry
-            .lock()
-            .map_or(0, |registry| registry.active.len());
+        let classes = self.registry.lock().map_or_else(
+            |_| RequestClassHealth::default(),
+            |registry| registry.counts,
+        );
         RequestExecutorSnapshot {
-            active: u64::try_from(active).unwrap_or(u64::MAX),
-            queued: u64::try_from(registered.saturating_sub(active)).unwrap_or(u64::MAX),
+            active: classes.interactive.running
+                + classes.background.running
+                + classes.maintenance.running,
+            queued: classes.interactive.queued
+                + classes.background.queued
+                + classes.maintenance.queued,
+            classes,
             admission_wait: self.metrics.admission_wait.snapshot(),
             execution_duration: self.metrics.execution_duration.snapshot(),
             deadline_exceeded: self.metrics.deadline_exceeded.load(Ordering::Relaxed),
             cancelled: self.metrics.cancelled.load(Ordering::Relaxed),
-            overloaded: self.metrics.overloaded.load(Ordering::Relaxed),
+            overloaded: self.metrics.overloaded.load(Ordering::Relaxed)
+                + classes.interactive.refused
+                + classes.background.refused
+                + classes.maintenance.refused,
         }
     }
 
@@ -373,28 +522,53 @@ impl RequestExecutor {
         );
     }
 
-    fn register(
+    fn admit(
         &self,
-        key: &RequestKey,
+        spec: &RequestSpec,
+        operation: &'static str,
         cancellation: &QueryCancellation,
-    ) -> Result<ActiveRequestGuard, CoreError> {
-        let mut registry = self
-            .registry
-            .lock()
-            .map_err(|_| worker_failed("registry"))?;
-        registry.prune_tombstones(Instant::now());
-        if registry.active.contains_key(key) {
-            return Err(active_request_conflict());
+    ) -> Result<Result<ActiveRequestGuard, CoreError>, AdmissionRefusal> {
+        let Ok(mut registry) = self.registry.lock() else {
+            return Ok(Err(worker_failed("registry")));
+        };
+        let now = Instant::now();
+        registry.prune_tombstones(now);
+        if registry.active.contains_key(&spec.key) {
+            return Ok(Err(active_request_conflict()));
         }
-        let cancelled_before_registration = registry.cancellation_tombstones.remove(key).is_some();
-        registry.active.insert(key.clone(), cancellation.clone());
-        if cancelled_before_registration {
-            cancellation.cancel();
+        if registry.cancellation_tombstones.remove(&spec.key).is_some() {
+            return Ok(Err(cancelled()));
         }
-        Ok(ActiveRequestGuard {
+        // Admission and its accounting share the cancellation registry lock.
+        let counts = registry.counts_mut(spec.class);
+        if counts.queued + counts.running >= self.admission.get(spec.class) {
+            let pressure = registry.record_refusal(spec.class, operation, now);
+            drop(registry);
+            if let Some(pressure) = pressure {
+                tracing::warn!(
+                    requestClass = request_class_name(pressure.class),
+                    operation = pressure.operation,
+                    classes = ?pressure.counts,
+                    topOperations = ?pressure.top_operations,
+                    "Core request admission is full"
+                );
+            }
+            return Err(AdmissionRefusal(spec.class));
+        }
+        counts.queued += 1;
+        registry.active.insert(
+            spec.key.clone(),
+            ActiveRequest {
+                cancellation: cancellation.clone(),
+                class: spec.class,
+                operation,
+                running: false,
+            },
+        );
+        Ok(Ok(ActiveRequestGuard {
             registry: Arc::clone(&self.registry),
-            key: key.clone(),
-        })
+            key: spec.key.clone(),
+        }))
     }
 
     async fn acquire_permits(
@@ -402,7 +576,6 @@ impl RequestExecutor {
         class: RequestClass,
         deadline: Instant,
         cancellation: &QueryCancellation,
-        admission: OwnedSemaphorePermit,
     ) -> Result<ExecutionPermits, CoreError> {
         let maintenance = match class {
             RequestClass::Maintenance => {
@@ -418,7 +591,6 @@ impl RequestExecutor {
         };
         let total = acquire(Arc::clone(&self.total), deadline, cancellation).await?;
         Ok(ExecutionPermits {
-            _admission: admission,
             _class: class_permit,
             _maintenance: maintenance,
             _total: total,
@@ -531,15 +703,6 @@ fn active_request_conflict() -> CoreError {
     }
 }
 
-fn overloaded() -> CoreError {
-    CoreError {
-        code: CoreErrorCode::Overloaded,
-        message: "Core request admission capacity is exhausted".to_owned(),
-        retryable: true,
-        recovery: CoreErrorRecovery::None,
-    }
-}
-
 fn deadline_exceeded() -> CoreError {
     CoreError {
         code: CoreErrorCode::DeadlineExceeded,
@@ -618,10 +781,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reserves_execution_capacity_for_interactive_work() {
-        let executor = RequestExecutor::with_capacities(2, 1, 1, 8);
+    async fn full_background_admission_leaves_interactive_capacity_available() {
+        let executor = RequestExecutor::with_capacities(
+            2,
+            1,
+            1,
+            AdmissionCapacities {
+                background: 2,
+                ..ADMISSION_CAPACITIES
+            },
+        );
         let (release_tx, release_rx) = mpsc::channel::<()>();
-        let (started_tx, started_rx) = mpsc::channel::<()>();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
         let background_executor = executor.clone();
         let background = tokio::spawn(async move {
             background_executor
@@ -629,6 +800,7 @@ mod tests {
                     "connection",
                     &headers("background", "background"),
                     RequestClass::Interactive,
+                    "test",
                     move || {
                         started_tx.send(()).unwrap();
                         release_rx.recv().unwrap();
@@ -637,34 +809,203 @@ mod tests {
                 )
                 .await
         });
-        tokio::time::timeout(Duration::from_secs(1), async {
-            loop {
-                if started_rx.try_recv().is_ok() {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(5)).await;
+        tokio::time::timeout(Duration::from_secs(1), started_rx)
+            .await
+            .expect("background execution starts")
+            .unwrap();
+
+        let queued_headers = headers("queued-background", "background");
+        let mut queued = std::pin::pin!(executor.execute(
+            "connection",
+            &queued_headers,
+            RequestClass::Interactive,
+            "library.read",
+            || -> Result<(), CoreError> { panic!("background execution slot is busy") },
+        ));
+        assert!(
+            std::future::poll_fn(|cx| std::task::Poll::Ready(queued.as_mut().poll(cx)))
+                .await
+                .is_pending()
+        );
+
+        let refused = executor
+            .execute(
+                "connection",
+                &headers("refused-background", "background"),
+                RequestClass::Interactive,
+                "database.read",
+                || -> Result<(), CoreError> { panic!("refused operation must never execute") },
+            )
+            .await
+            .expect_err("full background admission");
+        let snapshot = executor.snapshot();
+        assert_eq!(snapshot.active, 1);
+        assert_eq!(snapshot.queued, 1);
+        assert_eq!(snapshot.overloaded, 1);
+        assert_eq!(
+            snapshot.classes,
+            RequestClassHealth {
+                background: RequestClassHealthCounts {
+                    queued: 1,
+                    running: 1,
+                    refused: 1
+                },
+                ..RequestClassHealth::default()
             }
-        })
-        .await
-        .unwrap();
+        );
+
+        use axum::response::IntoResponse;
+        let response = refused.into_response();
+        assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(response.headers()["retry-after"], "1");
+        assert_eq!(response.headers()["content-type"], "application/json");
+        let body = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+            serde_json::json!({
+                "status": "error",
+                "payload": {
+                    "code": "overloaded",
+                    "message": "Core background request admission is full",
+                    "retryable": true,
+                    "recovery": {"kind": "retry_admission", "milliseconds": 100}
+                }
+            })
+        );
 
         let result = executor
             .execute(
                 "connection",
                 &headers("interactive", "interactive"),
                 RequestClass::Interactive,
+                "test",
                 || Ok("ready"),
             )
             .await;
 
-        assert_eq!(result.unwrap(), "ready");
+        assert_eq!(result.unwrap().unwrap(), "ready");
+        assert!(executor.cancel("connection", "queued-background"));
+        assert_eq!(
+            queued.await.unwrap().unwrap_err().code,
+            CoreErrorCode::Cancelled
+        );
         release_tx.send(()).unwrap();
-        background.await.unwrap().unwrap();
+        background.await.unwrap().unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn admitted_store_overload_remains_an_operation_error() {
+        let executor = RequestExecutor::new();
+        let result = executor
+            .execute(
+                "connection",
+                &HeaderMap::new(),
+                RequestClass::Interactive,
+                "library.apply",
+                || {
+                    Err::<(), _>(CoreError {
+                        code: CoreErrorCode::Overloaded,
+                        message: "Store writer queue is full".to_owned(),
+                        retryable: true,
+                        recovery: CoreErrorRecovery::None,
+                    })
+                },
+            )
+            .await
+            .expect("admitted");
+        let error = result.expect_err("Store overload");
+        assert_eq!(error.code, CoreErrorCode::Overloaded);
+        assert_eq!(error.recovery, CoreErrorRecovery::None);
+        let snapshot = executor.snapshot();
+        assert_eq!(snapshot.overloaded, 1);
+        assert_eq!(snapshot.classes, RequestClassHealth::default());
+    }
+
+    #[test]
+    fn refusal_attribution_counts_holders_and_limits_reports() {
+        let executor = RequestExecutor::new();
+        let guards: Vec<_> = [
+            ("one", "background", "workspace.read"),
+            ("two", "background", "workspace.read"),
+            ("three", "maintenance", "database.maintain_view_orders"),
+            ("four", "interactive", "library.apply"),
+        ]
+        .into_iter()
+        .map(|(id, class, label)| {
+            let spec = RequestSpec::from_headers(
+                "connection",
+                &headers(id, class),
+                RequestClass::Interactive,
+            )
+            .unwrap();
+            executor
+                .admit(&spec, label, &QueryCancellation::new())
+                .unwrap()
+                .unwrap()
+        })
+        .collect();
+        guards[0].mark_running();
+        let now = Instant::now();
+        let mut registry = executor.registry.lock().unwrap();
+        let pressure = registry
+            .record_refusal(RequestClass::Background, "database.read", now)
+            .unwrap();
+        assert_eq!(pressure.class, RequestClass::Background);
+        assert_eq!(pressure.operation, "database.read");
+        assert_eq!(
+            pressure.top_operations,
+            vec![
+                ("workspace.read", 2),
+                ("database.maintain_view_orders", 1),
+                ("library.apply", 1),
+            ]
+        );
+        assert_eq!(
+            pressure.counts,
+            RequestClassHealth {
+                interactive: RequestClassHealthCounts {
+                    queued: 1,
+                    running: 0,
+                    refused: 0
+                },
+                background: RequestClassHealthCounts {
+                    queued: 1,
+                    running: 1,
+                    refused: 1
+                },
+                maintenance: RequestClassHealthCounts {
+                    queued: 1,
+                    running: 0,
+                    refused: 0
+                },
+            }
+        );
+        assert!(
+            registry
+                .record_refusal(RequestClass::Background, "database.read", now)
+                .is_none()
+        );
+        assert_eq!(
+            registry
+                .record_refusal(
+                    RequestClass::Maintenance,
+                    "administration.apply",
+                    now + Duration::from_secs(1)
+                )
+                .unwrap()
+                .counts
+                .maintenance
+                .refused,
+            1
+        );
+        assert_eq!(registry.counts.background.refused, 2);
     }
 
     #[tokio::test]
     async fn explicit_cancellation_reaches_running_sqlite_context() {
-        let executor = RequestExecutor::with_capacities(1, 1, 1, 8);
+        let executor = RequestExecutor::with_capacities(1, 1, 1, ADMISSION_CAPACITIES);
         let worker_executor = executor.clone();
         let worker = tokio::spawn(async move {
             worker_executor
@@ -672,6 +1013,7 @@ mod tests {
                     "connection",
                     &headers("cancel-me", "interactive"),
                     RequestClass::Interactive,
+                    "test",
                     || {
                         while !nodex_core::infrastructure::request_execution::request_is_cancelled()
                         {
@@ -686,9 +1028,64 @@ mod tests {
 
         assert!(executor.cancel("connection", "cancel-me"));
         assert_eq!(
-            worker.await.unwrap().unwrap_err().code,
+            worker.await.unwrap().unwrap().unwrap_err().code,
             CoreErrorCode::Cancelled
         );
+    }
+
+    #[test]
+    fn cancellation_before_blocking_dispatch_prevents_operation() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .max_blocking_threads(1)
+            .build()
+            .unwrap();
+        let executor = RequestExecutor::with_capacities(1, 1, 1, ADMISSION_CAPACITIES);
+        let operation_ran = Arc::new(AtomicBool::new(false));
+
+        runtime.block_on(async {
+            let (release_tx, release_rx) = mpsc::channel::<()>();
+            let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+            let blocker = tokio::task::spawn_blocking(move || {
+                started_tx.send(()).unwrap();
+                let _ = release_rx.recv();
+            });
+            started_rx.await.unwrap();
+
+            let request_headers = headers("cancel-before-dispatch", "interactive");
+            let operation_ran = Arc::clone(&operation_ran);
+            let mut request = std::pin::pin!(executor.execute(
+                "connection",
+                &request_headers,
+                RequestClass::Interactive,
+                "test",
+                move || {
+                    operation_ran.store(true, Ordering::Relaxed);
+                    Ok(())
+                },
+            ));
+            // Poll through permit acquisition and dispatch with the blocking pool occupied.
+            assert!(
+                std::future::poll_fn(|cx| std::task::Poll::Ready(request.as_mut().poll(cx)))
+                    .await
+                    .is_pending()
+            );
+            assert_eq!(executor.total.available_permits(), 0);
+            assert_eq!(executor.snapshot().classes.interactive.queued, 1);
+            assert!(executor.cancel("connection", "cancel-before-dispatch"));
+            assert_eq!(
+                request.await.unwrap().unwrap_err().code,
+                CoreErrorCode::Cancelled
+            );
+            drop(release_tx);
+            blocker.await.unwrap();
+            // The sole blocking thread must dispatch the queued request before this task.
+            tokio::task::spawn_blocking(|| ()).await.unwrap();
+        });
+
+        assert!(!operation_ran.load(Ordering::Relaxed));
+        assert_eq!(executor.snapshot().classes, RequestClassHealth::default());
+        assert_eq!(executor.total.available_permits(), 1);
     }
 
     #[tokio::test]
@@ -717,7 +1114,7 @@ mod tests {
         };
         entered_receiver.recv().expect("writer blocked");
 
-        let executor = RequestExecutor::with_capacities(1, 1, 1, 8);
+        let executor = RequestExecutor::with_capacities(1, 1, 1, ADMISSION_CAPACITIES);
         let deadline_headers = headers("writer-deadline", "interactive");
         let timed_executor = executor.clone();
         let timed_writer = writer.clone();
@@ -727,6 +1124,7 @@ mod tests {
                     "connection",
                     &deadline_headers,
                     RequestClass::Interactive,
+                    "test",
                     move || {
                         timed_writer
                             .call(|_| Ok(()))
@@ -746,6 +1144,7 @@ mod tests {
             timed
                 .await
                 .expect("deadline task")
+                .expect("admitted")
                 .expect_err("deadline")
                 .code,
             CoreErrorCode::DeadlineExceeded,
@@ -757,11 +1156,13 @@ mod tests {
                 "connection",
                 &headers("after-writer-deadline", "interactive"),
                 RequestClass::Interactive,
+                "test",
                 || Ok("permit-released"),
             ),
         )
         .await
         .expect("cancelled writer worker released its execution permit")
+        .expect("admitted")
         .expect("next interactive request");
         assert_eq!(next, "permit-released");
 
@@ -770,7 +1171,7 @@ mod tests {
 
     #[tokio::test]
     async fn cancellation_before_request_registration_is_honored() {
-        let executor = RequestExecutor::with_capacities(1, 1, 1, 8);
+        let executor = RequestExecutor::with_capacities(1, 1, 1, ADMISSION_CAPACITIES);
         let operation_ran = Arc::new(AtomicBool::new(false));
         let operation_ran_in_worker = Arc::clone(&operation_ran);
         assert!(executor.cancel("connection", "cancel-before-register"));
@@ -780,6 +1181,7 @@ mod tests {
                 "connection",
                 &headers("cancel-before-register", "interactive"),
                 RequestClass::Interactive,
+                "test",
                 move || {
                     operation_ran_in_worker.store(true, Ordering::Relaxed);
                     Ok::<_, CoreError>(())
@@ -787,23 +1189,29 @@ mod tests {
             )
             .await;
 
-        assert_eq!(result.unwrap_err().code, CoreErrorCode::Cancelled);
+        assert_eq!(result.unwrap().unwrap_err().code, CoreErrorCode::Cancelled);
         assert!(!operation_ran.load(Ordering::Relaxed));
     }
 
     #[test]
     fn duplicate_active_request_is_a_retryable_conflict() {
-        let executor = RequestExecutor::with_capacities(1, 1, 1, 8);
-        let key = RequestKey {
-            connection_id: "connection".to_owned(),
-            request_id: "duplicate".to_owned(),
-        };
+        let executor = RequestExecutor::with_capacities(1, 1, 1, ADMISSION_CAPACITIES);
+        let spec = RequestSpec::from_headers(
+            "connection",
+            &headers("duplicate", "interactive"),
+            RequestClass::Interactive,
+        )
+        .unwrap();
         let first_cancellation = QueryCancellation::new();
         let _first_guard = executor
-            .register(&key, &first_cancellation)
+            .admit(&spec, "test", &first_cancellation)
+            .expect("admission")
             .expect("first request registration");
 
-        let error = match executor.register(&key, &QueryCancellation::new()) {
+        let error = match executor
+            .admit(&spec, "test", &QueryCancellation::new())
+            .unwrap()
+        {
             Ok(_) => panic!("duplicate request identity was accepted"),
             Err(error) => error,
         };

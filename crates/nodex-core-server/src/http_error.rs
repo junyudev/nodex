@@ -12,6 +12,9 @@ const MAX_REJECTION_MESSAGE_BYTES: usize = 8 * 1024;
 #[derive(Clone)]
 struct StructuredHttpError;
 
+#[derive(Clone)]
+pub(crate) struct AdmissionRefusedResponse;
+
 pub(crate) struct ApiError {
     status: StatusCode,
     error: CoreError,
@@ -49,27 +52,41 @@ impl ApiError {
     }
 }
 
+impl From<crate::request_execution::AdmissionRefusal> for ApiError {
+    fn from(refusal: crate::request_execution::AdmissionRefusal) -> Self {
+        refusal.api_error()
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let retry_after = match &self.error.recovery {
-            CoreErrorRecovery::RetryAfter { milliseconds, .. } => {
+            CoreErrorRecovery::RetryAfter { milliseconds, .. }
+            | CoreErrorRecovery::RetryAdmission { milliseconds } => {
                 Some(milliseconds.div_ceil(1_000).max(1))
             }
             _ => None,
         };
-        let mut response = (
-            self.status,
-            Json(HttpErrorResponse::Error(crate::record_core_error(
-                self.error,
-            ))),
-        )
-            .into_response();
+        let admission_refused = matches!(
+            self.error.recovery,
+            CoreErrorRecovery::RetryAdmission { .. }
+        );
+        let error = if admission_refused {
+            // The executor logs admission pressure with a shared rate limit.
+            self.error
+        } else {
+            crate::record_core_error(self.error)
+        };
+        let mut response = (self.status, Json(HttpErrorResponse::Error(error))).into_response();
         if let Some(seconds) = retry_after {
             response
                 .headers_mut()
                 .insert(header::RETRY_AFTER, seconds.to_string().parse().unwrap());
         }
         response.extensions_mut().insert(StructuredHttpError);
+        if admission_refused {
+            response.extensions_mut().insert(AdmissionRefusedResponse);
+        }
         response
     }
 }

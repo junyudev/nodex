@@ -244,6 +244,35 @@ mod tests {
     }
 
     #[test]
+    fn core_admission_refusal_preserves_retry_guidance() {
+        use nodex_core_contracts::{CoreError, CoreErrorCode, CoreErrorRecovery};
+        use nodex_core_protocol::client::ClientError;
+
+        let message = "Core interactive request admission is full";
+        let error = crate::runtime::map_client_error(ClientError::Http {
+            status: 429,
+            message: message.into(),
+            core_error: Some(Box::new(CoreError {
+                code: CoreErrorCode::Overloaded,
+                message: message.into(),
+                retryable: true,
+                recovery: CoreErrorRecovery::RetryAdmission { milliseconds: 100 },
+            })),
+        });
+        let envelope = serde_json::to_value(ErrorEnvelope::new(&error)).unwrap();
+        assert_eq!(envelope["error"]["code"], "CORE_UNAVAILABLE");
+        assert_eq!(envelope["error"]["message"], message);
+        assert_eq!(envelope["error"]["retryable"], true);
+        assert_eq!(
+            envelope["error"]["recovery"],
+            serde_json::json!({
+                "kind": "retry_admission",
+                "milliseconds": 100,
+            })
+        );
+    }
+
+    #[test]
     fn structured_errors_use_stable_codes_and_evidence() {
         let error = CliError::new(CliErrorCode::PatchSyntax, "expected hunk")
             .at_line(4)

@@ -157,6 +157,10 @@ pub enum CoreErrorRecovery {
         budget: team::RemoteBudget,
         milliseconds: u64,
     },
+    /// Core refused admission before the operation could run.
+    RetryAdmission {
+        milliseconds: u64,
+    },
     RecoveryPackage {
         failure: Box<document::RecoveryPackageFailure>,
     },

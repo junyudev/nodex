@@ -3083,6 +3083,11 @@ export interface components {
             /** Format: int64 */
             readonly milliseconds: number;
         } | {
+            /** @enum {string} */
+            readonly kind: "retry_admission";
+            /** Format: int64 */
+            readonly milliseconds: number;
+        } | {
             readonly failure: components["schemas"]["RecoveryPackageFailure"];
             /** @enum {string} */
             readonly kind: "recovery_package";
@@ -3186,6 +3191,7 @@ export interface components {
             readonly request_admission_wait?: components["schemas"]["HealthDurationMetric"];
             /** Format: int64 */
             readonly request_cancelled?: number;
+            readonly request_classes: components["schemas"]["RequestClassHealth"];
             /** Format: int64 */
             readonly request_deadline_exceeded?: number;
             readonly request_execution_duration?: components["schemas"]["HealthDurationMetric"];
@@ -13770,6 +13776,19 @@ export interface components {
         readonly RenameSpaceRequest: {
             readonly name: string;
         };
+        readonly RequestClassHealth: {
+            readonly background: components["schemas"]["RequestClassHealthCounts"];
+            readonly interactive: components["schemas"]["RequestClassHealthCounts"];
+            readonly maintenance: components["schemas"]["RequestClassHealthCounts"];
+        };
+        readonly RequestClassHealthCounts: {
+            /** Format: int64 */
+            readonly queued: number;
+            /** Format: int64 */
+            readonly refused: number;
+            /** Format: int64 */
+            readonly running: number;
+        };
         /** @description Exact resource vocabulary used for delivery routing and projection invalidation. */
         readonly ResourceKey: {
             /** @enum {string} */
@@ -16440,6 +16459,17 @@ export interface operations {
                     readonly "text/plain": boolean;
                 };
             };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
             readonly default: {
                 headers: {
@@ -16475,6 +16505,17 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["PreparedBlobReceipt"];
+                };
+            };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
@@ -16558,6 +16599,17 @@ export interface operations {
                     readonly "application/octet-stream": readonly number[];
                 };
             };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
             readonly default: {
                 headers: {
@@ -16593,6 +16645,17 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["PreparedBlobReceipt"];
+                };
+            };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
@@ -16987,6 +17050,17 @@ export interface operations {
                     readonly "application/json": components["schemas"]["LocalMutationResolveResponse"];
                 };
             };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
             readonly default: {
                 headers: {
@@ -17022,6 +17096,17 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["StoreAdministrationApplyResponse"];
+                };
+            };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
@@ -17061,6 +17146,17 @@ export interface operations {
                     readonly "application/json": components["schemas"]["StoreAdministrationReadResponse"];
                 };
             };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
             readonly default: {
                 headers: {
@@ -17096,6 +17192,17 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AutomationApplyResponse"];
+                };
+            };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
@@ -17135,6 +17242,17 @@ export interface operations {
                     readonly "application/json": components["schemas"]["AutomationReadResponse"];
                 };
             };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
             readonly default: {
                 headers: {
@@ -17170,6 +17288,17 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["DatabaseApplyResponse"];
+                };
+            };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
@@ -17209,6 +17338,17 @@ export interface operations {
                     readonly "application/json": components["schemas"]["DatabaseReadResponse"];
                 };
             };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
             readonly default: {
                 headers: {
@@ -17246,6 +17386,17 @@ export interface operations {
                     readonly "application/json": components["schemas"]["OwnedDocumentApplyResponse"];
                 };
             };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
             readonly default: {
                 headers: {
@@ -17281,6 +17432,17 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["OwnedDocumentReadResponse"];
+                };
+            };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
@@ -17324,6 +17486,17 @@ export interface operations {
                     readonly "application/json": components["schemas"]["OwnedDocumentApplyResponse"];
                 };
             };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
             readonly default: {
                 headers: {
@@ -17359,6 +17532,17 @@ export interface operations {
                 };
                 content: {
                     readonly "application/vnd.nodex.recovery-export.v1+octet-stream": readonly number[];
+                };
+            };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
@@ -17398,6 +17582,17 @@ export interface operations {
                     readonly "application/json": components["schemas"]["LibraryApplyResponse"];
                 };
             };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
             readonly default: {
                 headers: {
@@ -17433,6 +17628,17 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["LibraryReadResponse"];
+                };
+            };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
@@ -17472,6 +17678,17 @@ export interface operations {
                     readonly "application/json": components["schemas"]["QueryReadResponse"];
                 };
             };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
             readonly default: {
                 headers: {
@@ -17507,6 +17724,17 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ProjectWorkspaceApplyResponse"];
+                };
+            };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
@@ -17546,6 +17774,17 @@ export interface operations {
                     readonly "application/json": components["schemas"]["ProjectWorkspaceReadResponse"];
                 };
             };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
             readonly default: {
                 headers: {
@@ -17581,6 +17820,17 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AppToolOperationIdentity"];
+                };
+            };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
@@ -17675,6 +17925,17 @@ export interface operations {
                 };
                 content: {
                     readonly "application/octet-stream": readonly number[];
+                };
+            };
+            /** @description Core refused admission before executing the operation; retry_admission identifies a replay-safe refusal */
+            readonly 429: {
+                headers: {
+                    /** @description Delay in whole seconds */
+                    readonly "Retry-After"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */

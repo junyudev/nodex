@@ -123,7 +123,7 @@ use http_error::ApiError;
 use lifecycle::{DrainReason, LifecycleCoordinator, configured_idle_timeout, monitor_idle};
 use lifecycle_summary::LifecycleSummaryWriter;
 use metrics::ServerMetrics;
-use request_execution::RequestExecutor;
+use request_execution::{AdmissionRefusal, RequestExecutor};
 use runtime_files::{
     CandidateRuntime, ExistingCore, RuntimePaths, current_artifact_identity, random_hex,
 };
@@ -560,7 +560,12 @@ async fn trace_request(request: Request, next: Next) -> Response {
         let duration_ms = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
         if status >= 500 {
             tracing::error!(status, durationMs = duration_ms, "Core request completed");
-        } else if status >= 400 {
+        } else if status >= 400
+            && response
+                .extensions()
+                .get::<http_error::AdmissionRefusedResponse>()
+                .is_none()
+        {
             tracing::warn!(status, durationMs = duration_ms, "Core request completed");
         } else if duration_ms >= 1_000 {
             tracing::info!(status, durationMs = duration_ms, "Core request completed");
@@ -768,6 +773,7 @@ fn health_metrics(state: &ServerState) -> (CoreReadiness, CoreHealthMetrics) {
             request_deadline_exceeded: request_metrics.deadline_exceeded,
             request_cancelled: request_metrics.cancelled,
             request_overloaded: request_metrics.overloaded,
+            request_classes: request_metrics.classes,
             writer_queue_depth: usize_to_u64(store_activity.queued_writes),
             active_writer_commands: usize_to_u64(store_activity.active_writes),
             active_read_commands: usize_to_u64(store_activity.active_reads),
@@ -964,21 +970,25 @@ async fn library_read(
     Extension(bound): Extension<BoundConnection>,
     headers: HeaderMap,
     Json(LibraryReadRequest(request)): Json<LibraryReadRequest>,
-) -> Json<LibraryReadResponse> {
+) -> Result<Json<LibraryReadResponse>, AdmissionRefusal> {
     let context = match module_context(&state, &headers, &bound) {
         Ok(context) => context,
         Err(error) => {
-            return Json(LibraryReadResponse(response_envelope(Err(error))));
+            return Ok(Json(LibraryReadResponse(response_envelope(Err(error)))));
         }
     };
     let request_state = Arc::clone(&state);
     let response = state
         .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            request_state.library.read(&context, request)
-        })
-        .await;
-    Json(LibraryReadResponse(response_envelope(response)))
+        .execute(
+            &bound.id,
+            &headers,
+            RequestClass::Interactive,
+            "library.read",
+            move || request_state.library.read(&context, request),
+        )
+        .await?;
+    Ok(Json(LibraryReadResponse(response_envelope(response))))
 }
 
 async fn prepare_blob(
@@ -1007,15 +1017,20 @@ async fn prepare_blob(
         ));
     }
     let gc_state = Arc::clone(&state);
-    state
-        .request_executor
-        .execute(&bound.id, &headers, RequestClass::Background, move || {
-            gc_state.library.collect_unreachable_file_blobs(100)
-        })
-        .await
-        .map_err(api_core_error)?;
+    http_execution_result(
+        state
+            .request_executor
+            .execute(
+                &bound.id,
+                &headers,
+                RequestClass::Background,
+                "library.collect_blobs",
+                move || gc_state.library.collect_unreachable_file_blobs(100),
+            )
+            .await,
+    )?;
     let assets_root = state.library.file_blob_root().map_err(api_core_error)?;
-    let published = publish_blob(assets_root, request.into_body(), limit as u64).await?;
+    let writer = stage_blob(assets_root, request.into_body(), limit as u64).await?;
     let receipt_id = match query.idempotency_slot.as_deref() {
         Some(slot) => {
             if slot.is_empty() || slot.len() > 512 {
@@ -1059,22 +1074,38 @@ async fn prepare_blob(
     let request_state = Arc::clone(&state);
     let operation_id = query.operation_id;
     let expected_store_epoch = query.store_epoch;
-    let response = state
-        .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            request_state.library.register_prepared_file_blob(
-                &context,
-                &expected_store_epoch,
-                &operation_id,
-                &receipt_id,
-                &published.content_hash,
-                &published.physical_asset_name,
-                published.byte_length,
-                expires_at_unix_ms,
+    // Keep the bytes staged until registration is admitted. A refusal drops
+    // the writer, removing the temporary file and releasing its namespace lease.
+    let response = http_execution_result(
+        state
+            .request_executor
+            .execute(
+                &bound.id,
+                &headers,
+                RequestClass::Interactive,
+                "library.prepare_blob",
+                move || {
+                    let published = match writer.finish() {
+                        Ok(blob) => blob,
+                        Err(error) => return Ok(Err(blob_store_error(error))),
+                    };
+                    request_state
+                        .library
+                        .register_prepared_file_blob(
+                            &context,
+                            &expected_store_epoch,
+                            &operation_id,
+                            &receipt_id,
+                            &published.content_hash,
+                            &published.physical_asset_name,
+                            published.byte_length,
+                            expires_at_unix_ms,
+                        )
+                        .map(Ok)
+                },
             )
-        })
-        .await
-        .map_err(api_core_error)?;
+            .await,
+    )??;
     Ok(Json(response))
 }
 
@@ -1087,18 +1118,25 @@ async fn read_file_blob(
 ) -> Result<Response, ApiError> {
     let context = module_context(&state, &headers, &bound).map_err(api_core_error)?;
     let request_state = Arc::clone(&state);
-    let descriptor = state
-        .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            request_state.library.resolve_file_blob(
-                &context,
-                &file_id,
-                &query.source,
-                query.version,
+    let descriptor = http_execution_result(
+        state
+            .request_executor
+            .execute(
+                &bound.id,
+                &headers,
+                RequestClass::Interactive,
+                "library.read_blob",
+                move || {
+                    request_state.library.resolve_file_blob(
+                        &context,
+                        &file_id,
+                        &query.source,
+                        query.version,
+                    )
+                },
             )
-        })
-        .await
-        .map_err(api_core_error)?;
+            .await,
+    )?;
     stream_file_blob(
         headers,
         descriptor.file,
@@ -1117,15 +1155,24 @@ async fn read_thread_asset_blob(
 ) -> Result<Response, ApiError> {
     let context = module_context(&state, &headers, &bound).map_err(api_core_error)?;
     let request_state = Arc::clone(&state);
-    let descriptor = state
-        .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            request_state
-                .workspace
-                .resolve_thread_asset_blob(&context, &thread_id, &content_hash)
-        })
-        .await
-        .map_err(api_core_error)?;
+    let descriptor = http_execution_result(
+        state
+            .request_executor
+            .execute(
+                &bound.id,
+                &headers,
+                RequestClass::Interactive,
+                "workspace.read_thread_blob",
+                move || {
+                    request_state.workspace.resolve_thread_asset_blob(
+                        &context,
+                        &thread_id,
+                        &content_hash,
+                    )
+                },
+            )
+            .await,
+    )?;
     stream_file_blob(
         headers,
         descriptor.file,
@@ -1191,11 +1238,11 @@ async fn stream_file_blob(
         })
 }
 
-async fn publish_blob(
+async fn stage_blob(
     assets_root: PathBuf,
     mut body: Body,
     limit: u64,
-) -> Result<nodex_core::infrastructure::managed_blobs::PublishedBlob, ApiError> {
+) -> Result<nodex_core::infrastructure::managed_blobs::BlobWriter, ApiError> {
     use nodex_core::infrastructure::managed_blobs::BlobWriter;
     let mut writer = tokio::task::spawn_blocking(move || BlobWriter::new(&assets_root, limit))
         .await
@@ -1215,10 +1262,7 @@ async fn publish_blob(
         .map_err(blob_task_error)?
         .map_err(blob_store_error)?;
     }
-    tokio::task::spawn_blocking(move || writer.finish())
-        .await
-        .map_err(blob_task_error)?
-        .map_err(blob_store_error)
+    Ok(writer)
 }
 
 fn blob_task_error(error: tokio::task::JoinError) -> ApiError {
@@ -1405,67 +1449,76 @@ async fn resolve_local_mutation(
         ));
     }
     let request_state = Arc::clone(&state);
-    let response = state
-        .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            let current_epoch = descriptor_snapshot(&request_state).store_epoch;
-            if request.store_epoch.0 != current_epoch {
-                return Ok(LocalMutationResolveResponse::EpochMismatch {
-                    requested_store_epoch: request.store_epoch,
-                    current_store_epoch: StoreEpoch(current_epoch),
-                });
-            }
-            let module_name = module_storage_name(request.module);
-            let stored = request_state
-                .store
-                .readers()
-                .read_default(|connection| {
-                    read_module_receipt(connection, module_name, &request.operation_id)
-                })
-                .map_err(apply_response_store_error)?;
-            let Some(stored) = stored else {
-                return Ok(LocalMutationResolveResponse::NotCommitted {
-                    module: request.module,
-                    operation_id: request.operation_id,
-                });
-            };
-            if stored.profile_id != context.profile_id.0
-                || stored.project_id != context.project_id.as_ref().map(|id| id.0.clone())
-            {
-                return Ok(LocalMutationResolveResponse::NotCommitted {
-                    module: request.module,
-                    operation_id: request.operation_id,
-                });
-            }
-            if stored.store_epoch != request.store_epoch.0 {
-                return Ok(LocalMutationResolveResponse::EpochMismatch {
-                    requested_store_epoch: request.store_epoch,
-                    current_store_epoch: StoreEpoch(stored.store_epoch),
-                });
-            }
-            if stored.request_hash != request.intent_hash {
-                return Ok(LocalMutationResolveResponse::IntentConflict {
-                    module: request.module,
-                    operation_id: request.operation_id,
-                    expected_hash: request.intent_hash,
-                    observed_hash: stored.request_hash,
-                });
-            }
-            let delivery = stored
-                .local_commit_seq
-                .map(|commit_seq| authorized_apply_packet(&request_state, commit_seq, &context))
-                .transpose()
-                .map_err(apply_response_store_error)?;
-            Ok(LocalMutationResolveResponse::Committed {
-                module: request.module,
-                operation_id: request.operation_id,
-                request_hash: stored.request_hash,
-                result: stored.result,
-                delivery: delivery.flatten().map(Box::new),
-            })
-        })
-        .await
-        .map_err(api_core_error)?;
+    let response = http_execution_result(
+        state
+            .request_executor
+            .execute(
+                &bound.id,
+                &headers,
+                RequestClass::Interactive,
+                "mutation.resolve",
+                move || {
+                    let current_epoch = descriptor_snapshot(&request_state).store_epoch;
+                    if request.store_epoch.0 != current_epoch {
+                        return Ok(LocalMutationResolveResponse::EpochMismatch {
+                            requested_store_epoch: request.store_epoch,
+                            current_store_epoch: StoreEpoch(current_epoch),
+                        });
+                    }
+                    let module_name = module_storage_name(request.module);
+                    let stored = request_state
+                        .store
+                        .readers()
+                        .read_default(|connection| {
+                            read_module_receipt(connection, module_name, &request.operation_id)
+                        })
+                        .map_err(apply_response_store_error)?;
+                    let Some(stored) = stored else {
+                        return Ok(LocalMutationResolveResponse::NotCommitted {
+                            module: request.module,
+                            operation_id: request.operation_id,
+                        });
+                    };
+                    if stored.profile_id != context.profile_id.0
+                        || stored.project_id != context.project_id.as_ref().map(|id| id.0.clone())
+                    {
+                        return Ok(LocalMutationResolveResponse::NotCommitted {
+                            module: request.module,
+                            operation_id: request.operation_id,
+                        });
+                    }
+                    if stored.store_epoch != request.store_epoch.0 {
+                        return Ok(LocalMutationResolveResponse::EpochMismatch {
+                            requested_store_epoch: request.store_epoch,
+                            current_store_epoch: StoreEpoch(stored.store_epoch),
+                        });
+                    }
+                    if stored.request_hash != request.intent_hash {
+                        return Ok(LocalMutationResolveResponse::IntentConflict {
+                            module: request.module,
+                            operation_id: request.operation_id,
+                            expected_hash: request.intent_hash,
+                            observed_hash: stored.request_hash,
+                        });
+                    }
+                    let delivery = stored
+                        .local_commit_seq
+                        .map(|commit_seq| {
+                            authorized_apply_packet(&request_state, commit_seq, &context)
+                        })
+                        .transpose()
+                        .map_err(apply_response_store_error)?;
+                    Ok(LocalMutationResolveResponse::Committed {
+                        module: request.module,
+                        operation_id: request.operation_id,
+                        request_hash: stored.request_hash,
+                        result: stored.result,
+                        delivery: delivery.flatten().map(Box::new),
+                    })
+                },
+            )
+            .await,
+    )?;
     Ok(Json(response))
 }
 
@@ -1474,34 +1527,40 @@ async fn library_apply(
     Extension(bound): Extension<BoundConnection>,
     headers: HeaderMap,
     Json(LibraryApplyRequest(request)): Json<LibraryApplyRequest>,
-) -> Json<LibraryApplyResponse> {
+) -> Result<Json<LibraryApplyResponse>, AdmissionRefusal> {
     record_operation("library", &request.operation_id);
     let operation_id = request.operation_id.clone();
     let context = match module_context(&state, &headers, &bound) {
         Ok(context) => context,
-        Err(error) => return Json(LibraryApplyResponse(response_envelope(Err(error)))),
+        Err(error) => return Ok(Json(LibraryApplyResponse(response_envelope(Err(error))))),
     };
     let request_state = Arc::clone(&state);
     let response = state
         .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            let outcome = request_state.library.apply(&context, request)?;
-            let committed = outcome.committed;
-            let duplicate = committed.receipt.mutation.duplicate;
-            build_authorized_apply_response(
-                &request_state,
-                ModuleName::Library,
-                &operation_id,
-                &context,
-                duplicate,
-                committed,
-            )
-        })
-        .await;
+        .execute(
+            &bound.id,
+            &headers,
+            RequestClass::Interactive,
+            "library.apply",
+            move || {
+                let outcome = request_state.library.apply(&context, request)?;
+                let committed = outcome.committed;
+                let duplicate = committed.receipt.mutation.duplicate;
+                build_authorized_apply_response(
+                    &request_state,
+                    ModuleName::Library,
+                    &operation_id,
+                    &context,
+                    duplicate,
+                    committed,
+                )
+            },
+        )
+        .await?;
     if let Err(error) = &response {
         wake_view_order_maintenance(&state, error);
     }
-    Json(LibraryApplyResponse(response_envelope(response)))
+    Ok(Json(LibraryApplyResponse(response_envelope(response))))
 }
 
 async fn query_read(
@@ -1511,24 +1570,28 @@ async fn query_read(
     Json(nodex_core_protocol::QueryReadRequest(request)): Json<
         nodex_core_protocol::QueryReadRequest,
     >,
-) -> Json<nodex_core_protocol::QueryReadResponse> {
+) -> Result<Json<nodex_core_protocol::QueryReadResponse>, AdmissionRefusal> {
     let context = match database_context(&state, &headers, &bound) {
         Ok(context) => context,
         Err(error) => {
-            return Json(nodex_core_protocol::QueryReadResponse(response_envelope(
-                Err(error),
+            return Ok(Json(nodex_core_protocol::QueryReadResponse(
+                response_envelope(Err(error)),
             )));
         }
     };
     let request_state = Arc::clone(&state);
     let response = state
         .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            request_state.query.read(&context, request)
-        })
-        .await;
-    Json(nodex_core_protocol::QueryReadResponse(response_envelope(
-        response,
+        .execute(
+            &bound.id,
+            &headers,
+            RequestClass::Interactive,
+            "query.read",
+            move || request_state.query.read(&context, request),
+        )
+        .await?;
+    Ok(Json(nodex_core_protocol::QueryReadResponse(
+        response_envelope(response),
     )))
 }
 
@@ -1537,21 +1600,25 @@ async fn database_read(
     Extension(bound): Extension<BoundConnection>,
     headers: HeaderMap,
     Json(DatabaseReadRequest(request)): Json<DatabaseReadRequest>,
-) -> Json<DatabaseReadResponse> {
+) -> Result<Json<DatabaseReadResponse>, AdmissionRefusal> {
     let context = match database_context(&state, &headers, &bound) {
         Ok(context) => context,
         Err(error) => {
-            return Json(DatabaseReadResponse(response_envelope(Err(error))));
+            return Ok(Json(DatabaseReadResponse(response_envelope(Err(error)))));
         }
     };
     let request_state = Arc::clone(&state);
     let response = state
         .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            request_state.database.read(&context, request)
-        })
-        .await;
-    Json(DatabaseReadResponse(response_envelope(response)))
+        .execute(
+            &bound.id,
+            &headers,
+            RequestClass::Interactive,
+            "database.read",
+            move || request_state.database.read(&context, request),
+        )
+        .await?;
+    Ok(Json(DatabaseReadResponse(response_envelope(response))))
 }
 
 async fn database_apply(
@@ -1559,34 +1626,40 @@ async fn database_apply(
     Extension(bound): Extension<BoundConnection>,
     headers: HeaderMap,
     Json(DatabaseApplyRequest(request)): Json<DatabaseApplyRequest>,
-) -> Json<DatabaseApplyResponse> {
+) -> Result<Json<DatabaseApplyResponse>, AdmissionRefusal> {
     record_operation("database", &request.operation_id);
     let operation_id = request.operation_id.clone();
     let context = match database_context(&state, &headers, &bound) {
         Ok(context) => context,
-        Err(error) => return Json(DatabaseApplyResponse(response_envelope(Err(error)))),
+        Err(error) => return Ok(Json(DatabaseApplyResponse(response_envelope(Err(error))))),
     };
     let request_state = Arc::clone(&state);
     let response = state
         .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            let outcome = request_state.database.apply(&context, request)?;
-            let committed = outcome.committed;
-            let duplicate = committed.receipt.mutation.duplicate;
-            build_authorized_apply_response(
-                &request_state,
-                ModuleName::Database,
-                &operation_id,
-                &context,
-                duplicate,
-                committed,
-            )
-        })
-        .await;
+        .execute(
+            &bound.id,
+            &headers,
+            RequestClass::Interactive,
+            "database.apply",
+            move || {
+                let outcome = request_state.database.apply(&context, request)?;
+                let committed = outcome.committed;
+                let duplicate = committed.receipt.mutation.duplicate;
+                build_authorized_apply_response(
+                    &request_state,
+                    ModuleName::Database,
+                    &operation_id,
+                    &context,
+                    duplicate,
+                    committed,
+                )
+            },
+        )
+        .await?;
     if let Err(error) = &response {
         wake_view_order_maintenance(&state, error);
     }
-    Json(DatabaseApplyResponse(response_envelope(response)))
+    Ok(Json(DatabaseApplyResponse(response_envelope(response))))
 }
 
 async fn admit_app_tool_operation(
@@ -1605,20 +1678,31 @@ async fn admit_app_tool_operation(
         )));
     }
     let request_state = Arc::clone(&state);
-    let identity = state
-        .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            let mut identity = request_state
-                .workspace
-                .admit_app_tool_operation(&context, request)?;
-            if let Some(module) = replay_module {
-                identity.replay =
-                    cli_admitted_replay(&request_state, &context, module, &identity.operation_id)?;
-            }
-            Ok(identity)
-        })
-        .await
-        .map_err(api_core_error)?;
+    let identity = http_execution_result(
+        state
+            .request_executor
+            .execute(
+                &bound.id,
+                &headers,
+                RequestClass::Interactive,
+                "workspace.admit_tool_operation",
+                move || {
+                    let mut identity = request_state
+                        .workspace
+                        .admit_app_tool_operation(&context, request)?;
+                    if let Some(module) = replay_module {
+                        identity.replay = cli_admitted_replay(
+                            &request_state,
+                            &context,
+                            module,
+                            &identity.operation_id,
+                        )?;
+                    }
+                    Ok(identity)
+                },
+            )
+            .await,
+    )?;
     Ok(Json(identity))
 }
 
@@ -1688,21 +1772,29 @@ async fn workspace_read(
     Extension(bound): Extension<BoundConnection>,
     headers: HeaderMap,
     Json(ProjectWorkspaceReadRequest(request)): Json<ProjectWorkspaceReadRequest>,
-) -> Json<ProjectWorkspaceReadResponse> {
+) -> Result<Json<ProjectWorkspaceReadResponse>, AdmissionRefusal> {
     let context = match module_context(&state, &headers, &bound) {
         Ok(context) => context,
         Err(error) => {
-            return Json(ProjectWorkspaceReadResponse(response_envelope(Err(error))));
+            return Ok(Json(ProjectWorkspaceReadResponse(response_envelope(Err(
+                error,
+            )))));
         }
     };
     let request_state = Arc::clone(&state);
     let response = state
         .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            request_state.workspace.read(&context, request)
-        })
-        .await;
-    Json(ProjectWorkspaceReadResponse(response_envelope(response)))
+        .execute(
+            &bound.id,
+            &headers,
+            RequestClass::Interactive,
+            "workspace.read",
+            move || request_state.workspace.read(&context, request),
+        )
+        .await?;
+    Ok(Json(ProjectWorkspaceReadResponse(response_envelope(
+        response,
+    ))))
 }
 
 async fn workspace_apply(
@@ -1710,13 +1802,15 @@ async fn workspace_apply(
     Extension(bound): Extension<BoundConnection>,
     headers: HeaderMap,
     Json(ProjectWorkspaceApplyRequest(request)): Json<ProjectWorkspaceApplyRequest>,
-) -> Json<ProjectWorkspaceApplyResponse> {
+) -> Result<Json<ProjectWorkspaceApplyResponse>, AdmissionRefusal> {
     record_operation("project_workspace", &request.operation_id);
     let operation_id = request.operation_id.clone();
     let context = match module_context(&state, &headers, &bound) {
         Ok(context) => context,
         Err(error) => {
-            return Json(ProjectWorkspaceApplyResponse(response_envelope(Err(error))));
+            return Ok(Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
+                error,
+            )))));
         }
     };
     let accepted_message = match &request.intent {
@@ -1744,9 +1838,9 @@ async fn workspace_apply(
                     .phone_bridge
                     .authorizes_message(&token, session_id, message_id)
         }) {
-            return Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
+            return Ok(Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
                 unauthorized("Accepted messages require their live Host delivery"),
-            ))));
+            )))));
         }
     }
     // A Member's Inbox decision reaches Core through the Space host, which resolves its
@@ -1758,9 +1852,9 @@ async fn workspace_apply(
                 | nodex_core_contracts::workspace::ProjectWorkspaceIntent::DispatchInboxEntries { .. }
         )
     {
-        return Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
+        return Ok(Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
             unauthorized("Inbox decisions are confirmed through the Space host"),
-        ))));
+        )))));
     }
     if context.principal.is_some()
         && let nodex_core_contracts::workspace::ProjectWorkspaceIntent::CreateAgentRuntimeSession {
@@ -1781,9 +1875,9 @@ async fn workspace_apply(
                         .phone_bridge
                         .authorizes_launch(&token, session_id, launch_request_id))
         }) {
-            return Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
+            return Ok(Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
                 unauthorized("New chats require their live Host launch"),
-            ))));
+            )))));
         }
     }
     // A Member deletes their own side chat through the Space host, which retires its execution.
@@ -1797,29 +1891,37 @@ async fn workspace_apply(
                 .host_bridge
                 .authorizes_side_chat_delete(&token, session_id)
         }) {
-            return Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
+            return Ok(Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
                 unauthorized("Side chats are deleted through the Space host"),
-            ))));
+            )))));
         }
     }
     let request_state = Arc::clone(&state);
     let response = state
         .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            let outcome = request_state.workspace.apply(&context, request)?;
-            let committed = outcome.committed;
-            let duplicate = committed.receipt.mutation.duplicate;
-            build_authorized_apply_response(
-                &request_state,
-                ModuleName::ProjectWorkspace,
-                &operation_id,
-                &context,
-                duplicate,
-                committed,
-            )
-        })
-        .await;
-    Json(ProjectWorkspaceApplyResponse(response_envelope(response)))
+        .execute(
+            &bound.id,
+            &headers,
+            RequestClass::Interactive,
+            "workspace.apply",
+            move || {
+                let outcome = request_state.workspace.apply(&context, request)?;
+                let committed = outcome.committed;
+                let duplicate = committed.receipt.mutation.duplicate;
+                build_authorized_apply_response(
+                    &request_state,
+                    ModuleName::ProjectWorkspace,
+                    &operation_id,
+                    &context,
+                    duplicate,
+                    committed,
+                )
+            },
+        )
+        .await?;
+    Ok(Json(ProjectWorkspaceApplyResponse(response_envelope(
+        response,
+    ))))
 }
 
 async fn automation_read(
@@ -1827,21 +1929,25 @@ async fn automation_read(
     Extension(bound): Extension<BoundConnection>,
     headers: HeaderMap,
     Json(AutomationReadRequest(request)): Json<AutomationReadRequest>,
-) -> Json<AutomationReadResponse> {
+) -> Result<Json<AutomationReadResponse>, AdmissionRefusal> {
     let context = match module_context(&state, &headers, &bound) {
         Ok(context) => context,
         Err(error) => {
-            return Json(AutomationReadResponse(response_envelope(Err(error))));
+            return Ok(Json(AutomationReadResponse(response_envelope(Err(error)))));
         }
     };
     let request_state = Arc::clone(&state);
     let response = state
         .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            request_state.automation.read(&context, request)
-        })
-        .await;
-    Json(AutomationReadResponse(response_envelope(response)))
+        .execute(
+            &bound.id,
+            &headers,
+            RequestClass::Interactive,
+            "automation.read",
+            move || request_state.automation.read(&context, request),
+        )
+        .await?;
+    Ok(Json(AutomationReadResponse(response_envelope(response))))
 }
 
 async fn automation_apply(
@@ -1849,31 +1955,37 @@ async fn automation_apply(
     Extension(bound): Extension<BoundConnection>,
     headers: HeaderMap,
     Json(AutomationApplyRequest(request)): Json<AutomationApplyRequest>,
-) -> Json<AutomationApplyResponse> {
+) -> Result<Json<AutomationApplyResponse>, AdmissionRefusal> {
     record_operation("automation", &request.operation_id);
     let operation_id = request.operation_id.clone();
     let context = match module_context(&state, &headers, &bound) {
         Ok(context) => context,
-        Err(error) => return Json(AutomationApplyResponse(response_envelope(Err(error)))),
+        Err(error) => return Ok(Json(AutomationApplyResponse(response_envelope(Err(error))))),
     };
     let request_state = Arc::clone(&state);
     let response = state
         .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            let outcome = request_state.automation.apply(&context, request)?;
-            let committed = outcome.committed;
-            let duplicate = committed.receipt.mutation.duplicate;
-            build_authorized_apply_response(
-                &request_state,
-                ModuleName::Automation,
-                &operation_id,
-                &context,
-                duplicate,
-                committed,
-            )
-        })
-        .await;
-    Json(AutomationApplyResponse(response_envelope(response)))
+        .execute(
+            &bound.id,
+            &headers,
+            RequestClass::Interactive,
+            "automation.apply",
+            move || {
+                let outcome = request_state.automation.apply(&context, request)?;
+                let committed = outcome.committed;
+                let duplicate = committed.receipt.mutation.duplicate;
+                build_authorized_apply_response(
+                    &request_state,
+                    ModuleName::Automation,
+                    &operation_id,
+                    &context,
+                    duplicate,
+                    committed,
+                )
+            },
+        )
+        .await?;
+    Ok(Json(AutomationApplyResponse(response_envelope(response))))
 }
 
 async fn administration_read(
@@ -1881,23 +1993,29 @@ async fn administration_read(
     Extension(bound): Extension<BoundConnection>,
     headers: HeaderMap,
     Json(StoreAdministrationReadRequest(request)): Json<StoreAdministrationReadRequest>,
-) -> Json<StoreAdministrationReadResponse> {
+) -> Result<Json<StoreAdministrationReadResponse>, AdmissionRefusal> {
     let context = match module_context(&state, &headers, &bound) {
         Ok(context) => context,
         Err(error) => {
-            return Json(StoreAdministrationReadResponse(response_envelope(Err(
-                error,
+            return Ok(Json(StoreAdministrationReadResponse(response_envelope(
+                Err(error),
             ))));
         }
     };
     let request_state = Arc::clone(&state);
     let response = state
         .request_executor
-        .execute(&bound.id, &headers, RequestClass::Background, move || {
-            request_state.administration.read(&context, request)
-        })
-        .await;
-    Json(StoreAdministrationReadResponse(response_envelope(response)))
+        .execute(
+            &bound.id,
+            &headers,
+            RequestClass::Background,
+            "administration.read",
+            move || request_state.administration.read(&context, request),
+        )
+        .await?;
+    Ok(Json(StoreAdministrationReadResponse(response_envelope(
+        response,
+    ))))
 }
 
 async fn administration_apply(
@@ -1905,7 +2023,7 @@ async fn administration_apply(
     Extension(bound): Extension<BoundConnection>,
     headers: HeaderMap,
     Json(StoreAdministrationApplyRequest(request)): Json<StoreAdministrationApplyRequest>,
-) -> Json<StoreAdministrationApplyResponse> {
+) -> Result<Json<StoreAdministrationApplyResponse>, AdmissionRefusal> {
     record_operation("store_administration", &request.operation_id);
     let operation_id = request.operation_id.clone();
     let backup_started_at = matches!(
@@ -1916,48 +2034,54 @@ async fn administration_apply(
     let context = match module_context(&state, &headers, &bound) {
         Ok(context) => context,
         Err(error) => {
-            return Json(StoreAdministrationApplyResponse(response_envelope(Err(
-                error,
+            return Ok(Json(StoreAdministrationApplyResponse(response_envelope(
+                Err(error),
             ))));
         }
     };
     let request_state = Arc::clone(&state);
     let response = state
         .request_executor
-        .execute(&bound.id, &headers, RequestClass::Maintenance, move || {
-            let outcome = request_state.administration.apply(&context, request)?;
-            let committed = outcome.committed;
-            let duplicate = committed.receipt.mutation.duplicate;
-            if outcome.durability
-                == nodex_core::administration::StoreAdministrationOutcomeDurability::Transient
-            {
-                let response = ApplyResponse::NoOp {
-                    outcome: committed.value,
-                    receipt: committed.receipt,
-                    observed: StoreObservation {
-                        store_epoch: committed.store_epoch,
-                        commit_head: committed.commit_seq,
-                    },
-                };
-                record_apply_response(&response, duplicate);
-                return Ok(response);
-            }
-            build_authorized_apply_response(
-                &request_state,
-                ModuleName::StoreAdministration,
-                &operation_id,
-                &context,
-                duplicate,
-                committed,
-            )
-        })
-        .await;
+        .execute(
+            &bound.id,
+            &headers,
+            RequestClass::Maintenance,
+            "administration.apply",
+            move || {
+                let outcome = request_state.administration.apply(&context, request)?;
+                let committed = outcome.committed;
+                let duplicate = committed.receipt.mutation.duplicate;
+                if outcome.durability
+                    == nodex_core::administration::StoreAdministrationOutcomeDurability::Transient
+                {
+                    let response = ApplyResponse::NoOp {
+                        outcome: committed.value,
+                        receipt: committed.receipt,
+                        observed: StoreObservation {
+                            store_epoch: committed.store_epoch,
+                            commit_head: committed.commit_seq,
+                        },
+                    };
+                    record_apply_response(&response, duplicate);
+                    return Ok(response);
+                }
+                build_authorized_apply_response(
+                    &request_state,
+                    ModuleName::StoreAdministration,
+                    &operation_id,
+                    &context,
+                    duplicate,
+                    committed,
+                )
+            },
+        )
+        .await?;
     if let Some(started_at) = backup_started_at {
         state.metrics.record_backup_duration(started_at.elapsed());
     }
-    Json(StoreAdministrationApplyResponse(response_envelope(
+    Ok(Json(StoreAdministrationApplyResponse(response_envelope(
         response,
-    )))
+    ))))
 }
 
 fn recovery_rejected(
@@ -1982,7 +2106,10 @@ fn recovery_rejected(
     }
 }
 
-async fn recovery_export(State(state): State<Arc<ServerState>>, request: Request) -> Response {
+async fn recovery_export(
+    State(state): State<Arc<ServerState>>,
+    request: Request,
+) -> Result<Response, AdmissionRefusal> {
     let (parts, body) = request.into_parts();
     let headers = parts.headers;
     let bound = parts
@@ -1993,27 +2120,39 @@ async fn recovery_export(State(state): State<Arc<ServerState>>, request: Request
     let bytes = match to_bytes(body, 4096).await {
         Ok(bytes) => bytes,
         Err(_) => {
-            return json_document_read_error(invalid("Recovery export request exceeds its bound"));
+            return Ok(json_document_read_error(invalid(
+                "Recovery export request exceeds its bound",
+            )));
         }
     };
     let request: nodex_core_contracts::document::RecoveryExportRequest =
         match serde_json::from_slice(&bytes) {
             Ok(request) => request,
-            Err(_) => return json_document_read_error(invalid("Invalid recovery export request")),
+            Err(_) => {
+                return Ok(json_document_read_error(invalid(
+                    "Invalid recovery export request",
+                )));
+            }
         };
     let request_state = Arc::clone(&state);
     let request_headers = headers.clone();
     let request_bound = bound.clone();
     let response = state
         .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            let context = document_context(&request_state, &request_headers, &request_bound)?;
-            request_state
-                .document
-                .export_recovery(&context, &request.draft_id)
-        })
-        .await;
-    match response {
+        .execute(
+            &bound.id,
+            &headers,
+            RequestClass::Interactive,
+            "document.export_recovery",
+            move || {
+                let context = document_context(&request_state, &request_headers, &request_bound)?;
+                request_state
+                    .document
+                    .export_recovery(&context, &request.draft_id)
+            },
+        )
+        .await?;
+    Ok(match response {
         Ok(bytes) => (
             [(
                 axum::http::header::CONTENT_TYPE,
@@ -2023,10 +2162,13 @@ async fn recovery_export(State(state): State<Arc<ServerState>>, request: Request
         )
             .into_response(),
         Err(error) => json_document_read_error(error),
-    }
+    })
 }
 
-async fn recovery_capture(State(state): State<Arc<ServerState>>, request: Request) -> Response {
+async fn recovery_capture(
+    State(state): State<Arc<ServerState>>,
+    request: Request,
+) -> Result<Response, AdmissionRefusal> {
     let (parts, body) = request.into_parts();
     let headers = parts.headers;
     let bound = parts
@@ -2042,12 +2184,12 @@ async fn recovery_capture(State(state): State<Arc<ServerState>>, request: Reques
     {
         Ok(bytes) => bytes,
         Err(_) => {
-            return json_document_apply_error(recovery_rejected(
+            return Ok(json_document_apply_error(recovery_rejected(
                 nodex_core_contracts::document::RecoveryFailureReason::RequestTooLarge,
                 "Recovery bundle exceeds its bound",
                 None,
                 Some(nodex_core_contracts::document::MAX_RECOVERY_BUNDLE_BYTES),
-            ));
+            )));
         }
     };
     let request_state = Arc::clone(&state);
@@ -2055,148 +2197,89 @@ async fn recovery_capture(State(state): State<Arc<ServerState>>, request: Reques
     let request_bound = bound.clone();
     let response = state
         .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            let context = document_context(&request_state, &request_headers, &request_bound)?;
-            if required_header(&request_headers, "content-type", "Recovery content type")?
-                != "application/vnd.nodex.recovery-bundle.v1+octet-stream"
-            {
-                return Err(recovery_rejected(
-                    nodex_core_contracts::document::RecoveryFailureReason::UnsupportedTransport,
-                    "Unsupported recovery content type",
-                    None,
-                    None,
-                ));
-            }
-            let version = required_header(
-                &request_headers,
-                "x-nodex-contract-version",
-                "Recovery contract version",
-            )?;
-            if version
-                != nodex_core_contracts::document::OWNED_DOCUMENT_CONTRACT_VERSION.to_string()
-            {
-                return Err(recovery_rejected(
-                    nodex_core_contracts::document::RecoveryFailureReason::UnsupportedFormat,
-                    "Unsupported recovery contract version",
-                    None,
-                    None,
-                ));
-            }
-            let operation_id = required_header(
-                &request_headers,
-                "x-nodex-operation-id",
-                "Recovery operation",
-            )?;
-            let epoch = required_header(
-                &request_headers,
-                "x-nodex-store-epoch",
-                "Recovery Store epoch",
-            )?;
-            let expected_hash = required_header(
-                &request_headers,
-                "x-nodex-payload-hash",
-                "Recovery payload digest",
-            )?;
-            if nodex_core_contracts::document::recovery_bundle::payload_hash(&bytes)
-                != expected_hash
-            {
-                return Err(recovery_rejected(
-                    nodex_core_contracts::document::RecoveryFailureReason::InvalidDigest,
-                    "Recovery payload digest does not match",
-                    None,
-                    None,
-                ));
-            }
-            let outcome = request_state.document.capture_recovery_bundle(
-                &context,
-                operation_id.clone(),
-                nodex_core_contracts::StoreEpoch(epoch),
-                bytes.to_vec(),
-            )?;
-            let committed = outcome.committed;
-            let duplicate = committed.receipt.mutation.duplicate;
-            build_authorized_apply_response(
-                &request_state,
-                ModuleName::OwnedDocument,
-                &operation_id,
-                &context,
-                duplicate,
-                committed,
-            )
-        })
-        .await;
-    Json(OwnedDocumentApplyResponse(response_envelope(response))).into_response()
-}
-
-async fn document_read(State(state): State<Arc<ServerState>>, request: Request) -> Response {
-    let (parts, body) = request.into_parts();
-    let headers = parts.headers;
-    let bound = parts
-        .extensions
-        .get::<BoundConnection>()
-        .cloned()
-        .expect("connection middleware binds Document requests");
-    let bytes = match to_bytes(body, MAX_DOCUMENT_REQUEST_BYTES).await {
-        Ok(bytes) => bytes,
-        Err(_) => return json_document_read_error(invalid("Document read body exceeds its bound")),
-    };
-    if is_document_binary(&headers) {
-        let request_state = Arc::clone(&state);
-        let request_headers = headers.clone();
-        let request_bound = bound.clone();
-        return match state
-            .request_executor
-            .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-                Ok(binary_document_read(
-                    &request_state,
+        .execute(
+            &bound.id,
+            &headers,
+            RequestClass::Interactive,
+            "document.capture_recovery",
+            move || {
+                let context = document_context(&request_state, &request_headers, &request_bound)?;
+                if required_header(&request_headers, "content-type", "Recovery content type")?
+                    != "application/vnd.nodex.recovery-bundle.v1+octet-stream"
+                {
+                    return Err(recovery_rejected(
+                        nodex_core_contracts::document::RecoveryFailureReason::UnsupportedTransport,
+                        "Unsupported recovery content type",
+                        None,
+                        None,
+                    ));
+                }
+                let version = required_header(
                     &request_headers,
-                    &request_bound,
-                    &bytes,
-                ))
-            })
-            .await
-        {
-            Ok(response) => response,
-            Err(error) => json_document_read_error(error),
-        };
-    }
-    let OwnedDocumentReadRequest(request) = match serde_json::from_slice(&bytes) {
-        Ok(request) => request,
-        Err(_) => return json_document_read_error(invalid("Document read request is invalid")),
-    };
-    if matches!(
-        &request.read,
-        OwnedDocumentRead::SyncYjs { .. }
-            | OwnedDocumentRead::FetchUpdate { .. }
-            | OwnedDocumentRead::RecoveryArtifact { .. }
-    ) {
-        return json_document_read_error(recovery_rejected(
-            nodex_core_contracts::document::RecoveryFailureReason::UnsupportedTransport,
-            "This Document read requires its binary transport",
-            None,
-            None,
-        ));
-    }
-    if let OwnedDocumentRead::PrepareAgentSemanticMutation { operation_id, .. } = &request.read {
-        record_operation("owned_document", operation_id);
-    }
-    let context = match document_context(&state, &headers, &bound) {
-        Ok(context) => context,
-        Err(error) => {
-            return Json(OwnedDocumentReadResponse(response_envelope(Err(error)))).into_response();
-        }
-    };
-    let request_state = Arc::clone(&state);
-    let response = state
-        .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            request_state.document.read(&context, request)
-        })
-        .await;
-    Json(OwnedDocumentReadResponse(response_envelope(response))).into_response()
+                    "x-nodex-contract-version",
+                    "Recovery contract version",
+                )?;
+                if version
+                    != nodex_core_contracts::document::OWNED_DOCUMENT_CONTRACT_VERSION.to_string()
+                {
+                    return Err(recovery_rejected(
+                        nodex_core_contracts::document::RecoveryFailureReason::UnsupportedFormat,
+                        "Unsupported recovery contract version",
+                        None,
+                        None,
+                    ));
+                }
+                let operation_id = required_header(
+                    &request_headers,
+                    "x-nodex-operation-id",
+                    "Recovery operation",
+                )?;
+                let epoch = required_header(
+                    &request_headers,
+                    "x-nodex-store-epoch",
+                    "Recovery Store epoch",
+                )?;
+                let expected_hash = required_header(
+                    &request_headers,
+                    "x-nodex-payload-hash",
+                    "Recovery payload digest",
+                )?;
+                if nodex_core_contracts::document::recovery_bundle::payload_hash(&bytes)
+                    != expected_hash
+                {
+                    return Err(recovery_rejected(
+                        nodex_core_contracts::document::RecoveryFailureReason::InvalidDigest,
+                        "Recovery payload digest does not match",
+                        None,
+                        None,
+                    ));
+                }
+                let outcome = request_state.document.capture_recovery_bundle(
+                    &context,
+                    operation_id.clone(),
+                    nodex_core_contracts::StoreEpoch(epoch),
+                    bytes.to_vec(),
+                )?;
+                let committed = outcome.committed;
+                let duplicate = committed.receipt.mutation.duplicate;
+                build_authorized_apply_response(
+                    &request_state,
+                    ModuleName::OwnedDocument,
+                    &operation_id,
+                    &context,
+                    duplicate,
+                    committed,
+                )
+            },
+        )
+        .await?;
+    Ok(Json(OwnedDocumentApplyResponse(response_envelope(response))).into_response())
 }
 
-async fn document_apply(State(state): State<Arc<ServerState>>, request: Request) -> Response {
+async fn document_read(
+    State(state): State<Arc<ServerState>>,
+    request: Request,
+) -> Result<Response, AdmissionRefusal> {
     let (parts, body) = request.into_parts();
     let headers = parts.headers;
     let bound = parts
@@ -2207,32 +2290,139 @@ async fn document_apply(State(state): State<Arc<ServerState>>, request: Request)
     let bytes = match to_bytes(body, MAX_DOCUMENT_REQUEST_BYTES).await {
         Ok(bytes) => bytes,
         Err(_) => {
-            return json_document_apply_error(invalid("Document apply body exceeds its bound"));
+            return Ok(json_document_read_error(invalid(
+                "Document read body exceeds its bound",
+            )));
         }
     };
     if is_document_binary(&headers) {
         let request_state = Arc::clone(&state);
         let request_headers = headers.clone();
         let request_bound = bound.clone();
-        return match state
-            .request_executor
-            .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-                Ok(binary_document_apply(
-                    &request_state,
-                    &request_headers,
-                    &request_bound,
-                    &bytes,
-                ))
-            })
-            .await
-        {
-            Ok(response) => response,
-            Err(error) => json_document_apply_error(error),
-        };
+        return Ok(
+            match state
+                .request_executor
+                .execute(
+                    &bound.id,
+                    &headers,
+                    RequestClass::Interactive,
+                    "document.read_binary",
+                    move || {
+                        Ok(binary_document_read(
+                            &request_state,
+                            &request_headers,
+                            &request_bound,
+                            &bytes,
+                        ))
+                    },
+                )
+                .await?
+            {
+                Ok(response) => response,
+                Err(error) => json_document_read_error(error),
+            },
+        );
+    }
+    let OwnedDocumentReadRequest(request) = match serde_json::from_slice(&bytes) {
+        Ok(request) => request,
+        Err(_) => {
+            return Ok(json_document_read_error(invalid(
+                "Document read request is invalid",
+            )));
+        }
+    };
+    if matches!(
+        &request.read,
+        OwnedDocumentRead::SyncYjs { .. }
+            | OwnedDocumentRead::FetchUpdate { .. }
+            | OwnedDocumentRead::RecoveryArtifact { .. }
+    ) {
+        return Ok(json_document_read_error(recovery_rejected(
+            nodex_core_contracts::document::RecoveryFailureReason::UnsupportedTransport,
+            "This Document read requires its binary transport",
+            None,
+            None,
+        )));
+    }
+    if let OwnedDocumentRead::PrepareAgentSemanticMutation { operation_id, .. } = &request.read {
+        record_operation("owned_document", operation_id);
+    }
+    let context = match document_context(&state, &headers, &bound) {
+        Ok(context) => context,
+        Err(error) => {
+            return Ok(
+                Json(OwnedDocumentReadResponse(response_envelope(Err(error)))).into_response(),
+            );
+        }
+    };
+    let request_state = Arc::clone(&state);
+    let response = state
+        .request_executor
+        .execute(
+            &bound.id,
+            &headers,
+            RequestClass::Interactive,
+            "document.read",
+            move || request_state.document.read(&context, request),
+        )
+        .await?;
+    Ok(Json(OwnedDocumentReadResponse(response_envelope(response))).into_response())
+}
+
+async fn document_apply(
+    State(state): State<Arc<ServerState>>,
+    request: Request,
+) -> Result<Response, AdmissionRefusal> {
+    let (parts, body) = request.into_parts();
+    let headers = parts.headers;
+    let bound = parts
+        .extensions
+        .get::<BoundConnection>()
+        .cloned()
+        .expect("connection middleware binds Document requests");
+    let bytes = match to_bytes(body, MAX_DOCUMENT_REQUEST_BYTES).await {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return Ok(json_document_apply_error(invalid(
+                "Document apply body exceeds its bound",
+            )));
+        }
+    };
+    if is_document_binary(&headers) {
+        let request_state = Arc::clone(&state);
+        let request_headers = headers.clone();
+        let request_bound = bound.clone();
+        return Ok(
+            match state
+                .request_executor
+                .execute(
+                    &bound.id,
+                    &headers,
+                    RequestClass::Interactive,
+                    "document.apply_binary",
+                    move || {
+                        Ok(binary_document_apply(
+                            &request_state,
+                            &request_headers,
+                            &request_bound,
+                            &bytes,
+                        ))
+                    },
+                )
+                .await?
+            {
+                Ok(response) => response,
+                Err(error) => json_document_apply_error(error),
+            },
+        );
     }
     let OwnedDocumentApplyRequest(request) = match serde_json::from_slice(&bytes) {
         Ok(request) => request,
-        Err(_) => return json_document_apply_error(invalid("Document apply request is invalid")),
+        Err(_) => {
+            return Ok(json_document_apply_error(invalid(
+                "Document apply request is invalid",
+            )));
+        }
     };
     if matches!(
         &request.intent,
@@ -2240,25 +2430,27 @@ async fn document_apply(State(state): State<Arc<ServerState>>, request: Request)
             | OwnedDocumentIntent::ApplyYjsUpdate { .. }
             | OwnedDocumentIntent::ApplyCanvasMutation { .. }
     ) {
-        return json_document_apply_error(recovery_rejected(
+        return Ok(json_document_apply_error(recovery_rejected(
             nodex_core_contracts::document::RecoveryFailureReason::UnsupportedTransport,
             "This Document command requires its binary transport",
             None,
             None,
-        ));
+        )));
     }
     record_operation("owned_document", &request.operation_id);
     let operation_id = request.operation_id.clone();
     let context = match document_context(&state, &headers, &bound) {
         Ok(context) => context,
         Err(error) => {
-            return Json(OwnedDocumentApplyResponse(response_envelope(Err(error)))).into_response();
+            return Ok(
+                Json(OwnedDocumentApplyResponse(response_envelope(Err(error)))).into_response(),
+            );
         }
     };
     let request_state = Arc::clone(&state);
     let response = state
         .request_executor
-        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
+        .execute(&bound.id, &headers, RequestClass::Interactive, "document.apply", move || {
             let reconcile = matches!(&request.intent, OwnedDocumentIntent::ResolveRecovery { resolve } if resolve.choice == nodex_core_contracts::document::RecoveryChoice::Reconcile);
             let outcome = request_state.document.apply(&context, request)?;
             let committed = outcome.committed;
@@ -2275,8 +2467,8 @@ async fn document_apply(State(state): State<Arc<ServerState>>, request: Request)
                 committed,
             )
         })
-        .await;
-    Json(OwnedDocumentApplyResponse(response_envelope(response))).into_response()
+        .await?;
+    Ok(Json(OwnedDocumentApplyResponse(response_envelope(response))).into_response())
 }
 
 fn binary_module_read(
@@ -3676,18 +3868,25 @@ async fn record_agent_run(
     loop {
         let request_state = Arc::clone(&state);
         let request = request.clone();
-        let recorded = state
-            .request_executor
-            .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-                Ok(request_state.membership.record_agent_run(
-                    &request.session_id,
-                    Some(&request.run_id),
-                    request.message_id.as_deref(),
-                    request.backend,
-                ))
-            })
-            .await
-            .map_err(api_core_error)?;
+        let recorded = http_execution_result(
+            state
+                .request_executor
+                .execute(
+                    &bound.id,
+                    &headers,
+                    RequestClass::Interactive,
+                    "workspace.record_agent_run",
+                    move || {
+                        Ok(request_state.membership.record_agent_run(
+                            &request.session_id,
+                            Some(&request.run_id),
+                            request.message_id.as_deref(),
+                            request.backend,
+                        ))
+                    },
+                )
+                .await,
+        )?;
         match recorded {
             Ok(()) => return Ok(Json(true)),
             Err(error)
@@ -4027,14 +4226,35 @@ fn valid_binding(value: &str) -> bool {
     !value.is_empty() && value.len() <= 512 && value.trim() == value
 }
 
+fn completed_maintenance_slice<T>(
+    result: Result<Result<T, CoreError>, AdmissionRefusal>,
+    subsystem: &'static str,
+    retry_message: &'static str,
+) -> Option<T> {
+    match result {
+        Ok(Ok(value)) => Some(value),
+        Ok(Err(error)) => {
+            tracing::warn!(subsystem, ?error, "{retry_message}");
+            None
+        }
+        // The executor already reports admission pressure. Retry on the next tick.
+        Err(_) => None,
+    }
+}
+
+fn http_execution_result<T>(
+    result: Result<Result<T, CoreError>, AdmissionRefusal>,
+) -> Result<T, ApiError> {
+    result?.map_err(api_core_error)
+}
+
 fn api_core_error(error: CoreError) -> ApiError {
     let status = match error.code {
         CoreErrorCode::Unauthorized => StatusCode::FORBIDDEN,
         CoreErrorCode::NotFound | CoreErrorCode::AgentSessionUnavailable => StatusCode::NOT_FOUND,
         CoreErrorCode::InvalidInput => StatusCode::BAD_REQUEST,
-        CoreErrorCode::ResourceExhausted | CoreErrorCode::Overloaded => {
-            StatusCode::TOO_MANY_REQUESTS
-        }
+        CoreErrorCode::ResourceExhausted => StatusCode::TOO_MANY_REQUESTS,
+        CoreErrorCode::Overloaded => StatusCode::SERVICE_UNAVAILABLE,
         CoreErrorCode::DeadlineExceeded => StatusCode::GATEWAY_TIMEOUT,
         CoreErrorCode::Cancelled => StatusCode::from_u16(499).expect("499 is a valid status"),
         _ => StatusCode::CONFLICT,
@@ -4617,6 +4837,7 @@ pub async fn run_with_options(
                     "history-maintenance",
                     &headers,
                     RequestClass::Maintenance,
+                    "library.maintain_editor_history",
                     move || {
                         state
                             .library
@@ -4624,11 +4845,13 @@ pub async fn run_with_options(
                     },
                 )
                 .await;
-            if let Err(error) = &result {
-                tracing::warn!(subsystem = "editor_history", error = ?error, "History lifetime cleanup will retry");
-            }
+            let more = completed_maintenance_slice(
+                result,
+                "editor_history",
+                "History lifetime cleanup will retry",
+            );
             // Commit one slice, then yield before asking for writer admission again.
-            let delay = if matches!(result, Ok(true)) {
+            let delay = if more == Some(true) {
                 Duration::from_millis(25)
             } else {
                 Duration::from_secs(30)
@@ -4653,18 +4876,21 @@ pub async fn run_with_options(
                     "view-order-maintenance",
                     &headers,
                     RequestClass::Maintenance,
+                    "database.maintain_view_orders",
                     move || state.database.maintain_view_orders(),
                 )
                 .await;
-            if let Err(error) = &result {
-                tracing::warn!(subsystem = "database_order", error = ?error, "View order preparation will retry");
-            }
+            let more = completed_maintenance_slice(
+                result,
+                "database_order",
+                "View order preparation will retry",
+            );
             // A failed structural gesture can enqueue preparation while this worker is idle.
             // Wake immediately for that known recovery path, while retaining the 30 second
             // fallback for work that arrives without a request-side signal.
             order_state
                 .order_maintenance_wake
-                .wait_after_slice(matches!(result, Ok(true)))
+                .wait_after_slice(more == Some(true))
                 .await;
         }
     });
