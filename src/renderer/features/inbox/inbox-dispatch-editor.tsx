@@ -13,11 +13,8 @@ import type { Project } from "../../../shared/types";
 import { messageTextOf } from "../../../shared/message-content";
 import { NodexButton } from "@/components/ui/button";
 import { NodexOptionPicker } from "@/components/ui/dropdown";
-import {
-  CompactChevronDownIcon,
-  LocalStatusIcon,
-  WorktreeStatusIcon,
-} from "@/components/shared/icons";
+import { NodexTooltip } from "@/components/ui/tooltip";
+import { CompactChevronDownIcon, WorktreeStatusIcon } from "@/components/shared/icons";
 import {
   LIBRARY_INBOX,
   inboxActionSkills,
@@ -265,6 +262,45 @@ function PickerTrigger({
       <span className="min-w-0 truncate">{children}</span>
       <CompactChevronDownIcon className="icon-2xs shrink-0 text-token-description-foreground" />
     </button>
+  );
+}
+
+/**
+ * Two places a chat can run need no menu: the chip is lit when the chat gets its Page's
+ * worktree and quiet when it runs in the Project's checkout.
+ */
+function WorktreeToggle({
+  on,
+  onChange,
+}: {
+  readonly on: boolean;
+  readonly onChange: (on: boolean) => void;
+}) {
+  return (
+    <NodexTooltip
+      tooltipContent={
+        on
+          ? "Runs in its Page’s worktree, apart from your checkout"
+          : "Runs in the Project’s checkout"
+      }
+      side="top"
+    >
+      <button
+        type="button"
+        aria-label="Worktree"
+        aria-pressed={on}
+        onClick={() => onChange(!on)}
+        className={cn(
+          "inline-flex h-6 shrink-0 cursor-interaction items-center gap-1 rounded-md ps-1.5 pe-2 text-xs outline-hidden transition-[background-color,color,scale] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-token-focus-border active:scale-[0.97] motion-reduce:transition-none",
+          on
+            ? "bg-token-foreground/8 text-token-foreground hover:bg-token-foreground/12"
+            : "text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-foreground",
+        )}
+      >
+        <WorktreeStatusIcon className={cn("icon-2xs shrink-0", !on && "opacity-60")} />
+        Worktree
+      </button>
+    </NodexTooltip>
   );
 }
 
@@ -555,33 +591,13 @@ export function InboxDispatchEditor({
         ) : null}
         {draft.type === "new_chat" && (draft.worktree != null || agents.settingsReady) ? (
           // Whether the chat joins its Page's worktree sits beside the Agent it runs on.
-          <NodexOptionPicker
-            value={worktreeOn ? "worktree" : "local"}
-            options={[
-              {
-                value: "worktree",
-                label: "Worktree",
-                leftSlot: <WorktreeStatusIcon className="icon-xs shrink-0" />,
-              },
-              {
-                value: "local",
-                label: "Local",
-                leftSlot: <LocalStatusIcon className="icon-xs shrink-0" />,
-              },
-            ]}
-            onValueChange={(value) =>
-              setDraft((current) => {
-                const worktree = value === "worktree";
-                return {
-                  ...current,
-                  worktree: worktree === agents.settings.newChatsUseWorktrees ? null : worktree,
-                };
-              })
-            }
-            triggerButton={
-              <PickerTrigger label="Where it runs">
-                {worktreeOn ? "Worktree" : "Local"}
-              </PickerTrigger>
+          <WorktreeToggle
+            on={worktreeOn}
+            onChange={(worktree) =>
+              setDraft((current) => ({
+                ...current,
+                worktree: worktree === agents.settings.newChatsUseWorktrees ? null : worktree,
+              }))
             }
           />
         ) : null}

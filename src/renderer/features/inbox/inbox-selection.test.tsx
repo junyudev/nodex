@@ -253,10 +253,9 @@ describe("Inbox destination and Agent selection", () => {
       />,
     );
     // The Inbox's setting is what the chat runs in until this message chooses otherwise.
-    expect(screen.getByRole("button", { name: "Where it runs" }).textContent).toBe("Local");
-    await click("Where it runs");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Worktree" }));
-    expect(screen.getByRole("button", { name: "Where it runs" }).textContent).toBe("Worktree");
+    expect(screen.getByRole("button", { name: "Worktree" }).ariaPressed).toBe("false");
+    await click("Worktree");
+    expect(screen.getByRole("button", { name: "Worktree" }).ariaPressed).toBe("true");
     await click("Start chat");
     expect(onSubmit).toHaveBeenCalledWith(
       {
