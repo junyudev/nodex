@@ -52,6 +52,7 @@ import * as ProjectService from "../project/ProjectService.ts";
 import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
 import * as ServerSettings from "../serverSettings.ts";
 import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
+import { withoutAutoDeclineDeadline } from "./ApprovalDeadline.ts";
 import * as EventSink from "./EventSink.ts";
 import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
@@ -932,8 +933,7 @@ export const layerWithOptions = (
                   driver: input.entry.runtime.driver,
                   occurredAt: now,
                   payload: {
-                    ...turnItem,
-                    ...(turnItem.type === "approval_request" ? { autoDeclineAt: undefined } : {}),
+                    ...withoutAutoDeclineDeadline(turnItem),
                     status: input.reason === "runtime_error" ? "failed" : "cancelled",
                     completedAt: now,
                     updatedAt: now,

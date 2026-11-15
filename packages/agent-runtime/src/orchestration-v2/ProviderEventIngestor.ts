@@ -36,6 +36,7 @@ import {
   modelSelectionsEqual,
 } from "@nodex/runtime-shared/model";
 import * as AnalyticsService from "../telemetry/AnalyticsService.ts";
+import { withoutAutoDeclineDeadline } from "./ApprovalDeadline.ts";
 import * as EventSink from "./EventSink.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
@@ -454,8 +455,7 @@ export const layer: Layer.Layer<
               nodeId: item.nodeId,
               runId: item.runId,
               payload: {
-                ...item,
-                ...(item.type === "approval_request" ? { autoDeclineAt: undefined } : {}),
+                ...withoutAutoDeclineDeadline(item),
                 status: "cancelled",
                 completedAt: now,
                 updatedAt: now,

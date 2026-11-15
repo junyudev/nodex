@@ -95,6 +95,7 @@ import {
   pendingBackgroundTurnItems,
 } from "@nodex/runtime-shared/orchestrationV2PendingBackgroundWork";
 import { forkParked } from "../serverActivation.ts";
+import { withoutAutoDeclineDeadline } from "./ApprovalDeadline.ts";
 import { isTransientObservationFailure } from "./ProviderObservation.ts";
 import * as Context from "effect/Context";
 import * as Cause from "effect/Cause";
@@ -8844,13 +8845,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       if (approvalTurnItem !== undefined) {
         const answeredItem =
           approvalTurnItem.type === "approval_request" && command.decision !== undefined
-            ? {
+            ? withoutAutoDeclineDeadline({
                 ...approvalTurnItem,
                 decision: command.decision,
-                autoDeclineAt: undefined,
                 ...(command.optionId === undefined ? {} : { optionId: command.optionId }),
                 ...(command.feedback === undefined ? {} : { feedback: command.feedback }),
-              }
+              })
             : approvalTurnItem;
         yield* emitEvent({
           type: "turn-item.updated",
@@ -11006,8 +11006,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           nodeId: request.nodeId,
           occurredAt: now,
           payload: {
-            ...item,
-            autoDeclineAt: undefined,
+            ...withoutAutoDeclineDeadline(item),
             status: "cancelled",
             completedAt: now,
             updatedAt: now,
