@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="148" height="44" viewBox="0 0 148 44" role="img" aria-label="下载 Nodex Windows">
-  <rect width="148" height="44" rx="10" fill="#161618"/>
-  <svg x="17.11" y="12.11" width="19.78" height="19.78" viewBox="0 0 16 16" fill="#ffffff"><path d="M0 0h7.6v7.6H0zM8.4 0H16v7.6H8.4zM0 8.4h7.6V16H0zM8.4 8.4H16V16H8.4z"/></svg>
-  <g fill="#ffffff" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans',Helvetica,Arial,sans-serif">
-    <text x="50" y="17" font-size="10" opacity="0.75">下载安装</text>
+  <rect width="148" height="44" rx="10" fill="#f0f0ef"/>
+  <svg x="17.11" y="12.11" width="19.78" height="19.78" viewBox="0 0 16 16" fill="#161618"><path d="M0 0h7.6v7.6H0zM8.4 0H16v7.6H8.4zM0 8.4h7.6V16H0zM8.4 8.4H16V16H8.4z"/></svg>
+  <g fill="#161618" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans',Helvetica,Arial,sans-serif">
+    <text x="50" y="17" font-size="10" opacity="0.7">下载安装</text>
     <text x="50" y="34" font-size="16" font-weight="600">Windows</text>
   </g>
 </svg>

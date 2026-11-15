@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="148" height="44" viewBox="0 0 148 44" role="img" aria-label="Download Nodex for iPhone">
-  <rect width="148" height="44" rx="10" fill="#161618"/>
-  <svg x="17.23" y="9.35" width="19.55" height="23.00" viewBox="0 0 17 20" fill="#ffffff"><path d="M14.1 10.6c0-2.5 2-3.7 2.1-3.8-1.2-1.7-3-1.9-3.6-1.9-1.5-.2-3 .9-3.8.9-.8 0-2-.9-3.3-.9C3.8 5 2.2 6 1.3 7.6c-1.8 3.1-.5 7.8 1.3 10.3.9 1.2 1.9 2.6 3.2 2.6 1.3-.1 1.8-.8 3.3-.8 1.6 0 2 .8 3.3.8 1.4 0 2.3-1.3 3.1-2.5 1-1.4 1.4-2.8 1.4-2.9 0 0-2.8-1.1-2.8-4.4Zm-2.5-7.4c.7-.9 1.2-2 1-3.2-1 0-2.3.7-3 1.6-.7.8-1.2 2-1.1 3.1 1.2.1 2.3-.6 3.1-1.5Z"/></svg>
-  <g fill="#ffffff" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans',Helvetica,Arial,sans-serif">
-    <text x="50" y="17" font-size="10" opacity="0.75">Download for</text>
+  <rect width="148" height="44" rx="10" fill="#f0f0ef"/>
+  <svg x="17.23" y="9.35" width="19.55" height="23.00" viewBox="0 0 17 20" fill="#161618"><path d="M14.1 10.6c0-2.5 2-3.7 2.1-3.8-1.2-1.7-3-1.9-3.6-1.9-1.5-.2-3 .9-3.8.9-.8 0-2-.9-3.3-.9C3.8 5 2.2 6 1.3 7.6c-1.8 3.1-.5 7.8 1.3 10.3.9 1.2 1.9 2.6 3.2 2.6 1.3-.1 1.8-.8 3.3-.8 1.6 0 2 .8 3.3.8 1.4 0 2.3-1.3 3.1-2.5 1-1.4 1.4-2.8 1.4-2.9 0 0-2.8-1.1-2.8-4.4Zm-2.5-7.4c.7-.9 1.2-2 1-3.2-1 0-2.3.7-3 1.6-.7.8-1.2 2-1.1 3.1 1.2.1 2.3-.6 3.1-1.5Z"/></svg>
+  <g fill="#161618" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans',Helvetica,Arial,sans-serif">
+    <text x="50" y="17" font-size="10" opacity="0.7">Download for</text>
     <text x="50" y="34" font-size="16" font-weight="600">iPhone</text>
   </g>
 </svg>

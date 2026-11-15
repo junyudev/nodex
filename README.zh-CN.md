@@ -22,9 +22,11 @@
 </p>
 
 <p align="center">
-  <a href="https://nodex.jyu.app"><img alt="Website" src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-nodex.jyu.app-0969da?style=flat-square" /></a>
-  <a href="https://github.com/junyudev/nodex/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/junyudev/nodex?style=flat-square&label=release" /></a>
-  <a href="LICENSE"><img alt="Apache 2.0 License" src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" /></a>
+  <a href="https://nodex.jyu.app"><picture><source srcset="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-nodex.jyu.app-f5f5f4?style=flat&labelColor=262b33" media="(prefers-color-scheme: dark)"><img alt="Website" src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-nodex.jyu.app-161618?style=flat&labelColor=ececea"></picture></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest"><picture><source srcset="https://img.shields.io/github/v/release/junyudev/nodex?style=flat&label=%E7%89%88%E6%9C%AC&labelColor=262b33&color=f5f5f4" media="(prefers-color-scheme: dark)"><img alt="Latest release" src="https://img.shields.io/github/v/release/junyudev/nodex?style=flat&label=%E7%89%88%E6%9C%AC&labelColor=ececea&color=161618"></picture></a>
+  <a href="https://nodex.jyu.app/changelog/"><picture><source srcset="https://img.shields.io/badge/%E6%9B%B4%E6%96%B0%E6%97%A5%E5%BF%97-%E6%9C%80%E8%BF%91%E6%9B%B4%E6%96%B0-f5f5f4?style=flat&labelColor=262b33" media="(prefers-color-scheme: dark)"><img alt="Changelog" src="https://img.shields.io/badge/%E6%9B%B4%E6%96%B0%E6%97%A5%E5%BF%97-%E6%9C%80%E8%BF%91%E6%9B%B4%E6%96%B0-161618?style=flat&labelColor=ececea"></picture></a>
+  <a href="LICENSE"><picture><source srcset="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-Apache%202.0-f5f5f4?style=flat&labelColor=262b33" media="(prefers-color-scheme: dark)"><img alt="Apache 2.0 License" src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-Apache%202.0-161618?style=flat&labelColor=ececea"></picture></a>
+  <a href="https://github.com/junyudev/nodex/stargazers"><picture><source srcset="https://img.shields.io/github/stars/junyudev/nodex?style=flat&label=stars&labelColor=262b33&color=f5f5f4&logo=github&logoColor=888888" media="(prefers-color-scheme: dark)"><img alt="GitHub stars" src="https://img.shields.io/github/stars/junyudev/nodex?style=flat&label=stars&labelColor=ececea&color=161618&logo=github&logoColor=888888"></picture></a>
 </p>
 
 <p align="center">
@@ -37,35 +39,13 @@
   <img src=".github/assets/readme/hero-light.webp" alt="往 Nodex 收件箱里连发六条消息，每条都被规划给合适的 Agent，其中一条被手动换成 Claude Opus，清空后的收件箱会说明它是怎么规划的；Claude 对话分派 GPT 子 Agent，点开其中一个能看到它在 Codex 里干活；性能分析对话把 HTML 报告附到 Page 上，在旁边的浏览器 tab 里打开" width="100%">
 </picture>
 
-## 安装
-
-| 平台                       | 安装方式                                                                                                                                                                                                   |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **macOS 15+** · Apple 芯片 | `brew install --cask junyudev/tap/nodex`，或下载[磁盘映像](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg)                                                              |
-| **Windows 11**             | 安装包：[x64](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe) 或 [Arm](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-arm64.exe) |
-| **iPhone**                 | [TestFlight 公测](https://testflight.apple.com/join/Yz8Kpcty)                                                                                                                                              |
-| **Android**                | [APK](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk)                                                                                                                 |
-
-Nodex 目前为 Beta。在电脑上直接登录你已有的 Codex、Claude Code 或 OpenCode 账号；什么都没有，也可以先用
-OpenCode 的免费模型。Nodex Mobile 需要配合电脑上的 Nodex 使用。Windows 安装包尚未代码签名：如果出现
-SmartScreen，点“更多信息”，再点“仍要运行”。
-
-## 为什么是 Nodex
-
-Coding Agent 已经很会干活了。麻烦的是活儿以外的部分：把一堆想法整理成 prompt、给每件事挑模型、
-记住哪个对话在做哪件事、再把结果搬回笔记里。
-
-Nodex 负责的就是这部分。把想法一股脑丢进收件箱，每一条都会变成一个 Page，并附上执行方案：
-去哪个 Project、用哪个 Agent 和模型、哪些部分交给别人做。活儿在真正的对话里跑，旁边就是终端、
-diff 和浏览器；结果落回你和 Agent 都能编辑的 Pages。所有数据都留在你的 Mac 上。
-
-## 有什么不一样
+Coding Agent 已经很会干活了。活儿以外的部分还得你自己来：把想法整理成 prompt、给每件事挑模型、
+记住哪个对话在做哪件事、再把结果归档。**Nodex 负责的就是这部分**，而且所有数据都留在你的电脑上。
 
 ### 一个会做规划的收件箱
 
-一口气丢进好几条消息。Nodex 一次性为每一条给出建议：在合适的 Project 里，用合适的 Agent、
-模型和推理强度开一个新对话；发给已经在做这件事的对话；归档到别的 Project；或者先留作笔记。
-新对话的方案还会写明哪些部分由主 Agent 交给其他模型去做。你确认之前，什么都不会运行。
+一口气丢进好几条消息。Nodex 为每一条给出建议：新对话该去哪个 Project、用哪个 Agent、模型和推理强度，
+或者直接发给已经在做这件事的对话。你确认之前，什么都不会运行。
 
 ### 让 Claude 领队，让 GPT 开工
 
@@ -75,9 +55,8 @@ diff 和浏览器；结果落回你和 Agent 都能编辑的 Pages。所有数�
   <img src=".github/assets/readme/fanout-light.webp" alt="一个 Claude Code 对话把三部分工作交给 Codex 里的 GPT-6.1 Sol，另一部分交给 OpenCode 的免费模型" width="100%">
 </picture>
 
-任何对话都可以用 `delegate_task` 把一部分工作交给另一家的模型。比如让 Claude Code 里的 Opus 领队，
-同时派出几个 Codex 里的 GPT-6.1 Sol 子 Agent 并行干活，盯着每个任务的进度，再把结果合并回来。
-每个子 Agent 都有自己的对话，可以随时打开、追问或叫停。
+任何对话都可以把一部分工作交给另一家的模型。Claude Code 对话派出几个 Codex 里的 GPT-6.1 Sol，
+盯着每个任务，再把结果合并回来。每个子 Agent 都有自己的对话，可以随时打开、追问或叫停。
 
 ### 已付费的订阅全用上，再加上免费模型
 
@@ -87,10 +66,8 @@ diff 和浏览器；结果落回你和 Agent 都能编辑的 Pages。所有数�
   <img src=".github/assets/readme/agents-light.webp" alt="Nodex 模型菜单筛选出 OpenCode 免费模型，旁边是 Claude 和 Codex 的用量表" width="100%">
 </picture>
 
-内置 Codex、Claude Code 和 OpenCode，另外还能从 ACP Registry 安装 40 多个 Agent，比如 Gemini CLI、
-Qwen Code、GLM Agent。OpenCode 的免费模型就在同一个模型菜单里。用量表显示每个订阅还剩多少，
-收件箱挑模型时也会把余量考虑进去：贵的模型花在刀刃上，其余交给免费模型。对话中途换模型也没关系，
-下一条消息会把之前的对话完整交接给新的 Agent。
+内置 Codex、Claude Code 和 OpenCode，还能从 ACP Registry 安装 40 多个 Agent，OpenCode 的免费模型
+就在同一个菜单里。用量表显示每个订阅还剩多少，收件箱挑模型时会把余量考虑进去。
 
 ### 工作成果落在你们共同编辑的 Pages 里
 
@@ -100,10 +77,8 @@ Qwen Code、GLM Agent。OpenCode 的免费模型就在同一个模型菜单里�
   <img src=".github/assets/readme/pages-light.webp" alt="Nodex 看板上一个任务移到 Review，它的 Agent 把发现写进 Page、附上文件，火焰图从 Page 的文件树打开到旁边的新 tab" width="100%">
 </picture>
 
-Pages 支持属性、关联、子页面和历史版本，用 Board 和 List 视图来组织。每条收件箱消息本身就是一个
-Page，沿着 Triage → Plan → Doing → Review → Done 推进。Agent 通过 `nodex` CLI 和 Agent Skill
-读写 Pages，把报告、截图和 trace 作为 Page Files 附上去；点开文件会在 Page 旁边的新 tab 里打开，HTML
-直接在浏览器 tab 里渲染。改动会实时出现在你打开的窗口里。
+每条收件箱消息都是一个 Page，在看板上从 Triage 一路推进到 Done。Agent 通过 `nodex` CLI 读写 Pages，
+把报告、截图和 trace 作为文件附上去。它们的改动会实时出现在你打开的窗口里。
 
 ### 说一句话，整个看板自己理好
 
@@ -113,9 +88,8 @@ Page，沿着 Triage → Plan → Doing → Review → Done 推进。Agent 通�
   <img src=".github/assets/readme/tidy-light.webp" alt="在 agent 输入栏里说一句话，Agent 读完 15 个 Page，一次批量应用 13 处修改，List 按状态重新分组" width="100%">
 </picture>
 
-你的 Pages 和 Databases 都存在本地的一个 Profile 里，Agent 可以批量读取和修改。用大白话提要求就行，
-Agent 在后台用 `nodex` CLI 完成：一条只读 SQL 查询读完整个 backlog，再用一次原子批量编辑写回
-（数据被改过就拒绝，不会覆盖更新的内容）。你打开的视图会随之实时重新分组。
+用大白话提要求就行。Agent 先用一条只读查询读完整个 backlog，再用一次原子批量编辑写回，
+不会覆盖更新的内容。你打开的视图会随之重新分组。
 
 ### 离开工位，不离开你的 Agent
 
@@ -125,29 +99,36 @@ Agent 在后台用 `nodex` CLI 完成：一条只读 SQL 查询读完整个 back
   <img src=".github/assets/readme/mobile-light.webp" alt="在手机上批准对话里的一条命令，身后电脑上的同一个对话随即开始工作；手机从家里的 Wi-Fi 切到 Tailscale，往收件箱丢一条消息，再开启它建议的对话，新对话随即出现在电脑上" width="100%">
 </picture>
 
-Nodex Mobile（iOS 和 Android）直连运行 Agent 的那台电脑，也能连你加入的每个团队 Space。在手机上能看到所有对话，
-需要你处理的排在最前；可以批准操作、回答问题、追加消息或停止运行，也可以随手把想法丢进收件箱，离线时也行。
-它通过局域网或 Tailscale 直接连接，全程端到端加密，中间没有 Nodex 服务器，所以需要电脑开着、Nodex 保持打开，
-或者团队 Space 的宿主在运行。在“设置 → Spaces”里打开远程访问，选择 Link a device 扫码，
-然后[下载 App](https://nodex.jyu.app/download/#mobile)。
+Nodex Mobile 能看到所有对话，需要你处理的排在最前。可以批准操作、追加消息、停止运行，
+或者随手把想法丢进收件箱，离线时也行。它通过局域网或 Tailscale 直连你的电脑，全程端到端加密，
+中间没有 Nodex 服务器。[开始配置](https://nodex.jyu.app/download/#mobile)。
 
 ## Agent 周边的一切
 
 - **Worktree 和 Environment**：每个对话都可以有自己隔离的 checkout。
 - **Review**：在对话旁边查看未暂存、已暂存、分支和上一轮的 diff。
 - **浏览器、终端和文件**：就开在需要它们的对话旁边。
-- **Scheduled**：在你的 Mac 上运行定时任务和 heartbeat。
+- **Scheduled**：在你的电脑上运行定时任务和 heartbeat。
 - **Canvas、命令面板、分屏和多窗口**：再忙的工作区也能理得清。
 - **Page 历史版本和整个工作区的快照**：什么都能恢复。
 - **导入对话**：把已有的 Codex 和 Claude Code 对话一起带过来。
 
+## 安装
+
+Nodex 目前为 Beta。直接登录你已有的 Codex、Claude Code 或 OpenCode 账号；什么都没有，也可以先用
+OpenCode 的免费模型。
+
+- **macOS 15+**（Apple 芯片）：`brew install --cask junyudev/tap/nodex`，或下载
+  [磁盘映像](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg)。
+- **Windows 11**：[x64](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe) 或
+  [Arm](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-arm64.exe) 安装包。安装包尚未代码签名，如果出现 SmartScreen，
+  点“更多信息”，再点“仍要运行”。
+- **iPhone 和 Android**：[TestFlight 公测](https://testflight.apple.com/join/Yz8Kpcty) 或 [APK](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk)。
+  Nodex Mobile 需要电脑上的 Nodex 保持运行。
+
 ## 文档
 
-- [产品规格](docs/product-specs/nodex-product-spec.md)
-- [命令行](docs/CLI.md)
-- [架构](docs/ARCHITECTURE.md)
-- [开发指南](docs/development.md)
+[产品规格](docs/product-specs/nodex-product-spec.md) · [命令行](docs/CLI.md) ·
+[架构](docs/ARCHITECTURE.md) · [开发指南](docs/development.md)
 
-## 许可证
-
-Nodex 以 [Apache License 2.0](LICENSE) 开源。
+<sub>以 [Apache License 2.0](LICENSE) 开源。</sub>

@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="148" height="44" viewBox="0 0 148 44" role="img" aria-label="Download Nodex for Windows">
-  <rect width="148" height="44" rx="10" fill="#f5f5f4"/>
-  <svg x="17.11" y="12.11" width="19.78" height="19.78" viewBox="0 0 16 16" fill="#0d1117"><path d="M0 0h7.6v7.6H0zM8.4 0H16v7.6H8.4zM0 8.4h7.6V16H0zM8.4 8.4H16V16H8.4z"/></svg>
-  <g fill="#0d1117" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans',Helvetica,Arial,sans-serif">
-    <text x="50" y="17" font-size="10" opacity="0.75">Download for</text>
+  <rect width="148" height="44" rx="10" fill="#1c2128"/>
+  <svg x="17.11" y="12.11" width="19.78" height="19.78" viewBox="0 0 16 16" fill="#f5f5f4"><path d="M0 0h7.6v7.6H0zM8.4 0H16v7.6H8.4zM0 8.4h7.6V16H0zM8.4 8.4H16V16H8.4z"/></svg>
+  <g fill="#f5f5f4" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans',Helvetica,Arial,sans-serif">
+    <text x="50" y="17" font-size="10" opacity="0.7">Download for</text>
     <text x="50" y="34" font-size="16" font-weight="600">Windows</text>
   </g>
 </svg>

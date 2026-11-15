@@ -22,9 +22,11 @@
 </p>
 
 <p align="center">
-  <a href="https://nodex.jyu.app"><img alt="Website" src="https://img.shields.io/badge/website-nodex.jyu.app-0969da?style=flat-square" /></a>
-  <a href="https://github.com/junyudev/nodex/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/junyudev/nodex?style=flat-square&label=release" /></a>
-  <a href="LICENSE"><img alt="Apache 2.0 License" src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" /></a>
+  <a href="https://nodex.jyu.app"><picture><source srcset="https://img.shields.io/badge/website-nodex.jyu.app-f5f5f4?style=flat&labelColor=262b33" media="(prefers-color-scheme: dark)"><img alt="Website" src="https://img.shields.io/badge/website-nodex.jyu.app-161618?style=flat&labelColor=ececea"></picture></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest"><picture><source srcset="https://img.shields.io/github/v/release/junyudev/nodex?style=flat&label=release&labelColor=262b33&color=f5f5f4" media="(prefers-color-scheme: dark)"><img alt="Latest release" src="https://img.shields.io/github/v/release/junyudev/nodex?style=flat&label=release&labelColor=ececea&color=161618"></picture></a>
+  <a href="https://nodex.jyu.app/changelog/"><picture><source srcset="https://img.shields.io/badge/changelog-what%27s%20new-f5f5f4?style=flat&labelColor=262b33" media="(prefers-color-scheme: dark)"><img alt="Changelog" src="https://img.shields.io/badge/changelog-what%27s%20new-161618?style=flat&labelColor=ececea"></picture></a>
+  <a href="LICENSE"><picture><source srcset="https://img.shields.io/badge/license-Apache%202.0-f5f5f4?style=flat&labelColor=262b33" media="(prefers-color-scheme: dark)"><img alt="Apache 2.0 License" src="https://img.shields.io/badge/license-Apache%202.0-161618?style=flat&labelColor=ececea"></picture></a>
+  <a href="https://github.com/junyudev/nodex/stargazers"><picture><source srcset="https://img.shields.io/github/stars/junyudev/nodex?style=flat&label=stars&labelColor=262b33&color=f5f5f4&logo=github&logoColor=888888" media="(prefers-color-scheme: dark)"><img alt="GitHub stars" src="https://img.shields.io/github/stars/junyudev/nodex?style=flat&label=stars&labelColor=ececea&color=161618&logo=github&logoColor=888888"></picture></a>
 </p>
 
 <p align="center">
@@ -37,38 +39,14 @@
   <img src=".github/assets/readme/hero-light.webp" alt="Six messages dropped into the Nodex Inbox are planned onto the right agents, one moved to Claude Opus by hand, and the cleared Inbox shows how it plans; a Claude chat fans out to GPT subagents, and the reader opens one to watch it work in Codex; a profiling chat attaches an HTML report to its Page, which opens in a browser tab beside it" width="100%">
 </picture>
 
-## Install
-
-| Platform                      | Install                                                                                                                                                                                                          |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **macOS 15+** · Apple silicon | `brew install --cask junyudev/tap/nodex`, or the [disk image](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg)                                                                 |
-| **Windows 11**                | Installer for [x64](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe) or [Arm](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-arm64.exe) |
-| **iPhone**                    | [TestFlight beta](https://testflight.apple.com/join/Yz8Kpcty)                                                                                                                                                    |
-| **Android**                   | [APK](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk)                                                                                                                       |
-
-Nodex is in beta. On your computer, sign in with the Codex, Claude Code or OpenCode account you
-already have — or start with OpenCode's free models. Nodex Mobile works with Nodex on your computer.
-The Windows installer isn't code-signed yet: if SmartScreen appears, choose More info, then Run anyway.
-
-## Why Nodex
-
-Coding agents are good at doing the work. Everything around it is still manual: turning a pile of
-ideas into prompts, choosing a model for each, remembering which chat owns which task, and getting
-the result back into your notes.
-
-Nodex does that part. Drop your thoughts into one Inbox and each becomes a Page with a plan: which
-Project, which agent and model, and what to hand off. The work runs in real chats with terminals,
-diffs and a browser beside them, and the results land in Pages that you and your agents both edit.
-Everything stays on your Mac.
-
-## What makes it different
+Coding agents are good at the work. The part around it is still yours: turning ideas into prompts,
+picking a model for each, tracking which chat owns what, and filing the results. **Nodex does that
+part**, and everything stays on your computer.
 
 ### One inbox that plans the work
 
-Drop in a burst of messages. In one pass Nodex suggests what to do with each: start a chat in the
-right Project with the right agent, model and effort; send it to a chat that's already on it; file
-it; or keep it as a note. A planned chat can name the parts its agent should hand to another model.
-Nothing runs until you confirm.
+Drop in a burst of messages. Nodex suggests what to do with each: the Project, agent, model and
+effort for a new chat, or the chat that's already on it. Nothing runs until you confirm.
 
 ### Let Claude lead. Let GPT build.
 
@@ -78,9 +56,9 @@ Nothing runs until you confirm.
   <img src=".github/assets/readme/fanout-light.webp" alt="A Claude Code chat delegating three parts to GPT-6.1 Sol in Codex and one to a free OpenCode model" width="100%">
 </picture>
 
-Any chat can hand parts of its work to another provider with `delegate_task`. A Claude Code session
-can fan out to GPT-6.1 Sol in Codex, keep an eye on every task, and merge what comes back. Each
-subagent keeps its own conversation you can open, follow up on, or stop.
+Any chat can hand parts of its work to another provider. A Claude Code session fans out to
+GPT-6.1 Sol in Codex, watches every task and merges what comes back. Each subagent keeps a
+conversation you can open, follow up on or stop.
 
 ### Bring the plans you pay for. Add the free ones.
 
@@ -90,10 +68,9 @@ subagent keeps its own conversation you can open, follow up on, or stop.
   <img src=".github/assets/readme/agents-light.webp" alt="The Nodex model menu filtered to free OpenCode models, beside Claude and Codex usage meters" width="100%">
 </picture>
 
-Codex, Claude Code and OpenCode are built in, and 40+ more agents install from the ACP Registry —
-Gemini CLI, Qwen Code, GLM Agent and others. OpenCode's free models sit in the same model menu.
-Usage meters show what's left of each plan, and the Inbox weighs it before it picks a model.
-Switch models mid-chat and your next message hands the conversation to the new Agent.
+Codex, Claude Code and OpenCode are built in, 40+ more agents install from the ACP Registry, and
+OpenCode's free models sit in the same menu. Usage meters show what's left of each plan, and the
+Inbox weighs it before it picks a model.
 
 ### The work lands in Pages you both edit
 
@@ -103,10 +80,8 @@ Switch models mid-chat and your next message hands the conversation to the new A
   <img src=".github/assets/readme/pages-light.webp" alt="A Nodex Board where a task moves to Review while its agent writes findings into the Page, attaches its files, and the flame graph opens from the Page’s file tree in a tab beside it" width="100%">
 </picture>
 
-Pages with properties, relations, sub-pages and history, organized in Board and List views. Every
-Inbox message is a Page that moves through Triage → Plan → Doing → Review → Done. Agents read and
-write Pages through the `nodex` CLI and Agent Skill, and attach reports, screenshots and traces
-as Page Files that open in a tab beside the Page, with HTML rendered in a browser tab. Their edits
+Every Inbox message is a Page that moves from Triage to Done on a Board. Agents read and write
+Pages through the `nodex` CLI and attach reports, screenshots and traces as files. Their edits
 appear live in the window you have open.
 
 ### Ask once. Watch the whole board sort itself out.
@@ -117,10 +92,8 @@ appear live in the window you have open.
   <img src=".github/assets/readme/tidy-light.webp" alt="One plain request in the agent dock files a fifteen-task backlog: the agent reads every Page, applies thirteen edits in one batch, and the List regroups by status" width="100%">
 </picture>
 
-Your Pages and Databases live in one local Profile that agents can read and change in bulk. Ask
-in plain words. Behind the dock the agent runs the `nodex` CLI: one read-only SQL query over
-the backlog, then one atomic batch of edits that never overwrites newer changes. The View you
-have open regroups as it lands.
+Ask in plain words. The agent runs one read-only query over your backlog, then one atomic batch of
+edits that never overwrites newer changes. The View you have open regroups as it lands.
 
 ### Leave your desk. Not your agents.
 
@@ -130,31 +103,38 @@ have open regroups as it lands.
   <img src=".github/assets/readme/mobile-light.webp" alt="A phone approves a chat's command and the same chat starts working on the computer behind it; the phone moves from home Wi-Fi to Tailscale, drops a message into the Inbox, and starts the chat it suggests, which appears on the computer" width="100%">
 </picture>
 
-Nodex Mobile for iOS and Android reaches the computer your agents run on, and every team Space you
-belong to. See every chat, with the ones asking for you first; answer approvals and questions, queue
-a follow-up or stop a run; and drop thoughts into the Inbox, even offline. It connects directly over
-your local network or Tailscale, encrypted end to end, with no Nodex server in between, so it needs
-your computer on with Nodex open, or the team Space's host running. Turn on Remote access in
-Settings → Spaces, choose Link a device, scan the code, and
-[get the app](https://nodex.jyu.app/download/#mobile).
+Nodex Mobile shows every chat, the ones asking for you first. Answer approvals, queue a follow-up,
+stop a run, or drop a thought into the Inbox, even offline. It connects straight to your computer
+over your local network or Tailscale, encrypted end to end, with no Nodex server in between.
+[Set it up](https://nodex.jyu.app/download/#mobile).
 
 ## Everything around the agent
 
 - **Worktrees and Environments** give each chat its own isolated checkout.
 - **Review** shows unstaged, staged, branch and last-turn diffs beside the chat.
 - **Browser, Terminal and Files** open next to the conversation that needs them.
-- **Scheduled** runs cron tasks and heartbeats on your Mac.
+- **Scheduled** runs cron tasks and heartbeats on your computer.
 - **Canvas, the command palette, split panes and multiple windows** keep a busy workspace navigable.
 - **Page history and whole-workspace snapshots** let you restore anything.
 - **Conversation import** brings your existing Codex and Claude Code chats along.
 
+## Install
+
+Nodex is in beta. Sign in with the Codex, Claude Code or OpenCode account you already have, or start
+with OpenCode's free models.
+
+- **macOS 15+** on Apple silicon: `brew install --cask junyudev/tap/nodex`, or the
+  [disk image](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg).
+- **Windows 11**: installer for [x64](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe) or
+  [Arm](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-arm64.exe). It isn't code-signed yet, so if SmartScreen appears,
+  choose More info, then Run anyway.
+- **iPhone and Android**: [TestFlight beta](https://testflight.apple.com/join/Yz8Kpcty) or [APK](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk). Nodex
+  Mobile needs Nodex running on your computer.
+
 ## Documentation
 
-- [Product specification](docs/product-specs/nodex-product-spec.md)
-- [Command-line interface](docs/CLI.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Development guide](docs/development.md)
+[Product specification](docs/product-specs/nodex-product-spec.md) ·
+[Command-line interface](docs/CLI.md) · [Architecture](docs/ARCHITECTURE.md) ·
+[Development guide](docs/development.md)
 
-## License
-
-Nodex is open source under the [Apache License 2.0](LICENSE).
+<sub>Open source under the [Apache License 2.0](LICENSE).</sub>
