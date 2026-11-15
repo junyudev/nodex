@@ -34,9 +34,9 @@
 </p>
 
 <picture>
-  <source srcset=".github/assets/readme/hero-dark.webp" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/hero-light.webp" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/hero-light.webp" alt="往 Nodex 收件箱里连发六条消息，每条都被规划给合适的 Agent，其中一条被手动换成 Claude Opus，清空后的收件箱会说明它是怎么规划的；Claude 对话分派 GPT 子 Agent，点开其中一个能看到它在 Codex 里干活；性能分析对话把 HTML 报告附到 Page 上，在旁边的浏览器 tab 里打开" width="100%">
+  <source srcset=".github/assets/readme/hero-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/hero-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/hero-light.avif" alt="往 Nodex 收件箱里连发六条消息，每条都被规划给合适的 Agent，其中一条被手动换成 Claude Opus，清空后的收件箱会说明它是怎么规划的；Claude 对话分派 GPT 子 Agent，点开其中一个能看到它在 Codex 里干活；性能分析对话把 HTML 报告附到 Page 上，在旁边的浏览器 tab 里打开" width="100%">
 </picture>
 
 Coding Agent 已经很会干活了。活儿以外的部分还得你自己来：把想法整理成 prompt、给每件事挑模型、
@@ -50,9 +50,9 @@ Coding Agent 已经很会干活了。活儿以外的部分还得你自己来：�
 ### 让 Claude 领队，让 GPT 开工
 
 <picture>
-  <source srcset=".github/assets/readme/fanout-dark.webp" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/fanout-light.webp" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/fanout-light.webp" alt="一个 Claude Code 对话把三部分工作交给 Codex 里的 GPT-6.1 Sol，另一部分交给 OpenCode 的免费模型" width="100%">
+  <source srcset=".github/assets/readme/fanout-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/fanout-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/fanout-light.avif" alt="一个 Claude Code 对话把三部分工作交给 Codex 里的 GPT-6.1 Sol，另一部分交给 OpenCode 的免费模型" width="100%">
 </picture>
 
 任何对话都可以把一部分工作交给另一家的模型。Claude Code 对话派出几个 Codex 里的 GPT-6.1 Sol，
@@ -61,9 +61,9 @@ Coding Agent 已经很会干活了。活儿以外的部分还得你自己来：�
 ### 已付费的订阅全用上，再加上免费模型
 
 <picture>
-  <source srcset=".github/assets/readme/agents-dark.webp" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/agents-light.webp" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/agents-light.webp" alt="Nodex 模型菜单筛选出 OpenCode 免费模型，旁边是 Claude 和 Codex 的用量表" width="100%">
+  <source srcset=".github/assets/readme/agents-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/agents-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/agents-light.avif" alt="Nodex 模型菜单筛选出 OpenCode 免费模型，旁边是 Claude 和 Codex 的用量表" width="100%">
 </picture>
 
 内置 Codex、Claude Code 和 OpenCode，还能从 ACP Registry 安装 40 多个 Agent，OpenCode 的免费模型
@@ -72,9 +72,9 @@ Coding Agent 已经很会干活了。活儿以外的部分还得你自己来：�
 ### 工作成果落在你们共同编辑的 Pages 里
 
 <picture>
-  <source srcset=".github/assets/readme/pages-dark.webp" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/pages-light.webp" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/pages-light.webp" alt="Nodex 看板上一个任务移到 Review，它的 Agent 把发现写进 Page、附上文件，火焰图从 Page 的文件树打开到旁边的新 tab" width="100%">
+  <source srcset=".github/assets/readme/pages-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/pages-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/pages-light.avif" alt="Nodex 看板上一个任务移到 Review，它的 Agent 把发现写进 Page、附上文件，火焰图从 Page 的文件树打开到旁边的新 tab" width="100%">
 </picture>
 
 每条收件箱消息都是一个 Page，在看板上从 Triage 一路推进到 Done。Agent 通过 `nodex` CLI 读写 Pages，
@@ -83,9 +83,9 @@ Coding Agent 已经很会干活了。活儿以外的部分还得你自己来：�
 ### 说一句话，整个看板自己理好
 
 <picture>
-  <source srcset=".github/assets/readme/tidy-dark.webp" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/tidy-light.webp" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/tidy-light.webp" alt="在 agent 输入栏里说一句话，Agent 读完 15 个 Page，一次批量应用 13 处修改，List 按状态重新分组" width="100%">
+  <source srcset=".github/assets/readme/tidy-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/tidy-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/tidy-light.avif" alt="在 agent 输入栏里说一句话，Agent 读完 15 个 Page，一次批量应用 13 处修改，List 按状态重新分组" width="100%">
 </picture>
 
 用大白话提要求就行。Agent 先用一条只读查询读完整个 backlog，再用一次原子批量编辑写回，
@@ -94,9 +94,9 @@ Coding Agent 已经很会干活了。活儿以外的部分还得你自己来：�
 ### 离开工位，不离开你的 Agent
 
 <picture>
-  <source srcset=".github/assets/readme/mobile-dark.webp" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/mobile-light.webp" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/mobile-light.webp" alt="在手机上批准对话里的一条命令，身后电脑上的同一个对话随即开始工作；手机从家里的 Wi-Fi 切到 Tailscale，往收件箱丢一条消息，再开启它建议的对话，新对话随即出现在电脑上" width="100%">
+  <source srcset=".github/assets/readme/mobile-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/mobile-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/mobile-light.avif" alt="在手机上批准对话里的一条命令，身后电脑上的同一个对话随即开始工作；手机从家里的 Wi-Fi 切到 Tailscale，往收件箱丢一条消息，再开启它建议的对话，新对话随即出现在电脑上" width="100%">
 </picture>
 
 Nodex Mobile 能看到所有对话，需要你处理的排在最前。可以批准操作、追加消息、停止运行，

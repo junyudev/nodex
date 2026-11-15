@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { copyFile, link, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -14,7 +14,19 @@ const DEFAULT_OUT = fileURLToPath(
 // Social cards are committed: the site publishes them from here.
 const PUBLIC_ASSETS = fileURLToPath(new URL("../public", import.meta.url));
 const MP4_LIMIT = 4_000_000;
-const WEBP_LIMIT = 8_000_000;
+const AVIF_LIMIT = 4_000_000;
+/** GitHub shows a README image about 840 CSS px wide, so 1800 covers a 2x display. */
+const FIT_WIDTH = 1800;
+const AVIF_WIDTH = 1900;
+/** The page around a demo's designed size that the capture root includes. */
+const CAPTURE_MARGIN = 80;
+/**
+ * Renders each demo near the published width instead of resampling a larger capture: text stays
+ * as the browser drew it, and lossless frames stay cheap enough to arrive at full rate. Quarter
+ * steps keep the scaled size whole.
+ */
+export const fitScale = (designed: { readonly width: number }) =>
+  Math.round((FIT_WIDTH / (designed.width + CAPTURE_MARGIN)) * 4) / 4;
 const GIF_LIMIT = 10_000_000;
 
 interface Options {
@@ -23,7 +35,7 @@ interface Options {
   readonly baseUrl: string;
   readonly out: string;
   readonly fps: number;
-  readonly scale: number;
+  readonly scale: number | undefined;
   readonly og: boolean;
 }
 
@@ -69,12 +81,13 @@ const help = `Record landing demos in real time with Chromium and ffmpeg.
   --base-url <url>      Default: http://127.0.0.1:4330
   --out <directory>     Default: ${DEFAULT_OUT}, or ${PUBLIC_ASSETS} with --og
   --fps <number>        Constant video frame rate, 1–60. Default: 30
-  --scale <number>      Device scale factor, 1–4. Default: 2
+  --scale <number>      Device scale factor, 1–4. Default: fits each demo to about 1800px
+                        wide; 2 with --og
   --og                 Only render each /capture/og/<card>/ social card (1200×630 at --scale)
   --help               Show this help
 
 Start the landing server separately. Requires Playwright Chromium. Demos also need
-ffmpeg with libx264/libvpx-vp9, and libwebp_anim/libwebp or the optional img2webp CLI.
+ffmpeg with libx264/libvpx-vp9, and avifenc for the looping AVIF.
 No browser clock or animation time is mocked. Existing named outputs are replaced.
 `;
 
@@ -87,7 +100,7 @@ export function parseOptions(args: readonly string[]): Options | undefined {
       "base-url": { type: "string", default: "http://127.0.0.1:4330" },
       out: { type: "string" },
       fps: { type: "string", default: "30" },
-      scale: { type: "string", default: "2" },
+      scale: { type: "string" },
       og: { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
@@ -104,10 +117,10 @@ export function parseOptions(args: readonly string[]): Options | undefined {
     throw new Error("--theme must be dark, light, or both.");
   }
   const fps = Number(values.fps);
-  const scale = Number(values.scale);
+  const scale = values.scale === undefined ? undefined : Number(values.scale);
   if (!Number.isInteger(fps) || fps < 1 || fps > 60)
     throw new Error("--fps must be an integer from 1 to 60.");
-  if (!Number.isFinite(scale) || scale < 1 || scale > 4)
+  if (scale !== undefined && (!Number.isFinite(scale) || scale < 1 || scale > 4))
     throw new Error("--scale must be from 1 to 4.");
   const baseUrl = new URL(values["base-url"]!);
   if (!/^https?:$/.test(baseUrl.protocol)) throw new Error("--base-url must use HTTP or HTTPS.");
@@ -161,7 +174,7 @@ async function command(executable: string, args: readonly string[], cwd?: string
 
 const ffmpeg = (args: readonly string[]) =>
   command("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", ...args]);
-const frameName = (index: number) => `${String(index).padStart(6, "0")}.jpg`;
+const frameName = (index: number) => `${String(index).padStart(6, "0")}.png`;
 
 async function inspectMedia(file: string): Promise<{
   readonly streams: readonly {
@@ -184,7 +197,7 @@ async function inspectMedia(file: string): Promise<{
   );
 }
 
-async function checkTools(): Promise<string | undefined> {
+async function checkTools(): Promise<void> {
   try {
     const version = await command("ffmpeg", ["-version"]);
     await command("ffprobe", ["-version"]);
@@ -202,31 +215,30 @@ async function checkTools(): Promise<string | undefined> {
     if (!encoders.includes(encoder))
       throw new Error(`ffmpeg lacks ${encoder}. Use Homebrew's ffmpeg-full build.`);
   }
-  if (encoders.includes("libwebp_anim")) return "libwebp_anim";
-  if (encoders.includes("libwebp")) return "libwebp";
   try {
-    await command("img2webp", ["-version"]);
-    console.log("ffmpeg lacks WebP encoding; using installed img2webp for animated WebP.");
-    return undefined;
+    await command("avifenc", ["--version"]);
   } catch (error) {
-    throw new Error(
-      "Animated WebP needs libwebp in ffmpeg, or img2webp. Install with: brew install webp",
-      { cause: error },
-    );
+    throw new Error("The looping AVIF needs avifenc. Install with: brew install libavif", {
+      cause: error,
+    });
   }
 }
 
 async function record(
   browser: Browser,
   options: Options,
+  scale: number,
   demo: CaptureDemoId,
   theme: "dark" | "light",
   directory: string,
 ): Promise<Recording> {
   const designed = CAPTURE_DEMOS[demo];
   const context = await browser.newContext({
-    viewport: { width: designed.width + 80, height: designed.height + 80 },
-    deviceScaleFactor: options.scale,
+    viewport: {
+      width: designed.width + CAPTURE_MARGIN,
+      height: designed.height + CAPTURE_MARGIN,
+    },
+    deviceScaleFactor: scale,
     colorScheme: theme,
     reducedMotion: "no-preference",
   });
@@ -278,8 +290,8 @@ async function record(
     const frames: Frame[] = [];
     const writes: Promise<void>[] = [];
     const failures: unknown[] = [];
-    const expectedWidth = Math.round(viewport.width * options.scale);
-    const expectedHeight = Math.round(viewport.height * options.scale);
+    const expectedWidth = Math.round(viewport.width * scale);
+    const expectedHeight = Math.round(viewport.height * scale);
     cdp.on("Page.screencastFrame", (event) => {
       void cdp
         .send("Page.screencastFrameAck", { sessionId: event.sessionId })
@@ -300,8 +312,7 @@ async function record(
       );
     });
     await cdp.send("Page.startScreencast", {
-      format: "jpeg",
-      quality: 95,
+      format: "png",
       maxWidth: expectedWidth,
       maxHeight: expectedHeight,
       everyNthFrame: 1,
@@ -373,7 +384,7 @@ async function record(
       sourceFrames: valid.length,
       largestFrameGapMs: Math.max(0, ...intervals),
       viewport,
-      scale: options.scale,
+      scale,
       startMs: timing.startMs,
       frames: valid.map((frame) => frame.timestampMs - timing.startMs),
     };
@@ -403,7 +414,7 @@ async function sequence(recording: Recording, fps: number, directory: string): P
   // Hardlinks keep duplicated CFR frames cheap; every temporary file is under --out.
   for (const [index, frame] of frames.entries())
     await link(frame.file, join(directory, frameName(index)));
-  return join(directory, "%06d.jpg");
+  return join(directory, "%06d.png");
 }
 
 async function output(
@@ -457,71 +468,43 @@ async function stills(recording: Recording, stem: string, out: string): Promise<
   return rows;
 }
 
-async function encodeWebp(
+/**
+ * A looping image for places that cannot play video, such as a README. AV1 predicts each frame
+ * from the last, so a mostly still interface costs little, and 4:4:4 keeps coloured text sharp.
+ * Animated WebP is not an option: its lossy encoder leaves a pixel alone when it changed by less
+ * than a quality-dependent tolerance, so a slow fade strands blocks of stale colour on screen.
+ */
+async function encodeAvif(
   recording: Recording,
   options: Options,
   stem: string,
   temp: string,
-  encoder: string | undefined,
 ): Promise<Output> {
-  // 20fps has exact integer millisecond frame durations in WebP's timebase.
   const fps = Math.min(options.fps, 20);
-  const width = Math.min(recording.width, 1200);
-  const input = await sequence(recording, fps, join(temp, "webp-sequence"));
-  const file = join(options.out, `${stem}.webp`);
-  let webpFrames: string[] = [];
-  if (!encoder) {
-    const directory = join(temp, "webp-frames");
-    await mkdir(directory);
-    await ffmpeg([
-      "-framerate",
-      String(fps),
-      "-i",
-      input,
-      "-vf",
-      `scale=${width}:-2:flags=lanczos`,
-      join(directory, "%06d.png"),
-    ]);
-    webpFrames = (await readdir(directory)).sort().map((name) => join("webp-frames", name));
-  }
-  for (const quality of [80, 65, 50, 35]) {
-    console.log(`  WebP: ${fps}fps, quality ${quality}…`);
-    if (encoder) {
-      await ffmpeg([
-        "-framerate",
-        String(fps),
-        "-i",
-        input,
-        "-vf",
-        `scale=${width}:-2:flags=lanczos`,
-        "-c:v",
-        encoder,
-        "-lossless",
-        "0",
-        "-quality",
-        String(quality),
-        "-compression_level",
-        "4",
-        "-loop",
-        "0",
-        "-an",
-        file,
-      ]);
-    } else {
-      // img2webp splits its argument file on whitespace without shell quoting.
-      // Relative paths keep --out directories with spaces safe and avoid ARG_MAX.
-      const args = ["-loop", "0", "-lossy", "-q", String(quality), "-m", "4"];
-      for (const [index, frame] of webpFrames.entries()) {
-        const delay = Math.round(((index + 1) * 1000) / fps) - Math.round((index * 1000) / fps);
-        args.push("-d", String(delay), frame);
-      }
-      args.push("-o", "encoded.webp");
-      const argumentFile = join(temp, "webp-arguments.txt");
-      await writeFile(argumentFile, args.join("\n"));
-      await command("img2webp", [argumentFile], temp);
-      await copyFile(join(temp, "encoded.webp"), file);
-    }
-    if ((await stat(file)).size <= WEBP_LIMIT)
+  const width = Math.min(recording.width, AVIF_WIDTH);
+  const input = await sequence(recording, fps, join(temp, "avif-sequence"));
+  const file = join(options.out, `${stem}.avif`);
+  const directory = join(temp, "avif-frames");
+  await mkdir(directory);
+  await ffmpeg([
+    "-framerate",
+    String(fps),
+    "-i",
+    input,
+    "-vf",
+    `scale=${width}:-2:flags=lanczos`,
+    join(directory, "%06d.png"),
+  ]);
+  // Relative paths keep --out directories with spaces safe and the argument list short.
+  const frames = (await readdir(directory)).sort().map((name) => join("avif-frames", name));
+  for (const quality of [80, 70, 60]) {
+    console.log(`  AVIF: ${fps}fps, quality ${quality}…`);
+    await command(
+      "avifenc",
+      ["--fps", String(fps), "--yuv", "444", "-q", String(quality), "-s", "4", ...frames, file],
+      temp,
+    );
+    if ((await stat(file)).size <= AVIF_LIMIT)
       return await output(
         file,
         width,
@@ -531,7 +514,7 @@ async function encodeWebp(
   }
   await rm(file);
   throw new Error(
-    `${stem}.webp exceeded 8 MB even at quality 35. Shorten the capture or reduce motion before publishing.`,
+    `${stem}.avif exceeded 4 MB even at quality 60. Shorten the capture or reduce motion before publishing.`,
   );
 }
 
@@ -540,7 +523,6 @@ async function encode(
   options: Options,
   stem: string,
   temp: string,
-  webpEncoder: string | undefined,
 ): Promise<Output[]> {
   const rows = await stills(recording, stem, options.out);
   const input = await sequence(recording, options.fps, join(temp, "video-sequence"));
@@ -608,7 +590,7 @@ async function encode(
     webm,
   ]);
   rows.push(await output(webm, 1260, scaledHeight(recording, 1260), durationMs));
-  rows.push(await encodeWebp(recording, options, stem, temp, webpEncoder));
+  rows.push(await encodeAvif(recording, options, stem, temp));
   const gif = join(options.out, `${stem}.gif`);
   console.log("  Trying 960px / 15fps GIF…");
   await ffmpeg([
@@ -639,10 +621,10 @@ async function encode(
 }
 
 /** Each social card is its own designed page; it waits for its entrances to settle. */
-async function socialCards(browser: Browser, options: Options): Promise<Output[]> {
+async function socialCards(browser: Browser, options: Options, scale: number): Promise<Output[]> {
   const page = await browser.newPage({
     viewport: SOCIAL_CARD_VIEWPORT,
-    deviceScaleFactor: options.scale,
+    deviceScaleFactor: scale,
     colorScheme: "dark",
   });
   try {
@@ -656,11 +638,7 @@ async function socialCards(browser: Browser, options: Options): Promise<Output[]
       const file = join(options.out, card.file);
       await page.screenshot({ path: file });
       rows.push(
-        await output(
-          file,
-          SOCIAL_CARD_VIEWPORT.width * options.scale,
-          SOCIAL_CARD_VIEWPORT.height * options.scale,
-        ),
+        await output(file, SOCIAL_CARD_VIEWPORT.width * scale, SOCIAL_CARD_VIEWPORT.height * scale),
       );
     }
     return rows;
@@ -675,33 +653,38 @@ async function main(): Promise<void> {
     console.log(help);
     return;
   }
-  const webpEncoder = options.og ? undefined : await checkTools();
+  if (!options.og) await checkTools();
   await mkdir(options.out, { recursive: true });
-  const browser = await chromium.launch({
-    headless: true,
-    // CDP screencast otherwise uses Chromium's process scale (1×), even with a 2× context.
-    args: [`--force-device-scale-factor=${options.scale}`],
-  });
+  // CDP screencast uses Chromium's process scale, so each scale needs its own browser.
+  const launch = (scale: number) =>
+    chromium.launch({ headless: true, args: [`--force-device-scale-factor=${scale}`] });
   const rows: Output[] = [];
-  try {
-    if (options.og) {
-      rows.push(...(await socialCards(browser, options)));
-    } else {
-      for (const demo of options.demos) {
-        for (const theme of options.themes) {
-          const stem = `${demo}-${theme}`;
-          const temp = await mkdtemp(join(options.out, `.${stem}-`));
-          try {
-            const recording = await record(browser, options, demo, theme, temp);
-            rows.push(...(await encode(recording, options, stem, temp, webpEncoder)));
-          } finally {
-            await rm(temp, { recursive: true, force: true });
-          }
+  if (options.og) {
+    const scale = options.scale ?? 2;
+    const browser = await launch(scale);
+    try {
+      rows.push(...(await socialCards(browser, options, scale)));
+    } finally {
+      await browser.close();
+    }
+  }
+  for (const demo of options.og ? [] : options.demos) {
+    const scale = options.scale ?? fitScale(CAPTURE_DEMOS[demo]);
+    const browser = await launch(scale);
+    try {
+      for (const theme of options.themes) {
+        const stem = `${demo}-${theme}`;
+        const temp = await mkdtemp(join(options.out, `.${stem}-`));
+        try {
+          const recording = await record(browser, options, scale, demo, theme, temp);
+          rows.push(...(await encode(recording, options, stem, temp)));
+        } finally {
+          await rm(temp, { recursive: true, force: true });
         }
       }
+    } finally {
+      await browser.close();
     }
-  } finally {
-    await browser.close();
   }
   console.log(`\nOutputs: ${options.out}`);
   console.table(rows);

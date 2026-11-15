@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { frameSequence, parseOptions } from "../packages/landing/scripts/capture-demos";
+import { fitScale, frameSequence, parseOptions } from "../packages/landing/scripts/capture-demos";
 import { CAPTURE_DEMOS } from "../packages/landing/src/demos/capture-demos";
 
 describe("landing capture timing", () => {
@@ -38,13 +38,24 @@ describe("landing capture timing", () => {
   });
 });
 
+describe("landing capture scale", () => {
+  it("renders every demo within a tenth of the published width, at a whole pixel size", () => {
+    for (const { width, height } of Object.values(CAPTURE_DEMOS)) {
+      const scale = fitScale({ width });
+      const pixels = (width + 80) * scale;
+      expect(Number.isInteger(pixels) && Number.isInteger((height + 80) * scale)).toBe(true);
+      expect(Math.abs(pixels - 1800)).toBeLessThanOrEqual(180);
+    }
+  });
+});
+
 describe("landing capture arguments", () => {
   it("defaults to every registered demo and both themes, recorded into ignored local notes", () => {
     expect(parseOptions([])?.demos).toEqual(Object.keys(CAPTURE_DEMOS));
     expect(parseOptions([])).toMatchObject({
       themes: ["dark", "light"],
       fps: 30,
-      scale: 2,
+      scale: undefined,
     });
     expect(parseOptions([])?.out).toBe(
       resolve(import.meta.dirname, "../notes.local/artifacts/landing-captures"),

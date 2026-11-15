@@ -34,9 +34,9 @@
 </p>
 
 <picture>
-  <source srcset=".github/assets/readme/hero-dark.webp" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/hero-light.webp" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/hero-light.webp" alt="Six messages dropped into the Nodex Inbox are planned onto the right agents, one moved to Claude Opus by hand, and the cleared Inbox shows how it plans; a Claude chat fans out to GPT subagents, and the reader opens one to watch it work in Codex; a profiling chat attaches an HTML report to its Page, which opens in a browser tab beside it" width="100%">
+  <source srcset=".github/assets/readme/hero-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/hero-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/hero-light.avif" alt="Six messages dropped into the Nodex Inbox are planned onto the right agents, one moved to Claude Opus by hand, and the cleared Inbox shows how it plans; a Claude chat fans out to GPT subagents, and the reader opens one to watch it work in Codex; a profiling chat attaches an HTML report to its Page, which opens in a browser tab beside it" width="100%">
 </picture>
 
 Coding agents are good at the work. The part around it is still yours: turning ideas into prompts,
@@ -51,9 +51,9 @@ effort for a new chat, or the chat that's already on it. Nothing runs until you 
 ### Let Claude lead. Let GPT build.
 
 <picture>
-  <source srcset=".github/assets/readme/fanout-dark.webp" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/fanout-light.webp" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/fanout-light.webp" alt="A Claude Code chat delegating three parts to GPT-6.1 Sol in Codex and one to a free OpenCode model" width="100%">
+  <source srcset=".github/assets/readme/fanout-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/fanout-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/fanout-light.avif" alt="A Claude Code chat delegating three parts to GPT-6.1 Sol in Codex and one to a free OpenCode model" width="100%">
 </picture>
 
 Any chat can hand parts of its work to another provider. A Claude Code session fans out to
@@ -63,9 +63,9 @@ conversation you can open, follow up on or stop.
 ### Bring the plans you pay for. Add the free ones.
 
 <picture>
-  <source srcset=".github/assets/readme/agents-dark.webp" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/agents-light.webp" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/agents-light.webp" alt="The Nodex model menu filtered to free OpenCode models, beside Claude and Codex usage meters" width="100%">
+  <source srcset=".github/assets/readme/agents-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/agents-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/agents-light.avif" alt="The Nodex model menu filtered to free OpenCode models, beside Claude and Codex usage meters" width="100%">
 </picture>
 
 Codex, Claude Code and OpenCode are built in, 40+ more agents install from the ACP Registry, and
@@ -75,9 +75,9 @@ Inbox weighs it before it picks a model.
 ### The work lands in Pages you both edit
 
 <picture>
-  <source srcset=".github/assets/readme/pages-dark.webp" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/pages-light.webp" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/pages-light.webp" alt="A Nodex Board where a task moves to Review while its agent writes findings into the Page, attaches its files, and the flame graph opens from the Page’s file tree in a tab beside it" width="100%">
+  <source srcset=".github/assets/readme/pages-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/pages-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/pages-light.avif" alt="A Nodex Board where a task moves to Review while its agent writes findings into the Page, attaches its files, and the flame graph opens from the Page’s file tree in a tab beside it" width="100%">
 </picture>
 
 Every Inbox message is a Page that moves from Triage to Done on a Board. Agents read and write
@@ -87,9 +87,9 @@ appear live in the window you have open.
 ### Ask once. Watch the whole board sort itself out.
 
 <picture>
-  <source srcset=".github/assets/readme/tidy-dark.webp" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/tidy-light.webp" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/tidy-light.webp" alt="One plain request in the agent dock files a fifteen-task backlog: the agent reads every Page, applies thirteen edits in one batch, and the List regroups by status" width="100%">
+  <source srcset=".github/assets/readme/tidy-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/tidy-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/tidy-light.avif" alt="One plain request in the agent dock files a fifteen-task backlog: the agent reads every Page, applies thirteen edits in one batch, and the List regroups by status" width="100%">
 </picture>
 
 Ask in plain words. The agent runs one read-only query over your backlog, then one atomic batch of
@@ -98,9 +98,9 @@ edits that never overwrites newer changes. The View you have open regroups as it
 ### Leave your desk. Not your agents.
 
 <picture>
-  <source srcset=".github/assets/readme/mobile-dark.webp" media="(prefers-color-scheme: dark)">
-  <source srcset=".github/assets/readme/mobile-light.webp" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/mobile-light.webp" alt="A phone approves a chat's command and the same chat starts working on the computer behind it; the phone moves from home Wi-Fi to Tailscale, drops a message into the Inbox, and starts the chat it suggests, which appears on the computer" width="100%">
+  <source srcset=".github/assets/readme/mobile-dark.avif" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/mobile-light.avif" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/mobile-light.avif" alt="A phone approves a chat's command and the same chat starts working on the computer behind it; the phone moves from home Wi-Fi to Tailscale, drops a message into the Inbox, and starts the chat it suggests, which appears on the computer" width="100%">
 </picture>
 
 Nodex Mobile shows every chat, the ones asking for you first. Answer approvals, queue a follow-up,

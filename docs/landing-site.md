@@ -44,10 +44,9 @@ vp run capture:landing --og
 ```
 
 The recorder uses Playwright Chromium and ffmpeg. Install the browser with
-`vp exec playwright install chromium` if needed. ffmpeg needs H.264, VP9, and
-WebP encoding; `brew install ffmpeg-full` supplies these on macOS. If ffmpeg
-lacks WebP encoding, the recorder also supports an installed `img2webp`
-(`brew install webp`). Nothing is installed automatically.
+`vp exec playwright install chromium` if needed. ffmpeg needs H.264 and VP9
+encoding; `brew install ffmpeg-full` supplies these on macOS. The looping AVIF
+needs `avifenc` (`brew install libavif`). Nothing is installed automatically.
 
 Record media you will publish against a production preview: the development server can stretch a
 long demo's timeline by a second or two.
@@ -55,8 +54,10 @@ long demo's timeline by a second or two.
 `--base-url` defaults to `http://127.0.0.1:4330`. With several checkouts running, that
 port may serve another checkout's site and the recording silently shows its demos; start
 this checkout's server on a free port and pass it with `--base-url`. `--out` defaults to
-`notes.local/artifacts/landing-captures` in the checkout, which git ignores. `--demo`, `--theme`, `--fps` (30), and `--scale` (2) select the
-capture. `--og` renders only the [social cards](#social-cards) and replaces their committed images in `public/`,
+`notes.local/artifacts/landing-captures` in the checkout, which git ignores. `--demo`, `--theme`, `--fps` (30), and `--scale` select the
+capture. Without `--scale`, each demo renders at the quarter-step device scale that puts it nearest
+1800px wide, about twice the width GitHub shows a README image, so the published frames are the
+browser's own pixels and not a resampled larger capture; `--og` defaults to 2. `--og` renders only the [social cards](#social-cards) and replaces their committed images in `public/`,
 unless `--out` names another directory; it needs Chromium but not ffmpeg.
 Run `vp run capture:landing --help` for all options. Named outputs are replaced
 on subsequent runs; temporary full-resolution frames are removed after each capture.
@@ -68,19 +69,25 @@ designed sizes. Each `/capture/<id>/?capture` page must expose a stable
 padding, warms fonts, then navigates to a fresh one-shot playback. It observes
 the handle's assignment and completion without changing any animation clocks.
 
-CDP screencast JPEGs at quality 95 are sampled on their real presentation timestamps into a
+CDP screencast PNGs are sampled on their real presentation timestamps into a
 constant-rate sequence. Missing frames are held, surplus frames dropped, and
 the static tail is retained until `done`. The encoded duration follows real
 elapsed time, rounded up by at most one output frame; heavy system load can
 extend it because the demo bounds long animation deltas. Each capture writes
 a timing JSON report, full-resolution first/last review PNGs, a 70% poster,
-1260px H.264/VP9 videos, and a looping WebP at up to 20fps and its captured pixel
-width capped to 1200px. MP4 is capped at 4 MB, WebP quality is reduced as needed
-to stay within 8 MB, and the 960px,
+1260px H.264/VP9 videos, and a looping 4:4:4 AVIF at up to 20fps and its captured pixel
+width capped to 1900px. MP4 is capped at 4 MB, AVIF quality is reduced as needed
+to stay within 4 MB, and the 960px,
 15fps palette GIF is kept only if it fits within 10 MB. The summary prints the
 dimensions, duration, and decimal MB size of each media file. Review the first,
 poster, and last frames before publishing; interpolation cannot restore motion
 that Chromium never delivered.
+
+The loop is AVIF because an interface is mostly still between frames, which AV1 predicts cheaply,
+and full chroma keeps coloured text sharp. Keep it off animated WebP: its lossy encoder skips a
+pixel that changed by less than a quality-dependent tolerance, so a slow fade leaves blocks of
+stale colour on screen. Frames are PNG for the same reason: Chromium's JPEG halves chroma at
+every quality.
 
 ## Package Layout
 
