@@ -15,6 +15,14 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg"><img alt="macOS · Apple silicon" src="https://img.shields.io/badge/macOS%20%C2%B7%20Apple%20silicon-0969da?style=for-the-badge" height="36" /></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe"><img alt="Windows · x64" src="https://img.shields.io/badge/Windows%20%C2%B7%20x64-0969da?style=for-the-badge" height="36" /></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-arm64.exe"><img alt="Windows · Arm" src="https://img.shields.io/badge/Windows%20%C2%B7%20Arm-0969da?style=for-the-badge" height="36" /></a>
+  <a href="https://testflight.apple.com/join/Yz8Kpcty"><img alt="iOS · TestFlight" src="https://img.shields.io/badge/iOS%20%C2%B7%20TestFlight-0969da?style=for-the-badge" height="36" /></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk"><img alt="Android · APK" src="https://img.shields.io/badge/Android%20%C2%B7%20APK-0969da?style=for-the-badge" height="36" /></a>
+</p>
+
+<p align="center">
   <a href="https://nodex.jyu.app">Website</a> ·
   <a href="https://github.com/junyudev/nodex/releases/latest">Download</a> ·
   <a href="https://nodex.jyu.app/changelog/">Changelog</a> ·
@@ -23,7 +31,6 @@
 
 <p align="center">
   <a href="https://github.com/junyudev/nodex/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/junyudev/nodex?style=flat-square&label=release" /></a>
-  <img alt="macOS 15+ on Apple silicon" src="https://img.shields.io/badge/macOS-15%2B%20·%20Apple%20silicon-black?style=flat-square&logo=apple" />
   <a href="LICENSE"><img alt="Apache 2.0 License" src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" /></a>
 </p>
 
@@ -40,7 +47,8 @@ brew install --cask junyudev/tap/nodex
 ```
 
 Or download [Nodex for Apple silicon](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg)
-and drag it to Applications. Nodex is in beta for macOS 15 and later. Sign in with the Codex,
+and drag it to Applications. Nodex is in beta for macOS 15 and later and for Windows 11 on
+x64 and Arm; the buttons above also install Nodex Mobile for iOS and Android. Sign in with the Codex,
 Claude Code or OpenCode account you already have — or start with OpenCode's free models.
 
 ## Why Nodex

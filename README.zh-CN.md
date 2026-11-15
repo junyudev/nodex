@@ -15,6 +15,14 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg"><img alt="macOS · Apple 芯片" src="https://img.shields.io/badge/macOS%20%C2%B7%20Apple%20%E8%8A%AF%E7%89%87-0969da?style=for-the-badge" height="36" /></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe"><img alt="Windows · x64" src="https://img.shields.io/badge/Windows%20%C2%B7%20x64-0969da?style=for-the-badge" height="36" /></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-arm64.exe"><img alt="Windows · Arm" src="https://img.shields.io/badge/Windows%20%C2%B7%20Arm-0969da?style=for-the-badge" height="36" /></a>
+  <a href="https://testflight.apple.com/join/Yz8Kpcty"><img alt="iOS · TestFlight" src="https://img.shields.io/badge/iOS%20%C2%B7%20TestFlight-0969da?style=for-the-badge" height="36" /></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk"><img alt="Android · APK" src="https://img.shields.io/badge/Android%20%C2%B7%20APK-0969da?style=for-the-badge" height="36" /></a>
+</p>
+
+<p align="center">
   <a href="https://nodex.jyu.app">官网</a> ·
   <a href="https://github.com/junyudev/nodex/releases/latest">下载</a> ·
   <a href="https://nodex.jyu.app/changelog/">更新日志</a> ·
@@ -23,7 +31,6 @@
 
 <p align="center">
   <a href="https://github.com/junyudev/nodex/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/junyudev/nodex?style=flat-square&label=release" /></a>
-  <img alt="macOS 15+ on Apple silicon" src="https://img.shields.io/badge/macOS-15%2B%20·%20Apple%20silicon-black?style=flat-square&logo=apple" />
   <a href="LICENSE"><img alt="Apache 2.0 License" src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" /></a>
 </p>
 
@@ -40,7 +47,8 @@ brew install --cask junyudev/tap/nodex
 ```
 
 也可以下载 [Apple 芯片版 Nodex](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg)，
-拖进“应用程序”即可。Nodex 目前为 Beta，支持 macOS 15 及以上。直接登录你已有的 Codex、Claude Code
+拖进“应用程序”即可。Nodex 目前为 Beta，支持 macOS 15 及以上，以及 x64 和 Arm 的 Windows 11；
+页面顶部的按钮也可以安装 iOS 和 Android 版 Nodex Mobile。直接登录你已有的 Codex、Claude Code
 或 OpenCode 账号；什么都没有，也可以先用 OpenCode 的免费模型。
 
 ## 为什么是 Nodex
