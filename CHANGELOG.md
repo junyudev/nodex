@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.5.6] - 2026-11-15
+
+### Added
 - Plugins work in every Agent chat. A plugin installed in Customize → Plugins reaches Codex natively, and Nodex brings its skills and the MCP servers it can run to Claude Code and ACP Agents. Limit a plugin to chosen Projects from its page; servers that need a sign-in, connected apps and hooks stay in Codex, and the plugin's page says so.
 - Add a plugin from any folder. Customize → Plugins → Add → Plugin from folder shows what the folder contains before installing it, and Update from folder picks up later changes.
 - Open plugin apps from the navigation rail, beside a chat, or in a read-only viewer for supported workspace files.
@@ -23,7 +30,6 @@ All notable changes to this project will be documented in this file.
 - Start an empty Page from a shape. A new Page offers **Task brief**, **Bug report**, **To-do list**, and **Meeting notes** under its first line; choosing one writes its headings and puts your caret where to begin.
 
 ### Changed
-
 - Alerts and confirmations from a web page now appear inside its Browser tab. They name the site that asked, leave the rest of Nodex usable, and stop taking the keyboard from the chat you are typing in. A page that keeps opening them can be told to stop, and an Agent working in the page answers them itself.
 - A message you send from your phone while an Agent is working now redirects it right away, as sending from the desktop does. Nodex Mobile used to queue it behind the Run unless you knew to press and hold send; now holding send is what queues it, and the Composer says so.
 - The Inbox and the Board now agree about every message. A message waits in your Inbox while its card is in Triage and yours to decide, so moving the card on the Board handles it, and moving it back to Triage brings it back. **Keep** is now **Add to Todo**, and a card appears in the Inbox once, whether it waits to be routed or needs your answer or review. In a shared Space, each person's Inbox shows the messages they own.
@@ -40,7 +46,6 @@ All notable changes to this project will be documented in this file.
 - Command line results are short. A write reports what changed on each Page, with the values before and after, and leaves out internal detail.
 
 ### Fixed
-
 - Sending a message while an Agent is working in the Browser no longer makes it start over. The message used to wipe the Agent's script session, so it lost its connection to the Browser and had to find its pages again. The session now stays as it was, and whatever the Agent was doing finishes first; Stop still ends it immediately.
 - An Agent reloading a page in the Browser no longer reloads all of Nodex. The whole window used to start over, which interrupted the chat you were reading and closed every Browser tab, losing anything unsaved in them. Only the Agent's page reloads now.
 - Links that open a new tab work in the built-in Browser. Clicking one did nothing, and neither did ⌘-click, middle-click or a page opening a window itself. They now open a tab right beside the page, in the background for ⌘-click and middle-click, including from a page you are not looking at. Mail and phone links that ask for a new tab open their app, and a tab opened only to download a file closes once the download finishes.
