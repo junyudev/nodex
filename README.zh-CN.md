@@ -15,10 +15,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg"><img alt="macOS · Apple 芯片" src="https://img.shields.io/badge/macOS%20%C2%B7%20Apple%20%E8%8A%AF%E7%89%87-0969da?style=for-the-badge" height="36" /></a>
-  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe"><img alt="Windows" src="https://img.shields.io/badge/Windows-0969da?style=for-the-badge" height="36" /></a>
-  <a href="https://testflight.apple.com/join/Yz8Kpcty"><img alt="iOS · TestFlight" src="https://img.shields.io/badge/iOS%20%C2%B7%20TestFlight-0969da?style=for-the-badge" height="36" /></a>
-  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk"><img alt="Android · APK" src="https://img.shields.io/badge/Android%20%C2%B7%20APK-0969da?style=for-the-badge" height="36" /></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg"><img alt="下载 Nodex macOS" src=".github/assets/readme/install/macos-zh.svg" height="44" /></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe"><img alt="下载 Nodex Windows" src=".github/assets/readme/install/windows-zh.svg" height="44" /></a>
+  <a href="https://testflight.apple.com/join/Yz8Kpcty"><img alt="下载 Nodex iPhone" src=".github/assets/readme/install/iphone-zh.svg" height="44" /></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk"><img alt="下载 Nodex Android" src=".github/assets/readme/install/android-zh.svg" height="44" /></a>
 </p>
 
 <p align="center">

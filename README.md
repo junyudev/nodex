@@ -15,10 +15,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg"><img alt="macOS · Apple silicon" src="https://img.shields.io/badge/macOS%20%C2%B7%20Apple%20silicon-0969da?style=for-the-badge" height="36" /></a>
-  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe"><img alt="Windows" src="https://img.shields.io/badge/Windows-0969da?style=for-the-badge" height="36" /></a>
-  <a href="https://testflight.apple.com/join/Yz8Kpcty"><img alt="iOS · TestFlight" src="https://img.shields.io/badge/iOS%20%C2%B7%20TestFlight-0969da?style=for-the-badge" height="36" /></a>
-  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk"><img alt="Android · APK" src="https://img.shields.io/badge/Android%20%C2%B7%20APK-0969da?style=for-the-badge" height="36" /></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg"><img alt="Download Nodex for macOS" src=".github/assets/readme/install/macos.svg" height="44" /></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe"><img alt="Download Nodex for Windows" src=".github/assets/readme/install/windows.svg" height="44" /></a>
+  <a href="https://testflight.apple.com/join/Yz8Kpcty"><img alt="Download Nodex for iPhone" src=".github/assets/readme/install/iphone.svg" height="44" /></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk"><img alt="Download Nodex for Android" src=".github/assets/readme/install/android.svg" height="44" /></a>
 </p>
 
 <p align="center">
