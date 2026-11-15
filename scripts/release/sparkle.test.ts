@@ -8,6 +8,7 @@ import { load as parse } from "js-yaml";
 import {
   isEligibleSparkleHistoryRelease,
   normalizeGeneratedAppcast,
+  oversizedDeltaRewrite,
   readSparkleHistoryManifest,
   writeSparkleHistoryManifest,
 } from "./sparkle";
@@ -217,5 +218,43 @@ test("normalizes a delta between Nightlies with the same app version", () => {
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a delta is unaffordable only when a file over the limit is in both apps and changed", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "nodex-sparkle-rewrite-"));
+  try {
+    const app = (name: string, files: Readonly<Record<string, string>>) => {
+      const directory = path.join(root, name);
+      for (const [file, contents] of Object.entries(files)) {
+        mkdirSync(path.dirname(path.join(directory, file)), { recursive: true });
+        writeFileSync(path.join(directory, file), contents);
+      }
+      return directory;
+    };
+    const source = app("source", {
+      "Contents/Resources/app.asar": "old bundle",
+      "Contents/Resources/bin/codex": "a".repeat(64),
+      "Contents/Frameworks/Electron": "e".repeat(40),
+    });
+    const sameRuntime = app("same-runtime", {
+      "Contents/Resources/app.asar": "new bundle!",
+      "Contents/Resources/bin/codex": "a".repeat(64),
+      "Contents/Frameworks/Electron": "e".repeat(40),
+      "Contents/Resources/bin/added": "n".repeat(64),
+    });
+    const newRuntime = app("new-runtime", {
+      "Contents/Resources/app.asar": "new bundle!",
+      "Contents/Resources/bin/codex": "b".repeat(64),
+      "Contents/Frameworks/Electron": "f".repeat(40),
+    });
+    expect(oversizedDeltaRewrite(source, sameRuntime, 32)).toBeNull();
+    expect(oversizedDeltaRewrite(source, newRuntime, 32)).toEqual({
+      bytes: 64,
+      path: path.join("Contents", "Resources", "bin", "codex"),
+    });
+    expect(oversizedDeltaRewrite(source, newRuntime, 64)).toBeNull();
+  } finally {
+    rmSync(root, { force: true, recursive: true });
   }
 });

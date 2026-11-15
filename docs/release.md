@@ -297,6 +297,11 @@ deltas from the three newest compatible Stable builds and Nightly from the two
 newest Nightly builds; older installs take the signed full archive. Delta
 generation and its round-trip check are the longest part of feed finalization,
 so raise these limits only with a measured finalizer time.
+A prior build also takes the full archive when a file over 128 MiB differs between
+it and the new build, such as a new Codex runtime or Electron Framework. Sparkle
+diffs every changed file in memory at about 33 times its size, which the hosted
+finalizer cannot hold, and such a delta saves little. The finalizer's log names the
+file, and its job stops after two hours.
 Each feed contains one release item for its channel and architecture. Prior
 archives are inputs to delta generation, and their verified Release Identities
 map source build numbers to display versions and archive files for round-trip

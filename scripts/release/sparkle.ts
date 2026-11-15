@@ -4,6 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -313,6 +314,71 @@ interface SparkleHistoryArchive {
   readonly version: string;
 }
 
+/**
+ * The largest file a delta may rewrite. BinaryDelta diffs every changed file with bsdiff, whose
+ * memory peaked near 33 times the file's size when measured: 11.7 GB and 15 minutes on an M4 Max
+ * for one 353 MB binary. The hosted finalizer has 7 GB, so a larger file sends it into swap for
+ * hours, and the delta it would produce is half the file's size anyway.
+ */
+export const SPARKLE_DELTA_REWRITE_LIMIT_BYTES = 128 * 1024 * 1024;
+
+/** The largest file both apps carry with different contents, when it is over the limit. */
+export const oversizedDeltaRewrite = (
+  sourceApp: string,
+  targetApp: string,
+  limitBytes: number = SPARKLE_DELTA_REWRITE_LIMIT_BYTES,
+): { readonly bytes: number; readonly path: string } | null => {
+  let largest: { readonly bytes: number; readonly path: string } | null = null;
+  for (const entry of readdirSync(targetApp, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const target = path.join(entry.parentPath, entry.name);
+    const relative = path.relative(targetApp, target);
+    const source = lstatSync(path.join(sourceApp, relative), { throwIfNoEntry: false });
+    if (!source?.isFile()) continue;
+    const bytes = Math.max(source.size, statSync(target).size);
+    if (bytes <= limitBytes || bytes <= (largest?.bytes ?? 0)) continue;
+    if (
+      source.size === statSync(target).size &&
+      sha256File(path.join(sourceApp, relative)) === sha256File(target)
+    )
+      continue;
+    largest = { bytes, path: relative };
+  }
+  return largest;
+};
+
+/**
+ * Drops the history a delta cannot affordably reach. Those installs take the signed full archive,
+ * as every install older than the delta history already does.
+ */
+const withoutUnaffordableDeltaSources = (
+  history: ReadonlyMap<string, SparkleHistoryArchive>,
+  currentAppPath: string,
+): ReadonlyMap<string, SparkleHistoryArchive> => {
+  const affordable = new Map<string, SparkleHistoryArchive>();
+  for (const [buildVersion, archive] of history) {
+    const root = mkdtempSync(path.join(tmpdir(), "nodex-sparkle-delta-source-"));
+    try {
+      const rewrite = oversizedDeltaRewrite(
+        extractSparkleArchive(archive.archivePath, root),
+        currentAppPath,
+      );
+      if (!rewrite) {
+        affordable.set(buildVersion, archive);
+        continue;
+      }
+      // generate_appcast builds a delta from every archive it finds beside the new one.
+      rmSync(archive.archivePath);
+      console.log(
+        `No delta from ${archive.version} (${buildVersion}): ${rewrite.path} changed and is ${Math.round(rewrite.bytes / 1024 / 1024)} MB. It updates with the full archive.`,
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  }
+  return affordable;
+};
+
 /** Stage full archives for delta generation without importing previous feed items. */
 export const stageSparkleDeltaSources = (
   directories: readonly string[],
@@ -376,8 +442,11 @@ export async function finalizeSparkleArchitectureUpdate(
       // Sparkle removes both extensions when locating a tar archive's notes.
       path.join(workingRoot, `Nodex-${version}-${options.architecture}.md`),
     );
-    const history = stageSparkleDeltaSources(options.historyDirectories ?? [], workingRoot);
     const currentAppPath = extractSparkleArchive(fullPath, path.join(workingRoot, "current-app"));
+    const history = withoutUnaffordableDeltaSources(
+      stageSparkleDeltaSources(options.historyDirectories ?? [], workingRoot),
+      currentAppPath,
+    );
     const identity = readAppIdentity(currentAppPath);
     if (
       identity.version !== version ||
