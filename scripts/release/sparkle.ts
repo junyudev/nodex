@@ -90,6 +90,8 @@ const run = (command: string, args: readonly string[], cwd?: string): string =>
   execFileSync(command, [...args], {
     cwd,
     encoding: "utf8",
+    // Node stops a child at 1 MiB of output by default, less than the release list with its notes.
+    maxBuffer: 256 * 1024 * 1024,
     stdio: ["ignore", "pipe", "inherit"],
   }).trim();
 

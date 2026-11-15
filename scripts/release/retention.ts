@@ -28,6 +28,8 @@ const NIGHTLY_FEEDS = ["arm64", "windows-x64", "windows-arm64"].map(
 const gh = (args: readonly string[]): string =>
   execFileSync("gh", [...args], {
     encoding: "utf8",
+    // Node stops a child at 1 MiB of output by default, less than the release list with its notes.
+    maxBuffer: 256 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
 
