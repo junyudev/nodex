@@ -16,8 +16,7 @@
 
 <p align="center">
   <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg"><img alt="macOS · Apple silicon" src="https://img.shields.io/badge/macOS%20%C2%B7%20Apple%20silicon-0969da?style=for-the-badge" height="36" /></a>
-  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe"><img alt="Windows · x64" src="https://img.shields.io/badge/Windows%20%C2%B7%20x64-0969da?style=for-the-badge" height="36" /></a>
-  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-arm64.exe"><img alt="Windows · Arm" src="https://img.shields.io/badge/Windows%20%C2%B7%20Arm-0969da?style=for-the-badge" height="36" /></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe"><img alt="Windows" src="https://img.shields.io/badge/Windows-0969da?style=for-the-badge" height="36" /></a>
   <a href="https://testflight.apple.com/join/Yz8Kpcty"><img alt="iOS · TestFlight" src="https://img.shields.io/badge/iOS%20%C2%B7%20TestFlight-0969da?style=for-the-badge" height="36" /></a>
   <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk"><img alt="Android · APK" src="https://img.shields.io/badge/Android%20%C2%B7%20APK-0969da?style=for-the-badge" height="36" /></a>
 </p>
@@ -25,8 +24,11 @@
 <p align="center">
   <a href="https://nodex.jyu.app">Website</a> ·
   <a href="https://github.com/junyudev/nodex/releases/latest">Download</a> ·
-  <a href="https://nodex.jyu.app/changelog/">Changelog</a> ·
-  <a href="README.zh-CN.md">简体中文</a>
+  <a href="https://nodex.jyu.app/changelog/">Changelog</a>
+</p>
+
+<p align="center">
+  <b>English</b> | <a href="README.zh-CN.md">中文</a>
 </p>
 
 <p align="center">
