@@ -561,6 +561,7 @@ import type {
   BrowserSidebarLocalServerThumbnailRequest,
   BrowserSidebarLocalServerThumbnailResult,
   BrowserSidebarOpenNewTabRequest,
+  BrowserSidebarOpenSurfaceRequest,
   BrowserSidebarStateSnapshot,
   BrowserSidebarTabIdentity,
   BrowserUsePageClosedEvent,
@@ -3275,6 +3276,7 @@ export interface IpcEvents {
   "browser-sidebar-browser-use-page-closed": BrowserUsePageClosedEvent;
   "browser-sidebar-browser-use-presentation-request": BrowserUsePresentationRequest;
   "browser-sidebar-open-new-tab": BrowserSidebarOpenNewTabRequest;
+  "browser-sidebar-open-surface": BrowserSidebarOpenSurfaceRequest;
   "browser-sidebar-context-menu-action": BrowserSidebarContextMenuActionEvent;
   "browser-sidebar-image-drag-state": BrowserSidebarImageDragStateEvent;
   "browser-sidebar-webview-attached": BrowserSidebarWebviewAttached;

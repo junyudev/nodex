@@ -40,6 +40,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Links that open a new tab work in the built-in Browser. Clicking one did nothing, and neither did ⌘-click, middle-click or a page opening a window itself. They now open a tab right beside the page, in the background for ⌘-click and middle-click, including from a page you are not looking at. Mail and phone links that ask for a new tab open their app, and a tab opened only to download a file closes once the download finishes.
 - The Browser stays idle with several tabs open. With two or more live tabs Nodex re-sent their state many times a second, which used the processor continuously and could leave a new tab titled “Browser”. Background tabs now also show their page's title as soon as it loads.
 - Claude Code chats in Full access no longer stall on a safety check while you are away. Claude Code still asks before a command whose removals it cannot verify, even a harmless script, and the request used to wait for you indefinitely. It now waits two minutes and shows that deadline; if no one answers, the command is declined, the Agent rewrites it safely or leaves the removal to you, and the turn carries on.
 - Starting a chat no longer fails with **Request declined** while Nodex is busy in the background. Automatic work such as Inbox routing, scheduled work, and syncing now waits behind what you are doing, and a brief busy moment is retried instead of ending the turn.

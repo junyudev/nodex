@@ -110,3 +110,52 @@ export function parseBrowserWebviewInstanceId(value: unknown): number | null {
     ? instanceId
     : null;
 }
+
+interface BrowserPageGuestParams {
+  partition?: string;
+  allowpopups?: string;
+  disablewebsecurity?: string;
+  nodeintegration?: string;
+  preload?: string;
+  webpreferences?: string;
+}
+
+/**
+ * Replaces every renderer claim about a Browser page guest at Electron's last synchronous
+ * attachment boundary.
+ *
+ * Popups stay enabled on purpose. Once they are disabled, Chromium refuses a page's request
+ * for another window before the guest's window-open handler runs, and every link that opens
+ * a new tab silently does nothing. That handler is the popup policy: it routes the request
+ * and never lets a native window exist.
+ */
+export function forceBrowserPageGuestPreferences(
+  preferences: object,
+  params: BrowserPageGuestParams,
+  options: { readonly partition: string; readonly preload: string },
+): void {
+  delete (preferences as { preloadURL?: string }).preloadURL;
+  Object.assign(preferences, {
+    allowRunningInsecureContent: false,
+    contextIsolation: true,
+    devTools: true,
+    disablePopups: false,
+    navigateOnDragDrop: true,
+    transparent: false,
+    nodeIntegration: false,
+    nodeIntegrationInSubFrames: false,
+    nodeIntegrationInWorker: false,
+    preload: options.preload,
+    plugins: false,
+    partition: options.partition,
+    sandbox: true,
+    webSecurity: true,
+    webviewTag: false,
+  });
+  params.partition = options.partition;
+  delete params.allowpopups;
+  delete params.disablewebsecurity;
+  delete params.nodeintegration;
+  delete params.preload;
+  delete params.webpreferences;
+}

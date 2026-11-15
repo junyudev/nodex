@@ -35,8 +35,11 @@ export interface BrowserSidebarOpenNewTabRequest extends BrowserSidebarTabIdenti
   background: boolean;
   /** The receiving Workbench opens this Browser tab in a detached window. */
   openInNewWindow?: boolean;
-  /** Browser-owned chrome URLs open these application surfaces. */
-  browserSurface?: "downloads" | "history";
+}
+
+/** A Browser-owned chrome URL asks the tab's panel to show this application surface. */
+export interface BrowserSidebarOpenSurfaceRequest extends BrowserSidebarTabIdentity {
+  surface: "downloads" | "history";
 }
 
 export interface BrowserSidebarImageDragStateEvent extends BrowserSidebarTabIdentity {

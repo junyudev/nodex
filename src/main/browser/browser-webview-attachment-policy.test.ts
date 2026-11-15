@@ -7,6 +7,7 @@ import type { BrowserAuthorizedAttachment } from "./browser-runtime-registry";
 import {
   consumePendingBrowserWebviewAttachment,
   decideBrowserWebviewAttachment,
+  forceBrowserPageGuestPreferences,
   registerPendingBrowserWebviewAttachment,
 } from "./browser-webview-attachment-policy";
 
@@ -159,4 +160,41 @@ describe("Browser webview attachment policy", () => {
     ).toEqual({ ok: false, reason: "duplicate-instance-id" });
     expect(consumePendingBrowserWebviewAttachment(pending, 7)).toBe(authorization);
   });
+});
+
+test("a Browser page guest keeps popup requests and loses every renderer claim", () => {
+  const preferences: Record<string, unknown> = {
+    disablePopups: true,
+    nodeIntegration: true,
+    preloadURL: "file:///renderer-preload.js",
+    sandbox: false,
+    webSecurity: false,
+  };
+  const params = {
+    partition: "persist:renderer-claim",
+    allowpopups: "",
+    disablewebsecurity: "",
+    nodeintegration: "",
+    preload: "file:///renderer-preload.js",
+    webpreferences: "contextIsolation=no",
+    src: "https://example.com/",
+  };
+  forceBrowserPageGuestPreferences(preferences, params, {
+    partition: "persist:browser",
+    preload: "/app/browser-guest.js",
+  });
+
+  // Chromium drops window-open requests before the Browser's handler when this is true.
+  expect(preferences.disablePopups).toBe(false);
+  expect(preferences).toMatchObject({
+    contextIsolation: true,
+    nodeIntegration: false,
+    partition: "persist:browser",
+    preload: "/app/browser-guest.js",
+    sandbox: true,
+    webSecurity: true,
+    webviewTag: false,
+  });
+  expect(preferences).not.toHaveProperty("preloadURL");
+  expect(params).toEqual({ partition: "persist:browser", src: "https://example.com/" });
 });

@@ -485,6 +485,13 @@ export const live: Layer.Layer<
             event.value,
           );
         }
+        if (event.kind === "openSurface") {
+          return sendToScope(
+            "browser-sidebar-open-surface",
+            event.value.browserViewScopeId,
+            event.value,
+          );
+        }
         if (event.kind === "contextMenuAction") {
           return sendToScope(
             "browser-sidebar-context-menu-action",

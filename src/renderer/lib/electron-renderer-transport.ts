@@ -433,6 +433,14 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         if (payload) callback(payload);
       });
     },
+    subscribeBrowserTabOpenRequests(callback) {
+      return bridge.on("browser-sidebar-open-new-tab", (...args: unknown[]) => {
+        const payload = args[0] as
+          | import("../../shared/browser-sidebar").BrowserSidebarOpenNewTabRequest
+          | undefined;
+        if (payload) callback(payload);
+      });
+    },
     subscribeModelPolicyChanges(callback) {
       return bridge.on("model-policy-changed", (...args: unknown[]) => {
         const payload = args[0] as import("../../shared/model-policy").ModelPolicy | undefined;

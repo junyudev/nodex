@@ -226,6 +226,8 @@ import {
   INBOX_SCENE_OWNER,
   LIBRARY_SCENE_OWNER,
   makeWorkbenchSceneKey,
+  makeWorkbenchBrowserConversationId,
+  resolveWorkbenchBrowserOwner,
   materializeInitialWorkbenchScene,
   updateWorkbenchSceneSurface,
   type WorkbenchComposerOverlayState,
@@ -2739,6 +2741,8 @@ export function WorkbenchRuntime({
     controller: panelController,
     createSessionViewTab,
     pinPreviewTab,
+    readScene: (owner) =>
+      workbenchWindow.owner.read().windowState.scenesByOwnerKey[makeWorkbenchSceneKey(owner)],
     setActivePanelCollapsed,
     setActivePanelTab,
     windowSessionId,
@@ -2796,8 +2800,7 @@ export function WorkbenchRuntime({
           ),
         getBrowserState: (owner) => {
           const state = browserSidebarRendererStateStore.getSnapshot();
-          const browserConversationId =
-            owner.kind === "session" ? owner.sessionId : makeWorkbenchSceneKey(owner);
+          const browserConversationId = makeWorkbenchBrowserConversationId(owner);
           const scope = { browserViewScopeId: windowSessionId, browserConversationId };
           return {
             tabs: state.state.tabs.filter(
@@ -2816,15 +2819,11 @@ export function WorkbenchRuntime({
       }),
     [linkWindowOwner, sceneNavigator, windowSessionId],
   );
+  /** A Browser page asked for a tab; it opens in the opener's Scene even when that is not shown. */
   const openBrowserTabRequest = useCallback(
-    async (owner: WorkbenchSceneOwner, request: BrowserSidebarOpenNewTabRequest) => {
-      const conversationId =
-        owner.kind === "session" ? owner.sessionId : makeWorkbenchSceneKey(owner);
-      if (
-        request.browserViewScopeId !== windowSessionId ||
-        request.browserConversationId !== conversationId
-      )
-        return;
+    async (request: BrowserSidebarOpenNewTabRequest) => {
+      const owner = resolveWorkbenchBrowserOwner(request.browserConversationId);
+      if (!owner || request.browserViewScopeId !== windowSessionId) return;
       await linkPresenterForOwner(owner)(
         {
           url: request.url,
@@ -2857,6 +2856,13 @@ export function WorkbenchRuntime({
         void linkRouter.openLink(request).catch(() => toast.danger("Unable to open link"));
       }),
     [linkRouter],
+  );
+  useEffect(
+    () =>
+      resolveRendererTransport().subscribeBrowserTabOpenRequests?.((request) => {
+        void openBrowserTabRequest(request).catch(() => toast.danger("Unable to open link"));
+      }),
+    [openBrowserTabRequest],
   );
   const presentOwnedScenePageFile: import("@/lib/workbench-page-file-opener").OpenPageFileTabHandler =
     async (input) => {
@@ -3170,10 +3176,6 @@ export function WorkbenchRuntime({
     panelOpeners,
     sessionCommands,
     createSessionViewTab,
-    onOpenBrowserTab: async (request) => {
-      if (!activeSession) return;
-      await openBrowserTabRequest({ kind: "session", sessionId: activeSession.id }, request);
-    },
     resolveProjectDefaultDatabaseViewId,
     openPageStage,
     commandKeymapState,
@@ -4897,7 +4899,10 @@ export function WorkbenchRuntime({
           panelId={context.panelId}
           tab={tab}
           surfaceContext={{
-            browserConversationId: projectSceneKey,
+            browserConversationId: makeWorkbenchBrowserConversationId({
+              kind: "project",
+              projectId: activeProject.id,
+            }),
             codexSessionId: null,
           }}
           browserViewScopeId={windowSessionId}
@@ -4933,9 +4938,6 @@ export function WorkbenchRuntime({
                 ...nextConfig,
               },
             };
-          }}
-          onOpenNewTab={(request) => {
-            return openBrowserTabRequest({ kind: "project", projectId: activeProject.id }, request);
           }}
           boundsSyncTrigger={
             context.panelId === "right"

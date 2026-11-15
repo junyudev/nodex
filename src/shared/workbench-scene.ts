@@ -145,6 +145,29 @@ export function makeWorkbenchSceneKey(owner: WorkbenchSceneOwner): WorkbenchScen
   return owner.kind;
 }
 
+/** Browser routes use opaque Session IDs and Scene keys for other owners. */
+export function makeWorkbenchBrowserConversationId(owner: WorkbenchSceneOwner): string {
+  return owner.kind === "session" ? owner.sessionId : makeWorkbenchSceneKey(owner);
+}
+
+/** Only Project and Session Scenes can own Browser surfaces. */
+export function resolveWorkbenchBrowserOwner(
+  browserConversationId: string,
+): WorkbenchContentSceneOwner | null {
+  if (
+    !browserConversationId ||
+    browserConversationId === "library" ||
+    browserConversationId === "inbox"
+  ) {
+    return null;
+  }
+  if (browserConversationId.startsWith("project:")) {
+    const projectId = browserConversationId.slice("project:".length);
+    return projectId ? { kind: "project", projectId } : null;
+  }
+  return { kind: "session", sessionId: browserConversationId };
+}
+
 /** Relative Scene owners are safe inside one Space's layout. References that
  * leave that aggregate, such as editor leases, carry the Space coordinate. */
 export const makeSpaceWorkbenchSceneKey = (spaceId: string, owner: WorkbenchSceneOwner): string =>

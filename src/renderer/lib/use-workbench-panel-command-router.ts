@@ -45,10 +45,7 @@ import {
   findWorkbenchPanelLeafForTab,
 } from "../../shared/workbench-panel-layout";
 import { resolveBrowserTabTitle } from "../../shared/browser-url";
-import {
-  requireWorkbenchBrowserTabProjectionId,
-  type BrowserSidebarOpenNewTabRequest,
-} from "../../shared/browser-sidebar";
+import { requireWorkbenchBrowserTabProjectionId } from "../../shared/browser-sidebar";
 import type { WorkbenchPanelController } from "./use-workbench-panel-controller";
 import type { useWorkbenchPanelLifecycle } from "./use-workbench-panel-lifecycle";
 import type { useWorkbenchPanelOpeners } from "./use-workbench-panel-openers";
@@ -108,7 +105,6 @@ interface WorkbenchPanelCommandRouterInput {
   readonly createSessionViewTab: (
     input: WorkbenchTabCreateInput,
   ) => Promise<WorkbenchTabProjection | null>;
-  readonly onOpenBrowserTab: (request: BrowserSidebarOpenNewTabRequest) => Promise<void>;
   readonly resolveProjectDefaultDatabaseViewId: (projectId: string | null) => string | null;
   readonly openPageStage: (
     projectId: string,
@@ -174,7 +170,6 @@ export function useWorkbenchPanelCommandRouter({
   panelOpeners,
   sessionCommands,
   createSessionViewTab,
-  onOpenBrowserTab,
   resolveProjectDefaultDatabaseViewId,
   openPageStage,
   commandKeymapState,
@@ -750,7 +745,6 @@ export function useWorkbenchPanelCommandRouter({
 
   return {
     createBrowserTabToRight,
-    openBrowserTab: onOpenBrowserTab,
     reloadBrowserTab,
     openPanelDestinationFromPicker,
     resolveActivePanelCapabilities,

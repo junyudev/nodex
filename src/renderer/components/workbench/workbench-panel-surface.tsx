@@ -14,7 +14,6 @@ import {
 } from "@/features/workspace-files";
 import { ReviewRouteOpenAdapter } from "./workbench-review-route-adapter";
 import type { BrowserSettingsDestination } from "@/features/browser-sidebar/browser-settings-pages";
-import type { BrowserSidebarOpenNewTabRequest } from "../../../shared/browser-sidebar";
 import { ConnectedReviewDiffPanel } from "@/features/local-conversation";
 import { resolveLeafIdForPanelTab } from "@/lib/workbench-panel-placement";
 import type { WorkbenchTabProjectionPanelTab } from "@/lib/workbench-panel-tab-model";
@@ -86,7 +85,6 @@ export function WorkbenchTabProjectionPanel({
   onRefreshSessions,
   onCloseTab,
   onUpdateTab,
-  onOpenBrowserTab,
   onCreateTerminalTab,
   onActivateReviewTab,
   onSearchInFiles,
@@ -165,7 +163,6 @@ export function WorkbenchTabProjectionPanel({
   onRefreshSessions: (projectId: string | null) => Promise<WorkbenchSessionRenderProjection[]>;
   onCloseTab: (tabId: string) => Promise<void>;
   onUpdateTab: (tabId: string, patch: WorkbenchSurfaceUpdatePatch) => WorkbenchTabProjection | null;
-  onOpenBrowserTab?: (request: BrowserSidebarOpenNewTabRequest) => void | Promise<void>;
   onCreateTerminalTab: (panelId: PanelId, leafId: string) => Promise<void> | void;
   /** Opens the Session's Review tab; Files offers All changes through it. */
   onActivateReviewTab?: () => Promise<boolean>;
@@ -535,7 +532,6 @@ export function WorkbenchTabProjectionPanel({
         browserViewScopeId={browserViewScopeId}
         onRefreshSessions={onRefreshSessions}
         onUpdateTab={onUpdateTab}
-        onOpenNewTab={onOpenBrowserTab}
         boundsSyncTrigger={browserBoundsSyncTrigger}
         onOpenBrowserSettings={onOpenBrowserSettings}
         activeForContentSearch={isActivePanelTab}

@@ -1,12 +1,16 @@
 import "./workbench-testkit/workbench-shell-harness";
 import { act, waitFor } from "@testing-library/react";
 import { describe, expect, test } from "vite-plus/test";
-import type { BrowserSidebarOpenNewTabRequest } from "../../../shared/browser-sidebar";
+import type {
+  BrowserSidebarOpenNewTabRequest,
+  BrowserUsePageClosedEvent,
+} from "../../../shared/browser-sidebar";
 import { createDefaultWorkbenchLayoutSnapshot } from "../../../shared/workbench-layout";
 import {
   activateWorkbenchSceneSurface,
   createWorkbenchSceneSurface,
   makeWorkbenchSceneKey,
+  makeWorkbenchBrowserConversationId,
   materializeInitialWorkbenchScene,
 } from "../../../shared/workbench-scene";
 import { settleAsyncRender } from "../../test/dom";
@@ -17,7 +21,7 @@ import {
 } from "./workbench-testkit/workbench-shell-harness";
 import { makeAttachedSession, makeSessionTab } from "./workbench-testkit/workbench-shell-fixtures";
 
-async function fixture(kind: "project" | "session") {
+async function fixture(kind: "project" | "session", activeTabId = "opener") {
   const listeners = new Map<string, Set<(payload: unknown) => void>>();
   window.api = {
     ...window.api!,
@@ -62,7 +66,7 @@ async function fixture(kind: "project" | "session") {
     scene,
     "right",
     scene.panels.right.layout.activeLeafId,
-    "opener",
+    activeTabId,
   );
   const session = makeAttachedSession({
     id: sessionId,
@@ -87,7 +91,7 @@ async function fixture(kind: "project" | "session") {
     await act(async () => {
       for (const listener of listeners.get("browser-sidebar-open-new-tab") ?? []) {
         listener({
-          browserConversationId: kind === "session" ? sessionId : makeWorkbenchSceneKey(owner),
+          browserConversationId: makeWorkbenchBrowserConversationId(owner),
           browserViewScopeId: "window-session:test",
           browserTabId: "opener:runtime",
           url: "https://popup.example/",
@@ -99,10 +103,67 @@ async function fixture(kind: "project" | "session") {
     });
     await settleAsyncRender();
   };
-  return { view, emit };
+  const emitPageClosed = async (browserTabId: string) => {
+    await act(async () => {
+      for (const listener of listeners.get("browser-sidebar-browser-use-page-closed") ?? []) {
+        listener({
+          browserConversationId: makeWorkbenchBrowserConversationId(owner),
+          browserViewScopeId: "window-session:test",
+          browserTabId,
+          reason: "agent",
+        } satisfies BrowserUsePageClosedEvent);
+      }
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+  };
+  return { view, emit, emitPageClosed };
 }
 
 describe("Workbench Browser requests", () => {
+  test("opens a popup beside an opener whose panel body is not mounted", async () => {
+    const { view, emit } = await fixture("project", "after");
+    expect(view.queryByDisplayValue("opener.example")).toBeNull();
+    expect(view.getByDisplayValue("after.example")).toBeDefined();
+    const before = view.getAllByRole("tab").length;
+    for (const extra of [
+      { browserViewScopeId: "another-window" },
+      { browserConversationId: "library" },
+      { browserConversationId: "inbox" },
+    ]) {
+      await emit(extra);
+      expect(view.getAllByRole("tab")).toHaveLength(before);
+    }
+
+    await emit();
+    await view.findByDisplayValue("popup.example");
+    const order = [...view.container.querySelectorAll<HTMLElement>("[data-panel-tab-id]")].map(
+      (tab) => tab.dataset.panelTabId!,
+    );
+    const openerIndex = order.indexOf("opener");
+    expect(order.slice(openerIndex - 1, openerIndex + 3)).toEqual([
+      "before",
+      "opener",
+      expect.any(String),
+      "after",
+    ]);
+    const popupId = order[openerIndex + 1]!;
+    expect(popupId).not.toBe("after");
+    expect(getPanelTabById(view.container, popupId).getAttribute("aria-selected")).toBe("true");
+    expect(getPanelTabById(view.container, "after").getAttribute("aria-selected")).toBe("false");
+  });
+
+  test.each(["project", "session"] as const)(
+    "a %s Scene drops the tab of a page Main closed",
+    async (kind) => {
+      const { view, emitPageClosed } = await fixture(kind);
+      expect(getPanelTabById(view.container, "after")).toBeDefined();
+      await emitPageClosed("after:runtime");
+      expect(view.container.querySelector('[data-panel-tab-id="after"]')).toBeNull();
+      expect(getPanelTabById(view.container, "opener").getAttribute("aria-selected")).toBe("true");
+    },
+  );
+
   for (const kind of ["project", "session"] as const) {
     test.each([false, true])(
       `${kind} popups appear beside their opener (background: %s)`,

@@ -46,7 +46,9 @@ import {
   type BrowserUseTabState,
 } from "../../shared/browser-sidebar";
 import { isBlankBrowserUrl } from "../../shared/browser-url";
+import type { BrowserDownloadDoneStatus } from "../browser/browser-download-service";
 import {
+  isExternalAppUrl,
   isExternallyOpenableUrl,
   isErrorPageExternalUrl,
   isHttpUrl,
@@ -334,6 +336,10 @@ export class BrowserState {
   private readonly permissionInputTimes = new Map<number, number>();
   private readonly tabs = new Map<string, BrowserSidebarTabSnapshot>();
   private readonly webContentsTabIds = new Map<number, string>();
+  private readonly initialLoads = new Map<
+    number,
+    { bornWithDestination: boolean | null; started: boolean; downloadCompleted: boolean }
+  >();
   private readonly attachedWebviewOwnership = new Map<number, AttachedBrowserWebviewOwnership>();
   private readonly activeImageDragsByOwnerWebContentsId = new Map<number, ActiveBrowserImageDrag>();
   private readonly preparedPagesByStorageId = new Map<string, BrowserSerializedPage>();
@@ -859,11 +865,51 @@ export class BrowserState {
   private routeBrowserSurface(identity: BrowserSidebarTabIdentity, url: string): boolean {
     const surface = browserChromeSurface(url);
     if (!surface) return false;
+    this.events.publish({ kind: "openSurface", value: { ...browserIdentity(identity), surface } });
+    return true;
+  }
+
+  /**
+   * A page asked for another window. Browser pages live in tabs, so the caller always denies
+   * the native window and this routes the destination instead: a tab beside the opener for a
+   * page, the system for a link that belongs to another app, nothing for an empty window the
+   * page meant to script.
+   */
+  private routeWindowOpen(
+    webContentsId: number,
+    contents: BrowserWebContentsLike,
+    targetUrl: string,
+    disposition: string,
+  ): void {
+    if (this.isRestrictedBrowserNavigation(webContentsId, targetUrl) || disposition === "other")
+      return;
+    const ownership = this.attachedWebviewOwnership.get(webContentsId);
+    if (!ownership || !this.isCurrentBrowserGuest(webContentsId, contents)) return;
+    if (isBlankBrowserUrl(targetUrl) || this.routeBrowserSurface(ownership.identity, targetUrl))
+      return;
+    const destination = URL.parse(targetUrl);
+    if (destination && isExternalAppUrl(destination)) {
+      this.permissions.requestExternalOpen(
+        webContentsId,
+        contents.getURL(),
+        targetUrl,
+        (allowed) => {
+          if (!allowed) return;
+          this.fork(
+            Effect.promise(() => this.electron.openExternal(targetUrl)).pipe(Effect.asVoid),
+          );
+        },
+      );
+      return;
+    }
     this.events.publish({
       kind: "openNewTab",
-      value: { ...browserIdentity(identity), url, background: false, browserSurface: surface },
+      value: {
+        ...browserIdentity(ownership.identity),
+        url: targetUrl,
+        background: disposition === "background-tab",
+      },
     });
-    return true;
   }
 
   private syncBackgroundThrottling(tab: BrowserSidebarTabSnapshot): void {
@@ -877,6 +923,33 @@ export class BrowserState {
       this.browserUseNavigationRestrictions.has(browserTabKey(tab)) ||
       agent?.captureActive === true;
     contents.setBackgroundThrottling?.(!(isLocalUrl(tab.pendingUrl ?? tab.url) && active));
+  }
+
+  /** Only admitted downloads can finish a guest's initial load. */
+  handleDownloadFinished(webContentsId: number, status: BrowserDownloadDoneStatus): void {
+    const initialLoad = this.initialLoads.get(webContentsId);
+    if (!initialLoad) return;
+    if (status !== "completed") {
+      this.initialLoads.delete(webContentsId);
+      return;
+    }
+    initialLoad.downloadCompleted = true;
+    this.closeCompletedInitialDownload(webContentsId);
+  }
+
+  private closeCompletedInitialDownload(webContentsId: number): void {
+    const initialLoad = this.initialLoads.get(webContentsId);
+    if (!initialLoad?.bornWithDestination || !initialLoad.downloadCompleted) return;
+    this.fork(
+      Effect.suspend(() => {
+        if (this.initialLoads.get(webContentsId) !== initialLoad) return Effect.void;
+        this.initialLoads.delete(webContentsId);
+        const key = this.webContentsTabIds.get(webContentsId);
+        const tab = key ? this.tabs.get(key) : null;
+        if (!tab || tab.webContentsId !== webContentsId) return Effect.void;
+        return this.closeBrowserTab(tab);
+      }),
+    );
   }
 
   setDownloadActive(identity: BrowserSidebarTabIdentity, activeDownload: boolean): void {
@@ -1435,6 +1508,12 @@ export class BrowserState {
           },
         });
         this.enforceBrowserTabBudget(event.browserViewScopeId);
+        const initialLoad = this.initialLoads.get(event.webContentsId);
+        if (initialLoad && initialLoad.bornWithDestination === null) {
+          initialLoad.bornWithDestination = !isBlankBrowserUrl(event.initialUrl);
+          if (!initialLoad.bornWithDestination) this.initialLoads.delete(event.webContentsId);
+          this.closeCompletedInitialDownload(event.webContentsId);
+        }
         return { ok: true as const, snapshot };
       }.bind(this),
     );
@@ -2504,24 +2583,8 @@ export class BrowserState {
     if (this.webContentsListeners.has(webContentsId)) return;
 
     this.webContentsListeners.acquire(webContentsId, () => {
-      contents.setWindowOpenHandler(({ url: targetUrl, disposition }) => {
-        const ownership = this.attachedWebviewOwnership.get(webContentsId);
-        if (
-          this.isRestrictedBrowserNavigation(webContentsId, targetUrl) ||
-          disposition === "other"
-        ) {
-          return { action: "deny" };
-        }
-        if (ownership && this.isCurrentBrowserGuest(webContentsId, contents)) {
-          this.events.publish({
-            kind: "openNewTab",
-            value: {
-              ...browserIdentity(ownership.identity),
-              url: directBrowserUrl(targetUrl),
-              background: disposition === "background-tab",
-            },
-          });
-        }
+      contents.setWindowOpenHandler(({ url, disposition }) => {
+        this.routeWindowOpen(webContentsId, contents, url, disposition);
         return { action: "deny" };
       });
 
@@ -2534,7 +2597,16 @@ export class BrowserState {
         ).setBackgroundThrottling?.(false);
       }
 
-      const disposers: Array<() => void> = [];
+      // Native attachment precedes the host-created acknowledgement. Observe navigation
+      // immediately, then confirm whether this guest was born with a destination.
+      if (isBlankBrowserUrl(contents.getURL())) {
+        this.initialLoads.set(webContentsId, {
+          bornWithDestination: null,
+          started: false,
+          downloadCompleted: false,
+        });
+      }
+      const disposers: Array<() => void> = [() => this.initialLoads.delete(webContentsId)];
       const add = (eventName: string, listener: (...args: unknown[]) => void) => {
         contents.on(eventName, listener);
         disposers.push(() => contents.removeListener(eventName, listener));
@@ -2566,8 +2638,14 @@ export class BrowserState {
         });
       }
       add("did-start-navigation", (...args) => {
-        const event = args[0] as { isMainFrame?: boolean } | undefined;
+        const event = args[0] as { isMainFrame?: boolean; isSameDocument?: boolean } | undefined;
         const mainFrame = event?.isMainFrame ?? (typeof args[3] === "boolean" ? args[3] : true);
+        const sameDocument = event?.isSameDocument ?? args[2];
+        const initialLoad = this.initialLoads.get(webContentsId);
+        if (mainFrame && sameDocument !== true && initialLoad) {
+          if (initialLoad.started) this.initialLoads.delete(webContentsId);
+          else initialLoad.started = true;
+        }
         if (mainFrame)
           this.invalidatePermissionNavigation(
             webContentsId,
@@ -2621,6 +2699,7 @@ export class BrowserState {
         this.fork(this.persistPageSnapshotForWebContents(webContentsId, contents));
       });
       add("did-navigate", (...args) => {
+        this.initialLoads.delete(webContentsId);
         this.updateTabForWebContents(webContentsId, contents, {
           url: readUrlFromEventArgs(args, contents.getURL()),
           isWaitingForResponse: false,

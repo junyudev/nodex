@@ -153,8 +153,33 @@ export class BrowserSessionPermissions {
     private readonly store?: BrowserPermissionStore,
   ) {}
 
-  readonly request: RequestHandler = (contents, permission, callback, details) => {
-    const page = this.host.findPage(contents.id);
+  readonly request: RequestHandler = (contents, ...request) => this.decide(contents.id, ...request);
+
+  /**
+   * A page handed a link to another app without navigating to it, such as a link that asks
+   * for a new window. Chromium raises no permission request then, so the same origin decision
+   * is made here.
+   */
+  requestExternalOpen(
+    webContentsId: number,
+    requestingUrl: string,
+    externalURL: string,
+    callback: (allowed: boolean) => void,
+  ): void {
+    this.decide(webContentsId, "openExternal", callback, {
+      externalURL,
+      requestingUrl,
+      isMainFrame: true,
+    });
+  }
+
+  private decide(
+    webContentsId: number,
+    permission: ElectronPermission,
+    callback: (allowed: boolean) => void,
+    details: RequestDetails,
+  ): void {
+    const page = this.host.findPage(webContentsId);
     const policy = policyFor(permission);
     if (!page || policy === "deny") return callback(false);
     if (policy === "allow") return callback(true);
@@ -179,7 +204,7 @@ export class BrowserSessionPermissions {
     };
     this.pending.set(prompt.id, { page, prompt, callback, resolving: false });
     this.publish(page);
-  };
+  }
 
   readonly check: CheckHandler = (contents, permission, origin, details) => {
     const page = contents ? this.host.findPage(contents.id) : null;

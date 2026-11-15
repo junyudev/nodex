@@ -10,6 +10,11 @@ import {
   findWorkbenchPanelLeafForTab,
 } from "../../shared/workbench-panel-layout";
 import {
+  resolveWorkbenchBrowserOwner,
+  type WorkbenchSceneOwner,
+  type WorkbenchSceneSnapshot,
+} from "../../shared/workbench-scene";
+import {
   consumeBrowserUsePresentationRequest,
   useBrowserSidebarRendererState,
 } from "@/features/browser-sidebar/browser-sidebar-renderer-state-store";
@@ -36,6 +41,11 @@ const resolveBrowserUsePresentationCommand = defineRendererCommand({
   owner: "BrowserUsePresentationCoordinator",
   protocol: { kind: "returned_value" },
 });
+const findBrowserSurface = (scene: WorkbenchSceneSnapshot | undefined, browserTabId: string) =>
+  Object.values(scene?.panelSurfacesById ?? {}).find(
+    (surface) => surface.kind === "browser" && surface.config.browserTabId === browserTabId,
+  );
+
 interface BrowserUsePresentationCoordinatorInput {
   readonly activeSession: WorkbenchSessionRenderProjection | null;
   readonly catalog: Pick<
@@ -47,6 +57,8 @@ interface BrowserUsePresentationCoordinatorInput {
     input: WorkbenchTabCreateInput,
   ) => Promise<WorkbenchTabProjection | null>;
   readonly pinPreviewTab: (panelId: PanelId, tabId: string, leafId?: string) => Promise<void>;
+  /** The stored Scene of an owner, whether or not the window presents it. */
+  readonly readScene: (owner: WorkbenchSceneOwner) => WorkbenchSceneSnapshot | undefined;
   readonly setActivePanelCollapsed: (panelId: PanelId, collapsed: boolean) => Promise<unknown>;
   readonly setActivePanelTab: (
     panelId: PanelId,
@@ -69,6 +81,7 @@ export function useBrowserUsePresentationCoordinator({
   controller,
   createSessionViewTab,
   pinPreviewTab,
+  readScene,
   setActivePanelCollapsed,
   setActivePanelTab,
   windowSessionId,
@@ -325,13 +338,16 @@ export function useBrowserUsePresentationCoordinator({
       return;
     }
     const presentation = catalog.findById(event.browserConversationId);
-    if (!presentation) return;
-    const tab = Object.values(presentation.scene.panelSurfacesById).find(
-      (candidate) =>
-        candidate.kind === "browser" && candidate.config.browserTabId === event.browserTabId,
-    );
-    if (!tab) return;
-    controller.durable.removeTab(presentation.domain, tab.id);
+    if (presentation) {
+      const tab = findBrowserSurface(presentation.scene, event.browserTabId);
+      if (tab) controller.durable.removeTab(presentation.domain, tab.id);
+      return;
+    }
+    // A Project Scene owns Browser pages without a Session.
+    const owner = resolveWorkbenchBrowserOwner(event.browserConversationId);
+    if (owner?.kind !== "project") return;
+    const surface = findBrowserSurface(readScene(owner), event.browserTabId);
+    if (surface) controller.sceneDurable?.removeSurface(owner, surface.id);
   });
 
   const retainReleasedPage = useEffectEvent(

@@ -6,7 +6,10 @@ import * as Path from "effect/Path";
 import * as Scope from "effect/Scope";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it, vi } from "@effect/vitest";
-import { makeBrowserDownloadRuntime } from "./browser-download-service";
+import {
+  makeBrowserDownloadRuntime,
+  type BrowserDownloadRuntimeOptions,
+} from "./browser-download-service";
 
 class FakeDownloadItem extends EventEmitter {
   cancelled = false;
@@ -66,6 +69,7 @@ it.layer(NodeServices.layer)("Browser download runtime", (it) => {
       readonly history?: string;
       readonly now?: () => number;
       readonly unknownPage?: boolean;
+      readonly onDownloadDone?: BrowserDownloadRuntimeOptions["onDownloadDone"];
     } = {},
   ) =>
     Effect.gen(function* () {
@@ -83,6 +87,7 @@ it.layer(NodeServices.layer)("Browser download runtime", (it) => {
         isAgentControlled: () => options.agentControlled === true,
         logger: { warn: vi.fn() },
         now: options.now ?? (() => 100),
+        onDownloadDone: options.onDownloadDone,
         onSnapshot: (snapshot) => snapshots.push(snapshot.downloads),
         resolveIdentity: () => (options.unknownPage ? null : identity),
         session: session as never,
@@ -211,6 +216,57 @@ it.layer(NodeServices.layer)("Browser download runtime", (it) => {
       test.session.emit("will-download", { preventDefault: vi.fn() }, item, { id: 7 });
       assert.isTrue(item.cancelled);
       yield* Scope.close(test.scope, Exit.void);
+    }),
+  );
+
+  for (const status of ["completed", "cancelled", "interrupted"] as const) {
+    it.effect(`signals ${status} only for admitted downloads from the exact guest`, () =>
+      Effect.gen(function* () {
+        const onDownloadDone = vi.fn();
+        const test = yield* fixture({ agentControlled: true, onDownloadDone });
+        const denied = new FakeDownloadItem();
+        test.session.emit("will-download", { preventDefault: vi.fn() }, denied, { id: 7 });
+        denied.emit("done", {}, status);
+        assert.isTrue(denied.cancelled);
+        assert.strictEqual(onDownloadDone.mock.calls.length, 0);
+
+        test.runtime.grantAgentDownload({ ...identity, webContentsId: 7 }, denied.url);
+        const admitted = new FakeDownloadItem();
+        test.session.emit("will-download", { preventDefault: vi.fn() }, admitted, { id: 7 });
+        assert.isFalse(admitted.cancelled);
+        assert.strictEqual(onDownloadDone.mock.calls.length, 0);
+        admitted.emit("done", {}, status);
+        yield* Effect.yieldNow;
+        assert.deepEqual(onDownloadDone.mock.calls, [[7, status]]);
+        yield* Scope.close(test.scope, Exit.void);
+      }),
+    );
+  }
+
+  it.effect("never signals a download rejected for missing page identity", () =>
+    Effect.gen(function* () {
+      const onDownloadDone = vi.fn();
+      const test = yield* fixture({ unknownPage: true, onDownloadDone });
+      const item = new FakeDownloadItem();
+      test.session.emit("will-download", { preventDefault: vi.fn() }, item, { id: 7 });
+      item.emit("done", {}, "completed");
+      yield* Effect.yieldNow;
+      assert.isTrue(item.cancelled);
+      assert.strictEqual(onDownloadDone.mock.calls.length, 0);
+      yield* Scope.close(test.scope, Exit.void);
+    }),
+  );
+
+  it.effect("stops signalling terminal results when the download runtime is released", () =>
+    Effect.gen(function* () {
+      const onDownloadDone = vi.fn();
+      const test = yield* fixture({ onDownloadDone });
+      const item = new FakeDownloadItem();
+      test.session.emit("will-download", { preventDefault: vi.fn() }, item, { id: 7 });
+      yield* Scope.close(test.scope, Exit.void);
+      item.emit("done", {}, "completed");
+      yield* Effect.yieldNow;
+      assert.strictEqual(onDownloadDone.mock.calls.length, 0);
     }),
   );
 

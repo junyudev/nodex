@@ -39,6 +39,8 @@ void app.whenReady().then(async () => {
       Object.assign(webPreferences, {
         allowRunningInsecureContent: false,
         contextIsolation: true,
+        // Without this Chromium drops the request before the window-open handler.
+        disablePopups: false,
         nodeIntegration: false,
         nodeIntegrationInSubFrames: false,
         nodeIntegrationInWorker: false,
@@ -56,8 +58,13 @@ void app.whenReady().then(async () => {
       delete params.webpreferences;
     },
   );
+  const windowOpenRequests = [];
+  globalThis.browserPlatformWindowOpenRequests = windowOpenRequests;
   window.webContents.on("did-attach-webview", (_event, guest) => {
-    guest.setWindowOpenHandler(() => ({ action: "deny" }));
+    guest.setWindowOpenHandler(({ url, disposition }) => {
+      windowOpenRequests.push({ url, disposition });
+      return { action: "deny" };
+    });
   });
   await window.loadFile(path.join(__dirname, "index.html"));
 });

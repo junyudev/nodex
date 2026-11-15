@@ -54,7 +54,7 @@ import {
   type BrowserSidebarLocalServerThumbnailResult,
   type BrowserSidebarThemeVariant,
   type BrowserSidebarLocalServersSnapshot,
-  type BrowserSidebarOpenNewTabRequest,
+  type BrowserSidebarOpenSurfaceRequest,
   type BrowserPageFailure,
   type BrowserSidebarTabSnapshot,
   type BrowserSidebarViewport,
@@ -275,7 +275,6 @@ export function BrowserSidebarPanel({
   surfaceContext,
   browserViewScopeId,
   onUpdateTab = ignoreBrowserTabUpdate,
-  onOpenNewTab,
   onOpenBrowserSettings,
   boundsSyncTrigger,
   activeForContentSearch = false,
@@ -289,7 +288,6 @@ export function BrowserSidebarPanel({
   browserViewScopeId: string;
   onRefreshSessions: (projectId: string | null) => Promise<WorkbenchSessionRenderProjection[]>;
   onUpdateTab?: (tabId: string, patch: WorkbenchTabUpdateInput) => WorkbenchTabProjection | null;
-  onOpenNewTab?: (request: BrowserSidebarOpenNewTabRequest) => void | Promise<void>;
   onOpenBrowserSettings?: (sectionId: BrowserSettingsDestination) => void;
   boundsSyncTrigger?: MotionValue<number>;
   activeForContentSearch?: boolean;
@@ -472,16 +470,15 @@ export function BrowserSidebarPanel({
       ?.scrollIntoView?.({ block: "nearest" });
   }, [activeAddressOptionId]);
 
-  const handleOpenNewTab = useEffectEvent((request: BrowserSidebarOpenNewTabRequest) => {
-    if (request.browserSurface === "downloads") {
+  const handleOpenSurface = useEffectEvent((request: BrowserSidebarOpenSurfaceRequest) => {
+    if (request.surface === "downloads") {
       setDownloadsOpen(true);
       return;
     }
-    if (request.browserSurface === "history") {
+    if (request.surface === "history") {
       onOpenBrowserSettings?.("history");
       return;
     }
-    void onOpenNewTab?.(request);
   });
 
   const openExternally = async () => {
@@ -856,10 +853,10 @@ export function BrowserSidebarPanel({
         setBrowserUseCursor(next);
       },
     );
-    const unsubscribeOpenNewTab = window.api?.on("browser-sidebar-open-new-tab", (payload) => {
-      const request = payload as BrowserSidebarOpenNewTabRequest;
+    const unsubscribeOpenSurface = window.api?.on("browser-sidebar-open-surface", (payload) => {
+      const request = payload as BrowserSidebarOpenSurfaceRequest;
       if (!matchesBrowserSidebarTabIdentity(request, browserIdentity)) return;
-      handleOpenNewTab(request);
+      handleOpenSurface(request);
     });
     return () => {
       unsubscribeState?.();
@@ -867,7 +864,7 @@ export function BrowserSidebarPanel({
       unsubscribeBrowserUse?.();
       unsubscribeBrowserUseViewport?.();
       unsubscribeBrowserUseCursor?.();
-      unsubscribeOpenNewTab?.();
+      unsubscribeOpenSurface?.();
     };
   }, [browserIdentity, browserRuntimeAvailable, tabProjectId]);
 

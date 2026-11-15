@@ -23,6 +23,8 @@ import {
   serializeBrowserDownloadHistory,
 } from "./browser-download-store";
 
+export type BrowserDownloadDoneStatus = "completed" | "cancelled" | "interrupted";
+
 interface BrowserDownloadItem {
   canResume(): boolean;
   cancel(): void;
@@ -36,10 +38,7 @@ interface BrowserDownloadItem {
     event: "updated",
     listener: (event: unknown, state: "progressing" | "interrupted") => void,
   ): void;
-  on(
-    event: "done",
-    listener: (event: unknown, state: "completed" | "cancelled" | "interrupted") => void,
-  ): void;
+  on(event: "done", listener: (event: unknown, state: BrowserDownloadDoneStatus) => void): void;
   pause(): void;
   resume(): void;
   setSavePath(path: string): void;
@@ -81,6 +80,7 @@ export interface BrowserDownloadRuntimeOptions {
   readonly logger: BrowserDownloadLogger;
   readonly now?: () => number;
   readonly onSnapshot?: (snapshot: BrowserDownloadsSnapshot) => void;
+  readonly onDownloadDone?: (webContentsId: number, status: BrowserDownloadDoneStatus) => void;
   readonly resolveIdentity: (webContentsId: number) => BrowserSidebarTabIdentity | null;
   readonly session: BrowserDownloadSession;
   readonly shell: BrowserDownloadShell;
@@ -354,6 +354,8 @@ export const makeBrowserDownloadRuntime = (
         return;
       }
 
+      // The guest can be gone by the time its download finishes.
+      const webContentsId = webContents.id;
       const timestamp = now();
       const id = idFactory();
       const fileName = safeDownloadFilename(item.getFilename());
@@ -389,15 +391,19 @@ export const makeBrowserDownloadRuntime = (
       });
       item.on("done", (_doneEvent, status) => {
         runDownloadCallback(
-          updateRecord(
-            id,
-            {
-              status,
-              receivedBytes: item.getReceivedBytes(),
-              totalBytes: Math.max(0, item.getTotalBytes()),
-              ...(status === "completed" ? { completedAt: now() } : {}),
-            },
-            true,
+          Effect.sync(() => options.onDownloadDone?.(webContentsId, status)).pipe(
+            Effect.andThen(
+              updateRecord(
+                id,
+                {
+                  status,
+                  receivedBytes: item.getReceivedBytes(),
+                  totalBytes: Math.max(0, item.getTotalBytes()),
+                  ...(status === "completed" ? { completedAt: now() } : {}),
+                },
+                true,
+              ),
+            ),
           ),
           "finish",
         );

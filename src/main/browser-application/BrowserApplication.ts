@@ -186,6 +186,7 @@ export class BrowserApplication extends Context.Service<
       kind: Exclude<BrowserBrowsingDataKind, "downloads">,
     ) => Effect.Effect<BrowserBrowsingDataClearResult, BrowserApplicationError>;
     readonly closeConversation: (browserConversationId: string) => Effect.Effect<void>;
+    readonly downloadFinished: BrowserState["handleDownloadFinished"];
     readonly events: BrowserSidebarEventHubService;
     readonly forkTransfer: BrowserForkTransfer;
     readonly guest: BrowserGuestHost;
@@ -363,6 +364,8 @@ export const live = (
         clearBrowsingData: (kind) => state.clearBrowsingData(kind),
         closeConversation: (browserConversationId) =>
           state.closeBrowserConversation(browserConversationId),
+        downloadFinished: (webContentsId, status) =>
+          state.handleDownloadFinished(webContentsId, status),
         events,
         forkTransfer: makeBrowserForkTransfer(state),
         guest,

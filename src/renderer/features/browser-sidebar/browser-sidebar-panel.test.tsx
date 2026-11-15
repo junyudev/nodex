@@ -223,8 +223,7 @@ describe("BrowserSidebarPanel chrome", () => {
 
   test.each(["downloads", "history"] as const)(
     "opens Browser %s requests in the existing application UI",
-    async (browserSurface) => {
-      const onOpenNewTab = vi.fn();
+    async (surface) => {
       const onOpenBrowserSettings = vi.fn();
       const view = render(
         <BrowserSidebarPanel
@@ -233,7 +232,6 @@ describe("BrowserSidebarPanel chrome", () => {
           browserViewScopeId="window-session-1"
           isVisible
           onRefreshSessions={async () => []}
-          onOpenNewTab={onOpenNewTab}
           onOpenBrowserSettings={onOpenBrowserSettings}
         />,
       );
@@ -242,57 +240,28 @@ describe("BrowserSidebarPanel chrome", () => {
         browserConversationId: "session-1",
         browserViewScopeId: "window-session-1",
         browserTabId: "tab-browser",
-        browserSurface,
-        url: `chrome://${browserSurface}/?q=report`,
-        background: false,
+        surface,
       };
       for (const patch of [
         { browserConversationId: "another-session" },
         { browserViewScopeId: "another-window" },
         { browserTabId: "another-tab" },
       ]) {
-        await emitApiEvent("browser-sidebar-open-new-tab", { ...request, ...patch });
+        await emitApiEvent("browser-sidebar-open-surface", { ...request, ...patch });
       }
       expect(onOpenBrowserSettings).not.toHaveBeenCalled();
       expect(view.queryByRole("button", { name: "Close downloads" })).toBeNull();
 
-      await emitApiEvent("browser-sidebar-open-new-tab", request);
-      if (browserSurface === "downloads") {
+      await emitApiEvent("browser-sidebar-open-surface", request);
+      if (surface === "downloads") {
         expect(await view.findByRole("button", { name: "Close downloads" })).toBeDefined();
         expect(onOpenBrowserSettings).not.toHaveBeenCalled();
       } else {
         expect(onOpenBrowserSettings).toHaveBeenCalledExactlyOnceWith("history");
       }
-      expect(onOpenNewTab).not.toHaveBeenCalled();
       expect(readBrowserCommandCalls("navigate")).toEqual([]);
     },
   );
-
-  test("forwards tab and detached-window requests with the opener's identity", async () => {
-    const onOpenNewTab = vi.fn();
-    render(
-      <BrowserSidebarPanel
-        tab={loadedBrowserTab}
-        activeSession={activeSession}
-        browserViewScopeId="window-session-1"
-        isVisible
-        onRefreshSessions={async () => []}
-        onOpenNewTab={onOpenNewTab}
-      />,
-    );
-    await settleAsyncRender();
-    for (const extra of [{ background: true }, { background: false, openInNewWindow: true }]) {
-      const request = {
-        browserConversationId: "session-1",
-        browserViewScopeId: "window-session-1",
-        browserTabId: "tab-browser",
-        url: "https://popup.example/",
-        ...extra,
-      };
-      await emitApiEvent("browser-sidebar-open-new-tab", request);
-      expect(onOpenNewTab).toHaveBeenLastCalledWith(request);
-    }
-  });
 
   test("renders address input inside a no-drag island within the draggable toolbar", async () => {
     const view = render(

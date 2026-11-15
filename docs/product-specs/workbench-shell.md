@@ -225,6 +225,33 @@ Electron background-tab disposition becomes a background Browser-tab request,
 while other dispositions use default presentation. Permitted non-HTTP schemes
 open externally. External URL validation applies regardless of entry point.
 
+### Links inside a Browser page
+
+A link in a Browser page behaves as it does in a desktop browser, with tabs in
+place of windows. Nodex never opens a separate window for a page.
+
+- A plain link navigates its own tab.
+- A link or script that asks for a new tab or window opens a Browser tab directly
+  after the tab that asked, in the same group, and selects it. Primary-click (⌘ on
+  macOS, Ctrl elsewhere) and middle-click open that tab in the background and keep
+  the current selection.
+- The tab opens in the Scene that owns the asking page even when that page is not
+  showing: a background tab, a hidden panel, another Project or chat in the same
+  window, or a page an Agent is driving.
+- The new tab loads the address alone. The asking page gets no handle to it, so a
+  page that waits to script its popup, or a sign-in window that reports back to its
+  opener, does not complete; a request for an empty window opens nothing.
+- Mail, phone, message and VS Code links open their app after the site's
+  external-app permission allows it, and leave no tab behind.
+- `chrome://downloads` and `chrome://history` open the Browser's downloads and
+  history.
+- A tab opened for an address that turns out to be a download closes when the
+  download completes, in Project and chat Scenes alike. It stays if the download
+  fails or is cancelled, and a tab that has already shown a page is never closed by
+  a download.
+- While an Agent controls a page, these requests follow its
+  [navigation restriction](../SECURITY.md).
+
 ## Storage Ownership
 
 - SQLite owns shared Project Session domain data:

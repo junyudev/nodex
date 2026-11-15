@@ -18,6 +18,7 @@ import type { BrowserAuthorizedAttachment } from "../browser/browser-runtime-reg
 import {
   consumePendingBrowserWebviewAttachment,
   decideBrowserWebviewAttachment,
+  forceBrowserPageGuestPreferences,
   parseBrowserWebviewInstanceId,
   registerPendingBrowserWebviewAttachment,
 } from "../browser/browser-webview-attachment-policy";
@@ -214,29 +215,10 @@ export const live = (
             event.preventDefault();
             return;
           }
-          Object.assign(webPreferences, {
-            allowRunningInsecureContent: false,
-            contextIsolation: true,
-            devTools: true,
-            navigateOnDragDrop: true,
-            transparent: false,
-            nodeIntegration: false,
-            nodeIntegrationInSubFrames: false,
-            nodeIntegrationInWorker: false,
-            preload: resolveBundledElectronPreload(__dirname, "browser-guest.js"),
-            plugins: false,
+          forceBrowserPageGuestPreferences(webPreferences, webviewParams, {
             partition: BROWSER_SIDEBAR_PARTITION,
-            sandbox: true,
-            webSecurity: true,
-            webviewTag: false,
+            preload: resolveBundledElectronPreload(__dirname, "browser-guest.js"),
           });
-          params.partition = BROWSER_SIDEBAR_PARTITION;
-          delete webviewParams.allowpopups;
-          delete webviewParams.disablewebsecurity;
-          delete webviewParams.nodeintegration;
-          delete webviewParams.preload;
-          delete webviewParams.webpreferences;
-          delete (webPreferences as typeof webPreferences & { preloadURL?: string }).preloadURL;
         });
         window.webContents.on("did-attach-webview", (_event, guest) => {
           if (pageFileHtmlHost.handleDidAttach(guest)) return;

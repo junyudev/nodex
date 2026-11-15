@@ -802,6 +802,193 @@ describe("BrowserState semantic capability", () => {
   );
 });
 
+describe("Browser initial-load downloads", () => {
+  const attach = (initialUrl = "https://example.com/download", acknowledge = true) =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture();
+      const { state, contents } = fixture;
+      yield* registerTab(state);
+      // Electron attaches before the renderer acknowledges the host and initial URL.
+      state.registerAttachedWebviewOwnership(7, contents.id, identity, "browser:durable");
+      const acknowledgeHost = state.handleWebviewHostCreated({
+        ...identity,
+        browserStorageId: "browser:durable",
+        projectId: "project-1",
+        hostKind: "panel",
+        mountGeneration: 2,
+        webContentsId: contents.id,
+        initialUrl,
+      });
+      if (acknowledge) yield* acknowledgeHost;
+      contents.emit("did-start-navigation", {
+        url: "https://example.com/download",
+        isMainFrame: true,
+        isSameDocument: false,
+      });
+      return { ...fixture, acknowledgeHost };
+    });
+
+  for (const controlled of [false, true]) {
+    it.effect(
+      `closes a completed initial download's ${controlled ? "Agent" : "ordinary"} tab`,
+      () =>
+        Effect.gen(function* () {
+          const { contents, events, state } = yield* attach();
+          if (controlled) {
+            state.upsertBrowserUseTab({
+              ...identity,
+              codexSessionId: "thread-1",
+              projectId: "project-1",
+              title: "Browser",
+              url: "https://example.com/download",
+              webContentsId: contents.id,
+              viewport: { width: 1280, height: 720, zoomPercent: 100, presetId: "browser-use" },
+              captureActive: true,
+              released: false,
+              updatedAt: 1,
+            });
+          }
+          state.handleDownloadFinished(contents.id + 1, "completed");
+          assert.isNotNull(state.getTabSnapshot(identity));
+          state.handleDownloadFinished(contents.id, "completed");
+          yield* Effect.yieldNow;
+          assert.isNull(state.getTabSnapshot(identity));
+          assert.isEmpty(state.getBrowserUseStateSnapshot().tabs);
+          expect(events).toContainEqual({
+            kind: "pageClosed",
+            value: { ...identity, reason: "agent" },
+          });
+          expect(events).toContainEqual({
+            kind: "destroyWebview",
+            value: expect.objectContaining({ ...identity, reason: "closed", mountGeneration: 2 }),
+          });
+        }),
+    );
+  }
+
+  for (const status of ["cancelled", "interrupted"] as const) {
+    it.effect(`keeps an initial download tab after it is ${status}`, () =>
+      Effect.gen(function* () {
+        const { contents, events, state } = yield* attach();
+        state.handleDownloadFinished(contents.id, status);
+        // A later completed download must not revive the one-shot observation.
+        state.handleDownloadFinished(contents.id, "completed");
+        yield* Effect.yieldNow;
+        assert.isNotNull(state.getTabSnapshot(identity));
+        assert.isEmpty(events.filter((event) => event.kind === "pageClosed"));
+      }),
+    );
+  }
+
+  for (const initialUrl of ["about:blank", "", "   "]) {
+    it.effect(
+      `keeps a tab born blank (${JSON.stringify(initialUrl)}) after a completed download`,
+      () =>
+        Effect.gen(function* () {
+          const { contents, state } = yield* attach(initialUrl);
+          state.handleDownloadFinished(contents.id, "completed");
+          yield* Effect.yieldNow;
+          assert.isNotNull(state.getTabSnapshot(identity));
+        }),
+    );
+  }
+
+  for (const acknowledgeBeforeCommit of [false, true]) {
+    it.effect(
+      `keeps a tab that committed a document ${acknowledgeBeforeCommit ? "after" : "before"} host acknowledgement`,
+      () =>
+        Effect.gen(function* () {
+          const { acknowledgeHost, contents, state } = yield* attach(
+            undefined,
+            acknowledgeBeforeCommit,
+          );
+          contents.url = "https://example.com/page";
+          contents.emit("did-navigate", {}, contents.url);
+          if (!acknowledgeBeforeCommit) yield* acknowledgeHost;
+          state.handleDownloadFinished(contents.id, "completed");
+          yield* Effect.yieldNow;
+          assert.isNotNull(state.getTabSnapshot(identity));
+        }),
+    );
+  }
+
+  for (const modern of [false, true]) {
+    it.effect(
+      `keeps a tab after a second main-frame navigation (${modern ? "details" : "positional"} event)`,
+      () =>
+        Effect.gen(function* () {
+          const { contents, state } = yield* attach();
+          if (modern) {
+            contents.emit("did-start-navigation", {
+              url: "https://example.com/another-download",
+              isMainFrame: true,
+              isSameDocument: false,
+            });
+          } else {
+            contents.emit(
+              "did-start-navigation",
+              {},
+              "https://example.com/another-download",
+              false,
+              true,
+            );
+          }
+          state.handleDownloadFinished(contents.id, "completed");
+          yield* Effect.yieldNow;
+          assert.isNotNull(state.getTabSnapshot(identity));
+        }),
+    );
+  }
+
+  it.effect("ignores subframe and same-document starts during an initial download", () =>
+    Effect.gen(function* () {
+      const { contents, state } = yield* attach();
+      contents.emit("did-start-navigation", {
+        url: "https://example.com/frame",
+        isMainFrame: false,
+        isSameDocument: false,
+      });
+      contents.emit(
+        "did-start-navigation",
+        {},
+        "https://example.com/download#fragment",
+        true,
+        true,
+      );
+      state.handleDownloadFinished(contents.id, "completed");
+      yield* Effect.yieldNow;
+      assert.isNull(state.getTabSnapshot(identity));
+    }),
+  );
+
+  for (const initialUrl of ["https://example.com/download", "about:blank"]) {
+    it.effect(
+      `waits for the host's initial URL (${initialUrl}) before closing a completed download`,
+      () =>
+        Effect.gen(function* () {
+          const { acknowledgeHost, contents, state } = yield* attach(initialUrl, false);
+          state.handleDownloadFinished(contents.id, "completed");
+          assert.isNotNull(state.getTabSnapshot(identity));
+          yield* acknowledgeHost;
+          yield* Effect.yieldNow;
+          assert.strictEqual(state.getTabSnapshot(identity) === null, initialUrl !== "about:blank");
+        }),
+    );
+  }
+
+  it.effect("discards the initial-load observation when its guest is destroyed", () =>
+    Effect.gen(function* () {
+      const { contents, events, state } = yield* attach();
+      contents.destroyed = true;
+      contents.emit("destroyed");
+      state.handleDownloadFinished(contents.id, "completed");
+      yield* Effect.yieldNow;
+      assert.isNotNull(state.getTabSnapshot(identity));
+      assert.isEmpty(events.filter((event) => event.kind === "pageClosed"));
+    }),
+  );
+});
+
 describe("Browser entry-point navigation policies", () => {
   it.effect("loads direct manual file, data and credentialed URLs without address searches", () =>
     Effect.gen(function* () {
@@ -1019,6 +1206,13 @@ describe("Browser entry-point navigation policies", () => {
           },
         ]);
       }
+      events.length = 0;
+      for (const url of ["", "about:blank"])
+        contents.windowOpenHandler?.({ url, disposition: "foreground-tab" });
+      contents.windowOpenHandler?.({ url: "chrome://history", disposition: "foreground-tab" });
+      expect(events.filter((event) => event.kind !== "state")).toEqual([
+        { kind: "openSurface", value: { ...identity, surface: "history" } },
+      ]);
       expect(externalUrls).toEqual([]);
       contents.url = "https://example.com/";
       state.upsertBrowserUseTab({
@@ -1048,15 +1242,7 @@ describe("Browser entry-point navigation policies", () => {
           url: `chrome://${surface}`,
         });
         assert.isTrue(result.ok);
-        expect(events.at(-1)).toEqual({
-          kind: "openNewTab",
-          value: {
-            ...identity,
-            url: `chrome://${surface}`,
-            background: false,
-            browserSurface: surface,
-          },
-        });
+        expect(events.at(-1)).toEqual({ kind: "openSurface", value: { ...identity, surface } });
       }
       yield* state.handleCommand({ type: "navigate", ...identity, url: "file:///tmp/index.html" });
       assert.isFalse(contents.backgroundThrottling);
@@ -1179,6 +1365,38 @@ describe("Browser permission presentation lifetime", () => {
       assert.isTrue((yield* state.handleCommand(command, { ownerWebContentsId: 7 })).ok);
       assert.deepEqual(results, [true]);
       assert.isEmpty(readTab(state).permissionPrompts);
+    }),
+  );
+
+  it.effect("asks the page's origin before a new-window link opens another app", () =>
+    Effect.gen(function* () {
+      const { state, contents, events, externalUrls } = yield* permissionFixture;
+      events.length = 0;
+      expect(
+        contents.windowOpenHandler?.({
+          url: "mailto:hello@example.com",
+          disposition: "foreground-tab",
+        }),
+      ).toEqual({ action: "deny" });
+      const prompt = readTab(state).permissionPrompts?.[0];
+      if (!prompt) throw new Error("Missing external link prompt");
+      expect(prompt.permissions).toEqual([
+        { name: "open-external", externalUrl: "mailto:hello@example.com" },
+      ]);
+      expect(externalUrls).toEqual([]);
+      yield* state.handleCommand(
+        {
+          ...identity,
+          type: "respond-permission",
+          promptId: prompt.id,
+          mountGeneration: prompt.mountGeneration,
+          action: "allow-this-time",
+        },
+        { ownerWebContentsId: 7 },
+      );
+      yield* Effect.yieldNow;
+      expect(externalUrls).toEqual(["mailto:hello@example.com"]);
+      expect(events.filter((event) => event.kind === "openNewTab")).toEqual([]);
     }),
   );
 

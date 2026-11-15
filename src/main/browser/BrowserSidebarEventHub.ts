@@ -10,6 +10,7 @@ import type {
   BrowserSidebarDestroyWebviewRequest,
   BrowserSidebarImageDragStateEvent,
   BrowserSidebarOpenNewTabRequest,
+  BrowserSidebarOpenSurfaceRequest,
   BrowserSidebarStateSnapshot,
   BrowserSidebarTabIdentity,
   BrowserSidebarWebviewAttached,
@@ -46,6 +47,7 @@ export type BrowserSidebarEvent =
     }
   | { readonly kind: "contextMenuAction"; readonly value: BrowserSidebarContextMenuActionEvent }
   | { readonly kind: "openNewTab"; readonly value: BrowserSidebarOpenNewTabRequest }
+  | { readonly kind: "openSurface"; readonly value: BrowserSidebarOpenSurfaceRequest }
   | { readonly kind: "webviewAttached"; readonly value: BrowserSidebarWebviewAttached }
   | { readonly kind: "destroyWebview"; readonly value: BrowserSidebarDestroyWebviewRequest }
   | {

@@ -131,7 +131,7 @@ type SessionCommands = Pick<
 >;
 type PanelCommands = Pick<
   ReturnType<typeof useWorkbenchPanelCommandRouter>,
-  "createBrowserTabToRight" | "openBrowserTab" | "reloadBrowserTab"
+  "createBrowserTabToRight" | "reloadBrowserTab"
 >;
 
 export type PanelGroupTabsByPanel = Record<
@@ -301,7 +301,7 @@ export function useWorkbenchPanelProjection({
     startNewChatWithPrompt,
     addToChatComposer,
   } = sessionCommands;
-  const { createBrowserTabToRight, openBrowserTab, reloadBrowserTab } = panelCommands;
+  const { createBrowserTabToRight, reloadBrowserTab } = panelCommands;
   const {
     composerEnterBehavior,
     threadQueueFollowUpsEnabled,
@@ -818,11 +818,6 @@ export function useWorkbenchPanelProjection({
               onRefreshSessions={onRefreshSessions}
               onCloseTab={closeTab}
               onUpdateTab={onUpdateSessionViewTab}
-              {...(tab.kind === "browser"
-                ? {
-                    onOpenBrowserTab: openBrowserTab,
-                  }
-                : {})}
               onCreateTerminalTab={async (panelId, leafId) => {
                 await createManualTab("terminal", panelId, leafId);
               }}

@@ -795,6 +795,9 @@ provides attribution, and removing it drops Agent authorship.
   context isolation, no Node in frames/workers, no nested
   webviews/plugins/insecure content, one fixed guest preload, and the shared
   persistent Browser Profile in the effective `webPreferences.partition`.
+  Main, not the renderer, keeps new-window requests enabled for these guests:
+  with them disabled Chromium drops the request before any handler runs, and
+  the guest's window-open handler below is the only popup policy.
   Main correlates Electron's attach `instanceId`/`viewInstanceId` pair and
   activates ownership during `did-attach-webview`, before accepting any
   renderer host acknowledgement or guest preload message. Guest preload
@@ -808,8 +811,13 @@ provides attribution, and removing it drops Agent authorship.
   accepts HTTP(S), file, mailto, sms, tel, supported VS Code links and the narrowly
   validated password-manager broker URL. Error-page external opening accepts HTTPS
   and local HTTP and requires the current tab failure. Link context-menu Browser
-  choices accept HTTP(S). Popups deny `other` and open other dispositions in Browser
-  tabs, preserving background selection and opener placement.
+  choices accept HTTP(S). A page's request for another window never creates a native
+  window. The guest's window-open handler denies `other`, shows nothing for a blank
+  window the page meant to script, sends Browser chrome URLs to their application
+  surface, puts mail, phone, message and VS Code links to the requesting origin's
+  external-app permission, and opens every other destination in a Browser tab,
+  preserving background selection and opener placement. Such a tab starts from its
+  URL alone: it has no opener, referrer or request body.
 - `open_in_nodex` lets an Agent show the user HTTP(S) URLs and existing files on this
   device in a Session's Browser, without a user gesture. A page it opens runs in the
   same sandboxed guest as any other Browser page, so a local file carries no more

@@ -191,6 +191,7 @@ export const live = (
         historyFilePath: `${options.userDataPath}/browser-downloads.json`,
         isAgentControlled: (identity) => browser.projection.isBrowserUseIdentity(identity),
         logger,
+        onDownloadDone: (webContentsId, status) => browser.downloadFinished(webContentsId, status),
         onSnapshot: (snapshot) => {
           projectDownloadState(browser.projection, snapshot);
           callbacks.fork(

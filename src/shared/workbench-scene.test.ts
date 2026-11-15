@@ -17,6 +17,8 @@ import {
   enforceWorkbenchSessionReviewEligibility,
   getWorkbenchSurfaceReuseKey,
   makeWorkbenchSceneKey,
+  makeWorkbenchBrowserConversationId,
+  resolveWorkbenchBrowserOwner,
   materializeInitialWorkbenchScene,
   mergeWorkbenchSceneLeaf,
   migrateWorkbenchSceneV1ToV4,
@@ -33,6 +35,7 @@ import {
   reorderWorkbenchSceneSurfaces,
   splitWorkbenchSceneLeaf,
   type WorkbenchSceneIdentityFactory,
+  type WorkbenchSceneOwner,
   type WorkbenchSceneSnapshot,
   type WorkbenchSceneSnapshotV1,
   type WorkbenchSceneSnapshotV2,
@@ -192,6 +195,22 @@ describe("WorkbenchScene", () => {
     expect(WorkbenchSceneSnapshotSchema.parse(session)).toEqual(session);
     expect(WorkbenchSceneSnapshotSchema.parse(library)).toEqual(library);
   });
+
+  test.each([
+    { kind: "session", sessionId: "session-1" },
+    { kind: "session", sessionId: "session:browser-requests" },
+    { kind: "project", projectId: "project-1" },
+    { kind: "project", projectId: "project:nested-id" },
+  ] satisfies WorkbenchSceneOwner[])("round-trips a Browser owner: %j", (owner) => {
+    expect(resolveWorkbenchBrowserOwner(makeWorkbenchBrowserConversationId(owner))).toEqual(owner);
+  });
+
+  test.each(["", "project:", "library", "inbox"])(
+    "does not resolve a Browser owner from %j",
+    (conversationId) => {
+      expect(resolveWorkbenchBrowserOwner(conversationId)).toBeNull();
+    },
+  );
 
   test("the Library Inbox is the Home of its own Scene, with Library content beside it", () => {
     const inbox = materializeInitialWorkbenchScene(INBOX_SCENE_OWNER, {

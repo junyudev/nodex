@@ -25,6 +25,11 @@ export interface RendererTransport {
   subscribeLinkOpenRequests?: (
     callback: (request: import("../../shared/link-opening").LinkOpenRequest) => void,
   ) => () => void;
+  subscribeBrowserTabOpenRequests?: (
+    callback: (
+      request: import("../../shared/browser-sidebar").BrowserSidebarOpenNewTabRequest,
+    ) => void,
+  ) => () => void;
   subscribePageTextRewriteEvents?: (
     callback: (event: import("../../shared/page-text-rewrite").PageTextRewriteEvent) => void,
   ) => () => void;

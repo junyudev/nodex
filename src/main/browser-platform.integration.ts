@@ -189,6 +189,17 @@ describe("Browser Platform Electron substrate", () => {
       await expect(
         application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length),
       ).resolves.toBe(windowCountBeforePopup);
+      // The page's request must reach the window-open handler; it is the only popup policy.
+      await expect(
+        application.evaluate(
+          () =>
+            (
+              globalThis as unknown as {
+                browserPlatformWindowOpenRequests: Array<{ url: string; disposition: string }>;
+              }
+            ).browserPlatformWindowOpenRequests,
+        ),
+      ).resolves.toEqual([{ url: `${origin}/popup`, disposition: "foreground-tab" }]);
 
       const emulatedViewport = await application.evaluate(
         async ({ webContents }, input) => {
