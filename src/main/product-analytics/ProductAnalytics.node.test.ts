@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
@@ -18,13 +19,43 @@ const ON: TelemetrySettings = { enabled: true, active: true, blockedBy: null, ma
 const OFF: TelemetrySettings = { enabled: false, active: false, blockedBy: null, managed: false };
 const TICK_MS = 15_000;
 
-/** Delivery fibers do real file IO, so a virtual tick must also yield real time to finish it. */
+/**
+ * Each session's delivery fiber sleeps one tick, does real file IO, then sleeps again. The
+ * virtual clock cannot see that IO, so these count the sleeps it is asked for: a tick has
+ * settled once every running session is asleep again, however long the disk took.
+ */
+let runningSessions = 0;
+let sleepsStarted = 0;
+const sleepsReach = (count: number) =>
+  Effect.promise(async () => {
+    while (sleepsStarted < count) await new Promise<void>((resolve) => setImmediate(resolve));
+  });
+const countSleeps = Clock.clockWith((clock) =>
+  Effect.acquireRelease(
+    Effect.sync(() => {
+      const sleep = clock.sleep;
+      runningSessions = 0;
+      sleepsStarted = 0;
+      clock.sleep = (duration) => {
+        sleepsStarted += 1;
+        return sleep(duration);
+      };
+      return sleep;
+    }),
+    (sleep) =>
+      Effect.sync(() => {
+        clock.sleep = sleep;
+      }),
+  ),
+);
+/** Lets a fiber that was just handed work, without a tick, reach its file IO. */
 const settle = Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, 20)));
 const advance = (milliseconds: number) =>
   Effect.gen(function* () {
     for (let elapsed = 0; elapsed < milliseconds; elapsed += TICK_MS) {
+      const asleepAgain = sleepsStarted + runningSessions;
       yield* TestClock.adjust(TICK_MS);
-      yield* settle;
+      yield* sleepsReach(asleepAgain);
     }
   });
 const MINUTE = 60_000;
@@ -65,6 +96,7 @@ const harness = (input: {
     const launch = (telemetry: TelemetrySettings = input.telemetry ?? ON) =>
       Effect.gen(function* () {
         const session = yield* Scope.fork(owner);
+        const asleep = sleepsStarted;
         const analytics = yield* make({
           statePath,
           channel: Ref.get(channel),
@@ -85,8 +117,15 @@ const harness = (input: {
               Effect.as(input.status?.() ?? 202),
             ),
         }).pipe(Scope.provide(session), Effect.provideService(FileSystem.FileSystem, files));
-        yield* settle;
-        return { analytics, quit: Scope.close(session, Exit.void) };
+        runningSessions += 1;
+        yield* sleepsReach(asleep + 1);
+        return {
+          analytics,
+          quit: Effect.suspend(() => {
+            runningSessions -= 1;
+            return Scope.close(session, Exit.void);
+          }),
+        };
       });
     const sentNames = Ref.get(requests).pipe(
       Effect.map((all) =>
@@ -122,7 +161,7 @@ const pendingNames = (analytics: ProductAnalyticsShape) =>
 const inertActivity = inertProductAnalytics.activity;
 
 const provided = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-  effect.pipe(Effect.scoped, Effect.provide(NodeServices.layer));
+  countSleeps.pipe(Effect.andThen(effect), Effect.scoped, Effect.provide(NodeServices.layer));
 
 it.effect("reports the effective update channel after it changes", () =>
   provided(
