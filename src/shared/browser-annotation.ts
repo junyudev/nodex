@@ -27,6 +27,21 @@ export interface BrowserAnnotationDesignChange {
   after: string;
 }
 
+export interface BrowserAnnotationTextLocator {
+  kind: "dom" | "form-control";
+  selector: string;
+  shadowHosts: string[];
+  startOffset: number;
+  endOffset: number;
+  direction: "forward" | "backward";
+  rangeText: string;
+}
+export interface BrowserAnnotationScrollContainer {
+  selector: string;
+  shadowHosts: string[];
+  scrollLeft: number;
+  scrollTop: number;
+}
 export interface BrowserAnnotationAnchor {
   id: string;
   kind: BrowserAnnotationAnchorKind;
@@ -35,6 +50,16 @@ export interface BrowserAnnotationAnchor {
   framePath?: string[];
   elementPath?: string;
   selector?: string;
+  shadowHosts?: string[];
+  textLocator?: BrowserAnnotationTextLocator;
+  selectedText?: string;
+  role?: string;
+  name?: string;
+  isFixed?: boolean;
+  documentScroll?: { x: number; y: number };
+  frameOffset?: { x: number; y: number };
+  frameScale?: { x: number; y: number };
+  scrollContainers?: BrowserAnnotationScrollContainer[];
   textExcerpt?: string;
   nearbyText?: string;
   computedStyle?: BrowserAnnotationComputedStyle;
@@ -98,6 +123,7 @@ export interface BrowserAnnotationAttachment {
   number?: number;
   evidenceState?: "pending" | "ready" | "failed";
   evidenceError?: string;
+  deliveryState?: "saved" | "sending";
 }
 
 const FiniteCoordinateSchema = z.number().finite().min(-100_000).max(100_000);
@@ -115,6 +141,22 @@ export const BrowserAnnotationComputedStyleSchema = z
   })
   .strict() satisfies z.ZodType<BrowserAnnotationComputedStyle>;
 
+const AnnotationSelectorSchema = z.string().max(8192);
+const AnnotationShadowHostsSchema = z.array(AnnotationSelectorSchema).max(32);
+const AnnotationPointSchema = z
+  .object({ x: FiniteCoordinateSchema, y: FiniteCoordinateSchema })
+  .strict();
+export const BrowserAnnotationTextLocatorSchema = z
+  .object({
+    kind: z.enum(["dom", "form-control"]),
+    selector: AnnotationSelectorSchema,
+    shadowHosts: AnnotationShadowHostsSchema,
+    startOffset: z.number().int().nonnegative().max(10_000_000),
+    endOffset: z.number().int().nonnegative().max(10_000_000),
+    direction: z.enum(["forward", "backward"]),
+    rangeText: z.string().max(2048),
+  })
+  .strict() satisfies z.ZodType<BrowserAnnotationTextLocator>;
 export const BrowserAnnotationAnchorSchema = z
   .object({
     id: z.string().min(1).max(512),
@@ -123,7 +165,29 @@ export const BrowserAnnotationAnchorSchema = z
     frameUrl: z.string().max(16_384).optional(),
     framePath: z.array(z.string().max(8_192)).max(16).optional(),
     elementPath: z.string().max(8_192).optional(),
-    selector: z.string().max(8_192).optional(),
+    selector: AnnotationSelectorSchema.optional(),
+    shadowHosts: AnnotationShadowHostsSchema.optional(),
+    textLocator: BrowserAnnotationTextLocatorSchema.optional(),
+    selectedText: z.string().max(2048).optional(),
+    role: z.string().max(512).optional(),
+    name: z.string().max(2048).optional(),
+    isFixed: z.boolean().optional(),
+    documentScroll: AnnotationPointSchema.optional(),
+    frameOffset: AnnotationPointSchema.optional(),
+    frameScale: AnnotationPointSchema.optional(),
+    scrollContainers: z
+      .array(
+        z
+          .object({
+            selector: AnnotationSelectorSchema,
+            shadowHosts: AnnotationShadowHostsSchema,
+            scrollLeft: FiniteCoordinateSchema,
+            scrollTop: FiniteCoordinateSchema,
+          })
+          .strict(),
+      )
+      .max(32)
+      .optional(),
     textExcerpt: z.string().max(2_048).optional(),
     nearbyText: z.string().max(2_048).optional(),
     computedStyle: BrowserAnnotationComputedStyleSchema.optional(),
@@ -184,6 +248,7 @@ export const BrowserAnnotationAttachmentSchema = z
     number: z.number().int().positive().optional(),
     evidenceState: z.enum(["pending", "ready", "failed"]).optional(),
     evidenceError: z.string().max(2048).optional(),
+    deliveryState: z.enum(["saved", "sending"]).optional(),
     evidence: z
       .object({
         attachmentId: z.string().min(1).max(512),
@@ -205,7 +270,19 @@ function formatAnchorForPrompt(anchor: BrowserAnnotationAnchor, index: number): 
     anchor.textExcerpt?.trim() ||
     anchor.selector?.trim() ||
     `rect(${anchor.rect.x}, ${anchor.rect.y}, ${anchor.rect.width}, ${anchor.rect.height})`;
-  return `${label}: ${target}`;
+  return [
+    `${label}: ${target}`,
+    `Frame: ${anchor.framePath?.length ? anchor.framePath.join(" → ") : "top"}`,
+    ...(anchor.frameUrl ? [`Frame URL: ${anchor.frameUrl}`] : []),
+    ...(anchor.selector
+      ? [`Target selector: ${[...(anchor.shadowHosts ?? []), anchor.selector].join(" >>> ")}`]
+      : []),
+    ...(anchor.elementPath ? [`Target path: ${anchor.elementPath}`] : []),
+    ...(anchor.role ? [`Target role: ${anchor.role}`] : []),
+    ...(anchor.name ? [`Target name: ${anchor.name}`] : []),
+    ...(anchor.selectedText ? [`Selected text: ${anchor.selectedText}`] : []),
+    ...(anchor.nearbyText ? [`Nearby text: ${anchor.nearbyText}`] : []),
+  ].join("\n");
 }
 
 export function serializeBrowserAnnotationAttachmentForPrompt(
@@ -257,11 +334,13 @@ export interface BrowserSavedAnnotation extends BrowserAnnotationAttachment {
   destination: string;
   evidenceState: "pending" | "ready" | "failed";
   evidenceError?: string;
+  deliveryState?: "saved" | "sending";
 }
 
 export const BrowserAnnotationSaveSchema = z
   .object({
     editorId: z.string().min(1).max(512),
+    deliveryState: z.enum(["saved", "sending"]).optional(),
     annotationId: z.string().min(1).max(512).optional(),
     sessionId: z.string().min(1).max(512),
     destination: z.string().min(1).max(512),

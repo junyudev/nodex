@@ -108,6 +108,9 @@ These actions require the current Workbench tab to present a Database View. Boar
 | Shortcut                     | Action                      | Notes                                                                                                                                           |
 | ---------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | `⌘/Ctrl+L`                   | Focus address               | Selects the complete address of the active Browser tab                                                                                          |
+| `⌘/Ctrl+Shift+.`             | Toggle annotations          | Rebindable; applies to the active Browser tab, including page focus                                                                             |
+| `Enter` / `⌘/Ctrl+Enter`     | Save / send annotation      | Quick annotate reverses the default: Enter sends, the modifier saves                                                                            |
+| Hold `Space`                 | Suspend annotations         | Restores page interaction until released; does not intercept typing in an editor                                                                |
 | `⌘/Ctrl+F`                   | Open Browser find           | Opens Workbench content search in the Browser domain when Browser is the mounted target                                                         |
 | `Enter` / `Shift+Enter`      | Next / previous match       | While the Browser find input is focused                                                                                                         |
 | `Escape`                     | Close or revert             | Closes Browser find, exits annotation mode, or reverts an uncommitted address edit according to the focused Browser control                     |

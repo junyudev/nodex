@@ -25,7 +25,10 @@ export function getBrowserAnnotationAttachmentsSnapshot(
   const existing = projections.get(destination);
   if (existing) return existing;
   const selected = annotations
-    .filter((annotation) => annotation.destination === destination)
+    .filter(
+      (annotation) =>
+        annotation.destination === destination && annotation.deliveryState !== "sending",
+    )
     .map(({ destination: _destination, ...attachment }) => attachment);
   const result = selected.length ? selected : EMPTY;
   projections.set(destination, result);
@@ -68,4 +71,36 @@ export function clearBrowserAnnotationAttachments(
       console.warn("Could not remove Browser annotations", { destination, ids, error });
       toast.danger("Could not remove Browser annotations");
     });
+}
+
+/** Wait for this saved set's capture work without relying on renderer paint or fixed sleeps. */
+export function waitForBrowserAnnotationEvidence(
+  destination: string,
+  ids: readonly string[],
+): Promise<readonly BrowserAnnotationAttachment[]> {
+  return new Promise((resolve) => {
+    let stop = () => {};
+    const finish = () => {
+      clearTimeout(timer);
+      stop();
+      resolve(
+        annotations
+          .filter((entry) => entry.destination === destination && ids.includes(entry.id))
+          .map(({ destination: _destination, ...entry }) => entry),
+      );
+    };
+    const check = () => {
+      const selected = annotations.filter(
+        (entry) => entry.destination === destination && ids.includes(entry.id),
+      );
+      if (
+        selected.length === ids.length &&
+        selected.every((entry) => entry.evidenceState !== "pending")
+      )
+        finish();
+    };
+    const timer = setTimeout(finish, 5_000);
+    stop = subscribeBrowserAnnotationAttachments(check);
+    check();
+  });
 }

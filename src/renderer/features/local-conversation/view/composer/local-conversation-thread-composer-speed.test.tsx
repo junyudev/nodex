@@ -1,3 +1,4 @@
+import { deliverBrowserAnnotations } from "../../../browser-sidebar/browser-annotation-delivery";
 import { composerDraftIntents, useComposerDraftIntent } from "@/lib/composer-draft-intents";
 import { buildComposerActions as buildActions } from "@/test/composer-actions-fixture";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
@@ -5908,3 +5909,63 @@ test("chat intent delivery survives first-thread attachment and preserves append
     await act(async () => view.unmount());
   }
 });
+
+test.each([true, false])(
+  "direct Browser notes use the running chat's queue=%s path without consuming its draft",
+  async (isQueueingEnabled) => {
+    resetStorage();
+    const notes = [
+      {
+        schemaVersion: 1 as const,
+        id: "browser-note",
+        browserTabId: "tab",
+        createdAt: 1,
+        note: "Make it clearer",
+        pageTitle: "Example",
+        pageUrl: "https://example.com",
+        anchors: [
+          {
+            id: "target",
+            kind: "element" as const,
+            pageUrl: "https://example.com",
+            selector: "#target",
+            rect: { x: 0, y: 0, width: 20, height: 20 },
+          },
+        ],
+      },
+    ];
+    const admitted: Array<{ mode: string; prompt: string; input: unknown }> = [];
+    const draft = isQueueingEnabled ? "" : "Keep the typed draft";
+    const view = await renderComposer(
+      buildRunningComposerModel({
+        isQueueingEnabled,
+        composerChatKey: { kind: "session", sessionId: "annotation-chat" },
+        composerIntent: { prompt: draft, focusNonce: 9913 },
+      }),
+      {
+        onEnqueueQueuedFollowUp: async (_threadId, prompt, options) => {
+          admitted.push({ mode: "queue", prompt, input: options?.promptInput });
+        },
+        onSteerPrompt: async (request) => {
+          admitted.push({ mode: "steer", prompt: request.prompt, input: request.promptInput });
+        },
+      },
+    );
+    await act(async () => {
+      const result = await deliverBrowserAnnotations({
+        destination: "session:annotation-chat",
+        annotations: notes,
+        consume: async () => {},
+      });
+      expect(result.admitted).toBe(true);
+    });
+    expect(admitted).toEqual([
+      {
+        mode: isQueueingEnabled ? "queue" : "steer",
+        prompt: "",
+        input: expect.objectContaining({ browserAnnotationAttachments: notes }),
+      },
+    ]);
+    expect(readComposerText(view)).toBe(draft);
+  },
+);

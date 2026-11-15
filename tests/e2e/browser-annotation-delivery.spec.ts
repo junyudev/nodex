@@ -1,3 +1,4 @@
+import type { BrowserSidebarRuntimeSnapshot } from "../../src/shared/browser-sidebar";
 import { expect, test } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
@@ -26,7 +27,7 @@ import {
 } from "./support/browser-page";
 
 test("saved Browser annotations reach an existing chat with evidence and survive capture failure @automatic", async ({}, testInfo) => {
-  // oxlint-disable-next-line nodex/no-explicit-test-timeout -- Three real Agent Turns plus guest capture cross the Electron and provider processes.
+  // oxlint-disable-next-line nodex/no-explicit-test-timeout -- Six real Agent Turns plus guest capture cross the Electron and provider processes.
   test.setTimeout(180_000);
   const site = await startBrowserSite({
     "/": browserPageHtml(
@@ -90,6 +91,62 @@ test("saved Browser annotations reach an existing chat with evidence and survive
                   "final_answer",
                 ),
                 responses.completed("second", true),
+              ]);
+            },
+          },
+          {
+            name: "direct annotation preserves the typed draft",
+            match: (request) => request.hasUserInputText("Direct browser note"),
+            respond: (request) => {
+              const input = JSON.stringify(request.inputItems());
+              expect(input).toContain("Direct browser note");
+              expect(input).not.toContain("Keep this draft unsent");
+              received++;
+              return responses.stream([
+                responses.created("direct"),
+                responses.assistantMessage(
+                  "direct-message",
+                  "Direct annotation received",
+                  "final_answer",
+                ),
+                responses.completed("direct", true),
+              ]);
+            },
+          },
+          {
+            name: "send all annotations is one message",
+            match: (request) => request.hasUserInputText("Together first note"),
+            respond: (request) => {
+              const input = JSON.stringify(request.inputItems());
+              expect(input).toContain("Together first note");
+              expect(input).toContain("Together second note");
+              expect(input).not.toContain("Keep this draft unsent");
+              received++;
+              return responses.stream([
+                responses.created("batch"),
+                responses.assistantMessage(
+                  "batch-message",
+                  "Both annotations received",
+                  "final_answer",
+                ),
+                responses.completed("batch", true),
+              ]);
+            },
+          },
+          {
+            name: "quick annotation sends on Enter and exits",
+            match: (request) => request.hasUserInputText("Quick browser note"),
+            respond: (request) => {
+              expect(JSON.stringify(request.inputItems())).not.toContain("Keep this draft unsent");
+              received++;
+              return responses.stream([
+                responses.created("quick"),
+                responses.assistantMessage(
+                  "quick-message",
+                  "Quick annotation received",
+                  "final_answer",
+                ),
+                responses.completed("quick", true),
               ]);
             },
           },
@@ -162,7 +219,10 @@ respect_system_proxy = false
           // The note is saved before its screenshot; wait for the screenshot this send asserts.
           await expect
             .poll(async () => {
-              const { state } = await invokeIpc(page, "browser-sidebar-runtime-snapshot");
+              const { state } = (await invokeIpc(
+                page,
+                "browser-sidebar-runtime-snapshot",
+              )) as BrowserSidebarRuntimeSnapshot;
               return state.tabs.flatMap((tab) =>
                 (tab.annotations ?? []).map((annotation) => annotation.evidenceState),
               );
@@ -192,7 +252,11 @@ respect_system_proxy = false
           await expect.poll(pins).toEqual([]);
           // Fail the physical screenshot boundary; saving and prompt delivery still work.
           await harness.application.evaluate(({ webContents }, id) => {
-            webContents.fromId(id)!.capturePage = async () => {
+            const contents = webContents.fromId(id)! as NonNullable<
+              ReturnType<typeof webContents.fromId>
+            > & { originalAnnotationCapture?: import("electron").WebContents["capturePage"] };
+            contents.originalAnnotationCapture = contents.capturePage.bind(contents);
+            contents.capturePage = async () => {
               throw new Error("Forced annotation screenshot failure");
             };
           }, guestId);
@@ -214,7 +278,74 @@ respect_system_proxy = false
           await waitForFinalMarker(page, "Second annotation received");
           await expect(failedChip).toHaveCount(0);
           await expect.poll(pins).toEqual([]);
-          expect(received).toBe(2);
+          await harness.application.evaluate(({ webContents }, id) => {
+            const contents = webContents.fromId(id)! as NonNullable<
+              ReturnType<typeof webContents.fromId>
+            > & { originalAnnotationCapture?: import("electron").WebContents["capturePage"] };
+            if (!contents.originalAnnotationCapture)
+              throw new Error("Missing original capture boundary");
+            contents.capturePage = contents.originalAnnotationCapture;
+          }, guestId);
+          const composer = page
+            .locator('[data-codex-composer="true"][aria-label="Ask for follow-up changes"]')
+            .first();
+          await composer.fill("Keep this draft unsent");
+          await clickInBrowserPage(harness, page, guest, "target");
+          await page.getByRole("textbox", { name: "Annotation note" }).fill("Direct browser note");
+          await page.screenshot({ path: testInfo.outputPath("annotation-send.png") });
+          await page
+            .getByRole("textbox", { name: "Annotation note" })
+            .press(process.platform === "darwin" ? "Meta+Enter" : "Control+Enter");
+          await waitForRuntimeCompletedAgentTurn(page, target);
+          await waitForFinalMarker(page, "Direct annotation received");
+          await expect(composer).toHaveText("Keep this draft unsent");
+          await expect.poll(pins).toEqual([]);
+          for (const note of ["Together first note", "Together second note"]) {
+            await clickInBrowserPage(harness, page, guest, "target");
+            await page.getByRole("textbox", { name: "Annotation note" }).fill(note);
+            await page.getByRole("textbox", { name: "Annotation note" }).press("Enter");
+          }
+          await expect
+            .poll(async () => {
+              const { state } = (await invokeIpc(
+                page,
+                "browser-sidebar-runtime-snapshot",
+              )) as BrowserSidebarRuntimeSnapshot;
+              return state.tabs.flatMap((tab) =>
+                (tab.annotations ?? []).map((annotation) => annotation.evidenceState),
+              );
+            })
+            .toEqual(["ready", "ready"]);
+          await page
+            .getByRole("button", { name: "Send 2 annotations to chat", exact: true })
+            .click();
+          await waitForRuntimeCompletedAgentTurn(page, target);
+          await waitForFinalMarker(page, "Both annotations received");
+          await expect(composer).toHaveText("Keep this draft unsent");
+          await expect.poll(pins).toEqual([]);
+          await expect(page.getByRole("button", { name: /^\d+\. Together/ })).toHaveCount(0);
+          const { state: browserState } = (await invokeIpc(
+            page,
+            "browser-sidebar-runtime-snapshot",
+          )) as BrowserSidebarRuntimeSnapshot;
+          const source = browserState.tabs.find((tab) => tab.webContentsId === guestId);
+          if (!source?.annotationSessionId) throw new Error("Missing annotation editor identity");
+          await invokeIpc(page, "browser-sidebar-command", {
+            type: "quick-annotate",
+            browserConversationId: source.browserConversationId,
+            browserViewScopeId: source.browserViewScopeId,
+            browserTabId: source.browserTabId,
+            sessionId: source.annotationSessionId,
+            point: { x: 60, y: 60 },
+          });
+          await page.getByRole("textbox", { name: "Annotation note" }).fill("Quick browser note");
+          await page.getByRole("textbox", { name: "Annotation note" }).press("Enter");
+          await waitForRuntimeCompletedAgentTurn(page, target);
+          await waitForFinalMarker(page, "Quick annotation received");
+          await expect(composer).toHaveText("Keep this draft unsent");
+          await expect.poll(pins).toEqual([]);
+          await expect(page.getByRole("button", { name: "Annotate", exact: true })).toBeVisible();
+          expect(received).toBe(5);
         } finally {
           await harness.close();
         }

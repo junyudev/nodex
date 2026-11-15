@@ -1,3 +1,15 @@
+import {
+  captureBrowserAnnotationAnchor,
+  resolveBrowserAnnotationAnchor,
+  hitTestBrowserAnnotation,
+  resolveBrowserAnnotationFrame,
+  resolveBrowserAnnotationSelector,
+} from "./browser-annotation-anchors";
+import { browserAnnotationAvailability } from "../shared/browser-annotation-interaction";
+import {
+  matchesKeyboardEventToAccelerator,
+  type RuntimePlatform,
+} from "../shared/command-keybindings";
 import { ipcRenderer } from "electron";
 import { installBrowserWebMcp } from "./browser-webmcp";
 import type {
@@ -13,24 +25,26 @@ let annotationSessionId: string | null = null;
 let annotationSelectionMode: "inspect" | "region" = "inspect";
 let hoveredElement: Element | null = null;
 let overlay: HTMLDivElement | null = null;
-let regionStart: { x: number; y: number; pointerId: number } | null = null;
+let regionStart: { x: number; y: number; pointerId: number; document: Document } | null = null;
+let annotationSuspended = false;
+let annotationAgentControlled = false;
+let annotationPinsVisible = true;
+let annotationShortcuts: { bindings: string[]; platform: RuntimePlatform } = {
+  bindings: ["CmdOrCtrl+Shift+."],
+  platform: navigator.platform.toUpperCase().includes("MAC") ? "macOS" : "linux",
+};
+const annotationActive = () =>
+  browserAnnotationAvailability({
+    enabled: annotationSessionId !== null,
+    suspended: annotationSuspended,
+    agentControlled: annotationAgentControlled,
+  });
 let savedAnnotations: BrowserSavedAnnotation[] = [];
-const liveAnchors = new Map<
-  string,
-  {
-    anchor: BrowserAnnotationAnchor;
-    element?: Element;
-    range?: Range;
-    scrollX: number;
-    scrollY: number;
-    scrollContainers?: Array<{ element: Element; left: number; top: number }>;
-  }
->();
+const liveAnchors = new Map<string, BrowserAnnotationAnchor>();
 let markerRoot: HTMLDivElement | null = null;
 let evidenceToken: string | null = null;
 const selectedElementsByAnchorId = new Map<string, Element>();
 let anchorUpdateFrame: number | null = null;
-let annotationMutationObserver: MutationObserver | null = null;
 let designPreview: {
   element: HTMLElement;
   property: BrowserAnnotationDesignChange["property"];
@@ -62,95 +76,16 @@ function ensureOverlay(): HTMLDivElement {
   return overlay;
 }
 
-function elementSelector(element: Element): string {
-  if (element.id) return `#${CSS.escape(element.id)}`;
-  const parts: string[] = [];
-  let current: Element | null = element;
-  while (current && current !== document.documentElement && parts.length < 8) {
-    const tagName = current.tagName.toLowerCase();
-    const parentElement: Element | null = current.parentElement;
-    if (!parentElement) {
-      parts.unshift(tagName);
-      break;
-    }
-    const siblings = [...parentElement.children].filter(
-      (candidate) => candidate.tagName === current?.tagName,
-    );
-    const suffix = siblings.length > 1 ? `:nth-of-type(${siblings.indexOf(current) + 1})` : "";
-    parts.unshift(`${tagName}${suffix}`);
-    current = parentElement;
-  }
-  return parts.join(" > ");
-}
-
-function textExcerpt(element: Element): string | undefined {
-  const text = element.textContent?.replace(/\s+/g, " ").trim();
-  return text ? text.slice(0, 2_048) : undefined;
-}
-
-function readComputedStyle(element: Element): BrowserAnnotationAnchor["computedStyle"] {
-  const styles = element.ownerDocument.defaultView?.getComputedStyle(element);
-  if (!styles) return undefined;
-  return {
-    color: styles.color.slice(0, 512),
-    backgroundColor: styles.backgroundColor.slice(0, 512),
-    fontSize: styles.fontSize.slice(0, 512),
-    borderRadius: styles.borderRadius.slice(0, 512),
-    opacity: styles.opacity.slice(0, 512),
-  };
-}
-
 function anchorFromElement(
   element: Element,
   stableId = makeAnnotationId(),
 ): BrowserAnnotationAnchor {
-  const selection = window.getSelection();
-  const selectedText = selection?.toString().replace(/\s+/g, " ").trim();
-  const rangeRect =
-    selectedText && selection?.rangeCount ? selection.getRangeAt(0).getBoundingClientRect() : null;
-  const rect =
-    rangeRect && rangeRect.width > 0 && rangeRect.height > 0
-      ? rangeRect
-      : element.getBoundingClientRect();
-  return {
-    id: stableId,
-    kind: rangeRect ? "text" : "element",
-    pageUrl: window.location.href,
-    frameUrl: window.location.href,
-    framePath: [],
-    elementPath: elementSelector(element),
-    selector: elementSelector(element),
-    textExcerpt: selectedText?.slice(0, 2_048) || textExcerpt(element),
-    nearbyText: textExcerpt(element),
-    computedStyle: readComputedStyle(element),
-    viewportSize: {
-      width: window.innerWidth,
-      height: window.innerHeight,
-    },
-    rect: {
-      x: rect.x,
-      y: rect.y,
-      width: rect.width,
-      height: rect.height,
-    },
-  };
+  return captureBrowserAnnotationAnchor(element, stableId, window);
 }
-
 function rememberSelectedElement(anchor: BrowserAnnotationAnchor, element: Element): void {
-  const selection = window.getSelection();
-  liveAnchors.set(anchor.id, {
-    anchor,
-    element,
-    range:
-      anchor.kind === "text" && selection?.rangeCount
-        ? selection.getRangeAt(0).cloneRange()
-        : undefined,
-    scrollX: window.scrollX,
-    scrollY: window.scrollY,
-  });
+  liveAnchors.set(anchor.id, anchor);
   selectedElementsByAnchorId.set(anchor.id, element);
 }
-
 function sendElementSelection(element: Element, multiSelect: boolean): void {
   if (!annotationSessionId) return;
   const anchor = anchorFromElement(element);
@@ -183,7 +118,7 @@ function updateOverlay(element: Element | null): void {
     annotationOverlay.style.display = "none";
     return;
   }
-  const rect = element.getBoundingClientRect();
+  const rect = anchorFromElement(element).rect;
   Object.assign(annotationOverlay.style, {
     display: "block",
     left: `${rect.x}px`,
@@ -194,13 +129,18 @@ function updateOverlay(element: Element | null): void {
 }
 
 function onAnnotationPointerMove(event: PointerEvent): void {
+  if (!annotationActive()) {
+    updateOverlay(null);
+    return;
+  }
   const target = event
     .composedPath()
     .find(
       (candidate) =>
-        candidate instanceof Element && !candidate.hasAttribute(ANNOTATION_OVERLAY_ATTRIBUTE),
+        (candidate as Node).nodeType === 1 &&
+        !(candidate as Element).hasAttribute(ANNOTATION_OVERLAY_ATTRIBUTE),
     );
-  hoveredElement = target instanceof Element ? target : null;
+  hoveredElement = target && (target as Node).nodeType === 1 ? (target as Element) : null;
   updateOverlay(hoveredElement);
 }
 
@@ -213,12 +153,15 @@ function onAnnotationClick(event: MouseEvent): void {
       )
   )
     return;
-  if (!annotationSessionId || annotationSelectionMode !== "inspect" || !hoveredElement) {
-    return;
-  }
+  if (!annotationActive() || annotationSelectionMode !== "inspect") return;
+  const selected = event.composedPath().find((item) => (item as Node).nodeType === 1) as
+    | Element
+    | undefined;
+  const element = selected ?? hoveredElement;
+  if (!element) return;
   event.preventDefault();
   event.stopImmediatePropagation();
-  sendElementSelection(hoveredElement, event.shiftKey);
+  sendElementSelection(element, event.shiftKey);
 }
 
 function onAnnotationPointerDown(event: PointerEvent): void {
@@ -230,13 +173,17 @@ function onAnnotationPointerDown(event: PointerEvent): void {
       )
   )
     return;
-  if (!annotationSessionId || annotationSelectionMode !== "region") return;
+  if (!annotationActive() || annotationSelectionMode !== "region") return;
   event.preventDefault();
   event.stopImmediatePropagation();
   regionStart = {
     x: event.clientX,
     y: event.clientY,
     pointerId: event.pointerId,
+    document:
+      (event.currentTarget as Document).nodeType === 9
+        ? (event.currentTarget as Document)
+        : document,
   };
   updateRegionOverlay(event.clientX, event.clientY);
 }
@@ -280,38 +227,10 @@ function onAnnotationPointerUp(event: PointerEvent): void {
   };
   updateOverlay(null);
   if (rect.width < 4 || rect.height < 4) return;
-  const anchor: BrowserAnnotationAnchor = {
-    id: makeAnnotationId(),
-    kind: "region",
-    pageUrl: window.location.href,
-    frameUrl: window.location.href,
-    framePath: [],
-    viewportSize: {
-      width: window.innerWidth,
-      height: window.innerHeight,
-    },
-    rect,
-  };
-  const scrollContainers: Array<{ element: Element; left: number; top: number }> = [];
-  let container = document.elementFromPoint(start.x, start.y);
-  while (container) {
-    if (
-      container.scrollHeight > container.clientHeight ||
-      container.scrollWidth > container.clientWidth
-    )
-      scrollContainers.push({
-        element: container,
-        left: container.scrollLeft,
-        top: container.scrollTop,
-      });
-    container = container.parentElement;
-  }
-  liveAnchors.set(anchor.id, {
-    anchor,
-    scrollX: window.scrollX,
-    scrollY: window.scrollY,
-    scrollContainers,
-  });
+  const element =
+    hitTestBrowserAnnotation(start.document, start.x, start.y) ?? start.document.documentElement;
+  const anchor = captureBrowserAnnotationAnchor(element, makeAnnotationId(), window, rect);
+  liveAnchors.set(anchor.id, anchor);
   ipcRenderer.send("browser-annotation-selection", {
     sessionId: annotationSessionId,
     multiSelect: event.shiftKey,
@@ -353,15 +272,6 @@ function enableAnnotationMode(sessionId: string, selectionMode: "inspect" | "reg
   disableAnnotationMode();
   annotationSessionId = sessionId;
   annotationSelectionMode = selectionMode;
-  if (selectionMode === "region") {
-    window.addEventListener("pointerdown", onAnnotationPointerDown, true);
-    window.addEventListener("pointermove", onAnnotationPointerDrag, true);
-    window.addEventListener("pointerup", onAnnotationPointerUp, true);
-    window.addEventListener("pointercancel", onAnnotationPointerCancel, true);
-    return;
-  }
-  window.addEventListener("pointermove", onAnnotationPointerMove, true);
-  window.addEventListener("click", onAnnotationClick, true);
 }
 
 ipcRenderer.on(
@@ -372,8 +282,10 @@ ipcRenderer.on(
       enabled?: unknown;
       selectionMode?: unknown;
       sessionId?: unknown;
+      shortcuts?: { bindings: string[]; platform: RuntimePlatform };
     },
   ) => {
+    if (payload?.shortcuts) annotationShortcuts = payload.shortcuts;
     if (
       payload?.enabled === true &&
       typeof payload.sessionId === "string" &&
@@ -411,7 +323,7 @@ ipcRenderer.on(
     ) {
       return;
     }
-    const target = document.elementFromPoint(payload.x, payload.y);
+    const target = hitTestBrowserAnnotation(document, payload.x, payload.y);
     if (!target || target.hasAttribute(ANNOTATION_OVERLAY_ATTRIBUTE)) return;
     sendElementSelection(target, false);
   },
@@ -477,8 +389,15 @@ ipcRenderer.on(
     if (payload.originalView === true) return;
     const property = payload.property as BrowserAnnotationDesignChange["property"];
     if (!isSafeDesignValue(property, payload.after)) return;
-    const element = selectedElementsByAnchorId.get(payload.anchorId);
-    if (!(element instanceof HTMLElement) || !element.isConnected) return;
+    const anchor = liveAnchors.get(payload.anchorId);
+    const frame = anchor ? resolveBrowserAnnotationFrame(document, anchor.framePath ?? []) : null;
+    const target =
+      selectedElementsByAnchorId.get(payload.anchorId) ??
+      (frame && anchor?.selector
+        ? resolveBrowserAnnotationSelector(frame, anchor.selector, anchor.shadowHosts)
+        : null);
+    if (!target?.isConnected || !("style" in target)) return;
+    const element = target as HTMLElement;
     const cssName = DESIGN_PROPERTY_TO_CSS_NAME[property];
     designPreview = {
       element,
@@ -740,44 +659,10 @@ ipcRenderer.on("browser-contact-info-fill", (_event, rawPayload: unknown) => {
 });
 
 function resolveLiveAnchor(
-  live: ReturnType<typeof liveAnchors.get>,
+  anchor: BrowserAnnotationAnchor | undefined,
 ): BrowserAnnotationAnchor | null {
-  if (!live || live.anchor.pageUrl !== window.location.href) return null;
-  const { anchor, range } = live;
-  if (!live.element?.isConnected && anchor.selector) {
-    try {
-      live.element = document.querySelector(anchor.selector) ?? undefined;
-    } catch {
-      return null;
-    }
-  }
-  const element = live.element;
-  const delta = (live.scrollContainers ?? [])
-    .filter((item) => item.element !== document.documentElement && item.element !== document.body)
-    .reduce(
-      (sum, item) => ({
-        x: sum.x + item.left - item.element.scrollLeft,
-        y: sum.y + item.top - item.element.scrollTop,
-      }),
-      { x: 0, y: 0 },
-    );
-  const rect = range?.startContainer.isConnected
-    ? range.getBoundingClientRect()
-    : element?.isConnected
-      ? element.getBoundingClientRect()
-      : null;
-  if (anchor.kind !== "region" && !rect) return null;
-  return {
-    ...anchor,
-    viewportSize: { width: window.innerWidth, height: window.innerHeight },
-    rect: rect
-      ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
-      : {
-          ...anchor.rect,
-          x: anchor.rect.x + live.scrollX - window.scrollX + delta.x,
-          y: anchor.rect.y + live.scrollY - window.scrollY + delta.y,
-        },
-  };
+  if (!anchor || anchor.pageUrl !== location.href) return null;
+  return resolveBrowserAnnotationAnchor(document, anchor);
 }
 function renderMarkers(): void {
   if (!document.documentElement) return;
@@ -792,7 +677,9 @@ function renderMarkers(): void {
     });
     document.documentElement.append(markerRoot);
   }
-  const visible = savedAnnotations.filter((annotation) => annotation.pageUrl === location.href);
+  const visible = savedAnnotations.filter(
+    (annotation) => annotation.pageUrl === location.href && annotation.deliveryState !== "sending",
+  );
   for (const child of Array.from(markerRoot.children)) {
     if (
       !visible.some((annotation) => annotation.id === (child as HTMLElement).dataset.annotationId)
@@ -802,22 +689,7 @@ function renderMarkers(): void {
   for (const annotation of visible) {
     const anchor = annotation.anchors[0];
     if (!anchor) continue;
-    if (!liveAnchors.has(anchor.id)) {
-      let element: Element | undefined;
-      try {
-        element = anchor.selector
-          ? (document.querySelector(anchor.selector) ?? undefined)
-          : undefined;
-      } catch {
-        /* A page selector can become invalid after navigation. */
-      }
-      liveAnchors.set(anchor.id, {
-        anchor,
-        element,
-        scrollX: window.scrollX,
-        scrollY: window.scrollY,
-      });
-    }
+    if (!liveAnchors.has(anchor.id)) liveAnchors.set(anchor.id, anchor);
     const resolved = resolveLiveAnchor(liveAnchors.get(anchor.id));
     let marker = Array.from(markerRoot.children).find(
       (child) => (child as HTMLElement).dataset.annotationId === annotation.id,
@@ -854,6 +726,7 @@ function renderMarkers(): void {
     marker.style.display =
       resolved &&
       !evidenceToken &&
+      annotationPinsVisible &&
       resolved.rect.y + resolved.rect.height >= 0 &&
       resolved.rect.y <= innerHeight
         ? "block"
@@ -868,60 +741,175 @@ ipcRenderer.on("browser-annotation-saved", (_event, annotations: BrowserSavedAnn
   savedAnnotations = annotations;
   renderMarkers();
 });
-ipcRenderer.on("browser-annotation-evidence-prepare", (_event, input: { token: string }) => {
-  evidenceToken = input.token;
-  updateOverlay(null);
-  renderMarkers();
-  requestAnimationFrame(() =>
-    requestAnimationFrame(() => {
-      if (evidenceToken === input.token)
-        ipcRenderer.send("browser-annotation-evidence-ready", input);
-    }),
-  );
-});
+ipcRenderer.on(
+  "browser-annotation-evidence-prepare",
+  (_event, input: { token: string; annotationId: string }) => {
+    evidenceToken = input.token;
+    updateOverlay(null);
+    renderMarkers();
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (evidenceToken === input.token)
+          ipcRenderer.send("browser-annotation-evidence-ready", {
+            token: input.token,
+            anchors: (
+              savedAnnotations.find((annotation) => annotation.id === input.annotationId)
+                ?.anchors ?? []
+            )
+              .map((anchor) => resolveLiveAnchor(liveAnchors.get(anchor.id) ?? anchor))
+              .filter((anchor) => anchor !== null),
+          });
+      }),
+    );
+  },
+);
 ipcRenderer.on("browser-annotation-evidence-clear", (_event, input: { token: string }) => {
   if (evidenceToken !== input.token) return;
   evidenceToken = null;
   renderMarkers();
 });
-window.addEventListener(
-  "keydown",
-  (event) => {
-    if (!annotationSessionId || event.key !== "Escape" || event.isComposing || event.repeat) return;
+ipcRenderer.on(
+  "browser-annotation-presentation",
+  (_event, input: { suspended: boolean; pinsVisible: boolean; agentControlled: boolean }) => {
+    annotationSuspended = input.suspended;
+    annotationPinsVisible = input.pinsVisible;
+    annotationAgentControlled = input.agentControlled;
+    if (!annotationActive()) {
+      regionStart = null;
+      restoreDesignPreview();
+      updateOverlay(null);
+    }
+    renderMarkers();
+  },
+);
+function suspendAnnotation(suspended: boolean): void {
+  if (annotationSuspended === suspended) return;
+  annotationSuspended = suspended;
+  if (suspended) {
+    regionStart = null;
+    restoreDesignPreview();
+    updateOverlay(null);
+  }
+  ipcRenderer.send("browser-annotation-suspend", { suspended });
+}
+function onAnnotationKeyDown(event: KeyboardEvent): void {
+  if (event.isComposing || event.repeat) return;
+  if (
+    annotationShortcuts.bindings.some((binding) =>
+      matchesKeyboardEventToAccelerator(event, binding, annotationShortcuts.platform),
+    )
+  ) {
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (regionStart) {
-      regionStart = null;
-      updateOverlay(null);
-      return;
+    ipcRenderer.send("browser-annotation-toggle");
+    return;
+  }
+  if (!annotationActive()) return;
+  const target = event.target as Element | null;
+  const editable =
+    target?.nodeType === 1 && target.closest("input,textarea,[contenteditable=true]");
+  if (
+    event.code === "Space" &&
+    !editable &&
+    !event.altKey &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey
+  ) {
+    event.preventDefault();
+    suspendAnnotation(true);
+    return;
+  }
+  if (event.key !== "Escape") return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (regionStart) {
+    regionStart = null;
+    updateOverlay(null);
+    return;
+  }
+  ipcRenderer.send("browser-annotation-cancel");
+}
+const observedDocuments = new WeakSet<Document>();
+const observedFrames = new WeakSet<Element>();
+const observedRoots = new WeakSet<Node>();
+function discoverAnnotationFrames(root: Document | ShadowRoot): void {
+  for (const element of root.querySelectorAll("*")) {
+    if (element.shadowRoot) {
+      observeAnnotationRoot(element.shadowRoot);
+      discoverAnnotationFrames(element.shadowRoot);
     }
-    ipcRenderer.send("browser-annotation-cancel");
-  },
-  true,
-);
-window.addEventListener("scroll", scheduleAnchorUpdates, true);
-window.addEventListener("resize", scheduleAnchorUpdates, true);
-const observeAnchors = () => {
-  annotationMutationObserver = new MutationObserver((mutations) => {
+    if (element.localName !== "iframe") continue;
+    const frame = element as HTMLIFrameElement;
+    const attach = () => {
+      try {
+        if (frame.contentDocument) observeAnnotationDocument(frame.contentDocument);
+      } catch {
+        /* Cross-origin frames are opaque. */
+      }
+    };
+    if (!observedFrames.has(frame)) {
+      observedFrames.add(frame);
+      frame.addEventListener("load", attach);
+    }
+    attach();
+  }
+}
+function observeAnnotationRoot(root: Document | ShadowRoot): void {
+  if (observedRoots.has(root)) return;
+  observedRoots.add(root);
+  const observer = new MutationObserver((mutations) => {
     if (
-      mutations.every(
-        (mutation) =>
-          mutation.target instanceof Element &&
-          mutation.target.closest(`[${ANNOTATION_OVERLAY_ATTRIBUTE}]`),
+      mutations.every((mutation) =>
+        (mutation.target.nodeType === 1
+          ? (mutation.target as Element)
+          : mutation.target.parentElement
+        )?.closest(`[${ANNOTATION_OVERLAY_ATTRIBUTE}]`),
       )
     )
       return;
+    if (mutations.some((mutation) => mutation.type === "childList"))
+      discoverAnnotationFrames(root.ownerDocument ?? (root as Document));
     scheduleAnchorUpdates();
   });
-  annotationMutationObserver.observe(document.documentElement, {
+  observer.observe(root.nodeType === 9 ? (root as Document).documentElement : root, {
     attributes: true,
     childList: true,
     subtree: true,
     characterData: true,
   });
-};
-if (document.documentElement) observeAnchors();
-else window.addEventListener("DOMContentLoaded", observeAnchors, { once: true });
-
+}
+function observeAnnotationDocument(doc: Document): void {
+  if (observedDocuments.has(doc) || !doc.documentElement) return;
+  observedDocuments.add(doc);
+  doc.addEventListener("pointerover", () => discoverAnnotationFrames(doc), true);
+  doc.addEventListener("pointermove", onAnnotationPointerMove, true);
+  doc.addEventListener("click", onAnnotationClick, true);
+  doc.addEventListener("pointerdown", onAnnotationPointerDown, true);
+  doc.addEventListener("pointermove", onAnnotationPointerDrag, true);
+  doc.addEventListener("pointerup", onAnnotationPointerUp, true);
+  doc.addEventListener("pointercancel", onAnnotationPointerCancel, true);
+  doc.addEventListener("keydown", onAnnotationKeyDown, true);
+  doc.addEventListener(
+    "keyup",
+    (event) => {
+      if (event.code === "Space" && annotationSuspended) {
+        event.preventDefault();
+        suspendAnnotation(false);
+      }
+    },
+    true,
+  );
+  doc.addEventListener("scroll", scheduleAnchorUpdates, true);
+  doc.defaultView?.addEventListener("resize", scheduleAnchorUpdates);
+  doc.defaultView?.addEventListener("blur", () => suspendAnnotation(false));
+  observeAnnotationRoot(doc);
+  discoverAnnotationFrames(doc);
+}
+if (document.documentElement) observeAnnotationDocument(document);
+else
+  window.addEventListener("DOMContentLoaded", () => observeAnnotationDocument(document), {
+    once: true,
+  });
 window.addEventListener("hashchange", scheduleAnchorUpdates);
 window.addEventListener("popstate", scheduleAnchorUpdates);

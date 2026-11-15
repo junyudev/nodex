@@ -184,6 +184,12 @@ const TargetedCommandSchema = <Shape extends z.ZodRawShape>(shape: Shape) =>
   BrowserSidebarTabIdentitySchema.extend(shape).strict();
 
 export const BrowserSidebarCommandSchema = z.union([
+  TargetedCommandSchema({ type: z.literal("retain-annotations"), ids: z.array(BrowserIdSchema) }),
+  TargetedCommandSchema({
+    type: z.literal("set-annotation-presentation"),
+    suspended: z.boolean().optional(),
+    pinsVisible: z.boolean().optional(),
+  }),
   z
     .object({
       type: z.literal("consume-annotations"),
@@ -339,6 +345,7 @@ export const BrowserSidebarCommandSchema = z.union([
   TargetedCommandSchema({
     type: z.literal("set-interaction-mode"),
     mode: z.enum(["browse", "comment"]),
+    flow: z.enum(["batch", "quick"]).optional(),
   }),
   TargetedCommandSchema({
     type: z.literal("quick-annotate"),

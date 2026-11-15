@@ -1,3 +1,5 @@
+import { resolveThreadInProgressFollowUpMode } from "@/lib/thread-composer-follow-up-mode";
+import { registerBrowserAnnotationAdmission } from "../../../browser-sidebar/browser-annotation-delivery";
 import { resolveBrowserAnnotationDestination } from "../../../../../shared/browser-annotation";
 import type { ComposerChatKey } from "@/lib/composer-draft-intents";
 import { useRegisterPluginAppFollowUp } from "@/features/local-conversation/view/plugin-app-conversation";
@@ -2420,6 +2422,7 @@ function HydratedThreadComposer({
       submitAction: StageThreadsComposerSubmitAction | null;
       imageEditIntent?: ImageEditSubmissionIntent;
       pausedQueueResolution?: "resume" | "clear";
+      browserAnnotations?: readonly BrowserAnnotationAttachment[];
     },
     pageReferences: readonly PageReference[],
   ): Promise<boolean> => {
@@ -2452,18 +2455,35 @@ function HydratedThreadComposer({
       toastUnsentMessage("One or more images couldn’t be read. Add them again and retry.");
       return false;
     }
-    const effectiveImageAttachments = intentImageAttachments ?? imageAttachments;
-    const effectiveAttachmentState: ComposerAttachmentState = input.imageEditIntent
-      ? { ...attachmentState, imageAttachments: effectiveImageAttachments }
-      : attachmentState;
-    const submittedPastedTextFiles = readSubmittedPastedTextFiles();
-    const nextPrompt =
-      input.imageEditIntent?.promptRaw ??
-      compileImageEditComposerPrompt({
-        draft: imageEditDraft,
-        generalInstructions: input.prompt,
-      });
-    const isImageEditFollowUp = Boolean(input.imageEditIntent) || imageEditDraft.mode !== null;
+    const preserveDraft = input.browserAnnotations !== undefined;
+    const submitContext: typeof appModelContext.submit = (submit) =>
+      preserveDraft ? submit([]) : appModelContext.submit(submit);
+    const effectiveImageAttachments = preserveDraft
+      ? []
+      : (intentImageAttachments ?? imageAttachments);
+    const effectiveAttachmentState: ComposerAttachmentState = preserveDraft
+      ? {
+          fileAttachments: [],
+          addedFiles: [],
+          imageAttachments: [],
+          appshotContexts: [],
+          pastedTextAttachments: [],
+          commentAttachments: [],
+          browserAnnotationAttachments: input.browserAnnotations!,
+        }
+      : input.imageEditIntent
+        ? { ...attachmentState, imageAttachments: effectiveImageAttachments }
+        : attachmentState;
+    const submittedPastedTextFiles = preserveDraft ? [] : readSubmittedPastedTextFiles();
+    const nextPrompt = preserveDraft
+      ? input.prompt
+      : (input.imageEditIntent?.promptRaw ??
+        compileImageEditComposerPrompt({
+          draft: imageEditDraft,
+          generalInstructions: input.prompt,
+        }));
+    const isImageEditFollowUp =
+      !preserveDraft && (Boolean(input.imageEditIntent) || imageEditDraft.mode !== null);
     const trimmedPrompt = nextPrompt.trim();
     if (
       buildComposerImagePromptInputs(effectiveImageAttachments, executionHostId).length !==
@@ -2515,7 +2535,7 @@ function HydratedThreadComposer({
     const goalDraftResult = buildComposerThreadGoalDraft({
       promptRaw: nextPrompt,
       goalActionAvailable,
-      goalModeActive: isImageEditFollowUp ? false : goalModeActive,
+      goalModeActive: preserveDraft || isImageEditFollowUp ? false : goalModeActive,
       hasAttachments: hasSubmittableComposerAttachmentState(effectiveAttachmentState),
     });
 
@@ -2542,7 +2562,7 @@ function HydratedThreadComposer({
       }
 
       const submitted = await submitThreadGoalDraft(submissionDraft);
-      if (submitted) await finalizeEditedQueuedFollowUp();
+      if (submitted) if (!preserveDraft) await finalizeEditedQueuedFollowUp();
       return submitted;
     }
 
@@ -2550,7 +2570,7 @@ function HydratedThreadComposer({
       return false;
     }
 
-    const sideChatPrompt = parseSideChatCommand(trimmedPrompt);
+    const sideChatPrompt = preserveDraft ? null : parseSideChatCommand(trimmedPrompt);
     if (sideChatPrompt !== null) {
       if (model.conversation?.source?.sideConversation === true) {
         toast.danger("'/side' is unavailable in side chats. Return to the main thread first", {
@@ -2578,7 +2598,7 @@ function HydratedThreadComposer({
             }),
             model.hostId,
           );
-          await appModelContext.submit((mcpAppModelContextAttachments) =>
+          await submitContext((mcpAppModelContextAttachments) =>
             openSideChat({
               prompt: sideChatPrompt,
               promptInput: withComposerModelContext(
@@ -2588,7 +2608,7 @@ function HydratedThreadComposer({
               ),
             }),
           );
-          await finalizeEditedQueuedFollowUp();
+          if (!preserveDraft) await finalizeEditedQueuedFollowUp();
           await cleanupSubmittedPastedTextAttachments(submittedPastedTextFiles);
           completeSuccessfulSubmission(sideChatPrompt);
           return true;
@@ -2642,7 +2662,7 @@ function HydratedThreadComposer({
             }
             await intelligenceController.flush();
             const startThreadForSession = actions.onStartThreadForSession;
-            await appModelContext.submit(async (mcpAppModelContextAttachments) => {
+            await submitContext(async (mcpAppModelContextAttachments) => {
               const startCompletion = startThreadForSession({
                 projectId: target.projectId,
                 sessionId: target.sessionId,
@@ -2657,13 +2677,14 @@ function HydratedThreadComposer({
                 runInEnvironmentPath: target.runInEnvironmentPath,
                 worktreeStartingState: target.worktreeStartingState,
               });
-              clearAdmittedSubmission();
+              if (!preserveDraft) clearAdmittedSubmission();
               completedFirstSubmission = true;
               await startCompletion;
-              clearBrowserAnnotationAttachments(
-                annotationDestination,
-                attachmentState.browserAnnotationAttachments.map((annotation) => annotation.id),
-              );
+              if (!preserveDraft)
+                clearBrowserAnnotationAttachments(
+                  annotationDestination,
+                  attachmentState.browserAnnotationAttachments.map((annotation) => annotation.id),
+                );
             });
             recordSuccessfulPromptSubmit(nextPrompt);
           } else {
@@ -2673,10 +2694,10 @@ function HydratedThreadComposer({
         } else if (model.isThreadRunning && approvals.pending.length === 0) {
           const threadId = model.conversation.threadId;
           if (isImageEditFollowUp || input.submitAction === "queue") {
-            if (queuedFollowUpEdit && actions.onReplaceQueuedFollowUp) {
+            if (!preserveDraft && queuedFollowUpEdit && actions.onReplaceQueuedFollowUp) {
               const replaceQueuedFollowUp = actions.onReplaceQueuedFollowUp;
               const edit = queuedFollowUpEdit;
-              await appModelContext.submit(async (mcpAppModelContextAttachments) => {
+              await submitContext(async (mcpAppModelContextAttachments) => {
                 const replaced = await replaceQueuedFollowUp(
                   threadId,
                   edit.followUpId,
@@ -2696,7 +2717,7 @@ function HydratedThreadComposer({
               });
               clearQueuedFollowUpEdit();
             } else {
-              await appModelContext.submit((mcpAppModelContextAttachments) =>
+              await submitContext((mcpAppModelContextAttachments) =>
                 actions.onEnqueueQueuedFollowUp(threadId, nextPrompt, {
                   collaborationMode: model.selectedCollaborationMode,
                   promptInput: withComposerModelContext(
@@ -2706,10 +2727,10 @@ function HydratedThreadComposer({
                   ),
                 }),
               );
-              await finalizeEditedQueuedFollowUp();
+              if (!preserveDraft) await finalizeEditedQueuedFollowUp();
             }
           } else if (input.submitAction === "steer") {
-            await appModelContext.submit(async (mcpAppModelContextAttachments) => {
+            await submitContext(async (mcpAppModelContextAttachments) => {
               const effectivePromptInput = withComposerModelContext(
                 promptInput,
                 nextPrompt,
@@ -2734,7 +2755,7 @@ function HydratedThreadComposer({
                 collaborationMode: model.selectedCollaborationMode,
               });
             });
-            await finalizeEditedQueuedFollowUp();
+            if (!preserveDraft) await finalizeEditedQueuedFollowUp();
           } else {
             toastUnsentMessage(
               "The Agent is still working. Choose Queue or Steer to send a follow-up.",
@@ -2755,7 +2776,7 @@ function HydratedThreadComposer({
           const submittedPresentation = actions.onCaptureSubmissionPresentation?.();
           await intelligenceController.flush();
           const predictionSubmission = composerPrediction.beforeSubmit();
-          await appModelContext.submit((mcpAppModelContextAttachments) =>
+          await submitContext((mcpAppModelContextAttachments) =>
             actions.onSendPrompt(nextPrompt, {
               submittedPresentation,
               collaborationMode: model.selectedCollaborationMode,
@@ -2781,7 +2802,7 @@ function HydratedThreadComposer({
               });
             }
           }
-          await finalizeEditedQueuedFollowUp();
+          if (!preserveDraft) await finalizeEditedQueuedFollowUp();
         }
         if (target?.runInTarget !== "newWorktree") {
           await cleanupSubmittedPastedTextAttachments(submittedPastedTextFiles);
@@ -2814,7 +2835,7 @@ function HydratedThreadComposer({
             }
           }
         }
-        if (!completedFirstSubmission) {
+        if (!preserveDraft && !completedFirstSubmission) {
           completeSuccessfulSubmission(nextPrompt);
         }
         return true;
@@ -2825,7 +2846,7 @@ function HydratedThreadComposer({
         },
         onError: (error) => {
           optimisticImageEdit?.rollback();
-          if (completedFirstSubmission) {
+          if (!preserveDraft && completedFirstSubmission) {
             // Submission admission clears the draft immediately so its presentation can move to the
             // transcript. A terminal launch failure restores the exact local payload, making the
             // ordinary Send action the explicit retry path (and therefore a new launch identity).
@@ -3850,6 +3871,27 @@ function HydratedThreadComposer({
       });
     },
   );
+  const admitBrowserAnnotations = useEffectEvent(
+    async (annotations: readonly BrowserAnnotationAttachment[]) => {
+      if (busyAction !== null) return false;
+      return submitPromptWithPageReferences(
+        {
+          prompt: "",
+          browserAnnotations: annotations,
+          submitAction: model.isThreadRunning
+            ? resolveThreadInProgressFollowUpMode({ isQueueingEnabled: model.isQueueingEnabled })
+            : "send",
+        },
+        [],
+      );
+    },
+  );
+  useEffect(() => {
+    if (!annotationDestination || !composerVisible) return;
+    return registerBrowserAnnotationAdmission(annotationDestination, (annotations) =>
+      admitBrowserAnnotations(annotations),
+    );
+  }, [annotationDestination, composerVisible]);
   const stopUnavailableReason = composerActionState.unavailableReason ?? null;
   const submitAnnotation = useEffectEvent(() => {
     selectionDraft.consumeSubmission();

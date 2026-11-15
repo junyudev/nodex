@@ -3283,6 +3283,7 @@ export interface IpcEvents {
     annotationId: string;
     anchor?: import("./browser-annotation").BrowserAnnotationAnchor;
   };
+  "browser-annotation-toggle": import("./browser-sidebar").BrowserSidebarTabIdentity;
   "browser-annotation-cancel": import("./browser-sidebar").BrowserSidebarTabIdentity;
   "browser-annotation-selection": BrowserAnnotationRoutedSelectionEvent;
   "browser-annotation-anchor-update": BrowserAnnotationRoutedAnchorUpdateEvent;

@@ -26,6 +26,8 @@ type BrowserSidebarRegisteredCommand = ReturnType<typeof defineBrowserSidebarCom
 
 /** Exhaustive semantic registration for the aggregate Browser runtime channel. */
 const browserSidebarCommandDefinitions = {
+  "retain-annotations": defineBrowserSidebarCommand("retain-annotations"),
+  "set-annotation-presentation": defineBrowserSidebarCommand("set-annotation-presentation"),
   "configure-annotations": defineBrowserSidebarCommand("configure-annotations"),
   "save-annotation": defineBrowserSidebarCommand("save-annotation"),
   "remove-annotations": defineBrowserSidebarCommand("remove-annotations"),

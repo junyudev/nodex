@@ -273,6 +273,10 @@ export interface BrowserSidebarTabSnapshot extends BrowserSidebarTabIdentity {
   annotations?: BrowserSavedAnnotation[];
   annotationDestination?: string | null;
   annotationSessionId?: string | null;
+  annotationFlow?: import("./browser-annotation-interaction").BrowserAnnotationFlow;
+  annotationSuspended?: boolean;
+  annotationPinsVisible?: boolean;
+  annotationAgentControlled?: boolean;
   browserStorageId?: string;
   projectId: string | null;
   webContentsId: number | null;
@@ -499,6 +503,12 @@ export interface BrowserSidebarWebviewDestroyed extends BrowserSidebarTabIdentit
 type BrowserSidebarTargetedCommand<Command> = Command & BrowserSidebarTabIdentity;
 
 export type BrowserSidebarCommand =
+  | BrowserSidebarTargetedCommand<{ type: "retain-annotations"; ids: string[] }>
+  | BrowserSidebarTargetedCommand<{
+      type: "set-annotation-presentation";
+      suspended?: boolean;
+      pinsVisible?: boolean;
+    }>
   | { type: "consume-annotations"; destination: string; ids: string[] }
   | BrowserSidebarTargetedCommand<{
       type: "configure-annotations";
@@ -611,6 +621,7 @@ export type BrowserSidebarCommand =
   | BrowserSidebarTargetedCommand<{
       type: "set-interaction-mode";
       mode: BrowserSidebarInteractionMode;
+      flow?: import("./browser-annotation-interaction").BrowserAnnotationFlow;
     }>
   | BrowserSidebarTargetedCommand<{
       type: "quick-annotate";

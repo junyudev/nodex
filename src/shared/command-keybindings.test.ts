@@ -628,3 +628,31 @@ describe("command keybindings", () => {
     expect(formatAcceleratorLabel("Shift+/", "macOS")).toBe("?");
   });
 });
+
+test("Browser annotation toggle has a platform default and follows rebinding", () => {
+  expect(
+    matchesKeyboardEventToCommand(
+      keyboardEvent(".", { metaKey: true, shiftKey: true }),
+      createCommandKeymapState({}, "macOS"),
+      "toggleBrowserAnnotation",
+    ),
+  ).toBe(true);
+  const custom = createCommandKeymapState(
+    { toggleBrowserAnnotation: ["CmdOrCtrl+Alt+A"] },
+    "macOS",
+  );
+  expect(
+    matchesKeyboardEventToCommand(
+      keyboardEvent(".", { metaKey: true, shiftKey: true }),
+      custom,
+      "toggleBrowserAnnotation",
+    ),
+  ).toBe(false);
+  expect(
+    matchesKeyboardEventToCommand(
+      keyboardEvent("a", { metaKey: true, altKey: true }),
+      custom,
+      "toggleBrowserAnnotation",
+    ),
+  ).toBe(true);
+});

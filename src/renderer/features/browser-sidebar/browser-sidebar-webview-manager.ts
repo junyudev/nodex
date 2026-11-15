@@ -436,6 +436,10 @@ export class BrowserSidebarRendererWebviewManager {
       enabled: boolean;
       selectionMode: "inspect" | "region";
       sessionId: string;
+      shortcuts?: {
+        bindings: string[];
+        platform: import("../../../shared/command-keybindings").RuntimePlatform;
+      };
     }
   >();
   private readonly annotationDesignPreviews = new Map<
@@ -880,15 +884,20 @@ export class BrowserSidebarRendererWebviewManager {
     enabled: boolean,
     sessionId: string,
     selectionMode: "inspect" | "region" = "inspect",
+    shortcuts?: {
+      bindings: string[];
+      platform: import("../../../shared/command-keybindings").RuntimePlatform;
+    },
   ): void {
     const key = makeHostKey(input);
-    this.annotationModes.set(key, { enabled, sessionId, selectionMode });
+    this.annotationModes.set(key, { enabled, sessionId, selectionMode, shortcuts });
     const host = this.hosts.get(key);
     if (!host || host.disposed) return;
     host.send("browser-annotation-mode", {
       enabled,
       selectionMode,
       sessionId,
+      shortcuts,
     });
   }
 

@@ -804,10 +804,14 @@ provides attribution, and removing it drops Agent authorship.
   messages are enumerated and rebound to that registered guest route; remote
   pages receive no Node, filesystem, arbitrary IPC/invoke, or credential
   capability. Annotation selection, anchor updates, pin-open and cancel messages are
-  rebound to that registered route. Pin-open accepts only a saved note on the current
+  rebound to that registered route. Annotation toggle and suspension are likewise
+  enumerated guest messages bound to that route, with no send or destination capability.
+  Open shadow roots and same-origin frames use ordinary DOM access; closed roots and
+  cross-origin frames remain opaque. Pin-open accepts only a saved note on the current
   document; selection validates the current editor session and document URL. Screenshot
   readiness is correlated to a Main-issued token on the registered guest, with a bounded
-  wait and unconditional cleanup. Pages cannot choose a chat destination or save notes.
+  wait and unconditional cleanup. Readiness anchors are validated against the saved note
+  and current document before cropping. Pages cannot choose a chat destination or save notes.
 - Browser navigation has distinct entry-point policies. Ordinary user and trusted
   application loads pass their URL directly to Chromium, with empty tabs represented
   by `about:blank`; they have no universal scheme, userinfo, or URL-length filter.

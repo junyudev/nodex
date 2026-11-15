@@ -539,6 +539,37 @@ export const live: Layer.Layer<
         ]);
       }),
     );
+    yield* ipc.on("browser-annotation-toggle", (event) =>
+      Effect.sync(() => {
+        const owner = ownerForGuest(guest, event);
+        const identity = guest.getIdentity(event.sender.id);
+        if (!owner || !identity) {
+          console.warn("Browser annotation toggle from unregistered guest", {
+            guestId: event.sender.id,
+          });
+          return;
+        }
+        safeSendToWebContents(owner, "browser-annotation-toggle", [identity]);
+      }),
+    );
+    yield* ipc.on("browser-annotation-suspend", (event, input: unknown) => {
+      const owner = ownerForGuest(guest, event);
+      const identity = guest.getIdentity(event.sender.id);
+      const parsed = z.object({ suspended: z.boolean() }).strict().safeParse(input);
+      if (!owner || !identity || !parsed.success)
+        return Effect.logWarning("Browser annotation suspension refused", {
+          guestId: event.sender.id,
+        });
+      return browser
+        .applyCommand(
+          { type: "set-annotation-presentation", ...identity, suspended: parsed.data.suspended },
+          { ownerWebContentsId: owner.id },
+        )
+        .pipe(
+          Effect.catch((error) => Effect.logWarning("Could not suspend Browser annotation", error)),
+          Effect.asVoid,
+        );
+    });
     yield* ipc.on("browser-annotation-cancel", (event) =>
       Effect.sync(() => {
         const owner = ownerForGuest(guest, event);

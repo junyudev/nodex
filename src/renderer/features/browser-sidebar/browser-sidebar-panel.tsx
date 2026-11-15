@@ -1,3 +1,16 @@
+import { deliverBrowserAnnotations } from "./browser-annotation-delivery";
+import { waitForBrowserAnnotationEvidence } from "./browser-annotation-attachments";
+import {
+  browserAnnotationDefaultAction,
+  browserAnnotationKeyAction,
+  type BrowserAnnotationAction,
+  type BrowserAnnotationFlow,
+} from "../../../shared/browser-annotation-interaction";
+import { useBrowserAnnotationKeymap } from "./browser-annotation-keyboard";
+import {
+  getCommandKeybindings,
+  matchesKeyboardEventToCommand,
+} from "../../../shared/command-keybindings";
 import { openModal } from "@/lib/modal-registry";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { BrowserAnnotationDiscardDialog } from "./browser-annotation-discard-dialog";
@@ -160,6 +173,9 @@ import {
   PlayIcon,
   PlusIcon,
   ResetIcon,
+  SendToChatIcon,
+  VisibilityIcon,
+  VisibilityOffIcon,
   SettingsGeneralIcon,
   SidePanelBrowserIcon,
   SearchIcon,
@@ -372,7 +388,22 @@ export function BrowserSidebarPanel({
   } = annotationDraft;
   const isBlank = !snapshot.hasBrowserPage || isBlankBrowserUrl(snapshot.url);
   const commentMode = snapshot.interactionMode === "comment";
-  const annotationCount = snapshot.annotations?.length ?? 0;
+  const annotationCount =
+    snapshot.annotations?.filter((annotation) => annotation.deliveryState !== "sending").length ??
+    0;
+  const annotationFlow = snapshot.annotationFlow ?? "batch";
+  const annotationAgentControlled = snapshot.annotationAgentControlled === true;
+  const annotationKeymap = useBrowserAnnotationKeymap();
+  const annotationShortcuts = useMemo(
+    () => ({
+      bindings: getCommandKeybindings(annotationKeymap, "toggleBrowserAnnotation").flatMap(
+        (binding) => (binding.key ? [binding.key] : []),
+      ),
+      platform: annotationKeymap.platform,
+    }),
+    [annotationKeymap],
+  );
+  const [annotationSending, setAnnotationSending] = useState(false);
   const pageActionsDisabled = snapshot.pageActionsDisabled || isBlank;
   const canOpenExternally = !snapshot.failure || isErrorPageExternalUrl(snapshot.failure.failedUrl);
   const [initialWebviewUrl, setInitialWebviewUrl] = useState(snapshot.url);
@@ -533,6 +564,156 @@ export function BrowserSidebarPanel({
       }),
     [browserIdentity, command, snapshot.annotations, snapshot.url],
   );
+
+  const sendSavedAnnotations = async (ids: readonly string[]) => {
+    if (!annotationDestination) {
+      showBrowserStatus("The chat is unavailable. Your annotations are saved");
+      return false;
+    }
+    const annotations = await waitForBrowserAnnotationEvidence(annotationDestination, ids);
+    const result = await deliverBrowserAnnotations({
+      destination: annotationDestination,
+      annotations,
+      consume: async (admittedIds) => {
+        const cleared = await command({
+          type: "consume-annotations",
+          destination: annotationDestination,
+          ids: [...admittedIds],
+        });
+        if (!cleared.ok) throw new Error(cleared.message);
+      },
+    });
+    if (!result.admitted) {
+      const retained = await command({
+        type: "retain-annotations",
+        ...browserIdentity,
+        ids: [...ids],
+      });
+      if (!retained.ok) showBrowserStatus(retained.message);
+    }
+    if (result.reason) showBrowserStatus(result.reason);
+    return result.admitted;
+  };
+  const submitBrowserAnnotation = (action: BrowserAnnotationAction) => {
+    if (submittingAnnotationRef.current) return;
+    if (!annotationDestination) {
+      showBrowserStatus("Open a chat or Agent Dock to annotate");
+      return;
+    }
+    submittingAnnotationRef.current = true;
+    setAnnotationSending(true);
+    const submittedEditorId = editorIdRef.current;
+    // A promise chain rather than try/finally keeps this component compilable.
+    const submit = async () => {
+      const result = await command({
+        type: "save-annotation",
+        ...browserIdentity,
+        input: {
+          editorId: submittedEditorId,
+          annotationId: editingAnnotationId,
+          deliveryState: action === "send" ? "sending" : "saved",
+          sessionId: annotationSessionIdRef.current,
+          destination: annotationDestination,
+          pageUrl: annotationDraft.pageUrl,
+          anchors: annotationAnchors,
+          note: annotationNote,
+          intent: annotationIntent,
+          designChanges:
+            annotationIntent === "designChange" && annotationDesignChange
+              ? [annotationDesignChange]
+              : [],
+        },
+      });
+      if (!result.ok) {
+        showBrowserStatus(result.message);
+        return;
+      }
+      const idleEditorId = createSecureRuntimeId("annotation-editor");
+      if (editorIdRef.current === submittedEditorId) {
+        setAnnotationDraft((current) => resetBrowserAnnotationDraft(current));
+        setEditingAnnotationId(undefined);
+        editorIdRef.current = idleEditorId;
+      }
+      if (action !== "send" || !result.annotation) return;
+      const admitted = await sendSavedAnnotations([result.annotation.id]);
+      if (admitted && annotationFlow === "quick" && editorIdRef.current === idleEditorId)
+        await command({ type: "set-interaction-mode", ...browserIdentity, mode: "browse" });
+    };
+    return submit()
+      .catch((error: unknown) =>
+        showBrowserStatus(error instanceof Error ? error.message : "Could not submit annotation"),
+      )
+      .finally(() => {
+        submittingAnnotationRef.current = false;
+        setAnnotationSending(false);
+      });
+  };
+  useEffect(() => {
+    if (!isVisible) return;
+    const toggle = () => {
+      void command({
+        type: "set-interaction-mode",
+        ...browserIdentity,
+        mode: commentMode ? "browse" : "comment",
+        flow: "batch",
+      }).then((result) => {
+        if (!result.ok) showBrowserStatus(result.message);
+      });
+    };
+    const stop = window.api?.on("browser-annotation-toggle", (payload) => {
+      if (matchesBrowserSidebarTabIdentity(payload as BrowserSidebarTabIdentity, browserIdentity))
+        toggle();
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.isComposing ||
+        event.repeat ||
+        !matchesKeyboardEventToCommand(event, annotationKeymap, "toggleBrowserAnnotation")
+      )
+        return;
+      event.preventDefault();
+      event.stopPropagation();
+      toggle();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      stop?.();
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [annotationKeymap, browserIdentity, command, commentMode, isVisible]);
+  useEffect(() => {
+    if (!commentMode || !isVisible) return;
+    const change = (event: KeyboardEvent) => {
+      if (
+        event.code !== "Space" ||
+        event.isComposing ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.shiftKey ||
+        (event.target instanceof HTMLElement &&
+          event.target.closest("input,textarea,[contenteditable=true]"))
+      )
+        return;
+      event.preventDefault();
+      void command({
+        type: "set-annotation-presentation",
+        ...browserIdentity,
+        suspended: event.type === "keydown",
+      });
+    };
+    const release = () => {
+      void command({ type: "set-annotation-presentation", ...browserIdentity, suspended: false });
+    };
+    window.addEventListener("keydown", change, true);
+    window.addEventListener("keyup", change, true);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("keydown", change, true);
+      window.removeEventListener("keyup", change, true);
+      window.removeEventListener("blur", release);
+    };
+  }, [browserIdentity, command, commentMode, isVisible]);
 
   const shouldMountWebview = !isBlank || activeBrowserUseTab !== null;
   const workspaceAddressCandidates = addressSuggestions.useWorkspaceSuggestions(
@@ -706,6 +887,7 @@ export function BrowserSidebarPanel({
       commentMode,
       annotationSessionId,
       annotationSelectionMode,
+      annotationShortcuts,
     );
     return () => {
       browserSidebarRendererWebviewManager.setAnnotationMode(
@@ -715,7 +897,14 @@ export function BrowserSidebarPanel({
         annotationSelectionMode,
       );
     };
-  }, [annotationSelectionMode, browserIdentity, browserRuntimeAvailable, commentMode, isBlank]);
+  }, [
+    annotationSelectionMode,
+    annotationShortcuts,
+    browserIdentity,
+    browserRuntimeAvailable,
+    commentMode,
+    isBlank,
+  ]);
 
   useEffect(() => {
     if (!browserRuntimeAvailable) return undefined;
@@ -747,7 +936,12 @@ export function BrowserSidebarPanel({
     browserSidebarRendererWebviewManager.setAnnotationDesignPreview(
       browserIdentity,
       annotationSessionId,
-      commentMode && annotationIntent === "designChange" ? annotationDesignChange : null,
+      commentMode &&
+        !annotationAgentControlled &&
+        !snapshot.annotationSuspended &&
+        annotationIntent === "designChange"
+        ? annotationDesignChange
+        : null,
       annotationOriginalView,
     );
     return () => {
@@ -762,6 +956,8 @@ export function BrowserSidebarPanel({
     annotationDesignChange,
     annotationIntent,
     annotationOriginalView,
+    annotationAgentControlled,
+    snapshot.annotationSuspended,
     browserIdentity,
     browserRuntimeAvailable,
     commentMode,
@@ -1549,13 +1745,17 @@ export function BrowserSidebarPanel({
               >
                 <BrowserToolbarButton
                   label={
-                    commentMode
-                      ? "Exit comment mode"
-                      : annotationDestination
-                        ? "Annotate"
-                        : "Open a chat or Agent Dock to annotate"
+                    annotationAgentControlled
+                      ? "The Agent controls this page. Annotating resumes when control ends"
+                      : commentMode
+                        ? "Exit comment mode"
+                        : annotationDestination
+                          ? "Annotate"
+                          : "Open a chat or Agent Dock to annotate"
                   }
-                  disabled={pageActionsDisabled || !annotationDestination}
+                  disabled={
+                    pageActionsDisabled || !annotationDestination || annotationAgentControlled
+                  }
                   active={commentMode}
                   className={cn((commentMode || annotationCount > 0) && "aspect-auto !px-2")}
                   onClick={() => {
@@ -1587,6 +1787,57 @@ export function BrowserSidebarPanel({
                   ) : null}
                 </BrowserToolbarButton>
               </div>
+              {annotationCount > 0 ? (
+                <>
+                  <BrowserToolbarButton
+                    label={
+                      annotationCount === 1
+                        ? "Send annotation to chat"
+                        : `Send ${annotationCount} annotations to chat`
+                    }
+                    disabled={annotationSending}
+                    onClick={() => {
+                      if (submittingAnnotationRef.current) return;
+                      submittingAnnotationRef.current = true;
+                      setAnnotationSending(true);
+                      void sendSavedAnnotations(
+                        (snapshot.annotations ?? []).map((annotation) => annotation.id),
+                      )
+                        .catch((error: unknown) =>
+                          showBrowserStatus(
+                            error instanceof Error ? error.message : "Could not send annotations",
+                          ),
+                        )
+                        .finally(() => {
+                          submittingAnnotationRef.current = false;
+                          setAnnotationSending(false);
+                        });
+                    }}
+                  >
+                    <SendToChatIcon className="icon-sm" />
+                  </BrowserToolbarButton>
+                  <BrowserToolbarButton
+                    label={
+                      snapshot.annotationPinsVisible === false
+                        ? "Show annotation pins"
+                        : "Hide annotation pins"
+                    }
+                    onClick={() => {
+                      void command({
+                        type: "set-annotation-presentation",
+                        ...browserIdentity,
+                        pinsVisible: snapshot.annotationPinsVisible === false,
+                      });
+                    }}
+                  >
+                    {snapshot.annotationPinsVisible === false ? (
+                      <VisibilityOffIcon className="icon-sm" />
+                    ) : (
+                      <VisibilityIcon className="icon-sm" />
+                    )}
+                  </BrowserToolbarButton>
+                </>
+              ) : null}
               {annotationCount > 0 ? (
                 <BrowserAnnotationDiscardAction
                   count={annotationCount}
@@ -1749,7 +2000,7 @@ export function BrowserSidebarPanel({
             onViewportChange={updateViewport}
             onCloseDeviceToolbar={toggleDeviceToolbar}
           >
-            {commentMode ? (
+            {commentMode && !snapshot.annotationSuspended && !annotationAgentControlled ? (
               <BrowserCommentOverlay identity={browserIdentity}>
                 <BrowserAnnotationEditorPlacement
                   identity={browserIdentity}
@@ -1819,48 +2070,10 @@ export function BrowserSidebarPanel({
                           ),
                         );
                     }}
-                    onAddToComposer={() => {
-                      if (submittingAnnotationRef.current) return;
-                      if (!annotationDestination) {
-                        showBrowserStatus("Open a chat or Agent Dock to annotate");
-                        return;
-                      }
-                      submittingAnnotationRef.current = true;
-                      void command({
-                        type: "save-annotation",
-                        ...browserIdentity,
-                        input: {
-                          editorId: editorIdRef.current,
-                          annotationId: editingAnnotationId,
-                          sessionId: annotationSessionIdRef.current,
-                          destination: annotationDestination,
-                          pageUrl: annotationDraft.pageUrl,
-                          anchors: annotationAnchors,
-                          note: annotationNote,
-                          intent: annotationIntent,
-                          designChanges:
-                            annotationIntent === "designChange" && annotationDesignChange
-                              ? [annotationDesignChange]
-                              : [],
-                        },
-                      })
-                        .then((result) => {
-                          if (!result.ok) {
-                            showBrowserStatus(result.message);
-                            return;
-                          }
-                          setAnnotationDraft((current) => resetBrowserAnnotationDraft(current));
-                          setEditingAnnotationId(undefined);
-                          editorIdRef.current = createSecureRuntimeId("annotation-editor");
-                        })
-                        .catch((error: unknown) =>
-                          showBrowserStatus(
-                            error instanceof Error ? error.message : "Could not save annotation",
-                          ),
-                        )
-                        .finally(() => {
-                          submittingAnnotationRef.current = false;
-                        });
+                    flow={annotationFlow}
+                    pending={annotationSending}
+                    onSubmit={(action) => {
+                      void submitBrowserAnnotation(action);
                     }}
                   />
                 </BrowserAnnotationEditorPlacement>
@@ -3379,7 +3592,9 @@ export function BrowserAnnotationComposer({
   onSelectionModeChange,
   onRemoveAnchor,
   onDiscard,
-  onAddToComposer,
+  onSubmit,
+  flow = "batch",
+  pending = false,
   editing = false,
   onRemove,
 }: {
@@ -3400,7 +3615,9 @@ export function BrowserAnnotationComposer({
   onSelectionModeChange: (mode: "inspect" | "region") => void;
   onRemoveAnchor: (anchorId: string) => void;
   onDiscard: () => void;
-  onAddToComposer: () => void;
+  onSubmit: (action: BrowserAnnotationAction) => void;
+  flow?: BrowserAnnotationFlow;
+  pending?: boolean;
   editing?: boolean;
   onRemove?: () => void;
 }) {
@@ -3572,10 +3789,18 @@ export function BrowserAnnotationComposer({
         autoFocus
         aria-label="Annotation note"
         onKeyDown={(event) => {
-          if (event.nativeEvent.isComposing || event.repeat) return;
-          if (event.key !== "Enter" || event.shiftKey) return;
+          const action = browserAnnotationKeyAction({
+            flow,
+            key: event.key,
+            shiftKey: event.shiftKey,
+            metaKey: event.metaKey,
+            ctrlKey: event.ctrlKey,
+            isComposing: event.nativeEvent.isComposing,
+            repeat: event.repeat,
+          });
+          if (!action || pending) return;
           event.preventDefault();
-          onAddToComposer();
+          onSubmit(action);
         }}
         value={note}
         maxLength={8_192}
@@ -3600,13 +3825,35 @@ export function BrowserAnnotationComposer({
         >
           Cancel
         </button>
-        <button
-          type="button"
-          className="rounded-lg bg-token-foreground px-2.5 py-1.5 text-xs font-medium text-token-background hover:opacity-90"
-          onClick={onAddToComposer}
-        >
-          Save
-        </button>
+        {(
+          [
+            browserAnnotationDefaultAction(flow),
+            browserAnnotationDefaultAction(flow) === "save" ? "send" : "save",
+          ] as const
+        ).map((action, index) => (
+          <button
+            key={action}
+            type="button"
+            aria-label={action === "save" ? "Save" : "Send now"}
+            disabled={pending}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs",
+              index === 0
+                ? "bg-token-foreground font-medium text-token-background hover:opacity-90"
+                : "text-token-text-secondary hover:bg-token-list-hover-background",
+            )}
+            onClick={() => onSubmit(action)}
+          >
+            {action === "save" ? "Save" : "Send"}
+            <span aria-hidden="true" className="opacity-60">
+              {index === 0
+                ? "↵"
+                : navigator.platform.toUpperCase().includes("MAC")
+                  ? "⌘↵"
+                  : "Ctrl↵"}
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   );

@@ -1027,6 +1027,7 @@ export class BrowserState {
         if (hadOrdinaryTab) this.unregisterTab(key);
 
         this.browserUseTabs.delete(key);
+        if (this.tabs.has(key)) this.updateTab(key, { annotationAgentControlled: false });
         this.browserUseNavigationRestrictions.delete(key);
         this.browserUseCursors.delete(key);
         this.browserUseViewportSizes.delete(key);
@@ -1879,6 +1880,11 @@ export class BrowserState {
           };
         }
         if (command.type === "save-annotation") {
+          if (this.isBrowserUseIdentity(command))
+            return {
+              ok: false,
+              message: "The Agent controls this page. Annotating resumes when control ends",
+            };
           const guestId = tab.webContentsId;
           if (guestId === null || !this.runtimeRegistry.getGuestOwnership(guestId))
             return {
@@ -1887,6 +1893,23 @@ export class BrowserState {
             };
           const result = this.annotationOwner(key).save(command.input, tab.url, tab.title);
           return result;
+        }
+        if (command.type === "set-annotation-presentation") {
+          return {
+            ok: true,
+            snapshot: this.updateTab(key, {
+              ...(command.suspended === undefined
+                ? {}
+                : { annotationSuspended: command.suspended }),
+              ...(command.pinsVisible === undefined
+                ? {}
+                : { annotationPinsVisible: command.pinsVisible }),
+            }),
+          };
+        }
+        if (command.type === "retain-annotations") {
+          this.annotationOwner(key).retain(command.ids);
+          return { ok: true };
         }
         if (command.type === "remove-annotations") {
           this.annotationOwner(key).remove(command.ids);
@@ -2036,16 +2059,31 @@ export class BrowserState {
         }
 
         if (command.type === "set-interaction-mode") {
-          const snapshot = this.updateTab(key, { interactionMode: command.mode });
+          if (command.mode === "comment" && this.isBrowserUseIdentity(command))
+            return {
+              ok: false,
+              message: "The Agent controls this page. Annotating resumes when control ends",
+            };
+          const snapshot = this.updateTab(key, {
+            interactionMode: command.mode,
+            annotationFlow: command.flow ?? "batch",
+            annotationSuspended: false,
+          });
           return { ok: true, snapshot };
         }
 
         if (command.type === "quick-annotate") {
+          if (this.isBrowserUseIdentity(command))
+            return { ok: false, message: "The Agent controls this page" };
           const contents = this.getAttachedWebContents(tab);
           if (!contents || contents.isDestroyed()) {
             return { ok: false, message: "Browser webview is not attached" };
           }
-          const snapshot = this.updateTab(key, { interactionMode: "comment" });
+          const snapshot = this.updateTab(key, {
+            interactionMode: "comment",
+            annotationFlow: "quick",
+            annotationSuspended: false,
+          });
           contents.send("browser-annotation-mode", {
             enabled: true,
             selectionMode: "inspect",
@@ -2476,7 +2514,10 @@ export class BrowserState {
   }
 
   private upsertTab(snapshot: BrowserSidebarTabSnapshot): BrowserSidebarTabSnapshot {
-    const next = deriveBrowserSnapshot(snapshot);
+    const next = deriveBrowserSnapshot({
+      ...snapshot,
+      annotationAgentControlled: this.isBrowserUseIdentity(snapshot),
+    });
     this.tabs.set(browserTabKey(next), next);
     this.syncBackgroundThrottling(next);
     return next;
@@ -2503,6 +2544,16 @@ export class BrowserState {
     result: import("../../shared/browser-annotation").BrowserAnnotationAttachmentEvidence | string,
   ): void {
     this.annotations.get(browserTabKey(identity))?.evidence(annotation.id, annotation, result);
+  }
+
+  private syncAnnotationPresentation(tab: BrowserSidebarTabSnapshot): void {
+    const contents = this.getAttachedWebContents(tab);
+    if (!contents || contents.isDestroyed()) return;
+    contents.send("browser-annotation-presentation", {
+      suspended: tab.annotationSuspended ?? false,
+      pinsVisible: tab.annotationPinsVisible ?? true,
+      agentControlled: tab.annotationAgentControlled ?? this.isBrowserUseIdentity(tab),
+    });
   }
 
   private updateTab(
@@ -2539,6 +2590,12 @@ export class BrowserState {
     } satisfies BrowserSidebarTabSnapshot;
     const derived = deriveBrowserSnapshot(next);
     this.tabs.set(key, derived);
+    if (
+      current.annotationSuspended !== derived.annotationSuspended ||
+      current.annotationPinsVisible !== derived.annotationPinsVisible ||
+      current.annotationAgentControlled !== derived.annotationAgentControlled
+    )
+      this.syncAnnotationPresentation(derived);
     this.syncBackgroundThrottling(derived);
     this.emitState();
     const browserUseTab = this.browserUseTabs.get(key);
@@ -2830,9 +2887,11 @@ export class BrowserState {
         }
         this.fork(this.persistPageSnapshotForWebContents(webContentsId, contents));
       });
-      add("dom-ready", () =>
-        contents.send("browser-annotation-saved", this.tabs.get(tabId)?.annotations ?? []),
-      );
+      add("dom-ready", () => {
+        contents.send("browser-annotation-saved", this.tabs.get(tabId)?.annotations ?? []);
+        const tab = this.tabs.get(tabId);
+        if (tab) this.syncAnnotationPresentation(tab);
+      });
       add("did-navigate", (...args) => {
         dialogs.committed();
         this.initialLoads.delete(webContentsId);
@@ -3445,7 +3504,10 @@ export class BrowserState {
         );
       }
       const snapshot = this.tabs.get(key);
-      if (snapshot) this.syncBackgroundThrottling(snapshot);
+      if (snapshot) {
+        this.syncBackgroundThrottling(snapshot);
+        this.updateTab(key, { annotationAgentControlled: !command.tab.released });
+      }
       this.emitBrowserUseState();
       return;
     }
@@ -3465,6 +3527,7 @@ export class BrowserState {
         });
       }
       this.browserUseTabs.delete(key);
+      if (this.tabs.has(key)) this.updateTab(key, { annotationAgentControlled: false });
       this.browserUseNavigationRestrictions.delete(key);
       const snapshot = this.tabs.get(key);
       if (snapshot) this.syncBackgroundThrottling(snapshot);

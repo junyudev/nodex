@@ -1,3 +1,8 @@
+import { z } from "zod";
+import {
+  BrowserAnnotationAnchorSchema,
+  type BrowserAnnotationAnchor,
+} from "../../../shared/browser-annotation";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -145,7 +150,7 @@ export const live: Layer.Layer<
         )
           return yield* Effect.fail(new Error("The annotation page is no longer available"));
         const token = `${annotation.id}:${annotation.createdAt}:${crypto.randomUUID()}`;
-        const ready = Effect.callback<void>((resume) => {
+        const ready = Effect.callback<BrowserAnnotationAnchor[]>((resume) => {
           const listener = (...args: unknown[]) => {
             const [event, channel, payload] = args as [
               { senderFrame?: { parent: unknown } },
@@ -158,14 +163,33 @@ export const live: Layer.Layer<
               event.senderFrame?.parent
             )
               return;
-            resume(Effect.void);
+            const ready = z
+              .object({
+                token: z.string(),
+                anchors: z.array(BrowserAnnotationAnchorSchema).min(1).max(32),
+              })
+              .strict()
+              .safeParse(payload);
+            if (
+              !ready.success ||
+              ready.data.anchors.some(
+                (anchor) =>
+                  anchor.pageUrl !== annotation.pageUrl ||
+                  !annotation.anchors.some((saved) => saved.id === anchor.id),
+              )
+            )
+              return;
+            resume(Effect.succeed(ready.data.anchors));
           };
           contents.on("ipc-message", listener);
-          contents.send("browser-annotation-evidence-prepare", { token });
+          contents.send("browser-annotation-evidence-prepare", {
+            token,
+            annotationId: annotation.id,
+          });
           return Effect.sync(() => contents.removeListener("ipc-message", listener));
         }).pipe(Effect.timeout("2 seconds"));
         return yield* Effect.gen(function* () {
-          yield* ready;
+          const anchors = yield* ready;
           return yield* attempt("capture-browser-annotation-evidence", async () => {
             if (
               contents.isDestroyed() ||
@@ -175,7 +199,7 @@ export const live: Layer.Layer<
               throw new Error("The annotation page changed before capture");
             const image = await contents.capturePage();
             const crop = computeBrowserAnnotationEvidenceCrop({
-              anchors: annotation.anchors,
+              anchors,
               imageSize: image.getSize(),
               viewport: snapshot.viewport,
             });

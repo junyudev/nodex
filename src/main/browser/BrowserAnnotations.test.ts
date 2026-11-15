@@ -69,6 +69,18 @@ describe("Browser annotations", () => {
     owner.evidence(second.id, second, evidence);
     expect(records()[1]).toMatchObject({ note: draft.note, evidenceState: "ready", evidence });
   });
+  test("a refused direct send retains its hidden note and a late capture can still finish", () => {
+    const { owner, save, records } = fixture();
+    const annotation = save({ ...draft, deliveryState: "sending" });
+    expect(records()[0]?.deliveryState).toBe("sending");
+    owner.retain([annotation.id]);
+    owner.evidence(annotation.id, annotation, "Screenshot unavailable");
+    expect(records()[0]).toMatchObject({
+      note: draft.note,
+      deliveryState: "saved",
+      evidenceState: "failed",
+    });
+  });
   test("editing keeps the number and retires a late capture; removing retires it too", () => {
     const { owner, save, records } = fixture();
     const first = save();

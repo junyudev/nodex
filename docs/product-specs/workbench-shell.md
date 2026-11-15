@@ -254,27 +254,50 @@ place of windows. Nodex never opens a separate window for a page.
 
 ### Browser annotations
 
-Annotate selects an element, text, or region and opens a comment editor beside it.
-Enter saves, Shift+Enter adds a line, and Escape cancels the editor or current gesture
-before leaving annotation mode. Design changes retain their original and proposed values.
+Annotate selects an element, text, or region and opens a comment editor beside it,
+or below or above it when neither side has room. Entered from the toolbar, the
+shortcut, or the page menu's Annotate, Enter saves the annotation and
+Cmd/Ctrl+Enter sends it as its own chat message. Entered from the page menu's
+Quick annotate, which starts at the clicked target, the two are swapped. The
+editor shows both actions and their shortcuts. Shift+Enter adds a line. Escape
+cancels an editor or gesture first, then leaves annotation mode when neither is
+open.
 
-Saving adds a numbered pin and a chat composer attachment. The note is saved immediately;
-screenshot capture follows. If capture fails, the note stays saved and the attachment says
-that its screenshot is unavailable. A pin reopens the note for editing or removal.
+Saved notes have numbered pins and chat composer attachments. The Annotate
+control shows the saved count. A pin reopens its note for editing or removal.
+Leaving annotation mode, switching tabs or Scenes, and reopening the Browser
+panel retain saved notes. Pins follow their targets and appear only on their
+original page; a toolbar control hides or shows them. Discard asks for confirmation.
+Closing the Browser tab removes its annotations.
 
-Saved annotations belong to their Browser tab. They remain when leaving annotation mode,
-switching tabs or Scenes, and reopening the Browser panel. Pins follow their targets and
-appear only on the page where they were created. The toolbar shows the saved count and
-can discard all annotations after confirmation. Closing the tab removes its annotations.
+Notes are saved before screenshots are captured. Capture failure retains the note
+and its chip says `No screenshot`. Direct sends wait for capture to settle and use
+the chat's ordinary admission path, including steering or queueing a running Agent.
+The person's composer text and attachments stay intact. Quick notes do not leave
+pins after a successful send, and quick mode ends. If admission is unavailable or
+refused, the note becomes a saved annotation and Nodex explains what happened.
+The toolbar can send all saved annotations in one message. Admission consumes only
+the included set; notes created during that send remain pending.
 
-A Session Browser delivers to that chat's composer, including before its first message.
-A Project Browser delivers to the Project Agent Dock's selected composer, including its
-new-chat draft. If no composer is available, Annotate explains that a chat or Agent Dock
-must be opened first. Saving does not send a message to the Agent.
+A Session Browser delivers to that chat, including before its first message. A
+Project Browser targets its Agent Dock's selected chat or existing new-chat draft.
+If no destination exists, Annotate explains that a chat or Agent Dock is needed.
+A direct handoff without an available composer falls back to saved notes.
+Removing a composer attachment removes its saved note and pin. Ordinary chat sends
+include their saved annotations as text with any available screenshots.
 
-Removing an attachment removes its saved note and pin. Sending a message includes its
-annotations as text and any available screenshots; when the message is admitted, those
-annotations and pins are removed. Notes saved during that send remain pending.
+Cmd/Ctrl+Shift+. toggles annotation mode and can be rebound in keyboard shortcuts.
+Holding Space over the page temporarily restores ordinary page interaction;
+releasing it resumes annotation. An Agent controlling the page temporarily disables
+annotation interaction and the control explains why. The requested mode and draft
+resume when control ends.
+
+Element and text targets retain their selectors, open shadow-host chain, and
+same-origin frame path. Text selections retain UTF-16 offsets, direction, and a
+text quote used to refuse a changed target. Scroll-container positions and fixed
+positioning keep regions aligned as the page scrolls. The Agent receives the frame,
+selector/path, role/name, nearby text, and selected text with the comment.
+Cross-origin frames and closed shadow roots remain opaque.
 
 ### Page dialogs
 

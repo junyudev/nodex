@@ -13,6 +13,7 @@ export type BrowserAnnotationSaveResult =
 export class BrowserAnnotations {
   private records: BrowserSavedAnnotation[] = [];
   private nextNumber = 1;
+  private readonly captures = new Map<string, BrowserSavedAnnotation>();
   private acknowledgements = new Map<string, string>();
   sessionId: string | null = null;
   destination: string | null = null;
@@ -65,9 +66,14 @@ export class BrowserAnnotations {
       intent: input.intent,
       designChanges: input.designChanges,
       evidenceState: "pending",
+      deliveryState:
+        previous?.deliveryState === "saved" || (previous && previous.deliveryState === undefined)
+          ? "saved"
+          : (input.deliveryState ?? "saved"),
     };
     this.records = [...this.records.filter((record) => record.id !== annotation.id), annotation];
     this.acknowledgements.set(input.editorId, annotation.id);
+    this.captures.set(annotation.id, annotation);
     this.publish(this.records);
     return { ok: true, annotation };
   }
@@ -78,7 +84,8 @@ export class BrowserAnnotations {
     result: BrowserAnnotationAttachmentEvidence | string,
   ): void {
     // An edit or removal retires a previous capture, even if its physical work finishes later.
-    if (!this.records.includes(created)) return;
+    if (this.captures.get(id) !== created) return;
+    this.captures.delete(id);
     this.records = this.records.map((record) =>
       record.id !== id
         ? record
@@ -89,7 +96,15 @@ export class BrowserAnnotations {
     this.publish(this.records);
   }
 
+  retain(ids: readonly string[]): void {
+    this.records = this.records.map((record) =>
+      ids.includes(record.id) ? { ...record, deliveryState: "saved" } : record,
+    );
+    this.publish(this.records);
+  }
+
   remove(ids: readonly string[]): void {
+    for (const id of ids) this.captures.delete(id);
     const records = this.records.filter((record) => !ids.includes(record.id));
     if (records.length === this.records.length) return;
     this.records = records;

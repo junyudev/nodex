@@ -603,6 +603,14 @@ export const CODEX_COMMAND_REGISTRY = [
     ["Ctrl+M"],
   ),
   command(
+    "toggleBrowserAnnotation",
+    "Annotate page",
+    "Toggle annotation mode in the active Browser tab",
+    81,
+    "app",
+    ["CmdOrCtrl+Shift+."],
+  ),
+  command(
     "focusBrowserAddressBar",
     "Focus browser address bar",
     "Focus the active Browser tab address bar",

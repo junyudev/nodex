@@ -632,6 +632,57 @@ describe("BrowserState semantic capability", () => {
     }),
   );
 
+  it.effect("retains annotation intent during Agent control and resumes it after release", () =>
+    Effect.gen(function* () {
+      const { state } = yield* makeFixture();
+      yield* registerTab(state);
+      yield* state.handleCommand({ type: "set-interaction-mode", ...identity, mode: "comment" });
+      yield* state.handleCommand({
+        type: "set-annotation-presentation",
+        ...identity,
+        suspended: true,
+        pinsVisible: false,
+      });
+      expect(readTab(state)).toMatchObject({
+        interactionMode: "comment",
+        annotationSuspended: true,
+        annotationPinsVisible: false,
+      });
+      yield* state.handleCommand({
+        type: "set-annotation-presentation",
+        ...identity,
+        suspended: false,
+      });
+      yield* state.handleCommand({
+        type: "browser-use-upsert-tab",
+        tab: {
+          ...identity,
+          codexSessionId: "thread-1",
+          projectId: "project-1",
+          title: "Browser",
+          url: "https://example.com",
+          webContentsId: null,
+          viewport: { width: 1280, height: 720, zoomPercent: 100, presetId: "browser-use" },
+          captureActive: true,
+          released: false,
+          updatedAt: 1,
+        },
+      });
+      expect(readTab(state)).toMatchObject({
+        interactionMode: "comment",
+        annotationAgentControlled: true,
+      });
+      expect(
+        yield* state.handleCommand({ type: "set-interaction-mode", ...identity, mode: "comment" }),
+      ).toMatchObject({ ok: false, message: expect.stringContaining("Agent controls") });
+      yield* state.handleCommand({ type: "browser-use-release-tab", ...identity });
+      expect(readTab(state)).toMatchObject({
+        interactionMode: "comment",
+        annotationAgentControlled: false,
+        annotationPinsVisible: false,
+      });
+    }),
+  );
   it.effect("keeps Browser presentation admission separate from active control", () =>
     Effect.gen(function* () {
       const { events, state } = yield* makeFixture();
@@ -657,6 +708,9 @@ describe("BrowserState semantic capability", () => {
           updatedAt: 1,
         },
       });
+
+      yield* registerTab(state);
+      expect(readTab(state).annotationAgentControlled).toBe(true);
 
       state.setBrowserVisibleForBrowserUse(route, identity.browserTabId, true);
       const visible = events.findLast(

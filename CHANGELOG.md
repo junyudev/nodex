@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Send a Browser annotation straight to the Agent. In the annotation editor, ⌘↵ sends the note as its own message, steering a working Agent or queueing as a typed message would, and leaves what you were typing in the chat alone; **Quick annotate** in a page's context menu sends on Enter. The Browser toolbar sends every saved annotation at once, ⌘⇧. turns annotating on and off, and holding Space lets you use the page without leaving it.
+
 ### Changed
 
 - Browser annotations stay on the page until they reach the Agent. A saved annotation used to leave nothing behind but a small tag in the chat, and was lost if its screenshot failed or the Browser had no chat beside it. Each one is now a numbered pin you can reopen, edit or remove; it is kept when you leave annotating, switch tabs or lose the screenshot; and a Project's Browser sends to its Agent Dock. Pins follow text, elements inside frames and scrolling areas, and the Agent is told exactly what each one points at.

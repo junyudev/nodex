@@ -40,6 +40,7 @@ describe("Browser annotation contracts", () => {
         "[Browser design change: Checkout]",
         "URL: https://example.com/checkout",
         "1. region: rect(10, 20, 100, 50)",
+        "Frame: top",
         "Comment: Increase the spacing",
         "Screenshot evidence: evidence.png",
       ].join("\n"),
@@ -101,4 +102,35 @@ test("uses one stable Session destination before and after its first Thread", ()
     }),
   ).toBe("project-draft:project:draft");
   expect(resolveBrowserAnnotationDestination({})).toBeNull();
+});
+
+test("the Agent receives actionable frame, selector, role, name, selected and nearby text", () => {
+  const message = serializeBrowserAnnotationAttachmentForPrompt({
+    ...attachment,
+    anchors: [
+      {
+        ...attachment.anchors[0]!,
+        kind: "text",
+        framePath: ["#frame"],
+        frameUrl: "https://example.com/frame",
+        selector: "#copy",
+        shadowHosts: ["#host"],
+        elementPath: "#host >>> #copy",
+        role: "heading",
+        name: "Checkout",
+        selectedText: "Pay now",
+        nearbyText: "Secure checkout",
+      },
+    ],
+  });
+  for (const fact of [
+    "Frame: #frame",
+    "Frame URL: https://example.com/frame",
+    "Target selector: #host >>> #copy",
+    "Target role: heading",
+    "Target name: Checkout",
+    "Selected text: Pay now",
+    "Nearby text: Secure checkout",
+  ])
+    expect(message).toContain(fact);
 });
