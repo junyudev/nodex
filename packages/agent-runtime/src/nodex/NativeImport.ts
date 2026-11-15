@@ -32,6 +32,7 @@ import { ThreadCommandExecutor } from "../orchestration-v2/ThreadCommandExecutor
 import { persistChatAttachments } from "../assets/PersistChatAttachments.ts";
 import { importChatAttachments } from "../assets/ImportChatAttachments.ts";
 import { parseBase64DataUrl } from "../imageMime.ts";
+import { RENDERABLE_IMAGE_SIGNATURE_BYTES, renderableImageType } from "../renderableImage.ts";
 import { nativeSessionMediaResources } from "./NativeAttachmentResource.ts";
 import { localMarkdownImagePaths } from "./MarkdownImages.ts";
 import { resolveMarkdownImagePath } from "./MarkdownImagePaths.ts";
@@ -414,6 +415,8 @@ const persistAdditionalMedia = Effect.fn("NativeImport.persistMedia")(function* 
   });
 });
 
+const IMPORTED_IMAGE_BYTES = 10 * 1024 * 1024;
+
 const persistImages = Effect.fn("NativeImport.persistImages")(function* (
   input: Input,
   entry: ThreadItemEntry,
@@ -477,10 +480,15 @@ const persistImages = Effect.fn("NativeImport.persistImages")(function* (
           cause.reason._tag === "NotFound" ? Effect.succeed(null) : Effect.fail(cause),
         ),
       );
-    if (info !== null && info.size > 10 * 1024 * 1024)
+    // A reply's Markdown shows whatever its address names. Only a picture is copied; a video, a
+    // picture too large to keep or any other file stays as the reply wrote it.
+    if (assistantImages && info !== null && info.type !== "File") continue;
+    if (info !== null && info.size > IMPORTED_IMAGE_BYTES) {
+      if (assistantImages) continue;
       return yield* fail(
         "An image in this conversation is larger than 10 MB and cannot be imported.",
       );
+    }
     const bytes =
       info === null
         ? null
@@ -500,21 +508,19 @@ const persistImages = Effect.fn("NativeImport.persistImages")(function* (
       if (assistantImages) links.push({ sourcePath: part.path, imageIndex: null });
       continue;
     }
-    if (bytes.byteLength > 10 * 1024 * 1024)
-      return yield* fail(
-        "An image in this conversation is larger than 10 MB and cannot be imported.",
-      );
-    const extension = path.extname(sourcePath).toLowerCase();
-    if (![".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(extension))
-      return yield* fail("An image in this conversation uses a format Nodex cannot import.");
+    // The bytes say what a file is; its name may say anything.
     const mimeType =
-      extension === ".jpg" || extension === ".jpeg"
-        ? "image/jpeg"
-        : extension === ".webp"
-          ? "image/webp"
-          : extension === ".gif"
-            ? "image/gif"
-            : "image/png";
+      bytes.byteLength > IMPORTED_IMAGE_BYTES
+        ? null
+        : renderableImageType(bytes.subarray(0, RENDERABLE_IMAGE_SIGNATURE_BYTES));
+    if (mimeType === null) {
+      if (assistantImages) continue;
+      return yield* fail(
+        bytes.byteLength > IMPORTED_IMAGE_BYTES
+          ? "An image in this conversation is larger than 10 MB and cannot be imported."
+          : "An image in this conversation uses a format Nodex cannot import.",
+      );
+    }
     if (assistantImages) links.push({ sourcePath: part.path, imageIndex: images.length });
     images.push({
       type: "image",

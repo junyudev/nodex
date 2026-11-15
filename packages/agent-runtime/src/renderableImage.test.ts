@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
-import { renderableImageType } from "./renderable-image";
+import { describe, expect, test } from "vite-plus/test";
+import { renderableImageType } from "./renderableImage.ts";
 
 const bytes = (...parts: readonly (string | readonly number[])[]) =>
   Uint8Array.from(

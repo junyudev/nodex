@@ -4,7 +4,7 @@ import type { z } from "zod";
 import {
   RENDERABLE_IMAGE_SIGNATURE_BYTES,
   renderableImageType,
-} from "../../shared/renderable-image";
+} from "@nodex/agent-runtime/renderable-image";
 import {
   HOSTED_CHAT_ATTACHMENT_CHUNK_BYTES,
   type AgentRuntimeAttachmentSchema,

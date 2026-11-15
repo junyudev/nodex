@@ -1,3 +1,4 @@
+import { readableIpcError } from "@/lib/ipc-error-message";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useDeferredValue,
@@ -99,7 +100,7 @@ const defaultRuntime: ConversationImportRuntime = {
   pathContext: readNativeSessionPathContext,
 };
 
-const errorMessage = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
+const errorMessage = (cause: unknown) => readableIpcError(cause, String(cause));
 
 const plural = (count: number, one: string, many: string) => (count === 1 ? one : many);
 

@@ -45,6 +45,9 @@ that a partial import is complete.
 Readable user images, local images in assistant Markdown, image-view files, generated images
 and supported tool media are copied into Runtime-owned storage; audio is retained as a file
 attachment. Relative image references use the source conversation's captured directory.
+A file is an image when its bytes are a PNG, JPEG, GIF or WebP, whatever its name says. A reply's
+Markdown may also show a video or another file: only an image of at most 10 MB is copied, and
+anything else stays as the reply wrote it and never blocks import.
 A historical image whose original file is missing retains an explicit unavailable-image record
 in its message or activity. Missing image bytes do not block import; the transcript and
 continuation context identify the gap, and Nodex does not claim to recover or display the original

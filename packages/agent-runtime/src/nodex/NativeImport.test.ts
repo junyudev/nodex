@@ -765,6 +765,44 @@ it.effect("owns copied message and viewed images after their source directory di
   }).pipe(Effect.provide(layer)),
 );
 
+it.effect("copies what a reply shows only when its bytes are a picture", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const sourceCwd = yield* fs.makeTempDirectoryScoped({ prefix: "codex-import-embeds-" });
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    const mp4 = Buffer.from("\0\0\0\x18ftypmp42", "latin1");
+    yield* fs.writeFile(path.join(sourceCwd, "clip.mp4"), mp4);
+    yield* fs.writeFile(path.join(sourceCwd, "clip-named.png"), mp4);
+    yield* fs.writeFile(path.join(sourceCwd, "picture.bin"), png);
+    const assistantText =
+      "![Clip](clip.mp4)\n\n![Named as a picture](clip-named.png)\n\n![Picture](picture.bin)";
+    const source = fixture({
+      sourceCwd,
+      assistantEntry: {
+        ...assistant,
+        item: { ...assistant.item, text: assistantText } as typeof assistant.item,
+      },
+    });
+    const importThread = yield* source.makeImport;
+    const target = input("reply-embeds");
+    yield* importThread(target);
+    const copied = yield* (yield* ProjectionStoreV2).getThreadProjection(target.threadId);
+    const reply = copied.turnItems.find((item) => item.type === "assistant_message");
+    assert.equal(reply?.type, "assistant_message");
+    if (reply?.type !== "assistant_message") return;
+    assert.equal(reply.text, assistantText);
+    assert.isUndefined(reply.unavailableImages);
+    assert.deepEqual(
+      reply.attachments?.map(({ name, mimeType }) => ({ name, mimeType })),
+      [{ name: "picture.bin", mimeType: "image/png" }],
+    );
+    assert.deepEqual(reply.importedImageLinks, [
+      { sourcePath: "picture.bin", attachmentId: reply.attachments![0]!.id },
+    ]);
+  }).pipe(Effect.provide(layer)),
+);
+
 it.effect("keeps unreadable images as an import error instead of declaring them missing", () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;

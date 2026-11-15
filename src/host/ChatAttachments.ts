@@ -25,7 +25,10 @@ import { openRegularFile } from "../main/platform/node/open-regular-file";
 import { ProjectWorkspace } from "../main/project-application/ProjectWorkspace";
 import type { ProjectSession } from "../shared/types";
 import { parseReplyPictureAttachmentId } from "../shared/agent-runtime-attachments";
-import { RENDERABLE_IMAGE_SIGNATURE_BYTES, renderableImageType } from "../shared/renderable-image";
+import {
+  RENDERABLE_IMAGE_SIGNATURE_BYTES,
+  renderableImageType,
+} from "@nodex/agent-runtime/renderable-image";
 import type {
   HostedChatAttachmentChunk,
   HostedChatAttachmentReadSchema,
