@@ -27,6 +27,7 @@ import { makeBrowserWebContentsListenerRuntime } from "../browser/BrowserWebCont
 import type { BrowserWebContentsLike } from "../platform/electron/BrowserElectronPlatform";
 import { BrowserForkTransferError, makeBrowserForkTransfer } from "./BrowserForkTransfer";
 import { BrowserState } from "./BrowserState";
+import { BROWSER_PAGE_DIALOG_MESSAGE_LIMIT } from "../browser/BrowserPageDialogs";
 import { makeWebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import type { BrowserPermissionStore } from "../browser/browser-permission-store";
 
@@ -38,12 +39,12 @@ const identity = {
 
 class FakeWebContents extends EventEmitter {
   readonly id = 101;
-  readonly debugger = {
+  readonly debugger = Object.assign(new EventEmitter(), {
     attach: () => undefined,
     detach: () => undefined,
     isAttached: () => true,
     sendCommand: async () => undefined,
-  };
+  });
   readonly loadUrls: string[] = [];
   destroyed = false;
   loading = false;
@@ -166,6 +167,7 @@ const makeFixture = (
     const owner = Object.assign(new EventEmitter(), { isDestroyed: () => false });
     const events: BrowserSidebarEvent[] = [];
     const externalUrls: string[] = [];
+    const leavePage = { accept: false, requests: [] as number[] };
     const pages = makeMemoryPages(options.page ? [options.page] : []);
     const runBackground = yield* FiberSet.makeRuntime<never, void, never>();
     const runtimeRegistry = makeBrowserRuntimeRegistry();
@@ -174,6 +176,10 @@ const makeFixture = (
       permissionStore: options.permissionStore,
       earlyPageRestores: yield* makeBrowserEarlyPageRestoreRuntime<BrowserSidebarTabSnapshot>(),
       electron: {
+        confirmLeavePage: (ownerId) => {
+          leavePage.requests.push(ownerId);
+          return leavePage.accept;
+        },
         sessionFromPartition: (() => ({
           clearCache: async () => undefined,
           clearData: async () => undefined,
@@ -202,7 +208,16 @@ const makeFixture = (
       siteStatus: { cachedCommentModeBlocked: () => null },
       webContentsListeners: yield* makeBrowserWebContentsListenerRuntime,
     });
-    return { contents, owner, events, externalUrls, pages: pages.pages, runtimeRegistry, state };
+    return {
+      contents,
+      owner,
+      events,
+      externalUrls,
+      leavePage,
+      pages: pages.pages,
+      runtimeRegistry,
+      state,
+    };
   });
 
 const registerTab = (state: BrowserState, browserStorageId = "browser:durable") =>
@@ -1513,5 +1528,287 @@ it.effect("uses native page liveness after a crashed page reloads", () =>
     assert.lengthOf(results, 1);
     assert.lengthOf(readTab(state).permissionPrompts ?? [], 1);
     state.permissions.dispose();
+  }),
+);
+
+const pageDialogFixture = Effect.gen(function* () {
+  const fixture = yield* permissionFixture;
+  const open = (
+    dialogType = "confirm",
+    frameUrl = fixture.contents.url,
+    messageText = "Continue?",
+  ) => {
+    const answers: Array<[boolean, string]> = [];
+    fixture.contents.emit(
+      "-run-dialog",
+      { frame: { url: frameUrl }, dialogType, messageText },
+      (accept: boolean, input: string) => answers.push([accept, input]),
+    );
+    return answers;
+  };
+  const respond = (
+    accept: boolean,
+    suppress = false,
+    ownerWebContentsId = 7,
+    dialogId = readTab(fixture.state).pageDialog?.id ?? "stale",
+  ) =>
+    fixture.state.handleCommand(
+      { ...identity, type: "respond-page-dialog", dialogId, accept, suppress },
+      { ownerWebContentsId },
+    );
+  return { ...fixture, open, respond };
+});
+
+describe("Browser page dialog lifetime", () => {
+  it.effect("publishes bounded text with the requesting and embedding origins", () =>
+    Effect.gen(function* () {
+      const { state, events, open } = yield* pageDialogFixture;
+      open(
+        "alert",
+        "https://frame.example:443/path",
+        "a".repeat(BROWSER_PAGE_DIALOG_MESSAGE_LIMIT + 20),
+      );
+      const dialog = readTab(state).pageDialog;
+      expect(dialog).toMatchObject({
+        kind: "alert",
+        origin: "https://frame.example",
+        embeddingOrigin: "https://example.com",
+        canSuppress: false,
+      });
+      assert.lengthOf(dialog!.message, BROWSER_PAGE_DIALOG_MESSAGE_LIMIT);
+      assert.isTrue(dialog!.message.endsWith("…"));
+      assert.isTrue(
+        events.some(
+          (event) =>
+            event.kind === "state" &&
+            event.value.tabs.some((tab) => tab.pageDialog?.id === dialog!.id),
+        ),
+      );
+    }),
+  );
+
+  for (const frameUrl of [
+    "https://example.com/other",
+    "about:srcdoc",
+    "about:blank",
+    "data:text/html,hello",
+  ]) {
+    it.effect(`uses the page origin without an embedding label for ${frameUrl}`, () =>
+      Effect.gen(function* () {
+        const { state, open } = yield* pageDialogFixture;
+        open("confirm", frameUrl);
+        expect(readTab(state).pageDialog).toMatchObject({ origin: "https://example.com" });
+        assert.isUndefined(readTab(state).pageDialog?.embeddingOrigin);
+      }),
+    );
+  }
+
+  for (const accept of [true, false]) {
+    it.effect(`answers ${accept} once and refuses wrong owners and stale identities`, () =>
+      Effect.gen(function* () {
+        const { state, open, respond } = yield* pageDialogFixture;
+        const answers = open();
+        const pending = readTab(state).pageDialog;
+        assert.isFalse((yield* respond(accept, false, 8)).ok);
+        assert.isFalse((yield* respond(accept, false, 7, "stale")).ok);
+        assert.strictEqual(readTab(state).pageDialog, pending);
+        assert.deepEqual(answers, []);
+        assert.isTrue((yield* respond(accept)).ok);
+        assert.deepEqual(answers, [[accept, ""]]);
+        assert.isUndefined(readTab(state).pageDialog);
+        assert.isFalse((yield* respond(accept, false, 7, pending!.id)).ok);
+        assert.deepEqual(answers, [[accept, ""]]);
+      }),
+    );
+  }
+
+  it.effect("keeps a pending answer across a presentation remount", () =>
+    Effect.gen(function* () {
+      const { state, open, respond, route } = yield* pageDialogFixture;
+      const answers = open();
+      yield* state.handleCommand(
+        {
+          ...route,
+          type: "sync-host",
+          hostKind: "panel",
+          presented: false,
+          visible: false,
+          themeVariant: "light",
+        },
+        { ownerWebContentsId: 7 },
+      );
+      // A replacement host generation must not revoke the existing guest's dialog.
+      yield* state.handleCommand(
+        {
+          ...route,
+          type: "register-host",
+          hostGeneration: 2,
+          mountGeneration: 3,
+          hostKind: "panel",
+          pagePersistence: "durable",
+          themeVariant: "light",
+        },
+        { ownerWebContentsId: 7 },
+      );
+      assert.isTrue((yield* respond(true)).ok);
+      assert.deepEqual(answers, [[true, ""]]);
+    }),
+  );
+
+  for (const end of ["cdp", "cancel", "destroy", "crash"] as const) {
+    it.effect(`settles on ${end} without retaining a stale answer`, () =>
+      Effect.gen(function* () {
+        const { state, contents, open, respond } = yield* pageDialogFixture;
+        const answers = open();
+        if (end === "cdp")
+          contents.debugger.emit("message", {}, "Page.javascriptDialogClosed", { result: true });
+        if (end === "cancel") contents.emit("-cancel-dialogs");
+        if (end === "destroy") {
+          contents.destroyed = true;
+          contents.emit("destroyed");
+        }
+        if (end === "crash") contents.emit("render-process-gone", {}, { reason: "crashed" });
+        assert.isUndefined(readTab(state).pageDialog);
+        assert.isFalse((yield* respond(true)).ok);
+        assert.deepEqual(answers, []);
+      }),
+    );
+  }
+
+  for (const type of [
+    "navigate",
+    "reload",
+    "go-back",
+    "go-forward",
+    "stop",
+    "close-tab",
+  ] as const) {
+    it.effect(`dismisses before a person's ${type}`, () =>
+      Effect.gen(function* () {
+        const { state, contents, open } = yield* pageDialogFixture;
+        const answers = open();
+        const checkDismissed = () => {
+          assert.deepEqual(answers, [[false, ""]]);
+          assert.isUndefined(readTab(state).pageDialog);
+        };
+        contents.loadURL = (url: string) => {
+          checkDismissed();
+          contents.loadUrls.push(url);
+          return Promise.resolve();
+        };
+        contents.reload = checkDismissed;
+        contents.canGoBack = () => true;
+        contents.goBack = checkDismissed;
+        contents.canGoForward = () => true;
+        contents.goForward = checkDismissed;
+        contents.stop = checkDismissed;
+        assert.isTrue(
+          (yield* state.handleCommand(
+            type === "navigate"
+              ? { ...identity, type, url: "https://other.example/" }
+              : { ...identity, type },
+          )).ok,
+        );
+        assert.deepEqual(answers, [[false, ""]]);
+        if (type !== "close-tab") assert.isUndefined(readTab(state).pageDialog);
+      }),
+    );
+  }
+
+  it.effect(
+    "offers suppression on repetition and resets only at a main-frame document commit",
+    () =>
+      Effect.gen(function* () {
+        const { state, contents, open, respond } = yield* pageDialogFixture;
+        open();
+        assert.isFalse(readTab(state).pageDialog!.canSuppress);
+        yield* respond(false);
+        open();
+        assert.isTrue(readTab(state).pageDialog!.canSuppress);
+        yield* respond(false, true);
+        const suppressed = open();
+        assert.deepEqual(suppressed, [[false, ""]]);
+        assert.isUndefined(readTab(state).pageDialog);
+        open("confirm", "https://other.example/");
+        assert.isFalse(readTab(state).pageDialog!.canSuppress);
+        yield* respond(false);
+        contents.emit("did-navigate-in-page", {}, contents.url + "#hash", true);
+        assert.deepEqual(open(), [[false, ""]]);
+        contents.emit("did-frame-navigate", {}, "https://example.com/frame", 200, "OK", false);
+        assert.deepEqual(open(), [[false, ""]]);
+        contents.emit("did-navigate", {}, contents.url);
+        assert.deepEqual(open(), []);
+        assert.isFalse(readTab(state).pageDialog!.canSuppress);
+      }),
+  );
+
+  it.effect("rejects unsupported prompts immediately without publishing", () =>
+    Effect.gen(function* () {
+      const { state, open } = yield* pageDialogFixture;
+      assert.deepEqual(open("prompt"), [[false, ""]]);
+      assert.isUndefined(readTab(state).pageDialog);
+    }),
+  );
+
+  it.effect("dismisses on Scope release and leaves a dismiss-only guest listener", () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.fork(yield* Scope.Scope);
+      const { state, contents, open } = yield* pageDialogFixture.pipe(Scope.provide(scope));
+      const answers = open();
+      yield* Scope.close(scope, Exit.void);
+      assert.deepEqual(answers, [[false, ""]]);
+      assert.isUndefined(readTab(state).pageDialog);
+      assert.deepEqual(open(), [[false, ""]]);
+      assert.strictEqual(contents.debugger.listenerCount("message"), 0);
+    }),
+  );
+});
+
+describe("Browser beforeunload policy", () => {
+  for (const mode of ["agent", "leave", "stay", "hidden", "unpresented"] as const) {
+    it.effect(`decides synchronously for ${mode} tabs`, () =>
+      Effect.gen(function* () {
+        const { state, contents, route, leavePage } = yield* pageDialogFixture;
+        leavePage.accept = mode === "leave";
+        yield* state.handleCommand(
+          {
+            ...route,
+            type: "sync-host",
+            hostKind: "panel",
+            presented: mode !== "unpresented" && mode !== "agent",
+            visible: mode !== "hidden" && mode !== "agent",
+            themeVariant: "light",
+          },
+          { ownerWebContentsId: 7 },
+        );
+        if (mode === "agent") state.assertBrowserUseNavigationAllowed(identity, contents.url);
+        let leave = false;
+        contents.emit("will-prevent-unload", {
+          preventDefault: () => {
+            leave = true;
+          },
+        });
+        assert.strictEqual(leave, mode === "agent" || mode === "leave");
+        assert.deepEqual(leavePage.requests, mode === "leave" || mode === "stay" ? [7] : []);
+      }),
+    );
+  }
+});
+
+it.effect("dismisses a pending dialog when its exact webview detaches", () =>
+  Effect.gen(function* () {
+    const { state, contents, events, open } = yield* pageDialogFixture;
+    yield* state.handleCommand({ ...identity, type: "navigate", url: "about:blank" });
+    const request = events.findLast((event) => event.kind === "destroyWebview");
+    if (request?.kind !== "destroyWebview") throw new Error("Missing teardown request");
+    const answers = open();
+    yield* state.handleWebviewDestroyed({
+      ...request.value,
+      disposition: "destroyed",
+      webContentsId: contents.id,
+    });
+    assert.deepEqual(answers, [[false, ""]]);
+    assert.isUndefined(readTab(state).pageDialog);
+    assert.deepEqual(open(), [[false, ""]]);
   }),
 );

@@ -1,5 +1,13 @@
-const { app, BrowserWindow, session } = require("electron");
+const { app, BrowserWindow, session, dialog } = require("electron");
 const path = require("node:path");
+
+// CommonJS mirror of BrowserPageDialogAdapter's internal Electron seam.
+const pageDialogs = { requests: [], nativeBoxCalls: 0, accept: false, pending: null };
+globalThis.browserPlatformPageDialogs = pageDialogs;
+dialog.showMessageBox = async () => {
+  pageDialogs.nativeBoxCalls += 1;
+  return { response: 1, checkboxChecked: false };
+};
 
 const browserPartition = "persist:nodex-browser-integration";
 
@@ -61,6 +69,24 @@ void app.whenReady().then(async () => {
   const windowOpenRequests = [];
   globalThis.browserPlatformWindowOpenRequests = windowOpenRequests;
   window.webContents.on("did-attach-webview", (_event, guest) => {
+    guest.removeAllListeners("-run-dialog");
+    guest.on("-run-dialog", (info, callback) => {
+      pageDialogs.requests.push({
+        dialogType: info.dialogType,
+        messageText: info.messageText,
+        frameUrl: info.frame.url,
+        mainFrame: info.frame === guest.mainFrame,
+      });
+      pageDialogs.pending = callback;
+      if (typeof pageDialogs.accept !== "boolean") return;
+      pageDialogs.pending = null;
+      callback(pageDialogs.accept, "");
+    });
+    const settle = () => { pageDialogs.pending = null; };
+    guest.on("-cancel-dialogs", settle);
+    guest.debugger.on("message", (_event, method) => {
+      if (method === "Page.javascriptDialogClosed") settle();
+    });
     guest.setWindowOpenHandler(({ url, disposition }) => {
       windowOpenRequests.push({ url, disposition });
       return { action: "deny" };

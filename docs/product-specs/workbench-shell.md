@@ -252,6 +252,32 @@ place of windows. Nodex never opens a separate window for a page.
 - While an Agent controls a page, these requests follow its
   [navigation restriction](../SECURITY.md).
 
+### Page dialogs
+
+A page's `alert()` and `confirm()` appear inside its own tab, over the page, titled
+with the site that asked (`example.com says`) and, for an embedded frame from
+another site, the page it is embedded in. Nodex never shows them as a system dialog.
+
+- The page is stopped until its dialog is answered. The rest of the app stays
+  usable, including other tabs.
+- `OK` answers either kind and `Cancel` declines a confirmation. Return chooses
+  `OK` and Escape chooses `Cancel`; an alert has only `OK`.
+- The dialog takes the keyboard only from its own page. It never moves focus out
+  of a chat or another surface the person is working in.
+- A dialog in a tab that is not showing waits there until the tab is shown.
+- From a page's second dialog on, `Don’t let this page open more dialogs` lets the
+  person stop it; later dialogs from that site are declined without appearing until
+  the tab loads another page.
+- Going to another address, reloading, going back or forward, stopping, or closing
+  the tab declines the waiting dialog first.
+- An Agent controlling the page answers the dialog with its own Browser tools. The
+  person sees the same dialog when the tab is showing; whichever answer comes first
+  applies and the dialog closes for both.
+- When a page asks to confirm leaving it with unsaved changes, the tab the person
+  is looking at asks `Leave site?` with `Leave` and `Stay`. A page an Agent controls
+  leaves without asking, and a page nobody is looking at stays.
+- `prompt()` is not available to pages.
+
 ## Storage Ownership
 
 - SQLite owns shared Project Session domain data:

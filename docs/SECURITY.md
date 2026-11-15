@@ -848,6 +848,17 @@ provides attribution, and removing it drops Agent authorship.
   and display capture remain blocked without a chooser. macOS camera/microphone
   denial offers the corresponding privacy settings pane; stock Electron exposes
   neither location OS status nor geolocation accuracy selection.
+- Main owns each page dialog. A page's `alert()` or `confirm()` is shown inside
+  its own tab, names the origin of the frame that asked and the embedding page when
+  they differ, and carries a bounded message; no native box is created for it. Only
+  the renderer that owns the guest may answer, and an Agent controlling the page
+  answers through its own debugger session; the first answer settles the dialog.
+  From a page's second dialog the person can decline every later one from that
+  origin until the next main-frame document. Person-initiated navigation and closing
+  decline a waiting dialog first, so a page cannot hold its tab. `prompt()` is
+  unavailable. A page's unsaved-changes guard is decided synchronously: an
+  Agent-controlled page leaves, a presented and visible page asks the person with a
+  Leave/Stay sheet on its window, and any other page stays.
 - Ordinary registered-page downloads are allowed without a separate gesture token. Agent-controlled downloads require a
   one-use grant matching the final download URL exactly, valid for ten seconds;
   unmatched downloads do not consume it. Unknown download pages are rejected.

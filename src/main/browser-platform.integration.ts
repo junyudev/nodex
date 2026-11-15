@@ -201,6 +201,95 @@ describe("Browser Platform Electron substrate", () => {
         ),
       ).resolves.toEqual([{ url: `${origin}/popup`, disposition: "foreground-tab" }]);
 
+      for (const accept of [false, true]) {
+        const answered = await application.evaluate(
+          async ({ webContents }, input) => {
+            const guest = webContents.fromId(input.guestId);
+            if (!guest) throw new Error("Missing Browser guest");
+            const state = (
+              globalThis as unknown as {
+                browserPlatformPageDialogs: {
+                  accept: boolean | null;
+                  requests: Array<{
+                    dialogType: string;
+                    messageText: string;
+                    frameUrl: string;
+                    mainFrame: boolean;
+                  }>;
+                  nativeBoxCalls: number;
+                };
+              }
+            ).browserPlatformPageDialogs;
+            state.accept = input.accept;
+            const result = await guest.executeJavaScript('confirm("Page confirmation")');
+            return { result, request: state.requests.at(-1), nativeBoxCalls: state.nativeBoxCalls };
+          },
+          { guestId: firstGuestId, accept },
+        );
+        expect(answered).toEqual({
+          result: accept,
+          request: {
+            dialogType: "confirm",
+            messageText: "Page confirmation",
+            frameUrl: `${origin}/first`,
+            mainFrame: true,
+          },
+          nativeBoxCalls: 0,
+        });
+      }
+
+      const agentDialog = await application.evaluate(async ({ webContents }, guestId) => {
+        const guest = webContents.fromId(guestId);
+        if (!guest) throw new Error("Missing Browser guest");
+        const state = (
+          globalThis as unknown as {
+            browserPlatformPageDialogs: {
+              accept: boolean | null;
+              pending: unknown;
+              nativeBoxCalls: number;
+            };
+          }
+        ).browserPlatformPageDialogs;
+        state.accept = null;
+        guest.debugger.attach("1.3");
+        await guest.debugger.sendCommand("Page.enable");
+        const nextMessage = (method: string) =>
+          new Promise<void>((resolve) => {
+            const listener = (_event: unknown, observed: string) => {
+              if (observed !== method) return;
+              guest.debugger.removeListener("message", listener);
+              resolve();
+            };
+            guest.debugger.on("message", listener);
+          });
+        const opening = nextMessage("Page.javascriptDialogOpening");
+        const closed = nextMessage("Page.javascriptDialogClosed");
+        const opened = new Promise<void>((resolve) =>
+          guest.once("-run-dialog" as never, () => resolve()),
+        );
+        try {
+          const result = guest.executeJavaScript('confirm("Agent confirmation")');
+          await Promise.all([opening, opened]);
+          const pendingBeforeAnswer = typeof state.pending === "function";
+          await guest.debugger.sendCommand("Page.handleJavaScriptDialog", { accept: true });
+          await closed;
+          return {
+            result: await result,
+            pendingBeforeAnswer,
+            pendingAfterAnswer: state.pending !== null,
+            nativeBoxCalls: state.nativeBoxCalls,
+          };
+        } finally {
+          guest.debugger.detach();
+        }
+      }, firstGuestId);
+      expect(agentDialog).toEqual({
+        result: true,
+        pendingBeforeAnswer: true,
+        pendingAfterAnswer: false,
+        nativeBoxCalls: 0,
+      });
+
       const emulatedViewport = await application.evaluate(
         async ({ webContents }, input) => {
           const guest = webContents.fromId(input.guestId);

@@ -3,6 +3,7 @@ import type {
   BrowserPermissionAction,
   BrowserPermissionPrompt,
 } from "../../../shared/browser/browser-permissions";
+import type { BrowserPageDialog } from "../../../shared/browser/browser-page-dialogs";
 import {
   useCallback,
   useEffect,
@@ -84,6 +85,7 @@ import { createSecureRuntimeId } from "../../../shared/secure-runtime-id";
 import { useTheme } from "@/lib/use-theme";
 import { openLink } from "@/lib/link-opening";
 import { useLinkOpening } from "@/lib/web-link-navigation";
+import { BrowserPageDialogOverlay, type BrowserPageDialogAnswer } from "./browser-page-dialog";
 import { BrowserPageOverlay } from "./browser-page-overlay";
 import {
   browserSidebarRendererWebviewManager,
@@ -421,6 +423,16 @@ export function BrowserSidebarPanel({
         promptId: prompt.id,
         mountGeneration: prompt.mountGeneration,
         action,
+      })
+    ).ok;
+  const respondToPageDialog = async (dialog: BrowserPageDialog, answer: BrowserPageDialogAnswer) =>
+    (
+      await command({
+        type: "respond-page-dialog",
+        ...browserIdentity,
+        dialogId: dialog.id,
+        accept: answer.accept,
+        ...(answer.suppress ? { suppress: true } : {}),
       })
     ).ok;
   const openPermissionSystemSettings = async (prompt: BrowserPermissionPrompt) =>
@@ -1710,6 +1722,11 @@ export function BrowserSidebarPanel({
               identity={browserIdentity}
               isVisible={isVisible && activeBrowserUseTab !== null}
               onArrived={handleBrowserUseCursorArrived}
+            />
+            <BrowserPageDialogOverlay
+              identity={browserIdentity}
+              dialog={snapshot.pageDialog ?? null}
+              onRespond={respondToPageDialog}
             />
           </BrowserWebviewStage>
         )}

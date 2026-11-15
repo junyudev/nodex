@@ -1,5 +1,6 @@
 import {
   BrowserWindow,
+  dialog,
   Menu,
   session,
   shell,
@@ -67,12 +68,14 @@ export type BrowserWebContentsLike = Pick<
   ) => void;
   on(eventName: string, listener: (...args: unknown[]) => void): BrowserWebContentsLike;
   once(eventName: string, listener: (...args: unknown[]) => void): BrowserWebContentsLike;
+  removeAllListeners(eventName: string): BrowserWebContentsLike;
   removeListener(eventName: string, listener: (...args: unknown[]) => void): BrowserWebContentsLike;
   stopFindInPage?: (action: "clearSelection" | "keepSelection" | "activateSelection") => void;
 };
 
 /** Stateless Electron adapter for the Browser aggregate's synchronous physical operations. */
 export interface BrowserElectronPlatform {
+  readonly confirmLeavePage: (ownerWebContentsId: number) => boolean;
   readonly getMediaAccessStatus?: typeof systemPreferences.getMediaAccessStatus;
   readonly sessionFromPartition: typeof session.fromPartition;
   readonly openExternal: typeof shell.openExternal;
@@ -84,6 +87,20 @@ export interface BrowserElectronPlatform {
 }
 
 export const browserElectronPlatform: BrowserElectronPlatform = {
+  confirmLeavePage: (ownerWebContentsId) => {
+    const owner = webContents.fromId(ownerWebContentsId);
+    const window = owner && !owner.isDestroyed() ? BrowserWindow.fromWebContents(owner) : null;
+    if (!window || window.isDestroyed()) return false;
+    return (
+      dialog.showMessageBoxSync(window, {
+        message: "Leave site?",
+        detail: "Changes you made may not be saved.",
+        buttons: ["Leave", "Stay"],
+        defaultId: 0,
+        cancelId: 1,
+      }) === 0
+    );
+  },
   getMediaAccessStatus: (mediaType) =>
     process.platform === "darwin" ? systemPreferences.getMediaAccessStatus(mediaType) : "unknown",
   sessionFromPartition: (partition) => session.fromPartition(partition),

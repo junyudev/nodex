@@ -60,6 +60,7 @@ const browserSidebarCommandDefinitions = {
   "remove-local-server-route": defineBrowserSidebarCommand("remove-local-server-route"),
   "reset-site-permissions": defineBrowserSidebarCommand("reset-site-permissions"),
   "reset-zoom": defineBrowserSidebarCommand("reset-zoom"),
+  "respond-page-dialog": defineBrowserSidebarCommand("respond-page-dialog"),
   "respond-permission": defineBrowserSidebarCommand("respond-permission"),
   "set-device-toolbar-visible": defineBrowserSidebarCommand("set-device-toolbar-visible"),
   "set-favicon": defineBrowserSidebarCommand("set-favicon"),

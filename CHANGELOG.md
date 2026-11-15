@@ -24,6 +24,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Alerts and confirmations from a web page now appear inside its Browser tab. They name the site that asked, leave the rest of Nodex usable, and stop taking the keyboard from the chat you are typing in. A page that keeps opening them can be told to stop, and an Agent working in the page answers them itself.
 - A message you send from your phone while an Agent is working now redirects it right away, as sending from the desktop does. Nodex Mobile used to queue it behind the Run unless you knew to press and hold send; now holding send is what queues it, and the Composer says so.
 - The Inbox and the Board now agree about every message. A message waits in your Inbox while its card is in Triage and yours to decide, so moving the card on the Board handles it, and moving it back to Triage brings it back. **Keep** is now **Add to Todo**, and a card appears in the Inbox once, whether it waits to be routed or needs your answer or review. In a shared Space, each person's Inbox shows the messages they own.
 - Stable updates reach you sooner with the same build already tested on Nightly. Both channels show app versions as `x.y.z`, and you can choose your channel in Settings.
@@ -41,6 +42,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Links that open a new tab work in the built-in Browser. Clicking one did nothing, and neither did ⌘-click, middle-click or a page opening a window itself. They now open a tab right beside the page, in the background for ⌘-click and middle-click, including from a page you are not looking at. Mail and phone links that ask for a new tab open their app, and a tab opened only to download a file closes once the download finishes.
+- A page with unsaved changes asks before you leave it. Following a link, reloading or entering another address did nothing on such a page; Nodex now asks **Leave site?**, and a page an Agent is working in moves on without asking.
 - The Browser stays idle with several tabs open. With two or more live tabs Nodex re-sent their state many times a second, which used the processor continuously and could leave a new tab titled “Browser”. Background tabs now also show their page's title as soon as it loads.
 - Claude Code chats in Full access no longer stall on a safety check while you are away. Claude Code still asks before a command whose removals it cannot verify, even a harmless script, and the request used to wait for you indefinitely. It now waits two minutes and shows that deadline; if no one answers, the command is declined, the Agent rewrites it safely or leaves the removal to you, and the turn carries on.
 - Starting a chat no longer fails with **Request declined** while Nodex is busy in the background. Automatic work such as Inbox routing, scheduled work, and syncing now waits behind what you are doing, and a brief busy moment is retried instead of ending the turn.

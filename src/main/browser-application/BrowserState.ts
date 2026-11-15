@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { BrowserPageDialogs } from "../browser/BrowserPageDialogs";
+import { installBrowserPageDialogAdapter } from "../platform/electron/BrowserPageDialogAdapter";
 import type { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import {
   BrowserSessionPermissions,
@@ -332,6 +334,7 @@ interface ActiveBrowserImageDrag extends BrowserSidebarTabIdentity {
 export class BrowserState {
   private readonly rendererDestruction: BrowserStateDeps["rendererDestruction"];
   readonly permissions: BrowserSessionPermissions;
+  private readonly pageDialogs = new Map<number, BrowserPageDialogs>();
   private readonly permissionNavigationVersions = new Map<number, number>();
   private readonly permissionInputTimes = new Map<number, number>();
   private readonly tabs = new Map<string, BrowserSidebarTabSnapshot>();
@@ -1830,6 +1833,8 @@ export class BrowserState {
         }
 
         if (command.type === "close-tab") {
+          const guestId = this.tabs.get(browserTabKey(command))?.webContentsId;
+          if (guestId != null) this.pageDialogs.get(guestId)?.dismiss();
           yield* this.closeBrowserTab(command, "user");
           return { ok: true };
         }
@@ -1846,6 +1851,34 @@ export class BrowserState {
         const key = browserTabKey(command);
         const tab = this.tabs.get(key);
         if (!tab) return { ok: false, message: "Browser tab is not registered" };
+
+        if (command.type === "respond-page-dialog") {
+          const guestId = tab.webContentsId;
+          const owner = guestId === null ? null : this.runtimeRegistry.getGuestOwnership(guestId);
+          if (
+            guestId === null ||
+            !owner ||
+            owner.ownerWebContentsId !== context.ownerWebContentsId
+          ) {
+            return { ok: false, message: "Browser page dialog is no longer current" };
+          }
+          const answered = this.pageDialogs
+            .get(guestId)
+            ?.respond(command.dialogId, command.accept, command.suppress);
+          return answered
+            ? { ok: true }
+            : { ok: false, message: "Browser page dialog is no longer current" };
+        }
+
+        if (
+          command.type === "navigate" ||
+          command.type === "reload" ||
+          command.type === "go-back" ||
+          command.type === "go-forward" ||
+          command.type === "stop"
+        ) {
+          if (tab.webContentsId !== null) this.pageDialogs.get(tab.webContentsId)?.dismiss();
+        }
 
         if (
           command.type === "respond-permission" ||
@@ -2606,13 +2639,45 @@ export class BrowserState {
           downloadCompleted: false,
         });
       }
-      const disposers: Array<() => void> = [() => this.initialLoads.delete(webContentsId)];
+      const dialogs = new BrowserPageDialogs((pageDialog) => {
+        const key = this.webContentsTabIds.get(webContentsId) ?? tabId;
+        if (this.tabs.has(key)) this.updateTab(key, { pageDialog });
+      });
+      this.pageDialogs.set(webContentsId, dialogs);
+      const releaseDialogs = installBrowserPageDialogAdapter(
+        contents,
+        (info, callback) => dialogs.open(info, contents.getURL(), callback),
+        () => dialogs.settle(),
+      );
+      const disposers: Array<() => void> = [
+        () => this.initialLoads.delete(webContentsId),
+        () => {
+          releaseDialogs();
+          if (contents.isDestroyed()) dialogs.settle();
+          else dialogs.dismiss();
+          this.pageDialogs.delete(webContentsId);
+        },
+      ];
       const add = (eventName: string, listener: (...args: unknown[]) => void) => {
         contents.on(eventName, listener);
         disposers.push(() => contents.removeListener(eventName, listener));
       };
 
+      add("will-prevent-unload", (event) => {
+        const key = this.webContentsTabIds.get(webContentsId);
+        if (!key) return;
+        const tab = this.tabs.get(key);
+        const owner = this.runtimeRegistry.getGuestOwnership(webContentsId);
+        const leave =
+          this.browserUseNavigationRestrictions.has(key) ||
+          (tab?.presented === true &&
+            tab.visible === true &&
+            owner !== null &&
+            this.electron.confirmLeavePage(owner.ownerWebContentsId));
+        if (leave) (event as { preventDefault(): void }).preventDefault();
+      });
       add("destroyed", () => {
+        dialogs.settle();
         const activeTabId = this.webContentsTabIds.get(webContentsId) ?? tabId;
         this.logger.info("Browser webContents destroyed", { tabId: activeTabId, webContentsId });
         const ownership = this.attachedWebviewOwnership.get(webContentsId);
@@ -2699,6 +2764,7 @@ export class BrowserState {
         this.fork(this.persistPageSnapshotForWebContents(webContentsId, contents));
       });
       add("did-navigate", (...args) => {
+        dialogs.committed();
         this.initialLoads.delete(webContentsId);
         this.updateTabForWebContents(webContentsId, contents, {
           url: readUrlFromEventArgs(args, contents.getURL()),
@@ -2752,6 +2818,7 @@ export class BrowserState {
         this.handleLoadFailure(webContentsId, contents, args),
       );
       add("render-process-gone", (...args) => {
+        dialogs.settle();
         this.permissions.release(webContentsId);
         this.permissionInputTimes.delete(webContentsId);
         const tabKey = this.webContentsTabIds.get(webContentsId);

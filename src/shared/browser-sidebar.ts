@@ -4,6 +4,7 @@ import type {
   BrowserPermissionPrompt,
   BrowserSitePermissionName,
 } from "./browser/browser-permissions";
+import type { BrowserPageDialog } from "./browser/browser-page-dialogs";
 
 export const BROWSER_SIDEBAR_PARTITION = "persist:codex-browser-app";
 export const BROWSER_SIDEBAR_ROUTE_PARTITION_PREFIX = "persist:codex-browser-app-route:";
@@ -266,6 +267,8 @@ export const DEFAULT_BROWSER_SIDEBAR_FIND_STATE: BrowserSidebarFindState = {
 
 export interface BrowserSidebarTabSnapshot extends BrowserSidebarTabIdentity {
   permissionPrompts?: BrowserPermissionPrompt[];
+  /** The dialog this page is waiting on, if any. */
+  pageDialog?: BrowserPageDialog;
   browserStorageId?: string;
   projectId: string | null;
   webContentsId: number | null;
@@ -562,6 +565,14 @@ export type BrowserSidebarCommand =
       mountGeneration: number;
       action: BrowserPermissionAction;
       geolocationAccuracy?: BrowserGeolocationAccuracy;
+    }>
+  | BrowserSidebarTargetedCommand<{
+      type: "respond-page-dialog";
+      dialogId: string;
+      /** OK for either kind; false is Cancel, which an alert treats as OK. */
+      accept: boolean;
+      /** Stop this page from opening more dialogs until it navigates. */
+      suppress?: boolean;
     }>
   | BrowserSidebarTargetedCommand<{
       type: "open-permission-system-settings";

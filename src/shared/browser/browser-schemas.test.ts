@@ -174,6 +174,21 @@ describe("Browser IPC schemas", () => {
   });
 });
 
+test("validates page dialog responses", () => {
+  const response = {
+    ...identity,
+    type: "respond-page-dialog",
+    dialogId: "dialog-1",
+    accept: false,
+  };
+  expect(parseBrowserSidebarCommand(response)).toEqual(response);
+  expect(parseBrowserSidebarCommand({ ...response, suppress: true })).toMatchObject({
+    suppress: true,
+  });
+  expect(() => parseBrowserSidebarCommand({ ...response, dialogId: "" })).toThrow();
+  expect(() => parseBrowserSidebarCommand({ ...response, accept: "yes" })).toThrow();
+});
+
 test("validates permission responses and origin permission reset commands", () => {
   const response = {
     ...identity,

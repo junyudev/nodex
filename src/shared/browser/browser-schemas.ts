@@ -196,6 +196,12 @@ export const BrowserSidebarCommandSchema = z.union([
       value.action === "allow-this-time",
   ),
   TargetedCommandSchema({
+    type: z.literal("respond-page-dialog"),
+    dialogId: BrowserIdSchema,
+    accept: z.boolean(),
+    suppress: z.boolean().optional(),
+  }),
+  TargetedCommandSchema({
     type: z.literal("open-permission-system-settings"),
     promptId: BrowserIdSchema,
     mountGeneration: z.number().int().positive(),
@@ -408,6 +414,18 @@ export const BrowserSidebarCommandSchema = z.union([
     })
     .strict(),
 ]) satisfies z.ZodType<BrowserSidebarCommand>;
+
+/**
+ * A command the type admits but this schema omits is refused at the IPC boundary, where no
+ * caller's types can see it. Omitting one fails to compile here instead.
+ */
+const everyCommandIsAdmitted: Exclude<
+  BrowserSidebarCommand["type"],
+  z.infer<typeof BrowserSidebarCommandSchema>["type"]
+> extends never
+  ? true
+  : never = true;
+void everyCommandIsAdmitted;
 
 export const BrowserBrowsingDataKindSchema = z.enum([
   "cookies",
