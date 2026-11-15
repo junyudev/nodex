@@ -296,7 +296,6 @@ export const HomeScreen = () => {
                 <Chip
                   icon="inbox"
                   label={shown?.label ?? "Project"}
-                  trailingChevron
                   onPress={() => navigation.navigate("ScopePicker")}
                 />
               }
@@ -315,15 +314,19 @@ export const HomeScreen = () => {
               chips={
                 <>
                   <Chip
-                    icon={preferences.location === "worktree" ? "branch" : "folder"}
+                    icon={
+                      chatProject
+                        ? preferences.location === "worktree"
+                          ? "worktree"
+                          : "folder"
+                        : "noProject"
+                    }
                     label={chatProject?.name ?? "No project"}
-                    trailingChevron
                     onPress={() => navigation.navigate("ProjectPicker")}
                   />
                   <Chip
                     icon="agent"
                     label={agentChipLabel(catalog.catalog, preferences.agent)}
-                    trailingChevron
                     onPress={() => navigation.navigate("AgentPicker")}
                   />
                 </>

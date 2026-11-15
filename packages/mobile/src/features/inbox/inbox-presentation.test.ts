@@ -246,7 +246,7 @@ describe("entrySignature", () => {
   it("reads asks warm, reviews as the accent and trouble as danger", () => {
     expect(entrySignature(turn("question"))).toEqual({
       label: "Needs your answer",
-      icon: "chat",
+      icon: "question",
       tone: "warning",
     });
     expect(entrySignature(turn("review"))?.tone).toBe("accent");

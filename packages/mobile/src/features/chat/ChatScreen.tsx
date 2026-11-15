@@ -349,7 +349,7 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
             {chat.state.status === "running" ? <NotificationOffer /> : null}
             {chat.state.queuedCount > 0 ? (
               <FloatingNote
-                icon="clock"
+                icon="queue"
                 text={
                   chat.state.queuedCount === 1
                     ? "1 message waiting behind this Run"
@@ -371,26 +371,30 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
                 placeholder={activeRunId ? "Steer, or hold send to queue" : "Reply"}
                 {...(effort.label
                   ? {
-                      // The chip opens into its choices in place, as Attach does, so choosing
-                      // one never leaves the words or drops the keyboard.
-                      chips: choosingEffort ? (
-                        <EffortPills
-                          efforts={effort.efforts}
-                          selected={effort.selected}
-                          onChoose={(picked) => {
-                            effort.pick(picked);
-                            setChoosingEffort(false);
-                          }}
-                        />
-                      ) : (
+                      chips: (
                         <Chip
-                          icon="sliders"
+                          icon="reasoning"
                           label={effort.label}
                           accessibilityLabel={`Reasoning effort: ${effort.label}`}
-                          trailingChevron
                           onPress={() => setChoosingEffort(true)}
                         />
                       ),
+                      // The chip opens into its choices in place, as Attach does, so choosing
+                      // one never leaves the words or drops the keyboard.
+                      ...(choosingEffort
+                        ? {
+                            choices: (
+                              <EffortPills
+                                efforts={effort.efforts}
+                                selected={effort.selected}
+                                onChoose={(picked) => {
+                                  effort.pick(picked);
+                                  setChoosingEffort(false);
+                                }}
+                              />
+                            ),
+                          }
+                        : {}),
                     }
                   : {})}
                 // Sending redirects the Run at work, as a desktop does by default; with none at

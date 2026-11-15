@@ -1,0 +1,126 @@
+import {
+  PlusMd20Glyph,
+  Bell16Glyph,
+  ChatBubble16Glyph,
+  XmarkMd20Glyph,
+  ChevronDownMd20Glyph,
+  ChevronRightMd20Glyph,
+  ChevronLeftLg16Glyph,
+  CheckmarkMd20Glyph,
+  Clock16Glyph,
+  ClockArrowRotateCounterclockwise16Glyph,
+  ExclamationMarkTriangle16Glyph,
+  Terminal20Glyph,
+  DocumentText20Glyph,
+  Globe20Glyph,
+  ListBullet20Glyph,
+  Photo20Glyph,
+  Camera16Glyph,
+  Trash16Glyph,
+  Archive16Glyph,
+  ArrowUturnLeft20Glyph,
+  Link20Glyph,
+  Brain16Glyph,
+} from "../../src/renderer/components/shared/icons/outline-glyphs";
+import {
+  UpArrowIcon,
+  DownArrowIcon,
+  InboxIcon,
+  SlashModelIcon,
+  StopIcon,
+  SlashReasoningIcon,
+  WorktreeStatusIcon,
+  QueuedFollowUpIcon,
+} from "../../src/renderer/components/shared/icons/app-icons";
+import {
+  MagnifyingGlassIcon,
+  LaptopIcon,
+  BranchIcon,
+  FolderIcon,
+  GearIcon,
+} from "../../src/renderer/components/shared/icons/customize-action-icons";
+import { AppActivityIcon } from "../../src/renderer/components/shared/icons/activity-icons";
+import {
+  ImportantIcon,
+  ImportantFilledIcon,
+  NoteIcon,
+  TodoIcon,
+  QuestionIcon,
+  SendToChatIcon,
+  DispatchIcon,
+  PauseIcon,
+} from "../../src/renderer/components/shared/icons/canonical-icons";
+import type { IconGlyph } from "../../packages/mobile/src/ui/icon-glyphs";
+
+/** Edit phone → desktop choices here, then run `vp run mobile:icons:generate`. */
+export const MOBILE_ICON_COMPONENTS = {
+  plus: { PlusMd20Glyph },
+  arrowUp: { UpArrowIcon },
+  arrowDown: { DownArrowIcon },
+  bell: { Bell16Glyph },
+  inbox: { InboxIcon },
+  chat: { ChatBubble16Glyph },
+  search: { MagnifyingGlassIcon },
+  close: { XmarkMd20Glyph },
+  chevronDown: { ChevronDownMd20Glyph },
+  chevronRight: { ChevronRightMd20Glyph },
+  chevronLeft: { ChevronLeftLg16Glyph },
+  check: { CheckmarkMd20Glyph },
+  clock: { Clock16Glyph },
+  history: { ClockArrowRotateCounterclockwise16Glyph },
+  warning: { ExclamationMarkTriangle16Glyph },
+  terminal: { Terminal20Glyph },
+  file: { DocumentText20Glyph },
+  globe: { Globe20Glyph },
+  list: { ListBullet20Glyph },
+  tool: { AppActivityIcon },
+  // The desktop /model command uses this cube; its composer model trigger is text-only.
+  agent: { SlashModelIcon },
+  photo: { Photo20Glyph },
+  camera: { Camera16Glyph },
+  star: { ImportantIcon },
+  starFilled: { ImportantFilledIcon },
+  trash: { Trash16Glyph },
+  archive: { Archive16Glyph },
+  undo: { ArrowUturnLeft20Glyph },
+  laptop: { LaptopIcon },
+  branch: { BranchIcon },
+  link: { Link20Glyph },
+  folder: { FolderIcon },
+  thought: { Brain16Glyph },
+  stop: { StopIcon },
+  reasoning: { SlashReasoningIcon },
+  settings: { GearIcon },
+  // A chat that is about no folder: the chat itself, so it never reads as one more Project.
+  noProject: { ChatBubble16Glyph },
+  worktree: { WorktreeStatusIcon },
+  queue: { QueuedFollowUpIcon },
+  // What the desktop Inbox marks its decisions and Turns with.
+  note: { NoteIcon },
+  todo: { TodoIcon },
+  question: { QuestionIcon },
+  sendToChat: { SendToChatIcon },
+  run: { DispatchIcon },
+  pause: { PauseIcon },
+} as const;
+
+/** Sole local glyph: the desktop has no QR scanning/viewfinder icon. */
+export const LOCAL_MOBILE_GLYPHS = {
+  scan: {
+    viewBox: "0 0 20 20",
+    paths: [
+      "M4 7V5a1 1 0 0 1 1-1h2",
+      "M13 4h2a1 1 0 0 1 1 1v2",
+      "M16 13v2a1 1 0 0 1-1 1h-2",
+      "M7 16H5a1 1 0 0 1-1-1v-2",
+      "M4 10h12",
+    ].map((d) => ({
+      d,
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 1.33,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+    })),
+  },
+} as const satisfies Record<string, IconGlyph>;

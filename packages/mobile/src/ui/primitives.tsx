@@ -14,8 +14,8 @@ import {
 } from "react-native";
 
 import { cn } from "./cn";
-import { Icon, type IconName } from "./icons";
-import { useColor, type ColorToken } from "./tokens";
+import { Icon, type IconColor, type IconName } from "./icons";
+import { useColor } from "./tokens";
 
 export const Txt = ({ className, ...props }: TextProps) => (
   <Text className={cn("text-base text-ink", className)} {...props} />
@@ -63,7 +63,7 @@ export const IconButton = ({
   readonly name: IconName;
   /** Also its accessible name. */
   readonly label: string;
-  readonly color?: ColorToken;
+  readonly color?: IconColor;
   readonly size?: number;
   readonly className?: string;
 }) => (
@@ -78,17 +78,18 @@ export const IconButton = ({
   </Tap>
 );
 
-/** A neutral reference or picker, on a wash so it holds together on glass as well as a surface. */
+/**
+ * A neutral reference or picker, on a wash so it holds together on glass as well as a surface.
+ * Its mark says what kind of thing it holds, and its words which one.
+ */
 export const Chip = ({
   icon,
   label,
-  trailingChevron,
   className,
   ...props
 }: Omit<PressableProps, "children" | "className"> & {
   readonly icon?: IconName;
   readonly label: string;
-  readonly trailingChevron?: boolean;
   readonly className?: string;
 }) => (
   <Tap
@@ -100,7 +101,6 @@ export const Chip = ({
     <Txt className="shrink text-[14px] leading-[18px] text-ink-2" numberOfLines={1}>
       {label}
     </Txt>
-    {trailingChevron ? <Icon name="chevronDown" size={10} color="ink-3" /> : null}
   </Tap>
 );
 
@@ -170,7 +170,7 @@ export const Row = ({
   readonly icon?: IconName;
   /** A richer mark than an icon, such as a Space's avatar. */
   readonly leading?: ReactNode;
-  readonly iconColor?: ColorToken;
+  readonly iconColor?: IconColor;
   readonly label: string;
   readonly detail?: string | null;
   readonly trailing?: ReactNode;

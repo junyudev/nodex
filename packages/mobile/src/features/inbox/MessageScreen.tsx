@@ -198,7 +198,7 @@ export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => 
               return (
                 <Row
                   key={type}
-                  icon={note ? "folder" : "check"}
+                  icon={note ? "note" : "todo"}
                   label={note ? "Save to Notes" : "Add to Todo"}
                   onPress={() =>
                     decideAndClose({ type }, note ? "Saved to Notes" : "Added to Todo")

@@ -55,6 +55,7 @@ export const Composer = ({
   draftKey: composerKey,
   placeholder,
   chips,
+  choices,
   canSend = true,
   sending = false,
   onSend,
@@ -70,6 +71,11 @@ export const Composer = ({
   readonly placeholder: string;
   /** Pickers beside the attach control; they say where this goes. */
   readonly chips?: ReactNode;
+  /**
+   * One of the chips opened into what it offers, such as a model's efforts. While present it has
+   * the whole line beside send, so the choices are not crowded by controls that can wait.
+   */
+  readonly choices?: ReactNode;
   /** Whether the Host can take this now, apart from there being something to send. */
   readonly canSend?: boolean;
   readonly sending?: boolean;
@@ -252,8 +258,13 @@ export const Composer = ({
         </View>
         {open ? (
           <View className="flex-row items-center gap-1 px-[5px] pb-[5px]">
-            {attachControl}
-            <View className="flex-1 flex-row items-center gap-1 overflow-hidden">
+            {choices && !attaching ? null : attachControl}
+            <View
+              className={cn(
+                "flex-1 flex-row items-center gap-1 overflow-hidden",
+                choices && !attaching && "pl-[5px]",
+              )}
+            >
               {attaching ? (
                 <>
                   <Chip
@@ -264,7 +275,7 @@ export const Composer = ({
                   <Chip icon="camera" label="Camera" onPress={() => void addImages(takePhoto)} />
                 </>
               ) : (
-                chips
+                (choices ?? chips)
               )}
             </View>
             {sendControl}

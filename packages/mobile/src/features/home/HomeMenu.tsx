@@ -97,7 +97,7 @@ export const HomeMenu = () => {
           className="h-10 w-10 bg-fill"
           color="ink"
           label="Settings"
-          name="sliders"
+          name="settings"
           onPress={() => navigationRef.navigate("Settings")}
         />
       </View>

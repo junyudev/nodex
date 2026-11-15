@@ -2,9 +2,8 @@ import type { ReactNode } from "react";
 import { View } from "react-native";
 
 import { Glass } from "./glass";
-import { Icon, type IconName } from "./icons";
+import { Icon, type IconColor, type IconName } from "./icons";
 import { Txt } from "./primitives";
-import type { ColorToken } from "./tokens";
 
 /** A standing condition floating above the Composer: what is true, and any action it allows. */
 export const FloatingNote = ({
@@ -14,7 +13,7 @@ export const FloatingNote = ({
   action,
 }: {
   readonly icon: IconName;
-  readonly iconColor?: ColorToken;
+  readonly iconColor?: IconColor;
   readonly text: string;
   readonly action?: ReactNode;
 }) => (

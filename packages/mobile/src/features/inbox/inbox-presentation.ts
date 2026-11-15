@@ -21,19 +21,19 @@ export const proposalAction = (
     case "new_chat":
       return { label: "Start chat", icon: "chat" };
     case "send_to_chat":
-      return { label: "Send to chat", icon: "chat" };
+      return { label: "Send to chat", icon: "sendToChat" };
     case "move_to_project":
       return { label: "Move", icon: "folder" };
     case "execute_decision":
-      return { label: "Run", icon: "tool" };
+      return { label: "Run", icon: "run" };
     case "plan":
-      return { label: "Start plan", icon: "tool" };
+      return { label: "Start plan", icon: "run" };
     case "later":
       return { label: `Later · ${formatLaterTime(action.remindAt, now)}`, icon: "clock" };
     case "keep":
-      return { label: "Add to Todo", icon: "check" };
+      return { label: "Add to Todo", icon: "todo" };
     case "save_to_notes":
-      return { label: "Save to Notes", icon: "folder" };
+      return { label: "Save to Notes", icon: "note" };
   }
 };
 
@@ -209,7 +209,7 @@ type TurnReason = NonNullable<Extract<InboxEntry, { rowKind: "turn" }>["turn"]["
 const TURN_SIGNATURES: Readonly<Record<TurnReason, EntrySignature>> = {
   triage: { label: "Needs your decision", icon: "chat", tone: "warning" },
   delivery_recovery: { label: "Delivery needs your attention", icon: "warning", tone: "danger" },
-  question: { label: "Needs your answer", icon: "chat", tone: "warning" },
+  question: { label: "Needs your answer", icon: "question", tone: "warning" },
   approval: { label: "Needs your approval", icon: "warning", tone: "warning" },
   review: { label: "Ready for your review", icon: "check", tone: "accent" },
   ready_to_start: { label: "Ready to start", icon: "clock", tone: "ink-3" },
@@ -217,9 +217,9 @@ const TURN_SIGNATURES: Readonly<Record<TurnReason, EntrySignature>> = {
   failed: { label: "Failed · needs you", icon: "warning", tone: "danger" },
   stalled: { label: "Stalled · needs you", icon: "warning", tone: "danger" },
   waiting_on_prerequisite: { label: "Waiting for another Page", icon: "clock", tone: "ink-3" },
-  paused: { label: "Paused", icon: "stop", tone: "ink-3" },
+  paused: { label: "Paused", icon: "pause", tone: "ink-3" },
   working: { label: "The Agent is working", icon: "agent", tone: "ink-3" },
-  queued: { label: "Queued", icon: "clock", tone: "ink-3" },
+  queued: { label: "Queued", icon: "queue", tone: "ink-3" },
   starting: { label: "The Agent is starting", icon: "agent", tone: "ink-3" },
 };
 

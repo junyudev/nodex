@@ -64,7 +64,7 @@ export const ProjectPickerScreen = ({ route }: ScreenProps<"ProjectPicker">) => 
     <PickerSurface>
       <RowGroup>
         <Row
-          icon="thought"
+          icon="noProject"
           label="No project"
           detail="A chat that isn't about any folder"
           trailing={preferences.projectId === null ? <Selected /> : null}
@@ -104,7 +104,7 @@ export const ProjectPickerScreen = ({ route }: ScreenProps<"ProjectPicker">) => 
               }}
             />
             <Row
-              icon="branch"
+              icon="worktree"
               label="New worktree"
               detail="Keeps this chat's changes apart from your checkout"
               trailing={preferences.location === "worktree" ? <Selected /> : null}

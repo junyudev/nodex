@@ -80,6 +80,34 @@ APPLE_API_KEY_ID=KEY_ID APPLE_API_ISSUER=ISSUER_ID \
 
 Regenerate the bundled artwork with `bash assets/generate.sh` using ImageMagick and librsvg.
 
+## UI glyphs
+
+Desktop icon components own the phone's glyph geometry. Edit the phone-name mapping in
+[`scripts/mobile-icons/mapping.ts`](../../scripts/mobile-icons/mapping.ts), then regenerate from
+the repository root:
+
+```sh
+vp run mobile:icons:generate
+```
+
+This renders the desktop components through Vite and React DOM, extracts paths from their
+silhouette masks, and writes `src/ui/icon-glyphs.generated.ts`. The phone renders only that data;
+it does not import desktop components, and paints each glyph in one of its opaque inks. `scan` is the sole local glyph, defined beside the
+mapping because desktop has no QR scanning glyph. Unsupported SVG constructs fail with the phone
+name instead of generating approximate artwork. The standard Node suite checks generated-data drift
+and raster parity with the desktop glyphs.
+
+Optional review exports use the same geometry format, with source labels in a separate file:
+
+```sh
+vp run mobile:icons:generate --json /absolute/path/icons.json \
+  --legacy-json /absolute/path/legacy.json --sources-json /absolute/path/sources.json
+```
+
+The legacy export reads the pinned pre-generation catalog from Git history, retaining the old icon
+names and stroke styling. It needs that commit available locally. Review JSON contains only
+`viewBox` and ordered `paths`; missing `fill` means icon color and `fill: "none"` disables filling.
+
 ## Pinned TLS capability
 
 `src/runtime/expo-platform.ts` supplies the connection runtime’s only network capability.
