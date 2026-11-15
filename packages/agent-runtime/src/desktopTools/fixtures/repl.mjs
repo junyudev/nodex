@@ -35,7 +35,9 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       _meta: name === "turn_ended" || name === "another_hidden" ? { ui: { visibility: [] } } : {},
     })) });
   }
-  if (method === "notifications/cancelled" && pending.delete(params.requestId)) {
+  if (method === "notifications/cancelled" && pending.has(params.requestId)) {
+    clearTimeout(pending.get(params.requestId));
+    pending.delete(params.requestId);
     trace({ event: "cancelled" });
     result(params.requestId, { content: [{ type: "text", text: "js execution cancelled; kernel reset" }], isError: true });
   }
@@ -43,8 +45,13 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   trace({ event: params.name, arguments: params.name === "turn_ended" ? params.arguments : undefined });
   const code = params.arguments?.code;
   if (code === "crash") process.exit(1);
-  if (code === "long") {
-    pending.set(id, true);
+  if (code === "long" || code === "slow") {
+    // "slow" finishes by itself unless it is cancelled first; "long" only ends by cancellation.
+    pending.set(id, code === "slow" && setTimeout(() => {
+      pending.delete(id);
+      trace({ event: "finished" });
+      success(id, { meta: params._meta ?? {}, pid: process.pid, cwd: process.cwd() });
+    }, 300));
     send({ method: "notifications/progress", params: { progressToken: params._meta.progressToken, progress: 1 } });
     return;
   }

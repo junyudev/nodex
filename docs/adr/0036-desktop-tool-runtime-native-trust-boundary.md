@@ -126,8 +126,13 @@ and listener. Only the watchdog signals its own group, so recovery never signals
 a PID from disk.
 
 Agent Runtime answers the REPL's elicitations and handles permission to run
-JavaScript. Cancellation goes upstream through MCP so the REPL can reset its
-kernel. The REPL survives provider session replacement. Thread archive, deletion,
+JavaScript. The REPL can stop running JavaScript only by resetting its kernel,
+which discards every binding the Agent has built. A call therefore belongs to
+its Run attempt, not to the provider request that started it: a provider that
+stops waiting, as one does when a new message redirects its turn, receives a
+cancelled result while the call finishes in the kernel, and later calls on the
+Thread run after it. Cancellation goes upstream through MCP only when the
+attempt ends. The REPL survives provider session replacement. Thread archive, deletion,
 and Runtime shutdown close its process group on macOS or job on Windows.
 
 ### Presentation intent does not imply panel selection

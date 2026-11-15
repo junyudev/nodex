@@ -97,6 +97,15 @@ const toolError = (text: string): CallToolResult => ({
 });
 const terminal = (status: string) => status !== "running" && status !== "pending";
 
+/** Settles with `work`, or rejects as soon as `signal` aborts and leaves `work` running. */
+const whileWaiting = <A>(work: Promise<A>, signal: AbortSignal) =>
+  new Promise<A>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    if (signal.aborted) return abort();
+    signal.addEventListener("abort", abort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
+
 function hidden(tool: Tool): boolean {
   const visibility = field(tool._meta?.ui, "visibility");
   return tool.name === "turn_ended" || (Array.isArray(visibility) && visibility.length === 0);
@@ -120,6 +129,8 @@ export function makeDesktopTools(home: string, ports: Ports) {
   const makeThread = (threadId: ThreadId, launch: Launch) => {
     const invocations = new Map<string, Invocation>();
     const turns = new Map<string, Turn>();
+    // Calls still running in the kernel after their caller stopped waiting. See `call`.
+    const abandoned = new Set<Promise<void>>();
     const hooks = new Set<Promise<void>>();
     const retirements = new Set<Promise<void>>();
     let activeProvider: ProviderInstanceId;
@@ -189,6 +200,7 @@ export function makeDesktopTools(home: string, ports: Ports) {
       launch,
       repl,
       invocations,
+      abandoned,
       turns,
       end,
       close,
@@ -409,7 +421,13 @@ export function makeDesktopTools(home: string, ports: Ports) {
       await turn.started;
       if (signal.aborted || lookup(caller) !== thread)
         return toolError("Desktop tool call cancelled");
-      return await client.request(
+      // One kernel runs this Thread's calls, so a call its caller gave up on finishes first.
+      await whileWaiting(Promise.all(thread.abandoned), signal);
+      // The REPL can only cancel running JavaScript by resetting its kernel, which discards
+      // every binding the Agent has built. A caller that stops waiting, as a provider does when
+      // a new message redirects its turn, is not a reason to do that: the call belongs to the
+      // Run attempt, finishes on its own, and is cancelled upstream only when the attempt ends.
+      const running = client.request(
         {
           method: "tools/call",
           params: {
@@ -419,8 +437,25 @@ export function makeDesktopTools(home: string, ports: Ports) {
           },
         },
         CallToolResultSchema,
-        { signal, timeout, onprogress },
+        {
+          signal: turn.controller.signal,
+          timeout,
+          onprogress: (progress) => {
+            if (!requestSignal.aborted) onprogress(progress);
+          },
+        },
       );
+      return await whileWaiting(running, requestSignal).catch((error: unknown) => {
+        if (!turn.controller.signal.aborted && requestSignal.aborted) {
+          const settled = running.then(
+            () => {},
+            () => {},
+          );
+          thread.abandoned.add(settled);
+          void settled.then(() => thread.abandoned.delete(settled));
+        }
+        throw error;
+      });
     };
 
     try {

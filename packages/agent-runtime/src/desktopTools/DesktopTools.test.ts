@@ -407,67 +407,96 @@ describe("Desktop Tools", () => {
     }),
   );
 
-  it.live.each(["socket", "notification", "DELETE", "attempt"] as const)(
-    "cancels upstream on %s",
+  /** Starts a call over a raw request, so the test can stop waiting for it in each way. */
+  async function startCall(info: Awaited<ReturnType<typeof provision>>, code: "long" | "slow") {
+    const { client, transport, js } = await connect(info);
+    const controller = new AbortController();
+    const headers = {
+      ...info.headers,
+      "mcp-session-id": transport.sessionId!,
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+    };
+    const result = await fetch(info.endpoint, {
+      method: "POST",
+      headers,
+      signal: controller.signal,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "call",
+        method: "tools/call",
+        params: { name: "js", arguments: { code }, _meta: { progressToken: "progress" } },
+      }),
+    });
+    const reader = result.body!.getReader();
+    const chunk = await reader.read();
+    expect(Buffer.from(chunk.value!).toString()).toContain('"progressToken":"progress"');
+    const stopWaiting = async (reason: "socket" | "notification" | "DELETE") => {
+      if (reason === "socket") controller.abort();
+      if (reason === "notification") {
+        expect(
+          (
+            await fetch(info.endpoint, {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                jsonrpc: "2.0",
+                method: "notifications/cancelled",
+                params: { requestId: "call" },
+              }),
+            })
+          ).status,
+        ).toBe(202);
+      }
+      if (reason === "DELETE") await transport.terminateSession();
+    };
+    const close = async () => {
+      await reader.cancel().catch(() => {});
+      await client.close();
+    };
+    return { js, stopWaiting, close };
+  }
+  const kernelEvents = async (context: TestContext) =>
+    (await readFile(context.trace, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => (JSON.parse(line) as { event: string }).event)
+      .filter((event) => ["js", "finished", "cancelled"].includes(event));
+
+  // Cancelling upstream resets the kernel and every binding in it. A provider stops waiting
+  // whenever a new message redirects its turn, which must not cost the Agent its script state.
+  it.live.each(["socket", "notification", "DELETE"] as const)(
+    "lets a call finish when its caller stops waiting (%s), and runs the next call after it",
     (reason) =>
       fixture(async (context) => {
         const info = await provision(context);
-        const { client, transport } = await connect(info);
-        const controller = new AbortController();
-        const headers = {
-          ...info.headers,
-          "mcp-session-id": transport.sessionId!,
-          "content-type": "application/json",
-          accept: "application/json, text/event-stream",
-        };
-        const result = await fetch(info.endpoint, {
-          method: "POST",
-          headers,
-          signal: controller.signal,
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: "long",
-            method: "tools/call",
-            params: {
-              name: "js",
-              arguments: { code: "long" },
-              _meta: { progressToken: "progress" },
-            },
-          }),
-        });
-        const reader = result.body!.getReader();
-        const chunk = await reader.read();
-        expect(Buffer.from(chunk.value!).toString()).toContain('"progressToken":"progress"');
-        if (reason === "socket") controller.abort();
-        if (reason === "notification") {
-          expect(
-            (
-              await fetch(info.endpoint, {
-                method: "POST",
-                headers,
-                body: JSON.stringify({
-                  jsonrpc: "2.0",
-                  method: "notifications/cancelled",
-                  params: { requestId: "long" },
-                }),
-              })
-            ).status,
-          ).toBe(202);
-        }
-        if (reason === "DELETE") await transport.terminateSession();
-        if (reason === "attempt") {
-          context.setRunning(false);
-          for (let i = 0; i < 2; i++) context.tools.retire(threadA, () => true, "interrupted");
-          await vi.waitFor(() => expect(context.observed).toEqual(["started", "ended"]));
-          const log = await readFile(context.trace, "utf8");
-          expect(log.match(/"event":"turn_ended"/g)).toHaveLength(1);
-          expect(log).toContain('"hook_event_name":"Interrupt"');
-        }
+        const call = await startCall(info, "slow");
+        await call.stopWaiting(reason);
+        // A terminated MCP session cannot carry the next call.
+        const reconnected = reason === "DELETE" ? await connect(info) : undefined;
+        expect((await (reconnected ?? call).js("after")).isError).not.toBe(true);
+        expect(await kernelEvents(context)).toEqual(["js", "finished", "js"]);
+        await call.close();
+        await reconnected?.client.close();
+      }),
+  );
+
+  it.live.each([false, true])(
+    "cancels upstream when the attempt ends (caller stopped waiting first: %s)",
+    (abandoned) =>
+      fixture(async (context) => {
+        const call = await startCall(await provision(context), "long");
+        if (abandoned) await call.stopWaiting("socket");
+        context.setRunning(false);
+        for (let i = 0; i < 2; i++) context.tools.retire(threadA, () => true, "interrupted");
+        await vi.waitFor(() => expect(context.observed).toEqual(["started", "ended"]));
+        const log = await readFile(context.trace, "utf8");
+        expect(log.match(/"event":"turn_ended"/g)).toHaveLength(1);
+        expect(log).toContain('"hook_event_name":"Interrupt"');
         await vi.waitFor(async () =>
-          expect(await readFile(context.trace, "utf8")).toContain('"event":"cancelled"'),
+          expect(await kernelEvents(context)).toEqual(["js", "cancelled"]),
         );
-        await reader.cancel().catch(() => {});
-        await client.close();
+        await call.close();
       }),
   );
 
@@ -573,61 +602,81 @@ describe("Desktop Tools", () => {
 
 const realRoot = process.env.NODEX_TEST_DESKTOP_TOOLS_RUNTIME;
 it.live.skipIf(!realRoot)(
-  "runs the signed REPL without a provider and resets its kernel on socket close",
+  "runs the signed REPL without a provider, keeps its kernel when a caller stops waiting, and resets it when the attempt ends",
   () =>
     fixture(async (context) => {
       const info = await provision(context);
       const { client, js } = await connect(info);
+      const text = (result: Awaited<ReturnType<typeof js>>) =>
+        result.content.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("");
       const stamped = await js("nodeRepl.write(JSON.stringify(nodeRepl.requestMeta))");
       expect(stamped.isError).not.toBe(true);
-      expect(stamped.content).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            text: expect.stringMatching(
-              /"x-codex-turn-metadata":\{"session_id":"[a-f0-9]+","thread_id":"[a-f0-9]+","turn_id":"attempt:test"\}/u,
-            ),
-          }),
-        ]),
+      expect(text(stamped)).toMatch(
+        /"x-codex-turn-metadata":\{"session_id":"[a-f0-9]+","thread_id":"[a-f0-9]+","turn_id":"attempt:test"\}/u,
       );
+      expect((await js("globalThis.steps = ['bound']")).isError).not.toBe(true);
 
-      const controller = new AbortController();
       // This transport aborts only fetch. The client never sends notifications/cancelled.
       const { client: dropping, transport } = await connect(info);
-      const request = fetch(info.endpoint, {
-        method: "POST",
-        headers: {
-          ...info.headers,
-          "mcp-session-id": transport.sessionId!,
-          "content-type": "application/json",
-          accept: "application/json, text/event-stream",
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "long",
-          method: "tools/call",
-          params: {
-            name: "js",
-            arguments: { code: "await new Promise(resolve => setTimeout(resolve, 60000))" },
+      const start = (code: string, signal: AbortSignal) =>
+        fetch(info.endpoint, {
+          method: "POST",
+          headers: {
+            ...info.headers,
+            "mcp-session-id": transport.sessionId!,
+            "content-type": "application/json",
+            accept: "application/json, text/event-stream",
           },
-        }),
-      }).catch(() => undefined);
+          signal,
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: code,
+            method: "tools/call",
+            params: { name: "js", arguments: { code } },
+          }),
+        }).catch(() => undefined);
       const directory = join(context.codexHome, "node_repl/active_execs");
       const records = async () =>
         (await readdir(directory).catch(() => [])).filter((name) => name.endsWith(".json"));
-      await vi.waitFor(async () => expect(await records()).toHaveLength(1));
-      const active = JSON.parse(await readFile(join(directory, (await records())[0]!), "utf8")) as {
-        kernelPid: number;
-        nodeReplPid: number;
+      const activeExecution = async () => {
+        await vi.waitFor(async () => expect(await records()).toHaveLength(1));
+        return JSON.parse(await readFile(join(directory, (await records())[0]!), "utf8")) as {
+          kernelPid: number;
+          nodeReplPid: number;
+        };
       };
+
+      // The caller's socket closes mid-call: the call finishes, and the next one runs after it
+      // in the same kernel with every binding intact.
+      const abandoned = new AbortController();
+      const abandonedRequest = start(
+        "await new Promise(resolve => setTimeout(resolve, 1500)); globalThis.steps.push('finished')",
+        abandoned.signal,
+      );
+      const first = await activeExecution();
+      abandoned.abort();
+      await abandonedRequest;
+      expect(text(await js("nodeRepl.write(JSON.stringify(globalThis.steps))"))).toContain(
+        '["bound","finished"]',
+      );
+      expect(isAlive(first.kernelPid)).toBe(true);
+
+      // Ending the attempt is what stops running JavaScript, by resetting the kernel.
+      const stopped = start(
+        "await new Promise(resolve => setTimeout(resolve, 60000))",
+        new AbortController().signal,
+      );
+      const active = await activeExecution();
+      expect(active.kernelPid).toBe(first.kernelPid);
       const parent = (pid: number) =>
         Number(execFileSync("ps", ["-p", String(pid), "-o", "ppid="], { encoding: "utf8" }).trim());
       const codex = parent(active.nodeReplPid);
       const launcher = parent(codex);
       for (const pid of [active.kernelPid, active.nodeReplPid, codex, launcher])
         expect(isAlive(pid)).toBe(true);
-      controller.abort();
-      await request;
+      context.setRunning(false);
+      context.tools.retire(threadA, () => true, "interrupted");
+      await stopped;
       await vi.waitFor(async () => {
         expect(await records()).toEqual([]);
         expect(isAlive(active.kernelPid)).toBe(false);

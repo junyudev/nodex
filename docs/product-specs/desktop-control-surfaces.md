@@ -27,6 +27,8 @@ approvals are macOS features.
 
 Local chats receive the desktop tools alongside the user's own MCP servers. Codex chats also receive Desktop features. When desktop tools cannot be prepared, the chat continues without them. The built-in Browser opens in the window that sent the message. A turn that no window sent, such as a queued, scheduled, or Agent-started turn, keeps the Browser window the chat already had. Archiving or deleting a chat releases its Browser pages and closes its Runtime-owned JavaScript session.
 
+An Agent's JavaScript session keeps what the Agent has set up in it, such as its connection to the Browser, for as long as the chat's Runtime runs it. A message sent while the Agent is working redirects the Agent at once but does not discard that session: a script already running finishes, and the Agent's next script runs after it with everything still in place. Stopping the reply is what stops a running script, and it starts the session over.
+
 ### Existing browsers on Windows
 
 Nodex connects to Chrome and Edge through the ChatGPT extension. Browser Settings shows **Waiting for extension** until an allowed extension instance connects. **Ready** means Nodex can address that instance and its tabs. Browser discovery uses the extension's exact ID and instance ID. Windows on Arm works without the optional extension-storage lookup for profile names and ordering.

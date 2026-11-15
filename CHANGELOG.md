@@ -41,6 +41,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Sending a message while an Agent is working in the Browser no longer makes it start over. The message used to wipe the Agent's script session, so it lost its connection to the Browser and had to find its pages again. The session now stays as it was, and whatever the Agent was doing finishes first; Stop still ends it immediately.
 - An Agent reloading a page in the Browser no longer reloads all of Nodex. The whole window used to start over, which interrupted the chat you were reading and closed every Browser tab, losing anything unsaved in them. Only the Agent's page reloads now.
 - Links that open a new tab work in the built-in Browser. Clicking one did nothing, and neither did ⌘-click, middle-click or a page opening a window itself. They now open a tab right beside the page, in the background for ⌘-click and middle-click, including from a page you are not looking at. Mail and phone links that ask for a new tab open their app, and a tab opened only to download a file closes once the download finishes.
 - A page with unsaved changes asks before you leave it. Following a link, reloading or entering another address did nothing on such a page; Nodex now asks **Leave site?**, and a page an Agent is working in moves on without asking.
