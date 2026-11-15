@@ -4,6 +4,7 @@ import {
   browserGuestId,
   browserPageHtml,
   browserTab,
+  clickAboveBrowserPage,
   openBrowserPage,
   startBrowserSite,
   visibleBrowserGuest,
@@ -27,7 +28,6 @@ test("A Browser page's dialog is answered in its tab, by a person or an Agent @a
     await withElectronScenario(
       { label: "browser-page-dialogs", scenarioId: null, prepareAgentRuntime: false },
       async ({ harness, page }) => {
-        await page.setViewportSize({ width: 1280, height: 800 });
         // Playwright dismisses a dialog nothing claims; these are Nodex's to answer.
         harness.application.context().on("dialog", () => undefined);
         await openBrowserPage(page, `${site.origin}/dialogs`);
@@ -55,7 +55,10 @@ test("A Browser page's dialog is answered in its tab, by a person or an Agent @a
         await ask("confirm");
         await expect(dialog).toContainText("Delete it?");
         await expect(browserTab(page, "Dialog source")).toBeVisible();
-        await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+        await clickAboveBrowserPage(
+          page,
+          dialog.getByRole("button", { name: "Cancel", exact: true }),
+        );
         await expect(browserTab(page, "Declined")).toBeVisible();
         await expect(dialog).toHaveCount(0);
 
@@ -64,7 +67,7 @@ test("A Browser page's dialog is answered in its tab, by a person or an Agent @a
         await expect(
           dialog.getByRole("checkbox", { name: "Don’t let this page open more dialogs" }),
         ).toBeVisible();
-        await dialog.getByRole("button", { name: "OK", exact: true }).click();
+        await clickAboveBrowserPage(page, dialog.getByRole("button", { name: "OK", exact: true }));
         await expect(browserTab(page, "Confirmed")).toBeVisible();
 
         await ask("alert");

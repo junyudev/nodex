@@ -33,7 +33,6 @@ test("Links in a Browser page open where the page asked @automatic", async () =>
     await withElectronScenario(
       { label: "browser-link-activation", scenarioId: null, prepareAgentRuntime: false },
       async ({ harness, page }) => {
-        await page.setViewportSize({ width: 1280, height: 800 });
         await openBrowserPage(page, `${site.origin}/links`);
         const source = browserTab(page, "Link source");
         await expect(source).toBeVisible();
