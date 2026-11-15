@@ -26,18 +26,27 @@ const TICK_MS = 15_000;
  */
 let runningSessions = 0;
 let sleepsStarted = 0;
+let sleepWaiters: { readonly count: number; readonly resolve: () => void }[] = [];
 const sleepsReach = (count: number) =>
-  Effect.promise(async () => {
-    while (sleepsStarted < count) await new Promise<void>((resolve) => setImmediate(resolve));
-  });
+  Effect.promise(
+    () =>
+      new Promise<void>((resolve) => {
+        if (sleepsStarted >= count) resolve();
+        else sleepWaiters.push({ count, resolve });
+      }),
+  );
 const countSleeps = Clock.clockWith((clock) =>
   Effect.acquireRelease(
     Effect.sync(() => {
       const sleep = clock.sleep;
       runningSessions = 0;
       sleepsStarted = 0;
+      sleepWaiters = [];
       clock.sleep = (duration) => {
         sleepsStarted += 1;
+        const reached = sleepWaiters.filter((waiter) => waiter.count <= sleepsStarted);
+        sleepWaiters = sleepWaiters.filter((waiter) => waiter.count > sleepsStarted);
+        for (const waiter of reached) waiter.resolve();
         return sleep(duration);
       };
       return sleep;
