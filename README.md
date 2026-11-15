@@ -15,10 +15,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg"><img alt="Download Nodex for macOS" src=".github/assets/readme/install/macos.svg" height="44" /></a>
-  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe"><img alt="Download Nodex for Windows" src=".github/assets/readme/install/windows.svg" height="44" /></a>
-  <a href="https://testflight.apple.com/join/Yz8Kpcty"><img alt="Download Nodex for iPhone" src=".github/assets/readme/install/iphone.svg" height="44" /></a>
-  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk"><img alt="Download Nodex for Android" src=".github/assets/readme/install/android.svg" height="44" /></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg"><picture><source srcset=".github/assets/readme/install/macos-dark.svg" media="(prefers-color-scheme: dark)"><img alt="Download Nodex for macOS" src=".github/assets/readme/install/macos-light.svg" height="44"></picture></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe"><picture><source srcset=".github/assets/readme/install/windows-dark.svg" media="(prefers-color-scheme: dark)"><img alt="Download Nodex for Windows" src=".github/assets/readme/install/windows-light.svg" height="44"></picture></a>
+  <a href="https://testflight.apple.com/join/Yz8Kpcty"><picture><source srcset=".github/assets/readme/install/iphone-dark.svg" media="(prefers-color-scheme: dark)"><img alt="Download Nodex for iPhone" src=".github/assets/readme/install/iphone-light.svg" height="44"></picture></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk"><picture><source srcset=".github/assets/readme/install/android-dark.svg" media="(prefers-color-scheme: dark)"><img alt="Download Nodex for Android" src=".github/assets/readme/install/android-light.svg" height="44"></picture></a>
 </p>
 
 <p align="center">

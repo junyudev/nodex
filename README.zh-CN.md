@@ -15,10 +15,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg"><img alt="下载 Nodex macOS" src=".github/assets/readme/install/macos-zh.svg" height="44" /></a>
-  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe"><img alt="下载 Nodex Windows" src=".github/assets/readme/install/windows-zh.svg" height="44" /></a>
-  <a href="https://testflight.apple.com/join/Yz8Kpcty"><img alt="下载 Nodex iPhone" src=".github/assets/readme/install/iphone-zh.svg" height="44" /></a>
-  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk"><img alt="下载 Nodex Android" src=".github/assets/readme/install/android-zh.svg" height="44" /></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg"><picture><source srcset=".github/assets/readme/install/macos-zh-dark.svg" media="(prefers-color-scheme: dark)"><img alt="下载 Nodex macOS" src=".github/assets/readme/install/macos-zh-light.svg" height="44"></picture></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe"><picture><source srcset=".github/assets/readme/install/windows-zh-dark.svg" media="(prefers-color-scheme: dark)"><img alt="下载 Nodex Windows" src=".github/assets/readme/install/windows-zh-light.svg" height="44"></picture></a>
+  <a href="https://testflight.apple.com/join/Yz8Kpcty"><picture><source srcset=".github/assets/readme/install/iphone-zh-dark.svg" media="(prefers-color-scheme: dark)"><img alt="下载 Nodex iPhone" src=".github/assets/readme/install/iphone-zh-light.svg" height="44"></picture></a>
+  <a href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk"><picture><source srcset=".github/assets/readme/install/android-zh-dark.svg" media="(prefers-color-scheme: dark)"><img alt="下载 Nodex Android" src=".github/assets/readme/install/android-zh-light.svg" height="44"></picture></a>
 </p>
 
 <p align="center">
