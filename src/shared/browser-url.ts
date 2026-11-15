@@ -13,3 +13,15 @@ export function resolveBrowserTabTitle(
   if (isBlankBrowserUrl(url)) return BROWSER_NEW_TAB_TITLE;
   return title?.trim() || "Browser";
 }
+
+/**
+ * A Browser tab's label. A live page names its own tab, also while the tab is in the
+ * background and no panel is mounted to store that title; a tab without a live page keeps the
+ * title it stored.
+ */
+export function resolveLiveBrowserTabTitle(
+  page: { readonly url: string; readonly title: string } | undefined,
+  storedTitle: string,
+): string {
+  return page ? resolveBrowserTabTitle(page.url, page.title) : storedTitle;
+}

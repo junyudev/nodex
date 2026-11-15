@@ -19,6 +19,7 @@ import {
   makeBrowserSidebarTabKey,
   type BrowserSidebarTabSnapshot,
 } from "../../../shared/browser-sidebar";
+import { resolveLiveBrowserTabTitle } from "../../../shared/browser-url";
 import { listWorkbenchPanelLeaves } from "../../../shared/workbench-panel-layout";
 import {
   makeWorkbenchSceneKey,
@@ -125,7 +126,7 @@ function makePanelItems(
           : undefined;
       return {
         id: surface.id,
-        title,
+        title: resolveLiveBrowserTabTitle(browserTabSnapshot, title),
         titleSource,
         ...resolveContentTabLocation(surface, { projects, home }),
         icon: presentation.icon,

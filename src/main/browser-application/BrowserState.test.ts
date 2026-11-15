@@ -420,6 +420,60 @@ describe("BrowserState semantic capability", () => {
     }),
   );
 
+  it.effect("broadcasts nothing when a host reports the presentation it already has", () =>
+    Effect.gen(function* () {
+      const { state, events } = yield* makeFixture();
+      yield* registerTab(state);
+      const context = { ownerWebContentsId: 7 };
+      const host = {
+        ...identity,
+        rendererInstanceId: "renderer-1",
+        hostGeneration: 1,
+        mountGeneration: 3,
+        themeVariant: "dark" as const,
+      };
+      yield* state.handleCommand(
+        {
+          type: "register-renderer-session",
+          browserViewScopeId: identity.browserViewScopeId,
+          rendererInstanceId: "renderer-1",
+        },
+        context,
+      );
+      for (const hostKind of ["background", "panel"] as const) {
+        yield* state.handleCommand(
+          {
+            type: "register-host",
+            ...host,
+            browserStorageId: "browser:durable",
+            hostKind,
+            pagePersistence: "durable",
+          },
+          context,
+        );
+        const sync = () =>
+          state.handleCommand(
+            {
+              type: "sync-host",
+              ...host,
+              hostKind,
+              presented: hostKind === "panel",
+              visible: hostKind === "panel",
+            },
+            context,
+          );
+        assert.isTrue((yield* sync()).ok);
+        const settled = readTab(state);
+        events.length = 0;
+        // The renderer reconciles its hosts after every broadcast, so this must not answer
+        // with another one.
+        assert.isTrue((yield* sync()).ok);
+        expect(events.filter((event) => event.kind === "state")).toEqual([]);
+        expect(readTab(state)).toEqual(settled);
+      }
+    }),
+  );
+
   it.effect("rejects a late host-created acknowledgement from a superseded presentation", () =>
     Effect.gen(function* () {
       const { runtimeRegistry, state } = yield* makeFixture();
@@ -911,6 +965,24 @@ describe("Browser entry-point navigation policies", () => {
         }),
       ).toThrow("Browser Use URL policy");
       assert.isFalse(state.isRestrictedBrowserNavigation(contents.id, "file:///tmp/index.html"));
+    }),
+  );
+
+  it.effect("shows a page that finished loading before its tab attached", () =>
+    Effect.gen(function* () {
+      const { state, contents } = yield* makeFixture();
+      // A tab opened for an address: the guest can commit before the tab is registered.
+      state.registerAttachedWebviewOwnership(42, contents.id, identity, "browser:durable");
+      contents.url = "https://example.com/article";
+      contents.title = "Article";
+      yield* registerTab(state);
+      yield* hostCreated(state);
+      expect(readTab(state)).toMatchObject({
+        url: "https://example.com/article",
+        title: "Article",
+        isLoading: false,
+        isWaitingForResponse: false,
+      });
     }),
   );
 

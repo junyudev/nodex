@@ -40,6 +40,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- The Browser stays idle with several tabs open. With two or more live tabs Nodex re-sent their state many times a second, which used the processor continuously and could leave a new tab titled “Browser”. Background tabs now also show their page's title as soon as it loads.
 - Claude Code chats in Full access no longer stall on a safety check while you are away. Claude Code still asks before a command whose removals it cannot verify, even a harmless script, and the request used to wait for you indefinitely. It now waits two minutes and shows that deadline; if no one answers, the command is declined, the Agent rewrites it safely or leaves the removal to you, and the turn carries on.
 - Starting a chat no longer fails with **Request declined** while Nodex is busy in the background. Automatic work such as Inbox routing, scheduled work, and syncing now waits behind what you are doing, and a brief busy moment is retried instead of ending the turn.
 - Claude Code chats honor the selected model when an older version is turned off. If Claude Code cannot apply the selection, the chat explains why the message was held. If Claude Code changes models during a reply, the chat names the model it used.

@@ -1585,7 +1585,10 @@ export class BrowserState {
           const snapshot = this.updateTab(key, {
             presented: command.presented,
             visible: command.visible,
-            lastSelectedAt: command.presented ? Date.now() : current.lastSelectedAt,
+            // Stamped when the page is shown or put away, so a host that reports the
+            // presentation it already has changes nothing and broadcasts nothing.
+            lastSelectedAt:
+              command.presented === current.presented ? current.lastSelectedAt : Date.now(),
             lifecycleState: hasLiveGuest
               ? command.presented
                 ? "live-attached"
@@ -2334,6 +2337,14 @@ export class BrowserState {
   ): BrowserSidebarTabSnapshot {
     const current = this.tabs.get(key);
     if (!current) throw new Error("Browser tab is not registered");
+    // A patch that changes nothing is not a change. Every broadcast makes the renderer
+    // reconcile its hosts, which report back here, so an unconditional one never settles.
+    if (
+      (Object.keys(patch) as Array<keyof typeof patch>).every((field) =>
+        Object.is(patch[field], current[field]),
+      )
+    )
+      return current;
     const pageChanged =
       current.webContentsId !== null &&
       ((patch.webContentsId !== undefined && patch.webContentsId !== current.webContentsId) ||
@@ -2428,7 +2439,7 @@ export class BrowserState {
 
     this.pendingTeardowns.delete(key);
     const initialUrl = directBrowserUrl(event.initialUrl);
-    const snapshot = this.updateTab(key, {
+    const attached = this.updateTab(key, {
       webContentsId: event.webContentsId,
       mountGeneration: event.mountGeneration,
       url: isBlankBrowserUrl(current.url) ? initialUrl : current.url,
@@ -2439,6 +2450,15 @@ export class BrowserState {
       lastSelectedAt: event.hostKind === "panel" ? Date.now() : current.lastSelectedAt,
       lifecycleState: event.hostKind === "panel" ? "live-attached" : "live-detached",
     });
+    // A tab born with a destination can load before its listeners exist, so the page's
+    // address, title and loading state are read here rather than awaited as events.
+    const snapshot =
+      contents && !contents.isDestroyed() && !isBlankBrowserUrl(contents.getURL())
+        ? this.refreshSnapshotFromWebContents(key, contents, {
+            isWaitingForResponse: contents.isLoading() && attached.isWaitingForResponse,
+            ...(contents.isLoading() ? {} : { pendingUrl: undefined }),
+          })
+        : attached;
     this.logger.info("Browser webview attached", {
       ...browserIdentity(event),
       mountGeneration: event.mountGeneration,

@@ -68,6 +68,7 @@ import {
   makeBrowserSidebarTabKey,
   type BrowserSidebarTabSnapshot,
 } from "../../../shared/browser-sidebar";
+import { resolveLiveBrowserTabTitle } from "../../../shared/browser-url";
 import { listWorkbenchPanelLeaves } from "../../../shared/workbench-panel-layout";
 import type { AppShellTabItem } from "./app-shell-tabs";
 import { resolveContentTabLocation } from "./content-tab-location";
@@ -397,7 +398,7 @@ export function useWorkbenchPanelProjection({
                   tab.config.path,
                 )
               : undefined,
-        title,
+        title: resolveLiveBrowserTabTitle(browserTabSnapshot, title),
         titleSource: pageStageTitleSource,
         ...(isImageEditorPanelTab(tab)
           ? { tooltip: tab.tooltip }
