@@ -11,7 +11,9 @@ import type {
   BrowserSidebarWebviewDestroyed,
   BrowserSidebarWebviewHostCreated,
 } from "../../../shared/browser-sidebar";
-import { BrowserAnnotationEvidenceCaptureInputSchema } from "../../../shared/browser-annotation";
+import type { BrowserSavedAnnotation } from "../../../shared/browser-annotation";
+import * as FiberSet from "effect/FiberSet";
+import * as Semaphore from "effect/Semaphore";
 import {
   BrowserBrowsingDataKindSchema,
   BrowserSidebarLocalServerThumbnailRequestSchema,
@@ -123,6 +125,111 @@ export const live: Layer.Layer<
         ),
       );
 
+    const captures = yield* FiberSet.make<void>();
+    const scheduledCaptures = new WeakSet<BrowserSavedAnnotation>();
+    const captureLane = yield* Semaphore.make(1);
+    const listAnnotations = () =>
+      projection.getState().tabs.flatMap((tab) => tab.annotations ?? []);
+    const captureAnnotation = (
+      identity: import("../../../shared/browser-sidebar").BrowserSidebarTabIdentity,
+      annotation: BrowserSavedAnnotation,
+    ) =>
+      Effect.gen(function* () {
+        const contents = projection.getWebContents(identity);
+        const snapshot = projection.getTab(identity);
+        if (
+          !contents ||
+          !snapshot ||
+          contents.isDestroyed() ||
+          contents.getURL() !== annotation.pageUrl
+        )
+          return yield* Effect.fail(new Error("The annotation page is no longer available"));
+        const token = `${annotation.id}:${annotation.createdAt}:${crypto.randomUUID()}`;
+        const ready = Effect.callback<void>((resume) => {
+          const listener = (...args: unknown[]) => {
+            const [event, channel, payload] = args as [
+              { senderFrame?: { parent: unknown } },
+              string,
+              { token?: unknown },
+            ];
+            if (
+              channel !== "browser-annotation-evidence-ready" ||
+              payload?.token !== token ||
+              event.senderFrame?.parent
+            )
+              return;
+            resume(Effect.void);
+          };
+          contents.on("ipc-message", listener);
+          contents.send("browser-annotation-evidence-prepare", { token });
+          return Effect.sync(() => contents.removeListener("ipc-message", listener));
+        }).pipe(Effect.timeout("2 seconds"));
+        return yield* Effect.gen(function* () {
+          yield* ready;
+          return yield* attempt("capture-browser-annotation-evidence", async () => {
+            if (
+              contents.isDestroyed() ||
+              projection.getWebContents(identity) !== contents ||
+              contents.getURL() !== annotation.pageUrl
+            )
+              throw new Error("The annotation page changed before capture");
+            const image = await contents.capturePage();
+            const crop = computeBrowserAnnotationEvidenceCrop({
+              anchors: annotation.anchors,
+              imageSize: image.getSize(),
+              viewport: snapshot.viewport,
+            });
+            if (!crop) throw new Error("Browser annotation evidence is outside the page");
+            let evidenceImage = image.crop(crop);
+            const croppedSize = evidenceImage.getSize();
+            const longestSide = Math.max(croppedSize.width, croppedSize.height);
+            if (longestSide > 2_048) {
+              const ratio = 2_048 / longestSide;
+              evidenceImage = evidenceImage.resize({
+                width: Math.max(1, Math.round(croppedSize.width * ratio)),
+                height: Math.max(1, Math.round(croppedSize.height * ratio)),
+                quality: "best",
+              });
+            }
+            const saved = await assets.saveUploadedImage({
+              name: `browser-annotation-${Date.now()}.png`,
+              mimeType: "image/png",
+              bytes: evidenceImage.toPNG(),
+            });
+            const finalSize = evidenceImage.getSize();
+            return {
+              attachmentId: saved.fileName,
+              source: saved.source,
+              mimeType: "image/png" as const,
+              width: finalSize.width,
+              height: finalSize.height,
+            };
+          });
+        }).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              if (!contents.isDestroyed())
+                contents.send("browser-annotation-evidence-clear", { token });
+            }),
+          ),
+        );
+      }).pipe(
+        captureLane.withPermit,
+        Effect.match({
+          onFailure: (error) => {
+            const message = "Screenshot unavailable; your annotation is saved";
+            console.warn("Browser annotation capture failed", {
+              ...identity,
+              annotationId: annotation.id,
+              error,
+            });
+            projection.completeAnnotationEvidence(identity, annotation, message);
+          },
+          onSuccess: (evidence) =>
+            projection.completeAnnotationEvidence(identity, annotation, evidence),
+        }),
+      );
+
     yield* ipc.handlePlainCommand(
       "browser-sidebar-command",
       (event, rawCommand: BrowserSidebarCommand) =>
@@ -152,6 +259,20 @@ export const live: Layer.Layer<
                           ownerWebContentsId: event.sender.id,
                         })
                         .pipe(
+                          Effect.tap((result) =>
+                            command.type === "save-annotation" &&
+                            result.ok &&
+                            result.annotation?.evidenceState === "pending"
+                              ? Effect.suspend(() => {
+                                  if (scheduledCaptures.has(result.annotation!)) return Effect.void;
+                                  scheduledCaptures.add(result.annotation!);
+                                  return FiberSet.run(
+                                    captures,
+                                    captureAnnotation(command, result.annotation!),
+                                  ).pipe(Effect.asVoid);
+                                })
+                              : Effect.void,
+                          ),
                           Effect.mapError(
                             (cause) =>
                               new BrowserSidebarIpcError({
@@ -171,6 +292,7 @@ export const live: Layer.Layer<
         Effect.flatMap((browserViewScopeId) =>
           attempt("read-browser-runtime", () => ({
             state: filterBrowserStateForViewScope(projection.getState(), browserViewScopeId),
+            annotations: listAnnotations(),
             browserUseState: filterBrowserUseStateForViewScope(
               projection.getBrowserUseState(),
               browserViewScopeId,
@@ -270,56 +392,6 @@ export const live: Layer.Layer<
             ),
         ),
         Effect.as({ ok: true as const }),
-      ),
-    );
-    yield* ipc.handleQuery("browser-annotation-capture-evidence", (event, rawInput: unknown) =>
-      trusted(event, "Browser annotation evidence").pipe(
-        Effect.andThen(
-          parse("parse-browser-annotation-evidence", () =>
-            BrowserAnnotationEvidenceCaptureInputSchema.parse(rawInput),
-          ),
-        ),
-        Effect.tap((input) => requireViewScope(event.sender.id, input.browserViewScopeId)),
-        Effect.flatMap((input) =>
-          attempt("capture-browser-annotation-evidence", async () => {
-            const contents = projection.getWebContents(input);
-            const snapshot = projection.getTab(input);
-            if (!contents || !snapshot || contents.isDestroyed()) {
-              throw new Error("Browser annotation page is unavailable");
-            }
-            const image = await contents.capturePage();
-            const crop = computeBrowserAnnotationEvidenceCrop({
-              anchors: input.anchors,
-              imageSize: image.getSize(),
-              viewport: snapshot.viewport,
-            });
-            if (!crop) throw new Error("Browser annotation evidence is outside the page");
-            let evidenceImage = image.crop(crop);
-            const croppedSize = evidenceImage.getSize();
-            const longestSide = Math.max(croppedSize.width, croppedSize.height);
-            if (longestSide > 2_048) {
-              const ratio = 2_048 / longestSide;
-              evidenceImage = evidenceImage.resize({
-                width: Math.max(1, Math.round(croppedSize.width * ratio)),
-                height: Math.max(1, Math.round(croppedSize.height * ratio)),
-                quality: "best",
-              });
-            }
-            const saved = await assets.saveUploadedImage({
-              name: `browser-annotation-${Date.now()}.png`,
-              mimeType: "image/png",
-              bytes: evidenceImage.toPNG(),
-            });
-            const finalSize = evidenceImage.getSize();
-            return {
-              attachmentId: saved.fileName,
-              source: saved.source,
-              mimeType: "image/png" as const,
-              width: finalSize.width,
-              height: finalSize.height,
-            };
-          }),
-        ),
       ),
     );
     yield* ipc.handleQuery("browser-local-server-thumbnail", (event, rawInput: unknown) =>
@@ -434,7 +506,18 @@ export const live: Layer.Layer<
     );
     yield* events.events.pipe(
       Stream.runForEach((event) => {
-        if (event.kind === "state") return sendFilteredState(event.value);
+        if (event.kind === "state")
+          return sendFilteredState(event.value).pipe(
+            Effect.andThen(
+              windows.all.pipe(
+                Effect.tap((all) =>
+                  Effect.sync(() =>
+                    safeBroadcastToWindows(all, "browser-annotations", [listAnnotations()]),
+                  ),
+                ),
+              ),
+            ),
+          );
         if (event.kind === "browserUseState") return sendFilteredBrowserUseState(event.value);
         if (event.kind === "browserUseViewport") {
           return sendToScope(

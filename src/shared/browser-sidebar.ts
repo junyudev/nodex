@@ -1,3 +1,4 @@
+import type { BrowserSavedAnnotation, BrowserAnnotationSave } from "./browser-annotation";
 import type {
   BrowserGeolocationAccuracy,
   BrowserPermissionAction,
@@ -269,6 +270,9 @@ export interface BrowserSidebarTabSnapshot extends BrowserSidebarTabIdentity {
   permissionPrompts?: BrowserPermissionPrompt[];
   /** The dialog this page is waiting on, if any. */
   pageDialog?: BrowserPageDialog;
+  annotations?: BrowserSavedAnnotation[];
+  annotationDestination?: string | null;
+  annotationSessionId?: string | null;
   browserStorageId?: string;
   projectId: string | null;
   webContentsId: number | null;
@@ -435,6 +439,7 @@ export interface BrowserUsePageClosedEvent extends BrowserSidebarTabIdentity {
 }
 
 export interface BrowserSidebarRuntimeSnapshot {
+  annotations?: BrowserSavedAnnotation[];
   state: BrowserSidebarStateSnapshot;
   browserUseState: BrowserSidebarBrowserUseStateSnapshot;
   presentationRequests: BrowserUsePresentationRequest[];
@@ -494,6 +499,14 @@ export interface BrowserSidebarWebviewDestroyed extends BrowserSidebarTabIdentit
 type BrowserSidebarTargetedCommand<Command> = Command & BrowserSidebarTabIdentity;
 
 export type BrowserSidebarCommand =
+  | { type: "consume-annotations"; destination: string; ids: string[] }
+  | BrowserSidebarTargetedCommand<{
+      type: "configure-annotations";
+      destination: string | null;
+      sessionId: string;
+    }>
+  | BrowserSidebarTargetedCommand<{ type: "save-annotation"; input: BrowserAnnotationSave }>
+  | BrowserSidebarTargetedCommand<{ type: "remove-annotations"; ids: string[] }>
   | {
       type: "register-renderer-session";
       browserViewScopeId: string;
@@ -644,7 +657,12 @@ export type BrowserSidebarCommand =
   | { type: "browser-use-set-capture-surface"; event: BrowserSidebarBrowserUseCaptureSurfaceEvent };
 
 export type BrowserSidebarCommandResult =
-  | { ok: true; dataUrl?: string; snapshot?: BrowserSidebarTabSnapshot }
+  | {
+      ok: true;
+      annotation?: BrowserSavedAnnotation;
+      dataUrl?: string;
+      snapshot?: BrowserSidebarTabSnapshot;
+    }
   | { ok: false; message: string };
 
 export type BrowserBrowsingDataClearResult = { ok: true } | { ok: false; message: string };

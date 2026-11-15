@@ -155,7 +155,6 @@ type QueryEndpointPolicy =
   | "blocks:transfer:plan"
   | "block-documents:history:get"
   | "block-documents:history:list"
-  | "browser-annotation-capture-evidence"
   | "browser-contact-info-list"
   | "browser-credentials-list"
   | "browser-credentials-list-all"

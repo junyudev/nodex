@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Browser annotations stay on the page until they reach the Agent. A saved annotation used to leave nothing behind but a small tag in the chat, and was lost if its screenshot failed or the Browser had no chat beside it. Each one is now a numbered pin you can reopen, edit or remove; it is kept when you leave annotating, switch tabs or lose the screenshot; and a Project's Browser sends to its Agent Dock. Pins follow text, elements inside frames and scrolling areas, and the Agent is told exactly what each one points at.
+
 ### Fixed
 
 ## [0.5.6] - 2026-11-15

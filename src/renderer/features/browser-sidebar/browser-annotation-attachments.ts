@@ -1,74 +1,71 @@
-import {
-  BrowserAnnotationAttachmentSchema,
-  type BrowserAnnotationAttachment,
+import { toast } from "@/components/ui/toast";
+import type {
+  BrowserAnnotationAttachment,
+  BrowserSavedAnnotation,
 } from "../../../shared/browser-annotation";
-
+import { invokeBrowserSidebarCommand } from "./browser-sidebar-commands";
+import { invokeRendererQuery } from "@/lib/renderer-command";
 export type { BrowserAnnotationAttachment } from "../../../shared/browser-annotation";
 
-const attachmentsByConversation = new Map<string, BrowserAnnotationAttachment[]>();
+const EMPTY: readonly BrowserAnnotationAttachment[] = [];
+let annotations: readonly BrowserSavedAnnotation[] = [];
+let revision = 0;
+const projections = new Map<string, readonly BrowserAnnotationAttachment[]>();
 const listeners = new Set<() => void>();
-const EMPTY_ATTACHMENTS: readonly BrowserAnnotationAttachment[] = Object.freeze([]);
-const MAX_BROWSER_ANNOTATION_ATTACHMENTS = 32;
-
-function notify(): void {
+let unsubscribe: (() => void) | undefined;
+function publish(next: readonly BrowserSavedAnnotation[]): void {
+  annotations = next;
+  revision++;
+  projections.clear();
   for (const listener of listeners) listener();
 }
-
-export function publishBrowserAnnotationAttachment(
-  conversationId: string,
-  attachment: BrowserAnnotationAttachment,
-): void {
-  const parsed = BrowserAnnotationAttachmentSchema.parse(attachment);
-  attachmentsByConversation.set(
-    conversationId,
-    [...(attachmentsByConversation.get(conversationId) ?? []), parsed].slice(
-      -MAX_BROWSER_ANNOTATION_ATTACHMENTS,
-    ),
-  );
-  notify();
-}
-
-export function removeBrowserAnnotationAttachment(
-  conversationId: string,
-  attachmentId: string,
-): void {
-  const current = attachmentsByConversation.get(conversationId) ?? [];
-  const next = current.filter((attachment) => attachment.id !== attachmentId);
-  if (next.length === current.length) return;
-  if (next.length === 0) attachmentsByConversation.delete(conversationId);
-  else attachmentsByConversation.set(conversationId, next);
-  notify();
-}
-
-export function clearBrowserAnnotationAttachments(conversationId: string): void {
-  if (!attachmentsByConversation.delete(conversationId)) return;
-  notify();
-}
-
-export function replaceBrowserAnnotationAttachments(
-  conversationId: string,
-  attachments: readonly BrowserAnnotationAttachment[],
-): void {
-  if (attachments.length === 0) {
-    clearBrowserAnnotationAttachments(conversationId);
-    return;
-  }
-  attachmentsByConversation.set(
-    conversationId,
-    attachments
-      .map((attachment) => BrowserAnnotationAttachmentSchema.parse(attachment))
-      .slice(-MAX_BROWSER_ANNOTATION_ATTACHMENTS),
-  );
-  notify();
-}
-
 export function getBrowserAnnotationAttachmentsSnapshot(
-  conversationId: string,
+  destination: string,
 ): readonly BrowserAnnotationAttachment[] {
-  return attachmentsByConversation.get(conversationId) ?? EMPTY_ATTACHMENTS;
+  const existing = projections.get(destination);
+  if (existing) return existing;
+  const selected = annotations
+    .filter((annotation) => annotation.destination === destination)
+    .map(({ destination: _destination, ...attachment }) => attachment);
+  const result = selected.length ? selected : EMPTY;
+  projections.set(destination, result);
+  return result;
 }
-
 export function subscribeBrowserAnnotationAttachments(listener: () => void): () => void {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  if (!unsubscribe && window.api) {
+    unsubscribe = window.api.on("browser-annotations", (value) =>
+      publish(value as BrowserSavedAnnotation[]),
+    );
+    const initial = revision;
+    void invokeRendererQuery("browser-sidebar-runtime-snapshot")
+      .then((snapshot) => {
+        if (initial === revision) publish(snapshot.annotations ?? []);
+      })
+      .catch((error) => console.warn("Could not load Browser annotations", error));
+  }
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size) return;
+    unsubscribe?.();
+    unsubscribe = undefined;
+  };
+}
+export function removeBrowserAnnotationAttachment(destination: string, id: string): void {
+  clearBrowserAnnotationAttachments(destination, [id]);
+}
+/** Consume the exact admitted set, so annotations saved while sending remain pending. */
+export function clearBrowserAnnotationAttachments(
+  destination: string,
+  ids: readonly string[],
+): void {
+  if (!ids.length) return;
+  void invokeBrowserSidebarCommand({ type: "consume-annotations", destination, ids: [...ids] })
+    .then((result) => {
+      if (!result.ok) toast.danger(result.message);
+    })
+    .catch((error: unknown) => {
+      console.warn("Could not remove Browser annotations", { destination, ids, error });
+      toast.danger("Could not remove Browser annotations");
+    });
 }

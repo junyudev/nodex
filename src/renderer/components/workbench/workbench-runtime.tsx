@@ -4903,7 +4903,16 @@ export function WorkbenchRuntime({
               kind: "project",
               projectId: activeProject.id,
             }),
-            codexSessionId: null,
+            codexSessionId:
+              projectAgentDockSession?.thread?.threadId ?? projectAgentDockSession?.id ?? null,
+            annotationSessionId:
+              activeProjectScene.agentDock?.binding.kind === "new"
+                ? null
+                : (projectAgentDockSession?.id ?? null),
+            annotationProjectDraft:
+              activeProjectScene.agentDock?.binding.kind === "new"
+                ? { projectId: activeProject.id, draftId: activeProjectScene.agentDock.newDraftId }
+                : null,
           }}
           browserViewScopeId={windowSessionId}
           onRefreshSessions={refreshProjectSessions}

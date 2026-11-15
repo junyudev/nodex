@@ -1,6 +1,7 @@
 import { ipcRenderer } from "electron";
 import { installBrowserWebMcp } from "./browser-webmcp";
 import type {
+  BrowserSavedAnnotation,
   BrowserAnnotationAnchor,
   BrowserAnnotationDesignChange,
   BrowserAnnotationSelectionEvent,
@@ -13,6 +14,20 @@ let annotationSelectionMode: "inspect" | "region" = "inspect";
 let hoveredElement: Element | null = null;
 let overlay: HTMLDivElement | null = null;
 let regionStart: { x: number; y: number; pointerId: number } | null = null;
+let savedAnnotations: BrowserSavedAnnotation[] = [];
+const liveAnchors = new Map<
+  string,
+  {
+    anchor: BrowserAnnotationAnchor;
+    element?: Element;
+    range?: Range;
+    scrollX: number;
+    scrollY: number;
+    scrollContainers?: Array<{ element: Element; left: number; top: number }>;
+  }
+>();
+let markerRoot: HTMLDivElement | null = null;
+let evidenceToken: string | null = null;
 const selectedElementsByAnchorId = new Map<string, Element>();
 let anchorUpdateFrame: number | null = null;
 let annotationMutationObserver: MutationObserver | null = null;
@@ -122,7 +137,17 @@ function anchorFromElement(
 }
 
 function rememberSelectedElement(anchor: BrowserAnnotationAnchor, element: Element): void {
-  if (anchor.kind !== "element") return;
+  const selection = window.getSelection();
+  liveAnchors.set(anchor.id, {
+    anchor,
+    element,
+    range:
+      anchor.kind === "text" && selection?.rangeCount
+        ? selection.getRangeAt(0).cloneRange()
+        : undefined,
+    scrollX: window.scrollX,
+    scrollY: window.scrollY,
+  });
   selectedElementsByAnchorId.set(anchor.id, element);
 }
 
@@ -138,20 +163,16 @@ function sendElementSelection(element: Element, multiSelect: boolean): void {
 }
 
 function scheduleAnchorUpdates(): void {
-  if (!annotationSessionId || anchorUpdateFrame !== null) return;
+  if (anchorUpdateFrame !== null) return;
   anchorUpdateFrame = window.requestAnimationFrame(() => {
     anchorUpdateFrame = null;
     const sessionId = annotationSessionId;
+    renderMarkers();
     if (!sessionId) return;
-    for (const [anchorId, element] of selectedElementsByAnchorId) {
-      if (!element.isConnected) {
-        selectedElementsByAnchorId.delete(anchorId);
-        continue;
-      }
-      ipcRenderer.send("browser-annotation-anchor-update", {
-        sessionId,
-        anchor: anchorFromElement(element, anchorId),
-      });
+    for (const live of liveAnchors.values()) {
+      const anchor = resolveLiveAnchor(live);
+      if (!anchor) continue;
+      ipcRenderer.send("browser-annotation-anchor-update", { sessionId, anchor });
     }
   });
 }
@@ -184,6 +205,14 @@ function onAnnotationPointerMove(event: PointerEvent): void {
 }
 
 function onAnnotationClick(event: MouseEvent): void {
+  if (
+    event
+      .composedPath()
+      .some(
+        (item) => item instanceof Element && item.closest("[data-nodex-browser-annotation-marker]"),
+      )
+  )
+    return;
   if (!annotationSessionId || annotationSelectionMode !== "inspect" || !hoveredElement) {
     return;
   }
@@ -193,6 +222,14 @@ function onAnnotationClick(event: MouseEvent): void {
 }
 
 function onAnnotationPointerDown(event: PointerEvent): void {
+  if (
+    event
+      .composedPath()
+      .some(
+        (item) => item instanceof Element && item.closest("[data-nodex-browser-annotation-marker]"),
+      )
+  )
+    return;
   if (!annotationSessionId || annotationSelectionMode !== "region") return;
   event.preventDefault();
   event.stopImmediatePropagation();
@@ -243,21 +280,42 @@ function onAnnotationPointerUp(event: PointerEvent): void {
   };
   updateOverlay(null);
   if (rect.width < 4 || rect.height < 4) return;
+  const anchor: BrowserAnnotationAnchor = {
+    id: makeAnnotationId(),
+    kind: "region",
+    pageUrl: window.location.href,
+    frameUrl: window.location.href,
+    framePath: [],
+    viewportSize: {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    },
+    rect,
+  };
+  const scrollContainers: Array<{ element: Element; left: number; top: number }> = [];
+  let container = document.elementFromPoint(start.x, start.y);
+  while (container) {
+    if (
+      container.scrollHeight > container.clientHeight ||
+      container.scrollWidth > container.clientWidth
+    )
+      scrollContainers.push({
+        element: container,
+        left: container.scrollLeft,
+        top: container.scrollTop,
+      });
+    container = container.parentElement;
+  }
+  liveAnchors.set(anchor.id, {
+    anchor,
+    scrollX: window.scrollX,
+    scrollY: window.scrollY,
+    scrollContainers,
+  });
   ipcRenderer.send("browser-annotation-selection", {
     sessionId: annotationSessionId,
     multiSelect: event.shiftKey,
-    anchor: {
-      id: makeAnnotationId(),
-      kind: "region",
-      pageUrl: window.location.href,
-      frameUrl: window.location.href,
-      framePath: [],
-      viewportSize: {
-        width: window.innerWidth,
-        height: window.innerHeight,
-      },
-      rect,
-    },
+    anchor,
   } satisfies BrowserAnnotationSelectionEvent);
 }
 
@@ -275,13 +333,12 @@ function disableAnnotationMode(): void {
   annotationSelectionMode = "inspect";
   hoveredElement = null;
   regionStart = null;
-  selectedElementsByAnchorId.clear();
+
   if (anchorUpdateFrame !== null) {
     window.cancelAnimationFrame(anchorUpdateFrame);
     anchorUpdateFrame = null;
   }
-  annotationMutationObserver?.disconnect();
-  annotationMutationObserver = null;
+
   updateOverlay(null);
   window.removeEventListener("pointermove", onAnnotationPointerMove, true);
   window.removeEventListener("click", onAnnotationClick, true);
@@ -289,22 +346,13 @@ function disableAnnotationMode(): void {
   window.removeEventListener("pointermove", onAnnotationPointerDrag, true);
   window.removeEventListener("pointerup", onAnnotationPointerUp, true);
   window.removeEventListener("pointercancel", onAnnotationPointerCancel, true);
-  window.removeEventListener("scroll", scheduleAnchorUpdates, true);
-  window.removeEventListener("resize", scheduleAnchorUpdates, true);
 }
 
 function enableAnnotationMode(sessionId: string, selectionMode: "inspect" | "region"): void {
+  if (annotationSessionId === sessionId && annotationSelectionMode === selectionMode) return;
   disableAnnotationMode();
   annotationSessionId = sessionId;
   annotationSelectionMode = selectionMode;
-  window.addEventListener("scroll", scheduleAnchorUpdates, true);
-  window.addEventListener("resize", scheduleAnchorUpdates, true);
-  annotationMutationObserver = new MutationObserver(scheduleAnchorUpdates);
-  annotationMutationObserver.observe(document.documentElement, {
-    attributes: true,
-    childList: true,
-    subtree: true,
-  });
   if (selectionMode === "region") {
     window.addEventListener("pointerdown", onAnnotationPointerDown, true);
     window.addEventListener("pointermove", onAnnotationPointerDrag, true);
@@ -690,3 +738,190 @@ ipcRenderer.on("browser-contact-info-fill", (_event, rawPayload: unknown) => {
   }
   fillContactInfo(payload as BrowserContactInfoFillPayload);
 });
+
+function resolveLiveAnchor(
+  live: ReturnType<typeof liveAnchors.get>,
+): BrowserAnnotationAnchor | null {
+  if (!live || live.anchor.pageUrl !== window.location.href) return null;
+  const { anchor, range } = live;
+  if (!live.element?.isConnected && anchor.selector) {
+    try {
+      live.element = document.querySelector(anchor.selector) ?? undefined;
+    } catch {
+      return null;
+    }
+  }
+  const element = live.element;
+  const delta = (live.scrollContainers ?? [])
+    .filter((item) => item.element !== document.documentElement && item.element !== document.body)
+    .reduce(
+      (sum, item) => ({
+        x: sum.x + item.left - item.element.scrollLeft,
+        y: sum.y + item.top - item.element.scrollTop,
+      }),
+      { x: 0, y: 0 },
+    );
+  const rect = range?.startContainer.isConnected
+    ? range.getBoundingClientRect()
+    : element?.isConnected
+      ? element.getBoundingClientRect()
+      : null;
+  if (anchor.kind !== "region" && !rect) return null;
+  return {
+    ...anchor,
+    viewportSize: { width: window.innerWidth, height: window.innerHeight },
+    rect: rect
+      ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+      : {
+          ...anchor.rect,
+          x: anchor.rect.x + live.scrollX - window.scrollX + delta.x,
+          y: anchor.rect.y + live.scrollY - window.scrollY + delta.y,
+        },
+  };
+}
+function renderMarkers(): void {
+  if (!document.documentElement) return;
+  if (!markerRoot) {
+    markerRoot = document.createElement("div");
+    markerRoot.setAttribute(ANNOTATION_OVERLAY_ATTRIBUTE, "");
+    Object.assign(markerRoot.style, {
+      position: "fixed",
+      inset: "0",
+      pointerEvents: "none",
+      zIndex: "2147483647",
+    });
+    document.documentElement.append(markerRoot);
+  }
+  const visible = savedAnnotations.filter((annotation) => annotation.pageUrl === location.href);
+  for (const child of Array.from(markerRoot.children)) {
+    if (
+      !visible.some((annotation) => annotation.id === (child as HTMLElement).dataset.annotationId)
+    )
+      child.remove();
+  }
+  for (const annotation of visible) {
+    const anchor = annotation.anchors[0];
+    if (!anchor) continue;
+    if (!liveAnchors.has(anchor.id)) {
+      let element: Element | undefined;
+      try {
+        element = anchor.selector
+          ? (document.querySelector(anchor.selector) ?? undefined)
+          : undefined;
+      } catch {
+        /* A page selector can become invalid after navigation. */
+      }
+      liveAnchors.set(anchor.id, {
+        anchor,
+        element,
+        scrollX: window.scrollX,
+        scrollY: window.scrollY,
+      });
+    }
+    const resolved = resolveLiveAnchor(liveAnchors.get(anchor.id));
+    let marker = Array.from(markerRoot.children).find(
+      (child) => (child as HTMLElement).dataset.annotationId === annotation.id,
+    ) as HTMLButtonElement | undefined;
+    if (!marker) {
+      marker = document.createElement("button");
+      marker.type = "button";
+      marker.dataset.annotationId = annotation.id;
+      marker.setAttribute("data-nodex-browser-annotation-marker", "");
+      marker.setAttribute("aria-label", `Annotation ${annotation.number}`);
+      marker.textContent = String(annotation.number);
+      Object.assign(marker.style, {
+        position: "absolute",
+        pointerEvents: "auto",
+        width: "24px",
+        height: "24px",
+        border: "0",
+        borderRadius: "50%",
+        background: "#2f7df4",
+        color: "white",
+        font: "600 12px system-ui",
+        cursor: "pointer",
+      });
+      marker.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        ipcRenderer.send("browser-annotation-open", {
+          annotationId: annotation.id,
+          anchor: resolveLiveAnchor(liveAnchors.get(anchor.id)),
+        });
+      });
+      markerRoot.append(marker);
+    }
+    marker.style.display =
+      resolved &&
+      !evidenceToken &&
+      resolved.rect.y + resolved.rect.height >= 0 &&
+      resolved.rect.y <= innerHeight
+        ? "block"
+        : "none";
+    if (resolved) {
+      marker.style.left = `${Math.max(0, Math.min(innerWidth - 24, resolved.rect.x))}px`;
+      marker.style.top = `${Math.max(0, resolved.rect.y - 12)}px`;
+    }
+  }
+}
+ipcRenderer.on("browser-annotation-saved", (_event, annotations: BrowserSavedAnnotation[]) => {
+  savedAnnotations = annotations;
+  renderMarkers();
+});
+ipcRenderer.on("browser-annotation-evidence-prepare", (_event, input: { token: string }) => {
+  evidenceToken = input.token;
+  updateOverlay(null);
+  renderMarkers();
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      if (evidenceToken === input.token)
+        ipcRenderer.send("browser-annotation-evidence-ready", input);
+    }),
+  );
+});
+ipcRenderer.on("browser-annotation-evidence-clear", (_event, input: { token: string }) => {
+  if (evidenceToken !== input.token) return;
+  evidenceToken = null;
+  renderMarkers();
+});
+window.addEventListener(
+  "keydown",
+  (event) => {
+    if (!annotationSessionId || event.key !== "Escape" || event.isComposing || event.repeat) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (regionStart) {
+      regionStart = null;
+      updateOverlay(null);
+      return;
+    }
+    ipcRenderer.send("browser-annotation-cancel");
+  },
+  true,
+);
+window.addEventListener("scroll", scheduleAnchorUpdates, true);
+window.addEventListener("resize", scheduleAnchorUpdates, true);
+const observeAnchors = () => {
+  annotationMutationObserver = new MutationObserver((mutations) => {
+    if (
+      mutations.every(
+        (mutation) =>
+          mutation.target instanceof Element &&
+          mutation.target.closest(`[${ANNOTATION_OVERLAY_ATTRIBUTE}]`),
+      )
+    )
+      return;
+    scheduleAnchorUpdates();
+  });
+  annotationMutationObserver.observe(document.documentElement, {
+    attributes: true,
+    childList: true,
+    subtree: true,
+    characterData: true,
+  });
+};
+if (document.documentElement) observeAnchors();
+else window.addEventListener("DOMContentLoaded", observeAnchors, { once: true });
+
+window.addEventListener("hashchange", scheduleAnchorUpdates);
+window.addEventListener("popstate", scheduleAnchorUpdates);

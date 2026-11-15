@@ -72,6 +72,7 @@ it.effect(
         ),
       });
       const projection: BrowserProjection = {
+        completeAnnotationEvidence: () => undefined,
         admitLocalServerThumbnail: (input) => browser.admitLocalServerThumbnail(input),
         getBrowserUseState: () => browser.getBrowserUseStateSnapshot(),
         getState: () => browser.getStateSnapshot(),
@@ -165,7 +166,6 @@ it.effect(
       );
 
       assert.deepEqual([...handlers.keys()].sort(), [
-        "browser-annotation-capture-evidence",
         "browser-browsing-data-clear",
         "browser-history-delete",
         "browser-history-list",

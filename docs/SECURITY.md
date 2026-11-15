@@ -803,7 +803,11 @@ provides attribution, and removing it drops Agent authorship.
   renderer host acknowledgement or guest preload message. Guest preload
   messages are enumerated and rebound to that registered guest route; remote
   pages receive no Node, filesystem, arbitrary IPC/invoke, or credential
-  capability.
+  capability. Annotation selection, anchor updates, pin-open and cancel messages are
+  rebound to that registered route. Pin-open accepts only a saved note on the current
+  document; selection validates the current editor session and document URL. Screenshot
+  readiness is correlated to a Main-issued token on the registered guest, with a bounded
+  wait and unconditional cleanup. Pages cannot choose a chat destination or save notes.
 - Browser navigation has distinct entry-point policies. Ordinary user and trusted
   application loads pass their URL directly to Chromium, with empty tabs represented
   by `about:blank`; they have no universal scheme, userinfo, or URL-length filter.

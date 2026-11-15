@@ -252,6 +252,30 @@ place of windows. Nodex never opens a separate window for a page.
 - While an Agent controls a page, these requests follow its
   [navigation restriction](../SECURITY.md).
 
+### Browser annotations
+
+Annotate selects an element, text, or region and opens a comment editor beside it.
+Enter saves, Shift+Enter adds a line, and Escape cancels the editor or current gesture
+before leaving annotation mode. Design changes retain their original and proposed values.
+
+Saving adds a numbered pin and a chat composer attachment. The note is saved immediately;
+screenshot capture follows. If capture fails, the note stays saved and the attachment says
+that its screenshot is unavailable. A pin reopens the note for editing or removal.
+
+Saved annotations belong to their Browser tab. They remain when leaving annotation mode,
+switching tabs or Scenes, and reopening the Browser panel. Pins follow their targets and
+appear only on the page where they were created. The toolbar shows the saved count and
+can discard all annotations after confirmation. Closing the tab removes its annotations.
+
+A Session Browser delivers to that chat's composer, including before its first message.
+A Project Browser delivers to the Project Agent Dock's selected composer, including its
+new-chat draft. If no composer is available, Annotate explains that a chat or Agent Dock
+must be opened first. Saving does not send a message to the Agent.
+
+Removing an attachment removes its saved note and pin. Sending a message includes its
+annotations as text and any available screenshots; when the message is admitted, those
+annotations and pins are removed. Notes saved during that send remain pending.
+
 ### Page dialogs
 
 A page's `alert()` and `confirm()` appear inside its own tab, over the page, titled

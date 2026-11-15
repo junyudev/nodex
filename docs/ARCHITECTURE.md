@@ -633,6 +633,10 @@ updates through one semaphore. A mutation atomically publishes and fsyncs the co
 before committing its `Ref`, so concurrent partial updates cannot overwrite one another and a failed
 write cannot advance the visible snapshot. IPC reads and mutates this runtime directly.
 
+Saved Browser annotations belong to Main-owned tab state. Guest pins and conversation composer
+attachments project that authority; saving a note precedes asynchronous screenshot capture.
+See [Browser annotations](product-specs/workbench-shell.md#browser-annotations).
+
 Browser presentation has one fixed Effect coordinator over the Sidebar state owner, Browser Profile,
 Browser site-status policy, and Browser Use. Renderer command ingress crosses that interface once:
 site policy, download history, and route capture are typed Context dependencies rather than

@@ -125,6 +125,7 @@ export interface BrowserGuestHost {
 
 /** Browser state projection consumed by profile and presentation capabilities. */
 export interface BrowserProjection {
+  readonly completeAnnotationEvidence: BrowserState["completeAnnotationEvidence"];
   readonly admitLocalServerThumbnail: (
     input: BrowserSidebarLocalServerThumbnailRequest,
   ) => BrowserLocalServerThumbnailAdmission;
@@ -287,6 +288,8 @@ export const live = (
           .handleCommand(command, context)
           .pipe(Effect.mapError((cause) => applicationError("apply-command", cause)));
       const projection: BrowserProjection = {
+        completeAnnotationEvidence: (identity, annotation, result) =>
+          state.completeAnnotationEvidence(identity, annotation, result),
         admitLocalServerThumbnail: (input) => state.admitLocalServerThumbnail(input),
         getBrowserUseState: () => state.getBrowserUseStateSnapshot(),
         getState: () => state.getStateSnapshot(),

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   BrowserAnnotationAttachmentSchema,
+  resolveBrowserAnnotationDestination,
   BrowserAnnotationSelectionEventSchema,
   serializeBrowserAnnotationAttachmentForPrompt,
   serializeBrowserAnnotationAttachmentsForAdditionalContext,
@@ -70,18 +71,34 @@ describe("Browser annotation contracts", () => {
   test("serializes structured design before and after values", () => {
     const designed = {
       ...attachment,
-      designChange: {
-        anchorId: "anchor-1",
-        property: "borderRadius" as const,
-        before: "4px",
-        after: "12px",
-      },
+      designChanges: [
+        {
+          anchorId: "anchor-1",
+          property: "borderRadius" as const,
+          before: "4px",
+          after: "12px",
+        },
+      ],
     };
     expect(serializeBrowserAnnotationAttachmentForPrompt(designed)).toContain(
       "Design property: borderRadius\nBefore: 4px\nAfter: 12px",
     );
-    expect(BrowserAnnotationAttachmentSchema.parse(designed).designChange).toEqual(
-      designed.designChange,
+    expect(BrowserAnnotationAttachmentSchema.parse(designed).designChanges).toEqual(
+      designed.designChanges,
     );
   });
+});
+
+test("uses one stable Session destination before and after its first Thread", () => {
+  expect(resolveBrowserAnnotationDestination({ sessionId: "chat" })).toBe("session:chat");
+  expect(resolveBrowserAnnotationDestination({ sessionId: "chat", threadId: "thread" })).toBe(
+    "session:chat",
+  );
+  expect(resolveBrowserAnnotationDestination({ threadId: "child" })).toBe("thread:child");
+  expect(
+    resolveBrowserAnnotationDestination({
+      projectDraft: { projectId: "project", draftId: "draft" },
+    }),
+  ).toBe("project-draft:project:draft");
+  expect(resolveBrowserAnnotationDestination({})).toBeNull();
 });

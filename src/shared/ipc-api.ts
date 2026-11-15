@@ -598,7 +598,6 @@ import type {
   ImportableBrowserProfile,
 } from "./browser-profile";
 import type {
-  BrowserAnnotationAttachmentEvidence,
   BrowserAnnotationRoutedAnchorUpdateEvent,
   BrowserAnnotationRoutedSelectionEvent,
 } from "./browser-annotation";
@@ -2113,10 +2112,6 @@ export interface IpcApi
     args: [soundMode: ComputerUseSoundMode];
     result: ComputerUseSettingsSnapshot;
   };
-  "browser-annotation-capture-evidence": {
-    args: [input: import("./browser-annotation").BrowserAnnotationEvidenceCaptureInput];
-    result: BrowserAnnotationAttachmentEvidence;
-  };
   "browser-local-server-thumbnail": {
     args: [input: BrowserSidebarLocalServerThumbnailRequest];
     result: BrowserSidebarLocalServerThumbnailResult;
@@ -3283,6 +3278,12 @@ export interface IpcEvents {
   "browser-sidebar-destroy-webview": BrowserSidebarDestroyWebviewRequest;
   "browser-downloads-state": BrowserDownloadsSnapshot;
   "browser-credential-save-candidate": BrowserCredentialSaveCandidate;
+  "browser-annotations": import("./browser-annotation").BrowserSavedAnnotation[];
+  "browser-annotation-open": import("./browser-sidebar").BrowserSidebarTabIdentity & {
+    annotationId: string;
+    anchor?: import("./browser-annotation").BrowserAnnotationAnchor;
+  };
+  "browser-annotation-cancel": import("./browser-sidebar").BrowserSidebarTabIdentity;
   "browser-annotation-selection": BrowserAnnotationRoutedSelectionEvent;
   "browser-annotation-anchor-update": BrowserAnnotationRoutedAnchorUpdateEvent;
   "browser-local-server-preferences-changed": BrowserLocalServerPreferences;

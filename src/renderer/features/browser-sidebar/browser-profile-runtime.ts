@@ -258,9 +258,6 @@ export const readBrowserSiteInfo = (...args: IpcArgs<"browser-site-info">) =>
   invokeRendererQuery("browser-site-info", ...args);
 export const readBrowserCredentials = (...args: IpcArgs<"browser-credentials-list">) =>
   invokeRendererQuery("browser-credentials-list", ...args);
-export const captureBrowserAnnotationEvidence = (
-  ...args: IpcArgs<"browser-annotation-capture-evidence">
-) => invokeRendererQuery("browser-annotation-capture-evidence", ...args);
 
 const electronBrowserUsePolicyPort: BrowserUsePolicyPort = {
   read: () => invokeRendererQuery("browser-use-policy-get"),

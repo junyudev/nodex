@@ -89,12 +89,15 @@ export interface BrowserAnnotationAttachment {
   browserTabId: string;
   createdAt: number;
   intent?: "comment" | "designChange";
-  designChange?: BrowserAnnotationDesignChange;
+  designChanges?: BrowserAnnotationDesignChange[];
   note: string;
   pageTitle: string;
   pageUrl: string;
   anchors: BrowserAnnotationAnchor[];
   evidence?: BrowserAnnotationAttachmentEvidence;
+  number?: number;
+  evidenceState?: "pending" | "ready" | "failed";
+  evidenceError?: string;
 }
 
 const FiniteCoordinateSchema = z.number().finite().min(-100_000).max(100_000);
@@ -166,18 +169,6 @@ export const BrowserAnnotationDesignChangeSchema = z
   })
   .strict() satisfies z.ZodType<BrowserAnnotationDesignChange>;
 
-export const BrowserAnnotationEvidenceCaptureInputSchema = z
-  .object({
-    browserConversationId: z.string().min(1).max(512),
-    browserViewScopeId: z.string().min(1).max(512),
-    browserTabId: z.string().min(1).max(512),
-    anchors: z.array(BrowserAnnotationAnchorSchema).min(1).max(32),
-  })
-  .strict();
-export type BrowserAnnotationEvidenceCaptureInput = z.infer<
-  typeof BrowserAnnotationEvidenceCaptureInputSchema
->;
-
 export const BrowserAnnotationAttachmentSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -185,11 +176,14 @@ export const BrowserAnnotationAttachmentSchema = z
     browserTabId: z.string().min(1).max(512),
     createdAt: z.number().int().nonnegative(),
     intent: z.enum(["comment", "designChange"]).default("comment"),
-    designChange: BrowserAnnotationDesignChangeSchema.optional(),
+    designChanges: z.array(BrowserAnnotationDesignChangeSchema).max(32).optional(),
     note: z.string().max(10_000),
     pageTitle: z.string().max(2_048),
     pageUrl: z.string().max(16_384),
     anchors: z.array(BrowserAnnotationAnchorSchema).min(1).max(32),
+    number: z.number().int().positive().optional(),
+    evidenceState: z.enum(["pending", "ready", "failed"]).optional(),
+    evidenceError: z.string().max(2048).optional(),
     evidence: z
       .object({
         attachmentId: z.string().min(1).max(512),
@@ -224,13 +218,11 @@ export function serializeBrowserAnnotationAttachmentForPrompt(
     `[Browser ${parsed.intent === "designChange" ? "design change" : "annotation"}: ${heading}]`,
     `URL: ${parsed.pageUrl}`,
     ...parsed.anchors.map(formatAnchorForPrompt),
-    ...(parsed.designChange
-      ? [
-          `Design property: ${parsed.designChange.property}`,
-          `Before: ${parsed.designChange.before}`,
-          `After: ${parsed.designChange.after}`,
-        ]
-      : []),
+    ...(parsed.designChanges?.flatMap((change) => [
+      `Design property: ${change.property}`,
+      `Before: ${change.before}`,
+      `After: ${change.after}`,
+    ]) ?? []),
     ...(note ? [`Comment: ${note}`] : []),
     ...(parsed.evidence ? [`Screenshot evidence: ${parsed.evidence.attachmentId}`] : []),
   ].join("\n");
@@ -246,3 +238,38 @@ export function serializeBrowserAnnotationAttachmentsForAdditionalContext(
     ),
   });
 }
+
+/** A stable composer destination, independent of whether its first Thread exists. */
+export function resolveBrowserAnnotationDestination(input: {
+  sessionId?: string | null;
+  threadId?: string | null;
+  projectDraft?: { projectId: string; draftId: string } | null;
+}): string | null {
+  if (input.projectDraft)
+    return `project-draft:${input.projectDraft.projectId}:${input.projectDraft.draftId}`;
+  if (input.sessionId) return `session:${input.sessionId}`;
+  if (input.threadId) return `thread:${input.threadId}`;
+  return null;
+}
+
+export interface BrowserSavedAnnotation extends BrowserAnnotationAttachment {
+  number: number;
+  destination: string;
+  evidenceState: "pending" | "ready" | "failed";
+  evidenceError?: string;
+}
+
+export const BrowserAnnotationSaveSchema = z
+  .object({
+    editorId: z.string().min(1).max(512),
+    annotationId: z.string().min(1).max(512).optional(),
+    sessionId: z.string().min(1).max(512),
+    destination: z.string().min(1).max(512),
+    pageUrl: z.string().max(16_384),
+    note: z.string().max(10_000),
+    intent: z.enum(["comment", "designChange"]),
+    designChanges: z.array(BrowserAnnotationDesignChangeSchema).max(32),
+    anchors: z.array(BrowserAnnotationAnchorSchema).min(1).max(32),
+  })
+  .strict();
+export type BrowserAnnotationSave = z.infer<typeof BrowserAnnotationSaveSchema>;

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BrowserAnnotationSaveSchema } from "../browser-annotation";
 import { BROWSER_SITE_PERMISSION_NAMES } from "./browser-permissions";
 import { parseAssetSource } from "../assets";
 import type {
@@ -183,6 +184,20 @@ const TargetedCommandSchema = <Shape extends z.ZodRawShape>(shape: Shape) =>
   BrowserSidebarTabIdentitySchema.extend(shape).strict();
 
 export const BrowserSidebarCommandSchema = z.union([
+  z
+    .object({
+      type: z.literal("consume-annotations"),
+      destination: BrowserIdSchema,
+      ids: z.array(BrowserIdSchema),
+    })
+    .strict(),
+  TargetedCommandSchema({
+    type: z.literal("configure-annotations"),
+    destination: BrowserIdSchema.nullable(),
+    sessionId: BrowserIdSchema,
+  }),
+  TargetedCommandSchema({ type: z.literal("save-annotation"), input: BrowserAnnotationSaveSchema }),
+  TargetedCommandSchema({ type: z.literal("remove-annotations"), ids: z.array(BrowserIdSchema) }),
   TargetedCommandSchema({
     type: z.literal("respond-permission"),
     promptId: BrowserIdSchema,

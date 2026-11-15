@@ -135,6 +135,13 @@ type TestInvoke = (channel: string, ...args: unknown[]) => Promise<unknown>;
 function installComposerWindowApi(testInvoke?: TestInvoke): void {
   installWindowApi({
     invoke: async (channel: string, ...args: unknown[]) => {
+      if (channel === "browser-sidebar-runtime-snapshot")
+        return {
+          annotations: [],
+          state: { tabs: [] },
+          browserUseState: { tabs: [], cursors: [], activeBrowserTabIdsByConversationScope: {} },
+          presentationRequests: [],
+        };
       if (testInvoke) {
         const result = await testInvoke(channel, ...args);
         if (result !== undefined) return result;

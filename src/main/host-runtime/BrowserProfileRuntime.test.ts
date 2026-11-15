@@ -68,6 +68,7 @@ it.layer(NodeServices.layer)("BrowserProfileRuntime", (it) => {
           const callbacksContext = yield* Layer.buildWithScope(callbackLayer, scope);
           const callbacks = Context.get(callbacksContext, ScopedCallbackRuntime);
           const projection: BrowserProjection = {
+            completeAnnotationEvidence: () => undefined,
             admitLocalServerThumbnail: (input) => browserSidebar.admitLocalServerThumbnail(input),
             getBrowserUseState: () => browserSidebar.getBrowserUseStateSnapshot(),
             getState: () => browserSidebar.getStateSnapshot(),

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -16,6 +17,7 @@ import { ElectronWindowHost } from "../../platform/electron/ElectronWindowHost";
 import { WindowSessionCatalog } from "../../window-runtime/WindowSessionCatalog";
 import {
   BrowserAnnotationAnchorUpdateEventSchema,
+  BrowserAnnotationAnchorSchema,
   BrowserAnnotationSelectionEventSchema,
 } from "../../../shared/browser-annotation";
 import { BrowserDownloadActionRequestSchema } from "../../../shared/browser/browser-download-schemas";
@@ -41,6 +43,13 @@ import {
   BrowserUseOriginRuleUpdateSchema,
   BrowserUsePolicyModesUpdateSchema,
 } from "../../../shared/browser-use-policy";
+
+const BrowserAnnotationOpenSchema = z
+  .object({
+    annotationId: z.string().min(1).max(512),
+    anchor: BrowserAnnotationAnchorSchema.nullable().optional(),
+  })
+  .strict();
 
 export class BrowserProfileIpcError extends Schema.TaggedError<BrowserProfileIpcError>()(
   "BrowserProfileIpcError",
@@ -499,14 +508,77 @@ export const live: Layer.Layer<
         Effect.asVoid,
       );
     });
+    yield* ipc.on("browser-annotation-open", (event, payload: unknown) =>
+      Effect.sync(() => {
+        const owner = ownerForGuest(guest, event);
+        const identity = guest.getIdentity(event.sender.id);
+        const parsed = BrowserAnnotationOpenSchema.safeParse(payload);
+        if (!owner || !identity || !parsed.success) {
+          console.warn("Browser annotation pin refused", { guestId: event.sender.id });
+          return;
+        }
+        const annotation = browser.projection
+          .getTab(identity)
+          ?.annotations?.find((item) => item.id === parsed.data.annotationId);
+        if (!annotation || annotation.pageUrl !== event.sender.getURL()) {
+          console.warn("Browser annotation pin is stale", {
+            ...identity,
+            annotationId: parsed.data.annotationId,
+          });
+          return;
+        }
+        safeSendToWebContents(owner, "browser-annotation-open", [
+          {
+            ...identity,
+            annotationId: annotation.id,
+            ...(parsed.data.anchor?.pageUrl === annotation.pageUrl &&
+            annotation.anchors.some((anchor) => anchor.id === parsed.data.anchor?.id)
+              ? { anchor: parsed.data.anchor }
+              : {}),
+          },
+        ]);
+      }),
+    );
+    yield* ipc.on("browser-annotation-cancel", (event) =>
+      Effect.sync(() => {
+        const owner = ownerForGuest(guest, event);
+        const identity = guest.getIdentity(event.sender.id);
+        if (!owner || !identity) {
+          console.warn("Browser annotation cancel refused", { guestId: event.sender.id });
+          return;
+        }
+        safeSendToWebContents(owner, "browser-annotation-cancel", [identity]);
+      }),
+    );
     yield* ipc.on("browser-annotation-selection", (event, rawInput: unknown) =>
       Effect.sync(() => {
         const owner = ownerForGuest(guest, event);
-        if (!owner) return;
+        if (!owner) {
+          console.warn("Browser annotation selection from unregistered guest", {
+            guestId: event.sender.id,
+          });
+          return;
+        }
         const selection = BrowserAnnotationSelectionEventSchema.safeParse(rawInput);
-        if (!selection.success || selection.data.anchor.pageUrl !== event.sender.getURL()) return;
+        if (!selection.success || selection.data.anchor.pageUrl !== event.sender.getURL()) {
+          console.warn("Browser annotation selection refused", {
+            guestId: event.sender.id,
+            reason: selection.success ? "URL mismatch" : selection.error.message,
+          });
+          return;
+        }
         const identity = guest.getIdentity(event.sender.id);
-        if (!identity) return;
+        if (
+          !identity ||
+          browser.projection.getTab(identity)?.annotationSessionId !== selection.data.sessionId
+        ) {
+          console.warn("Browser annotation selection has a stale session", {
+            guestId: event.sender.id,
+            ...identity,
+            sessionId: selection.data.sessionId,
+          });
+          return;
+        }
         safeSendToWebContents(owner, "browser-annotation-selection", [
           { ...identity, selection: selection.data },
         ]);
@@ -515,11 +587,31 @@ export const live: Layer.Layer<
     yield* ipc.on("browser-annotation-anchor-update", (event, rawInput: unknown) =>
       Effect.sync(() => {
         const owner = ownerForGuest(guest, event);
-        if (!owner) return;
+        if (!owner) {
+          console.warn("Browser annotation update from unregistered guest", {
+            guestId: event.sender.id,
+          });
+          return;
+        }
         const update = BrowserAnnotationAnchorUpdateEventSchema.safeParse(rawInput);
-        if (!update.success || update.data.anchor.pageUrl !== event.sender.getURL()) return;
+        if (!update.success || update.data.anchor.pageUrl !== event.sender.getURL()) {
+          console.warn("Browser annotation update refused", {
+            guestId: event.sender.id,
+            reason: update.success ? "URL mismatch" : update.error.message,
+          });
+          return;
+        }
         const identity = guest.getIdentity(event.sender.id);
-        if (!identity) return;
+        if (
+          !identity ||
+          browser.projection.getTab(identity)?.annotationSessionId !== update.data.sessionId
+        ) {
+          console.warn("Browser annotation update has a stale session", {
+            guestId: event.sender.id,
+            ...identity,
+          });
+          return;
+        }
         safeSendToWebContents(owner, "browser-annotation-anchor-update", [
           { ...identity, update: update.data },
         ]);

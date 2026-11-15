@@ -1,3 +1,4 @@
+import { BrowserAnnotations } from "../browser/BrowserAnnotations";
 import { randomUUID } from "node:crypto";
 import { BrowserPageDialogs } from "../browser/BrowserPageDialogs";
 import { installBrowserPageDialogAdapter } from "../platform/electron/BrowserPageDialogAdapter";
@@ -334,6 +335,7 @@ interface ActiveBrowserImageDrag extends BrowserSidebarTabIdentity {
 export class BrowserState {
   private readonly rendererDestruction: BrowserStateDeps["rendererDestruction"];
   readonly permissions: BrowserSessionPermissions;
+  private readonly annotations = new Map<string, BrowserAnnotations>();
   private readonly pageDialogs = new Map<number, BrowserPageDialogs>();
   private readonly permissionNavigationVersions = new Map<number, number>();
   private readonly permissionInputTimes = new Map<number, number>();
@@ -1848,9 +1850,48 @@ export class BrowserState {
           return { ok: false, message: "Local server command is unavailable at this boundary" };
         }
 
+        if (command.type === "consume-annotations") {
+          for (const [key, tab] of this.tabs) {
+            const ids = (tab.annotations ?? [])
+              .filter(
+                (annotation) =>
+                  annotation.destination === command.destination &&
+                  command.ids.includes(annotation.id),
+              )
+              .map((annotation) => annotation.id);
+            this.annotations.get(key)?.remove(ids);
+          }
+          return { ok: true };
+        }
         const key = browserTabKey(command);
         const tab = this.tabs.get(key);
         if (!tab) return { ok: false, message: "Browser tab is not registered" };
+        if (command.type === "configure-annotations") {
+          const owner = this.annotationOwner(key);
+          owner.destination = command.destination;
+          owner.sessionId = command.sessionId;
+          return {
+            ok: true,
+            snapshot: this.updateTab(key, {
+              annotationDestination: command.destination,
+              annotationSessionId: command.sessionId,
+            }),
+          };
+        }
+        if (command.type === "save-annotation") {
+          const guestId = tab.webContentsId;
+          if (guestId === null || !this.runtimeRegistry.getGuestOwnership(guestId))
+            return {
+              ok: false,
+              message: "The Browser page is unavailable. Your draft has not been saved",
+            };
+          const result = this.annotationOwner(key).save(command.input, tab.url, tab.title);
+          return result;
+        }
+        if (command.type === "remove-annotations") {
+          this.annotationOwner(key).remove(command.ids);
+          return { ok: true };
+        }
 
         if (command.type === "respond-page-dialog") {
           const guestId = tab.webContentsId;
@@ -2441,6 +2482,29 @@ export class BrowserState {
     return next;
   }
 
+  private annotationOwner(key: string): BrowserAnnotations {
+    const existing = this.annotations.get(key);
+    if (existing) return existing;
+    const owner = new BrowserAnnotations((annotations) => {
+      const tab = this.tabs.get(key);
+      if (!tab) return;
+      const snapshot = this.updateTab(key, { annotations });
+      const contents = this.getAttachedWebContents(snapshot);
+      if (contents && !contents.isDestroyed())
+        contents.send("browser-annotation-saved", annotations);
+    }, this.tabs.get(key)!.browserTabId);
+    this.annotations.set(key, owner);
+    return owner;
+  }
+
+  completeAnnotationEvidence(
+    identity: BrowserSidebarTabIdentity,
+    annotation: import("../../shared/browser-annotation").BrowserSavedAnnotation,
+    result: import("../../shared/browser-annotation").BrowserAnnotationAttachmentEvidence | string,
+  ): void {
+    this.annotations.get(browserTabKey(identity))?.evidence(annotation.id, annotation, result);
+  }
+
   private updateTab(
     key: string,
     patch: Partial<
@@ -2499,6 +2563,7 @@ export class BrowserState {
       this.webContentsTabIds.delete(tab.webContentsId);
       this.webContentsListeners.release(tab.webContentsId);
     }
+    this.annotations.delete(tabId);
     this.tabs.delete(tabId);
     this.browserUseNavigationRestrictions.delete(tabId);
     this.deviceToolbarStates.delete(tabId);
@@ -2571,6 +2636,8 @@ export class BrowserState {
             ...(contents.isLoading() ? {} : { pendingUrl: undefined }),
           })
         : attached;
+    if (contents && !contents.isDestroyed())
+      contents.send("browser-annotation-saved", snapshot?.annotations ?? []);
     this.logger.info("Browser webview attached", {
       ...browserIdentity(event),
       mountGeneration: event.mountGeneration,
@@ -2763,6 +2830,9 @@ export class BrowserState {
         }
         this.fork(this.persistPageSnapshotForWebContents(webContentsId, contents));
       });
+      add("dom-ready", () =>
+        contents.send("browser-annotation-saved", this.tabs.get(tabId)?.annotations ?? []),
+      );
       add("did-navigate", (...args) => {
         dialogs.committed();
         this.initialLoads.delete(webContentsId);

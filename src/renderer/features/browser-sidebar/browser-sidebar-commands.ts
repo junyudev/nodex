@@ -26,6 +26,11 @@ type BrowserSidebarRegisteredCommand = ReturnType<typeof defineBrowserSidebarCom
 
 /** Exhaustive semantic registration for the aggregate Browser runtime channel. */
 const browserSidebarCommandDefinitions = {
+  "configure-annotations": defineBrowserSidebarCommand("configure-annotations"),
+  "save-annotation": defineBrowserSidebarCommand("save-annotation"),
+  "remove-annotations": defineBrowserSidebarCommand("remove-annotations"),
+  "consume-annotations": defineBrowserSidebarCommand("consume-annotations"),
+
   "attach-dragged-image": defineBrowserSidebarCommand("attach-dragged-image"),
   "browser-use-cursor-arrived": defineBrowserSidebarCommand("browser-use-cursor-arrived"),
   "browser-use-release-tab": defineBrowserSidebarCommand("browser-use-release-tab"),

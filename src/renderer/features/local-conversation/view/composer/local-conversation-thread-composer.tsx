@@ -1,3 +1,5 @@
+import { resolveBrowserAnnotationDestination } from "../../../../../shared/browser-annotation";
+import type { ComposerChatKey } from "@/lib/composer-draft-intents";
 import { useRegisterPluginAppFollowUp } from "@/features/local-conversation/view/plugin-app-conversation";
 import {
   buildMcpAppFollowUpPrompt,
@@ -298,7 +300,6 @@ import {
   clearBrowserAnnotationAttachments,
   getBrowserAnnotationAttachmentsSnapshot,
   removeBrowserAnnotationAttachment,
-  replaceBrowserAnnotationAttachments,
   subscribeBrowserAnnotationAttachments,
   type BrowserAnnotationAttachment,
 } from "../../../browser-sidebar/browser-annotation-attachments";
@@ -338,6 +339,21 @@ import { beginOptimisticGeneratedImageEdit } from "@/features/user-attachment-im
 
 import { uploadResourceAsset } from "@/lib/assets";
 import { resolveImageEditComposerTarget } from "../../image-edit-composer-target";
+
+/** The destination Browser annotations use for this composer's chat. */
+function resolveComposerAnnotationDestination(
+  chat: ComposerChatKey | null | undefined,
+  newThreadSessionId: string | undefined,
+  threadId: string | null | undefined,
+): string {
+  return (
+    resolveBrowserAnnotationDestination({
+      projectDraft: chat?.kind === "project-draft" ? chat : null,
+      sessionId: chat && "sessionId" in chat ? chat.sessionId : newThreadSessionId,
+      threadId,
+    }) ?? ""
+  );
+}
 
 interface ThreadComposerProps {
   model: ThreadFooterModel;
@@ -1105,12 +1121,6 @@ function applyCompletedDraftSnapshot(input: {
     input.snapshot.appModelContextAttachments ?? [],
   );
   replaceReviewCommentAttachments(input.threadId, input.snapshot.commentAttachments);
-  if (input.threadId) {
-    replaceBrowserAnnotationAttachments(
-      input.threadId,
-      input.snapshot.browserAnnotationAttachments ?? [],
-    );
-  }
 }
 
 interface HydratedThreadComposerProps extends ThreadComposerProps {
@@ -1310,16 +1320,6 @@ function ControlledThreadComposer(
         for (const attachment of restored.commentAttachments) {
           addReviewDiffCommentAttachment(composerThreadId, attachment);
         }
-        if (browserAnnotationConversationId) {
-          replaceBrowserAnnotationAttachments(
-            browserAnnotationConversationId,
-            appendUniqueBy(
-              getBrowserAnnotationAttachmentsSnapshot(browserAnnotationConversationId),
-              restored.browserAnnotationAttachments,
-              (attachment) => attachment.id,
-            ),
-          );
-        }
       } else {
         setFileAttachments(restored.fileAttachments);
         setAddedFiles(restored.addedFiles);
@@ -1327,12 +1327,6 @@ function ControlledThreadComposer(
         setAppshotContexts(restored.appshotContexts);
         setPastedTextAttachments(restored.pastedTextAttachments);
         replaceReviewCommentAttachments(composerThreadId, restored.commentAttachments);
-        if (browserAnnotationConversationId) {
-          replaceBrowserAnnotationAttachments(
-            browserAnnotationConversationId,
-            restored.browserAnnotationAttachments,
-          );
-        }
       }
 
       if (
@@ -1366,7 +1360,6 @@ function ControlledThreadComposer(
 
     if (!initialized) setInitialized(true);
   }, [
-    browserAnnotationConversationId,
     composerThreadId,
     composerHandle,
     imageDraft.images,
@@ -1710,9 +1703,14 @@ function HydratedThreadComposer({
     promptEditorRef.current?.focusAtEnd();
     selectionDraft.consumeFocus();
   }, [selectionFocusNonce, composerVisible, selectionDraft]);
+  const annotationDestination = resolveComposerAnnotationDestination(
+    model.composerChatKey,
+    model.newThreadTarget?.sessionId,
+    composerThreadId,
+  );
   const getBrowserAnnotationsSnapshot = useCallback(
-    () => getBrowserAnnotationAttachmentsSnapshot(browserAnnotationConversationId),
-    [browserAnnotationConversationId],
+    () => getBrowserAnnotationAttachmentsSnapshot(annotationDestination),
+    [annotationDestination],
   );
   const browserAnnotationAttachments = useSyncExternalStore(
     subscribeBrowserAnnotationAttachments,
@@ -2160,12 +2158,10 @@ function HydratedThreadComposer({
   }, []);
   const clearAdmittedSubmission = useCallback(() => {
     incrementAttachmentGeneration();
-    clearBrowserAnnotationAttachments(browserAnnotationConversationId);
     clearImageEditComposerDraft(imageEditComposerChannelId);
     selectionDraft.clear();
     clearSubmittedDraft();
   }, [
-    browserAnnotationConversationId,
     clearSubmittedDraft,
     imageEditComposerChannelId,
     incrementAttachmentGeneration,
@@ -2174,9 +2170,18 @@ function HydratedThreadComposer({
   const completeSuccessfulSubmission = useCallback(
     (text: string) => {
       recordSuccessfulPromptSubmit(text);
+      clearBrowserAnnotationAttachments(
+        annotationDestination,
+        browserAnnotationAttachments.map((annotation) => annotation.id),
+      );
       clearAdmittedSubmission();
     },
-    [clearAdmittedSubmission, recordSuccessfulPromptSubmit],
+    [
+      annotationDestination,
+      browserAnnotationAttachments,
+      clearAdmittedSubmission,
+      recordSuccessfulPromptSubmit,
+    ],
   );
   const restoreAdmittedSubmission = useCallback(
     (input: {
@@ -2199,12 +2204,6 @@ function HydratedThreadComposer({
         model.conversation?.threadId ?? model.threadId,
         input.attachments.commentAttachments,
       );
-      if (browserAnnotationConversationId) {
-        replaceBrowserAnnotationAttachments(
-          browserAnnotationConversationId,
-          input.attachments.browserAnnotationAttachments,
-        );
-      }
       replaceImageEditComposerDraft(imageEditComposerChannelId, {
         attachments: input.imageEditDraft.attachments,
         mode: input.imageEditDraft.mode,
@@ -2212,7 +2211,6 @@ function HydratedThreadComposer({
       if (input.goalModeActive) setGoalModeActive(true);
     },
     [
-      browserAnnotationConversationId,
       imageEditComposerChannelId,
       model.conversation?.threadId,
       model.threadId,
@@ -2662,6 +2660,10 @@ function HydratedThreadComposer({
               clearAdmittedSubmission();
               completedFirstSubmission = true;
               await startCompletion;
+              clearBrowserAnnotationAttachments(
+                annotationDestination,
+                attachmentState.browserAnnotationAttachments.map((annotation) => annotation.id),
+              );
             });
             recordSuccessfulPromptSubmit(nextPrompt);
           } else {
@@ -3382,9 +3384,9 @@ function HydratedThreadComposer({
 
   const handleRemoveBrowserAnnotationAttachment = useCallback(
     (attachmentId: string) => {
-      removeBrowserAnnotationAttachment(browserAnnotationConversationId, attachmentId);
+      removeBrowserAnnotationAttachment(annotationDestination, attachmentId);
     },
-    [browserAnnotationConversationId],
+    [annotationDestination],
   );
 
   const slashCommands = buildComposerSlashCommands({
@@ -4076,9 +4078,8 @@ function HydratedThreadComposer({
           appshotContexts: composerHandle.get(composerAppshotContextsAtom),
           pastedTextAttachments: pasted,
           commentAttachments: getReviewDiffCommentAttachmentsSnapshot(composerThreadId),
-          browserAnnotationAttachments: getBrowserAnnotationAttachmentsSnapshot(
-            browserAnnotationConversationId,
-          ),
+          browserAnnotationAttachments:
+            getBrowserAnnotationAttachmentsSnapshot(annotationDestination),
           ...selectionDraft.readSnapshot(),
           appModelContextAttachments: readComposerAppModelContext(composerHandle),
           imageEditDraft: getImageEditComposerDraftSnapshot(imageEditComposerChannelId),
@@ -4087,6 +4088,7 @@ function HydratedThreadComposer({
       };
     };
   }, [
+    annotationDestination,
     browserAnnotationConversationId,
     busyAction,
     composerHandle,
@@ -4781,12 +4783,17 @@ function HydratedThreadComposer({
                         >
                           <FileIcon className="size-3 text-token-description-foreground" />
                           <span className="min-w-0 truncate">
-                            {attachment.pageTitle || "Browser annotation"}
+                            {attachment.number ? `${attachment.number}. ` : ""}
+                            {attachment.note ||
+                              (attachment.intent === "designChange"
+                                ? "Design change"
+                                : attachment.pageTitle || "Browser annotation")}
                           </span>
-                          <span className="shrink-0 text-token-description-foreground">
-                            {attachment.anchors.length}{" "}
-                            {attachment.anchors.length === 1 ? "anchor" : "anchors"}
-                          </span>
+                          {attachment.evidenceState === "failed" ? (
+                            <span className="shrink-0 text-token-description-foreground">
+                              No screenshot
+                            </span>
+                          ) : null}
                           <span className="text-token-description-foreground">x</span>
                         </button>
                       </NodexTooltip>

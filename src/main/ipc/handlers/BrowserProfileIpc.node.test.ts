@@ -185,6 +185,8 @@ it.effect("registers and releases Browser Profile ingress with the Main Scope", 
     ]);
     assert.deepEqual([...listeners.keys()].sort(), [
       "browser-annotation-anchor-update",
+      "browser-annotation-cancel",
+      "browser-annotation-open",
       "browser-annotation-selection",
       "browser-credential-save-candidate",
       "browser-image-drag-ended",
