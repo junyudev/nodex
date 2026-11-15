@@ -59,6 +59,7 @@ const snapshot = (items: ChatItem[]): ChatSnapshot => ({
     queuedCount: 0,
     requests: [],
     agentLabel: null,
+    agent: null,
     sendBlockedReason: null,
     stopBlockedReason: null,
     archived: false,

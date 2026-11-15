@@ -196,7 +196,11 @@ Member attention changes invalidate the same Core-projected stream.
   sections; search then looks among them, and `Chats` returns. Each opens to read, and `Restore`
   appears beside those you may manage, as Data controls on a desktop lists them.
 - Starting a chat chooses a Project, a location (the checkout or a new worktree, offered as soon as
-  a Project that can use one is chosen) and an Agent, and remembers them per Space and Member. An Agent that cannot run says why rather than disappearing. A chat
+  a Project that can use one is chosen) and an Agent, and remembers them per Space and Member. An Agent that cannot run says why rather than disappearing. An
+  Agent is a model and, where the model offers a choice, its reasoning effort: the Composer's chip
+  names both, and its sheet lists the efforts of the chosen model above the models. A model chosen
+  without an effort reasons at its own default, and an effort chosen earlier follows to another
+  model that offers it. With nothing chosen a chat runs on the Inbox's chat Agent, at its effort. A chat
   needs a live connection to start; it is not queued offline. Permission mode comes from the
   host Profile's setting for new chats. On a team Space its host starts the chat with your
   authority, as a team desktop's New chat does, and it is yours: in the host's tasks directory
@@ -225,6 +229,12 @@ Member attention changes invalidate the same Core-projected stream.
   the Run now instead. An empty Composer's button stops the Run, when you may stop it: in a team
   Space, Core lets the Member who asked for the Run, the chat's owner and the Space Owners. Anyone
   else sees Stop unavailable, and tapping it says why.
+- Where a chat's model offers a choice, its Composer names the reasoning effort in force. The chip
+  opens into the model's efforts in place, without leaving the words, and the one chosen applies
+  from the chat's next message on. A message that waits behind a Run brings its effort when its own
+  Run starts; one that redirects a Run changes that Run's effort where its Agent can, which
+  restarts its thinking, and otherwise changes it from the next Run. The model stays the chat's
+  own. An effort changed on the desktop shows here as well.
 - A chat you may manage offers `Archive` in its header and `Undo` afterwards. An archived chat says
   “Restore this chat to continue it.” in place of the Composer, with `Restore` for those who may.
 - A connected conversation only its desktop owner can continue is readable, and says so in place of

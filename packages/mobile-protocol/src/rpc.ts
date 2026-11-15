@@ -148,6 +148,11 @@ export const mobileMethods = {
       fileRefs: z.array(z.string()),
       /** While a Run is active: wait behind it, or redirect it now. */
       delivery: z.enum(["queue", "steer"]),
+      /**
+       * The effort the chat reasons at from this message on, one its model offers. Absent or null
+       * keeps the chat's own.
+       */
+      reasoningEffort: z.string().nullable().optional(),
     }),
     z.looseObject({}),
   ),

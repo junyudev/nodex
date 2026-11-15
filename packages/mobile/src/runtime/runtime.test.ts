@@ -878,6 +878,7 @@ function snapshot(
       queuedCount: 0,
       requests: [],
       agentLabel: null,
+      agent: null,
       sendBlockedReason: null,
       stopBlockedReason: null,
       archived: false,

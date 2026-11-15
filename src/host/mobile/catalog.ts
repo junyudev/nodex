@@ -27,6 +27,7 @@ import { InboxApplication } from "../inbox-application/InboxApplication";
 import { ProjectWorkspace } from "../../main/project-application/ProjectWorkspace";
 import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import { mobileAgentChoice } from "./inbox";
+import { mobileAgentModel, mobileModelEffort } from "./agent-model";
 import {
   idleActivity,
   nativeActivity,
@@ -49,30 +50,51 @@ const providerReason = (provider: Providers[number]): string | null => {
   return provider.models.length ? null : "This Agent has no available models.";
 };
 
+/** The same default chat choice is shown on the phone and used when it omits a choice. */
+const defaultAgentChoice = (
+  providers: Providers,
+  preference: InboxAgentChoice,
+): InboxAgentChoice | null => {
+  const preferred = resolveFromCatalog(providers, preference, "chat");
+  if (preferred.kind === "ready" && !providerReason(preferred.provider))
+    return { ...preference, model: preferred.model.slug };
+  const fallback = automaticModelCatalog(providers).find(
+    (provider) => isInboxChatCandidate(provider) && !providerReason(provider),
+  );
+  const model = fallback && inboxDefaultChatModel(fallback);
+  if (!fallback || !model) return null;
+  return {
+    instanceId: fallback.instanceId,
+    model: model.slug,
+    reasoningEffort: null,
+    serviceTier: null,
+  };
+};
+
 export const projectAgentCatalog = (
   providers: Providers,
   preference: InboxAgentChoice,
 ): AgentCatalog => {
-  const preferred = resolveFromCatalog(providers, preference, "chat");
-  const fallback = automaticModelCatalog(providers).find(
-    (provider) => isInboxChatCandidate(provider) && !providerReason(provider),
-  );
-  const fallbackModel = fallback && inboxDefaultChatModel(fallback);
+  const choice = defaultAgentChoice(providers, preference);
+  const model = mobileAgentModel(providers, choice?.instanceId, choice?.model ?? undefined);
   return {
     providers: providers.map((provider) => ({
       instanceId: provider.instanceId,
       label: provider.displayName ?? provider.instanceId,
       unavailableReason: providerReason(provider),
-      models: provider.models
-        .filter(modelIsOn)
-        .map((model) => ({ id: model.slug, label: model.name })),
+      models: provider.models.filter(modelIsOn).map((model) => {
+        const { efforts, defaultEffort } = mobileModelEffort(model);
+        return { id: model.slug, label: model.name, efforts, defaultEffort };
+      }),
     })),
     defaultChoice:
-      preferred.kind === "ready" && !providerReason(preferred.provider)
-        ? { providerInstanceId: preferred.selection.instanceId, model: preferred.selection.model }
-        : fallback && fallbackModel
-          ? { providerInstanceId: fallback.instanceId, model: fallbackModel.slug }
-          : null,
+      choice && choice.model
+        ? {
+            providerInstanceId: choice.instanceId,
+            model: choice.model,
+            reasoningEffort: mobileModelEffort(model, choice.reasoningEffort).reasoningEffort,
+          }
+        : null,
   };
 };
 
@@ -80,6 +102,7 @@ export const projectChatRow = (
   row: ChatListingItem,
   metadata: ChatRuntimeMetadata | undefined,
   live: ChatActivity | undefined,
+  providers: Providers = [],
 ): ChatSummary => {
   const base = summaryOf(row);
   const entry = metadata ? withSessionMetadata(base, metadata) : base;
@@ -91,7 +114,10 @@ export const projectChatRow = (
     preview: Array.from(entry.preview).slice(0, 240).join(""),
     projectId: entry.projectId,
     projectName: entry.projectName,
-    agentLabel: entry.agent?.model ?? (entry.binding?.kind === "native" ? "Codex" : null),
+    agentLabel:
+      mobileAgentModel(providers, entry.agent?.providerInstanceId, entry.agent?.model)?.name ??
+      entry.agent?.model ??
+      (entry.binding?.kind === "native" ? "Codex" : null),
     unread: row.task.session.unread,
     pinned: entry.pinned,
     archived: entry.archived,
@@ -167,25 +193,23 @@ export const makeMobileCatalog = Effect.gen(function* () {
   const git = yield* CodexGitProbe;
   const search = yield* Effect.serviceOption(ChatSearch);
 
+  const readCatalog = Effect.gen(function* () {
+    const [providers, snapshot] = yield* Effect.all([runtime.catalog(), settings.snapshot()]).pipe(
+      Effect.mapError(runtimeUnavailable),
+    );
+    return { providers, preference: snapshot.inbox.chatAgent };
+  });
   const agents: MobileHandlers["agents.catalog"] = () =>
-    Effect.gen(function* () {
-      const [providers, snapshot] = yield* Effect.all([
-        runtime.catalog(),
-        settings.snapshot(),
-      ]).pipe(Effect.mapError(runtimeUnavailable));
-      return projectAgentCatalog(providers, snapshot.inbox.chatAgent);
-    });
+    readCatalog.pipe(
+      Effect.map(({ providers, preference }) => projectAgentCatalog(providers, preference)),
+    );
   const agentChoice = Effect.fn("MobileCatalog.agentChoice")(function* (
     choice: Parameters<MobileHandlers["chats.start"]>[0]["agent"],
   ) {
-    const catalog = yield* agents({});
     if (choice) return mobileAgentChoice(choice);
-    if (catalog.defaultChoice) {
-      const snapshot = yield* settings.snapshot().pipe(Effect.mapError(runtimeUnavailable));
-      if (snapshot.inbox.chatAgent.instanceId === catalog.defaultChoice.providerInstanceId)
-        return { ...snapshot.inbox.chatAgent, model: catalog.defaultChoice.model };
-      return mobileAgentChoice(catalog.defaultChoice);
-    }
+    const { providers, preference } = yield* readCatalog;
+    const fallback = defaultAgentChoice(providers, preference);
+    if (fallback) return fallback;
     return yield* Effect.fail(unavailable("No Agent is ready on the Desktop Host."));
   });
 
@@ -330,6 +354,7 @@ export const makeMobileCatalog = Effect.gen(function* () {
       const live = new Map(
         (yield* activity.read).items.map((item) => [item.sessionId, runtimeActivity(item)]),
       );
+      const providers = yield* runtime.catalog().pipe(Effect.orElseSucceed(() => []));
       return {
         items: yield* Effect.forEach(
           rows,
@@ -339,6 +364,7 @@ export const makeMobileCatalog = Effect.gen(function* () {
               row,
               ref ? metadata.get(`${ref.runtime_id}\0${ref.thread_id}`) : undefined,
               live.get(row.task.session.id),
+              providers,
             );
             return memberActivity(summary).pipe(
               Effect.map((activity) => ({ ...summary, ...activity })),

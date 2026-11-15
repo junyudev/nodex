@@ -1,6 +1,7 @@
 import { CoreRequestClass } from "../../main/core-runtime/CoreRequestClass";
 import { MainConfig } from "../../main/app/MainConfig";
 import { hostPathFlavor } from "../host-paths";
+import { mobileAgentModel, mobileModelEffort } from "./agent-model";
 import type { AgentSnapshot } from "@nodex/agent-runtime/contracts";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import {
@@ -201,6 +202,7 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
             queuedCount: 0,
             requests: [],
             agentLabel: thread ? "Codex" : null,
+            agent: null,
             sendBlockedReason: thread ? nativeOnly : (start?.reason ?? notStarted),
             ...stewardship(row),
             start,
@@ -215,6 +217,9 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
       .read({ sessionId })
       .pipe(Effect.mapError(transcriptUnavailable));
     const projection = snapshot.projection;
+    const selection = projection.thread.modelSelection;
+    const providers = yield* runtime.catalog().pipe(Effect.orElseSucceed(() => []));
+    const model = mobileAgentModel(providers, selection?.instanceId, selection?.model);
     const current = (yield* activity.read).items.find((entry) => entry.sessionId === sessionId);
     const entitlement = yield* PhoneRequests;
     const requests = yield* entitlement.filter(sessionId, projectRequests(projection));
@@ -255,7 +260,14 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
           activeRunId,
           queuedCount: queued.size,
           requests,
-          agentLabel: projection.thread.modelSelection?.model ?? null,
+          agentLabel: model?.name ?? selection?.model ?? null,
+          agent: selection
+            ? {
+                providerInstanceId: selection.instanceId,
+                model: selection.model,
+                reasoningEffort: mobileModelEffort(model, selection.options).reasoningEffort,
+              }
+            : null,
           sendBlockedReason: row.archived ? "Restore this chat to continue it." : null,
           ...stewardship(row),
         },

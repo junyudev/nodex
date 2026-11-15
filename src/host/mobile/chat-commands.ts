@@ -10,6 +10,8 @@ import { ProjectSessionCommands } from "../../main/project-application/ProjectSe
 import { MemberMessageRefusal, MemberMessages } from "../MemberMessages";
 import { hostLocalCommit } from "../host-local-commit";
 import type { ProjectWorkspaceCommandResult } from "../../main/project-application/ProjectWorkspace";
+import { applyAgentRuntimeOptionIntent } from "../../shared/agent-runtime-provider";
+import { mobileAgentModel, mobileModelEffort } from "./agent-model";
 import { isUuidV7 } from "../../shared/uuid-v7";
 import { approvalOptions, snapshotTurnItems } from "./transcript-projection";
 import type { makeMobileCatalog } from "./catalog";
@@ -26,7 +28,7 @@ const runtimeError = (error: { readonly admissionRejected?: boolean; readonly me
       );
 
 export const makeMobileChatCommands = Effect.fn("MobileChatCommands.make")(function* (
-  catalog: Effect.Success<typeof makeMobileCatalog>,
+  catalog: Pick<Effect.Success<typeof makeMobileCatalog>, "agentChoice">,
 ) {
   const runtime = yield* AgentRuntimeApplication;
   const messages = yield* MemberMessages;
@@ -84,10 +86,43 @@ export const makeMobileChatCommands = Effect.fn("MobileChatCommands.make")(funct
       const { sessionId, text, fileRefs, messageId, delivery } = input;
       if (!text.trim() && !fileRefs.length)
         return yield* Effect.fail(invalid("Write a message or attach a file."));
+      const modelSelection = yield* Effect.gen(function* () {
+        if (typeof input.reasoningEffort !== "string") return undefined;
+        const target = yield* writable(sessionId);
+        const [{ snapshot }, providers] = yield* Effect.all([
+          runtime.read(target),
+          runtime.catalog(),
+        ]).pipe(Effect.catch((error) => Effect.flatMap(runtimeError(error), Effect.fail)));
+        const selection = snapshot.projection.thread.modelSelection;
+        const model = mobileAgentModel(providers, selection.instanceId, selection.model);
+        const { efforts, reasoningEffort } = mobileModelEffort(model, selection.options);
+        if (
+          !model ||
+          input.reasoningEffort === reasoningEffort ||
+          !efforts.some((effort) => effort.id === input.reasoningEffort)
+        )
+          return undefined;
+        // Only the effort changes; other saved options also survive a partial catalog.
+        const options = new Map((selection.options ?? []).map((option) => [option.id, option]));
+        for (const option of applyAgentRuntimeOptionIntent(
+          model.capabilities?.optionDescriptors ?? [],
+          undefined,
+          {
+            reasoningEffort: input.reasoningEffort,
+          },
+        ))
+          options.set(option.id, option);
+        return { ...selection, options: [...options.values()] };
+      });
       yield* messages
         .send({
           sessionId,
-          message: { messageId, text, ...(fileRefs.length ? { fileRefs: [...fileRefs] } : {}) },
+          message: {
+            messageId,
+            text,
+            ...(fileRefs.length ? { fileRefs: [...fileRefs] } : {}),
+            ...(modelSelection ? { modelSelection } : {}),
+          },
           delivery,
         })
         .pipe(

@@ -86,42 +86,45 @@ test("Inbox projections expose the decision and the kind the phone leads its hol
   expect(message).toMatchObject({ kind: "question" });
 });
 
-test("a chat suggestion reaches the phone whole", () => {
-  const message = projectInboxEntry({
-    ...inboxItem({ kind: "library" }),
-    proposal: {
-      ...suggestion,
-      action: {
-        type: "new_chat",
-        projectId: "project",
-        prompt: "Fix the flaky test",
-        agent: { instanceId: "codex", model: "gpt", reasoningEffort: null, serviceTier: null },
-        additions: ["Open a pull request when it passes"],
-        skills: [{ name: "test-review", reason: "Check the reproduction." }],
+test.each(["high", null])(
+  "a chat suggestion reaches the phone whole with its effort (%s)",
+  (reasoningEffort) => {
+    const message = projectInboxEntry({
+      ...inboxItem({ kind: "library" }),
+      proposal: {
+        ...suggestion,
+        action: {
+          type: "new_chat",
+          projectId: "project",
+          prompt: "Fix the flaky test",
+          agent: { instanceId: "codex", model: "gpt", reasoningEffort, serviceTier: null },
+          additions: ["Open a pull request when it passes"],
+          skills: [{ name: "test-review", reason: "Check the reproduction." }],
+        },
+        summary: "Start on the flaky test",
+        rationale: "It failed three times this week",
+        producedBy: "GPT",
+        targetProjectName: "Nodex",
       },
+    });
+    expect(message.rowKind).toBe("intake");
+    if (message.rowKind !== "intake") throw new Error("Expected intake");
+    expect(message.proposal).toMatchObject({
       summary: "Start on the flaky test",
       rationale: "It failed three times this week",
+      origin: "agent",
       producedBy: "GPT",
-      targetProjectName: "Nodex",
-    },
-  });
-  expect(message.rowKind).toBe("intake");
-  if (message.rowKind !== "intake") throw new Error("Expected intake");
-  expect(message.proposal).toMatchObject({
-    summary: "Start on the flaky test",
-    rationale: "It failed three times this week",
-    origin: "agent",
-    producedBy: "GPT",
-    action: {
-      type: "new_chat",
-      projectName: "Nodex",
-      prompt: "Fix the flaky test",
-      additions: ["Open a pull request when it passes"],
-      skills: [{ name: "test-review", reason: "Check the reproduction." }],
-      agent: { providerInstanceId: "codex", model: "gpt" },
-    },
-  });
-});
+      action: {
+        type: "new_chat",
+        projectName: "Nodex",
+        prompt: "Fix the flaky test",
+        additions: ["Open a pull request when it passes"],
+        skills: [{ name: "test-review", reason: "Check the reproduction." }],
+        agent: { providerInstanceId: "codex", model: "gpt", reasoningEffort },
+      },
+    });
+  },
+);
 
 test("file refs carry locators and chunks have a strict decoded byte ceiling", () => {
   expect(parseAttachmentRef(attachmentRef(["session", "thread", "item", "attachment"]))).toEqual([

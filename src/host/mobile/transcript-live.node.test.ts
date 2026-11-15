@@ -1,3 +1,4 @@
+import type { ChatPatchOp } from "@nodex/mobile-protocol";
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -104,6 +105,7 @@ it.live(
             NODEX_FAKE_CODEX_LOG_PATH: join(fake, "requests.jsonl"),
             NODEX_FAKE_CODEX_BASE_FIXTURE: fixturePath("codex-queue-app-server.mjs"),
             NODEX_FAKE_CODEX_CONTROLLED_PROMPT: PROMPT,
+            NODEX_FAKE_CODEX_REASONING_EFFORTS: "medium,high",
           },
           configuration: {
             home,
@@ -174,7 +176,7 @@ it.live(
             threadId,
             projectId,
             title: "Phone follow",
-            modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+            modelSelection: { instanceId: "codex", model: "gpt-5.5" },
             runtimeMode: "full-access",
             interactionMode: "default",
             branch: null,
@@ -263,6 +265,35 @@ it.live(
           Effect.provideService(PhoneRequests, entitlement as never),
         );
         expect(JSON.stringify(opened.items)).toContain("Started before the phone opened");
+        expect(opened.state).toMatchObject({
+          agentLabel: "GPT-5.5",
+          agent: { providerInstanceId: "codex", model: "gpt-5.5", reasoningEffort: "medium" },
+        });
+        // Desktop effort changes reach the phone through Runtime events alone, with no Core invalidation.
+        yield* runtime.request("command.dispatch", {
+          command: {
+            type: "thread.model-selection.set",
+            commandId: `effort:${threadId}`,
+            threadId,
+            modelSelection: {
+              instanceId: "codex",
+              model: "gpt-5.5",
+              options: [{ id: "reasoningEffort", value: "high" }],
+            },
+          },
+        });
+        yield* Effect.sync(() =>
+          pushed.some(
+            ({ event, data }) =>
+              event === "chat.patch" &&
+              (data as { ops: ChatPatchOp[] }).ops.some(
+                (op) => op.op === "state" && op.state.agent?.reasoningEffort === "high",
+              ),
+          ),
+        ).pipe(
+          Effect.repeat({ until: (seen) => seen, schedule: Schedule.spaced("50 millis") }),
+          Effect.timeout("10 seconds"),
+        );
 
         // What the Run does after the phone opened reaches it without another open, including a
         // long command while it is still running.

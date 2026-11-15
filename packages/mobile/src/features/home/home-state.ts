@@ -31,6 +31,8 @@ interface HomeState {
   readonly filter: InboxFilter;
   /** Keyed by (Space, Member, Composer): `inbox`, `new-chat`, or a chat's Session. */
   readonly drafts: Readonly<Record<string, ComposerDraft>>;
+  /** The reasoning effort picked for a chat's next message, by its Composer's draft key. */
+  readonly efforts: Readonly<Record<string, string>>;
   /** How many captures this phone has sent, so the stream can return to its end for each. */
   readonly capturesSent: number;
   readonly replyTo: ReplyTarget | null;
@@ -51,8 +53,25 @@ interface HomeState {
   readonly setChatsArchived: (archived: boolean) => void;
   readonly setDraft: (key: string, patch: Partial<ComposerDraft>) => void;
   readonly clearDraft: (key: string) => void;
+  /** Null returns the chat to the effort its host reports. */
+  readonly setEffort: (key: string, effort: string | null) => void;
   readonly forgetSpace: (spaceKey: string) => void;
 }
+
+/** What is kept by Composer, without the Composers of one Space. */
+const withoutSpace = <Value>(
+  byComposer: Readonly<Record<string, Value>>,
+  spaceKey: string,
+): Record<string, Value> =>
+  Object.fromEntries(
+    Object.entries(byComposer).filter(([key]) => {
+      try {
+        return JSON.parse(key)[0] !== spaceKey;
+      } catch {
+        return true;
+      }
+    }),
+  );
 
 /** What the person was doing on this phone; none of it is a Host's state. */
 export const useHomeState = createLocalStore<HomeState>({
@@ -60,6 +79,7 @@ export const useHomeState = createLocalStore<HomeState>({
   scopes: {},
   filter: "inbox",
   drafts: {},
+  efforts: {},
   capturesSent: 0,
   replyTo: null,
   setReplyTo: (replyTo) => useHomeState.setState({ replyTo }),
@@ -87,24 +107,23 @@ export const useHomeState = createLocalStore<HomeState>({
       drafts: { ...drafts, [key]: { ...(drafts[key] ?? EMPTY_DRAFT), ...patch } },
     })),
   forgetSpace: (spaceKey) =>
-    useHomeState.setState(({ drafts, replyTo, scopes: { [spaceKey]: _forgotten, ...scopes } }) => ({
-      scopes,
-      drafts: Object.fromEntries(
-        Object.entries(drafts).filter(([key]) => {
-          try {
-            return JSON.parse(key)[0] !== spaceKey;
-          } catch {
-            return true;
-          }
-        }),
-      ),
-      replyTo: replyTo?.spaceKey === spaceKey ? null : replyTo,
-    })),
+    useHomeState.setState(
+      ({ drafts, efforts, replyTo, scopes: { [spaceKey]: _forgotten, ...scopes } }) => ({
+        scopes,
+        drafts: withoutSpace(drafts, spaceKey),
+        efforts: withoutSpace(efforts, spaceKey),
+        replyTo: replyTo?.spaceKey === spaceKey ? null : replyTo,
+      }),
+    ),
   clearDraft: (key) =>
     useHomeState.setState(({ drafts }) => {
       const { [key]: _removed, ...rest } = drafts;
       return { drafts: rest };
     }),
+  setEffort: (key, effort) =>
+    useHomeState.setState(({ efforts: { [key]: _previous, ...efforts } }) => ({
+      efforts: effort === null ? efforts : { ...efforts, [key]: effort },
+    })),
 });
 
 export const useDraft = (key: string): ComposerDraft =>

@@ -11,7 +11,10 @@ import * as TestClock from "effect/testing/TestClock";
 import { expect } from "vitest";
 import { CHAT_STOP_RESERVED_REASON } from "../../shared/space-connection";
 import type { ProjectSessionsChangeEvent } from "../../shared/ipc-api";
-import { agentRuntimeSnapshotFixture } from "../../shared/testing/agent-runtime-snapshot";
+import {
+  agentRuntimeProviderFixture,
+  agentRuntimeSnapshotFixture,
+} from "../../shared/testing/agent-runtime-snapshot";
 import type { ProjectSession } from "../../shared/types";
 import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
 import { AgentRuntimeSessionActivity } from "../../main/agent-runtime/AgentRuntimeSessionActivity";
@@ -51,6 +54,34 @@ it.effect(
       const proofs: (string | null)[] = [];
       let title = "Start";
       let historyRevision = 0;
+      let selection = {
+        instanceId: "codex",
+        model: "model",
+        options: [] as { id: string; value: string }[],
+      };
+      const provider = agentRuntimeProviderFixture({
+        models: [
+          {
+            slug: "model",
+            name: "Model Name",
+            isCustom: false,
+            capabilities: {
+              optionDescriptors: [
+                {
+                  id: "effort",
+                  label: "Effort",
+                  type: "select",
+                  options: [
+                    { id: "medium", label: "Medium", isDefault: true },
+                    { id: "high", label: "High" },
+                  ],
+                },
+              ],
+            },
+          },
+          { slug: "plain", name: "Plain Model", isCustom: false, capabilities: {} },
+        ],
+      });
       const sessionId = "session";
       const views: string[] = [];
       const refresh = (next: string) =>
@@ -79,12 +110,17 @@ it.effect(
           projectSessionInvalidations: Stream.fromQueue(invalidations),
         } as DatabaseNotifierRuntime["Service"]),
         Effect.provideService(AgentRuntimeApplication, {
+          catalog: () => Effect.succeed([provider]),
           resolveTarget: () => Effect.never,
           read: () =>
             Effect.flatMap(HostInvocation, (proof) =>
               Effect.sync(() => {
                 proofs.push(proof);
-                return { snapshot: agentRuntimeSnapshotFixture({ thread: { historyRevision } }) };
+                return {
+                  snapshot: agentRuntimeSnapshotFixture({
+                    thread: { historyRevision, modelSelection: selection },
+                  }),
+                };
               }),
             ),
         } as unknown as AgentRuntimeApplication["Service"]),
@@ -108,7 +144,14 @@ it.effect(
       const open = Effect.flatten(transcript.handlers["chat.open"]({ sessionId })).pipe(
         Effect.provideService(HostInvocation, "request-proof"),
       );
-      expect(yield* open).toMatchObject({ title: "Start", revision: 0 });
+      expect(yield* open).toMatchObject({
+        title: "Start",
+        revision: 0,
+        state: {
+          agentLabel: "Model Name",
+          agent: { providerInstanceId: "codex", model: "model", reasoningEffort: "medium" },
+        },
+      });
       yield* refresh("First update");
       yield* refresh("First update"); // This invalidation has no changes to send.
       yield* refresh("Second update");
@@ -153,6 +196,22 @@ it.effect(
         event: "chat.snapshot",
         data: { title: "History replaced", revision: 3 },
       });
+      // Selection-only changes reach the open chat as state patches without changing its label.
+      for (const [model, effort, expected, label] of [
+        ["model", "high", "high", "Model Name"],
+        ["model", "unoffered", "medium", "Model Name"],
+        ["plain", "high", null, "Plain Model"],
+        ["unknown", "high", null, "unknown"],
+      ] as const) {
+        selection = { ...selection, model, options: [{ id: "effort", value: effort }] };
+        yield* refresh("History replaced");
+        const agent = { providerInstanceId: "codex", model, reasoningEffort: expected };
+        expect(yield* Queue.take(queued)).toMatchObject({
+          event: "chat.patch",
+          data: { ops: [{ op: "state", state: { agentLabel: label, agent } }] },
+        });
+        expect((yield* open).state.agent).toEqual(agent);
+      }
       yield* transcript.handlers["chat.close"]({ sessionId });
       expect(views).toEqual(["show alice session thread", "hide session"]);
     }),
@@ -182,6 +241,7 @@ it.effect("keeps slow chat reads independent and recovery snapshots uninterrupte
         projectSessionInvalidations: Stream.fromPubSub(invalidations),
       } as DatabaseNotifierRuntime["Service"]),
       Effect.provideService(AgentRuntimeApplication, {
+        catalog: () => Effect.succeed([]),
         resolveTarget: () => Effect.never,
         read: ({ sessionId }: { sessionId: string }) =>
           Effect.gen(function* () {
@@ -308,6 +368,7 @@ it.effect("a running command's step shows what it has written so far, until it e
         projectSessionInvalidations: Stream.never,
       } as unknown as DatabaseNotifierRuntime["Service"]),
       Effect.provideService(AgentRuntimeApplication, {
+        catalog: () => Effect.succeed([]),
         resolveTarget: () => Effect.never,
         item: () => Effect.sync(() => current),
         backgroundOutput: (input: unknown) =>
@@ -391,6 +452,7 @@ it.effect("a step that returned a full-size screenshot opens on the phone, its p
         projectSessionInvalidations: Stream.never,
       } as unknown as DatabaseNotifierRuntime["Service"]),
       Effect.provideService(AgentRuntimeApplication, {
+        catalog: () => Effect.succeed([]),
         resolveTarget: () => Effect.never,
         item: (input: unknown) =>
           Effect.sync(() => {
@@ -500,6 +562,7 @@ it.effect("a chat opened before its host starts it says so and why, then follows
         projectSessionInvalidations: Stream.fromPubSub(invalidations),
       } as DatabaseNotifierRuntime["Service"]),
       Effect.provideService(AgentRuntimeApplication, {
+        catalog: () => Effect.succeed([]),
         resolveTarget: () => Effect.never,
         read: () => Effect.succeed({ snapshot: agentRuntimeSnapshotFixture({}) }),
       } as unknown as AgentRuntimeApplication["Service"]),
@@ -524,7 +587,7 @@ it.effect("a chat opened before its host starts it says so and why, then follows
     // Not a conversation for another desktop: it simply has not started.
     expect(opened).toMatchObject({
       items: [],
-      state: { status: "idle", sendBlockedReason: "This chat hasn't started yet." },
+      state: { status: "idle", agent: null, sendBlockedReason: "This chat hasn't started yet." },
     });
     yield* TestClock.adjust("1 millis");
 
@@ -589,6 +652,7 @@ it.effect("a phone offers stopping and archiving a hosted chat only as Core lets
         projectSessionInvalidations: Stream.fromQueue(invalidations),
       } as DatabaseNotifierRuntime["Service"]),
       Effect.provideService(AgentRuntimeApplication, {
+        catalog: () => Effect.succeed([]),
         resolveTarget: () => Effect.never,
         read: () => Effect.succeed({ snapshot: agentRuntimeSnapshotFixture() }),
       } as unknown as AgentRuntimeApplication["Service"]),

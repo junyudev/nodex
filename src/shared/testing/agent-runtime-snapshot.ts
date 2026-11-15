@@ -1,4 +1,4 @@
-import type { AgentSnapshot } from "@nodex/agent-runtime/contracts";
+import type { AgentRuntimeOperations, AgentSnapshot } from "@nodex/agent-runtime/contracts";
 
 type Projection = AgentSnapshot["projection"];
 type Thread = Projection["thread"];
@@ -90,3 +90,22 @@ type Row<K extends RowKey> = Projection[K][number];
  */
 export const agentRuntimeRow = <K extends RowKey>(_list: K, row: Partial<Row<K>>): Row<K> =>
   row as Row<K>;
+
+type Provider = AgentRuntimeOperations["providers.read"]["output"][number];
+
+/** One ready Agent, with catalog metadata supplied by the behavior under test. */
+export const agentRuntimeProviderFixture = (overrides: Partial<Provider> = {}): Provider => ({
+  instanceId: "codex",
+  driver: "codex",
+  displayName: "Codex",
+  enabled: true,
+  installed: true,
+  version: "1.0.0",
+  status: "ready",
+  auth: { status: "authenticated" },
+  checkedAt: "2026-11-04T12:00:00Z",
+  models: [],
+  slashCommands: [],
+  skills: [],
+  ...overrides,
+});

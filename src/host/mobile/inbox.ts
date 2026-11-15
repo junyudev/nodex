@@ -1,5 +1,5 @@
 import { inboxActionSkills } from "../../shared/inbox";
-import type { AgentChoice, InboxEntry, InboxProposalAction } from "@nodex/mobile-protocol";
+import type { InboxEntry, InboxProposalAction } from "@nodex/mobile-protocol";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
@@ -34,10 +34,12 @@ import {
 } from "./rpc";
 import type { makeMobileFiles } from "./files";
 
-export const mobileAgentChoice = (choice: AgentChoice): InboxAgentChoice => ({
+export const mobileAgentChoice = (
+  choice: NonNullable<Parameters<MobileHandlers["chats.start"]>[0]["agent"]>,
+): InboxAgentChoice => ({
   instanceId: choice.providerInstanceId,
   model: choice.model,
-  reasoningEffort: null,
+  reasoningEffort: choice.reasoningEffort ?? null,
   serviceTier: null,
 });
 
@@ -61,7 +63,11 @@ const projectAction = (
         additions: [...action.additions],
         skills: [...(action.skills ?? [])],
         agent: action.agent?.model
-          ? { providerInstanceId: action.agent.instanceId, model: action.agent.model }
+          ? {
+              providerInstanceId: action.agent.instanceId,
+              model: action.agent.model,
+              reasoningEffort: action.agent.reasoningEffort,
+            }
           : null,
       };
     case "send_to_chat":
@@ -337,6 +343,7 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
                     decision.prompt,
                     decision.agent?.providerInstanceId,
                     decision.agent?.model,
+                    decision.agent?.reasoningEffort ?? null,
                   ],
             ]),
           ),

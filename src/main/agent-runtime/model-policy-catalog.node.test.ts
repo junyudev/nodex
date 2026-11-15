@@ -62,6 +62,7 @@ it("planner, Mobile and Refine automatic paths skip credit and disabled model de
   expect(projectAgentCatalog(providers, choice).defaultChoice).toEqual({
     providerInstanceId: "codex",
     model: "on",
+    reasoningEffort: null,
   });
   expect(
     inboxAgentCandidates(providers, { now: 0, useModelGuide: false }).flatMap((provider) =>

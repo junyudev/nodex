@@ -1,6 +1,27 @@
 import { describe, expect, it } from "vitest";
 
-import { ChatItemSchema, InboxProposalSchema } from "./models";
+import { AgentCatalogSchema, ChatItemSchema, InboxProposalSchema } from "./models";
+
+describe("AgentCatalogSchema", () => {
+  it("reads a catalog from a host that predates reasoning efforts as offering none", () => {
+    expect(
+      AgentCatalogSchema.parse({
+        providers: [
+          {
+            instanceId: "codex",
+            label: "Codex",
+            unavailableReason: null,
+            models: [{ id: "m", label: "Model" }],
+          },
+        ],
+        defaultChoice: { providerInstanceId: "codex", model: "m" },
+      }),
+    ).toMatchObject({
+      providers: [{ models: [{ efforts: [], defaultEffort: null }] }],
+      defaultChoice: { reasoningEffort: null },
+    });
+  });
+});
 
 describe("InboxProposalSchema", () => {
   it("reads a suggestion from a desktop that predates its newer fields", () => {

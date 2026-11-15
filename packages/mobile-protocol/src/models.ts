@@ -67,9 +67,19 @@ export type ProjectList = z.infer<typeof ProjectListSchema>;
 // ---------------------------------------------------------------------------------------------
 // Agents
 
+export const AgentEffortSchema = z.looseObject({
+  id: z.string(),
+  label: z.string(),
+});
+export type AgentEffort = z.infer<typeof AgentEffortSchema>;
+
 export const AgentModelSchema = z.looseObject({
   id: z.string(),
   label: z.string(),
+  /** The reasoning efforts it offers, in the Agent's own order. Empty when it offers no choice. */
+  efforts: z.array(AgentEffortSchema).default([]),
+  /** The effort it reasons at when none is chosen; one of `efforts`, or null when there are none. */
+  defaultEffort: z.string().nullable().default(null),
 });
 export type AgentModel = z.infer<typeof AgentModelSchema>;
 
@@ -85,6 +95,8 @@ export type AgentProvider = z.infer<typeof AgentProviderSchema>;
 export const AgentChoiceSchema = z.looseObject({
   providerInstanceId: z.string(),
   model: z.string(),
+  /** One of the model's `efforts`. Null, or one it does not offer, leaves it to the model. */
+  reasoningEffort: z.string().nullable().default(null),
 });
 export type AgentChoice = z.infer<typeof AgentChoiceSchema>;
 
@@ -534,6 +546,11 @@ export const ChatStateSchema = z.looseObject({
   queuedCount: z.number().int(),
   requests: z.array(ChatRequestSchema),
   agentLabel: z.string().nullable(),
+  /**
+   * What the chat's next message runs on, when its host runs it. Its effort is the one in force,
+   * so a chat nobody chose an effort for reports its model's own.
+   */
+  agent: AgentChoiceSchema.nullable().default(null),
   /** Null when this phone can send; otherwise why it cannot. */
   sendBlockedReason: z.string().nullable(),
   /**

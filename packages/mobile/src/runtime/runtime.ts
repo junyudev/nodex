@@ -330,8 +330,12 @@ export function createMobileRuntime(
           loadOlder: () => {
             sync(chat.loadOlder);
           },
-          send: (text: string, images: LocalImage[], delivery: "queue" | "steer") =>
-            promise(chat.send(text, images, delivery)),
+          send: (
+            text: string,
+            images: LocalImage[],
+            delivery: "queue" | "steer",
+            reasoningEffort: string | null = null,
+          ) => promise(chat.send(text, images, delivery, reasoningEffort)),
           stop: () => promise(chat.stop),
           respond: (requestId: string, runId: string | null, response: ChatResponse) =>
             promise(chat.respond(requestId, runId, response)),

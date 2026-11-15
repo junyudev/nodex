@@ -6,7 +6,8 @@ import { Icon } from "../../ui/icons";
 import { Row, RowGroup, SectionLabel, Txt } from "../../ui/primitives";
 import type { InboxChoice } from "../inbox/inbox-choices";
 import { useInboxChoices } from "../inbox/use-inbox-choices";
-import { effectiveAgentChoice } from "./agent-choice";
+import { effectiveAgentChoice, offeredEfforts } from "./agent-choice";
+import { EffortPills } from "./EffortPills";
 
 const Selected = () => <Icon name="check" color="accent" />;
 
@@ -119,12 +120,16 @@ export const ProjectPickerScreen = ({ route }: ScreenProps<"ProjectPicker">) => 
   );
 };
 
-/** What a new chat runs on. Agents that can't run say why rather than disappearing. */
+/**
+ * What a new chat runs on: a model and, above the models, how hard the chosen one reasons where it
+ * offers a choice. Agents that can't run say why rather than disappearing.
+ */
 export const AgentPickerScreen = () => {
   const navigation = useRootNavigation();
   const { catalog, loading } = useAgentCatalog();
   const preferences = useNewChatPreferences();
   const effective = effectiveAgentChoice(catalog, preferences.agent);
+  const efforts = offeredEfforts(catalog, effective);
   if (!catalog) {
     return (
       <PickerSurface>
@@ -136,6 +141,19 @@ export const AgentPickerScreen = () => {
   }
   return (
     <PickerSurface>
+      {effective && efforts.length > 0 ? (
+        <View>
+          <SectionLabel>Reasoning effort</SectionLabel>
+          <EffortPills
+            efforts={efforts}
+            selected={effective.reasoningEffort}
+            onChoose={(reasoningEffort) => {
+              preferences.set({ agent: { ...effective, reasoningEffort } });
+              navigation.goBack();
+            }}
+          />
+        </View>
+      ) : null}
       {catalog.providers.map((provider) => (
         <View key={provider.instanceId}>
           <SectionLabel>{provider.label}</SectionLabel>
@@ -155,7 +173,12 @@ export const AgentPickerScreen = () => {
                   }
                   onPress={() => {
                     preferences.set({
-                      agent: { providerInstanceId: provider.instanceId, model: model.id },
+                      agent: {
+                        providerInstanceId: provider.instanceId,
+                        model: model.id,
+                        // An effort the person chose follows them to a model that offers it too.
+                        reasoningEffort: preferences.agent?.reasoningEffort ?? null,
+                      },
                     });
                     navigation.goBack();
                   }}

@@ -22,10 +22,12 @@ import { BottomAnchoredList } from "../../ui/BottomAnchoredList";
 import { ComposerLayout } from "../../ui/ComposerLayout";
 import { FloatingNote } from "../../ui/FloatingNote";
 import { Glass } from "../../ui/glass";
-import { Button, EmptyState, IconButton, Spinner, Tap, Txt } from "../../ui/primitives";
+import { Button, Chip, EmptyState, IconButton, Spinner, Tap, Txt } from "../../ui/primitives";
 import { showFailure } from "../../ui/snackbar";
 import { Composer } from "../composer/Composer";
 import { ConnectionNotice, spaceUnreachable } from "../home/ConnectionNotice";
+import { EffortPills } from "../pickers/EffortPills";
+import { useChatEffort } from "../pickers/use-chat-effort";
 import { setArchived } from "./chat-archive";
 import { ChatGallery, ImageStrip, UnavailablePictures, useOpenPicture } from "./ChatImages";
 import { galleryImages } from "./chat-images";
@@ -240,6 +242,8 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
   const live = !spaceUnreachable(useConnection().status);
   const safeArea = useSafeAreaInsets();
   const [sentCount, setSentCount] = useState(0);
+  const effort = useChatEffort(sessionId, chat?.state.agent ?? null);
+  const [choosingEffort, setChoosingEffort] = useState(false);
   const title = chat?.title ?? route.params.title ?? "";
   const subtitle = [chat?.projectName, chat?.state.agentLabel].filter(Boolean).join(" · ");
   // Whoever may manage the chat archives it from here; an archived chat offers its restore below.
@@ -299,7 +303,7 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
 
   const deliver = (text: string, images: readonly LocalImage[], delivery: "queue" | "steer") => {
     setSentCount((count) => count + 1);
-    return send(text, [...images], delivery).then(
+    return send(text, [...images], delivery, effort.pending).then(
       () => true,
       (cause: unknown) => {
         showFailure("Your message wasn't sent", cause);
@@ -365,6 +369,30 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
               <Composer
                 draftKey={`chat:${sessionId}`}
                 placeholder={activeRunId ? "Add to the queue" : "Reply"}
+                {...(effort.label
+                  ? {
+                      // The chip opens into its choices in place, as Attach does, so choosing
+                      // one never leaves the words or drops the keyboard.
+                      chips: choosingEffort ? (
+                        <EffortPills
+                          efforts={effort.efforts}
+                          selected={effort.selected}
+                          onChoose={(picked) => {
+                            effort.pick(picked);
+                            setChoosingEffort(false);
+                          }}
+                        />
+                      ) : (
+                        <Chip
+                          icon="sliders"
+                          label={effort.label}
+                          accessibilityLabel={`Reasoning effort: ${effort.label}`}
+                          trailingChevron
+                          onPress={() => setChoosingEffort(true)}
+                        />
+                      ),
+                    }
+                  : {})}
                 onSend={(text, images) => deliver(text, images, "queue")}
                 {...(activeRunId
                   ? {

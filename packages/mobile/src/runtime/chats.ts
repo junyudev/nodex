@@ -380,6 +380,8 @@ export const makeChats = Effect.gen(function* () {
         text: string,
         images: LocalImage[],
         delivery: "queue" | "steer",
+        /** The effort the chat reasons at from this message on; null keeps the chat's own. */
+        reasoningEffort: string | null = null,
       ) {
         yield* assertHost;
         const messageId = mintId(platform);
@@ -392,6 +394,7 @@ export const makeChats = Effect.gen(function* () {
                 text,
                 fileRefs,
                 delivery,
+                ...(reasoningEffort === null ? {} : { reasoningEffort }),
               }),
             ),
           ),
