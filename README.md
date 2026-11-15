@@ -22,13 +22,13 @@
 </p>
 
 <p align="center">
-  <b>English</b> | <a href="README.zh-CN.md">中文</a>
-</p>
-
-<p align="center">
   <a href="https://nodex.jyu.app"><img alt="Website" src="https://img.shields.io/badge/website-nodex.jyu.app-0969da?style=flat-square" /></a>
   <a href="https://github.com/junyudev/nodex/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/junyudev/nodex?style=flat-square&label=release" /></a>
   <a href="LICENSE"><img alt="Apache 2.0 License" src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" /></a>
+</p>
+
+<p align="center">
+  <b>English</b> | <a href="README.zh-CN.md">中文</a>
 </p>
 
 <picture>
