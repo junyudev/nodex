@@ -42,14 +42,16 @@
 
 ## Install
 
-```bash
-brew install --cask junyudev/tap/nodex
-```
+| Platform                      | Install                                                                                                                                                                                                          |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **macOS 15+** · Apple silicon | `brew install --cask junyudev/tap/nodex`, or the [disk image](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg)                                                                 |
+| **Windows 11**                | Installer for [x64](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe) or [Arm](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-arm64.exe) |
+| **iPhone**                    | [TestFlight beta](https://testflight.apple.com/join/Yz8Kpcty)                                                                                                                                                    |
+| **Android**                   | [APK](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk)                                                                                                                       |
 
-Or download [Nodex for Apple silicon](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg)
-and drag it to Applications. Nodex is in beta for macOS 15 and later and for Windows 11 on
-x64 and Arm; the buttons above also install Nodex Mobile for iOS and Android. Sign in with the Codex,
-Claude Code or OpenCode account you already have — or start with OpenCode's free models.
+Nodex is in beta. On your computer, sign in with the Codex, Claude Code or OpenCode account you
+already have — or start with OpenCode's free models. Nodex Mobile works with Nodex on your computer.
+The Windows installer isn't code-signed yet: if SmartScreen appears, choose More info, then Run anyway.
 
 ## Why Nodex
 

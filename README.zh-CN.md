@@ -42,14 +42,16 @@
 
 ## 安装
 
-```bash
-brew install --cask junyudev/tap/nodex
-```
+| 平台                       | 安装方式                                                                                                                                                                                                   |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **macOS 15+** · Apple 芯片 | `brew install --cask junyudev/tap/nodex`，或下载[磁盘映像](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg)                                                              |
+| **Windows 11**             | 安装包：[x64](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe) 或 [Arm](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-arm64.exe) |
+| **iPhone**                 | [TestFlight 公测](https://testflight.apple.com/join/Yz8Kpcty)                                                                                                                                              |
+| **Android**                | [APK](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk)                                                                                                                 |
 
-也可以下载 [Apple 芯片版 Nodex](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg)，
-拖进“应用程序”即可。Nodex 目前为 Beta，支持 macOS 15 及以上，以及 x64 和 Arm 的 Windows 11；
-页面顶部的按钮也可以安装 iOS 和 Android 版 Nodex Mobile。直接登录你已有的 Codex、Claude Code
-或 OpenCode 账号；什么都没有，也可以先用 OpenCode 的免费模型。
+Nodex 目前为 Beta。在电脑上直接登录你已有的 Codex、Claude Code 或 OpenCode 账号；什么都没有，也可以先用
+OpenCode 的免费模型。Nodex Mobile 需要配合电脑上的 Nodex 使用。Windows 安装包尚未代码签名：如果出现
+SmartScreen，点“更多信息”，再点“仍要运行”。
 
 ## 为什么是 Nodex
 
