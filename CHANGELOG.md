@@ -24,6 +24,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- A message you send from your phone while an Agent is working now redirects it right away, as sending from the desktop does. Nodex Mobile used to queue it behind the Run unless you knew to press and hold send; now holding send is what queues it, and the Composer says so.
 - The Inbox and the Board now agree about every message. A message waits in your Inbox while its card is in Triage and yours to decide, so moving the card on the Board handles it, and moving it back to Triage brings it back. **Keep** is now **Add to Todo**, and a card appears in the Inbox once, whether it waits to be routed or needs your answer or review. In a shared Space, each person's Inbox shows the messages they own.
 - Stable updates reach you sooner with the same build already tested on Nightly. Both channels show app versions as `x.y.z`, and you can choose your channel in Settings.
 - Opening `N more properties` on a Page now lists its empty properties by name instead of a column of rows that say Empty. Choose one and it joins the list with its editor already open, and it stays there while the Page is open. Hidden properties that hold a value still open as rows.

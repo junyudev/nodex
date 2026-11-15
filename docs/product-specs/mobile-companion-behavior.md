@@ -225,8 +225,9 @@ Member attention changes invalidate the same Core-projected stream.
   approval shows exactly what is being approved and the choices that Run offers; a long one scrolls
   and can be opened further. Answering from a
   phone is the same as answering from the desktop, and whichever answers first wins.
-- While a Run is active, sending queues the message behind it, and pressing and holding send redirects
-  the Run now instead. An empty Composer's button stops the Run, when you may stop it: in a team
+- While a Run is active, sending redirects it now, as a desktop does by default, and pressing and
+  holding send queues the message behind it instead; the Composer says so. A message sent as its
+  Run ends starts the next one. An empty Composer's button stops the Run, when you may stop it: in a team
   Space, Core lets the Member who asked for the Run, the chat's owner and the Space Owners. Anyone
   else sees Stop unavailable, and tapping it says why.
 - Where a chat's model offers a choice, its Composer names the reasoning effort in force. The chip

@@ -62,6 +62,7 @@ export const Composer = ({
   onStop,
   stopUnavailableReason = null,
   sendLabel = "Send",
+  sendHint,
   autoFocus,
   canAttach = true,
 }: {
@@ -74,7 +75,7 @@ export const Composer = ({
   readonly sending?: boolean;
   /** Resolves false when nothing was accepted, which puts the draft back. */
   readonly onSend: (text: string, images: readonly LocalImage[]) => void | Promise<boolean>;
-  /** A second way to send, such as redirecting a Run instead of queuing behind it. */
+  /** A second way to send, such as waiting behind a Run instead of redirecting it. */
   readonly onSendLongPress?: (
     text: string,
     images: readonly LocalImage[],
@@ -87,6 +88,8 @@ export const Composer = ({
    */
   readonly stopUnavailableReason?: string | null;
   readonly sendLabel?: string;
+  /** What pressing and holding send does, for those who cannot see it tried. */
+  readonly sendHint?: string;
   readonly autoFocus?: boolean;
   /** Whether what this sends can carry photos. */
   readonly canAttach?: boolean;
@@ -160,7 +163,11 @@ export const Composer = ({
     <Tap
       accessibilityLabel={stopping ? "Stop" : sendLabel}
       accessibilityState={{ disabled: !ready }}
-      {...(stopReason !== null ? { accessibilityHint: stopReason } : {})}
+      {...(stopReason !== null
+        ? { accessibilityHint: stopReason }
+        : sendHint && !stopping
+          ? { accessibilityHint: sendHint }
+          : {})}
       // An unavailable Stop still answers a tap with why.
       disabled={!ready && stopReason === null}
       hitSlop={6}

@@ -368,7 +368,7 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
             ) : (
               <Composer
                 draftKey={`chat:${sessionId}`}
-                placeholder={activeRunId ? "Add to the queue" : "Reply"}
+                placeholder={activeRunId ? "Steer, or hold send to queue" : "Reply"}
                 {...(effort.label
                   ? {
                       // The chip opens into its choices in place, as Attach does, so choosing
@@ -393,11 +393,14 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
                       ),
                     }
                   : {})}
-                onSend={(text, images) => deliver(text, images, "queue")}
+                // Sending redirects the Run at work, as a desktop does by default; with none at
+                // work, or one that ended a moment ago, the same message starts the next.
+                onSend={(text, images) => deliver(text, images, "steer")}
                 {...(activeRunId
                   ? {
                       onSendLongPress: (text: string, images: readonly LocalImage[]) =>
-                        deliver(text, images, "steer"),
+                        deliver(text, images, "queue"),
+                      sendHint: "Hold to wait behind this Run instead",
                     }
                   : {})}
                 {...(stoppable
