@@ -701,6 +701,14 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
     if (!debuggerPort) throw new Error("Browser debugger is unavailable");
     if (!debuggerPort.isAttached()) debuggerPort.attach("1.3");
     this.registerCdpListener(tab, contents);
+    if (params.method === "Page.reload") {
+      // Chromium answers a guest's Page.reload, from the page or any of its frames, by
+      // reloading the outermost page: the whole app window, with every chat and Browser tab
+      // in it. The page's own reload is the same request scoped to this tab.
+      if (params.commandParams?.ignoreCache === true) contents.reloadIgnoringCache();
+      else contents.reload();
+      return {};
+    }
     const targetSessionId =
       params.target.sessionId ??
       (params.target.targetId && params.target.targetId !== this.topLevelTargetId(tab)

@@ -807,6 +807,40 @@ describe("BrowserUseIabApi", () => {
     }),
   );
 
+  it.effect("reloads only the controlled page, never through the debugger", () =>
+    withApi(async ({ api, service }) => {
+      const tab = (await api.dispatch("createTab", {
+        session_id: "thread-1",
+        turn_id: "turn-1",
+      })) as { id: number };
+      const reloads: string[] = [];
+      service.contents.reload = () => void reloads.push("reload");
+      service.contents.reloadIgnoringCache = () => void reloads.push("ignoring-cache");
+
+      // A frame's debugger session reaches the same outermost page as the tab's own.
+      for (const [target, commandParams] of [
+        [{ tabId: tab.id }, undefined],
+        [{ tabId: tab.id }, { ignoreCache: true }],
+        [{ tabId: tab.id, sessionId: "frame-session-1" }, {}],
+      ] as const) {
+        await expect(
+          api.dispatch("executeCdp", {
+            session_id: "thread-1",
+            turn_id: "turn-1",
+            target,
+            method: "Page.reload",
+            ...(commandParams ? { commandParams } : {}),
+          }),
+        ).resolves.toEqual({});
+      }
+      expect(reloads).toEqual(["reload", "ignoring-cache", "reload"]);
+      // Sent as a debugger command, it would reload the app window that embeds the page.
+      expect(service.contents.debugger.commands).not.toContainEqual(
+        expect.objectContaining({ method: "Page.reload" }),
+      );
+    }),
+  );
+
   it.effect("fails closed for unsafe direct and history CDP navigation", () =>
     withApi(async ({ api, service }) => {
       const tab = (await api.dispatch("createTab", {

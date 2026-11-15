@@ -830,6 +830,9 @@ provides attribution, and removing it drops Agent authorship.
   active; subframes additionally admit `data:`, `about:blank` and `about:srcdoc`.
   Claiming a page first validates its current URL. Release, deactivation and reset
   clear the restriction. Blocked navigation is reported to the controlling Agent.
+  A reload the Agent requests through its debugger session is carried out as that
+  page's own reload: sent as a debugger command, Chromium would reload the outermost
+  page, which is the app window that embeds every chat and Browser tab.
   Origin approval rules remain separate; a non-origin URL is not itself an explicit
   origin denial. Session requests also follow managed application network
   requirements: internal/local-content schemes and the exact development renderer
