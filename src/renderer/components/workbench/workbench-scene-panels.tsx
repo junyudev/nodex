@@ -2,7 +2,10 @@ import { PluginAppLogo } from "@/features/plugins/view/plugin-logo";
 import type { ReactNode } from "react";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { REMOTE_FILESYSTEM_REASON } from "../../../shared/space-connection";
-import { BrowserTabFavicon } from "@/features/browser-sidebar/browser-tab-favicon";
+import {
+  BrowserTabFavicon,
+  browserPageAwaitsAnswer,
+} from "@/features/browser-sidebar/browser-tab-favicon";
 import { requestTerminalFocus } from "@/lib/terminal-focus";
 import { isPanelActionTargetAllowed, type PanelNewTabAction } from "@/lib/workbench-panel-actions";
 import { resolveWorkbenchSceneTabPresentation } from "@/lib/workbench-scene-tab-presentation";
@@ -135,6 +138,7 @@ function makePanelItems(
             <BrowserTabFavicon
               className="icon-xs"
               faviconUrl={browserTabSnapshot?.faviconUrl ?? surface.config.faviconUrl}
+              awaitsAnswer={browserPageAwaitsAnswer(browserTabSnapshot)}
               isLoading={browserTabSnapshot?.isLoading ?? false}
               isWaitingForResponse={browserTabSnapshot?.isWaitingForResponse ?? false}
             />

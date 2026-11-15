@@ -1,6 +1,7 @@
 import { useState, type ReactElement, type SVGProps, type TransitionEvent } from "react";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { cn } from "@/lib/utils";
+import type { BrowserSidebarTabSnapshot } from "../../../shared/browser-sidebar";
 import { GLOBE_PATH } from "../../../shared/icon-geometry";
 import "./browser-tab-favicon.css";
 
@@ -15,7 +16,16 @@ export interface BrowserTabFaviconProps {
   faviconUrl?: string;
   isLoading: boolean;
   isWaitingForResponse: boolean;
+  /** The page is stopped on a question only the person can answer. */
+  awaitsAnswer?: boolean;
   className?: string;
+}
+
+/** A page waits on the person while it has a dialog open or a permission request pending. */
+export function browserPageAwaitsAnswer(
+  page: Pick<BrowserSidebarTabSnapshot, "pageDialog" | "permissionPrompts"> | undefined,
+): boolean {
+  return page?.pageDialog !== undefined || (page?.permissionPrompts?.length ?? 0) > 0;
 }
 
 export interface BrowserTabFaviconState {
@@ -28,7 +38,10 @@ export interface BrowserTabFaviconState {
   skipCompletionTransition: boolean;
 }
 
-export interface BrowserTabFaviconStateInput extends Omit<BrowserTabFaviconProps, "className"> {
+export interface BrowserTabFaviconStateInput extends Omit<
+  BrowserTabFaviconProps,
+  "className" | "awaitsAnswer"
+> {
   reduceMotion: boolean;
 }
 
@@ -103,6 +116,7 @@ export function resolveBrowserTabFaviconPhase(
 }
 
 export function BrowserTabFavicon({
+  awaitsAnswer = false,
   className,
   faviconUrl,
   isLoading,
@@ -150,6 +164,7 @@ export function BrowserTabFavicon({
 
   return (
     <BrowserTabFaviconFrame
+      awaitsAnswer={awaitsAnswer}
       className={className}
       faviconUrl={displayedFaviconUrl}
       phase={phase}
@@ -162,6 +177,7 @@ export function BrowserTabFavicon({
 }
 
 interface BrowserTabFaviconFrameProps {
+  awaitsAnswer?: boolean;
   className?: string;
   faviconUrl?: string;
   phase: BrowserTabFaviconPhase;
@@ -172,6 +188,7 @@ interface BrowserTabFaviconFrameProps {
 }
 
 export function BrowserTabFaviconFrame({
+  awaitsAnswer = false,
   className,
   faviconUrl,
   phase,
@@ -250,6 +267,12 @@ export function BrowserTabFaviconFrame({
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-token-text-link-foreground">
           <BrowserTabThrobber />
         </span>
+      ) : null}
+      {awaitsAnswer ? (
+        <span
+          className="absolute -end-0.5 -top-0.5 size-1.5 rounded-full bg-info-solid"
+          data-browser-tab-awaits-answer="true"
+        />
       ) : null}
     </span>
   );

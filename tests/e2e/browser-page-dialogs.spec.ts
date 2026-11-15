@@ -91,6 +91,20 @@ test("A Browser page's dialog is answered in its tab, by a person or an Agent @a
         }, guestId);
         await expect(browserTab(page, "Declined")).toBeVisible();
         await expect(dialog).toHaveCount(0);
+
+        // A page that is not showing waits for the person, and its tab says so.
+        await page.getByRole("button", { name: "New tab", exact: true }).click();
+        const background = browserTab(page, "Declined");
+        await expect(background).toHaveAttribute("aria-selected", "false");
+        await ask("alert");
+        const mark = "[data-browser-tab-awaits-answer]";
+        await expect(background.locator(mark)).toBeVisible();
+        await background.click();
+        await expect(dialog).toContainText("Saved");
+        await clickAboveBrowserPage(page, dialog.getByRole("button", { name: "OK", exact: true }));
+        const answered = browserTab(page, "Alerted");
+        await expect(answered).toBeVisible();
+        await expect(answered.locator(mark)).toHaveCount(0);
       },
     );
   } finally {

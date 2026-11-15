@@ -311,7 +311,9 @@ another site, the page it is embedded in. Nodex never shows them as a system dia
   `OK` and Escape chooses `Cancel`; an alert has only `OK`.
 - The dialog takes the keyboard only from its own page. It never moves focus out
   of a chat or another surface the person is working in.
-- A dialog in a tab that is not showing waits there until the tab is shown.
+- A dialog in a tab that is not showing waits there until the tab is shown. Its tab
+  carries a dot on its icon for as long as the page waits on the person, for a dialog
+  or a permission request alike.
 - From a page's second dialog on, `Don’t let this page open more dialogs` lets the
   person stop it; later dialogs from that site are declined without appearing until
   the tab loads another page.

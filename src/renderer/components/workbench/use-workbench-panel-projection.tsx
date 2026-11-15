@@ -19,7 +19,10 @@ import {
   PluginsIcon,
   ImageEditorTabIcon,
 } from "@/components/shared/icons";
-import { BrowserTabFavicon } from "@/features/browser-sidebar/browser-tab-favicon";
+import {
+  BrowserTabFavicon,
+  browserPageAwaitsAnswer,
+} from "@/features/browser-sidebar/browser-tab-favicon";
 import { restoreNormalizedImageEditorOptions } from "@/lib/content-image";
 import { UserAttachmentImageEditorSurface } from "@/features/user-attachment-image-editor";
 import {
@@ -434,6 +437,7 @@ export function useWorkbenchPanelProjection({
           <BrowserTabFavicon
             className="icon-xs"
             faviconUrl={browserTabSnapshot?.faviconUrl ?? tab.config.faviconUrl}
+            awaitsAnswer={browserPageAwaitsAnswer(browserTabSnapshot)}
             isLoading={browserTabSnapshot?.isLoading ?? false}
             isWaitingForResponse={browserTabSnapshot?.isWaitingForResponse ?? false}
           />
