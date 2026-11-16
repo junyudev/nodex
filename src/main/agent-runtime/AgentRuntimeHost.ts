@@ -1,4 +1,5 @@
 import { makePluginSessions } from "../../host/agent-plugins/PluginSessions";
+import { PluginSessionPreparationError } from "../../host/agent-plugins/PluginSessionPreparationError";
 import { createHash } from "node:crypto";
 import { parseDesktopIdentifier, parseDesktopToolActivity } from "@nodex/agent-runtime/contracts";
 import { renderPersonalInstructions } from "@nodex/agent-runtime/instructions";
@@ -454,7 +455,18 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
               ...request.request,
               projectId: projectIdOf(thread.projectId),
             })
-            .pipe(Effect.mapError(() => unavailable(request.operation))),
+            .pipe(
+              Effect.mapError(
+                (error) =>
+                  new AgentRuntimeHostError({
+                    operation: request.operation,
+                    message:
+                      error instanceof PluginSessionPreparationError
+                        ? error.message
+                        : "Could not read the installed plugins for this Session.",
+                  }),
+              ),
+            ),
         };
       }
       if (request.operation === "turn.prepare") return yield* prepare(request.identity);
@@ -609,7 +621,11 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       });
       return yield* options.execute(caller, request.tool, request.input as Record<string, unknown>);
     },
-    Effect.mapError(() => unavailable("host.request")),
+    Effect.mapError((error) =>
+      error instanceof AgentRuntimeHostError && error.operation === "plugins.open"
+        ? error
+        : unavailable("host.request"),
+    ),
   );
   return execute;
 });

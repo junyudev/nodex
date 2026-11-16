@@ -129,13 +129,24 @@ export const makeInstalledPluginCache = Effect.fn("PluginCatalog.makePackageCach
         Exit.isSuccess(exit) && exit.value ? Duration.infinity : Duration.zero,
     },
   );
-  return Effect.fn("PluginCatalog.cachedPackage")(function* (summary: PluginSummary) {
+  return Effect.fn("PluginCatalog.observePackage")(function* (summary: PluginSummary) {
     const root = yield* resolvePluginCache(home, summary.id, summary.localVersion);
-    if (!root) return null;
-    const identity = yield* directoryIdentity(root);
-    if (!identity) return null;
+    const identity = root ? yield* directoryIdentity(root) : null;
+    if (!root || !identity)
+      return {
+        installed: null,
+        isCurrent: resolvePluginCache(home, summary.id, summary.localVersion).pipe(
+          Effect.flatMap((current) =>
+            current ? directoryIdentity(current) : Effect.succeed(null),
+          ),
+          Effect.map((current) => current === null),
+        ),
+      };
     const cached = yield* Cache.get(packages, new PackageKey({ id: summary.id, root, identity }));
-    return cached?.installed ?? null;
+    return {
+      installed: cached?.installed ?? null,
+      isCurrent: directoryIdentity(root).pipe(Effect.map((current) => current === identity)),
+    };
   });
 });
 
@@ -164,7 +175,7 @@ export function pluginCatalogSnapshot(entries: readonly CatalogPlugin[]): Plugin
 export const readPluginCatalog = Effect.fn("PluginCatalog.read")(function* (
   summaries: readonly PluginSummary[],
   scopes: Readonly<Record<string, PluginProjectScope>>,
-  readPackage: (summary: PluginSummary) => ReturnType<typeof readInstalledPlugin>,
+  observePackage: Effect.Success<ReturnType<typeof makeInstalledPluginCache>>,
 ) {
   return yield* Effect.forEach(
     [
@@ -174,14 +185,15 @@ export const readPluginCatalog = Effect.fn("PluginCatalog.read")(function* (
           .map((summary) => [summary.id, summary]),
       ).values(),
     ].sort((a, b) => a.id.localeCompare(b.id)),
-    Effect.fnUntraced(function* (summary): Effect.fn.Return<CatalogPlugin> {
-      const installed = yield* readPackage(summary);
-      return {
+    Effect.fnUntraced(function* (summary) {
+      const { installed, isCurrent } = yield* observePackage(summary);
+      const entry: CatalogPlugin = {
         id: summary.id,
         scope: Object.hasOwn(scopes, summary.id) ? scopes[summary.id]! : ALL_PROJECTS,
         root: installed?.root ?? null,
         package: installed?.package ?? null,
       };
+      return { entry, isCurrent };
     }),
     { concurrency: 4 },
   );

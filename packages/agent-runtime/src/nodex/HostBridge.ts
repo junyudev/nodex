@@ -69,10 +69,10 @@ const decodePlugins = Schema.decodeUnknownEffect(
     ),
   }),
 );
-const pluginError = () =>
+const pluginError = (message = "Could not resolve this Session’s plugins.") =>
   new ExecutionHost.ExecutionHostError({
     operation: "plugins.open",
-    message: "Could not resolve this Session’s plugins.",
+    message,
   });
 
 const decodeResult = Schema.decodeUnknownEffect(Result);
@@ -315,9 +315,16 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
       attachmentId,
       request,
     }).pipe(
-      Effect.flatMap(decodePlugins),
-      Effect.timeout("30 seconds"),
-      Effect.mapError(pluginError),
+      Effect.mapError((error) => pluginError(error.message)),
+      Effect.flatMap((output) =>
+        decodePlugins(output).pipe(
+          Effect.mapError(() => pluginError("Nodex returned an invalid Session plugin catalog.")),
+        ),
+      ),
+      Effect.timeoutOrElse({
+        duration: "30 seconds",
+        orElse: () => Effect.fail(pluginError("Timed out preparing the Session’s plugins.")),
+      }),
     );
     const revision = exchange({
       type: "host.request",
@@ -330,7 +337,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
       ),
       Effect.map(({ revision }) => revision),
       Effect.timeout("30 seconds"),
-      Effect.mapError(pluginError),
+      Effect.mapError(() => pluginError()),
     );
     return { plugins, revision };
   });

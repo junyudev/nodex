@@ -493,8 +493,8 @@ const make = (
     allowUninstall: () => {
       failUninstall = undefined;
     },
-    addPlugin: (plugin: PluginSummary) => {
-      plugins.push(plugin);
+    setPlugin: (plugin: PluginSummary) => {
+      plugins = [...plugins.filter(({ id }) => id !== plugin.id), plugin];
     },
   };
 };
@@ -860,7 +860,7 @@ it.effect(
           ...context,
           marketplaceName: "custom",
         });
-        h.addPlugin(pluginSummary({ id: `browser@${policy.marketplaceName}`, name: "browser" }));
+        h.setPlugin(pluginSummary({ id: `browser@${policy.marketplaceName}`, name: "browser" }));
         h.allowUninstall();
         const second = yield* manager.command("marketplace-remove", {
           ...context,
@@ -2241,7 +2241,7 @@ it.effect("shares a cold catalog across opens and reuses packages after invalida
           Stream.runDrain,
           Effect.forkScoped({ startImmediately: true }),
         );
-        harness.addPlugin(
+        harness.setPlugin(
           pluginSummary({ id: "b@custom", name: "b", installed: true, enabled: true }),
         );
         yield* PubSub.publish(nativeEvents, {
@@ -2406,4 +2406,103 @@ it.effect("identifies the failed folder install step and allows retrying the rev
       }),
     );
   }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "opens and refreshes Sessions after Codex replaces a cached plugin without an event",
+  () =>
+    Effect.gen(function* () {
+      const profile = yield* Effect.acquireRelease(
+        Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-plugin-replacement-"))),
+        (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+      );
+      const cache = join(profile, "plugins/cache/custom");
+      const install = (directory: string, version: string, skill: string) =>
+        Effect.promise(async () => {
+          const root = join(directory, version);
+          const manifest = join(root, ".codex-plugin/plugin.json");
+          const document = join(root, "skills", skill, "SKILL.md");
+          await mkdir(dirname(manifest), { recursive: true });
+          await writeFile(manifest, JSON.stringify({ name: "a", version }));
+          await mkdir(dirname(document), { recursive: true });
+          await writeFile(
+            document,
+            `---\nname: ${skill}\ndescription: Test skill\n---\n${skill}\n`,
+          );
+        });
+      const summary = (localVersion: string) =>
+        pluginSummary({ id: "a@custom", name: "a", installed: true, enabled: true, localVersion });
+      const harness = make({
+        profileHome: profile,
+        codexHome: profile,
+        plugins: [summary("1.0.0")],
+      });
+      const active = join(cache, "a");
+      yield* install(active, "1.0.0", "first");
+      yield* withManager(harness, (manager) =>
+        Effect.gen(function* () {
+          const options = {
+            home: profile,
+            spaceId: "space",
+            catalog: manager.catalog!,
+            changes: Stream.empty,
+            broker: {
+              openLease: unavailable,
+              openSkillCatalog: unavailable,
+              revokeLease: unavailable,
+            },
+          };
+          const sessions = yield* makePluginSessions(options);
+          const request = { threadId: "thread", projectId: "p", backend: "claude" } as const;
+          const first = yield* sessions.open("first", request);
+          assert.deepEqual(
+            first?.skills.map(({ alias }) => alias),
+            ["first"],
+          );
+
+          const replace = (version: string, skill: string) =>
+            Effect.gen(function* () {
+              const staged = join(profile, skill);
+              yield* install(staged, version, skill);
+              yield* Effect.promise(async () => {
+                await rename(active, join(profile, `old-${skill}`));
+                await rename(staged, active);
+              });
+              harness.setPlugin(summary(version));
+            });
+          yield* replace("2.0.0", "updated");
+          const updated = yield* sessions.open("updated", request);
+          assert.deepEqual(
+            updated?.skills.map(({ alias }) => alias),
+            ["updated"],
+          );
+          assert.notEqual(updated?.revision, first?.revision);
+          assert.equal(yield* sessions.revision("first"), updated?.revision);
+          assert.lengthOf(
+            harness.calls.filter(({ method }) => method === "plugin/installed"),
+            2,
+          );
+
+          yield* replace("2.0.0", "reinstalled");
+          const reinstalled = yield* sessions.open("reinstalled", request);
+          assert.deepEqual(
+            reinstalled?.skills.map(({ alias }) => alias),
+            ["reinstalled"],
+          );
+          assert.notEqual(reinstalled?.revision, updated?.revision);
+
+          const updateDuringOpen = yield* Effect.cached(replace("3.0.0", "raced"));
+          const racing = yield* makePluginSessions({
+            ...options,
+            catalog: (projectId) => options.catalog(projectId).pipe(Effect.tap(updateDuringOpen)),
+          });
+          const raced = yield* racing.open("raced", request);
+          assert.deepEqual(
+            raced?.skills.map(({ alias }) => alias),
+            ["raced"],
+          );
+          assert.notEqual(raced?.revision, reinstalled?.revision);
+        }),
+      );
+    }),
 );

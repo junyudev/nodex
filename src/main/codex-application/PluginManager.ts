@@ -353,21 +353,21 @@ export const live = (options: {
         }).pipe(Effect.map((response) => response as unknown as PluginInstalledResponse));
       const installed = (context: ResolvedPluginContext) =>
         installedRaw(context).pipe(Effect.map((response) => policy.project(response, "local")));
-      const readPackage = yield* makeInstalledPluginCache(options.codexHome);
+      const observePackage = yield* makeInstalledPluginCache(options.codexHome);
       // Codex evaluates each Project's own source roots and configuration when listing plugins.
       const catalogs = yield* Cache.makeWith(
         Effect.fn("PluginManager.loadCatalog")(function* ({ projectId }: CatalogKey) {
           const context = yield* resolve({ hostId: "local", projectId });
           const [inventory, scope] = yield* Effect.all([installed(context), scopes]);
-          const entries = yield* readPluginCatalog(
+          const packages = yield* readPluginCatalog(
             inventory.marketplaces.flatMap(({ plugins }) => plugins),
             scope,
-            readPackage,
+            observePackage,
           );
           yield* assertCurrent(context);
           const presentation = new Map(rows(inventory).map((row) => [row.nativeId, row]));
-          return pluginCatalogSnapshot(
-            entries.map((entry) => {
+          const snapshot = pluginCatalogSnapshot(
+            packages.map(({ entry }) => {
               const row = presentation.get(entry.id);
               if (!row) return entry;
               return {
@@ -385,6 +385,12 @@ export const live = (options: {
               };
             }),
           );
+          return {
+            snapshot,
+            isCurrent: Effect.forEach(packages, ({ isCurrent }) => isCurrent, {
+              concurrency: 4,
+            }).pipe(Effect.map((checks) => checks.every(Boolean))),
+          };
         }),
         {
           capacity: Infinity,
@@ -398,11 +404,17 @@ export const live = (options: {
       const catalog = Effect.fn("PluginManager.catalog")(function* (projectId: string | null) {
         while (true) {
           const generation = catalogGeneration;
-          const result = yield* Cache.get(catalogs, new CatalogKey({ projectId, generation })).pipe(
-            Effect.result,
-          );
-          // A mutation may have landed while the inventory or a package was being read.
-          if (generation === catalogGeneration) return yield* Effect.fromResult(result);
+          const key = new CatalogKey({ projectId, generation });
+          const result = yield* Cache.get(catalogs, key).pipe(Effect.result);
+          if (generation !== catalogGeneration) continue;
+          if (Result.isFailure(result)) return yield* Effect.fail(result.failure);
+          const cached = result.success;
+          const isCurrent = yield* cached.isCurrent;
+          if (generation !== catalogGeneration) continue;
+          if (isCurrent) return cached.snapshot;
+          // Codex can replace a package without notifying this host. Retire exactly the stale
+          // snapshot so concurrent readers share the next authoritative inventory request.
+          yield* Cache.invalidateWhen(catalogs, key, (value) => value === cached);
         }
       });
       const emit = Effect.fn("PluginManager.emit")(function* (

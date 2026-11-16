@@ -195,3 +195,46 @@ it.live("keeps a refused host Turn out of the admitted registry", () =>
     expect(yield* bridge.preparedTurn(turn.threadId)).toBeUndefined();
   }).pipe(Effect.provide(identity), Effect.provide(NodeServices.layer)),
 );
+
+it.live("reports the host's plugin preparation error and closes the failed attachment", () =>
+  Effect.gen(function* () {
+    const opened = yield* Deferred.make<AgentHostRequest>();
+    const closing = yield* Deferred.make<AgentHostRequest>();
+    const bridge = yield* make(
+      {
+        home: "/runtime",
+        cwd: "/workspace",
+        providers: {},
+        host: { tools: [], sessionPlugins: true },
+      },
+      (notification) => {
+        if (notification.type !== "host.request") return Effect.void;
+        if (notification.operation === "plugins.open")
+          return Deferred.succeed(opened, notification).pipe(Effect.asVoid);
+        return Deferred.succeed(closing, notification).pipe(Effect.asVoid);
+      },
+    );
+    const pending = yield* Effect.scoped(
+      bridge.openPlugins!({
+        backend: "claude",
+        threadId: turn.threadId,
+        projectId: turn.projectId,
+      }),
+    ).pipe(Effect.result, Effect.forkChild);
+    const request = yield* Deferred.await(opened);
+    const message = "Could not prepare Skills from plugin example@custom.";
+    yield* bridge.accept({
+      type: "host.result",
+      id: request.id,
+      success: false,
+      error: { message },
+    });
+    const close = yield* Deferred.await(closing);
+    expect(close).toMatchObject({ operation: "plugins.close" });
+    yield* bridge.accept({ type: "host.result", id: close.id, success: true, output: {} });
+    expect(yield* Fiber.join(pending)).toMatchObject({
+      _tag: "Failure",
+      failure: { operation: "plugins.open", message },
+    });
+  }).pipe(Effect.provide(identity), Effect.provide(NodeServices.layer)),
+);

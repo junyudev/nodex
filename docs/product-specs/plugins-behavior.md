@@ -97,7 +97,9 @@ Manage, Update from folder for a plugin added from a folder, Uninstall). The gea
   credentials and review live there; Installation › Agents names them. OpenCode does not receive
   plugins yet. Disabling or uninstalling a plugin, or narrowing its Projects, cuts off its
   servers for other Agents at once; a call already running finishes, and its result is not
-  returned.
+  returned. When Codex replaces an installed plugin, Nodex picks up the replacement before
+  preparing the next reply. If a replacement interrupts Session preparation, Nodex retries
+  once with the current inventory.
 
 ### Plugin apps
 

@@ -8,6 +8,7 @@ import {
 import { readSkillHeader } from "../../shared/skill-document/frontmatter";
 import { pluginRevision, type CatalogPlugin } from "./PluginCatalog";
 import { copyPackageSubtrees } from "./PackageFilesNode";
+import { PluginSessionPreparationError } from "./PluginSessionPreparationError";
 
 export const projectSkills = Effect.fn("SkillProjection.materialize")(function* (
   home: string,
@@ -51,7 +52,11 @@ export const projectSkills = Effect.fn("SkillProjection.materialize")(function* 
       }
       used.add(alias);
       const target = join(root, "skills", alias);
-      yield* copyPackageSubtrees(source, [{ source: skill.directory, target }]);
+      const preparationError = () =>
+        new PluginSessionPreparationError(`Could not prepare Skills from plugin ${id}.`);
+      yield* copyPackageSubtrees(source, [{ source: skill.directory, target }]).pipe(
+        Effect.mapError(preparationError),
+      );
       return yield* Effect.tryPromise(async (): Promise<SessionPluginSkill> => {
         const path = join(target, "SKILL.md");
         const markdown = await readFile(path, "utf8");
@@ -80,7 +85,7 @@ export const projectSkills = Effect.fn("SkillProjection.materialize")(function* 
           description: skill.description,
           ...(header.userInvocable === false ? { userInvocable: false } : {}),
         };
-      });
+      }).pipe(Effect.mapError(preparationError));
     }),
   );
   return { skillsRoot: root, skills };
