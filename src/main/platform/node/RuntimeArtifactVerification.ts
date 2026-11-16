@@ -54,19 +54,28 @@ export async function readRuntimeArtifactSha256(
   }
 }
 
-/** Resolve only after close: an abort/error event alone does not mean the child has exited. */
+const INSPECTION_TIMEOUT_MS = 30_000;
+const INSPECTION_FAILURE_DETAIL_CHARS = 400;
+
+/**
+ * Resolve only after close: an abort/error event alone does not mean the child has exited.
+ * A failure names its cause, a timeout or the inspector's own last words, so a rejected
+ * artifact can be told apart from an inspector that never finished.
+ */
 export function readRuntimeInspectionCommand(
   command: string,
   args: string[],
   signal?: AbortSignal,
+  timeoutMs = INSPECTION_TIMEOUT_MS,
 ): Promise<string> {
   signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
+    const startedAt = performance.now();
     const child = spawn(command, args, {
       stdio: ["ignore", "pipe", "pipe"],
       signal,
       killSignal: "SIGKILL",
-      timeout: 30_000,
+      timeout: timeoutMs,
     });
     const output: string[] = [];
     let bytes = 0;
@@ -90,11 +99,22 @@ export function readRuntimeInspectionCommand(
     child.on("error", (error) => {
       failure ??= error;
     });
-    child.once("close", (code) => {
+    child.once("close", (code, exitSignal) => {
       if (signal?.aborted) return reject(signal.reason);
       if (failure) return reject(failure);
-      if (code !== 0) return reject(new Error(`${command} exited with ${String(code)}`));
-      resolve(output.join("").trim());
+      const text = output.join("").trim();
+      if (code === 0) return resolve(text);
+      if (code === null) {
+        return reject(
+          new Error(
+            performance.now() - startedAt >= timeoutMs
+              ? `${command} did not finish within ${timeoutMs / 1000}s`
+              : `${command} was stopped by ${String(exitSignal)}`,
+          ),
+        );
+      }
+      const detail = text.slice(-INSPECTION_FAILURE_DETAIL_CHARS).trim();
+      reject(new Error(`${command} exited with ${code}${detail ? `: ${detail}` : ""}`));
     });
   });
 }

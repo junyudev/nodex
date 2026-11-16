@@ -160,9 +160,10 @@ export function createBrowserRuntimePlatformArtifactVerifier(
     }
     try {
       await run("/usr/bin/codesign", ["--verify", "--strict", artifactPath], signal);
-    } catch {
+    } catch (error) {
       signal?.throwIfAborted();
-      return "Mach-O code signature is invalid";
+      const cause = error instanceof Error ? error.message : String(error);
+      return `Mach-O code signature verification failed: ${cause}`;
     }
     const teamIdentifier = await readTeamIdentifier(artifactPath, run, signal);
     const computerUse = manifest.capabilities.computerUse;

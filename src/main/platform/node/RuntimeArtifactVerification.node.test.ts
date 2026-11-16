@@ -134,3 +134,20 @@ test("cancels a native inspector and joins its exit before rejecting", async () 
 test("reports an inspector spawn failure without leaving a pending operation", async () => {
   await expect(readRuntimeInspectionCommand("/nonexistent/nodex-inspector", [])).rejects.toThrow();
 });
+
+test("names why an inspector failed: its own last words or the time limit", async () => {
+  await expect(
+    readRuntimeInspectionCommand(process.execPath, [
+      "-e",
+      "process.stderr.write('artifact: invalid signature (code or signature have been modified)'); process.exit(3)",
+    ]),
+  ).rejects.toThrow(/exited with 3: artifact: invalid signature \(code or signature/);
+  await expect(
+    readRuntimeInspectionCommand(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)"],
+      undefined,
+      200,
+    ),
+  ).rejects.toThrow(/did not finish within 0\.2s/);
+});
