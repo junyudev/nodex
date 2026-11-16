@@ -137,10 +137,13 @@ export const statsigDistributionBody = (input: {
   statsigMetadata: { sdkType: "nodex-distribution", sdkVersion: "1" },
 });
 
-const readReleases = async (token: string | undefined): Promise<readonly Release[]> => {
+const readReleases = async (
+  token: string | undefined,
+  request: typeof fetch,
+): Promise<readonly Release[]> => {
   const releases: Release[] = [];
   for (let page = 1; ; page += 1) {
-    const response = await fetch(
+    const response = await request(
       `https://api.github.com/repos/${REPOSITORY}/releases?per_page=100&page=${page}`,
       {
         headers: {
@@ -156,72 +159,127 @@ const readReleases = async (token: string | undefined): Promise<readonly Release
   }
 };
 
-/** A missing or under-privileged token only skips this one signal. */
-const readFeedRequests = async (
+type FeedResult =
+  | { readonly feed: readonly FeedRequests[]; readonly feedStatus: "reported" | "zero" }
+  | {
+      readonly feed: readonly [];
+      readonly feedStatus: "unavailable";
+      readonly feedSkipped: string;
+    };
+
+const feedUnavailable = (feedSkipped: string): FeedResult => ({
+  feed: [],
+  feedStatus: "unavailable",
+  feedSkipped,
+});
+
+/** Query the host total alongside the appcasts to distinguish an empty dataset from zero matches. */
+export const readFeedRequests = async (
   token: string | undefined,
   now: number,
-): Promise<{ readonly feed: readonly FeedRequests[]; readonly note: string | null }> => {
-  if (!token) return { feed: [], note: "CLOUDFLARE_ANALYTICS_TOKEN is not set" };
+  request = fetch,
+): Promise<FeedResult> => {
+  if (!token) return feedUnavailable("CLOUDFLARE_ANALYTICS_TOKEN is not set");
   const dayMs = 86_400_000;
   const end = Math.floor(now / dayMs) * dayMs;
-  const response = await fetch("https://api.cloudflare.com/client/v4/graphql", {
-    method: "POST",
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      query: `query($zone:String!,$start:Time!,$end:Time!){viewer{zones(filter:{zoneTag:$zone}){httpRequestsAdaptiveGroups(limit:50,filter:{datetime_geq:$start,datetime_lt:$end,clientRequestHTTPHost:"nodex.jyu.app",clientRequestPath_like:"/updates/%"}){count dimensions{clientRequestPath}}}}}`,
-      variables: {
-        zone: JYU_APP_ZONE,
-        start: new Date(end - dayMs).toISOString(),
-        end: new Date(end).toISOString(),
-      },
-    }),
-  });
-  const result = (await response.json()) as {
-    readonly data?: {
-      readonly viewer?: {
-        readonly zones?: readonly {
-          readonly httpRequestsAdaptiveGroups?: Parameters<typeof feedRequestsFromPaths>[0];
-        }[];
+  try {
+    const response = await request("https://api.cloudflare.com/client/v4/graphql", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        query: `query($zone: String!, $start: Time!, $end: Time!) {
+          viewer {
+            zones(filter: {zoneTag: $zone}) {
+              appcasts: httpRequestsAdaptiveGroups(limit: 50, filter: {
+                datetime_geq: $start, datetime_lt: $end,
+                clientRequestHTTPHost: "nodex.jyu.app", clientRequestPath_like: "/updates/%"
+              }) { count dimensions { clientRequestPath } }
+              hostTraffic: httpRequestsAdaptiveGroups(limit: 1, filter: {
+                datetime_geq: $start, datetime_lt: $end, clientRequestHTTPHost: "nodex.jyu.app"
+              }) { count }
+            }
+          }
+        }`,
+        variables: {
+          zone: JYU_APP_ZONE,
+          start: new Date(end - dayMs).toISOString(),
+          end: new Date(end).toISOString(),
+        },
+      }),
+    });
+    if (!response.ok) return feedUnavailable(`Cloudflare returned HTTP ${response.status}`);
+    const result = (await response.json()) as {
+      readonly data?: {
+        readonly viewer?: {
+          readonly zones?: readonly {
+            readonly appcasts?: Parameters<typeof feedRequestsFromPaths>[0];
+            readonly hostTraffic?: readonly { readonly count: number }[];
+          }[];
+        };
       };
+      readonly errors?: readonly { readonly message: string }[] | null;
     };
-    readonly errors?: readonly { readonly message: string }[] | null;
-  };
-  if (result.errors?.length) return { feed: [], note: result.errors[0]!.message };
-  return {
-    feed: feedRequestsFromPaths(result.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups ?? []),
-    note: null,
-  };
+    if (result.errors?.length) return feedUnavailable(result.errors[0]!.message);
+    const zone = result.data?.viewer?.zones?.[0];
+    if (!zone?.appcasts || !zone.hostTraffic) {
+      return feedUnavailable("Cloudflare returned no analytics dataset for the jyu.app zone");
+    }
+    const feed = feedRequestsFromPaths(zone.appcasts);
+    if (feed.length > 0) return { feed, feedStatus: "reported" };
+    if (!zone.hostTraffic.some(({ count }) => count > 0)) {
+      return feedUnavailable(
+        "Cloudflare returned no nodex.jyu.app traffic for the previous UTC day",
+      );
+    }
+    return { feed, feedStatus: "zero" };
+  } catch {
+    return feedUnavailable("Cloudflare analytics request failed or returned an invalid response");
+  }
 };
 
-async function main(): Promise<void> {
-  const { values } = parseArgs({
-    options: {
-      state: { type: "string" },
-      "dry-run": { type: "boolean", default: false },
-    },
-  });
-  if (!values.state) throw new Error("--state <path> is required.");
-  const previous = (() => {
-    try {
-      return JSON.parse(readFileSync(values.state, "utf8")) as Snapshot;
-    } catch {
-      return null;
+const readSnapshot = (path: string): Snapshot | null => {
+  try {
+    const snapshot: unknown = JSON.parse(readFileSync(path, "utf8"));
+    if (
+      snapshot === null ||
+      typeof snapshot !== "object" ||
+      Array.isArray(snapshot) ||
+      !Object.values(snapshot as Record<string, unknown>).every(
+        (value) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
+      )
+    ) {
+      throw new Error("Invalid distribution snapshot");
     }
-  })();
+    return snapshot as Snapshot;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+};
+
+export async function reportDistribution(
+  input: {
+    readonly state: string;
+    readonly dryRun: boolean;
+    readonly githubToken?: string;
+    readonly cloudflareToken?: string;
+  },
+  request = fetch,
+) {
+  const previous = readSnapshot(input.state);
   const now = Date.now();
-  const releases = await readReleases(process.env.GITHUB_TOKEN);
+  const releases = await readReleases(input.githubToken, request);
   const deltas = downloadDeltas(releases, previous);
-  const { feed, note } = await readFeedRequests(process.env.CLOUDFLARE_ANALYTICS_TOKEN, now);
-  const body = statsigDistributionBody({ deltas, feed, time: now });
+  const feedResult = await readFeedRequests(input.cloudflareToken, now, request);
+  const body = statsigDistributionBody({ deltas, feed: feedResult.feed, time: now });
   const summary = {
     baseline: previous === null,
     deltas,
-    feed,
-    ...(note ? { feedSkipped: note } : {}),
-    sent: !values["dry-run"] && body.events.length > 0,
+    ...feedResult,
+    sent: !input.dryRun && body.events.length > 0,
   };
   if (summary.sent) {
-    const response = await fetch(STATSIG_LOG_EVENT_URL, {
+    const response = await request(STATSIG_LOG_EVENT_URL, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -233,7 +291,24 @@ async function main(): Promise<void> {
     if (!response.ok) throw new Error(`Statsig returned ${response.status}`);
   }
   // The new snapshot is saved only after delivery, so a failed run is counted by the next one.
-  if (!values["dry-run"]) writeFileSync(values.state, JSON.stringify(snapshotOf(releases)));
+  if (!input.dryRun) writeFileSync(input.state, JSON.stringify(snapshotOf(releases)));
+  return summary;
+}
+
+async function main(): Promise<void> {
+  const { values } = parseArgs({
+    options: {
+      state: { type: "string" },
+      "dry-run": { type: "boolean", default: false },
+    },
+  });
+  if (!values.state) throw new Error("--state <path> is required.");
+  const summary = await reportDistribution({
+    state: values.state,
+    dryRun: values["dry-run"],
+    githubToken: process.env.GITHUB_TOKEN,
+    cloudflareToken: process.env.CLOUDFLARE_ANALYTICS_TOKEN,
+  });
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 }
 

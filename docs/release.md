@@ -312,9 +312,15 @@ absolute directory paths. Task-runner stdout is diagnostic output, never the
 machine-readable directory list. Empty history is an empty array; paths do not
 depend on shell delimiters or GitHub step-output parsing.
 
-`Distribution Metrics` runs daily and reports the change in release downloads, and yesterday's
-update-feed requests when `CLOUDFLARE_ANALYTICS_TOKEN` is set, as product events. It uses a Zone
-Analytics Read token and needs no write access; see
+`Distribution Metrics` runs daily on the default branch and reports the change in release downloads
+since its latest snapshot. It stores the snapshot as a workflow artifact after Statsig accepts the
+report. If the artifact expires or is deleted, the next run with no remaining snapshot records a
+baseline.
+
+The same job reports appcast requests for the previous UTC day. Set the repository Actions secret
+`CLOUDFLARE_ANALYTICS_TOKEN` to a Cloudflare API token with Zone Analytics Read scoped to `jyu.app`.
+The job summary shows whether Cloudflare returned appcast traffic, observed zero appcast requests
+alongside other host traffic, or left the result unavailable. See
 [Product Analytics Behavior](product-specs/product-analytics-behavior.md#website-and-distribution).
 
 `Nightly Retention` keeps the newest 20 published Nightly releases and every
